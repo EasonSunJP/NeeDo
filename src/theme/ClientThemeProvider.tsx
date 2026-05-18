@@ -66,7 +66,7 @@ export const clientThemes: ClientThemeDefinition[] = [
     legacyMode: "night",
     label: "黑绿版",
     shortLabel: "黑绿",
-    description: "近黑磨砂底配柔和青柠高光、深绿玻璃卡和翡翠点缀，更接近游戏化黑绿界面。"
+    description: "冷黑青底配荧光青柠高光、石墨玻璃卡和轻量霓虹描边，弱化橄榄绿感。"
   },
   {
     id: "neon-pink",

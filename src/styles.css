@@ -514,51 +514,50 @@ img {
 
 .client-theme-night {
   --client-edge-mask-rgb: 0 0 0;
-  --client-bg: #050705;
-  --client-bg-soft: rgba(20, 24, 19, 0.76);
-  --client-hero: rgba(24, 28, 22, 0.72);
-  --client-surface: rgba(24, 27, 24, 0.78);
-  --client-elevated: rgba(33, 37, 31, 0.86);
-  --client-line: rgba(196, 255, 122, 0.14);
-  --client-text: #f4f7ef;
-  --client-muted: rgba(232, 239, 222, 0.66);
-  --client-soft-muted: rgba(232, 239, 222, 0.45);
-  --client-primary: #a7ef4f;
-  --client-primary-strong: #d7ff89;
-  --client-primary-soft: rgba(167, 239, 79, 0.17);
-  --client-nav-active: rgba(167, 239, 79, 0.18);
-  --client-accent-text: #bdf772;
-  --client-needo-bg: linear-gradient(135deg, #d9ff91 0%, #a8ef4f 44%, #49de88 100%);
-  --client-needo-active-bg: linear-gradient(135deg, #edffc1 0%, #b9fb61 48%, #63ec9d 100%);
-  --client-needo-border: rgba(7, 16, 10, 0.92);
-  --client-needo-text: #081108;
+  --client-bg: #02070c;
+  --client-bg-soft: rgba(7, 22, 34, 0.8);
+  --client-hero: rgba(9, 27, 41, 0.78);
+  --client-surface: rgba(24, 39, 50, 0.84);
+  --client-elevated: rgba(31, 47, 59, 0.92);
+  --client-line: rgba(126, 153, 171, 0.18);
+  --client-text: #f6f8f3;
+  --client-muted: rgba(228, 235, 226, 0.68);
+  --client-soft-muted: rgba(228, 235, 226, 0.46);
+  --client-primary: #baff43;
+  --client-primary-strong: #dcff86;
+  --client-primary-soft: rgba(186, 255, 67, 0.16);
+  --client-nav-active: rgba(186, 255, 67, 0.18);
+  --client-accent-text: #cfff64;
+  --client-needo-bg: linear-gradient(135deg, #dcff86 0%, #baff43 48%, #72ff78 100%);
+  --client-needo-active-bg: linear-gradient(135deg, #eeffc2 0%, #c8ff5b 50%, #86ff91 100%);
+  --client-needo-border: rgba(4, 10, 12, 0.92);
+  --client-needo-text: #07100d;
   --client-accent: #ff7568;
   --client-warning: #f8bd4b;
   --client-warning-soft: rgba(248, 189, 75, 0.18);
   --client-warning-mid: rgba(248, 189, 75, 0.28);
   --client-warning-text: #ffe8a3;
   --client-warning-ink: #17130a;
-  --client-warm: #42e58b;
+  --client-warm: #72ff8b;
   --client-schedule-mask-bg:
-    linear-gradient(180deg, rgba(177, 244, 94, 0.18) 0%, rgba(177, 244, 94, 0.03) 18rem, transparent 34rem),
-    linear-gradient(160deg, #050705 0%, #080b08 48%, #11180f 100%),
+    linear-gradient(180deg, #071827 0, #071827 33dvh, #06121d 50dvh, #02070c 66dvh, #02070c 100%),
     var(--client-bg);
-  --client-schedule-sticky-bg: #171d17;
-  --client-schedule-sticky-edge: linear-gradient(90deg, #171d17, rgba(23, 29, 23, 0));
+  --client-schedule-sticky-bg: #0f1d27;
+  --client-schedule-sticky-edge: linear-gradient(90deg, #0f1d27, rgba(15, 29, 39, 0));
   --client-schedule-sticky-shadow: 16px 0 28px rgba(0, 0, 0, 0.34);
   --pin-badge-fill: var(--client-primary);
-  --pin-badge-glyph: #0d1a10;
-  --client-shadow: 0 34px 82px rgba(0, 0, 0, 0.56), 0 0 34px rgba(141, 232, 73, 0.08);
+  --pin-badge-glyph: #07100d;
+  --client-shadow: 0 34px 82px rgba(0, 0, 0, 0.56), 0 0 34px rgba(186, 255, 67, 0.08);
   --client-overlay: rgba(0, 0, 0, 0.74);
   background:
-    linear-gradient(180deg, rgba(177, 244, 94, 0.18) 0%, rgba(177, 244, 94, 0.035) 18rem, transparent 34rem),
-    linear-gradient(122deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 96px),
-    linear-gradient(160deg, #050705 0%, #080b08 48%, #11180f 100%),
+    linear-gradient(180deg, #071827 0, #071827 33dvh, #06121d 50dvh, #02070c 66dvh, #02070c 100%),
+    radial-gradient(circle at 82% 0%, rgba(90, 132, 162, 0.1), transparent 24rem),
+    linear-gradient(122deg, rgba(255, 255, 255, 0.024) 0 1px, transparent 1px 96px),
     var(--client-bg) !important;
   background-size:
     auto,
-    96px 96px,
     auto,
+    96px 96px,
     auto;
 }
 
@@ -1148,7 +1147,6 @@ body:has(.merchant-analytics-clean-shell),
   background: color-mix(in srgb, var(--client-bg) 34%, var(--client-surface) 66%) !important;
 }
 
-.client-theme-dark-green .client-bottom-nav > div,
 .client-theme-black-gold .client-bottom-nav > div,
 .client-theme-cool-black-gray .client-bottom-nav > div,
 .client-theme-noir-gold .client-bottom-nav > div {
@@ -1157,6 +1155,14 @@ body:has(.merchant-analytics-clean-shell),
   box-shadow:
     0 18px 42px rgba(0, 0, 0, 0.54),
     inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+.client-theme-dark-green .client-bottom-nav > div {
+  background: linear-gradient(180deg, rgba(14, 31, 45, 0.94), rgba(7, 20, 31, 0.96)) !important;
+  border-color: rgba(108, 144, 170, 0.28) !important;
+  box-shadow:
+    0 20px 46px rgba(0, 0, 0, 0.58),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
 }
 
 .client-theme-black-gold .client-bottom-nav > div,
@@ -1348,9 +1354,9 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .client-theme-night .category-icon {
-  color: var(--category-icon-fg, #a7ef4f) !important;
-  background: var(--category-icon-bg, linear-gradient(145deg, #253022 0%, #151b14 56%, #0a0f0a 100%)) !important;
-  border: 1px solid var(--category-icon-border, rgba(196, 255, 122, 0.18)) !important;
+  color: var(--category-icon-fg, #baff43) !important;
+  background: var(--category-icon-bg, linear-gradient(145deg, #243747 0%, #162531 56%, #071827 100%)) !important;
+  border: 1px solid var(--category-icon-border, rgba(126, 153, 171, 0.2)) !important;
   box-shadow: var(--category-icon-shadow, 0 12px 24px rgba(0, 0, 0, 0.54), inset 0 1px 0 rgba(255, 255, 255, 0.07)) !important;
 }
 
@@ -1661,7 +1667,7 @@ body:has(.merchant-analytics-clean-shell),
 .client-theme-night .ui-badge[data-tone="green"] {
   --badge-tone-outline: color-mix(in srgb, var(--client-primary) 36%, transparent);
   background-color: color-mix(in srgb, var(--client-primary) 18%, transparent) !important;
-  color: #d7ff89 !important;
+  color: #dcff86 !important;
 }
 
 .client-theme-night .ui-badge[data-tone="yellow"] {
@@ -3010,29 +3016,29 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .admin-theme-dark-green {
-  --admin-bg: #050705;
-  --admin-bg-soft: #0e130e;
-  --admin-sidebar: rgba(11, 15, 11, 0.94);
-  --admin-topbar: rgba(15, 19, 15, 0.86);
-  --admin-surface: rgba(24, 27, 24, 0.82);
-  --admin-elevated: rgba(33, 37, 31, 0.9);
-  --admin-muted-surface: rgba(167, 239, 79, 0.07);
-  --admin-line: rgba(196, 255, 122, 0.14);
-  --admin-text: #f4f7ef;
-  --admin-muted: #b0bea6;
-  --admin-soft-muted: #7f8f78;
-  --admin-accent: #a7ef4f;
-  --admin-accent-strong: #42e58b;
-  --admin-success: #69e69f;
+  --admin-bg: #02070c;
+  --admin-bg-soft: #071827;
+  --admin-sidebar: rgba(4, 12, 18, 0.96);
+  --admin-topbar: rgba(7, 18, 27, 0.9);
+  --admin-surface: rgba(24, 39, 50, 0.84);
+  --admin-elevated: rgba(31, 47, 59, 0.92);
+  --admin-muted-surface: rgba(186, 255, 67, 0.07);
+  --admin-line: rgba(126, 153, 171, 0.18);
+  --admin-text: #f6f8f3;
+  --admin-muted: #c2cabe;
+  --admin-soft-muted: #87928f;
+  --admin-accent: #baff43;
+  --admin-accent-strong: #72ff8b;
+  --admin-success: #72f29b;
   --admin-warning: #f8bd4b;
   --admin-danger: #ff7568;
-  --admin-ink-fill: #081108;
+  --admin-ink-fill: #07100d;
   --admin-card-shadow: 0 20px 46px rgba(0, 0, 0, 0.34);
   --admin-card-shadow-strong: 0 28px 64px rgba(0, 0, 0, 0.44);
   background:
-    linear-gradient(180deg, rgba(177, 244, 94, 0.14) 0%, rgba(177, 244, 94, 0.025) 18rem, transparent 34rem),
-    linear-gradient(122deg, rgba(255, 255, 255, 0.026) 0 1px, transparent 1px 96px),
-    linear-gradient(160deg, #050705 0%, #080b08 48%, #11180f 100%) !important;
+    linear-gradient(180deg, #071827 0, #071827 33dvh, #06121d 50dvh, #02070c 66dvh, #02070c 100%),
+    radial-gradient(circle at 82% 0%, rgba(90, 132, 162, 0.1), transparent 24rem),
+    linear-gradient(122deg, rgba(255, 255, 255, 0.024) 0 1px, transparent 1px 96px) !important;
 }
 
 .admin-theme-black-gold {
@@ -4595,27 +4601,27 @@ body:has(.merchant-analytics-clean-shell),
 
 .merchant-admin-shell.admin-theme-dark-green,
 .merchant-admin-shell.admin-theme-dark {
-  --admin-bg: #050705;
-  --admin-bg-soft: #0e130e;
-  --admin-sidebar: rgba(11, 15, 11, 0.94);
-  --admin-topbar: rgba(15, 19, 15, 0.86);
-  --admin-surface: rgba(24, 27, 24, 0.78);
-  --admin-elevated: rgba(33, 37, 31, 0.86);
-  --admin-muted-surface: rgba(167, 239, 79, 0.07);
-  --admin-line: rgba(196, 255, 122, 0.14);
-  --admin-text: #f4f7ef;
-  --admin-muted: #b0bea6;
-  --admin-soft-muted: #7f8f78;
-  --admin-accent: #a7ef4f;
-  --admin-accent-strong: #42e58b;
-  --admin-success: #69e69f;
+  --admin-bg: #02070c;
+  --admin-bg-soft: #071827;
+  --admin-sidebar: rgba(4, 12, 18, 0.96);
+  --admin-topbar: rgba(7, 18, 27, 0.9);
+  --admin-surface: rgba(24, 39, 50, 0.8);
+  --admin-elevated: rgba(31, 47, 59, 0.9);
+  --admin-muted-surface: rgba(186, 255, 67, 0.07);
+  --admin-line: rgba(126, 153, 171, 0.18);
+  --admin-text: #f6f8f3;
+  --admin-muted: #c2cabe;
+  --admin-soft-muted: #87928f;
+  --admin-accent: #baff43;
+  --admin-accent-strong: #72ff8b;
+  --admin-success: #72f29b;
   --admin-warning: #f8bd4b;
   --admin-danger: #ff7568;
-  --admin-ink-fill: #081108;
+  --admin-ink-fill: #07100d;
   --admin-card-shadow: 0 20px 46px rgba(0, 0, 0, 0.34);
   --admin-card-shadow-strong: 0 28px 64px rgba(0, 0, 0, 0.44);
-  --merchant-brand-text: #081108;
-  --merchant-dispatch-on-accent: #081108;
+  --merchant-brand-text: #07100d;
+  --merchant-dispatch-on-accent: #07100d;
   --merchant-dispatch-soft: color-mix(in srgb, var(--admin-muted-surface) 94%, var(--admin-surface));
   --merchant-dispatch-soft-strong: color-mix(in srgb, var(--admin-muted-surface) 98%, var(--admin-surface));
   --merchant-dispatch-alert-bg: color-mix(in srgb, var(--admin-accent) 14%, var(--admin-surface));
@@ -4631,13 +4637,13 @@ body:has(.merchant-analytics-clean-shell),
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 88%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 92%, var(--admin-text));
   --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 14%, var(--admin-surface));
-  --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #050705 0%, #11180f 100%);
-  --merchant-dispatch-table-sticky-bg: #11180f;
-  --merchant-dispatch-table-header-bg: color-mix(in srgb, #11180f 84%, var(--admin-accent) 16%);
+  --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #071827 0%, #02070c 100%);
+  --merchant-dispatch-table-sticky-bg: #0f1d27;
+  --merchant-dispatch-table-header-bg: color-mix(in srgb, #0f1d27 88%, var(--admin-accent) 12%);
   background:
-    linear-gradient(180deg, rgba(177, 244, 94, 0.14) 0%, rgba(177, 244, 94, 0.025) 18rem, transparent 34rem),
-    linear-gradient(122deg, rgba(255, 255, 255, 0.026) 0 1px, transparent 1px 96px),
-    linear-gradient(160deg, #050705 0%, #080b08 48%, #11180f 100%) !important;
+    linear-gradient(180deg, #071827 0, #071827 33dvh, #06121d 50dvh, #02070c 66dvh, #02070c 100%),
+    radial-gradient(circle at 82% 0%, rgba(90, 132, 162, 0.1), transparent 24rem),
+    linear-gradient(122deg, rgba(255, 255, 255, 0.024) 0 1px, transparent 1px 96px) !important;
 }
 
 .merchant-admin-shell.admin-theme-black-gold {

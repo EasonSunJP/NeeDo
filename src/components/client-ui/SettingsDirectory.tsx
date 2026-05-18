@@ -62,7 +62,7 @@ function SelectionIndicator({ active }: { active: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
+        "relative z-10 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
         active
           ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
           : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-transparent text-transparent"
@@ -366,19 +366,21 @@ export function SettingsRadioListPage<T extends string>({
           return (
             <button
               className={cn(
-                "flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition",
-                active ? "bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]" : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
+                "relative flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition focus:outline-none",
+                active
+                  ? "before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
+                  : "hover:before:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
               )}
               data-no-i18n={option.dataNoI18n || undefined}
               key={String(option.value)}
               onClick={() => onChange(option.value)}
               type="button"
             >
-              <div className="min-w-0 flex-1">
+              <div className="relative z-10 min-w-0 flex-1">
                 <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">{option.title}</p>
                 {option.subtitle ? <p className="mt-0.5 truncate text-[12px] text-[color:var(--client-muted)]">{option.subtitle}</p> : null}
               </div>
-              {option.meta ? <SettingsValueText className="max-w-[8rem]" tone="muted">{option.meta}</SettingsValueText> : null}
+              {option.meta ? <SettingsValueText className="relative z-10 max-w-[8rem]" tone="muted">{option.meta}</SettingsValueText> : null}
               <SelectionIndicator active={active} />
             </button>
           );

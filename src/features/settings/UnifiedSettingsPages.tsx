@@ -117,7 +117,7 @@ function SettingsPortalSelectionIndicator({ active }: { active: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
+        "relative z-10 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
         active
           ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
           : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-transparent text-transparent"
@@ -377,9 +377,9 @@ function getThemePreviewClasses(themeId: ClientThemeDefinition["id"]) {
       ];
     case "dark-green":
       return [
-        "bg-[linear-gradient(135deg,#050705_0%,#151b14_54%,#263420_100%)]",
-        "bg-[#a7ef4f]",
-        "bg-[#42e58b]"
+        "bg-[linear-gradient(135deg,#02070c_0%,#071827_48%,#243747_100%)]",
+        "bg-[#baff43]",
+        "bg-[#72ff8b]"
       ];
     case "neon-pink":
       return [
@@ -589,7 +589,7 @@ function SelectionIndicator({ active }: { active: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
+        "relative z-10 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
         active
           ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
           : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-transparent text-transparent"
@@ -638,17 +638,19 @@ function ThemeOptionRow({
   return (
     <button
       className={cn(
-        "flex min-h-[68px] w-full items-center gap-3 px-4 py-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--client-accent)]",
-        active ? "bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]" : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
+        "relative flex min-h-[68px] w-full items-center gap-3 px-4 py-3 text-left transition before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition focus:outline-none",
+        active
+          ? "before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
+          : "hover:before:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
       )}
       onClick={onClick}
       type="button"
     >
-      <div className="min-w-0 flex-1">
+      <div className="relative z-10 min-w-0 flex-1">
         <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">{item.label}</p>
         <p className="mt-0.5 truncate text-[12px] text-[color:var(--client-muted)]">{getThemeCaption(item.id)}</p>
       </div>
-      <div className="grid w-[72px] shrink-0 grid-cols-3 gap-1.5">
+      <div className="relative z-10 grid w-[72px] shrink-0 grid-cols-3 gap-1.5">
         {previewClasses.map((className, index) => (
           <span className={cn("block h-4 rounded-full", className)} key={`${item.id}-${index}`} />
         ))}
@@ -892,14 +894,16 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
             return (
               <button
                 className={cn(
-                  "flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition",
-                  active ? "bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]" : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
+                  "relative flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition focus:outline-none",
+                  active
+                    ? "before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
+                    : "hover:before:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
                 )}
                 key={item}
                 onClick={() => selectPortal(item)}
                 type="button"
               >
-                <div className="min-w-0 flex-1">
+                <div className="relative z-10 min-w-0 flex-1">
                   <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">{t(compactPortalLabels[item].label)}</p>
                   <p className="mt-0.5 truncate text-[12px] text-[color:var(--client-muted)]">{t(compactPortalLabels[item].caption)}</p>
                 </div>
