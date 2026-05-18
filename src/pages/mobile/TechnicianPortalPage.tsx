@@ -21,6 +21,7 @@ import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { ChatConversationInfoCard } from "../../components/mobile/ChatConversationInfoCard";
+import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { MobileMessageCenter } from "../../components/mobile/MobileMessageCenter";
 import { OrderServiceMiniCard, findOrderService } from "../../components/mobile/OrderServiceMiniCard";
@@ -5721,14 +5722,13 @@ export function TechnicianPortalPage() {
               </div>
             ) : null}
             {selectedTaskOrderPendingExtensionRequest && extensionRequestCollapsed ? (
-              <button
-                className="focus-ring fixed bottom-[calc(env(safe-area-inset-bottom)+92px)] right-4 z-50 grid h-14 w-14 place-items-center rounded-full bg-[color:var(--client-primary)] text-[#090806] shadow-[0_18px_38px_color-mix(in_srgb,var(--client-primary)_34%,transparent)]"
+              <FloatingActionButton
+                ariaLabel="展开追加服务请求"
                 onClick={() => setExtensionRequestCollapsed(false)}
-                type="button"
+                storageKey="needo.fab.technician-extension-request"
               >
                 <AppIcon name="clock" />
-                <span className="sr-only">展开追加服务请求</span>
-              </button>
+              </FloatingActionButton>
             ) : null}
             {showTechnicianServiceReview || technicianServiceReviewOpen ? (
               <ServiceReviewPrompt

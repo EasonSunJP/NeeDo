@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
+import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import type { MyQrCodePurpose } from "../../components/mobile/MyQrCodeButton";
@@ -399,18 +400,17 @@ function DineInFloatingCartButton({
   }
 
   return (
-    <button
-      aria-label={`查看购物车，${count} 件`}
-      className="focus-ring fixed bottom-[calc(env(safe-area-inset-bottom)+5.9rem)] right-4 z-50 grid h-16 w-16 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)] shadow-[0_20px_48px_color-mix(in_srgb,var(--client-primary)_38%,transparent)]"
+    <FloatingActionButton
+      ariaLabel={`查看购物车，${count} 件`}
+      badge={count}
       onClick={onClick}
-      type="button"
+      srText={yen(total)}
+      storageKey="needo.fab.dine-in-cart"
     >
       <svg aria-hidden="true" className="h-7 w-7" fill="none" viewBox="0 0 24 24">
         <path d="M5 6h2l1.5 9h8.8l1.6-6.5H8.1M10 19.5h.1M17 19.5h.1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
       </svg>
-      <span className="absolute -right-1 -top-1 grid h-7 min-w-7 place-items-center rounded-full bg-[#ff5b5b] px-2 text-xs font-black text-white">{count}</span>
-      <span className="sr-only">{yen(total)}</span>
-    </button>
+    </FloatingActionButton>
   );
 }
 

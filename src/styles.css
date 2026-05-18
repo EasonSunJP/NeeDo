@@ -837,34 +837,104 @@ body:has(.merchant-analytics-clean-shell),
   overscroll-behavior-x: none;
 }
 
-.needo-compose-floating-button {
-  position: relative;
+.client-floating-action-button {
+  width: 58px;
+  height: 58px;
   isolation: isolate;
-  overflow: hidden;
-  border: 1px solid var(--needo-compose-button-border);
+  overflow: visible;
+  border: 1.5px solid color-mix(in srgb, var(--needo-compose-button-border) 58%, white 42%);
+  border-radius: 9999px;
   background: var(--needo-compose-button-bg);
   color: var(--needo-compose-button-fg);
-  box-shadow: var(--needo-compose-button-shadow);
+  box-shadow:
+    0 12px 26px color-mix(in srgb, var(--client-primary) 22%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  transition:
+    transform 180ms ease,
+    filter 180ms ease,
+    box-shadow 180ms ease;
 }
 
-.needo-compose-floating-button::before {
+.client-floating-action-button::before {
   content: "";
   position: absolute;
   inset: 1px;
   z-index: -1;
   border-radius: inherit;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.04) 46%, rgba(255, 255, 255, 0));
-  opacity: 0.72;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 74% 82%, color-mix(in srgb, var(--client-warm) 10%, transparent), transparent 42%);
+  box-shadow: inset 0 -7px 16px color-mix(in srgb, black 6%, transparent);
 }
 
-.needo-compose-floating-button svg {
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.18));
+.client-floating-action-button__shine {
+  pointer-events: none;
+  position: absolute;
+  inset: 5px 10px auto 10px;
+  height: 12px;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  opacity: 0.42;
 }
 
-.needo-compose-floating-button:hover {
+.client-floating-action-button__icon {
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.16));
+}
+
+.client-floating-action-button__icon > svg {
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.client-floating-action-button__badge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  z-index: 4;
+  border-width: 2px !important;
+  border-color: color-mix(in srgb, var(--client-bg) 34%, white 66%) !important;
   box-shadow:
-    var(--needo-compose-button-shadow),
-    0 0 0 6px color-mix(in srgb, var(--client-primary) 13%, transparent);
+    0 6px 14px rgba(255, 82, 76, 0.3),
+    0 0 0 1px color-mix(in srgb, var(--client-primary) 18%, transparent);
+}
+
+.client-floating-action-button__text-badge {
+  display: inline-flex;
+  min-width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, #ff8b7f 0%, #ff5f58 48%, #ff453f 100%);
+  padding: 0 8px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.client-floating-action-button:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 14px 30px color-mix(in srgb, var(--client-primary) 26%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--client-primary) 8%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
+}
+
+.client-floating-action-button:active,
+.client-floating-action-button--dragging {
+  transform: scale(1.04);
+  filter: saturate(1.08) brightness(1.04);
+  cursor: grabbing;
 }
 
 .client-shell .client-page-shell {

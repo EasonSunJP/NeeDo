@@ -14,6 +14,7 @@ import {
   type IconName
 } from "../../../components/client-ui/AppScaffold";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../../components/client-ui/FeatureCarousel";
+import { FloatingActionButton } from "../../../components/mobile/FloatingActionButton";
 import { merchantNavItems, technicianNavItems, userNavItems } from "../../../components/mobile/navItems";
 import { InteractiveAvatar } from "../../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
@@ -1704,16 +1705,14 @@ export function SocialProfileSearchFab({
   raised?: boolean;
 }) {
   return (
-    <Link
-      aria-label="搜索动态"
-      className={cn(
-        "safe-nav-bottom fixed right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] text-[color:var(--client-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-shadow)_28%,transparent)] backdrop-blur-xl transition hover:-translate-y-0.5",
-        raised ? "bottom-[166px] lg:bottom-[104px]" : "bottom-[98px] lg:bottom-8"
-      )}
+    <FloatingActionButton
+      ariaLabel="搜索动态"
+      position={raised ? "raised" : "standard"}
+      storageKey={`needo.fab.social-search.${scope}`}
       to={socialPaths.search(scope)}
     >
-      <AppIcon className="h-6 w-6" name="search" />
-    </Link>
+      <AppIcon name="search" />
+    </FloatingActionButton>
   );
 }
 
@@ -2325,15 +2324,15 @@ export function SocialTopActions({
 
 export function SocialComposeFab({ scope }: { scope: SocialPortalScope }) {
   return (
-    <Link
-      className="safe-nav-bottom fixed bottom-[98px] right-4 z-40 inline-flex h-14 w-14 items-center justify-center rounded-full border-[4px] border-[color:var(--client-needo-border)] bg-[color:var(--client-primary)] text-[#090806] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_30%,transparent)] transition hover:-translate-y-0.5 lg:bottom-8"
+    <FloatingActionButton
+      ariaLabel="发动态"
+      storageKey={`needo.fab.social-compose.${scope}`}
       to={socialPaths.compose(scope)}
     >
       <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24">
         <path d="M12 5v14M5 12h14" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
       </svg>
-      <span className="sr-only">发动态</span>
-    </Link>
+    </FloatingActionButton>
   );
 }
 

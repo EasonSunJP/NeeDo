@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
+import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { useAuth } from "../../auth/AuthProvider";
 import { serviceCategories, services } from "../../data/mock";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -508,19 +508,16 @@ function CurrentAppointmentFloatingButton({ count, latestOrder }: { count: numbe
   const timeLabel = latestOrder.bookedAt.split(" ")[1] ?? latestOrder.bookedAt;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+112px)] z-40 mx-auto flex w-full max-w-[1600px] justify-end px-4">
-      <Link
-        aria-label="查看预约记录"
-        className="focus-ring pointer-events-auto group relative grid h-[68px] w-[68px] place-items-center overflow-visible rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_62%,white)] bg-[color:var(--client-primary)] text-[#090806] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_34%,transparent)] transition hover:-translate-y-0.5"
-        title="查看预约记录"
-        to="/orders"
-      >
-        <NotificationBadge className="absolute -right-1 -top-1 z-20 border-2 border-[color:var(--client-bg)]" count={count} size="md" />
-        <span className="pointer-events-none absolute inset-0 z-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.46)]" />
-        <CalendarClockIcon className="relative z-10 h-8 w-8 transition group-hover:scale-[1.04]" />
-        <span className="sr-only">{timeLabel}</span>
-      </Link>
-    </div>
+    <FloatingActionButton
+      ariaLabel="查看预约记录"
+      badge={count}
+      srText={timeLabel}
+      storageKey="needo.fab.current-appointment"
+      title="查看预约记录"
+      to="/orders"
+    >
+      <CalendarClockIcon />
+    </FloatingActionButton>
   );
 }
 

@@ -1,6 +1,7 @@
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import { FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
+import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
@@ -1919,16 +1920,13 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
         )}
 
         {canComposeOnActiveTab ? (
-          <div className="pointer-events-none fixed bottom-24 left-1/2 z-30 flex w-full max-w-[480px] -translate-x-1/2 justify-end px-4">
-            <button
-              aria-label={composerType === "demand" ? "发送需求" : "发送情报"}
-              className="focus-ring needo-compose-floating-button pointer-events-auto grid h-14 w-14 place-items-center rounded-full transition hover:scale-[1.03] active:scale-[0.98]"
-              onClick={() => setShowComposer(true)}
-              type="button"
-            >
-              <NeedoComposerIcon />
-            </button>
-          </div>
+          <FloatingActionButton
+            ariaLabel={composerType === "demand" ? "发送需求" : "发送情报"}
+            onClick={() => setShowComposer(true)}
+            storageKey="needo.fab.exchange-compose"
+          >
+            <NeedoComposerIcon />
+          </FloatingActionButton>
         ) : null}
       </div>
     </MobileShell>

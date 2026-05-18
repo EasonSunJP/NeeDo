@@ -162,7 +162,7 @@ export function FloatingActionWindow({
   };
 
   const floatingStyle = position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : undefined;
-  const defaultAnchorClass = isMobileSurface ? "bottom-[112px] right-4" : "bottom-5 right-5";
+  const defaultAnchorClass = isMobileSurface ? "bottom-[calc(env(safe-area-inset-bottom)+104px)] right-4" : "bottom-5 right-5";
   const handleMinimize = (taskId: string) => {
     if (minimizingTaskIds.includes(taskId) || windowCollapsing) {
       return;
@@ -196,10 +196,10 @@ export function FloatingActionWindow({
     return (
       <button
         className={cn(
-          "fixed z-40 grid h-16 w-16 place-items-center rounded-full text-white",
+          "fixed z-40 grid place-items-center rounded-full",
           defaultAnchorClass,
-          !isMobileSurface && "merchant-dispatch-fab",
-          isMobileSurface && "bg-coral shadow-[0_22px_48px_color-mix(in_srgb,var(--client-accent)_38%,transparent)]",
+          !isMobileSurface && "h-16 w-16 text-white merchant-dispatch-fab",
+          isMobileSurface && "client-floating-action-button text-[22px] font-black",
           isMobileSurface && "touch-none"
         )}
         onClick={() => {
@@ -227,10 +227,10 @@ export function FloatingActionWindow({
         <div
           aria-hidden="true"
           className={cn(
-            "fixed z-[39] grid h-16 w-16 place-items-center rounded-full text-white transition-transform duration-300 ease-out",
+            "fixed z-[39] grid place-items-center rounded-full transition-transform duration-300 ease-out",
             defaultAnchorClass,
-            !isMobileSurface && "merchant-dispatch-fab",
-            isMobileSurface && "bg-coral shadow-[0_22px_48px_color-mix(in_srgb,var(--client-accent)_38%,transparent)]",
+            !isMobileSurface && "h-16 w-16 text-white merchant-dispatch-fab",
+            isMobileSurface && "client-floating-action-button text-[22px] font-black",
             isMobileSurface && "scale-100"
           )}
           style={floatingStyle}
