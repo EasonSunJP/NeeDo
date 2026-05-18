@@ -172,6 +172,9 @@ function buildSeedState(): TechnicianScheduleStoreState {
       customerName: orderPool[0]?.customerName ?? "林 小雨",
       amount: orderPool[0]?.amount ?? 12800,
       orderId: orderPool[0]?.id,
+      eventType: "booking",
+      detailTargetType: "order_detail",
+      detailTargetId: orderPool[0]?.id,
       note: "门店正式预约"
     },
     {
@@ -185,6 +188,9 @@ function buildSeedState(): TechnicianScheduleStoreState {
       customerName: orderPool[1]?.customerName ?? "佐藤 健",
       amount: orderPool[1]?.amount ?? 9800,
       orderId: orderPool[1]?.id,
+      eventType: "booking",
+      detailTargetType: "order_detail",
+      detailTargetId: orderPool[1]?.id,
       note: "门店正式预约"
     },
     {
@@ -198,6 +204,9 @@ function buildSeedState(): TechnicianScheduleStoreState {
       customerName: orderPool[2]?.customerName ?? "Mia Chen",
       amount: orderPool[2]?.amount ?? 16800,
       orderId: orderPool[2]?.id,
+      eventType: "booking",
+      detailTargetType: "order_detail",
+      detailTargetId: orderPool[2]?.id,
       note: "落在确认班次外，需要额外确认"
     },
     {
@@ -211,7 +220,10 @@ function buildSeedState(): TechnicianScheduleStoreState {
       customerName: orderPool[3]?.customerName ?? "高桥 由美",
       amount: orderPool[3]?.amount ?? 11800,
       orderId: orderPool[3]?.id,
-      note: "门店正式预约"
+      eventType: "reschedule",
+      detailTargetType: "order_detail",
+      detailTargetId: orderPool[3]?.id,
+      note: "已改期到当前时间段，点击打开当前预约订单"
     },
     {
       id: "booking-self-5",
@@ -224,7 +236,11 @@ function buildSeedState(): TechnicianScheduleStoreState {
       customerName: orderPool[4]?.customerName ?? "Emily Wong",
       amount: orderPool[4]?.amount ?? 15600,
       orderId: orderPool[4]?.id,
-      note: "尾段超出确认班次，记为待定"
+      parentOrderId: orderPool[0]?.id,
+      eventType: "extension",
+      detailTargetType: "order_detail",
+      detailTargetId: orderPool[4]?.id,
+      note: "加钟订单，详情页可回到原订单"
     }
   ];
 
@@ -239,7 +255,10 @@ function buildSeedState(): TechnicianScheduleStoreState {
       title: orderPool[5]?.itemName ?? "店内预约",
       customerName: orderPool[5]?.customerName ?? "小林 美月",
       amount: orderPool[5]?.amount ?? 8800,
-      orderId: orderPool[5]?.id
+      orderId: orderPool[5]?.id,
+      eventType: "booking",
+      detailTargetType: "order_detail",
+      detailTargetId: orderPool[5]?.id
     });
   }
 

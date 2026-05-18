@@ -23,6 +23,7 @@ import { SpecialTaskPool } from "./SpecialTaskPool";
 import { TodayArrangementTable } from "./TodayArrangementTable";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { translateText } from "../../../i18n/translations";
+import { resolveScheduleEventDetailTarget } from "../../../lib/scheduleDetailTarget";
 import { addDays, type DispatchFloatingTask } from "../domain";
 import { getMerchantScheduleCellPath } from "../paths";
 import {
@@ -669,6 +670,12 @@ export function DispatchOverviewWorkspace({
   const openCellDetail = (cell: DispatchScheduleCell) => {
     if (cell.hour == null && view !== "day") {
       openDateSchedule(cell.date);
+      return;
+    }
+
+    const target = resolveScheduleEventDetailTarget(cell, surface === "desktop" ? "merchant-admin" : "merchant");
+    if (target.action === "open" && target.targetType === "order_detail") {
+      navigate(target.route);
       return;
     }
 

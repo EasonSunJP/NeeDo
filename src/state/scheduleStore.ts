@@ -136,6 +136,21 @@ function getScheduleStatus(value: unknown, fallback: Schedule["status"]) {
   return value === "free" || value === "booked" || value === "blocked" ? value : fallback;
 }
 
+function getScheduleEventType(value: unknown, fallback?: Schedule["eventType"]) {
+  return value === "booking" ||
+    value === "extension" ||
+    value === "reschedule" ||
+    value === "block" ||
+    value === "attendance" ||
+    value === "break"
+    ? value
+    : fallback;
+}
+
+function getScheduleDetailTargetType(value: unknown, fallback?: Schedule["detailTargetType"]) {
+  return value === "order_detail" || value === "attendance_detail" || value === "none" ? value : fallback;
+}
+
 function isGeneratedScheduleSource(value: unknown): value is GeneratedScheduleSource {
   return value === "autoSchedule" || value === "autoDispatch";
 }
@@ -238,7 +253,13 @@ function normalizeSchedule(base: Schedule, raw?: Partial<Schedule>): Schedule {
     startTime: getString(raw.startTime, base.startTime),
     endTime: getString(raw.endTime, base.endTime),
     status: getScheduleStatus(raw.status, base.status),
-    orderId: typeof raw.orderId === "string" ? raw.orderId : base.orderId
+    orderId: typeof raw.orderId === "string" ? raw.orderId : base.orderId,
+    parentOrderId: typeof raw.parentOrderId === "string" ? raw.parentOrderId : base.parentOrderId,
+    appointmentId: typeof raw.appointmentId === "string" ? raw.appointmentId : base.appointmentId,
+    eventType: getScheduleEventType(raw.eventType, base.eventType),
+    isClickable: typeof raw.isClickable === "boolean" ? raw.isClickable : base.isClickable,
+    detailTargetType: getScheduleDetailTargetType(raw.detailTargetType, base.detailTargetType),
+    detailTargetId: typeof raw.detailTargetId === "string" ? raw.detailTargetId : base.detailTargetId
   };
 }
 

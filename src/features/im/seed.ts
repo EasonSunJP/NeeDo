@@ -281,7 +281,9 @@ function buildDatabase(seed: SeedInput): ImDatabase {
     members: seed.members,
     messages: seed.messages,
     attachments: buildAttachments(seed.messages),
-    readCursors: buildReadCursors(seed.conversations, seed.messages, seed.currentUserId)
+    readCursors: buildReadCursors(seed.conversations, seed.messages, seed.currentUserId),
+    messageCampaigns: [],
+    messageCampaignRecipients: []
   };
 
   database.conversations.forEach((conversation) => {

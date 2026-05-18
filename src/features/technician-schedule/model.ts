@@ -1,3 +1,5 @@
+import type { ScheduleDetailTargetType, ScheduleEventType } from "../../lib/scheduleDetailTarget";
+
 export type TechnicianScheduleView = "day" | "week" | "month";
 export type TechnicianScheduleDensityMode = "entries" | "all";
 export type TechnicianScheduleEventKind = "availability" | "leave" | "locked" | "rest" | "travel" | "other";
@@ -53,6 +55,12 @@ export type TechnicianScheduleBooking = {
   customerName: string;
   amount?: number | null;
   orderId?: string;
+  parentOrderId?: string;
+  appointmentId?: string;
+  eventType?: ScheduleEventType;
+  isClickable?: boolean;
+  detailTargetType?: ScheduleDetailTargetType;
+  detailTargetId?: string;
   note?: string;
 };
 
@@ -125,6 +133,13 @@ export type TechnicianCalendarItem = {
   title: string;
   subtitle: string;
   amount?: number | null;
+  orderId?: string;
+  parentOrderId?: string;
+  appointmentId?: string;
+  eventType?: ScheduleEventType;
+  isClickable?: boolean;
+  detailTargetType?: ScheduleDetailTargetType;
+  detailTargetId?: string;
   kind: "confirmed" | "booked" | "tentative" | TechnicianScheduleEventKind;
   preset?: TechnicianScheduleEventPreset;
   readOnly: boolean;

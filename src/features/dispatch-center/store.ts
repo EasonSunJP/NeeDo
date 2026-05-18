@@ -61,6 +61,7 @@ import {
   type TechnicianSchedulePreference
 } from "./domain";
 import { readBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
+import type { ScheduleDetailTargetType, ScheduleEventType } from "../../lib/scheduleDetailTarget";
 
 type DispatchCenterState = {
   cycles: DispatchCycle[];
@@ -129,6 +130,13 @@ export type DispatchScheduleDaySlot = {
   status: DispatchScheduleCellStatus;
   title: string;
   detail: string;
+  orderId?: string;
+  parentOrderId?: string;
+  appointmentId?: string;
+  eventType?: ScheduleEventType;
+  isClickable?: boolean;
+  detailTargetType?: ScheduleDetailTargetType;
+  detailTargetId?: string;
   darkened: boolean;
   isCurrent: boolean;
 };
@@ -142,6 +150,13 @@ export type DispatchScheduleCell = {
   status: DispatchScheduleCellStatus;
   title: string;
   detail: string;
+  orderId?: string;
+  parentOrderId?: string;
+  appointmentId?: string;
+  eventType?: ScheduleEventType;
+  isClickable?: boolean;
+  detailTargetType?: ScheduleDetailTargetType;
+  detailTargetId?: string;
   dayTimeline?: DispatchScheduleDaySlot[];
   darkened: boolean;
   isCurrent: boolean;
@@ -1810,6 +1825,11 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
         let status: DispatchScheduleCell["status"] = isOpen ? "open" : "closed";
         let title = isOpen ? "店铺开放" : "未开放";
         let detail = isOpen ? "可排班 / 可预约" : "非开放时段";
+        const linkedSchedule = liveSchedules.find((schedule) => schedule.orderId) ?? liveSchedules[0];
+        const orderId = linkedSchedule?.orderId;
+        const eventType = linkedSchedule?.eventType ?? (orderId ? "booking" : undefined);
+        const detailTargetType = linkedSchedule?.detailTargetType ?? (orderId ? "order_detail" : undefined);
+        const detailTargetId = linkedSchedule?.detailTargetId ?? orderId;
 
         if (liveSchedules.length > 1) {
           status = "conflict";
@@ -1844,6 +1864,13 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
           status,
           title,
           detail,
+          orderId,
+          parentOrderId: linkedSchedule?.parentOrderId,
+          appointmentId: linkedSchedule?.appointmentId ?? linkedSchedule?.id,
+          eventType,
+          isClickable: linkedSchedule?.isClickable ?? Boolean(detailTargetId),
+          detailTargetType,
+          detailTargetId,
           darkened: isPast,
           isCurrent: dateKey === dispatchReferenceDateKey && hour === currentHour
         } satisfies DispatchScheduleCell;
@@ -1897,6 +1924,7 @@ function buildPeriodGrid(storeId: string, cycle: DispatchCycle | null, startDate
         const conflictCount = dayCells.filter((cell) => cell.status === "conflict").length;
         const pendingCount = dayCells.filter((cell) => cell.status === "pending").length;
         const arrangedCount = confirmedCount + bookedCount + pendingCount;
+        const firstOrderCell = dayCells.find((cell) => cell.detailTargetType === "order_detail" && cell.detailTargetId);
 
         const status = conflictCount > 0 ? "conflict" : bookedCount > 0 ? "booked" : confirmedCount > 0 ? "confirmed" : pendingCount > 0 ? "pending" : "open";
 
@@ -1909,11 +1937,25 @@ function buildPeriodGrid(storeId: string, cycle: DispatchCycle | null, startDate
           status,
           title: conflictCount > 0 ? `${conflictCount} 个冲突` : arrangedCount > 0 ? `${arrangedCount} 个安排` : "开放中",
           detail: `${confirmedCount} 确认 / ${bookedCount} 预约 / ${pendingCount} 待定`,
+          orderId: bookedCount === 1 ? firstOrderCell?.orderId : undefined,
+          parentOrderId: bookedCount === 1 ? firstOrderCell?.parentOrderId : undefined,
+          appointmentId: bookedCount === 1 ? firstOrderCell?.appointmentId : undefined,
+          eventType: bookedCount === 1 ? firstOrderCell?.eventType : undefined,
+          isClickable: bookedCount === 1 ? firstOrderCell?.isClickable : undefined,
+          detailTargetType: bookedCount === 1 ? firstOrderCell?.detailTargetType : undefined,
+          detailTargetId: bookedCount === 1 ? firstOrderCell?.detailTargetId : undefined,
           dayTimeline: dayCells.map((cell) => ({
             hour: cell.hour ?? 0,
             status: cell.status,
             title: cell.title,
             detail: cell.detail,
+            orderId: cell.orderId,
+            parentOrderId: cell.parentOrderId,
+            appointmentId: cell.appointmentId,
+            eventType: cell.eventType,
+            isClickable: cell.isClickable,
+            detailTargetType: cell.detailTargetType,
+            detailTargetId: cell.detailTargetId,
             darkened: cell.darkened,
             isCurrent: cell.isCurrent
           })),

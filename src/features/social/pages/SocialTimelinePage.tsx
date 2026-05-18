@@ -245,7 +245,7 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
     return getTimelineFeed(timelineFilter, actorKey, timelineFilter === "nearby" ? currentPanel.locationContext : undefined);
   }, [actorKey, currentPanel.locationContext, currentPanel.status, getTimelineFeed, timelineFilter]);
   const rawTimelinePosts = useMemo(() => filteredTimelinePosts.filter((post) => !post.replyToPostId), [filteredTimelinePosts]);
-  const pinnedPost = timelineFilter === "mine" && actor?.pinnedPostId ? getPostById(actor.pinnedPostId) : undefined;
+  const pinnedPost = timelineFilter === "mine" && actor?.pinnedPostId ? getPostById(actor.pinnedPostId, actorKey) : undefined;
   const renderedPosts = useMemo(() => (pinnedPost ? rawTimelinePosts.filter((post) => post.id !== pinnedPost.id) : rawTimelinePosts), [pinnedPost, rawTimelinePosts]);
   const visibleCount = currentPanel.visibleCountByTab.posts;
   const visiblePosts = renderedPosts.slice(0, visibleCount);

@@ -49,7 +49,7 @@ export function SocialComposerPage() {
   const editPostId = searchParams.get("editPostId") ?? undefined;
   const draftKey = `composer:${scope}:${editPostId ?? replyToPostId ?? quotePostId ?? "root"}`;
   const draft = state.drafts[draftKey];
-  const editPost = editPostId ? getPostById(editPostId) : undefined;
+  const editPost = editPostId ? getPostById(editPostId, defaultActorKey) : undefined;
   const selectedAuthorFromQuery = searchParams.get("author") ?? undefined;
   const draftAuthorKey = draft?.authorKey === defaultActorKey && profiles[draft.authorKey] ? draft.authorKey : undefined;
   const requestedAuthorKey =
@@ -60,8 +60,8 @@ export function SocialComposerPage() {
     requestedAuthorKey ??
     defaultActorKey;
 
-  const quotePost = quotePostId ? getPostById(quotePostId) : undefined;
-  const replyPost = replyToPostId ? getPostById(replyToPostId) : undefined;
+  const quotePost = quotePostId ? getPostById(quotePostId, initialAuthorKey) : undefined;
+  const replyPost = replyToPostId ? getPostById(replyToPostId, initialAuthorKey) : undefined;
   const author = profiles[initialAuthorKey];
   const textLimit = useMemo(() => getComposerTextLimit(author), [author]);
 
@@ -108,6 +108,9 @@ export function SocialComposerPage() {
   const [text, setText] = useState(initialComposerState.text);
   const [media, setMedia] = useState(initialComposerState.media);
   const [visibility, setVisibility] = useState<SocialVisibility>(initialComposerState.visibility);
+  const [visibilityTagIds, setVisibilityTagIds] = useState<string[]>(initialComposerState.visibilityTagIds);
+  const [visibilityProfileKeys, setVisibilityProfileKeys] = useState<string[]>(initialComposerState.visibilityProfileKeys);
+  const [includeRelatedPeople, setIncludeRelatedPeople] = useState(initialComposerState.includeRelatedPeople);
   const [commentPermission, setCommentPermission] = useState<SocialCommentPermission>(initialComposerState.commentPermission);
   const [locationLabel, setLocationLabel] = useState(initialComposerState.locationLabel);
   const [audienceProfileKeys, setAudienceProfileKeys] = useState<string[]>(initialComposerState.audienceProfileKeys);
@@ -132,6 +135,9 @@ export function SocialComposerPage() {
     setText(nextSnapshot.text);
     setMedia(nextSnapshot.media);
     setVisibility(nextSnapshot.visibility);
+    setVisibilityTagIds(nextSnapshot.visibilityTagIds);
+    setVisibilityProfileKeys(nextSnapshot.visibilityProfileKeys);
+    setIncludeRelatedPeople(nextSnapshot.includeRelatedPeople);
     setCommentPermission(nextSnapshot.commentPermission);
     setLocationLabel(nextSnapshot.locationLabel);
     setAudienceProfileKeys(nextSnapshot.audienceProfileKeys);
@@ -153,6 +159,9 @@ export function SocialComposerPage() {
         text: initialSnapshot.text,
         media: initialSnapshot.media.map((item) => item.id),
         visibility: initialSnapshot.visibility,
+        visibilityTagIds: initialSnapshot.visibilityTagIds,
+        visibilityProfileKeys: initialSnapshot.visibilityProfileKeys,
+        includeRelatedPeople: initialSnapshot.includeRelatedPeople,
         commentPermission: initialSnapshot.commentPermission,
         locationLabel: initialSnapshot.locationLabel,
         audienceProfileKeys: initialSnapshot.audienceProfileKeys,
@@ -166,12 +175,15 @@ export function SocialComposerPage() {
         text,
         media: media.map((item) => item.id),
         visibility,
+        visibilityTagIds,
+        visibilityProfileKeys,
+        includeRelatedPeople,
         commentPermission,
         locationLabel,
         audienceProfileKeys,
         postType
       }),
-    [audienceProfileKeys, commentPermission, locationLabel, media, postType, text, visibility]
+    [audienceProfileKeys, commentPermission, includeRelatedPeople, locationLabel, media, postType, text, visibility, visibilityProfileKeys, visibilityTagIds]
   );
   const isDirty = currentSignature !== initialSignature;
   const hasValidMediaSet = isValidSocialPostMediaSet(media);
@@ -190,6 +202,9 @@ export function SocialComposerPage() {
       text.trim().length > 0 ||
       media.length > 0 ||
       visibility !== "public" ||
+      visibilityTagIds.length > 0 ||
+      visibilityProfileKeys.length > 0 ||
+      includeRelatedPeople ||
       commentPermission !== "everyone" ||
       Boolean(locationLabel) ||
       audienceProfileKeys.length > 0 ||
@@ -209,6 +224,9 @@ export function SocialComposerPage() {
       editPostId,
       postType,
       visibility,
+      visibilityTagIds,
+      visibilityProfileKeys,
+      includeRelatedPeople,
       commentPermission,
       locationLabel,
       audienceProfileKeys,
@@ -220,6 +238,7 @@ export function SocialComposerPage() {
     commentPermission,
     draftKey,
     editPostId,
+    includeRelatedPeople,
     initialAuthorKey,
     locationLabel,
     media,
@@ -229,7 +248,9 @@ export function SocialComposerPage() {
     replyToPostId,
     saveDraft,
     text,
-    visibility
+    visibility,
+    visibilityProfileKeys,
+    visibilityTagIds
   ]);
 
   useEffect(() => {
@@ -331,6 +352,9 @@ export function SocialComposerPage() {
           text,
           media,
           visibility,
+          visibilityTagIds,
+          visibilityProfileKeys,
+          includeRelatedPeople,
           commentPermission,
           locationLabel: locationLabel || undefined,
           audienceProfileKeys,
@@ -343,6 +367,9 @@ export function SocialComposerPage() {
           replyToPostId,
           text,
           visibility,
+          visibilityTagIds,
+          visibilityProfileKeys,
+          includeRelatedPeople,
           commentPermission,
           locationLabel: locationLabel || undefined,
           audienceProfileKeys,
@@ -399,12 +426,27 @@ export function SocialComposerPage() {
   }
 
   if (view === "visibility") {
+    const availableVisibilityTags = buildVisibilityTagOptions(author);
+    const visibilityProfileOptions = profileList.filter((profile) => profileKey(profile) !== initialAuthorKey);
+
     return (
       <MobileShell className="!pb-0" navItems={[]}>
         <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,color-mix(in_srgb,var(--client-primary)_16%,transparent),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg-soft)_84%,var(--client-bg))_0%,var(--client-bg)_100%)] text-[color:var(--client-text)]">
           <ComposerVisibilitySelector
+            availableTags={availableVisibilityTags}
+            includeRelatedPeople={includeRelatedPeople}
             onBack={() => setView("composer")}
             onChange={setVisibility}
+            onIncludeRelatedPeopleChange={setIncludeRelatedPeople}
+            onToggleProfile={(key) =>
+              setVisibilityProfileKeys((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]))
+            }
+            onToggleTag={(tag) =>
+              setVisibilityTagIds((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]))
+            }
+            profileOptions={visibilityProfileOptions}
+            selectedProfileKeys={visibilityProfileKeys}
+            selectedTagIds={visibilityTagIds}
             value={visibility}
           />
         </div>
@@ -519,7 +561,16 @@ export function SocialComposerPage() {
                   onClick={() => setView("mentions")}
                   value={summarizeAudience(profileList, audienceProfileKeys)}
                 />
-                <ComposerSettingItem icon="visibility" label="谁可以看" onClick={() => setView("visibility")} value={summarizeVisibility(visibility)} />
+                <ComposerSettingItem
+                  icon="visibility"
+                  label="谁可以看"
+                  onClick={() => setView("visibility")}
+                  value={summarizeVisibility(visibility, {
+                    tags: visibilityTagIds,
+                    profileCount: visibilityProfileKeys.length,
+                    includeRelatedPeople
+                  })}
+                />
                 <ComposerSettingItem
                   icon="comment"
                   label="谁可以评论"
@@ -548,11 +599,30 @@ function createComposerSnapshot({
     text: editPost?.text ?? draft?.text ?? "",
     media: editPost?.media ?? draft?.media ?? [],
     visibility: editPost?.visibility ?? draft?.visibility ?? "public",
+    visibilityTagIds: editPost?.visibilityTagIds ?? draft?.visibilityTagIds ?? [],
+    visibilityProfileKeys: editPost?.visibilityProfileKeys ?? draft?.visibilityProfileKeys ?? editPost?.audienceProfileKeys ?? draft?.audienceProfileKeys ?? [],
+    includeRelatedPeople: editPost?.includeRelatedPeople ?? draft?.includeRelatedPeople ?? false,
     commentPermission: editPost?.commentPermission ?? draft?.commentPermission ?? "everyone",
     locationLabel: editPost?.locationLabel ?? draft?.locationLabel ?? "",
     audienceProfileKeys: editPost?.audienceProfileKeys ?? draft?.audienceProfileKeys ?? [],
     postType: editPost?.postType ?? draft?.postType ?? fallbackPostType
   };
+}
+
+function buildVisibilityTagOptions(author?: SocialProfile) {
+  const rawValues = Object.values(author?.extraProfileFields ?? {}).flatMap((value) => Array.isArray(value) ? value : [value]);
+
+  return unique(
+    [
+      author?.entityType === "user" ? "熟客" : author?.entityType === "technician" ? "预约客户" : "VIP客户",
+      author?.location,
+      author?.headline,
+      ...rawValues.filter((value): value is string => typeof value === "string")
+    ]
+      .flatMap((value) => String(value ?? "").split(/[、,/|]/))
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0 && value.length <= 24)
+  ).slice(0, 18);
 }
 
 function clampComposerSnapshotText(snapshot: ReturnType<typeof createComposerSnapshot>, limit: number) {

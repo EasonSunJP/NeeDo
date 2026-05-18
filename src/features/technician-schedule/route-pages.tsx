@@ -10,8 +10,12 @@ import { Drawer } from "../../components/ui/Drawer";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useAuth } from "../../auth/AuthProvider";
+import { orders as demoOrders, services } from "../../data/mock";
+import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
+import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
 import { useEntityStore } from "../../state/entityStore";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
+import { getScheduleOrderDetailRoute, resolveScheduleEventDetailTarget } from "../../lib/scheduleDetailTarget";
 import {
   cancelTechnicianScheduleTransferRequest,
   createTechnicianScheduleTransferRequest,
@@ -212,6 +216,14 @@ function getScheduleSemanticTone(item: TechnicianCalendarItem, hasConflict: bool
 }
 
 function getItemDisplayLabel(item: TechnicianCalendarItem) {
+  if (item.eventType === "extension") {
+    return "加钟";
+  }
+
+  if (item.eventType === "reschedule") {
+    return "移动预约";
+  }
+
   return item.preset ? getScheduleEventPresetLabel(item.preset) : getEventKindLabel(item.kind);
 }
 
@@ -540,6 +552,13 @@ function buildStoreAppointmentCalendarItems(
       title: booking.title,
       subtitle: `${booking.customerName} · ${technicianName}`,
       amount: booking.amount ?? null,
+      orderId: booking.orderId,
+      parentOrderId: booking.parentOrderId,
+      appointmentId: booking.appointmentId ?? booking.id,
+      eventType: booking.eventType ?? "booking",
+      isClickable: booking.isClickable ?? Boolean(booking.orderId ?? booking.detailTargetId),
+      detailTargetType: booking.detailTargetType ?? "order_detail",
+      detailTargetId: booking.detailTargetId ?? booking.orderId,
       kind: shift ? "booked" : "tentative",
       readOnly: true,
       withinConfirmedShift: Boolean(shift),
@@ -578,7 +597,7 @@ function buildCalendarItems(
 
   const bookingItems: TechnicianCalendarItem[] = visibleBookings.map(({ booking, shift }) => ({
     id: `calendar-${booking.id}`,
-    sourceId: booking.id,
+    sourceId: booking.orderId ?? booking.id,
     sourceType: "booking",
     date: booking.date,
     startTime: booking.startTime,
@@ -586,6 +605,13 @@ function buildCalendarItems(
     title: booking.title,
     subtitle: booking.customerName,
     amount: booking.amount ?? null,
+    orderId: booking.orderId,
+    parentOrderId: booking.parentOrderId,
+    appointmentId: booking.appointmentId ?? booking.id,
+    eventType: booking.eventType ?? "booking",
+    isClickable: booking.isClickable ?? Boolean(booking.orderId ?? booking.detailTargetId),
+    detailTargetType: booking.detailTargetType ?? "order_detail",
+    detailTargetId: booking.detailTargetId ?? booking.orderId,
     kind: shift ? "booked" : "tentative",
     readOnly: true,
     withinConfirmedShift: Boolean(shift),
@@ -1502,6 +1528,13 @@ export function TechnicianScheduleWorkspace() {
   const selectedDateConflictItemIds = buildConflictItemIdSet(selectedDateItems);
 
   const openItem = (item: TechnicianCalendarItem) => {
+    const target = resolveScheduleEventDetailTarget(item, "technician");
+
+    if (target.action === "open" && target.targetType === "order_detail") {
+      navigate(target.route);
+      return;
+    }
+
     navigate(`/technician/schedule/events/${item.sourceId}`);
   };
 
@@ -1897,7 +1930,14 @@ export function MerchantAppointmentScheduleWorkspace({
       return;
     }
 
-    const booking = storeBookings.find(({ booking: current }) => current.orderId === item.sourceId);
+    const target = resolveScheduleEventDetailTarget(item, isDesktopSurface ? "merchant-admin" : "merchant");
+
+    if (target.action === "open" && target.targetType === "order_detail") {
+      navigate(target.route);
+      return;
+    }
+
+    const booking = storeBookings.find(({ booking: current }) => current.orderId === item.sourceId || current.id === item.appointmentId);
     if (!booking?.booking.orderId) {
       setBanner({ tone: "yellow", text: "这条预约暂未绑定订单详情。" });
       return;
@@ -2154,6 +2194,126 @@ export function MerchantAppointmentScheduleWorkspace({
         </Drawer>
       ) : null}
     </div>
+  );
+}
+
+function findScheduleBookingByOrderId(orderId?: string) {
+  if (!orderId) {
+    return null;
+  }
+
+  return getTechnicianScheduleStoreSnapshot().bookings.find(
+    (booking) => booking.orderId === orderId || booking.detailTargetId === orderId
+  ) ?? null;
+}
+
+function findServiceForOrderName(itemName?: string) {
+  if (!itemName) {
+    return services[0];
+  }
+
+  return services.find((service) => itemName.includes(service.name) || service.name.includes(itemName)) ?? services[0];
+}
+
+export function TechnicianOrderDetailRoutePage() {
+  const { orderId } = useParams<{ orderId: string }>();
+  const { stores, technicians, customers } = useEntityStore();
+  const order = demoOrders.find((item) => item.id === orderId);
+  const booking = findScheduleBookingByOrderId(orderId);
+  const parentOrder = booking?.parentOrderId ? demoOrders.find((item) => item.id === booking.parentOrderId) : null;
+
+  if (!order) {
+    return (
+      <StandaloneSchedulePage subtitle="找不到对应预约订单。" title="预约订单详情">
+        <div className={cn(schedulePanelClass, "px-4 py-4 text-sm leading-6 text-[color:var(--client-muted)]")}>
+          这条排班事件没有绑定可访问的订单，或订单已经不在当前技师权限范围内。
+        </div>
+      </StandaloneSchedulePage>
+    );
+  }
+
+  const store = stores.find((item) => item.name === order.storeName) ?? stores[0];
+  const technician = technicians.find((item) => item.name === order.technicianName) ?? technicians.find((item) => item.id === booking?.technicianId) ?? technicians[0];
+  const customer = customers.find((item) => item.id === order.customerId);
+  const service = findServiceForOrderName(order.itemName);
+
+  return (
+    <StandaloneSchedulePage
+      action={<Button className={getScheduleButtonClassName("secondary")} size="sm" to="/technician/schedule" variant="secondary">回排班表</Button>}
+      subtitle={`${order.bookedAt} · ${booking?.eventType === "extension" ? "加钟订单" : booking?.eventType === "reschedule" ? "移动后当前订单" : "普通预约"}`}
+      title="预约订单详情"
+    >
+      <section className="space-y-4">
+        <OrderDynamicStatusCard order={order} providerName={order.storeName ?? store?.name} />
+
+        <article className={cn(schedulePanelClass, "px-4 py-4")}>
+          <div className="flex flex-wrap items-center gap-2">
+            <ScheduleBadge tone={booking?.eventType === "extension" ? "red" : booking?.eventType === "reschedule" ? "blue" : "green"}>
+              {booking?.eventType === "extension" ? "加钟" : booking?.eventType === "reschedule" ? "移动预约" : "普通预约"}
+            </ScheduleBadge>
+            <ScheduleBadge tone="neutral">{order.orderNo}</ScheduleBadge>
+          </div>
+          <h2 className="mt-3 text-xl font-black text-[color:var(--client-text)]">{order.itemName}</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {[
+              ["预约时间", order.bookedAt],
+              ["预约金额", formatCurrency(order.amount)],
+              ["支付状态", order.paymentStatus]
+            ].map(([label, value]) => (
+              <div className={cn(scheduleInsetClass, "px-3 py-3")} key={label}>
+                <p className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</p>
+                <strong className="mt-1 block truncate text-sm font-black text-[color:var(--client-text)]">{value}</strong>
+              </div>
+            ))}
+          </div>
+          {booking?.note ? <p className="mt-3 text-sm leading-6 text-[color:var(--client-muted)]">{booking.note}</p> : null}
+        </article>
+
+        {parentOrder ? (
+          <article className={cn(schedulePanelClass, "px-4 py-4")}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-black text-[color:var(--client-text)]">原订单入口</h3>
+                <p className="mt-1 text-sm text-[color:var(--client-muted)]">{parentOrder.orderNo} · {parentOrder.itemName}</p>
+              </div>
+              <Button
+                className={getScheduleButtonClassName("primary")}
+                size="sm"
+                to={getScheduleOrderDetailRoute(parentOrder.id, "technician")}
+              >
+                打开
+              </Button>
+            </div>
+          </article>
+        ) : null}
+
+        <section>
+          <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">服务</h2>
+          {service && store ? (
+            <SocialProfileMiniCard
+              data={buildServiceMiniCardData(service, store)}
+              detailTo={`/technician/profiles/shop/${store.id}`}
+              showAction={false}
+              topTags={[{ label: order.mode === "store" ? "到店预约" : "上门预约", tone: "purple" }]}
+            />
+          ) : null}
+        </section>
+
+        {store ? (
+          <section>
+            <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">店铺 / 服务方</h2>
+            <SocialProfileMiniCard detailTo={`/technician/profiles/shop/${store.id}`} showAction={false} store={store} />
+          </section>
+        ) : null}
+
+        {customer ? (
+          <section>
+            <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">预约用户</h2>
+            <SocialProfileMiniCard customer={customer} detailTo={`/technician/profiles/user/${customer.id}`} showAction={false} />
+          </section>
+        ) : null}
+      </section>
+    </StandaloneSchedulePage>
   );
 }
 

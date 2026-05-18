@@ -8,6 +8,8 @@ import {
   createConversationMutation,
   deleteContactMutation,
   deleteConversationMutation,
+  ensureMessageCampaignCollections,
+  estimateTagMessageCampaign,
   expireDisappearingMessagesMutation,
   forwardMessageMutation,
   getConversationById,
@@ -27,6 +29,7 @@ import {
   rejectFriendRequestMutation,
   resendMessageMutation,
   sendMessageMutation,
+  sendTagMessageCampaignMutation,
   setContactBlockedMutation,
   sortConversations,
   toggleConversationMuteMutation,
@@ -50,6 +53,9 @@ import {
   type ImRealtimeEvent,
   type ImUser,
   type MessageExt,
+  type TagMessageCampaignEstimate,
+  type TagMessageCampaignInput,
+  type TagMessageCampaignResult,
   type GroupInfoEditPolicy,
   type UpdateConversationGroupInfoOptions,
   type UpdateConversationPrivacyOptions
@@ -285,10 +291,11 @@ function mergeUniqueStrings(...valueLists: Array<string[] | undefined>) {
 function prepareLoadedImDatabase(scope: ImRoleType, database: ImDatabase): { database: ImDatabase; changed: boolean } {
   const upgraded = upgradeLoadedImDatabase(scope, database);
   const synced = syncImDatabaseWithAccountEntities(scope, upgraded.database);
+  const campaignCollectionsChanged = ensureMessageCampaignCollections(synced.database);
 
   return {
     database: synced.database,
-    changed: upgraded.changed || synced.changed
+    changed: upgraded.changed || synced.changed || campaignCollectionsChanged
   };
 }
 
@@ -1556,6 +1563,41 @@ async function handleMessagesRequest(scope: ImRoleType, url: URL, method: string
     return responseJson(buildSearchResults(database, query, conversationId));
   }
 
+  if (method === "POST" && action === "campaigns" && subAction === "estimate") {
+    const input: TagMessageCampaignInput = {
+      tagIds: Array.isArray(body.tagIds) ? body.tagIds.map((item) => String(item)) : [],
+      content: typeof body.content === "string" ? body.content : undefined,
+      messageType: typeof body.messageType === "string" ? body.messageType as TagMessageCampaignInput["messageType"] : undefined
+    };
+
+    return responseJson(estimateTagMessageCampaign(database, input));
+  }
+
+  if (method === "POST" && action === "campaigns" && !subAction) {
+    const input: TagMessageCampaignInput = {
+      tagIds: Array.isArray(body.tagIds) ? body.tagIds.map((item) => String(item)) : [],
+      content: typeof body.content === "string" ? body.content : "",
+      messageType: typeof body.messageType === "string" ? body.messageType as TagMessageCampaignInput["messageType"] : undefined
+    };
+
+    try {
+      const result = sendTagMessageCampaignMutation(database, input);
+      persistDatabase(scope, database);
+      result.deliveries.forEach(({ conversation, message }) => {
+        emitRealtime(scope, {
+          type: "message.created",
+          payload: {
+            conversation,
+            message
+          }
+        });
+      });
+      return responseJson(result, 201);
+    } catch (error) {
+      return badRequest(error instanceof Error ? error.message : "Campaign send failed");
+    }
+  }
+
   if (method === "POST" && ["text", "image", "voice", "video", "file", "location", "contact-card"].includes(action ?? "")) {
     const type = action as ImMessageType;
     const conversationId = String(body.conversationId ?? "");
@@ -1898,6 +1940,18 @@ export function createImApi(scope: ImRoleType) {
       return requestIm<{ conversation: Conversation; message: ConversationMessage }>(scope, `/api/im/messages/${type}`, {
       method: "POST",
       body: JSON.stringify(payload)
+    });
+  },
+  estimateTagMessageCampaign(input: TagMessageCampaignInput) {
+      return requestIm<TagMessageCampaignEstimate>(scope, "/api/im/messages/campaigns/estimate", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+  sendTagMessageCampaign(input: TagMessageCampaignInput) {
+      return requestIm<TagMessageCampaignResult>(scope, "/api/im/messages/campaigns", {
+      method: "POST",
+      body: JSON.stringify(input)
     });
   },
   recallMessage(messageId: string) {

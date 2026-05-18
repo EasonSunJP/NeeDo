@@ -2,7 +2,7 @@ export type SocialEntityType = "user" | "technician" | "shop";
 
 export type SocialPortalScope = "user" | "merchant" | "technician";
 
-export type SocialVisibility = "public" | "followers" | "friends" | "private";
+export type SocialVisibility = "public" | "followers" | "friends" | "private" | "tag_only" | "user_only";
 
 export type SocialCommentPermission = "everyone" | "friends";
 
@@ -85,6 +85,9 @@ export interface SocialPost {
   bookmarkCount: number;
   isPinned: boolean;
   visibility: SocialVisibility;
+  visibilityTagIds?: string[];
+  visibilityProfileKeys?: string[];
+  includeRelatedPeople?: boolean;
   commentPermission?: SocialCommentPermission;
   locationLabel?: string;
   audienceProfileKeys?: string[];
@@ -119,6 +122,9 @@ export interface SocialComposerDraft {
   editPostId?: string;
   postType?: SocialPostType;
   visibility?: SocialVisibility;
+  visibilityTagIds?: string[];
+  visibilityProfileKeys?: string[];
+  includeRelatedPeople?: boolean;
   commentPermission?: SocialCommentPermission;
   locationLabel?: string;
   audienceProfileKeys?: string[];
@@ -171,6 +177,9 @@ export interface SocialCreatePostInput {
   quotePostId?: string;
   replyToPostId?: string;
   visibility?: SocialVisibility;
+  visibilityTagIds?: string[];
+  visibilityProfileKeys?: string[];
+  includeRelatedPeople?: boolean;
   commentPermission?: SocialCommentPermission;
   locationLabel?: string;
   audienceProfileKeys?: string[];
@@ -183,6 +192,9 @@ export interface SocialUpdatePostInput {
   text: string;
   media: SocialMediaItem[];
   visibility: SocialVisibility;
+  visibilityTagIds?: string[];
+  visibilityProfileKeys?: string[];
+  includeRelatedPeople?: boolean;
   commentPermission: SocialCommentPermission;
   locationLabel?: string;
   audienceProfileKeys?: string[];

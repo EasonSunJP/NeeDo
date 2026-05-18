@@ -72,6 +72,7 @@ import {
 import {
   TechnicianScheduleDetailRoutePage,
   TechnicianScheduleEditorRoutePage,
+  TechnicianOrderDetailRoutePage,
   TechnicianScheduleTransferRoutePage
 } from "./features/technician-schedule/route-pages";
 import { CategoryPage } from "./pages/user/CategoryPage";
@@ -1062,6 +1063,7 @@ export default function App() {
               <Route path="/merchant-admin" element={protect("merchant", <MerchantAdminDashboardPage />)} />
               <Route path="/merchant-admin/analytics" element={protect("merchant", <MerchantAdminAnalyticsPage />)} />
               <Route path="/merchant-admin/orders" element={protect("merchant", <MerchantAdminOrdersPage />)} />
+              <Route path="/merchant-admin/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />
               <Route path="/merchant-admin/dine" element={protectFeature("merchant", "store.dine-in.order.view", <Navigate replace to="/merchant-admin/dine/orders" />, "/merchant-admin")} />
               <Route path="/merchant-admin/dine/orders" element={protectFeature("merchant", "store.dine-in.order.view", <MerchantAdminDineOrderRoutePage view="orders" />, "/merchant-admin")} />
               <Route path="/merchant-admin/dine/kds" element={protectFeature("merchant", "store.dine-in.order.manage", <MerchantAdminDineOrderRoutePage view="kds" />, "/merchant-admin")} />
@@ -1109,6 +1111,7 @@ export default function App() {
               <Route path="/technician/schedule/events/:eventId/edit" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
               <Route path="/technician/schedule/events/:eventId" element={protect("technician", <TechnicianScheduleDetailRoutePage />)} />
               <Route path="/technician/schedule/shifts/:shiftId/transfer" element={protect("technician", <TechnicianScheduleTransferRoutePage />)} />
+              <Route path="/technician/orders/:orderId" element={protect("technician", <TechnicianOrderDetailRoutePage />)} />
               <Route path="/technician/messages" element={protect("technician", <ImScopeProvider scope="technician"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/new" element={protect("technician", <ImScopeProvider scope="technician"><ImNewConversationPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId/info" element={protect("technician", <ImScopeProvider scope="technician"><ImConversationInfoPage /></ImScopeProvider>)} />

@@ -17,6 +17,7 @@ export type ImMessageType = "text" | "emoji" | "image" | "voice" | "video" | "fi
 export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
 export type ConversationDisappearingStartMode = "sent" | "read_by_all";
 export type GroupInfoEditPolicy = "owner" | "members";
+export type MessageCampaignType = "marketing" | "crm" | "transactional" | "system" | "risk";
 
 export const IM_ASSISTANT_USER_ID = "im-assistant";
 export const IM_ASSISTANT_CONTACT_ID = "contact-assistant";
@@ -244,6 +245,58 @@ export type ReadCursor = {
   lastReadAt: string;
 };
 
+export type MessageCampaign = {
+  id: string;
+  type: MessageCampaignType;
+  targetTags: string[];
+  content: string;
+  createdBy: string;
+  createdAt: string;
+  sentCount: number;
+  skippedCount: number;
+  status: "draft" | "sending" | "sent" | "partial";
+};
+
+export type MessageCampaignRecipient = {
+  id: string;
+  campaignId: string;
+  targetUserId: string;
+  contactId?: string;
+  matchedTags: string[];
+  status: "pending" | "sent" | "skipped";
+  skippedReason?: string;
+  conversationId?: string;
+  messageId?: string;
+  sentAt?: string;
+};
+
+export type MessageCampaignRecipientPreview = Pick<
+  MessageCampaignRecipient,
+  "contactId" | "matchedTags" | "skippedReason" | "status" | "targetUserId"
+>;
+
+export type TagMessageCampaignInput = {
+  tagIds: string[];
+  content?: string;
+  messageType?: MessageCampaignType;
+};
+
+export type TagMessageCampaignEstimate = {
+  targetTags: string[];
+  recipientCount: number;
+  skippedCount: number;
+  recipients: MessageCampaignRecipientPreview[];
+};
+
+export type TagMessageCampaignResult = {
+  campaign: MessageCampaign;
+  recipients: MessageCampaignRecipient[];
+  deliveries: Array<{
+    conversation: Conversation;
+    message: ConversationMessage;
+  }>;
+};
+
 export type ImRuntimeConfig = {
   allowStrangerMessaging: boolean;
   preserveConversationAfterDelete: boolean;
@@ -263,6 +316,8 @@ export type ImDatabase = {
   messages: ConversationMessage[];
   attachments: MessageAttachment[];
   readCursors: ReadCursor[];
+  messageCampaigns: MessageCampaign[];
+  messageCampaignRecipients: MessageCampaignRecipient[];
 };
 
 export type ImBootstrapPayload = {
@@ -1554,6 +1609,186 @@ export function updateConversationTagsMutation(database: ImDatabase, conversatio
   return conversation;
 }
 
+function normalizeCampaignTag(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeCampaignTags(tags: string[]) {
+  return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function isTagMessageCampaignType(value?: MessageCampaignType): value is MessageCampaignType {
+  return value === "marketing" || value === "crm" || value === "transactional" || value === "system" || value === "risk";
+}
+
+function shouldRespectOptOut(type: MessageCampaignType) {
+  return type === "marketing" || type === "crm";
+}
+
+function isOptOutTagged(tags: string[]) {
+  return tags.some((tag) => /退订|拒收|免打扰|勿扰|不接收|opt[\s-]?out/i.test(tag));
+}
+
+function getContactCampaignTags(contact: ContactRelation, user?: ImUser) {
+  return Array.from(new Set([...contact.tags, ...(user?.tags ?? [])].map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function buildTagMessageCampaignRecipients(
+  database: ImDatabase,
+  input: TagMessageCampaignInput
+): TagMessageCampaignEstimate {
+  const targetTags = normalizeCampaignTags(input.tagIds);
+  const targetTagSet = new Set(targetTags.map(normalizeCampaignTag));
+  const type = isTagMessageCampaignType(input.messageType) ? input.messageType : "crm";
+  const seenUserIds = new Set<string>();
+  const recipients: MessageCampaignRecipientPreview[] = [];
+
+  if (targetTagSet.size === 0) {
+    return {
+      targetTags,
+      recipientCount: 0,
+      skippedCount: 0,
+      recipients: []
+    };
+  }
+
+  database.contacts.forEach((contact) => {
+    if (contact.relationStatus !== "active" || contact.isBlocked || contact.targetUserId === database.currentUserId || seenUserIds.has(contact.targetUserId)) {
+      return;
+    }
+
+    const user = getUserById(database, contact.targetUserId);
+
+    if (!user || user.status !== "active") {
+      return;
+    }
+
+    const candidateTags = getContactCampaignTags(contact, user);
+    const matchedTags = candidateTags.filter((tag) => targetTagSet.has(normalizeCampaignTag(tag)));
+
+    if (matchedTags.length === 0) {
+      return;
+    }
+
+    seenUserIds.add(contact.targetUserId);
+
+    const skippedReason = shouldRespectOptOut(type) && isOptOutTagged(candidateTags) ? "已设置拒收营销/运营消息" : undefined;
+    recipients.push({
+      targetUserId: contact.targetUserId,
+      contactId: contact.id,
+      matchedTags,
+      status: skippedReason ? "skipped" : "pending",
+      skippedReason
+    });
+  });
+
+  return {
+    targetTags,
+    recipientCount: recipients.filter((recipient) => recipient.status !== "skipped").length,
+    skippedCount: recipients.filter((recipient) => recipient.status === "skipped").length,
+    recipients
+  };
+}
+
+export function ensureMessageCampaignCollections(database: ImDatabase) {
+  const mutableDatabase = database as ImDatabase & Partial<Pick<ImDatabase, "messageCampaignRecipients" | "messageCampaigns">>;
+  let changed = false;
+
+  if (!Array.isArray(mutableDatabase.messageCampaigns)) {
+    mutableDatabase.messageCampaigns = [];
+    changed = true;
+  }
+
+  if (!Array.isArray(mutableDatabase.messageCampaignRecipients)) {
+    mutableDatabase.messageCampaignRecipients = [];
+    changed = true;
+  }
+
+  return changed;
+}
+
+export function estimateTagMessageCampaign(database: ImDatabase, input: TagMessageCampaignInput): TagMessageCampaignEstimate {
+  ensureMessageCampaignCollections(database);
+  return buildTagMessageCampaignRecipients(database, input);
+}
+
+export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagMessageCampaignInput): TagMessageCampaignResult {
+  ensureMessageCampaignCollections(database);
+  const content = input.content?.trim();
+
+  if (!content) {
+    throw new Error("Message content is required");
+  }
+
+  const type = isTagMessageCampaignType(input.messageType) ? input.messageType : "crm";
+  const estimate = buildTagMessageCampaignRecipients(database, input);
+  const createdAt = new Date().toISOString();
+  const campaign: MessageCampaign = {
+    id: nextId("campaign"),
+    type,
+    targetTags: estimate.targetTags,
+    content,
+    createdBy: database.currentUserId,
+    createdAt,
+    sentCount: 0,
+    skippedCount: estimate.skippedCount,
+    status: "sending"
+  };
+  const recipients: MessageCampaignRecipient[] = [];
+  const deliveries: TagMessageCampaignResult["deliveries"] = [];
+
+  estimate.recipients.forEach((recipient) => {
+    if (recipient.status === "skipped") {
+      recipients.push({
+        id: nextId("campaign-recipient"),
+        campaignId: campaign.id,
+        targetUserId: recipient.targetUserId,
+        contactId: recipient.contactId,
+        matchedTags: recipient.matchedTags,
+        status: "skipped",
+        skippedReason: recipient.skippedReason
+      });
+      return;
+    }
+
+    const conversation = createConversationMutation(database, [recipient.targetUserId]);
+    const result = sendMessageMutation(database, {
+      conversationId: conversation.id,
+      senderId: database.currentUserId,
+      type: "text",
+      content,
+      ext: {
+        previewText: `标签群发 · ${estimate.targetTags.join(" / ")}`
+      }
+    });
+
+    campaign.sentCount += 1;
+    recipients.push({
+      id: nextId("campaign-recipient"),
+      campaignId: campaign.id,
+      targetUserId: recipient.targetUserId,
+      contactId: recipient.contactId,
+      matchedTags: recipient.matchedTags,
+      status: "sent",
+      conversationId: result.conversation.id,
+      messageId: result.message.id,
+      sentAt: result.message.sentAt
+    });
+    deliveries.push(result);
+  });
+
+  campaign.skippedCount = recipients.filter((recipient) => recipient.status === "skipped").length;
+  campaign.status = campaign.sentCount > 0 && campaign.skippedCount > 0 ? "partial" : "sent";
+  database.messageCampaigns.unshift(campaign);
+  database.messageCampaignRecipients.unshift(...recipients);
+
+  return {
+    campaign,
+    recipients,
+    deliveries
+  };
+}
+
 export function setContactBlockedMutation(database: ImDatabase, contactId: string, isBlocked: boolean) {
   const contact = database.contacts.find((item) => item.id === contactId);
 
@@ -2813,7 +3048,9 @@ export function makeSeedImDatabase(): ImDatabase {
     members,
     messages,
     attachments,
-    readCursors
+    readCursors,
+    messageCampaigns: [],
+    messageCampaignRecipients: []
   };
 
   database.conversations.forEach((conversation) => {

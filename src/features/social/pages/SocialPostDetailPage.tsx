@@ -521,12 +521,12 @@ export function SocialPostDetailPage() {
   } = useSocial();
   const actorKey = getActorForScope(scope);
   const actor = profiles[actorKey];
-  const post = postId ? getPostById(postId) : undefined;
+  const post = postId ? getPostById(postId, actorKey) : undefined;
   const postAuthorKey = post ? profileKey({ entityType: post.authorType, id: post.authorId }) : "";
   const author = post ? profiles[postAuthorKey] : undefined;
   const { theme } = useClientTheme();
   const shellClassName = cn("client-shell client-theme-night min-h-[100dvh] bg-[#000000] text-white", getClientThemeClassName(theme));
-  const quotedPost = post?.quotePostId ? getPostById(post.quotePostId) : undefined;
+  const quotedPost = post?.quotePostId ? getPostById(post.quotePostId, actorKey) : undefined;
   const ancestors = useMemo(() => (postId ? getAncestors(postId) : []), [getAncestors, postId]);
   const replies = useMemo(() => (postId ? getReplies(postId) : []), [getReplies, postId]);
   const relatedPosts = useMemo(() => (postId ? getRelatedPosts(postId).slice(0, 4) : []), [getRelatedPosts, postId]);

@@ -314,6 +314,12 @@ export interface Schedule {
   endTime: string;
   status: "free" | "booked" | "blocked";
   orderId?: string;
+  parentOrderId?: string;
+  appointmentId?: string;
+  eventType?: "booking" | "extension" | "reschedule" | "block" | "attendance" | "break";
+  isClickable?: boolean;
+  detailTargetType?: "order_detail" | "attendance_detail" | "none";
+  detailTargetId?: string;
 }
 
 export interface OrderTimeline {

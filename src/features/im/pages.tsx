@@ -97,7 +97,10 @@ import {
   type ImRoleType,
   type ImSearchResult,
   type ImUser,
-  type MessageExt
+  type MessageCampaignType,
+  type MessageExt,
+  type TagMessageCampaignEstimate,
+  type TagMessageCampaignResult
 } from "./model";
 import { canShareUserCard, getImRoleConfig, getImUserProfileEntityType, isContactVisibleForRole, isProfileSearchableForRole, resolveImProfilePath } from "./role-config";
 import { useImScope } from "./scope";
@@ -669,6 +672,13 @@ export function ImConversationListPage() {
   const [query, setQuery] = useState(queryFromParams);
   const deferredQuery = useDeferredValue(query);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [campaignTags, setCampaignTags] = useState<string[]>([]);
+  const [campaignContent, setCampaignContent] = useState("");
+  const [campaignType, setCampaignType] = useState<MessageCampaignType>("crm");
+  const [campaignSending, setCampaignSending] = useState(false);
+  const [campaignEstimate, setCampaignEstimate] = useState<TagMessageCampaignEstimate | null>(null);
+  const [campaignResult, setCampaignResult] = useState<TagMessageCampaignResult | null>(null);
   const [keywordResult, setKeywordResult] = useState<ImSearchResult>(emptySearchResult);
   const scrollStorageKey = `needo.im.messages.scroll.v2.${scope}`;
   const pinnedCollapsedStorageKey = `needo.im.messages.pinned-collapsed.v2.${scope}`;
@@ -811,6 +821,36 @@ export function ImConversationListPage() {
     () => buildManagedTagCounts(visibleContacts, readImTagListUiState(scope), conversations, contactLabelExcludedTags),
     [scope, conversations, contactLabelExcludedTags, visibleContacts]
   );
+  const openTagCampaign = (tags = selectedTags) => {
+    const fallbackTags = tags.length > 0 ? tags : availableTags.slice(0, 1).map(([tag]) => tag);
+    setCampaignTags(fallbackTags);
+    setCampaignResult(null);
+    setCampaignOpen(true);
+    setQuickMenuOpen(false);
+  };
+  const toggleCampaignTag = (tag: string) => {
+    setCampaignResult(null);
+    setCampaignTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]);
+  };
+  const submitTagCampaign = async () => {
+    if (campaignSending || campaignTags.length === 0 || !campaignContent.trim()) {
+      return;
+    }
+
+    setCampaignSending(true);
+
+    try {
+      const result = await store.sendTagMessageCampaign({
+        tagIds: campaignTags,
+        content: campaignContent,
+        messageType: campaignType
+      });
+      setCampaignResult(result);
+      setCampaignContent("");
+    } finally {
+      setCampaignSending(false);
+    }
+  };
   const activeKeyword = deferredQuery.trim();
   const taggedConversationIds = useMemo(
     () => getConversationIdsForTaggedContacts(conversations, visibleContacts, selectedTags),
@@ -844,6 +884,28 @@ export function ImConversationListPage() {
     setQuickMenuOpen(false);
     navigate(appendQuery(config.routes.newConversation, { mode }));
   };
+
+  useEffect(() => {
+    if (!campaignOpen || campaignTags.length === 0) {
+      setCampaignEstimate(null);
+      return;
+    }
+
+    let alive = true;
+
+    void store.estimateTagMessageCampaign({
+      tagIds: campaignTags,
+      messageType: campaignType
+    }).then((estimate) => {
+      if (alive) {
+        setCampaignEstimate(estimate);
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [campaignOpen, campaignTags, campaignType, store.estimateTagMessageCampaign]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -930,6 +992,7 @@ export function ImConversationListPage() {
               <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
                 <ImQuickMenuItem icon="group" label="发起群聊" onClick={() => openQuickEntry("group")} />
                 <ImQuickMenuItem icon="friend" label="添加好友" onClick={() => openQuickEntry("friend")} />
+                <ImQuickMenuItem icon="tag" label="按标签群发" onClick={() => openTagCampaign()} />
                 <ImQuickMenuItem icon="payment" label="发起收款" onClick={() => openQuickEntry("collect")} />
                 <ImQuickMenuItem icon="scan" label="扫一扫" onClick={() => openQuickEntry("scan")} />
               </div>
@@ -980,6 +1043,15 @@ export function ImConversationListPage() {
                     <span aria-hidden="true">×</span>
                   </button>
                 ))}
+                {selectedTags.length > 0 ? (
+                  <button
+                    className="rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-xs font-black text-[color:var(--pin-badge-glyph)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+                    onClick={() => openTagCampaign(selectedTags)}
+                    type="button"
+                  >
+                    向这些标签群发
+                  </button>
+                ) : null}
                 <button
                   className="rounded-full px-2 py-1 text-xs font-semibold text-[color:var(--client-soft-muted)]"
                   onClick={clearListFilters}
@@ -1024,6 +1096,27 @@ export function ImConversationListPage() {
         onToggleTag={toggleTagFilter}
         open={filterSheetOpen}
         selectedTags={selectedTags}
+      />
+      <ImTagCampaignSheet
+        availableTags={availableTags}
+        content={campaignContent}
+        estimate={campaignEstimate}
+        messageType={campaignType}
+        onClose={() => setCampaignOpen(false)}
+        onContentChange={(value) => {
+          setCampaignResult(null);
+          setCampaignContent(value);
+        }}
+        onMessageTypeChange={(value) => {
+          setCampaignResult(null);
+          setCampaignType(value);
+        }}
+        onSubmit={submitTagCampaign}
+        onToggleTag={toggleCampaignTag}
+        open={campaignOpen}
+        result={campaignResult}
+        selectedTags={campaignTags}
+        sending={campaignSending}
       />
     </MobileShell>
   );
@@ -2230,6 +2323,157 @@ function ImTagFilterSheet({
           <Button className="flex-1" onClick={onClear} variant="secondary">{clearLabel}</Button>
           <Button className="flex-1" onClick={onClose}>完成</Button>
         </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const messageCampaignTypeOptions: Array<{ value: MessageCampaignType; label: string; caption: string }> = [
+  { value: "crm", label: "客户运营", caption: "尊重拒收标签" },
+  { value: "marketing", label: "营销活动", caption: "尊重退订/拒收" },
+  { value: "transactional", label: "事务通知", caption: "预约、售后类通知" },
+  { value: "system", label: "系统通知", caption: "重要平台消息" },
+  { value: "risk", label: "风控提醒", caption: "安全与异常提醒" }
+];
+
+function ImTagCampaignSheet({
+  availableTags,
+  content,
+  estimate,
+  messageType,
+  onClose,
+  onContentChange,
+  onMessageTypeChange,
+  onSubmit,
+  onToggleTag,
+  open,
+  result,
+  selectedTags,
+  sending
+}: {
+  availableTags: Array<[string, number]>;
+  content: string;
+  estimate: TagMessageCampaignEstimate | null;
+  messageType: MessageCampaignType;
+  onClose: () => void;
+  onContentChange: (value: string) => void;
+  onMessageTypeChange: (value: MessageCampaignType) => void;
+  onSubmit: () => void;
+  onToggleTag: (tag: string) => void;
+  open: boolean;
+  result: TagMessageCampaignResult | null;
+  selectedTags: string[];
+  sending: boolean;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  const selectedSet = new Set(selectedTags);
+  const recipientCount = estimate?.recipientCount ?? 0;
+  const skippedCount = estimate?.skippedCount ?? 0;
+  const canSubmit = selectedTags.length > 0 && content.trim().length > 0 && recipientCount > 0 && !sending;
+
+  return (
+    <div
+      aria-modal="true"
+      className={cn(
+        "fixed inset-0 z-50 flex items-end justify-center bg-[color:var(--client-overlay)] px-4 py-[max(1rem,env(safe-area-inset-top))]",
+        "pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center"
+      )}
+      onClick={onClose}
+      role="dialog"
+    >
+      <div
+        className="w-full max-w-[440px] rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] p-4 shadow-[0_28px_80px_color-mix(in_srgb,var(--client-shadow)_36%,transparent)] backdrop-blur-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-[17px] font-black text-[color:var(--client-text)]">按标签群发</h3>
+            <p className="mt-1 text-xs text-[color:var(--client-muted)]">每位匹配联系人会收到独立私聊，不创建公开群聊。</p>
+          </div>
+          <button
+            aria-label="关闭"
+            className="focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-full text-[color:var(--client-soft-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)]"
+            onClick={onClose}
+            type="button"
+          >
+            <span aria-hidden="true" className="text-lg leading-none">×</span>
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-black text-[color:var(--client-muted)]">收件标签</span>
+              <span className="text-xs font-semibold text-[color:var(--client-primary)]">
+                {recipientCount} 人可发送{skippedCount > 0 ? ` · ${skippedCount} 人已跳过` : ""}
+              </span>
+            </div>
+            <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {availableTags.length > 0 ? availableTags.map(([tag, count]) => {
+                const active = selectedSet.has(tag);
+
+                return (
+                  <button
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black transition-colors",
+                      active
+                        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]"
+                        : "border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,var(--client-bg)_28%)] text-[color:var(--client-text)]"
+                    )}
+                    key={tag}
+                    onClick={() => onToggleTag(tag)}
+                    type="button"
+                  >
+                    <span>{tag}</span>
+                    <span className={cn("text-[11px]", active ? "text-[color:color-mix(in_srgb,var(--pin-badge-glyph)_76%,transparent)]" : "text-[color:var(--client-soft-muted)]")}>{count}</span>
+                  </button>
+                );
+              }) : (
+                <p className="text-sm text-[color:var(--client-muted)]">当前通讯录还没有可群发的标签。</p>
+              )}
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">消息类型</span>
+            <select
+              className="h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_70%,var(--client-surface)_30%)] px-3 text-sm font-semibold text-[color:var(--client-text)] outline-none"
+              onChange={(event) => onMessageTypeChange(event.target.value as MessageCampaignType)}
+              value={messageType}
+            >
+              {messageCampaignTypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label} · {option.caption}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">发送内容</span>
+            <textarea
+              className="min-h-[116px] w-full resize-none rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_70%,var(--client-surface)_30%)] px-3 py-3 text-sm leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+              maxLength={600}
+              onChange={(event) => onContentChange(event.target.value)}
+              placeholder="输入要发给该标签人群的内容"
+              value={content}
+            />
+          </label>
+
+          {result ? (
+            <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] px-3 py-2 text-sm font-semibold text-[color:var(--client-text)]">
+              已发送 {result.campaign.sentCount} 人{result.campaign.skippedCount > 0 ? `，跳过 ${result.campaign.skippedCount} 人` : ""}。
+            </div>
+          ) : null}
+
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={onClose} variant="secondary">取消</Button>
+            <Button className="flex-1" disabled={!canSubmit} onClick={onSubmit}>
+              {sending ? "发送中" : "确认发送"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

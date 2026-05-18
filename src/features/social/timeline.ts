@@ -26,7 +26,49 @@ export function isVisiblePost(post: SocialPost) {
   return post.status === "published";
 }
 
-export function canActorViewPost(post: SocialPost, actorKey: string, follows: Record<string, string[]>) {
+function normalizeVisibilityToken(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function getProfileVisibilityTokens(profile?: SocialProfile) {
+  if (!profile) {
+    return new Set<string>();
+  }
+
+  const rawFields = Object.values(profile.extraProfileFields ?? {}).flatMap((value) => Array.isArray(value) ? value : [value]);
+  const tokens = [
+    profile.displayName,
+    profile.handle,
+    profile.location,
+    profile.headline,
+    profile.entityType,
+    ...rawFields.map((value) => (typeof value === "boolean" ? String(value) : value))
+  ];
+
+  return new Set(tokens.map(normalizeVisibilityToken).filter(Boolean));
+}
+
+function isRelatedActor(follows: Record<string, string[]>, actorKey: string, authorKey: string) {
+  return (follows[actorKey] ?? []).includes(authorKey) || (follows[authorKey] ?? []).includes(actorKey);
+}
+
+function actorMatchesVisibilityTags(post: SocialPost, actorKey: string, profiles?: Record<string, SocialProfile>) {
+  const allowedTags = (post.visibilityTagIds ?? []).map(normalizeVisibilityToken).filter(Boolean);
+
+  if (allowedTags.length === 0) {
+    return false;
+  }
+
+  const actorTokens = getProfileVisibilityTokens(profiles?.[actorKey]);
+  return allowedTags.some((tag) => actorTokens.has(tag));
+}
+
+export function canActorViewPost(
+  post: SocialPost,
+  actorKey: string,
+  follows: Record<string, string[]>,
+  profiles?: Record<string, SocialProfile>
+) {
   const authorKey = postAuthorKey(post);
 
   if (authorKey === actorKey) {
@@ -47,7 +89,19 @@ export function canActorViewPost(post: SocialPost, actorKey: string, follows: Re
     return actorFollowing.has(authorKey) && (follows[authorKey] ?? []).includes(actorKey);
   }
 
-  return false;
+  if (post.visibility === "private") {
+    return false;
+  }
+
+  if (post.visibility === "user_only" && (post.visibilityProfileKeys ?? []).includes(actorKey)) {
+    return true;
+  }
+
+  if (post.visibility === "tag_only" && actorMatchesVisibilityTags(post, actorKey, profiles)) {
+    return true;
+  }
+
+  return Boolean(post.includeRelatedPeople && isRelatedActor(follows, actorKey, authorKey));
 }
 
 export function isMutualFollow(follows: Record<string, string[]>, actorKey: string, targetKey: string) {
@@ -119,7 +173,7 @@ export function filterTimelinePosts({
 }) {
   return sortPostsByNewest(
     posts.filter((post) => {
-      if (!isVisiblePost(post) || !canActorViewPost(post, actorKey, follows)) {
+      if (!isVisiblePost(post) || !canActorViewPost(post, actorKey, follows, profiles)) {
         return false;
       }
 

@@ -15,7 +15,7 @@ export function SocialMediaViewerPage() {
   const scope = getSocialScopeFromPathname(location.pathname);
   const { getActorForScope, getPostById, getUnreadNotificationCount, profiles } = useSocial();
   const actorKey = getActorForScope(scope);
-  const post = postId ? getPostById(postId) : undefined;
+  const post = postId ? getPostById(postId, actorKey) : undefined;
   const currentIndex = Number(searchParams.get("index") ?? 0);
   const media = useMemo(
     () => (post ? post.media.find((item) => item.id === mediaId) ?? post.media[currentIndex] : undefined),

@@ -1865,8 +1865,8 @@ export const settlements: Settlement[] = [
 
 export const schedules: Schedule[] = [
   { id: "sch-1", staffId: "tech-1", date: "2026-04-12", startTime: "18:00", endTime: "20:00", status: "free" },
-  { id: "sch-2", staffId: "tech-1", date: "2026-04-12", startTime: "21:00", endTime: "22:30", status: "booked", orderId: "ord-1" },
-  { id: "sch-3", staffId: "tech-2", date: "2026-04-12", startTime: "15:30", endTime: "18:00", status: "booked", orderId: "ord-3" },
+  { id: "sch-2", staffId: "tech-1", date: "2026-04-12", startTime: "21:00", endTime: "22:30", status: "booked", orderId: "ord-1", eventType: "booking", detailTargetType: "order_detail", detailTargetId: "ord-1" },
+  { id: "sch-3", staffId: "tech-2", date: "2026-04-12", startTime: "15:30", endTime: "18:00", status: "booked", orderId: "ord-3", eventType: "reschedule", detailTargetType: "order_detail", detailTargetId: "ord-3" },
   { id: "sch-4", staffId: "tech-3", date: "2026-04-13", startTime: "10:00", endTime: "12:00", status: "free" }
 ];
 
@@ -1886,7 +1886,11 @@ schedules.push(
         startTime: `${String(startHour).padStart(2, "0")}:00`,
         endTime: `${String(Math.min(23, startHour + 2)).padStart(2, "0")}:00`,
         status,
-        orderId: status === "booked" ? orders[(technicianIndex + slotIndex) % orders.length]?.id : undefined
+        orderId: status === "booked" ? orders[(technicianIndex + slotIndex) % orders.length]?.id : undefined,
+        eventType: status === "booked" ? (slotIndex === 4 ? "extension" : slotIndex === 2 ? "reschedule" : "booking") : undefined,
+        parentOrderId: status === "booked" && slotIndex === 4 ? orders[(technicianIndex + slotIndex - 1) % orders.length]?.id : undefined,
+        detailTargetType: status === "booked" ? "order_detail" : undefined,
+        detailTargetId: status === "booked" ? orders[(technicianIndex + slotIndex) % orders.length]?.id : undefined
       };
     })
   )

@@ -47,7 +47,7 @@ type SocialContextValue = {
   composerProfileKeys: string[];
   actorByScope: Record<SocialPortalScope, string>;
   getActorForScope: (scope: SocialPortalScope) => string;
-  getPostById: (postId: string) => SocialPost | undefined;
+  getPostById: (postId: string, actorKey?: string) => SocialPost | undefined;
   getTimeline: (tab: "for-you" | "following", actorKey: string) => SocialPost[];
   getTimelineFeed: (filter: SocialTimelineFilterTab, actorKey: string, locationContext?: SocialTimelineLocationContext) => SocialPost[];
   getReplies: (postId: string) => SocialPost[];
@@ -173,7 +173,8 @@ function baseProfileFromCustomer(customer: Customer, index: number): SocialProfi
       memberLevelLabel: getCustomerLevelLabel(customer.activeScore),
       languages: customer.languages ?? ["日本語"],
       points: `${customer.points ?? 0}`,
-      nextBookingAt: customer.nextBookingAt ?? "暂无安排"
+      nextBookingAt: customer.nextBookingAt ?? "暂无安排",
+      visibilityTags: customer.tags
     }
   };
 }
@@ -200,7 +201,8 @@ function baseProfileFromStore(store: Store, index: number): SocialProfile {
       address: store.address,
       bookAction: "立即预约",
       businessHours: store.businessHours,
-      priceLabel: store.priceLabel
+      priceLabel: store.priceLabel,
+      visibilityTags: [store.area, ...store.tags]
     },
     headline: `${store.area} · ${store.mode === "home" ? "到店 + 上门" : "门店预约"}`
   };
@@ -231,7 +233,8 @@ function baseProfileFromTechnician(technician: Technician, index: number): Socia
       serviceTags: technician.profileTags ?? technician.skills,
       bookingAction: "预约档期",
       nextAvailability: technician.status === "available" ? "今天可约" : technician.status === "busy" ? "稍后可约" : "离线中",
-      languages: technician.languages
+      languages: technician.languages,
+      visibilityTags: [...(technician.profileTags ?? technician.skills), ...technician.skills, ...technician.serviceAreas]
     },
     headline: technician.identityLabel ?? "认证技师"
   };
@@ -1202,7 +1205,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SocialContextValue>(() => {
     const getActorForScope = (scope: SocialPortalScope) => actorByScope[scope];
 
-    const getPostById = (postId: string) => state.posts.find((post) => post.id === postId && isVisiblePost(post));
+    const getPostById = (postId: string, actorKey = actorByScope.user) =>
+      state.posts.find((post) => isVisiblePost(post) && post.id === postId && canActorViewPost(post, actorKey, state.follows, profiles));
 
     const getFollowingSet = (actorKey: string) => new Set(state.follows[actorKey] ?? []);
 
@@ -1216,7 +1220,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           }
 
           const authorKey = postAuthorKey(post);
-          const canSee = canActorViewPost(post, actorKey, state.follows);
+          const canSee = canActorViewPost(post, actorKey, state.follows, profiles);
 
           if (!canSee) {
             return false;
@@ -1296,7 +1300,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
             return false;
           }
 
-          if (!canActorViewPost(post, actorKey, state.follows)) {
+          if (!canActorViewPost(post, actorKey, state.follows, profiles)) {
             return false;
           }
 
@@ -1353,7 +1357,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       const postsResult = state.posts.filter((post) => {
         return (
           isVisiblePost(post) &&
-          canActorViewPost(post, actorByScope.user, state.follows) &&
+          canActorViewPost(post, actorByScope.user, state.follows, profiles) &&
           (post.text.toLowerCase().includes(normalized) ||
             post.hashtags.some((tag) => tag.toLowerCase().includes(normalized)) ||
             post.mentions.some((mention) => mention.toLowerCase().includes(normalized)))
@@ -1374,7 +1378,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         state.posts.filter(
           (post) =>
             isVisiblePost(post) &&
-            canActorViewPost(post, actorByScope.user, state.follows) &&
+            canActorViewPost(post, actorByScope.user, state.follows, profiles) &&
             post.hashtags.some((item) => item.toLowerCase() === tag.toLowerCase())
         )
       );
@@ -1459,6 +1463,9 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         bookmarkCount: 0,
         isPinned: false,
         visibility: input.visibility ?? "public",
+        visibilityTagIds: input.visibilityTagIds ?? [],
+        visibilityProfileKeys: input.visibilityProfileKeys ?? input.audienceProfileKeys ?? [],
+        includeRelatedPeople: input.includeRelatedPeople ?? false,
         commentPermission: input.commentPermission ?? "everyone",
         locationLabel: input.locationLabel,
         audienceProfileKeys: input.audienceProfileKeys ?? [],
@@ -1516,6 +1523,9 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         text: input.text.trim(),
         media: normalizeSocialPostMedia(input.media),
         visibility: input.visibility,
+        visibilityTagIds: input.visibilityTagIds ?? [],
+        visibilityProfileKeys: input.visibilityProfileKeys ?? input.audienceProfileKeys ?? [],
+        includeRelatedPeople: input.includeRelatedPeople ?? false,
         commentPermission: input.commentPermission,
         locationLabel: input.locationLabel,
         audienceProfileKeys: input.audienceProfileKeys ?? [],

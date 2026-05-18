@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppIcon, ScheduleViewSegmentedTabs } from "../client-ui/AppScaffold";
 import { Button } from "../ui/Button";
 import { Drawer } from "../ui/Drawer";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
+import { resolveScheduleEventDetailTarget } from "../../lib/scheduleDetailTarget";
 import { useEntityStore } from "../../state/entityStore";
 import {
   adjustDispatchFinalShift,
@@ -74,6 +76,7 @@ export function ScheduleCycleBoard({
   const [editing, setEditing] = useState(!editingToggle);
   const [collapsedTechnicians, setCollapsedTechnicians] = useState(false);
   const [selectedCell, setSelectedCell] = useState<DispatchScheduleCell | null>(null);
+  const navigate = useNavigate();
   const { language } = useI18n();
   const { stores } = useEntityStore();
   const dispatchSnapshot = useDispatchCenterStore();
@@ -154,6 +157,12 @@ export function ScheduleCycleBoard({
   const selectScheduleCell = (cell: DispatchScheduleCell) => {
     if (cell.hour == null && view !== "day") {
       openDateSchedule(cell.date);
+      return;
+    }
+
+    const target = resolveScheduleEventDetailTarget(cell, "merchant-admin");
+    if (target.action === "open" && target.targetType === "order_detail") {
+      navigate(target.route);
       return;
     }
 

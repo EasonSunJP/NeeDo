@@ -57,7 +57,7 @@ function SocialProfileScene({
 
   const postCount = useMemo(() => (profile ? getProfilePosts(profileKey(profile), "posts", actorKey).length : 0), [actorKey, getProfilePosts, profile]);
   const rawList = useMemo(() => (profile ? getProfilePosts(profileKey(profile), tab, actorKey) : []), [actorKey, getProfilePosts, profile, tab]);
-  const pinnedPost = profile?.pinnedPostId ? getPostById(profile.pinnedPostId) : undefined;
+  const pinnedPost = profile?.pinnedPostId ? getPostById(profile.pinnedPostId, actorKey) : undefined;
   const list = useMemo(
     () => (tab === "posts" && pinnedPost ? rawList.filter((post) => post.id !== pinnedPost.id) : rawList),
     [pinnedPost, rawList, tab]

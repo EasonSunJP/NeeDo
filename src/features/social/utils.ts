@@ -137,6 +137,14 @@ export function formatSocialVisibilityLabel(value: SocialVisibility) {
     return "仅好友可见";
   }
 
+  if (value === "tag_only") {
+    return "标签可见";
+  }
+
+  if (value === "user_only") {
+    return "指定人可见";
+  }
+
   if (value === "private") {
     return "仅自己可见";
   }

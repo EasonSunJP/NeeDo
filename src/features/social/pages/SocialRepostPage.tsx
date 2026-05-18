@@ -12,7 +12,7 @@ export function SocialRepostPage() {
   const scope = getSocialScopeFromPathname(location.pathname);
   const { getActorForScope, getPostById, getInteractionState, toggleRepost, getUnreadNotificationCount } = useSocial();
   const actorKey = getActorForScope(scope);
-  const post = postId ? getPostById(postId) : undefined;
+  const post = postId ? getPostById(postId, actorKey) : undefined;
   const interaction = post ? getInteractionState(post.id, actorKey) : undefined;
   const [status, setStatus] = useState("");
 

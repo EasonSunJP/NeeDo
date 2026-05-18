@@ -387,17 +387,35 @@ export function ComposerSettingList({ children }: { children: ReactNode }) {
 export function ComposerVisibilitySelector({
   value,
   onChange,
+  includeRelatedPeople,
+  onIncludeRelatedPeopleChange,
+  availableTags = [],
+  selectedTagIds = [],
+  onToggleTag,
+  profileOptions = [],
+  selectedProfileKeys = [],
+  onToggleProfile,
   onBack
 }: {
   value: SocialVisibility;
   onChange: (value: SocialVisibility) => void;
+  includeRelatedPeople: boolean;
+  onIncludeRelatedPeopleChange: (value: boolean) => void;
+  availableTags?: string[];
+  selectedTagIds?: string[];
+  onToggleTag?: (tag: string) => void;
+  profileOptions?: SocialProfile[];
+  selectedProfileKeys?: string[];
+  onToggleProfile?: (key: string) => void;
   onBack: () => void;
 }) {
   const options: Array<{ value: SocialVisibility; title: string; description: string }> = [
-    { value: "public", title: "公开", description: "所有能看到这条动态的人都可见。" },
-    { value: "followers", title: "仅关注可见", description: "只有关注当前发布身份的人可见。" },
-    { value: "friends", title: "仅好友可见", description: "仅双方互相关注的好友可见。" },
-    { value: "private", title: "仅自己可见", description: "只保留给自己查看，用作私人记录。" }
+    { value: "public", title: "公开", description: "所有人可见。" },
+    { value: "private", title: "隐私", description: "仅自己可见。" },
+    { value: "tag_only", title: "标签可见", description: "仅所选标签人群可见。" },
+    { value: "user_only", title: "指定人可见", description: "仅所选账号可见。" },
+    { value: "followers", title: "仅关注可见", description: "兼容旧关注规则，只有关注当前发布身份的人可见。" },
+    { value: "friends", title: "仅好友可见", description: "兼容旧好友规则，仅双方互相关注的好友可见。" }
   ];
 
   return (
@@ -442,6 +460,83 @@ export function ComposerVisibilitySelector({
             </button>
           );
         })}
+        {value === "tag_only" ? (
+          <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-4 py-4">
+            <p className="text-sm font-black text-[color:var(--client-text)]">选择可见标签</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {availableTags.length > 0 ? availableTags.map((tag) => {
+                const active = selectedTagIds.includes(tag);
+
+                return (
+                  <button
+                    className={cn(
+                      "rounded-full border px-3 py-2 text-xs font-black",
+                      active
+                        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
+                        : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-[color:var(--client-muted)]"
+                    )}
+                    key={tag}
+                    onClick={() => onToggleTag?.(tag)}
+                    type="button"
+                  >
+                    {tag}
+                  </button>
+                );
+              }) : <p className="text-sm text-[color:var(--client-muted)]">当前身份暂时没有可用标签。</p>}
+            </div>
+          </div>
+        ) : null}
+        {value === "user_only" ? (
+          <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-4 py-4">
+            <p className="text-sm font-black text-[color:var(--client-text)]">选择指定账号</p>
+            <div className="mt-3 space-y-2">
+              {profileOptions.slice(0, 12).map((profile) => {
+                const key = profileKey(profile);
+                const active = selectedProfileKeys.includes(key);
+
+                return (
+                  <button
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-[18px] border px-3 py-2 text-left",
+                      active
+                        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)]"
+                        : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]"
+                    )}
+                    key={key}
+                    onClick={() => onToggleProfile?.(key)}
+                    type="button"
+                  >
+                    <AvatarImage alt={profile.displayName} className="h-9 w-9" src={profile.avatar} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-black text-[color:var(--client-text)]">{profile.displayName}</span>
+                    <span className={cn("h-4 w-4 rounded-full border", active ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)]" : "border-[color:var(--client-line)]")} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+        {value !== "public" && value !== "private" ? (
+          <button
+            className="flex w-full items-center justify-between gap-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-4 py-4 text-left"
+            onClick={() => onIncludeRelatedPeopleChange(!includeRelatedPeople)}
+            type="button"
+          >
+            <div>
+              <p className="text-base font-black text-[color:var(--client-text)]">关联人可见</p>
+              <p className="mt-2 text-sm leading-6 text-[color:var(--client-muted)]">关注、订单、所属店铺等业务关联对象也可见。</p>
+            </div>
+            <span
+              className={cn(
+                "relative h-7 w-12 rounded-full border transition",
+                includeRelatedPeople
+                  ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)]"
+                  : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)]"
+              )}
+            >
+              <span className={cn("absolute top-1 h-5 w-5 rounded-full bg-white transition", includeRelatedPeople ? "left-6" : "left-1")} />
+            </span>
+          </button>
+        ) : null}
       </div>
     </SelectorLayout>
   );
@@ -697,8 +792,14 @@ export function summarizeAudience(profiles: SocialProfile[], selectedKeys: strin
   return `${selectedProfiles[0].displayName} 等 ${selectedProfiles.length} 人`;
 }
 
-export function summarizeVisibility(value: SocialVisibility) {
-  return formatSocialVisibilityLabel(value);
+export function summarizeVisibility(value: SocialVisibility, options?: { tags?: string[]; profileCount?: number; includeRelatedPeople?: boolean }) {
+  const details = [
+    options?.tags?.length ? `${options.tags.length} 个标签` : "",
+    options?.profileCount ? `${options.profileCount} 人` : "",
+    options?.includeRelatedPeople ? "含关联人" : ""
+  ].filter(Boolean);
+
+  return [formatSocialVisibilityLabel(value), ...details].join(" · ");
 }
 
 export function summarizeCommentPermission(value: SocialCommentPermission) {

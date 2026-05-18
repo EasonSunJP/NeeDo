@@ -20,6 +20,9 @@ import {
   type ImSearchResult,
   type ImUser,
   type MessageExt,
+  type TagMessageCampaignEstimate,
+  type TagMessageCampaignInput,
+  type TagMessageCampaignResult,
   type UpdateConversationGroupInfoOptions,
   type UpdateConversationPrivacyOptions,
   sortConversations
@@ -533,6 +536,23 @@ function createScopedStore(scope: ImRoleType) {
     }
   }
 
+  async function estimateTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignEstimate> {
+    await hydrateStore();
+    return api.estimateTagMessageCampaign(input);
+  }
+
+  async function sendTagMessageCampaign(input: TagMessageCampaignInput): Promise<TagMessageCampaignResult> {
+    await hydrateStore();
+    const response = await api.sendTagMessageCampaign(input);
+
+    response.deliveries.forEach(({ conversation, message }) => {
+      upsertConversation(conversation);
+      upsertMessage(message);
+    });
+    emit();
+    return response;
+  }
+
   async function resendMessage(messageId: string) {
     await hydrateStore();
     const response = await api.resendMessage(messageId);
@@ -850,6 +870,8 @@ function createScopedStore(scope: ImRoleType) {
       setActiveConversation,
       setDraft,
       sendMessage,
+      estimateTagMessageCampaign,
+      sendTagMessageCampaign,
       resendMessage,
       recallMessage,
       forwardMessage,
