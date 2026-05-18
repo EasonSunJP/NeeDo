@@ -1,42 +1,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AppIcon, PrimaryButton, SecondaryButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { services } from "../../data/mock";
-import { cn, statusLabel, yen } from "../../lib/utils";
+import { cn, statusLabel } from "../../lib/utils";
+import { ServiceReviewPrompt, type ServiceReviewSubmission, type ServiceReviewTag } from "../../shared/order-detail/ServiceSessionUi";
+import { SocialProfileMiniCard } from "../../shared/profile-card";
 import { useEntityStore } from "../../state/entityStore";
+import { dismissOrderServiceReview, submitOrderServiceUserReview } from "../../state/orderServiceSessionStore";
 import { useUserOrders } from "../../state/userOrderStore";
-import type { Order } from "../../types/domain";
-
-type OrderTab = "all" | "pending" | "active" | "history";
+import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
 
 const fullscreenHeaderClassName =
   "";
 const surfaceCardClassName =
-  "rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,#f7f7f2)] p-4 shadow-panel";
+  "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,#f7f7f2)] p-2.5 shadow-panel";
 const deletedOrdersStorageKey = "needo.user.orders.deleted.v1";
 const deleteAnimationDurationMs = 360;
 const initialOrderRenderCount = 12;
 const orderRenderBatchSize = 12;
+const orderReviewTags: ServiceReviewTag[] = [
+  { label: "氛围很好", count: 8, kind: "chip" },
+  { label: "服务细致", count: 6, kind: "chip" },
+  { label: "还会再约", count: 5, kind: "chip" },
+  { label: "准时到达", count: 4, kind: "chip" }
+];
 
-function filterOrders(orderList: Order[], tab: OrderTab) {
-  if (tab === "pending") {
-    return orderList.filter((item) => ["pending", "unpaid", "confirmed", "scheduled"].includes(item.status));
-  }
-
-  if (tab === "active") {
-    return orderList.filter((item) => item.status === "inService");
-  }
-
-  if (tab === "history") {
-    return orderList.filter((item) => ["completed", "cancelled", "refunded", "refunding"].includes(item.status));
-  }
-
-  return orderList;
-}
+type OrderProvider =
+  | { type: "store"; store: Store }
+  | { type: "technician"; technician: Technician };
 
 function parseOrderDateTime(value: string) {
   const [datePart, timePart = "00:00"] = value.split(" ");
@@ -61,38 +57,6 @@ function sortOrdersNewestFirst(orderList: Order[]) {
   return [...orderList].sort((left, right) => getOrderSortValue(right) - getOrderSortValue(left));
 }
 
-function getPaymentCopy(paymentStatus: Order["paymentStatus"], mode: Order["mode"]) {
-  if (paymentStatus === "paid") {
-    return "平台已支付";
-  }
-
-  if (paymentStatus === "depositPaid") {
-    return "平台定金 + 线下尾款";
-  }
-
-  if (paymentStatus === "refunded") {
-    return "平台原路退款";
-  }
-
-  return mode === "store" ? "到店后确认付款" : "待平台支付";
-}
-
-function getPaymentTone(paymentStatus: Order["paymentStatus"]) {
-  if (paymentStatus === "paid") {
-    return "green" as const;
-  }
-
-  if (paymentStatus === "depositPaid") {
-    return "blue" as const;
-  }
-
-  if (paymentStatus === "refunded") {
-    return "neutral" as const;
-  }
-
-  return "yellow" as const;
-}
-
 function getStatusTone(status: Order["status"]) {
   if (status === "completed") {
     return "green" as const;
@@ -109,31 +73,80 @@ function getStatusTone(status: Order["status"]) {
   return "yellow" as const;
 }
 
-function getSourceLabel(source: Order["source"]) {
-  if (source === "app") {
-    return "App";
-  }
-
-  if (source === "web") {
-    return "Web";
-  }
-
-  if (source === "line") {
-    return "LINE";
-  }
-
-  return "Partner";
-}
-
 function getModeLabel(mode: Order["mode"]) {
-  return mode === "home" ? "上门服务" : "到店预约";
+  return mode === "home" ? "上门服务" : "到店服务";
 }
 
-function resolveOrderCover(order: Order, stores: ReturnType<typeof useEntityStore>["stores"]) {
-  const service = services.find((item) => order.itemName.includes(item.name) || item.name.includes(order.itemName));
-  const store = stores.find((item) => item.name === order.storeName);
+function normalizeOrderServiceName(value: string) {
+  return value.replace(/\s+\d+\s*分钟/g, "").trim();
+}
 
-  return service?.cover ?? store?.cover ?? services[0]?.cover ?? "";
+function findServiceForOrder(order: Order): ServiceItem {
+  const normalizedOrderName = normalizeOrderServiceName(order.itemName);
+
+  return services.find((service) =>
+    order.itemName.includes(service.name) ||
+    service.name.includes(normalizedOrderName) ||
+    service.packages.some((item) => order.itemName.includes(item.name))
+  ) ?? services[0]!;
+}
+
+function findPackageForOrder(order: Order, service: ServiceItem) {
+  const durationMatch = order.itemName.match(/(\d+)\s*分钟/);
+  const duration = durationMatch ? Number(durationMatch[1]) : undefined;
+
+  return service.packages.find((item) =>
+    order.itemName.includes(item.name) ||
+    item.price === order.amount ||
+    (typeof duration === "number" && item.durationMinutes === duration)
+  ) ?? service.packages[0];
+}
+
+function resolveOrderProvider(order: Order, stores: Store[], technicians: Technician[]): OrderProvider | null {
+  if (order.mode === "store") {
+    const store = stores.find((item) => item.name === order.storeName);
+    return store ? { type: "store", store } : null;
+  }
+
+  const technician = technicians.find((item) => item.name === order.technicianName || item.nickname === order.technicianName);
+  return technician ? { type: "technician", technician } : null;
+}
+
+function getProviderDetailPath(provider: OrderProvider | null) {
+  if (!provider) {
+    return null;
+  }
+
+  return provider.type === "store" ? `/stores/${provider.store.id}` : `/profiles/technician/${provider.technician.id}`;
+}
+
+function getOrderBaseDurationMinutes(order: Order) {
+  const service = findServiceForOrder(order);
+  return findPackageForOrder(order, service)?.durationMinutes ?? 60;
+}
+
+function getOrderReviewRewardMaxNdp(order: Order) {
+  return Math.max(0, Math.round(order.amount / 100));
+}
+
+function getRebookPath(order: Order, provider: OrderProvider | null) {
+  const service = findServiceForOrder(order);
+  const selectedPackage = findPackageForOrder(order, service);
+  const params = new URLSearchParams();
+
+  if (selectedPackage?.id) {
+    params.set("package", selectedPackage.id);
+  }
+
+  if (provider?.type === "store") {
+    params.set("store", provider.store.id);
+  } else if (provider?.type === "technician") {
+    params.set("mode", "home");
+    params.set("technician", provider.technician.id);
+  }
+
+  const query = params.toString();
+  return `/checkout/${service.id}${query ? `?${query}` : ""}`;
 }
 
 function readDeletedOrderIds() {
@@ -160,24 +173,82 @@ function readDeletedOrderIds() {
   }
 }
 
-function OrderSummaryCard({ label, value, helper }: { label: string; value: number; helper: string }) {
+function OrderProviderInfoCard({
+  className,
+  detailTo,
+  orderNo,
+  provider
+}: {
+  className?: string;
+  detailTo?: string | null;
+  orderNo?: string;
+  provider: OrderProvider | null;
+}) {
+  if (!provider) {
+    return null;
+  }
+
+  const sharedProps = {
+    className: cn("user-orders-provider-card shadow-none", className),
+    detailTo: detailTo ?? undefined
+  };
+
   return (
-    <div className="rounded-[20px] bg-white/10 px-3 py-3">
-      <p className="text-[11px] font-black text-white/58">{label}</p>
-      <div className="mt-2 flex items-end justify-between gap-3">
-        <strong className="text-[26px] font-black leading-none tracking-[-0.04em] text-white">{value}</strong>
-        <span className="text-[11px] font-bold text-white/55">{helper}</span>
-      </div>
+    <div className="relative">
+      {orderNo ? (
+        <span className="pointer-events-none absolute left-4 top-3 z-30 max-w-[calc(100%-8rem)] truncate text-[11px] font-normal leading-none text-white/72">
+          {orderNo}
+        </span>
+      ) : null}
+      {provider.type === "store" ? (
+        <SocialProfileMiniCard store={provider.store} {...sharedProps} />
+      ) : (
+        <SocialProfileMiniCard technician={provider.technician} {...sharedProps} />
+      )}
     </div>
+  );
+}
+
+function OrderActionButton({
+  icon,
+  label,
+  onClick,
+  tone
+}: {
+  icon: "calendar" | "star";
+  label: string;
+  onClick: () => void;
+  tone: "primary" | "secondary";
+}) {
+  const ButtonComponent = tone === "primary" ? PrimaryButton : SecondaryButton;
+
+  return (
+    <ButtonComponent className="h-11 w-full rounded-[16px] px-3 text-[13px]" onClick={onClick}>
+      <AppIcon className="h-4 w-4 shrink-0" name={icon} />
+      <span className="min-w-0 truncate">{label}</span>
+    </ButtonComponent>
+  );
+}
+
+function OrderDeleteIcon({ className }: { className?: string }) {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={cn("user-orders-delete-icon pointer-events-none block object-contain", className)}
+      decoding="async"
+      src="/images/generated/ui/order-delete-ai-icon.png"
+    />
   );
 }
 
 export function UserOrdersPage() {
   const navigate = useNavigate();
-  const { stores } = useEntityStore();
+  const { stores, technicians } = useEntityStore();
   const [deletedOrderIds, setDeletedOrderIds] = useState<string[]>(() => readDeletedOrderIds());
   const [deletingOrderIds, setDeletingOrderIds] = useState<string[]>([]);
   const [renderedOrderLimit, setRenderedOrderLimit] = useState(initialOrderRenderCount);
+  const [reviewingOrderId, setReviewingOrderId] = useState<string | null>(null);
   const orders = useUserOrders();
   const scrollRootRef = useRef<HTMLElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
@@ -189,16 +260,6 @@ export function UserOrdersPage() {
     () => visibleOrders.slice(0, Math.min(renderedOrderLimit, visibleOrders.length)),
     [renderedOrderLimit, visibleOrders]
   );
-  const counts = useMemo(
-    () => ({
-      all: filterOrders(visibleOrders, "all").length,
-      pending: filterOrders(visibleOrders, "pending").length,
-      active: filterOrders(visibleOrders, "active").length,
-      history: filterOrders(visibleOrders, "history").length
-    }),
-    [visibleOrders]
-  );
-
   const loadMoreOrders = useCallback(() => {
     setRenderedOrderLimit((current) => Math.min(current + orderRenderBatchSize, visibleOrders.length));
   }, [visibleOrders.length]);
@@ -281,6 +342,30 @@ export function UserOrdersPage() {
 
     deleteTimerIdsRef.current.push(timerId);
   };
+  const reviewingOrder = useMemo(() => visibleOrders.find((order) => order.id === reviewingOrderId) ?? null, [reviewingOrderId, visibleOrders]);
+  const reviewingProvider = useMemo(
+    () => (reviewingOrder ? resolveOrderProvider(reviewingOrder, stores, technicians) : null),
+    [reviewingOrder, stores, technicians]
+  );
+  const closeReviewPrompt = () => {
+    if (reviewingOrder) {
+      dismissOrderServiceReview(reviewingOrder.id, getOrderBaseDurationMinutes(reviewingOrder), "user");
+    }
+
+    setReviewingOrderId(null);
+  };
+  const submitReviewPrompt = (submission: ServiceReviewSubmission) => {
+    if (!reviewingOrder) {
+      return;
+    }
+
+    submitOrderServiceUserReview(reviewingOrder.id, getOrderBaseDurationMinutes(reviewingOrder), {
+      rating: submission.rating,
+      tags: submission.tags,
+      maxRewardNdp: getOrderReviewRewardMaxNdp(reviewingOrder)
+    });
+    setReviewingOrderId(null);
+  };
 
   return (
     <MobileShell navItems={[]}>
@@ -293,23 +378,13 @@ export function UserOrdersPage() {
         />
 
         <main ref={scrollRootRef} className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-8">
-          <section className="overflow-hidden rounded-[28px] bg-ink text-white shadow-soft">
-            <div className="p-4">
-              <div className="grid grid-cols-2 gap-2">
-                <OrderSummaryCard helper="全部" label="订单总数" value={counts.all} />
-                <OrderSummaryCard helper="待跟进" label="待服务" value={counts.pending} />
-                <OrderSummaryCard helper="履约中" label="进行中" value={counts.active} />
-                <OrderSummaryCard helper="已归档" label="历史记录" value={counts.history} />
-              </div>
-            </div>
-          </section>
-
           <section>
             {visibleOrders.length > 0 ? (
               <>
-                {renderedOrders.map((order, index) => {
-                  const cover = resolveOrderCover(order, stores);
+                {renderedOrders.map((order) => {
                   const isDeleting = deletingOrderIds.includes(order.id);
+                  const provider = resolveOrderProvider(order, stores, technicians);
+                  const providerDetailPath = getProviderDetailPath(provider);
 
                   return (
                     <div
@@ -322,81 +397,43 @@ export function UserOrdersPage() {
                       key={order.id}
                     >
                       <div className={cn(surfaceCardClassName, "user-orders-delete-card relative overflow-hidden")}>
-                        <button
-                          aria-label={`删除订单 ${order.orderNo}`}
-                          className={cn(
-                            "absolute right-4 top-4 z-10 appearance-none rounded-full border border-transparent px-3 py-1.5 text-[11px] font-black text-white outline-none ring-0 transition active:scale-[0.97]",
-                            isDeleting
-                              ? "bg-[#8f1d1d] shadow-[0_10px_22px_rgba(110,24,24,0.24)]"
-                              : "bg-[#c62828] shadow-[0_10px_22px_rgba(162,24,24,0.28)]"
-                          )}
-                          disabled={isDeleting}
-                          onClick={() => deleteOrder(order.id)}
-                          type="button"
-                        >
-                          {isDeleting ? "删除中" : "删除"}
-                        </button>
-                        <button
-                          className={cn("block w-full text-left transition-opacity", isDeleting && "opacity-70")}
-                          disabled={isDeleting}
-                          onClick={() => navigate(`/orders/${order.id}`)}
-                          type="button"
-                        >
-                          <div className="flex items-start gap-3 pr-[88px]">
-                            <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]">
-                              {cover ? (
-                                <img
-                                  alt={order.itemName}
-                                  className="h-full w-full object-cover"
-                                  decoding="async"
-                                  loading={index < 2 ? "eager" : "lazy"}
-                                  src={cover}
-                                />
-                              ) : null}
-                              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2 pb-2 pt-8">
-                                <span className="text-[10px] font-black text-white">{order.bookedAt.split(" ")[0]}</span>
-                              </div>
+                        <div className={cn("transition-opacity", isDeleting && "opacity-70")}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <Badge tone={getStatusTone(order.status)}>{statusLabel(order.status)}</Badge>
+                              <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
+                                {getModeLabel(order.mode)}
+                              </span>
                             </div>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Badge tone={getStatusTone(order.status)}>{statusLabel(order.status)}</Badge>
-                                <Badge tone={getPaymentTone(order.paymentStatus)}>{getPaymentCopy(order.paymentStatus, order.mode)}</Badge>
-                              </div>
-
-                              <h2 className="mt-3 text-lg font-black leading-6 text-[color:var(--client-text)]">{order.itemName}</h2>
-                              <p className="mt-2 text-sm leading-6 text-[color:var(--client-muted)]">{order.bookedAt} · {order.city} {order.area}</p>
-
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
-                                  {getModeLabel(order.mode)}
-                                </span>
-                                <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_70%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-muted)]">
-                                  {order.technicianName ?? order.storeName ?? "待分配"}
-                                </span>
-                              </div>
-                            </div>
+                            <button
+                              aria-label={`${isDeleting ? "删除中" : "删除订单"} ${order.orderNo}`}
+                              className={cn(
+                                "user-orders-delete-button grid h-10 w-10 shrink-0 place-items-center appearance-none rounded-full border bg-transparent outline-none ring-0 transition active:scale-[0.97]",
+                                isDeleting
+                                  ? "opacity-50"
+                                  : "opacity-100"
+                              )}
+                              disabled={isDeleting}
+                              onClick={() => deleteOrder(order.id)}
+                              type="button"
+                            >
+                              <OrderDeleteIcon />
+                            </button>
                           </div>
 
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            {[
-                              ["订单编号", order.orderNo],
-                              ["来源", getSourceLabel(order.source)],
-                              ["支付状态", getPaymentCopy(order.paymentStatus, order.mode)],
-                              ["订单金额", yen(order.amount)]
-                            ].map(([label, value]) => (
-                              <div className="rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-3 py-3" key={label}>
-                                <p className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</p>
-                                <p className="mt-1 truncate text-sm font-black text-[color:var(--client-text)]">{value}</p>
-                              </div>
-                            ))}
+                          <div className="mt-2.5">
+                            <OrderProviderInfoCard
+                              detailTo={providerDetailPath}
+                              orderNo={order.orderNo}
+                              provider={provider}
+                            />
                           </div>
 
-                          <div className="mt-4 flex items-center justify-between gap-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-4">
-                            <p className="text-xs font-bold text-[color:var(--client-muted)]">{order.remark?.trim() ? "已写入预约备注" : "当前没有额外备注"}</p>
-                            <span className="shrink-0 text-sm font-black text-[color:var(--client-primary)]">查看详情 ›</span>
+                          <div className="mt-2.5 grid grid-cols-2 gap-2">
+                            <OrderActionButton icon="star" label="写评论" onClick={() => setReviewingOrderId(order.id)} tone="secondary" />
+                            <OrderActionButton icon="calendar" label="再次预约" onClick={() => navigate(getRebookPath(order, provider))} tone="primary" />
                           </div>
-                        </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -427,6 +464,22 @@ export function UserOrdersPage() {
             )}
           </section>
         </main>
+        {reviewingOrder ? (
+          <ServiceReviewPrompt
+            message={`${reviewingOrder.storeName ?? reviewingOrder.technicianName ?? reviewingOrder.itemName} 的本次体验。`}
+            onSkip={closeReviewPrompt}
+            onSubmit={submitReviewPrompt}
+            submitHint={`评价后预计可获得 0~${getOrderReviewRewardMaxNdp(reviewingOrder)}NDP`}
+            submitLabel="提交评价"
+            tagOptions={orderReviewTags}
+            title="写评论"
+            topContent={
+              <OrderProviderInfoCard
+                provider={reviewingProvider}
+              />
+            }
+          />
+        ) : null}
       </MobileFullscreenPage>
     </MobileShell>
   );

@@ -297,22 +297,24 @@ export function SettingsListItem({
     <InteractiveRow
       className={cn(
         "flex w-full items-center gap-3 px-4 py-3.5 text-left transition",
-        interactive ? "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]" : ""
+        interactive
+          ? "relative before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition hover:before:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)] focus:outline-none focus-visible:before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
+          : ""
       )}
       dataNoI18n={dataNoI18n}
       onClick={onClick}
       to={to}
     >
       {icon ? (
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-primary)]">
+        <span className="relative z-10 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-primary)]">
           <AppIcon className="h-[18px] w-[18px]" name={icon} />
         </span>
       ) : null}
-      <div className="min-w-0 flex-1">
+      <div className="relative z-10 min-w-0 flex-1">
         <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">{title}</p>
         {subtitle ? <p className="mt-0.5 truncate text-[12px] text-[color:var(--client-muted)]">{subtitle}</p> : null}
       </div>
-      <div className="flex min-w-0 shrink-0 items-center gap-2">
+      <div className="relative z-10 flex min-w-0 shrink-0 items-center gap-2">
         <SettingsValueText>{value}</SettingsValueText>
         {trailing ?? (interactive ? <SettingsArrow /> : null)}
       </div>

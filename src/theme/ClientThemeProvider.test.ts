@@ -52,28 +52,28 @@ afterEach(() => {
 });
 
 describe("ClientThemeProvider theme boot logic", () => {
-  it("uses cool-black-gray as the default when the device is in dark mode", () => {
+  it("uses dark-green as the default when the device is in dark mode", () => {
     stubWindow({
       localStorage: createStorage(),
       matches: true
     });
 
-    expect(detectSystemClientTheme()).toBe("cool-black-gray");
+    expect(detectSystemClientTheme()).toBe("dark-green");
     expect(getInitialClientThemeState()).toEqual({
-      theme: "cool-black-gray",
+      theme: "dark-green",
       preferenceMode: "auto"
     });
   });
 
-  it("uses vital-mono as the default when the device is in light mode", () => {
+  it("uses light-green as the default when the device is in light mode", () => {
     stubWindow({
       localStorage: createStorage(),
       matches: false
     });
 
-    expect(detectSystemClientTheme()).toBe("vital-mono");
+    expect(detectSystemClientTheme()).toBe("light-green");
     expect(getInitialClientThemeState()).toEqual({
-      theme: "vital-mono",
+      theme: "light-green",
       preferenceMode: "auto"
     });
   });
@@ -170,7 +170,7 @@ describe("ClientThemeProvider theme boot logic", () => {
     });
 
     expect(getInitialClientThemeState()).toEqual({
-      theme: "cool-black-gray",
+      theme: "dark-green",
       preferenceMode: "auto"
     });
   });

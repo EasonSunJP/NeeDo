@@ -30,8 +30,8 @@ const ClientThemeContext = createContext<ClientThemeContextValue | null>(null);
 const themeStorageKey = "needo.client.theme";
 const themePreferenceModeStorageKey = "needo.client.theme.mode";
 const systemDarkModeMediaQuery = "(prefers-color-scheme: dark)";
-const defaultDayClientTheme: ClientTheme = "vital-mono";
-const defaultNightClientTheme: ClientTheme = "cool-black-gray";
+const defaultDayClientTheme: ClientTheme = "light-green";
+const defaultNightClientTheme: ClientTheme = "dark-green";
 const defaultClientTheme: ClientTheme = defaultDayClientTheme;
 
 type LegacyMediaQueryList = MediaQueryList & {
