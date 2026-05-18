@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
+import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { StatusToggleButton } from "../../components/mobile/StatusToggleButton";
@@ -506,14 +507,14 @@ export function MerchantAutoDispatchRoutePage() {
           </section>
         </main>
 
-        <footer className="grid grid-cols-2 gap-2 border-t border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)] p-3">
+        <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2">
           <Button className="w-full" onClick={() => setDraft(autoDispatchSettings)} variant="secondary">
             恢复当前规则
           </Button>
           <Button className="w-full" onClick={saveDraft}>
             保存自动派单
           </Button>
-        </footer>
+        </MobileBottomActionBar>
       </MobileFullscreenPage>
     </MobileShell>
   );

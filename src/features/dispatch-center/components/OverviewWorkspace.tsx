@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../../components/mobile/MobileFullscreenPage";
 import {
@@ -24,6 +24,7 @@ import { TodayArrangementTable } from "./TodayArrangementTable";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { translateText } from "../../../i18n/translations";
 import { resolveScheduleEventDetailTarget } from "../../../lib/scheduleDetailTarget";
+import { buildCurrentRoute, withReturnTo } from "../../../lib/navigationReturn";
 import { addDays, type DispatchFloatingTask } from "../domain";
 import { getMerchantScheduleCellPath } from "../paths";
 import {
@@ -619,6 +620,7 @@ export function DispatchOverviewWorkspace({
   const [selectedCell, setSelectedCell] = useState<DispatchScheduleCell | null>(null);
   const [selectedContactStatusItem, setSelectedContactStatusItem] = useState<MobileContactStatusItem | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatchSnapshot = useDispatchCenterStore();
   const entitySnapshot = useEntityStore();
   const summary = useMemo(() => getDispatchOverviewSummary(storeId), [dispatchSnapshot.revision, storeId]);
@@ -667,6 +669,19 @@ export function DispatchOverviewWorkspace({
     setSelectedCell(null);
   };
 
+  useEffect(() => {
+    const state = location.state && typeof location.state === "object"
+      ? location.state as { reopenScheduleDetail?: boolean }
+      : null;
+
+    if (!isMobileSurface || !state?.reopenScheduleDetail) {
+      return;
+    }
+
+    setScheduleDetailOpen(true);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [isMobileSurface, location.pathname, location.search, location.state, navigate]);
+
   const openCellDetail = (cell: DispatchScheduleCell) => {
     if (cell.hour == null && view !== "day") {
       openDateSchedule(cell.date);
@@ -675,7 +690,13 @@ export function DispatchOverviewWorkspace({
 
     const target = resolveScheduleEventDetailTarget(cell, surface === "desktop" ? "merchant-admin" : "merchant");
     if (target.action === "open" && target.targetType === "order_detail") {
-      navigate(target.route);
+      const returnTo = buildCurrentRoute(location);
+      navigate(withReturnTo(target.route, returnTo), {
+        state: {
+          returnState: isMobileSurface && scheduleDetailOpen ? { reopenScheduleDetail: true } : undefined,
+          returnTo
+        }
+      });
       return;
     }
 

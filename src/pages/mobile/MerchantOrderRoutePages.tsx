@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
+import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -8,6 +9,7 @@ import { Button } from "../../components/ui/Button";
 import { orders, services } from "../../data/mock";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getMerchantCustomerConversationId } from "../../lib/messageCenter";
+import { readNavigationReturnTarget } from "../../lib/navigationReturn";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
@@ -979,6 +981,7 @@ function LockedInfoRows({ rows }: { rows: Array<[string, string]> }) {
 
 function MerchantOrderDetailContent() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orderId } = useParams();
   const baseOrder = getMerchantOrder(orderId);
   const storedDraft = getStoredOrderChangeDraft(baseOrder.id);
@@ -1002,6 +1005,15 @@ function MerchantOrderDetailContent() {
   const staffCardData = assignedTechnician ? undefined : buildUnassignedStaffCardData(order, store, scenario);
   const reservationInfoRows = getReservationInfoRows({ assignedTechnician, changeDraft: storedDraft, customer, order, service, store });
   const contactInfoEvents = getOrderContactInfoEvents({ assignedTechnician, changeDraft: storedDraft, order, service, store });
+  const returnTarget = readNavigationReturnTarget(location.search, location.state);
+  const handleBack = () => {
+    if (returnTarget) {
+      navigate(returnTarget.to, { state: returnTarget.state });
+      return;
+    }
+
+    navigate(-1);
+  };
   const paymentSummaryItems = [
     ["金额", yen(order.amount)],
     ["支付手段", getPaymentMethodLabel(order)],
@@ -1012,7 +1024,7 @@ function MerchantOrderDetailContent() {
     <MobileFullscreenPage>
       <MobileFullscreenHeader
         className={fullscreenHeaderClassName}
-        onBack={() => navigate(-1)}
+        onBack={handleBack}
         title="预约订单详情"
       />
       <main className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
@@ -1080,7 +1092,7 @@ function MerchantOrderDetailContent() {
 
         <OrderContactInfoTimeline events={contactInfoEvents} />
       </main>
-      <footer className="grid grid-cols-3 gap-2 border-t border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)] p-3">
+      <MobileBottomActionBar contentClassName="grid grid-cols-3 gap-2">
         <Button
           icon={
             <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -1095,7 +1107,7 @@ function MerchantOrderDetailContent() {
         </Button>
         <Button to={`/merchant/orders/${order.id}/change`} variant="secondary">变更</Button>
         <Button to={`/merchant/orders/${order.id}/dispatch`}>派单给员工</Button>
-      </footer>
+      </MobileBottomActionBar>
     </MobileFullscreenPage>
   );
 }
@@ -1416,10 +1428,10 @@ function MerchantOrderChangeContent() {
           <ChangeLogPreview entries={pendingChangeLogs} />
         </section>
       </main>
-      <footer className="grid grid-cols-2 gap-2 border-t border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)] p-3">
+      <MobileBottomActionBar contentClassName="grid grid-cols-2 gap-2">
         <Button onClick={() => navigate(-1)} variant="secondary">取消</Button>
         <Button onClick={saveDraft}>保存变更</Button>
-      </footer>
+      </MobileBottomActionBar>
     </MobileFullscreenPage>
   );
 }

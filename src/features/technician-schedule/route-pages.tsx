@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { ScheduleViewSegmentedTabs } from "../../components/client-ui/AppScaffold";
@@ -16,6 +16,7 @@ import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/pr
 import { useEntityStore } from "../../state/entityStore";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { getScheduleOrderDetailRoute, resolveScheduleEventDetailTarget } from "../../lib/scheduleDetailTarget";
+import { buildCurrentRoute, readNavigationReturnTarget, withReturnTo } from "../../lib/navigationReturn";
 import {
   cancelTechnicianScheduleTransferRequest,
   createTechnicianScheduleTransferRequest,
@@ -1127,11 +1128,13 @@ function StandaloneSchedulePage({
   title,
   subtitle,
   action,
+  onBack,
   children
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  onBack?: () => void;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -1150,7 +1153,7 @@ function StandaloneSchedulePage({
           action={action}
           className="border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_90%,transparent)] text-[color:var(--client-text)]"
           dark={isNight}
-          onBack={() => navigate("/technician/schedule")}
+          onBack={onBack ?? (() => navigate("/technician/schedule"))}
           subtitle={subtitle}
           title={title}
         />
@@ -1503,6 +1506,7 @@ function ScheduleCategoryIcon({ preset, className }: { preset: TechnicianSchedul
 
 export function TechnicianScheduleWorkspace() {
   const navigate = useNavigate();
+  const location = useLocation();
   const scheduleThemeRootClass = useScheduleThemeRootClassName();
   const { currentStore, currentTechnician, items, assignedShifts, visibleBookings, visibleCustomEvents, incomingInvitations } =
     useTechnicianScheduleContext();
@@ -1531,7 +1535,8 @@ export function TechnicianScheduleWorkspace() {
     const target = resolveScheduleEventDetailTarget(item, "technician");
 
     if (target.action === "open" && target.targetType === "order_detail") {
-      navigate(target.route);
+      const returnTo = buildCurrentRoute(location);
+      navigate(withReturnTo(target.route, returnTo), { state: { returnTo } });
       return;
     }
 
@@ -1827,6 +1832,7 @@ export function MerchantAppointmentScheduleWorkspace({
   surface?: MerchantAppointmentScheduleSurface;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { session } = useAuth();
   const { stores, technicians } = useEntityStore();
   const snapshot = useTechnicianScheduleStore();
@@ -1933,7 +1939,8 @@ export function MerchantAppointmentScheduleWorkspace({
     const target = resolveScheduleEventDetailTarget(item, isDesktopSurface ? "merchant-admin" : "merchant");
 
     if (target.action === "open" && target.targetType === "order_detail") {
-      navigate(target.route);
+      const returnTo = buildCurrentRoute(location);
+      navigate(withReturnTo(target.route, returnTo), { state: { returnTo } });
       return;
     }
 
@@ -2217,14 +2224,25 @@ function findServiceForOrderName(itemName?: string) {
 
 export function TechnicianOrderDetailRoutePage() {
   const { orderId } = useParams<{ orderId: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { stores, technicians, customers } = useEntityStore();
   const order = demoOrders.find((item) => item.id === orderId);
   const booking = findScheduleBookingByOrderId(orderId);
   const parentOrder = booking?.parentOrderId ? demoOrders.find((item) => item.id === booking.parentOrderId) : null;
+  const returnTarget = readNavigationReturnTarget(location.search, location.state);
+  const backToScheduleSource = () => {
+    if (returnTarget) {
+      navigate(returnTarget.to, { state: returnTarget.state });
+      return;
+    }
+
+    navigate("/technician/schedule");
+  };
 
   if (!order) {
     return (
-      <StandaloneSchedulePage subtitle="找不到对应预约订单。" title="预约订单详情">
+      <StandaloneSchedulePage onBack={backToScheduleSource} subtitle="找不到对应预约订单。" title="预约订单详情">
         <div className={cn(schedulePanelClass, "px-4 py-4 text-sm leading-6 text-[color:var(--client-muted)]")}>
           这条排班事件没有绑定可访问的订单，或订单已经不在当前技师权限范围内。
         </div>
@@ -2240,6 +2258,7 @@ export function TechnicianOrderDetailRoutePage() {
   return (
     <StandaloneSchedulePage
       action={<Button className={getScheduleButtonClassName("secondary")} size="sm" to="/technician/schedule" variant="secondary">回排班表</Button>}
+      onBack={backToScheduleSource}
       subtitle={`${order.bookedAt} · ${booking?.eventType === "extension" ? "加钟订单" : booking?.eventType === "reschedule" ? "移动后当前订单" : "普通预约"}`}
       title="预约订单详情"
     >

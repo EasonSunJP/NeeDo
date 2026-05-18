@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Customer, ServicePaymentMethod, Store, Technician } from "../types/domain";
+import type { Customer, InfoCardVisibilityMode, InfoCardVisibilitySettings, ServicePaymentMethod, Store, Technician } from "../types/domain";
 import { customers, stores, technicians } from "../data/mock";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { detectStorePresentationIndustry, normalizeStorePresentationConfig } from "../lib/storePresentation";
@@ -110,6 +110,13 @@ const servicePaymentMethodSet = new Set<ServicePaymentMethod>([
   "wechatpay",
   "alipay"
 ]);
+const infoCardVisibilityModeSet = new Set<InfoCardVisibilityMode>(["public", "private", "tag_only", "person_only"]);
+const defaultInfoCardVisibility: InfoCardVisibilitySettings = {
+  mode: "public",
+  tagIds: [],
+  profileKeys: [],
+  includeRelatedPeople: true
+};
 
 function getPaymentMethods(value: unknown, fallback: ServicePaymentMethod[]) {
   if (!Array.isArray(value)) {
@@ -127,6 +134,21 @@ function getBoolean(value: unknown, fallback: boolean | undefined) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function getInfoCardVisibility(value: unknown, fallback?: InfoCardVisibilitySettings) {
+  const source = typeof value === "object" && value !== null ? value as Partial<InfoCardVisibilitySettings> : {};
+  const fallbackVisibility = fallback ?? defaultInfoCardVisibility;
+  const mode = typeof source.mode === "string" && infoCardVisibilityModeSet.has(source.mode as InfoCardVisibilityMode)
+    ? source.mode as InfoCardVisibilityMode
+    : fallbackVisibility.mode;
+
+  return {
+    mode,
+    tagIds: getStringArray(source.tagIds, fallbackVisibility.tagIds, { allowEmpty: true }),
+    profileKeys: getStringArray(source.profileKeys, fallbackVisibility.profileKeys, { allowEmpty: true }),
+    includeRelatedPeople: typeof source.includeRelatedPeople === "boolean" ? source.includeRelatedPeople : fallbackVisibility.includeRelatedPeople
+  } satisfies InfoCardVisibilitySettings;
+}
+
 function getTechnicianGender(value: unknown, fallback: Technician["gender"]) {
   return value === "male" || value === "female" || value === "private" ? value : fallback;
 }
@@ -137,7 +159,7 @@ function getCustomerGender(value: unknown, fallback: Customer["gender"]) {
 
 function normalizeCustomer(base: Customer, raw?: Partial<Customer>): Customer {
   if (!raw) {
-    return { ...base, tags: [...base.tags], languages: base.languages ? [...base.languages] : undefined };
+    return { ...base, tags: [...base.tags], languages: base.languages ? [...base.languages] : undefined, infoCardVisibility: getInfoCardVisibility(base.infoCardVisibility) };
   }
 
   const useDemoCustomerDefaults = base.id === "cus-1" && base.accountUsername === "admin";
@@ -167,7 +189,8 @@ function normalizeCustomer(base: Customer, raw?: Partial<Customer>): Customer {
     lastOrderAt: getString(raw.lastOrderAt, base.lastOrderAt),
     nextBookingAt: getOptionalString(raw.nextBookingAt, base.nextBookingAt),
     activeScore: useDemoCustomerDefaults ? base.activeScore : getNumber(raw.activeScore, base.activeScore),
-    churnRisk: raw.churnRisk === "low" || raw.churnRisk === "medium" || raw.churnRisk === "high" ? raw.churnRisk : base.churnRisk
+    churnRisk: raw.churnRisk === "low" || raw.churnRisk === "medium" || raw.churnRisk === "high" ? raw.churnRisk : base.churnRisk,
+    infoCardVisibility: getInfoCardVisibility(raw.infoCardVisibility, base.infoCardVisibility)
   };
 }
 
@@ -178,7 +201,8 @@ function normalizeStore(base: Store, raw?: Partial<Store>): Store {
       tags: [...base.tags],
       gallery: [...base.gallery],
       uiDecoration: normalizeStoreUiDecoration(base.uiDecoration),
-      presentation: normalizeStorePresentationConfig(base.presentation, detectStorePresentationIndustry(base))
+      presentation: normalizeStorePresentationConfig(base.presentation, detectStorePresentationIndustry(base)),
+      infoCardVisibility: getInfoCardVisibility(base.infoCardVisibility)
     };
   }
 
@@ -210,7 +234,8 @@ function normalizeStore(base: Store, raw?: Partial<Store>): Store {
     mode: raw.mode === "home" || raw.mode === "store" ? raw.mode : base.mode,
     paymentMethods: getPaymentMethods(raw.paymentMethods, base.paymentMethods ?? ["platform", "offline"]),
     uiDecoration: normalizeStoreUiDecoration(raw.uiDecoration ?? base.uiDecoration),
-    presentation: normalizeStorePresentationConfig(raw.presentation ?? base.presentation, presentationIndustry)
+    presentation: normalizeStorePresentationConfig(raw.presentation ?? base.presentation, presentationIndustry),
+    infoCardVisibility: getInfoCardVisibility(raw.infoCardVisibility, base.infoCardVisibility)
   };
 }
 
@@ -222,8 +247,10 @@ function normalizeTechnician(base: Technician, raw?: Partial<Technician>): Techn
       serviceAreas: [...base.serviceAreas],
       languages: [...base.languages],
       gallery: base.gallery ? [...base.gallery] : undefined,
+      relatedStoreIds: base.relatedStoreIds ? [...base.relatedStoreIds] : undefined,
       profileTags: base.profileTags ? [...base.profileTags] : undefined,
-      paymentMethods: base.paymentMethods ? [...base.paymentMethods] : undefined
+      paymentMethods: base.paymentMethods ? [...base.paymentMethods] : undefined,
+      infoCardVisibility: getInfoCardVisibility(base.infoCardVisibility)
     };
   }
 
@@ -258,12 +285,14 @@ function normalizeTechnician(base: Technician, raw?: Partial<Technician>): Techn
     age: getOptionalString(raw.age, base.age),
     height: getOptionalString(raw.height, base.height),
     identityLabel: raw.identityLabel === "店铺所属技师" || raw.identityLabel === "个人技师" ? raw.identityLabel : base.identityLabel,
+    relatedStoreIds: getStringArray(raw.relatedStoreIds, base.relatedStoreIds ?? []),
     profileTags: useDemoTechnicianDefaults ? [...(base.profileTags ?? base.skills)] : getStringArray(raw.profileTags, base.profileTags ?? base.skills),
     canServeForeigners: getBoolean(raw.canServeForeigners, base.canServeForeigners),
     bidBudgetMin: getOptionalString(raw.bidBudgetMin, base.bidBudgetMin),
     bidBudgetMax: getOptionalString(raw.bidBudgetMax, base.bidBudgetMax),
     paymentMethods: getPaymentMethods(raw.paymentMethods, base.paymentMethods ?? ["platform", "offline"]),
-    gallery: useDemoTechnicianDefaults ? [...(base.gallery ?? [])] : getImageArray(raw.gallery, base.gallery ?? [], { allowEmpty: true, maxLength: 5 })
+    gallery: useDemoTechnicianDefaults ? [...(base.gallery ?? [])] : getImageArray(raw.gallery, base.gallery ?? [], { allowEmpty: true, maxLength: 5 }),
+    infoCardVisibility: getInfoCardVisibility(raw.infoCardVisibility, base.infoCardVisibility)
   };
 }
 

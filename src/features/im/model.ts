@@ -191,6 +191,7 @@ export type MessageExt = {
   mimeType?: string;
   url?: string;
   thumbnailUrl?: string;
+  caption?: string;
   location?: {
     title: string;
     address: string;
@@ -249,7 +250,9 @@ export type MessageCampaign = {
   id: string;
   type: MessageCampaignType;
   targetTags: string[];
+  targetUserIds?: string[];
   content: string;
+  image?: MessageCampaignImageInput;
   createdBy: string;
   createdAt: string;
   sentCount: number;
@@ -275,14 +278,27 @@ export type MessageCampaignRecipientPreview = Pick<
   "contactId" | "matchedTags" | "skippedReason" | "status" | "targetUserId"
 >;
 
+export type MessageCampaignImageInput = {
+  url: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  thumbnailUrl?: string;
+  width?: number;
+  height?: number;
+};
+
 export type TagMessageCampaignInput = {
   tagIds: string[];
+  targetUserIds?: string[];
   content?: string;
   messageType?: MessageCampaignType;
+  image?: MessageCampaignImageInput;
 };
 
 export type TagMessageCampaignEstimate = {
   targetTags: string[];
+  targetUserIds: string[];
   recipientCount: number;
   skippedCount: number;
   recipients: MessageCampaignRecipientPreview[];
@@ -856,7 +872,7 @@ export function buildMessagePreview(message: ConversationMessage, currentUserId:
   }
 
   if (message.type === "image") {
-    return "[图片]";
+    return message.ext?.caption ? `[图片] ${message.ext.caption}` : "[图片]";
   }
 
   if (message.type === "voice") {
@@ -1617,6 +1633,10 @@ function normalizeCampaignTags(tags: string[]) {
   return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
 }
 
+function normalizeCampaignTargetUserIds(userIds?: string[]) {
+  return Array.from(new Set((userIds ?? []).map((userId) => userId.trim()).filter(Boolean)));
+}
+
 function isTagMessageCampaignType(value?: MessageCampaignType): value is MessageCampaignType {
   return value === "marketing" || value === "crm" || value === "transactional" || value === "system" || value === "risk";
 }
@@ -1639,13 +1659,16 @@ function buildTagMessageCampaignRecipients(
 ): TagMessageCampaignEstimate {
   const targetTags = normalizeCampaignTags(input.tagIds);
   const targetTagSet = new Set(targetTags.map(normalizeCampaignTag));
+  const targetUserIds = normalizeCampaignTargetUserIds(input.targetUserIds);
+  const targetUserIdSet = new Set(targetUserIds);
   const type = isTagMessageCampaignType(input.messageType) ? input.messageType : "crm";
   const seenUserIds = new Set<string>();
   const recipients: MessageCampaignRecipientPreview[] = [];
 
-  if (targetTagSet.size === 0) {
+  if (targetTagSet.size === 0 && targetUserIdSet.size === 0) {
     return {
       targetTags,
+      targetUserIds,
       recipientCount: 0,
       skippedCount: 0,
       recipients: []
@@ -1665,8 +1688,9 @@ function buildTagMessageCampaignRecipients(
 
     const candidateTags = getContactCampaignTags(contact, user);
     const matchedTags = candidateTags.filter((tag) => targetTagSet.has(normalizeCampaignTag(tag)));
+    const selectedDirectly = targetUserIdSet.has(contact.targetUserId);
 
-    if (matchedTags.length === 0) {
+    if (!selectedDirectly && matchedTags.length === 0) {
       return;
     }
 
@@ -1684,6 +1708,7 @@ function buildTagMessageCampaignRecipients(
 
   return {
     targetTags,
+    targetUserIds,
     recipientCount: recipients.filter((recipient) => recipient.status !== "skipped").length,
     skippedCount: recipients.filter((recipient) => recipient.status === "skipped").length,
     recipients
@@ -1714,20 +1739,28 @@ export function estimateTagMessageCampaign(database: ImDatabase, input: TagMessa
 
 export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagMessageCampaignInput): TagMessageCampaignResult {
   ensureMessageCampaignCollections(database);
-  const content = input.content?.trim();
+  const content = input.content?.trim() ?? "";
+  const image = input.image?.url ? input.image : undefined;
 
-  if (!content) {
-    throw new Error("Message content is required");
+  if (!content && !image) {
+    throw new Error("Message content or image is required");
   }
 
   const type = isTagMessageCampaignType(input.messageType) ? input.messageType : "crm";
   const estimate = buildTagMessageCampaignRecipients(database, input);
+  const directRecipientCount = estimate.targetUserIds.length;
+  const targetLabel = [
+    ...estimate.targetTags,
+    ...(directRecipientCount > 0 ? [`${directRecipientCount} 位朋友`] : [])
+  ].join(" / ");
   const createdAt = new Date().toISOString();
   const campaign: MessageCampaign = {
     id: nextId("campaign"),
     type,
     targetTags: estimate.targetTags,
+    targetUserIds: estimate.targetUserIds,
     content,
+    image,
     createdBy: database.currentUserId,
     createdAt,
     sentCount: 0,
@@ -1752,14 +1785,29 @@ export function sendTagMessageCampaignMutation(database: ImDatabase, input: TagM
     }
 
     const conversation = createConversationMutation(database, [recipient.targetUserId]);
+    const messageType: ImMessageType = image ? "image" : "text";
+    const messageContent = image?.url ?? content;
+    const messageExt: MessageExt = image
+      ? {
+          url: image.url,
+          thumbnailUrl: image.thumbnailUrl ?? image.url,
+          fileName: image.fileName,
+          fileSize: image.fileSize,
+          mimeType: image.mimeType,
+          width: image.width,
+          height: image.height,
+          caption: content || undefined,
+          previewText: content ? `群发 · ${content}` : `群发 · 图片${targetLabel ? ` · ${targetLabel}` : ""}`
+        }
+      : {
+          previewText: `群发${targetLabel ? ` · ${targetLabel}` : ""}`
+        };
     const result = sendMessageMutation(database, {
       conversationId: conversation.id,
       senderId: database.currentUserId,
-      type: "text",
-      content,
-      ext: {
-        previewText: `标签群发 · ${estimate.targetTags.join(" / ")}`
-      }
+      type: messageType,
+      content: messageContent,
+      ext: messageExt
     });
 
     campaign.sentCount += 1;

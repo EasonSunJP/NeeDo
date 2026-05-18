@@ -31,7 +31,7 @@ import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { formatCustomerCreditScore } from "../../shared/profile-card/customerProfileLabels";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import { useProfileCardBackgroundSettings } from "../../state/profileCardBackgroundStore";
-import type { Customer, Store, StorePresentationConfig, Technician } from "../../types/domain";
+import type { Customer, InfoCardVisibilityMode, InfoCardVisibilitySettings, Store, StorePresentationConfig, Technician } from "../../types/domain";
 import { clientThemes, useClientTheme, type ClientThemeDefinition } from "../../theme/ClientThemeProvider";
 import {
   summarizePortalSettingsState,
@@ -624,6 +624,178 @@ function SettingsToggleRow({
   );
 }
 
+const defaultInfoCardVisibility: InfoCardVisibilitySettings = {
+  mode: "public",
+  tagIds: [],
+  profileKeys: [],
+  includeRelatedPeople: true
+};
+
+const infoCardVisibilityModes: Array<{ value: InfoCardVisibilityMode; title: string; description: string }> = [
+  { value: "public", title: "公开", description: "所有可进入资料页的人都能看到这张信息卡。" },
+  { value: "private", title: "隐私", description: "仅本人、平台审核和必要安全场景可见。" },
+  { value: "tag_only", title: "仅对某标签人群可见", description: "只有命中所选标签的人群可以看到。" },
+  { value: "person_only", title: "仅对某人可见", description: "只允许指定用户、技师或店铺账号查看。" }
+];
+
+function normalizeInfoCardVisibilityDraft(value?: InfoCardVisibilitySettings): InfoCardVisibilitySettings {
+  return {
+    mode: value?.mode ?? defaultInfoCardVisibility.mode,
+    tagIds: Array.from(new Set(value?.tagIds ?? [])),
+    profileKeys: Array.from(new Set(value?.profileKeys ?? [])),
+    includeRelatedPeople: value?.includeRelatedPeople ?? defaultInfoCardVisibility.includeRelatedPeople
+  };
+}
+
+function getInfoCardVisibilityLabel(value: InfoCardVisibilitySettings) {
+  const modeLabel = infoCardVisibilityModes.find((item) => item.value === value.mode)?.title ?? "公开";
+  const details =
+    value.mode === "tag_only"
+      ? value.tagIds.length > 0
+        ? `${value.tagIds.length} 个标签`
+        : "未选标签"
+      : value.mode === "person_only"
+        ? value.profileKeys.length > 0
+          ? `${value.profileKeys.length} 人`
+          : "未指定对象"
+        : "";
+  const relatedLabel = value.includeRelatedPeople ? "关联人可见" : "关联人不可见";
+
+  return [modeLabel, details, relatedLabel].filter(Boolean).join(" · ");
+}
+
+function toggleDraftValue(values: string[], value: string) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
+function buildInfoCardProfileKey(kind: "user" | "technician" | "shop", id: string) {
+  return `${kind}:${id}`;
+}
+
+function InfoCardVisibilityEditor({
+  availableTags,
+  value,
+  onChange
+}: {
+  availableTags: string[];
+  value: InfoCardVisibilitySettings;
+  onChange: (value: InfoCardVisibilitySettings) => void;
+}) {
+  const { customers, technicians, stores } = useEntityStore();
+  const tagOptions = Array.from(new Set(availableTags.filter(Boolean))).slice(0, 20);
+  const profileOptions = [
+    ...customers.map((customer) => ({
+      key: buildInfoCardProfileKey("user", customer.id),
+      label: customer.nickname?.trim() || customer.name,
+      caption: "用户"
+    })),
+    ...technicians.map((technician) => ({
+      key: buildInfoCardProfileKey("technician", technician.id),
+      label: technician.nickname?.trim() || technician.name,
+      caption: "技师"
+    })),
+    ...stores.map((store) => ({
+      key: buildInfoCardProfileKey("shop", store.id),
+      label: store.name,
+      caption: "店铺"
+    }))
+  ].slice(0, 24);
+  const update = (patch: Partial<InfoCardVisibilitySettings>) => onChange({ ...value, ...patch });
+  const optionClassName = (active: boolean) =>
+    cn(
+      "rounded-[22px] border px-4 py-3 text-left transition",
+      active
+        ? "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
+        : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]"
+    );
+  const chipClassName = (active: boolean) =>
+    cn(
+      "rounded-full border px-3 py-2 text-xs font-black transition",
+      active
+        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
+        : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
+    );
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,transparent)] px-4 py-3">
+        <p className="text-xs font-black uppercase tracking-[0.14em] text-[color:var(--client-muted)]">当前可见范围</p>
+        <p className="mt-1 text-sm font-black text-[color:var(--client-text)]">{getInfoCardVisibilityLabel(value)}</p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        {infoCardVisibilityModes.map((item) => {
+          const active = value.mode === item.value;
+
+          return (
+            <button className={optionClassName(active)} key={item.value} onClick={() => update({ mode: item.value })} type="button">
+              <div className="flex gap-3">
+                <SelectionIndicator active={active} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-black text-[color:var(--client-text)]">{item.title}</span>
+                  <span className="mt-1 block text-xs leading-5 text-[color:var(--client-muted)]">{item.description}</span>
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {value.mode === "tag_only" ? (
+        <div>
+          <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">可见标签</p>
+          <div className="flex flex-wrap gap-2">
+            {tagOptions.length > 0 ? (
+              tagOptions.map((tag) => (
+                <button
+                  className={chipClassName(value.tagIds.includes(tag))}
+                  key={tag}
+                  onClick={() => update({ tagIds: toggleDraftValue(value.tagIds, tag) })}
+                  type="button"
+                >
+                  {tag}
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-[color:var(--client-muted)]">当前信息卡还没有可用标签。</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {value.mode === "person_only" ? (
+        <div>
+          <p className="mb-2 text-xs font-black text-[color:var(--client-muted)]">指定可见对象</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {profileOptions.map((profile) => {
+              const active = value.profileKeys.includes(profile.key);
+
+              return (
+                <button className={optionClassName(active)} key={profile.key} onClick={() => update({ profileKeys: toggleDraftValue(value.profileKeys, profile.key) })} type="button">
+                  <div className="flex items-center gap-3">
+                    <SelectionIndicator active={active} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-black text-[color:var(--client-text)]">{profile.label}</span>
+                      <span className="mt-0.5 block text-xs text-[color:var(--client-muted)]">{profile.caption}</span>
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <SettingsToggleRow
+        checked={value.includeRelatedPeople}
+        description="开启后，订单关联、关注关系、所属店铺/员工等业务关联人也可以按当前范围查看。"
+        onChange={(checked) => update({ includeRelatedPeople: checked })}
+        title="关联人可见"
+      />
+    </div>
+  );
+}
+
 function ThemeOptionRow({
   item,
   active,
@@ -953,7 +1125,8 @@ function UserProfileSettingsPage({
       bio:
         customer.bio ??
         technician?.bio ??
-        "可在这里补充你的语言偏好、常用预约习惯和其他说明。"
+        "可在这里补充你的语言偏好、常用预约习惯和其他说明。",
+      infoCardVisibility: normalizeInfoCardVisibilityDraft(customer.infoCardVisibility)
     }),
     [customer, technician]
   );
@@ -1000,7 +1173,8 @@ function UserProfileSettingsPage({
       age: draft.age.trim(),
       height: draft.height.trim(),
       languages: draft.languages.length ? [...draft.languages] : [...initialDraft.languages],
-      bio: draft.bio.trim()
+      bio: draft.bio.trim(),
+      infoCardVisibility: normalizeInfoCardVisibilityDraft(draft.infoCardVisibility)
     };
 
     updateCustomerEntity(customer.id, {
@@ -1009,7 +1183,8 @@ function UserProfileSettingsPage({
       age: nextProfile.age,
       height: nextProfile.height,
       languages: [...nextProfile.languages],
-      bio: nextProfile.bio
+      bio: nextProfile.bio,
+      infoCardVisibility: nextProfile.infoCardVisibility
     });
 
     if (technician) {
@@ -1156,6 +1331,18 @@ function UserProfileSettingsPage({
               信用度、积分和利用次数仍由系统自动计算，这一页只编辑用户公开资料本身。
             </div>
           </SurfacePanel>
+
+          <SurfacePanel className="space-y-4">
+            <div>
+              <p className="text-[18px] font-black text-[color:var(--client-text)]">信息卡可见范围</p>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">控制用户信息卡在聊天、订单和资料页里的展示对象。</p>
+            </div>
+            <InfoCardVisibilityEditor
+              availableTags={[...customer.tags, ...(draft.languages ?? []), customer.memberLevel, customer.creditRating ?? ""]}
+              onChange={(infoCardVisibility) => setDraft((current) => ({ ...current, infoCardVisibility }))}
+              value={draft.infoCardVisibility}
+            />
+          </SurfacePanel>
         </main>
 
         <StickyBottomBar>
@@ -1189,6 +1376,7 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
     bidBudgetMin: string;
     bidBudgetMax: string;
     paymentMethods: TechnicianPaymentOption[];
+    infoCardVisibility: InfoCardVisibilitySettings;
   };
 
   const languageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
@@ -1253,7 +1441,8 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
     canServeForeigners: current.canServeForeigners ?? true,
     bidBudgetMin: current.bidBudgetMin ?? "12000",
     bidBudgetMax: current.bidBudgetMax ?? "28000",
-    paymentMethods: current.paymentMethods?.length ? [...current.paymentMethods] : ["platform", "offline", "cash"]
+    paymentMethods: current.paymentMethods?.length ? [...current.paymentMethods] : ["platform", "offline", "cash"],
+    infoCardVisibility: normalizeInfoCardVisibilityDraft(current.infoCardVisibility)
   });
   const [draft, setDraft] = useState<TechnicianProfileDraft>(() => buildDraft(technician));
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -1349,7 +1538,8 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
       canServeForeigners: draft.canServeForeigners,
       bidBudgetMin: draft.bidBudgetMin.trim() || undefined,
       bidBudgetMax: draft.bidBudgetMax.trim() || undefined,
-      paymentMethods: Array.from(new Set(draft.paymentMethods))
+      paymentMethods: Array.from(new Set(draft.paymentMethods)),
+      infoCardVisibility: normalizeInfoCardVisibilityDraft(draft.infoCardVisibility)
     });
     navigate(getSettingsBasePath(portal));
   };
@@ -1716,8 +1906,24 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
             <p className="mt-1 text-[12px] leading-6 text-[color:var(--client-muted)]">
               支付方式：{draft.paymentMethods.length > 0 ? draft.paymentMethods.map((item) => paymentOptionLabels[item]).join(" / ") : "未设置"}
             </p>
+            <p className="mt-1 text-[12px] leading-6 text-[color:var(--client-muted)]">
+              可见范围：{getInfoCardVisibilityLabel(draft.infoCardVisibility)}
+            </p>
           </div>
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        description="控制技师信息卡在公开主页、聊天置顶卡、订单联络卡中的展示对象。"
+        headerMode="info"
+        panelClassName="p-4"
+        title="信息卡可见范围"
+      >
+        <InfoCardVisibilityEditor
+          availableTags={[...draft.profileTags, ...technician.skills, ...draft.serviceAreas, ...draft.languages, draft.identityLabel]}
+          onChange={(infoCardVisibility) => setDraft((current) => ({ ...current, infoCardVisibility }))}
+          value={draft.infoCardVisibility}
+        />
       </SettingsSection>
 
       <SettingsSection description="这里建议写清楚服务风格、擅长项目和沟通说明。" headerMode="info" panelClassName="p-4" title="自我介绍">
@@ -1759,7 +1965,8 @@ function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSetting
     description: source.description,
     tags: [...source.tags],
     mode: source.mode,
-    presentation: getStorePresentationConfig(source, detectStorePresentationIndustry(source))
+    presentation: getStorePresentationConfig(source, detectStorePresentationIndustry(source)),
+    infoCardVisibility: normalizeInfoCardVisibilityDraft(source.infoCardVisibility)
   });
   const [draft, setDraft] = useState(() => buildDraft(store));
   const updatePresentationDraft = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
@@ -1816,6 +2023,7 @@ function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSetting
               <p className="text-sm text-[color:var(--client-muted)]">
                 {draft.presentation.station} · {draft.businessHours} · 最近可约 {draft.nextSlot}
               </p>
+              <p className="text-sm text-[color:var(--client-muted)]">可见范围 · {getInfoCardVisibilityLabel(draft.infoCardVisibility)}</p>
             </div>
           </div>
         </SurfacePanel>
@@ -2035,6 +2243,18 @@ function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSetting
             />
           </label>
         </SurfacePanel>
+
+        <SurfacePanel className="space-y-4">
+          <div>
+            <p className="text-sm font-black text-[color:var(--client-text)]">信息卡可见范围</p>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">控制店铺信息卡在搜索、动态、聊天和订单联系卡中的展示对象。</p>
+          </div>
+          <InfoCardVisibilityEditor
+            availableTags={[...draft.tags, draft.area, draft.mode === "store" ? "到店服务" : "上门服务", draft.presentation.station]}
+            onChange={(infoCardVisibility) => setDraft((current) => ({ ...current, infoCardVisibility }))}
+            value={draft.infoCardVisibility}
+          />
+        </SurfacePanel>
       </SectionBlock>
 
       <StickySaveBar
@@ -2053,7 +2273,8 @@ function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSetting
             description: draft.description,
             tags: draft.tags,
             mode: draft.mode,
-            presentation: normalizeStorePresentationConfig(draft.presentation, detectStorePresentationIndustry({ tags: draft.tags }))
+            presentation: normalizeStorePresentationConfig(draft.presentation, detectStorePresentationIndustry({ tags: draft.tags })),
+            infoCardVisibility: normalizeInfoCardVisibilityDraft(draft.infoCardVisibility)
           });
           navigate(getSettingsBasePath(portal));
         }}

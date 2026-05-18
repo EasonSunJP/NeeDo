@@ -1963,14 +1963,21 @@ export function MessageBubble({
 
     if (message.type === "image" || message.type === "video") {
       return (
-        <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
-          <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />
-          {message.type === "video" ? (
-            <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
-              <ImIcon className="h-9 w-9" name="video" />
-            </span>
+        <div className="space-y-2">
+          <button className="relative overflow-hidden rounded-2xl" onClick={() => onPreviewMedia?.(message)} type="button">
+            <img alt={message.ext?.fileName ?? previewLabel(message.type)} className="max-h-[220px] w-[180px] object-cover" src={message.ext?.thumbnailUrl ?? message.content} />
+            {message.type === "video" ? (
+              <span className="absolute inset-0 grid place-items-center bg-black/24 text-white">
+                <ImIcon className="h-9 w-9" name="video" />
+              </span>
+            ) : null}
+          </button>
+          {message.ext?.caption ? (
+            <p className="min-w-0 max-w-[180px] whitespace-pre-wrap break-words text-[14px] leading-5 [overflow-wrap:anywhere]" data-im-message-selectable-text="true">
+              {message.ext.caption}
+            </p>
           ) : null}
-        </button>
+        </div>
       );
     }
 

@@ -172,6 +172,7 @@ export const technicians: Technician[] = [
     age: "25",
     height: "164cm",
     identityLabel: "店铺所属技师",
+    relatedStoreIds: ["store-4"],
     profileTags: ["💆 肩颈调理", "🪷 睡眠放松", "🌿 轻芳疗", "🤝 温和沟通", "🗾 日本語", "🀄 中文"],
     canServeForeigners: true,
     bidBudgetMin: "12000",

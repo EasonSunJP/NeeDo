@@ -65,6 +65,15 @@ export interface User {
   avatar: string;
 }
 
+export type InfoCardVisibilityMode = "public" | "private" | "tag_only" | "person_only";
+
+export interface InfoCardVisibilitySettings {
+  mode: InfoCardVisibilityMode;
+  tagIds: string[];
+  profileKeys: string[];
+  includeRelatedPeople: boolean;
+}
+
 export interface Customer {
   id: string;
   systemId: string;
@@ -89,6 +98,7 @@ export interface Customer {
   nextBookingAt?: string;
   activeScore: number;
   churnRisk: "low" | "medium" | "high";
+  infoCardVisibility?: InfoCardVisibilitySettings;
 }
 
 export interface CpsReferral {
@@ -233,6 +243,7 @@ export interface Store {
   paymentMethods?: ServicePaymentMethod[];
   uiDecoration?: StoreUiDecorationConfig;
   presentation?: StorePresentationConfig;
+  infoCardVisibility?: InfoCardVisibilitySettings;
 }
 
 export interface Staff {
@@ -262,12 +273,14 @@ export interface Technician extends Staff {
   age?: string;
   height?: string;
   identityLabel?: "店铺所属技师" | "个人技师";
+  relatedStoreIds?: string[];
   profileTags?: string[];
   canServeForeigners?: boolean;
   bidBudgetMin?: string;
   bidBudgetMax?: string;
   paymentMethods?: ServicePaymentMethod[];
   gallery?: string[];
+  infoCardVisibility?: InfoCardVisibilitySettings;
 }
 
 export interface ServiceCategory {

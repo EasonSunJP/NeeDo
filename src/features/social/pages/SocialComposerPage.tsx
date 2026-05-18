@@ -610,14 +610,19 @@ function createComposerSnapshot({
 }
 
 function buildVisibilityTagOptions(author?: SocialProfile) {
-  const rawValues = Object.values(author?.extraProfileFields ?? {}).flatMap((value) => Array.isArray(value) ? value : [value]);
+  const explicitVisibilityTags = author?.extraProfileFields.visibilityTags;
+  const rawVisibilityTags = Array.isArray(explicitVisibilityTags)
+    ? explicitVisibilityTags
+    : typeof explicitVisibilityTags === "string"
+      ? [explicitVisibilityTags]
+      : [];
 
   return unique(
     [
       author?.entityType === "user" ? "熟客" : author?.entityType === "technician" ? "预约客户" : "VIP客户",
       author?.location,
       author?.headline,
-      ...rawValues.filter((value): value is string => typeof value === "string")
+      ...rawVisibilityTags.filter((value): value is string => typeof value === "string")
     ]
       .flatMap((value) => String(value ?? "").split(/[、,/|]/))
       .map((value) => value.trim())

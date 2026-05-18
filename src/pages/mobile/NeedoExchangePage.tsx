@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent
 import { FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -119,8 +120,6 @@ const viewedPostsStorageKeyPrefix = "needo.exchange.viewed-posts.v1";
 const viewedPostsChangedEventName = "needo:viewed-posts-changed";
 const fullscreenHeaderClassName =
   "";
-const fullscreenFooterClassName =
-  "pointer-events-none absolute inset-x-0 bottom-0 border-t border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)] px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-4 shadow-[0_-18px_40px_rgba(0,0,0,0.08)]";
 
 function getComposedPostsStorageKey(context: MessageCenterContext) {
   return `${composedPostsStorageKeyPrefix}.${context}`;
@@ -1384,13 +1383,11 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                   </section>
                 </div>
 
-                <div className={fullscreenFooterClassName}>
-                  <div className="flex justify-center">
-                    <Button className="pointer-events-auto h-12 min-w-[240px] px-8 shadow-soft" disabled={!draft.title.trim()} onClick={publish}>
-                      发布到 NeeDo
-                    </Button>
-                  </div>
-                </div>
+                <MobileBottomActionBar contentClassName="flex justify-center">
+                  <Button className="pointer-events-auto h-12 min-w-[240px] px-8 shadow-soft" disabled={!draft.title.trim()} onClick={publish}>
+                    发布到 NeeDo
+                  </Button>
+                </MobileBottomActionBar>
               </>
             ) : composerStep === "edit" ? (
               <>
@@ -1623,17 +1620,15 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                   </section>
                 </div>
 
-                <div className={fullscreenFooterClassName}>
-                  <div className="flex justify-center">
-                    <Button
-                      className="pointer-events-auto h-12 min-w-[240px] px-8 shadow-soft"
-                      disabled={!infoDraft.title.trim() || infoRecruitInvalid}
-                      onClick={() => setComposerStep("preview")}
-                    >
-                      下一步
-                    </Button>
-                  </div>
-                </div>
+                <MobileBottomActionBar contentClassName="flex justify-center">
+                  <Button
+                    className="pointer-events-auto h-12 min-w-[240px] px-8 shadow-soft"
+                    disabled={!infoDraft.title.trim() || infoRecruitInvalid}
+                    onClick={() => setComposerStep("preview")}
+                  >
+                    下一步
+                  </Button>
+                </MobileBottomActionBar>
               </>
             ) : (
               <>
@@ -1699,27 +1694,25 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                   </section>
                 </div>
 
-                <div className={fullscreenFooterClassName}>
-                  <div className="pointer-events-auto grid grid-cols-3 gap-2">
-                    <Button variant="secondary" onClick={() => setComposerStep("edit")}>修改</Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        const shouldDiscard = window.confirm("要放弃本次投稿吗？当前填写的内容将不会保留。");
+                <MobileBottomActionBar contentClassName="grid grid-cols-3 gap-2">
+                  <Button variant="secondary" onClick={() => setComposerStep("edit")}>修改</Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      const shouldDiscard = window.confirm("要放弃本次投稿吗？当前填写的内容将不会保留。");
 
-                        if (!shouldDiscard) {
-                          return;
-                        }
+                      if (!shouldDiscard) {
+                        return;
+                      }
 
-                        resetInfoComposer();
-                        setShowComposer(false);
-                      }}
-                    >
-                      放弃
-                    </Button>
-                    <Button onClick={publish}>发送</Button>
-                  </div>
-                </div>
+                      resetInfoComposer();
+                      setShowComposer(false);
+                    }}
+                  >
+                    放弃
+                  </Button>
+                  <Button onClick={publish}>发送</Button>
+                </MobileBottomActionBar>
               </>
             )}
           </MobileFullscreenPage>

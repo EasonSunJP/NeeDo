@@ -28,9 +28,11 @@ import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { getGeneratedImageThumbnailUrl } from "../../../lib/imageThumbnails";
 import { readImageFileAsDataUrl } from "../../../lib/imageUpload";
 import { shareContent } from "../../../lib/share";
+import { getVisibleRelatedShopsForTechnician, type TechnicianRelatedShopEntry } from "../../../lib/technicianRelatedShops";
 import { cn } from "../../../lib/utils";
 import { CustomerMembershipBadge } from "../../../shared/profile-card";
 import { resolveCustomerMembership } from "../../../shared/profile-card/customerMembership";
+import { useEntityStore } from "../../../state/entityStore";
 import { getImRoleConfig } from "../../im/role-config";
 import { useImStore } from "../../im/store";
 import type { ImUser } from "../../im/model";
@@ -823,7 +825,97 @@ const socialProfileHeaderActionButtonClassName =
   "focus-ring inline-flex h-10 min-w-[76px] shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] px-3 text-sm font-black text-[color:var(--client-text)] backdrop-blur transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-55 sm:min-w-[88px] sm:px-4";
 
 const socialProfileHeaderMessageButtonClassName =
-  "focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] text-[#090806] shadow-[0_14px_32px_color-mix(in_srgb,var(--client-primary)_28%,transparent)] transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-55";
+  "focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_64%,#fff_36%)] bg-[color:color-mix(in_srgb,var(--client-primary)_86%,#fff_14%)] text-[color:var(--pin-badge-glyph)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_42%,transparent)] transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-55";
+
+function TechnicianRelatedShopHeaderAction({
+  relatedShops,
+  scope
+}: {
+  relatedShops: TechnicianRelatedShopEntry[];
+  scope: SocialPortalScope;
+}) {
+  const navigate = useNavigate();
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const primaryEntry = relatedShops[0];
+
+  if (!primaryEntry) {
+    return null;
+  }
+
+  const openShop = (entry: TechnicianRelatedShopEntry) => {
+    setSelectorOpen(false);
+    navigate(socialPaths.profile(scope, { entityType: "shop", id: entry.store.id }));
+  };
+  const handleClick = () => {
+    if (relatedShops.length === 1) {
+      openShop(primaryEntry);
+      return;
+    }
+
+    setSelectorOpen(true);
+  };
+  const label = relatedShops.length > 1 ? "选择关联商户" : `进入${primaryEntry.store.name}动态页`;
+
+  return (
+    <>
+      <button
+        aria-haspopup={relatedShops.length > 1 ? "dialog" : undefined}
+        aria-label={label}
+        className={socialProfileHeaderActionButtonClassName}
+        onClick={handleClick}
+        type="button"
+      >
+        关联商户
+      </button>
+      {selectorOpen ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-[color:var(--client-overlay)] px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center"
+          onClick={() => setSelectorOpen(false)}
+          role="dialog"
+        >
+          <div
+            className="w-full max-w-[420px] rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] p-4 shadow-[0_28px_80px_color-mix(in_srgb,var(--client-shadow)_36%,transparent)] backdrop-blur-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-[17px] font-black text-[color:var(--client-text)]">选择关联商户</h2>
+              <button
+                aria-label="关闭"
+                className="focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-full text-[color:var(--client-soft-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)]"
+                onClick={() => setSelectorOpen(false)}
+                type="button"
+              >
+                <span aria-hidden="true" className="text-lg leading-none">×</span>
+              </button>
+            </div>
+            <div className="space-y-2">
+              {relatedShops.map((entry) => (
+                <button
+                  className="focus-ring flex w-full items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)] px-3 py-3 text-left transition hover:border-[color:var(--client-primary)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))]"
+                  key={entry.store.id}
+                  onClick={() => openShop(entry)}
+                  type="button"
+                >
+                  <span className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-primary)_16%,transparent)]">
+                    <img alt="" className="h-full w-full object-cover" src={entry.store.cover} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-black text-[color:var(--client-text)]">{entry.store.name}</span>
+                    <span className="mt-0.5 block truncate text-xs font-semibold text-[color:var(--client-muted)]">
+                      {entry.relationLabel} · {entry.bookingEnabled ? "可预约" : "暂不可约"} · {entry.store.area}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-black text-[color:var(--client-primary)]">进入</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 export function UnifiedPostText({
   text,
@@ -923,7 +1015,7 @@ export function SocialFollowButton({
           ? "解除中"
           : "取消中"
         : isFriend
-          ? "好友"
+          ? compact ? "好友" : "删除好友"
           : following
           ? "已关注"
           : "关注";
@@ -985,12 +1077,12 @@ export function SocialFollowButton({
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#ef4f3f] text-sm font-black text-white shadow-[0_10px_24px_rgba(239,79,63,0.26)]">
             !
           </span>
-          <span>{following ? "取消关注" : "解除好友"}</span>
+          <span>{following ? "取消关注" : "删除好友"}</span>
         </h3>
         <p className="mt-3 text-sm font-semibold leading-7 text-[color:var(--client-muted)]">
           {following
             ? "目前为好友状态，取消关注后，好友状态和关注也会一起取消，将在互相的通讯录消失（并不会通知对方，但曾经的对话将会保留，对方对您账号的关注状态并不会取消，直到手动操作），确定要执行此操作吗"
-            : "目前为好友状态，解除后会从通讯录消失；曾经的对话会保留，但不会再作为好友显示。确定要执行此操作吗"}
+            : "目前为好友状态，删除后会从通讯录消失；曾经的对话会保留，但不会再作为好友显示。确定要执行此操作吗"}
         </p>
         <div className="mt-5 grid grid-cols-2 gap-2">
           <button
@@ -999,7 +1091,7 @@ export function SocialFollowButton({
             onClick={() => void handleConfirmFriendUnfollow()}
             type="button"
           >
-            {pendingAction === "delete" ? "处理中" : following ? "确认取消" : "确认解除"}
+          {pendingAction === "delete" ? "处理中" : following ? "确认取消" : "确认删除"}
           </button>
           <button
             className="focus-ring inline-flex h-11 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[#090806] shadow-[0_14px_32px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-60"
@@ -1728,6 +1820,7 @@ export function SocialProfileHeader({
   variant?: "default" | "timelineCompact";
 }) {
   const { updateProfileOverride } = useSocial();
+  const entityStore = useEntityStore();
   const imStore = useImStore(scope);
   const navigate = useNavigate();
   const isSelf = profileKey(profile) === actorKey;
@@ -1752,6 +1845,16 @@ export function SocialProfileHeader({
   const activeCoverImage = coverImages[activeCoverIndex] ?? coverImages[0] ?? profile.coverImage;
   const targetImUser = isSelf ? undefined : findImUserForSocialProfile(imStore.users, profile);
   const canOpenPrivateMessage = Boolean(targetImUser && targetImUser.id !== imStore.currentUserId && !targetImUser.serviceAccount);
+  const relatedShops = useMemo(() => {
+    if (profile.entityType !== "technician") {
+      return [];
+    }
+
+    return getVisibleRelatedShopsForTechnician({
+      technician: entityStore.technicians.find((technician) => technician.id === profile.id),
+      stores: entityStore.stores
+    });
+  }, [entityStore.stores, entityStore.technicians, profile.entityType, profile.id]);
 
   useEffect(() => {
     setCoverDraft(profile.coverImage);
@@ -2029,6 +2132,7 @@ export function SocialProfileHeader({
                     scope={scope}
                     targetKey={profileKey(profile)}
                   />
+                  {relatedShops.length > 0 ? <TechnicianRelatedShopHeaderAction relatedShops={relatedShops} scope={scope} /> : null}
                   {profileMessageActions.map((action) => (
                     <button
                       aria-label={privateMessagePending ? "正在打开私信" : action.label}

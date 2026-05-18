@@ -15,6 +15,7 @@ import {
   makeSeedImDatabase,
   recallMessageMutation,
   resolveIndexLetterFromTouchY,
+  sendTagMessageCampaignMutation,
   sendMessageMutation,
   sortConversations,
   updateConversationGroupInfoMutation,
@@ -491,5 +492,56 @@ describe("im model", () => {
     expect(contactResult.contacts.some((item) => item.targetUserId === "im-friend-amy")).toBe(true);
     expect(contactResult.conversations.some((item) => item.id === "conversation-amy")).toBe(true);
     expect(taggedConversationResult.conversations.some((item) => item.id === "conversation-group-life")).toBe(true);
+  });
+
+  it("sends tag campaigns as independent private conversations and skips opt-out contacts", () => {
+    const database = cloneImDatabase(makeSeedImDatabase());
+    const amyContact = database.contacts.find((contact) => contact.targetUserId === "im-friend-amy");
+    const brianContact = database.contacts.find((contact) => contact.targetUserId === "im-friend-brian");
+
+    expect(amyContact).toBeTruthy();
+    expect(brianContact).toBeTruthy();
+    updateContactTagsMutation(database, amyContact!.id, ["复购提醒"]);
+    updateContactTagsMutation(database, brianContact!.id, ["复购提醒", "退订"]);
+
+    const result = sendTagMessageCampaignMutation(database, {
+      tagIds: ["复购提醒"],
+      content: "今晚有空档可以预约。",
+      messageType: "crm"
+    });
+
+    expect(result.campaign.sentCount).toBe(1);
+    expect(result.campaign.skippedCount).toBe(1);
+    expect(result.deliveries).toHaveLength(1);
+    expect(result.deliveries[0].conversation.type).toBe("single");
+    expect(result.deliveries[0].conversation.contactUserId).toBe("im-friend-amy");
+    expect(result.recipients.some((recipient) => recipient.targetUserId === "im-friend-brian" && recipient.status === "skipped")).toBe(true);
+  });
+
+  it("sends direct friend campaigns with images without requiring tags", () => {
+    const database = cloneImDatabase(makeSeedImDatabase());
+    const result = sendTagMessageCampaignMutation(database, {
+      tagIds: [],
+      targetUserIds: ["im-friend-amy"],
+      content: "今晚限定菜单更新了。",
+      image: {
+        url: "data:image/jpeg;base64,campaign",
+        thumbnailUrl: "data:image/jpeg;base64,campaign",
+        fileName: "campaign.jpg",
+        fileSize: 128_000,
+        mimeType: "image/jpeg",
+        width: 960,
+        height: 720
+      }
+    });
+
+    expect(result.campaign.targetTags).toEqual([]);
+    expect(result.campaign.targetUserIds).toEqual(["im-friend-amy"]);
+    expect(result.campaign.sentCount).toBe(1);
+    expect(result.deliveries).toHaveLength(1);
+    expect(result.deliveries[0].conversation.type).toBe("single");
+    expect(result.deliveries[0].message.type).toBe("image");
+    expect(result.deliveries[0].message.ext?.caption).toBe("今晚限定菜单更新了。");
+    expect(result.deliveries[0].message.ext?.fileName).toBe("campaign.jpg");
   });
 });

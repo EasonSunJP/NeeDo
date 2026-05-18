@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent as ReactChangeEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
@@ -70,6 +71,7 @@ import {
   UnifiedPinnedConversationDivider,
   UnifiedPinnedConversationToggle
 } from "./chat-home";
+import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
 import {
   buildContactSections,
   buildConversationRowPreview,
@@ -97,7 +99,7 @@ import {
   type ImRoleType,
   type ImSearchResult,
   type ImUser,
-  type MessageCampaignType,
+  type MessageCampaignImageInput,
   type MessageExt,
   type TagMessageCampaignEstimate,
   type TagMessageCampaignResult
@@ -525,6 +527,16 @@ function readBlobAsDataUrl(blob: Blob) {
   });
 }
 
+function readImageSize(src: string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error("Failed to read image size"));
+    image.src = src;
+  });
+}
+
 const contactSectionScrollMargin = "calc(env(safe-area-inset-top) + 5rem)";
 const contactIndexBottomGutter = "calc(6rem + env(safe-area-inset-bottom))";
 const contactIndexFixedRight = "max(0.5rem, calc((100vw - min(100vw, 880px)) / 2 + 0.5rem))";
@@ -633,7 +645,7 @@ function ImQuickMenuItem({
   label,
   onClick
 }: {
-  icon: "group" | "friend" | "payment" | "scan";
+  icon: "group" | "friend" | "payment" | "scan" | "tag";
   label: string;
   onClick: () => void;
 }) {
@@ -674,8 +686,9 @@ export function ImConversationListPage() {
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [campaignTags, setCampaignTags] = useState<string[]>([]);
+  const [campaignUserIds, setCampaignUserIds] = useState<string[]>([]);
   const [campaignContent, setCampaignContent] = useState("");
-  const [campaignType, setCampaignType] = useState<MessageCampaignType>("crm");
+  const [campaignImage, setCampaignImage] = useState<MessageCampaignImageInput | null>(null);
   const [campaignSending, setCampaignSending] = useState(false);
   const [campaignEstimate, setCampaignEstimate] = useState<TagMessageCampaignEstimate | null>(null);
   const [campaignResult, setCampaignResult] = useState<TagMessageCampaignResult | null>(null);
@@ -822,8 +835,8 @@ export function ImConversationListPage() {
     [scope, conversations, contactLabelExcludedTags, visibleContacts]
   );
   const openTagCampaign = (tags = selectedTags) => {
-    const fallbackTags = tags.length > 0 ? tags : availableTags.slice(0, 1).map(([tag]) => tag);
-    setCampaignTags(fallbackTags);
+    setCampaignTags(tags);
+    setCampaignUserIds([]);
     setCampaignResult(null);
     setCampaignOpen(true);
     setQuickMenuOpen(false);
@@ -832,8 +845,33 @@ export function ImConversationListPage() {
     setCampaignResult(null);
     setCampaignTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]);
   };
+  const toggleCampaignUser = (userId: string) => {
+    setCampaignResult(null);
+    setCampaignUserIds((current) => current.includes(userId) ? current.filter((item) => item !== userId) : [...current, userId]);
+  };
+  const changeCampaignImage = async (file?: File) => {
+    setCampaignResult(null);
+
+    if (!file) {
+      setCampaignImage(null);
+      return;
+    }
+
+    const url = await readBlobAsDataUrl(file);
+    const size = await readImageSize(url).catch(() => undefined);
+
+    setCampaignImage({
+      url,
+      thumbnailUrl: url,
+      fileName: file.name || "campaign-image.jpg",
+      fileSize: file.size,
+      mimeType: file.type || "image/jpeg",
+      width: size?.width,
+      height: size?.height
+    });
+  };
   const submitTagCampaign = async () => {
-    if (campaignSending || campaignTags.length === 0 || !campaignContent.trim()) {
+    if (campaignSending || (campaignTags.length === 0 && campaignUserIds.length === 0) || (!campaignContent.trim() && !campaignImage)) {
       return;
     }
 
@@ -842,11 +880,13 @@ export function ImConversationListPage() {
     try {
       const result = await store.sendTagMessageCampaign({
         tagIds: campaignTags,
+        targetUserIds: campaignUserIds,
         content: campaignContent,
-        messageType: campaignType
+        image: campaignImage ?? undefined
       });
       setCampaignResult(result);
       setCampaignContent("");
+      setCampaignImage(null);
     } finally {
       setCampaignSending(false);
     }
@@ -886,7 +926,7 @@ export function ImConversationListPage() {
   };
 
   useEffect(() => {
-    if (!campaignOpen || campaignTags.length === 0) {
+    if (!campaignOpen || (campaignTags.length === 0 && campaignUserIds.length === 0)) {
       setCampaignEstimate(null);
       return;
     }
@@ -895,7 +935,7 @@ export function ImConversationListPage() {
 
     void store.estimateTagMessageCampaign({
       tagIds: campaignTags,
-      messageType: campaignType
+      targetUserIds: campaignUserIds
     }).then((estimate) => {
       if (alive) {
         setCampaignEstimate(estimate);
@@ -905,7 +945,7 @@ export function ImConversationListPage() {
     return () => {
       alive = false;
     };
-  }, [campaignOpen, campaignTags, campaignType, store.estimateTagMessageCampaign]);
+  }, [campaignOpen, campaignTags, campaignUserIds, store.estimateTagMessageCampaign]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -992,7 +1032,7 @@ export function ImConversationListPage() {
               <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
                 <ImQuickMenuItem icon="group" label="发起群聊" onClick={() => openQuickEntry("group")} />
                 <ImQuickMenuItem icon="friend" label="添加好友" onClick={() => openQuickEntry("friend")} />
-                <ImQuickMenuItem icon="tag" label="按标签群发" onClick={() => openTagCampaign()} />
+                <ImQuickMenuItem icon="tag" label="群发" onClick={() => openTagCampaign()} />
                 <ImQuickMenuItem icon="payment" label="发起收款" onClick={() => openQuickEntry("collect")} />
                 <ImQuickMenuItem icon="scan" label="扫一扫" onClick={() => openQuickEntry("scan")} />
               </div>
@@ -1049,7 +1089,7 @@ export function ImConversationListPage() {
                     onClick={() => openTagCampaign(selectedTags)}
                     type="button"
                   >
-                    向这些标签群发
+                    群发给这些标签
                   </button>
                 ) : null}
                 <button
@@ -1099,24 +1139,26 @@ export function ImConversationListPage() {
       />
       <ImTagCampaignSheet
         availableTags={availableTags}
+        contacts={visibleContacts}
         content={campaignContent}
         estimate={campaignEstimate}
-        messageType={campaignType}
+        image={campaignImage}
         onClose={() => setCampaignOpen(false)}
         onContentChange={(value) => {
           setCampaignResult(null);
           setCampaignContent(value);
         }}
-        onMessageTypeChange={(value) => {
-          setCampaignResult(null);
-          setCampaignType(value);
-        }}
+        onImageChange={(file) => void changeCampaignImage(file)}
+        onImageClear={() => void changeCampaignImage()}
         onSubmit={submitTagCampaign}
         onToggleTag={toggleCampaignTag}
+        onToggleUser={toggleCampaignUser}
         open={campaignOpen}
         result={campaignResult}
         selectedTags={campaignTags}
+        selectedUserIds={campaignUserIds}
         sending={campaignSending}
+        usersById={store.usersById}
       />
     </MobileShell>
   );
@@ -2329,51 +2371,77 @@ function ImTagFilterSheet({
   );
 }
 
-const messageCampaignTypeOptions: Array<{ value: MessageCampaignType; label: string; caption: string }> = [
-  { value: "crm", label: "客户运营", caption: "尊重拒收标签" },
-  { value: "marketing", label: "营销活动", caption: "尊重退订/拒收" },
-  { value: "transactional", label: "事务通知", caption: "预约、售后类通知" },
-  { value: "system", label: "系统通知", caption: "重要平台消息" },
-  { value: "risk", label: "风控提醒", caption: "安全与异常提醒" }
-];
-
 function ImTagCampaignSheet({
   availableTags,
+  contacts,
   content,
   estimate,
-  messageType,
+  image,
   onClose,
   onContentChange,
-  onMessageTypeChange,
+  onImageChange,
+  onImageClear,
   onSubmit,
   onToggleTag,
+  onToggleUser,
   open,
   result,
   selectedTags,
-  sending
+  selectedUserIds,
+  sending,
+  usersById
 }: {
   availableTags: Array<[string, number]>;
+  contacts: ContactRelation[];
   content: string;
   estimate: TagMessageCampaignEstimate | null;
-  messageType: MessageCampaignType;
+  image: MessageCampaignImageInput | null;
   onClose: () => void;
   onContentChange: (value: string) => void;
-  onMessageTypeChange: (value: MessageCampaignType) => void;
+  onImageChange: (file?: File) => void;
+  onImageClear: () => void;
   onSubmit: () => void;
   onToggleTag: (tag: string) => void;
+  onToggleUser: (userId: string) => void;
   open: boolean;
   result: TagMessageCampaignResult | null;
   selectedTags: string[];
+  selectedUserIds: string[];
   sending: boolean;
+  usersById: Record<string, ImUser>;
 }) {
+  const [friendListOpen, setFriendListOpen] = useState(false);
+  const [friendQuery, setFriendQuery] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   if (!open) {
     return null;
   }
 
   const selectedSet = new Set(selectedTags);
+  const selectedUserSet = new Set(selectedUserIds);
   const recipientCount = estimate?.recipientCount ?? 0;
   const skippedCount = estimate?.skippedCount ?? 0;
-  const canSubmit = selectedTags.length > 0 && content.trim().length > 0 && recipientCount > 0 && !sending;
+  const normalizedFriendQuery = friendQuery.trim().toLowerCase();
+  const selectedFriendContacts = selectedUserIds
+    .map((userId) => contacts.find((contact) => contact.targetUserId === userId))
+    .filter((contact): contact is ContactRelation => Boolean(contact));
+  const filteredContacts = contacts.filter((contact) => {
+    const user = usersById[contact.targetUserId];
+
+    if (!user) {
+      return false;
+    }
+
+    return !normalizedFriendQuery || doesContactMatchDirectoryKeyword(contact, user, normalizedFriendQuery);
+  });
+  const canSubmit = (selectedTags.length > 0 || selectedUserIds.length > 0) && (content.trim().length > 0 || Boolean(image)) && recipientCount > 0 && !sending;
+  const handleImageInput = (event: ReactChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+
+    onImageChange(file);
+    event.currentTarget.value = "";
+  };
 
   return (
     <div
@@ -2386,13 +2454,13 @@ function ImTagCampaignSheet({
       role="dialog"
     >
       <div
-        className="w-full max-w-[440px] rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] p-4 shadow-[0_28px_80px_color-mix(in_srgb,var(--client-shadow)_36%,transparent)] backdrop-blur-2xl"
+        className="w-full max-w-[440px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)] p-4 shadow-[0_28px_80px_color-mix(in_srgb,var(--client-shadow)_36%,transparent)] backdrop-blur-2xl [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-[17px] font-black text-[color:var(--client-text)]">按标签群发</h3>
-            <p className="mt-1 text-xs text-[color:var(--client-muted)]">每位匹配联系人会收到独立私聊，不创建公开群聊。</p>
+            <h3 className="text-[17px] font-black text-[color:var(--client-text)]">群发</h3>
+            <p className="mt-1 text-xs text-[color:var(--client-muted)]">每位收件人会收到独立私聊，不创建公开群聊。</p>
           </div>
           <button
             aria-label="关闭"
@@ -2438,18 +2506,125 @@ function ImTagCampaignSheet({
             </div>
           </div>
 
-          <label className="block">
-            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">消息类型</span>
-            <select
-              className="h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_70%,var(--client-surface)_30%)] px-3 text-sm font-semibold text-[color:var(--client-text)] outline-none"
-              onChange={(event) => onMessageTypeChange(event.target.value as MessageCampaignType)}
-              value={messageType}
-            >
-              {messageCampaignTypeOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label} · {option.caption}</option>
-              ))}
-            </select>
-          </label>
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-black text-[color:var(--client-muted)]">指定朋友</span>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] px-3 py-1.5 text-xs font-black text-[color:var(--client-text)]"
+                onClick={() => setFriendListOpen((current) => !current)}
+                type="button"
+              >
+                <ImIcon className="h-3.5 w-3.5" name={friendListOpen ? "chevron-down" : "friend"} />
+                {friendListOpen ? "收起朋友列表" : `打开朋友列表${selectedUserIds.length > 0 ? ` · 已选 ${selectedUserIds.length}` : ""}`}
+              </button>
+            </div>
+
+            {selectedFriendContacts.length > 0 ? (
+              <div className="mb-2 flex max-h-16 flex-wrap gap-2 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {selectedFriendContacts.map((contact) => {
+                  const user = usersById[contact.targetUserId];
+
+                  if (!user) {
+                    return null;
+                  }
+
+                  return (
+                    <button
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-2.5 py-1.5 text-xs font-black text-[color:var(--client-primary)]"
+                      key={contact.id}
+                      onClick={() => onToggleUser(contact.targetUserId)}
+                      type="button"
+                    >
+                      <span className="truncate">{getDisplayName(user, contact)}</span>
+                      <span aria-hidden="true">×</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {friendListOpen ? (
+              <div className="rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_64%,var(--client-surface)_36%)] p-3">
+                <label className="flex h-10 items-center gap-2 rounded-[15px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] px-3">
+                  <ImIcon className="h-4 w-4 shrink-0 text-[color:var(--client-soft-muted)]" name="search" />
+                  <input
+                    className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+                    onChange={(event) => setFriendQuery(event.target.value)}
+                    placeholder="搜索朋友昵称、ID、标签"
+                    value={friendQuery}
+                  />
+                </label>
+                <div className="mt-3 max-h-48 space-y-1 overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {filteredContacts.length > 0 ? filteredContacts.map((contact) => {
+                    const user = usersById[contact.targetUserId];
+                    const selected = selectedUserSet.has(contact.targetUserId);
+
+                    if (!user) {
+                      return null;
+                    }
+
+                    return (
+                      <button
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex min-h-[58px] w-full items-center gap-3 rounded-[16px] px-2.5 py-2 text-left transition-colors",
+                          selected ? "bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)]" : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
+                        )}
+                        key={contact.id}
+                        onClick={() => onToggleUser(contact.targetUserId)}
+                        type="button"
+                      >
+                        <img alt={user.nickname} className="h-10 w-10 shrink-0 rounded-full object-cover" src={user.avatar} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-black text-[color:var(--client-text)]">{getDisplayName(user, contact)}</span>
+                          <span className="block truncate text-xs font-semibold text-[color:var(--client-muted)]">{buildContactCaption(user, contact) || user.userIdLabel}</span>
+                        </span>
+                        <ContactSelectionBadge selected={selected} />
+                      </button>
+                    );
+                  }) : (
+                    <p className="px-2 py-6 text-center text-sm text-[color:var(--client-muted)]">没有找到匹配朋友</p>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-black text-[color:var(--client-muted)]">图片</span>
+              {image ? (
+                <button className="text-xs font-black text-[color:var(--client-primary)]" onClick={onImageClear} type="button">移除</button>
+              ) : null}
+            </div>
+            <input accept="image/*" className="hidden" onChange={handleImageInput} ref={fileInputRef} type="file" />
+            {image ? (
+              <div className="flex items-center gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] p-2.5">
+                <img alt={image.fileName} className="h-16 w-16 shrink-0 rounded-[14px] object-cover" src={image.thumbnailUrl ?? image.url} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-black text-[color:var(--client-text)]">{image.fileName}</p>
+                  <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">{Math.max(1, Math.round(image.fileSize / 1024))} KB</p>
+                </div>
+                <button
+                  aria-label="更换图片"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]"
+                  onClick={() => fileInputRef.current?.click()}
+                  type="button"
+                >
+                  <ImIcon className="h-4 w-4" name="photo" />
+                </button>
+              </div>
+            ) : (
+              <button
+                className="flex min-h-[58px] w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_62%,var(--client-surface)_38%)] text-sm font-black text-[color:var(--client-text)]"
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                <ImIcon className="h-4 w-4 text-[color:var(--client-primary)]" name="photo" />
+                添加图片
+              </button>
+            )}
+          </div>
 
           <label className="block">
             <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">发送内容</span>
@@ -2457,7 +2632,7 @@ function ImTagCampaignSheet({
               className="min-h-[116px] w-full resize-none rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_70%,var(--client-surface)_30%)] px-3 py-3 text-sm leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
               maxLength={600}
               onChange={(event) => onContentChange(event.target.value)}
-              placeholder="输入要发给该标签人群的内容"
+              placeholder="输入要群发的内容"
               value={content}
             />
           </label>
@@ -3429,29 +3604,12 @@ export function ImConversationRoomPage({
     };
   }, [activeContactByUserId, currentSocialActor?.avatar, currentSocialActor?.displayName, store.currentUserId, store.usersById]);
   const shareableCardUsers = useMemo(() => {
-    const candidateIds = new Set(activeContactByUserId.keys());
-
-    if (store.currentUserId) {
-      candidateIds.add(store.currentUserId);
-    }
-
-    return store.users
-      .filter((user) => candidateIds.has(user.id) && canShareUserCard(scope, user))
-      .sort((left, right) => {
-        if (left.id === store.currentUserId) {
-          return -1;
-        }
-
-        if (right.id === store.currentUserId) {
-          return 1;
-        }
-
-        return getDisplayName(left, activeContactByUserId.get(left.id)).localeCompare(
-          getDisplayName(right, activeContactByUserId.get(right.id)),
-          ["zh-CN-u-co-pinyin", "ja-JP", "en"],
-          { sensitivity: "base", numeric: true }
-        );
-      });
+    return buildShareableCardUsers({
+      activeContactByUserId,
+      currentUserId: store.currentUserId,
+      scope,
+      users: store.users
+    });
   }, [activeContactByUserId, scope, store.currentUserId, store.users]);
   const filteredShareableCardUsers = useMemo(() => {
     const keyword = contactCardQuery.trim().toLowerCase();
@@ -3838,6 +3996,7 @@ export function ImConversationRoomPage({
 
     if (type === "contact-card") {
       setPanel(null);
+      setContactCardQuery("");
       setContactCardPickerOpen(true);
     }
   };
@@ -4469,8 +4628,10 @@ export function ImConversationRoomPage({
             {filteredShareableCardUsers.length > 0 ? (
               filteredShareableCardUsers.map((user) => {
                 const contactForUser = activeContactByUserId.get(user.id);
-                const caption = user.id === store.currentUserId
-                  ? `我的名片 · ${user.signature ?? user.region ?? user.userIdLabel}`
+                const currentUser = store.currentUserId ? store.usersById[store.currentUserId] : undefined;
+                const captionPrefix = getShareableCardCaptionPrefix(scope, user, store.currentUserId, currentUser);
+                const caption = captionPrefix
+                  ? `${captionPrefix} · ${user.signature ?? user.region ?? user.userIdLabel}`
                   : buildContactCaption(user, contactForUser) || user.userIdLabel;
 
                 return (
@@ -5195,7 +5356,9 @@ export function ImMediaRecordsPage() {
     members: store.members,
     messages: getConversationMessages(store, conversationId),
     attachments: [],
-    readCursors: []
+    readCursors: [],
+    messageCampaigns: [],
+    messageCampaignRecipients: []
   };
   const buckets = buildMediaBuckets(databaseLike, conversationId);
 

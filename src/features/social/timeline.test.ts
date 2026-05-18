@@ -37,7 +37,9 @@ const profiles: Record<string, SocialProfile> = {
     verifiedStatus: "verified",
     followerCount: 1,
     followingCount: 1,
-    extraProfileFields: {}
+    extraProfileFields: {
+      visibilityTags: ["VIP客户", "银座"]
+    }
   },
   [strangerKey]: {
     id: "stranger",
@@ -182,6 +184,84 @@ describe("social timeline filters", () => {
     });
 
     expect(result.map((post) => post.id)).toEqual(["stranger"]);
+  });
+
+  it("allows tag-only posts only when the actor profile matches an allowed tag", () => {
+    const taggedPost: SocialPost = {
+      ...posts[2],
+      id: "tagged",
+      visibility: "tag_only",
+      visibilityTagIds: ["VIP客户"],
+      includeRelatedPeople: false,
+      locationLabel: "银座"
+    };
+
+    const matched = filterTimelinePosts({
+      posts: [taggedPost],
+      profiles,
+      follows,
+      actorKey: friendKey,
+      filter: "nearby",
+      locationContext: {
+        areaHints: ["银座"]
+      }
+    });
+    const hidden = filterTimelinePosts({
+      posts: [taggedPost],
+      profiles,
+      follows,
+      actorKey,
+      filter: "nearby",
+      locationContext: {
+        areaHints: ["银座"]
+      }
+    });
+
+    expect(matched.map((post) => post.id)).toEqual(["tagged"]);
+    expect(hidden).toEqual([]);
+  });
+
+  it("honors user-only accounts and the related people switch", () => {
+    const userOnlyPost: SocialPost = {
+      ...posts[2],
+      id: "user-only",
+      visibility: "user_only",
+      visibilityProfileKeys: [actorKey],
+      includeRelatedPeople: false,
+      locationLabel: "银座"
+    };
+    const relatedPost: SocialPost = {
+      ...posts[0],
+      id: "related",
+      visibility: "user_only",
+      visibilityProfileKeys: [],
+      includeRelatedPeople: true,
+      locationLabel: "银座"
+    };
+
+    const direct = filterTimelinePosts({
+      posts: [userOnlyPost],
+      profiles,
+      follows,
+      actorKey,
+      filter: "nearby",
+      locationContext: {
+        areaHints: ["银座"]
+      }
+    });
+    const related = filterTimelinePosts({
+      posts: [relatedPost],
+      profiles,
+      follows,
+      actorKey: friendKey,
+      filter: "nearby",
+      locationContext: {
+        areaHints: ["银座"]
+      }
+    });
+
+    expect(direct.map((post) => post.id)).toEqual(["user-only"]);
+    expect(related.map((post) => post.id)).toEqual(["related"]);
   });
 
   it("resolves a device coordinate to the nearest home location option", () => {

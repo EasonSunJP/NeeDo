@@ -228,6 +228,10 @@ function countBookedAppointmentSegmentsInCells(cells: DispatchScheduleCell[]) {
   }, 0);
 }
 
+function hasOrderDetailTarget(cell: DispatchScheduleCell | undefined) {
+  return Boolean(cell?.detailTargetType === "order_detail" && cell.detailTargetId) || Boolean(cell?.orderId);
+}
+
 function buildDayTimelineRanges(cells: DispatchScheduleCell[], statuses: Set<DispatchScheduleCellStatus>, lane: DayTimelineLane) {
   return cells.reduce<DayTimelineRange[]>((ranges, cell, index) => {
     if (!statuses.has(cell.status)) {
@@ -243,6 +247,9 @@ function buildDayTimelineRanges(cells: DispatchScheduleCell[], statuses: Set<Dis
       previous.endHour = cellHour + 1;
       previous.appointmentCount = countBookedAppointmentSegmentsInCells(previous.cells);
       previous.isCurrent = previous.isCurrent || cell.isCurrent;
+      if (!hasOrderDetailTarget(previous.representativeCell) && hasOrderDetailTarget(cell)) {
+        previous.representativeCell = cell;
+      }
       return ranges;
     }
 
@@ -342,13 +349,53 @@ function getRepresentativeCell(cells: DispatchScheduleCell[], startIndex: number
   return cells[startIndex] ?? cells.find(isWorkStatusCell) ?? cells[0];
 }
 
+function findNearestOrderTargetCell(
+  cells: DispatchScheduleCell[],
+  startIndex: number,
+  endIndex: number,
+  searchStartIndex = startIndex,
+  searchEndIndex = endIndex
+) {
+  const clampedSearchStartIndex = Math.max(0, searchStartIndex);
+  const clampedSearchEndIndex = Math.min(cells.length, searchEndIndex);
+  let nearestCell: DispatchScheduleCell | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < cells.length; index += 1) {
+    const cell = cells[index];
+    if (index < clampedSearchStartIndex || index >= clampedSearchEndIndex || !hasOrderDetailTarget(cell)) {
+      continue;
+    }
+
+    const distance = index < startIndex ? startIndex - index : index >= endIndex ? index - endIndex + 1 : 0;
+
+    if (distance < nearestDistance) {
+      nearestCell = cell;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearestCell;
+}
+
 function toWorkStatusRange(
   cells: DispatchScheduleCell[],
   status: DayWorkStatus,
   startIndex: number,
-  endIndex: number
+  endIndex: number,
+  targetSearchRange?: { startIndex: number; endIndex: number }
 ): DayWorkStatusRange | null {
-  const representativeCell = getRepresentativeCell(cells, startIndex);
+  const orderTargetCell =
+    status === "standby" || status === "breakBuffer"
+      ? null
+      : findNearestOrderTargetCell(
+          cells,
+          startIndex,
+          endIndex,
+          targetSearchRange?.startIndex ?? startIndex,
+          targetSearchRange?.endIndex ?? endIndex
+        );
+  const representativeCell = orderTargetCell ?? getRepresentativeCell(cells, startIndex);
   if (!representativeCell || endIndex <= startIndex) {
     return null;
   }
@@ -428,13 +475,17 @@ function buildDayWorkStatusRanges(cells: DispatchScheduleCell[], technicianId?: 
   workSpans.forEach((span) => {
     const occupied = new Set<number>();
     const overlayRanges: DayWorkStatusRange[] = [];
+    const spanOrderTargetCell = findNearestOrderTargetCell(cells, span.startIndex, span.endIndex, span.startIndex, span.endIndex);
     const standbyStartOffset = seed % 5 === 0 ? -1 : seed % 5 === 1 ? 1 : 0;
     const standbyEndOffset = seed % 6 === 0 ? 2 : seed % 6 === 1 ? -1 : seed % 6 === 2 ? 1 : 0;
     let standbyStartIndex = clampTimelineIndex(span.startIndex + standbyStartOffset, 0, cells.length - 1);
     let standbyEndIndex = clampTimelineIndex(span.endIndex + standbyEndOffset, standbyStartIndex + 1, cells.length);
 
     const appendOverlayRange = (status: Exclude<DayWorkStatus, "standby">, startIndex: number, endIndex: number) => {
-      const range = toWorkStatusRange(cells, status, startIndex, endIndex);
+      const range = toWorkStatusRange(cells, status, startIndex, endIndex, {
+        startIndex: span.startIndex,
+        endIndex: span.endIndex
+      });
       if (!range) {
         return;
       }
@@ -456,7 +507,8 @@ function buildDayWorkStatusRanges(cells: DispatchScheduleCell[], technicianId?: 
     });
 
     const spanLength = span.endIndex - span.startIndex;
-    const canAddRichRoute = shouldUseRichActualRoute(seed) && spanLength >= 8;
+    const canAddServiceRoute = Boolean(spanOrderTargetCell);
+    const canAddRichRoute = canAddServiceRoute && shouldUseRichActualRoute(seed) && spanLength >= 8;
     let addedRichRoute = false;
 
     if (canAddRichRoute) {
@@ -483,7 +535,7 @@ function buildDayWorkStatusRanges(cells: DispatchScheduleCell[], technicianId?: 
       }
     }
 
-    if (!addedRichRoute && !overlayRanges.some((range) => range.status === "inService") && spanLength >= 3) {
+    if (canAddServiceRoute && !addedRichRoute && !overlayRanges.some((range) => range.status === "inService") && spanLength >= 3) {
       const serviceLength = spanLength >= 8 ? 2 : 1;
       const preferredServiceStart = span.startIndex + 1 + (seed % Math.max(1, spanLength - serviceLength - 1));
       const serviceStart = findStatusWindow(preferredServiceStart, serviceLength, span.startIndex, span.endIndex, occupied);
@@ -500,7 +552,7 @@ function buildDayWorkStatusRanges(cells: DispatchScheduleCell[], technicianId?: 
       }
     }
 
-    const serviceRanges = addedRichRoute ? [] : overlayRanges.filter((range) => range.status === "inService");
+    const serviceRanges = canAddServiceRoute && !addedRichRoute ? overlayRanges.filter((range) => range.status === "inService") : [];
     serviceRanges.slice(0, 2).forEach((range, index) => {
       const preferredTravelStart = index % 2 === 0 ? range.startIndex - 1 : range.endIndex;
       const travelStart = findStatusWindow(preferredTravelStart, 1, span.startIndex, span.endIndex, occupied);

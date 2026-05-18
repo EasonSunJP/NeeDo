@@ -52,6 +52,7 @@ import {
   type ImRoleType,
   type ImRealtimeEvent,
   type ImUser,
+  type MessageCampaignImageInput,
   type MessageExt,
   type TagMessageCampaignEstimate,
   type TagMessageCampaignInput,
@@ -75,6 +76,28 @@ type AutoReplyPlan = {
   senderId: string;
   messages: string[];
 };
+
+function readCampaignImageInput(value: unknown): MessageCampaignImageInput | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const image = value as Partial<MessageCampaignImageInput>;
+
+  if (typeof image.url !== "string" || !image.url) {
+    return undefined;
+  }
+
+  return {
+    url: image.url,
+    thumbnailUrl: typeof image.thumbnailUrl === "string" && image.thumbnailUrl ? image.thumbnailUrl : image.url,
+    fileName: typeof image.fileName === "string" && image.fileName ? image.fileName : "campaign-image.jpg",
+    fileSize: typeof image.fileSize === "number" && Number.isFinite(image.fileSize) ? image.fileSize : 0,
+    mimeType: typeof image.mimeType === "string" && image.mimeType ? image.mimeType : "image/jpeg",
+    width: typeof image.width === "number" && Number.isFinite(image.width) ? image.width : undefined,
+    height: typeof image.height === "number" && Number.isFinite(image.height) ? image.height : undefined
+  };
+}
 
 type ReplyIntent =
   | "capability"
@@ -1566,8 +1589,10 @@ async function handleMessagesRequest(scope: ImRoleType, url: URL, method: string
   if (method === "POST" && action === "campaigns" && subAction === "estimate") {
     const input: TagMessageCampaignInput = {
       tagIds: Array.isArray(body.tagIds) ? body.tagIds.map((item) => String(item)) : [],
+      targetUserIds: Array.isArray(body.targetUserIds) ? body.targetUserIds.map((item) => String(item)) : [],
       content: typeof body.content === "string" ? body.content : undefined,
-      messageType: typeof body.messageType === "string" ? body.messageType as TagMessageCampaignInput["messageType"] : undefined
+      messageType: typeof body.messageType === "string" ? body.messageType as TagMessageCampaignInput["messageType"] : undefined,
+      image: readCampaignImageInput(body.image)
     };
 
     return responseJson(estimateTagMessageCampaign(database, input));
@@ -1576,8 +1601,10 @@ async function handleMessagesRequest(scope: ImRoleType, url: URL, method: string
   if (method === "POST" && action === "campaigns" && !subAction) {
     const input: TagMessageCampaignInput = {
       tagIds: Array.isArray(body.tagIds) ? body.tagIds.map((item) => String(item)) : [],
+      targetUserIds: Array.isArray(body.targetUserIds) ? body.targetUserIds.map((item) => String(item)) : [],
       content: typeof body.content === "string" ? body.content : "",
-      messageType: typeof body.messageType === "string" ? body.messageType as TagMessageCampaignInput["messageType"] : undefined
+      messageType: typeof body.messageType === "string" ? body.messageType as TagMessageCampaignInput["messageType"] : undefined,
+      image: readCampaignImageInput(body.image)
     };
 
     try {
