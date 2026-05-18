@@ -1,0 +1,2783 @@
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import type { PortalScope } from "../../auth/AuthProvider";
+import { useAuth } from "../../auth/AuthProvider";
+import { PrimaryButton, SecondaryButton, SectionBlock, SegmentedTabs, StickyBottomBar, SurfacePanel } from "../../components/client-ui/AppScaffold";
+import { businessNavItems } from "../../components/mobile/businessNavItems";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileShell } from "../../components/mobile/MobileShell";
+import { AvatarImage } from "../../components/ui/AvatarImage";
+import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
+import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { businessCpsPromoters } from "../business-cps/model";
+import {
+  SettingsDetailPage,
+  SettingsHomePage,
+  SettingsListItem,
+  SettingsRadioListPage,
+  SettingsSection
+} from "../../components/client-ui/SettingsDirectory";
+import { useI18n } from "../../i18n/I18nProvider";
+import { languages, translateText, type Language } from "../../i18n/translations";
+import { readImageFileAsDataUrl } from "../../lib/imageUpload";
+import {
+  detectStorePresentationIndustry,
+  getStorePresentationConfig,
+  normalizeStorePresentationConfig
+} from "../../lib/storePresentation";
+import { cn } from "../../lib/utils";
+import { CustomerMembershipBadge } from "../../shared/profile-card";
+import { formatCustomerCreditScore } from "../../shared/profile-card/customerProfileLabels";
+import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
+import { useProfileCardBackgroundSettings } from "../../state/profileCardBackgroundStore";
+import type { Customer, Store, StorePresentationConfig, Technician } from "../../types/domain";
+import { clientThemes, useClientTheme, type ClientThemeDefinition } from "../../theme/ClientThemeProvider";
+import {
+  summarizePortalSettingsState,
+  usePortalSettingsState,
+  type BusinessPortalSettingsState,
+  type MerchantPortalSettingsState,
+  type TechnicianPortalSettingsState,
+  type UnifiedSettingsPortal
+} from "./portalSettingsState";
+import { getLegalPrivacyDocument, getLegalPrivacyUiCopy, type LegalPrivacyBlock } from "./legalPrivacyContent";
+import { getLegalTermsDocument, getLegalTermsUiCopy } from "./legalTermsContent";
+
+const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
+const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
+const appVersion = "0.1.0";
+const merchantTagPool = ["深夜营业", "女性友好", "到店主力", "上门服务", "可预约", "多语言", "企业合作", "高复购"];
+
+function settingsListToText(items: string[]) {
+  return items.join("\n");
+}
+
+function settingsTextToList(value: string) {
+  return value
+    .split(/\n|,|，|、/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+const compactPortalLabels: Record<PortalScope, { label: string; caption: string }> = {
+  user: { label: "用户", caption: "预约、动态、聊天" },
+  technician: { label: "技师", caption: "任务、日程、收入" },
+  merchant: { label: "店铺", caption: "门店、日程、经营" },
+  business: { label: "联盟营销", caption: "推广、素材、收益" },
+  admin: { label: "后台", caption: "管理与运营" }
+};
+
+type SwitchableSettingsPortal = Extract<UnifiedSettingsPortal, "user" | "technician" | "merchant" | "business">;
+
+const settingsPortalOptions: SwitchableSettingsPortal[] = ["user", "technician", "merchant", "business"];
+
+const backendSettingsPortalEntries = [
+  {
+    id: "merchant-admin",
+    title: "商户后台",
+    subtitle: "店铺订单、排班、员工、财务与门店设置",
+    href: "/store-admin.html#/login/merchant-admin"
+  },
+  {
+    id: "operations-admin",
+    title: "运营后台",
+    subtitle: "平台运营、店铺、技师、订单、财务与全局规则",
+    href: "/pf-admin.html#/login/admin"
+  },
+  {
+    id: "afirieito-admin",
+    title: "NDA管理后台",
+    subtitle: "推广计划、归因、分佣、风险与增长数据管理",
+    href: "/afirieito-admin.html#/NDA-admin"
+  }
+] as const;
+
+function getPortalEntry(portal: PortalScope | UnifiedSettingsPortal) {
+  if (portal === "business") {
+    return "/afirieito";
+  }
+
+  if (portal === "merchant") {
+    return "/merchant";
+  }
+
+  if (portal === "technician") {
+    return "/technician";
+  }
+
+  if (portal === "admin") {
+    return "/admin";
+  }
+
+  return "/";
+}
+
+function SettingsPortalSelectionIndicator({ active }: { active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
+        active
+          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
+          : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-transparent text-transparent"
+      )}
+    >
+      <svg aria-hidden="true" className="h-3 w-3" fill="none" viewBox="0 0 12 12">
+        <path d="m2.5 6 2.2 2.2L9.5 3.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+      </svg>
+    </span>
+  );
+}
+
+function getSettingsBasePath(portal: UnifiedSettingsPortal) {
+  if (portal === "business") {
+    return "/afirieito/settings";
+  }
+
+  if (portal === "merchant") {
+    return "/merchant/settings";
+  }
+
+  if (portal === "technician") {
+    return "/technician/settings";
+  }
+
+  return "/me/settings";
+}
+
+function getSettingsPath(portal: UnifiedSettingsPortal, segment?: string) {
+  const basePath = getSettingsBasePath(portal);
+  return segment ? `${basePath}/${segment}` : basePath;
+}
+
+function getSettingsNavItems(portal: UnifiedSettingsPortal) {
+  return portal === "business" ? businessNavItems : undefined;
+}
+
+function getSupportPath(portal: UnifiedSettingsPortal) {
+  if (portal === "business") {
+    return "/afirieito/me";
+  }
+
+  if (portal === "merchant") {
+    return "/merchant/messages";
+  }
+
+  if (portal === "technician") {
+    return "/technician/messages";
+  }
+
+  return "/support";
+}
+
+function getPortalMePath(portal: UnifiedSettingsPortal) {
+  if (portal === "business") {
+    return "/afirieito/me";
+  }
+
+  if (portal === "merchant") {
+    return "/merchant/me";
+  }
+
+  if (portal === "technician") {
+    return "/technician/me";
+  }
+
+  return "/me";
+}
+
+function isUnifiedSettingsPortal(portal: PortalScope | UnifiedSettingsPortal | undefined | null): portal is UnifiedSettingsPortal {
+  return portal === "user" || portal === "technician" || portal === "merchant" || portal === "business";
+}
+
+const supportedSettingsSuffixes: Record<UnifiedSettingsPortal, Set<string>> = {
+  user: new Set([
+    "",
+    "/theme",
+    "/language",
+    "/portal",
+    "/profile",
+    "/verification",
+    "/service-range",
+    "/account",
+    "/notifications",
+    "/help",
+    "/about",
+    "/terms",
+    "/privacy",
+    "/delete-account"
+  ]),
+  technician: new Set([
+    "",
+    "/theme",
+    "/language",
+    "/portal",
+    "/profile",
+    "/verification",
+    "/service-range",
+    "/account",
+    "/notifications",
+    "/help",
+    "/about",
+    "/terms",
+    "/privacy",
+    "/delete-account"
+  ]),
+  merchant: new Set([
+    "",
+    "/theme",
+    "/language",
+    "/portal",
+    "/profile",
+    "/verification",
+    "/account",
+    "/notifications",
+    "/help",
+    "/about",
+    "/terms",
+    "/privacy",
+    "/delete-account"
+  ]),
+  business: new Set([
+    "",
+    "/theme",
+    "/language",
+    "/portal",
+    "/account",
+    "/notifications",
+    "/help",
+    "/about",
+    "/terms",
+    "/privacy",
+    "/delete-account"
+  ])
+};
+
+type SettingsNavigationState = {
+  settingsSwitchedFromPortal?: boolean;
+  settingsPortalTarget?: UnifiedSettingsPortal;
+};
+
+function useSettingsPortalRedirect(portal: UnifiedSettingsPortal) {
+  return useSettingsPortalRedirectWithOptions(portal);
+}
+
+function useSettingsPortalRedirectWithOptions(
+  portal: UnifiedSettingsPortal,
+  {
+    preserveSuffix = true,
+    redirectToEntryOnPortalChange = false
+  }: {
+    preserveSuffix?: boolean;
+    redirectToEntryOnPortalChange?: boolean;
+  } = {}
+) {
+  const location = useLocation();
+  const { session } = useAuth();
+  const activePortal = session?.portal;
+  const pendingTargetPortal = (location.state as SettingsNavigationState | null)?.settingsPortalTarget;
+
+  if (pendingTargetPortal === portal) {
+    return null;
+  }
+
+  if (!isUnifiedSettingsPortal(activePortal) || activePortal === portal) {
+    return null;
+  }
+
+  const currentBasePath = getSettingsBasePath(portal);
+  const nextBasePath = redirectToEntryOnPortalChange ? getPortalEntry(activePortal) : getSettingsBasePath(activePortal);
+  const rawSuffix = preserveSuffix && location.pathname.startsWith(currentBasePath) ? location.pathname.slice(currentBasePath.length) : "";
+  const suffix = supportedSettingsSuffixes[activePortal].has(rawSuffix) ? rawSuffix : "";
+
+  return `${nextBasePath}${suffix}${location.search}${location.hash}`;
+}
+
+function PortalScopedSettingsPage({
+  portal,
+  preserveSuffix = true,
+  redirectToEntryOnPortalChange = false,
+  children
+}: {
+  portal: UnifiedSettingsPortal;
+  preserveSuffix?: boolean;
+  redirectToEntryOnPortalChange?: boolean;
+  children: ReactNode;
+}) {
+  const redirectTarget = useSettingsPortalRedirectWithOptions(portal, { preserveSuffix, redirectToEntryOnPortalChange });
+
+  if (redirectTarget) {
+    return <Navigate replace state={{ settingsSwitchedFromPortal: true }} to={redirectTarget} />;
+  }
+
+  return <>{children}</>;
+}
+
+function getProfileEntryTitle(portal: UnifiedSettingsPortal) {
+  if (portal === "business") {
+    return "Afirieito 资料维护";
+  }
+
+  return portal === "merchant" ? "店铺信息维护" : "资料编辑";
+}
+
+function getVerificationTitle(portal: UnifiedSettingsPortal) {
+  if (portal === "business") {
+    return "Afirieito 认证";
+  }
+
+  return portal === "merchant" ? "店铺资质" : "本人验证";
+}
+
+function getVerificationStatusLabel(portal: UnifiedSettingsPortal) {
+  if (portal === "business") {
+    return "已认证";
+  }
+
+  return portal === "merchant" ? "已认证" : "已完成";
+}
+
+function getThemeCaption(themeId: ClientThemeDefinition["id"]) {
+  switch (themeId) {
+    case "black-gold":
+      return "夜间 / 黑金";
+    case "cool-black-gray":
+      return "夜间 / 冷酷黑灰";
+    case "vital-mono":
+      return "白天 / 活力黑白";
+    case "dark-green":
+      return "夜间 / 黑绿";
+    case "neon-pink":
+      return "夜间 / 粉紫";
+    case "light-green":
+      return "白天 / 白绿";
+  }
+}
+
+function getThemePreviewClasses(themeId: ClientThemeDefinition["id"]) {
+  switch (themeId) {
+    case "black-gold":
+      return [
+        "bg-[linear-gradient(135deg,#050505_0%,#161616_54%,#34312f_100%)]",
+        "bg-[#fedfa0]",
+        "bg-[#34312f]"
+      ];
+    case "cool-black-gray":
+      return [
+        "bg-[linear-gradient(135deg,#0a0d10_0%,#1d2329_54%,#404951_100%)]",
+        "bg-[#18d2f0]",
+        "bg-[#313841]"
+      ];
+    case "vital-mono":
+      return [
+        "bg-[linear-gradient(135deg,#ffffff_0%,#f0f1f2_52%,#2f2f30_100%)]",
+        "bg-[#2f2f30]",
+        "bg-[#14b8ff]"
+      ];
+    case "dark-green":
+      return [
+        "bg-[linear-gradient(135deg,#050705_0%,#151b14_54%,#263420_100%)]",
+        "bg-[#a7ef4f]",
+        "bg-[#42e58b]"
+      ];
+    case "neon-pink":
+      return [
+        "bg-[linear-gradient(135deg,#080a1a_0%,#1b2050_54%,#120b25_100%)]",
+        "bg-[#ff6fae]",
+        "bg-[#8a75ff]"
+      ];
+    case "light-green":
+      return [
+        "bg-[linear-gradient(135deg,#f7fbff_0%,#eef8f4_58%,#d7ece6_100%)]",
+        "bg-[#2e7e67]",
+        "bg-[#dbefea]"
+      ];
+  }
+}
+
+function summarizeUserProfileStatus(customer: Customer, technician?: Technician) {
+  let completedCount = 0;
+
+  if ((customer.nickname?.trim() || customer.name.trim()).length > 0) {
+    completedCount += 1;
+  }
+
+  if (customer.avatar.trim()) {
+    completedCount += 1;
+  }
+
+  if ((customer.bio ?? technician?.bio)?.trim()) {
+    completedCount += 1;
+  }
+
+  if ((customer.languages?.length ?? technician?.languages?.length ?? 0) > 0) {
+    completedCount += 1;
+  }
+
+  if ((customer.age ?? technician?.age)?.trim()) {
+    completedCount += 1;
+  }
+
+  if (completedCount >= 4) {
+    return "已完善";
+  }
+
+  if (completedCount >= 2) {
+    return "待完善";
+  }
+
+  return "未完善";
+}
+
+function summarizeTechnicianProfileStatus(technician: Technician) {
+  let completedCount = 0;
+
+  if ((technician.nickname?.trim() || technician.name.trim()).length > 0) {
+    completedCount += 1;
+  }
+
+  if (technician.avatar.trim()) {
+    completedCount += 1;
+  }
+
+  if (technician.bio?.trim()) {
+    completedCount += 1;
+  }
+
+  if (technician.languages.length > 0) {
+    completedCount += 1;
+  }
+
+  if ((technician.age ?? "").trim()) {
+    completedCount += 1;
+  }
+
+  if (technician.serviceAreas.length > 0) {
+    completedCount += 1;
+  }
+
+  if (completedCount >= 5) {
+    return "已完善";
+  }
+
+  if (completedCount >= 3) {
+    return "待完善";
+  }
+
+  return "未完善";
+}
+
+function summarizeStoreProfileStatus(store: Store) {
+  let completedCount = 0;
+
+  if (store.name.trim()) {
+    completedCount += 1;
+  }
+
+  if (store.cover.trim()) {
+    completedCount += 1;
+  }
+
+  if (store.description.trim()) {
+    completedCount += 1;
+  }
+
+  if (store.address.trim()) {
+    completedCount += 1;
+  }
+
+  if (store.businessHours.trim()) {
+    completedCount += 1;
+  }
+
+  if (store.tags.length > 0) {
+    completedCount += 1;
+  }
+
+  if (completedCount >= 5) {
+    return "已完善";
+  }
+
+  if (completedCount >= 3) {
+    return "待完善";
+  }
+
+  return "未完善";
+}
+
+function summarizeProfileStatus(
+  portal: UnifiedSettingsPortal,
+  {
+    customer,
+    technician,
+    store
+  }: {
+    customer: Customer;
+    technician: Technician;
+    store: Store;
+  }
+) {
+  if (portal === "business") {
+    return "已完善";
+  }
+
+  if (portal === "merchant") {
+    return summarizeStoreProfileStatus(store);
+  }
+
+  if (portal === "technician") {
+    return summarizeTechnicianProfileStatus(technician);
+  }
+
+  return summarizeUserProfileStatus(customer, technician);
+}
+
+function summarizeServiceRange(areas: string[]) {
+  if (areas.length === 0) {
+    return "未设置";
+  }
+
+  if (areas.length <= 2) {
+    return areas.join(" / ");
+  }
+
+  return `${areas.slice(0, 2).join(" / ")} +${areas.length - 2}`;
+}
+
+function summarizeAccountStatus(portal: UnifiedSettingsPortal, customer: Customer, store: Store) {
+  if (portal === "business") {
+    return "Afirieito 账号";
+  }
+
+  if (portal === "merchant") {
+    return store.accountUsername ? "主体已绑定" : "待完善";
+  }
+
+  return customer.phone ? "已绑定手机" : "需要完善";
+}
+
+function getAccountUsername({
+  portal,
+  customer,
+  technician,
+  store,
+  fallback
+}: {
+  portal: UnifiedSettingsPortal;
+  customer: Customer;
+  technician: Technician;
+  store: Store;
+  fallback?: string;
+}) {
+  if (portal === "business") {
+    return fallback ?? "aya-tokyo-fit";
+  }
+
+  if (portal === "merchant") {
+    return store.accountUsername ?? fallback ?? "demo";
+  }
+
+  if (portal === "technician") {
+    return technician.accountUsername ?? fallback ?? "demo";
+  }
+
+  return customer.accountUsername ?? fallback ?? "demo";
+}
+
+function SelectionIndicator({ active }: { active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition",
+        active
+          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
+          : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-transparent text-transparent"
+      )}
+    >
+      <svg aria-hidden="true" className="h-3 w-3" fill="none" viewBox="0 0 12 12">
+        <path d="m2.5 6 2.2 2.2L9.5 3.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+      </svg>
+    </span>
+  );
+}
+
+function SettingsToggleRow({
+  title,
+  description,
+  checked,
+  onChange
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3.5">
+      <div className="min-w-0">
+        <p className="text-[15px] font-black text-[color:var(--client-text)]">{title}</p>
+        <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">{description}</p>
+      </div>
+      <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} />
+    </div>
+  );
+}
+
+function ThemeOptionRow({
+  item,
+  active,
+  onClick
+}: {
+  item: ClientThemeDefinition;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const previewClasses = getThemePreviewClasses(item.id);
+
+  return (
+    <button
+      className={cn(
+        "flex min-h-[68px] w-full items-center gap-3 px-4 py-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--client-accent)]",
+        active ? "bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]" : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">{item.label}</p>
+        <p className="mt-0.5 truncate text-[12px] text-[color:var(--client-muted)]">{getThemeCaption(item.id)}</p>
+      </div>
+      <div className="grid w-[72px] shrink-0 grid-cols-3 gap-1.5">
+        {previewClasses.map((className, index) => (
+          <span className={cn("block h-4 rounded-full", className)} key={`${item.id}-${index}`} />
+        ))}
+      </div>
+      <SelectionIndicator active={active} />
+    </button>
+  );
+}
+
+export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+  const { language } = useI18n();
+  const { theme } = useClientTheme();
+  const [portalSettings] = usePortalSettingsState(portal);
+  const profileCardBackgroundSettings = useProfileCardBackgroundSettings();
+  const { customers, technicians, stores } = useEntityStore();
+  const { session } = useAuth();
+  const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
+  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+  const t = (source: string) => translateText(source, language);
+  const currentThemeLabel = t(clientThemes.find((item) => item.id === theme)?.label ?? "活力黑白版");
+  const currentLanguageLabel = languages.find((item) => item.code === language)?.label ?? "简中";
+  const switchedFromPortal = Boolean((location.state as SettingsNavigationState | null)?.settingsSwitchedFromPortal);
+  const isBusinessPortal = portal === "business";
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsHomePage
+        info={t(isBusinessPortal ? "NeeDoAfirieito 使用独立 Afirieito App 设置中心，基础设置与用户端保持同一套交互。" : "统一设置模块现在使用同一套首页、列表项和子页承载三端配置，仅通过身份决定显示哪些内容。")}
+        navItems={getSettingsNavItems(portal)}
+        onBack={
+          switchedFromPortal
+            ? () => {
+                navigate(getPortalMePath(portal), { replace: true });
+              }
+            : undefined
+        }
+        subtitle={t(compactPortalLabels[portal].label)}
+        title={t("设置")}
+      >
+        <SettingsSection
+          description={t(isBusinessPortal ? "主题、语言和账号切换复用用户端设置模块，Afirieito 前端保存自己的显示偏好。" : "主题、语言和身份切换统一复用用户端设置模块，三端不再各自维护一套入口。")}
+          panelClassName={settingsListDividerClassName}
+          title={t("外观与系统")}
+        >
+          <SettingsListItem title={t("UI 切换")} to={getSettingsPath(portal, "theme")} value={currentThemeLabel} />
+          <SettingsListItem dataNoI18n title={t("语言")} to={getSettingsPath(portal, "language")} value={currentLanguageLabel} />
+          <SettingsListItem title={t("身份切换")} to={getSettingsPath(portal, "portal")} value={t(compactPortalLabels[portal].label)} />
+        </SettingsSection>
+
+        {isBusinessPortal ? null : (
+          <SettingsSection
+            description={t("统一复用同一组目录骨架，技师和店铺独有项也沿用用户端页面结构。")}
+            panelClassName={settingsListDividerClassName}
+            title={t("个人资料与认证")}
+          >
+            <SettingsListItem
+              title={t(getProfileEntryTitle(portal))}
+              to={getSettingsPath(portal, "profile")}
+              value={t(summarizeProfileStatus(portal, { customer, technician, store }))}
+            />
+            {portal !== "merchant" && profileCardBackgroundSettings.editEntryEnabled ? (
+              <SettingsListItem
+                subtitle={t("入口由运营后台开关控制，简易信息卡本体不显示编辑按钮")}
+                title={t("简易信息卡背景")}
+                to={getSettingsPath(portal, "profile-card-background")}
+                value={t("系统分配")}
+              />
+            ) : null}
+            <SettingsListItem title={t(getVerificationTitle(portal))} to={getSettingsPath(portal, "verification")} value={t(getVerificationStatusLabel(portal))} />
+            {portal === "technician" ? (
+              <SettingsListItem title={t("服务范围")} to={getSettingsPath(portal, "service-range")} value={t(summarizeServiceRange(technician.serviceAreas))} />
+            ) : null}
+          </SettingsSection>
+        )}
+
+        <SettingsSection
+          description={t(isBusinessPortal ? "Afirieito 登录账号、推广码、收款身份和数据权限集中到这里。" : "账户、安全、绑定关系和权限入口统一收口到同一详细页。")}
+          panelClassName={settingsListDividerClassName}
+          title={t("账户与安全")}
+        >
+          <SettingsListItem title={t("账户与安全")} to={getSettingsPath(portal, "account")} value={t(summarizeAccountStatus(portal, customer, store))} />
+        </SettingsSection>
+
+        <SettingsSection
+          description={t(isBusinessPortal ? "活动、素材、结算、风控通知按 Afirieito 使用场景追加。" : "通知与隐私同样复用统一页骨架，技师和商户的独有开关通过配置追加。")}
+          panelClassName={settingsListDividerClassName}
+          title={t("通知与隐私")}
+        >
+          <SettingsListItem title={t("通知设置")} to={getSettingsPath(portal, "notifications")} value={t(summarizePortalSettingsState(portalSettings))} />
+        </SettingsSection>
+
+        <SettingsSection
+          description={t(isBusinessPortal ? "利用规约、个人信息保护方针、退会和退出账号作为 NeeDoAfirieito App 的固定基础入口。" : "帮助、关于和演示登录态重置保持统一入口，不再散落在各端我的页。")}
+          panelClassName={settingsListDividerClassName}
+          title={t("其他")}
+        >
+          <SettingsListItem title={t("利用规约")} to={getSettingsPath(portal, "terms")} value={t("查看")} />
+          <SettingsListItem title={t("个人信息保护方针")} to={getSettingsPath(portal, "privacy")} value={t("查看")} />
+          <SettingsListItem title={t("帮助与反馈")} to={getSettingsPath(portal, "help")} value={t(portal === "user" ? "在线支持" : "平台支持")} />
+          <SettingsListItem dataNoI18n title={t(isBusinessPortal ? "关于 NeeDoAfirieito" : "关于 NeeDo")} to={getSettingsPath(portal, "about")} value={appVersion} />
+          <SettingsListItem title={t("注销账号")} to={getSettingsPath(portal, "delete-account")} />
+          <SettingsListItem
+            subtitle={t("演示环境会重置到默认测试账号并保留当前身份")}
+            title={t(isBusinessPortal ? "退出账号" : "退出登录")}
+            onClick={() => {
+              logout();
+              navigate(getPortalEntry(portal), { replace: true });
+            }}
+            value={t("重置")}
+          />
+        </SettingsSection>
+      </SettingsHomePage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsProfileCardBackgroundPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { language } = useI18n();
+  const profileCardBackgroundSettings = useProfileCardBackgroundSettings();
+  const t = (source: string) => translateText(source, language);
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        info={t("入口只放在自己的设定或店铺后台中，运营后台负责开启或关闭；简易信息卡上不显示编辑按钮。")}
+        navItems={getSettingsNavItems(portal)}
+        title={t("简易信息卡背景")}
+      >
+        <SettingsSection
+          description={t("背景图暂时由系统分配，后续背景选择和上传流程会收口到这里。")}
+          panelClassName={settingsListDividerClassName}
+          title={t("背景设置")}
+        >
+          <SettingsListItem subtitle={t("根据当前 UI 主题自动匹配黑、白、紫等系统背景")} title={t("当前背景")} value={t("系统分配")} />
+          <SettingsListItem
+            subtitle={t("这个状态由运营后台统一控制")}
+            title={t("编辑入口")}
+            value={t(profileCardBackgroundSettings.editEntryEnabled ? "已开放" : "运营未开放")}
+          />
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsThemePage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { language } = useI18n();
+  const { theme, setTheme } = useClientTheme();
+  const t = (source: string) => translateText(source, language);
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} info={t("主题选择移到独立页面，三端共用同一套主题设置页。")} navItems={getSettingsNavItems(portal)} title={t("UI 切换")}>
+        <SettingsSection
+          description={t("三端统一切换活力黑白 / 冷酷黑灰 / 白绿 / 黑绿 / 霓虹粉紫 / 黑金主题，由同一套 token 与组件承载。")}
+          panelClassName={settingsListDividerClassName}
+          title={t("主题选择")}
+        >
+          {clientThemes.map((item) => (
+            <ThemeOptionRow active={item.id === theme} item={item} key={item.id} onClick={() => setTheme(item.id)} />
+          ))}
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsLanguagePage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { language, setLanguage } = useI18n();
+  const t = (source: string) => translateText(source, language);
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsRadioListPage<Language>
+        backTo={getSettingsBasePath(portal)}
+        info={t("语言切换改为三端共用的紧凑单选列表。")}
+        navItems={getSettingsNavItems(portal)}
+        options={languages.map((item) => ({
+          value: item.code as Language,
+          title: item.label,
+          subtitle: item.code === "zh" ? "简体中文" : item.code === "zh-Hant" ? "繁體中文" : item.code === "ja" ? "Japanese" : item.code === "ko" ? "Korean" : "English",
+          dataNoI18n: true
+        }))}
+        sectionDescription={t("语言偏好继续保存在本地，但入口和交互已经统一。")}
+        title={t("语言")}
+        value={language}
+        onChange={(next) => setLanguage(next)}
+      />
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const navigate = useNavigate();
+  const { language } = useI18n();
+  const { session, switchPortal } = useAuth();
+  const currentPortal = session?.portal ?? portal;
+  const selectedPortal: SwitchableSettingsPortal = settingsPortalOptions.includes(currentPortal as SwitchableSettingsPortal)
+    ? (currentPortal as SwitchableSettingsPortal)
+    : "user";
+  const t = (source: string) => translateText(source, language);
+  const selectPortal = (nextPortal: SwitchableSettingsPortal) => {
+    if (nextPortal === selectedPortal) {
+      return;
+    }
+
+    switchPortal(nextPortal);
+    navigate(getPortalEntry(nextPortal), {
+      replace: true,
+      state: {
+        settingsSwitchedFromPortal: true,
+        settingsPortalTarget: nextPortal
+      } satisfies SettingsNavigationState
+    });
+  };
+  const openBackendPortal = (href: string) => {
+    window.location.assign(href);
+  };
+
+  return (
+    <PortalScopedSettingsPage portal={portal} preserveSuffix={false} redirectToEntryOnPortalChange>
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        info={t("身份切换直接复用同一套设置子页，切换后直接进入对应身份首页。")}
+        navItems={getSettingsNavItems(portal)}
+        title={t("身份切换")}
+      >
+        <SettingsSection
+          description={t("用户、技师、店铺和联盟营销属于前台身份，切换后会直接进入对应首页。")}
+          panelClassName="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]"
+          title={t("前台身份")}
+        >
+          {settingsPortalOptions.map((item) => {
+            const active = item === selectedPortal;
+
+            return (
+              <button
+                className={cn(
+                  "flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition",
+                  active ? "bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]" : "hover:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
+                )}
+                key={item}
+                onClick={() => selectPortal(item)}
+                type="button"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">{t(compactPortalLabels[item].label)}</p>
+                  <p className="mt-0.5 truncate text-[12px] text-[color:var(--client-muted)]">{t(compactPortalLabels[item].caption)}</p>
+                </div>
+                <SettingsPortalSelectionIndicator active={active} />
+              </button>
+            );
+          })}
+        </SettingsSection>
+
+        <SettingsSection
+          description={t("后台入口独立进入，不会改变当前前台身份。")}
+          panelClassName="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]"
+          title={t("后台入口")}
+        >
+          {backendSettingsPortalEntries.map((entry) => (
+            <SettingsListItem
+              key={entry.id}
+              onClick={() => openBackendPortal(entry.href)}
+              subtitle={t(entry.subtitle)}
+              title={t(entry.title)}
+            />
+          ))}
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+function UserProfileSettingsPage({
+  portal,
+  customer,
+  technician
+}: {
+  portal: UnifiedSettingsPortal;
+  customer: Customer;
+  technician?: Technician;
+}) {
+  const navigate = useNavigate();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const initialDraft = useMemo(
+    () => ({
+      avatar: customer.avatar,
+      nickname: customer.nickname?.trim() || customer.name,
+      age: customer.age ?? technician?.age ?? "",
+      height: customer.height ?? technician?.height ?? "",
+      languages: customer.languages?.length ? [...customer.languages] : technician?.languages?.length ? [...technician.languages] : ["日本語"],
+      bio:
+        customer.bio ??
+        technician?.bio ??
+        "可在这里补充你的语言偏好、常用预约习惯和其他说明。"
+    }),
+    [customer, technician]
+  );
+  const [draft, setDraft] = useState(initialDraft);
+
+  useEffect(() => {
+    setDraft(initialDraft);
+  }, [initialDraft]);
+
+  const toggleLanguage = (language: string) => {
+    setDraft((current) => {
+      if (current.languages.includes(language)) {
+        return current.languages.length === 1 ? current : { ...current, languages: current.languages.filter((item) => item !== language) };
+      }
+
+      return { ...current, languages: [...current.languages, language] };
+    });
+  };
+
+  const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        return;
+      }
+
+      setDraft((current) => ({ ...current, avatar: reader.result as string }));
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = () => {
+    const nextProfile = {
+      avatar: draft.avatar.trim() || customer.avatar,
+      nickname: draft.nickname.trim() || customer.name,
+      age: draft.age.trim(),
+      height: draft.height.trim(),
+      languages: draft.languages.length ? [...draft.languages] : [...initialDraft.languages],
+      bio: draft.bio.trim()
+    };
+
+    updateCustomerEntity(customer.id, {
+      avatar: nextProfile.avatar,
+      nickname: nextProfile.nickname,
+      age: nextProfile.age,
+      height: nextProfile.height,
+      languages: [...nextProfile.languages],
+      bio: nextProfile.bio
+    });
+
+    if (technician) {
+      updateTechnicianEntity(technician.id, {
+        avatar: nextProfile.avatar,
+        nickname: nextProfile.nickname,
+        age: nextProfile.age,
+        height: nextProfile.height,
+        languages: [...nextProfile.languages],
+        bio: nextProfile.bio
+      });
+    }
+
+    navigate(getPortalMePath(portal), { replace: true });
+  };
+
+  return (
+    <MobileShell navItems={[]}>
+      <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_32%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))] text-[color:var(--client-text)]">
+        <MobileFullscreenHeader
+          className="fixed inset-x-0 top-0 z-50"
+          onBack={() => navigate(getPortalMePath(portal), { replace: true })}
+          subtitle="头像、昵称、语言与简介会同步更新到账户资料"
+          title="编辑用户资料"
+        />
+
+        <main className="mx-auto w-full max-w-[520px] space-y-4 px-4 pb-36 pt-[calc(env(safe-area-inset-top)+6.75rem)]">
+          <SurfacePanel className="overflow-hidden p-0">
+            <div className="relative h-32 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--client-primary)_90%,white),color-mix(in_srgb,var(--client-primary)_72%,black))]">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.34),transparent_32%)]" />
+              <CustomerMembershipBadge
+                className="absolute right-4 top-4 h-11 w-11"
+                fallbackClassName="absolute right-4 top-4 rounded-full bg-white/18 px-3 py-1 text-[11px] font-black text-white backdrop-blur"
+                imageClassName="h-11 w-11"
+                level={customer.memberLevel}
+              />
+            </div>
+
+            <div className="px-4 pb-5">
+              <div className="-mt-12 flex items-end justify-between gap-3">
+                <AvatarImage
+                  alt={draft.nickname || customer.name}
+                  className="h-24 w-24 border-[4px] border-[color:var(--client-bg)] bg-[color:var(--client-surface)] shadow-[0_18px_40px_rgba(0,0,0,0.16)]"
+                  src={draft.avatar || customer.avatar}
+                />
+                <div className="flex items-center gap-2 pb-1">
+                  <input accept="image/*" className="hidden" onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
+                  <SecondaryButton className="h-10 px-4 text-sm" onClick={() => avatarInputRef.current?.click()}>
+                    更换头像
+                  </SecondaryButton>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">账户预览</p>
+                <h1 className="mt-2 text-[28px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">{draft.nickname || customer.name}</h1>
+                <p className="mt-1 text-sm text-[color:var(--client-muted)]">ID {customer.systemId}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
+                    语言 {draft.languages.length} 项
+                  </span>
+                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-muted)]">
+                    信用度 {formatCustomerCreditScore(customer, { withMax: true })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </SurfacePanel>
+
+          <SurfacePanel className="space-y-4">
+            <div>
+              <p className="text-[18px] font-black text-[color:var(--client-text)]">基础资料</p>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">这页只保留一套用户资料编辑逻辑，昵称、头像和简介都会从这里统一维护。</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">昵称</span>
+                <input
+                  className="h-12 w-full rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 outline-none"
+                  onChange={(event) => setDraft((current) => ({ ...current, nickname: event.target.value }))}
+                  value={draft.nickname}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">年龄</span>
+                <input
+                  className="h-12 w-full rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 outline-none"
+                  onChange={(event) => setDraft((current) => ({ ...current, age: event.target.value }))}
+                  value={draft.age}
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">身高</span>
+                <input
+                  className="h-12 w-full rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 outline-none"
+                  onChange={(event) => setDraft((current) => ({ ...current, height: event.target.value }))}
+                  value={draft.height}
+                />
+              </label>
+            </div>
+          </SurfacePanel>
+
+          <SurfacePanel className="space-y-4">
+            <div>
+              <p className="text-[18px] font-black text-[color:var(--client-text)]">语言能力</p>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">保持你常用的沟通语言，预约前展示也会引用这里的资料。</p>
+            </div>
+            <div className="flex flex-wrap gap-2" data-no-i18n>
+              {languages.map((item) => {
+                const label = item.label;
+                const active = draft.languages.includes(label);
+
+                return (
+                  <button
+                    className={cn(
+                      "rounded-full px-3.5 py-2 text-sm font-black transition",
+                      active
+                        ? "bg-[color:var(--client-primary)] text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+                        : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
+                    )}
+                    key={item.code}
+                    onClick={() => toggleLanguage(label)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </SurfacePanel>
+
+          <SurfacePanel className="space-y-4">
+            <div>
+              <p className="text-[18px] font-black text-[color:var(--client-text)]">自我介绍</p>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">写清楚你的预约偏好、语言习惯和常用说明，门店与技师会更容易理解你的需求。</p>
+            </div>
+            <textarea
+              className="min-h-[180px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 py-4 text-sm leading-7 outline-none"
+              onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
+              value={draft.bio}
+            />
+            <div className="rounded-[20px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-xs font-semibold leading-6 text-[color:var(--client-muted)]">
+              信用度、积分和利用次数仍由系统自动计算，这一页只编辑用户公开资料本身。
+            </div>
+          </SurfacePanel>
+        </main>
+
+        <StickyBottomBar>
+          <div className="flex justify-center">
+            <PrimaryButton className="h-12 w-full max-w-[360px]" onClick={handleSave}>
+              保存并退出
+            </PrimaryButton>
+          </div>
+        </StickyBottomBar>
+      </div>
+    </MobileShell>
+  );
+}
+
+function TechnicianProfileSettingsPage({ portal, technician }: { portal: UnifiedSettingsPortal; technician: Technician }) {
+  const navigate = useNavigate();
+  const { isNight } = useClientTheme();
+  type TechnicianPaymentOption = NonNullable<Technician["paymentMethods"]>[number];
+  type TechnicianProfileDraft = {
+    avatar: string;
+    nickname: string;
+    identityLabel: NonNullable<Technician["identityLabel"]>;
+    gender: NonNullable<Technician["gender"]>;
+    age: string;
+    height: string;
+    languages: string[];
+    bio: string;
+    serviceAreas: string[];
+    profileTags: string[];
+    canServeForeigners: boolean;
+    bidBudgetMin: string;
+    bidBudgetMax: string;
+    paymentMethods: TechnicianPaymentOption[];
+  };
+
+  const languageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
+  const paymentOptionLabels: Record<TechnicianPaymentOption, string> = {
+    platform: "平台支付",
+    offline: "线下支付",
+    cash: "现金",
+    prepay: "需要预付",
+    paypay: "PayPay",
+    paypal: "PayPal",
+    wechatpay: "WeChat Pay",
+    alipay: "Alipay"
+  };
+  const genderLabels: Record<NonNullable<Technician["gender"]>, string> = {
+    male: "男",
+    female: "女",
+    private: "保密"
+  };
+  const paymentOptions: TechnicianPaymentOption[] = ["platform", "offline", "cash", "prepay", "paypay", "paypal", "wechatpay", "alipay"];
+  const serviceAreaCatalog = {
+    日本: {
+      東京都: ["銀座", "新宿", "渋谷", "池袋", "六本木"],
+      大阪府: ["梅田", "難波", "心斎橋"],
+      神奈川県: ["横浜", "川崎", "みなとみらい"]
+    }
+  } as const;
+  const railLineCatalog = {
+    山手線: ["新宿駅", "渋谷駅", "池袋駅", "上野駅", "東京駅", "品川駅"],
+    中央線快速: ["東京駅", "御茶ノ水駅", "四ツ谷駅", "新宿駅", "中野駅", "吉祥寺駅"],
+    日比谷線: ["上野駅", "秋葉原駅", "銀座駅", "六本木駅", "恵比寿駅"],
+    東横線: ["渋谷駅", "中目黒駅", "自由が丘駅", "武蔵小杉駅", "横浜駅"],
+    御堂筋線: ["梅田駅", "本町駅", "心斎橋駅", "なんば駅", "天王寺駅"]
+  } as const;
+  const tagGroups = [
+    { title: "身材", tags: ["👠 高挑", "🧘 匀称", "💃 曲线感", "🏃 运动系", "🌿 纤细"] },
+    { title: "相貌", tags: ["✨ 清秀", "🌸 甜美", "🖤 冷艳", "😊 治愈系", "🎀 上镜感"] },
+    { title: "性格", tags: ["🤝 亲和", "🫧 安静", "🎯 专业", "🌞 开朗", "🧠 细心"] },
+    { title: "技术", tags: ["💆 肩颈调理", "🛌 睡眠放松", "🔥 热石", "🪷 深层舒缓", "🫶 沟通细致"] },
+    { title: "语言", tags: ["🗾 日本語", "🀄 中文", "🌍 English", "🇰🇷 한국어", "🧳 外国人対応"] }
+  ] as const;
+  const allowedServiceAreas = new Set<string>([
+    ...Object.values(serviceAreaCatalog.日本).flatMap((areas) => [...areas]),
+    ...Object.values(railLineCatalog).flatMap((stations) => [...stations])
+  ]);
+
+  const toggleValue = (values: string[], value: string) => (values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
+  const togglePaymentMethod = (values: TechnicianPaymentOption[], value: TechnicianPaymentOption) =>
+    values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+  const buildDraft = (current: Technician): TechnicianProfileDraft => ({
+    avatar: current.avatar,
+    nickname: current.nickname?.trim() || current.name,
+    identityLabel: current.identityLabel ?? "店铺所属技师",
+    gender: current.gender ?? "private",
+    age: current.age ?? "",
+    height: (current.height ?? "").replace(/[^\d]/g, ""),
+    languages: current.languages.length ? [...current.languages] : ["日本語"],
+    bio: current.bio ?? "可在这里补充服务偏好、擅长项目和接单说明。",
+    serviceAreas: current.serviceAreas.filter((item) => allowedServiceAreas.has(item)).length
+      ? current.serviceAreas.filter((item) => allowedServiceAreas.has(item))
+      : ["銀座", "新宿", "渋谷"],
+    profileTags: current.profileTags?.length ? [...current.profileTags] : [...(current.skills.length ? current.skills : ["💆 肩颈调理", "🤝 亲和"])],
+    canServeForeigners: current.canServeForeigners ?? true,
+    bidBudgetMin: current.bidBudgetMin ?? "12000",
+    bidBudgetMax: current.bidBudgetMax ?? "28000",
+    paymentMethods: current.paymentMethods?.length ? [...current.paymentMethods] : ["platform", "offline", "cash"]
+  });
+  const [draft, setDraft] = useState<TechnicianProfileDraft>(() => buildDraft(technician));
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const adminAreaGroups = useMemo(
+    () =>
+      Object.entries(serviceAreaCatalog.日本).map(([prefecture, areas]) => ({
+        title: `日本 · ${prefecture}`,
+        items: [...areas]
+      })),
+    []
+  );
+  const railAreaGroups = useMemo(
+    () =>
+      Object.entries(railLineCatalog).map(([line, stations]) => ({
+        title: line,
+        items: [...stations]
+      })),
+    []
+  );
+  const previewTags = useMemo(
+    () => Array.from(new Set([...draft.profileTags, ...draft.languages.map((item) => (item === "中文" ? "🀄 中文" : item === "日本語" ? "🗾 日本語" : item))])).slice(0, 10),
+    [draft.languages, draft.profileTags]
+  );
+  const summarizePreviewList = (values: string[], maxVisible = 2, fallback = "未设置") => {
+    if (values.length === 0) {
+      return fallback;
+    }
+
+    if (values.length <= maxVisible) {
+      return values.join(" / ");
+    }
+
+    return `${values.slice(0, maxVisible).join(" / ")} +${values.length - maxVisible}`;
+  };
+  const previewBudgetLabel =
+    draft.bidBudgetMin.trim() && draft.bidBudgetMax.trim()
+      ? `¥${draft.bidBudgetMin.trim()} - ¥${draft.bidBudgetMax.trim()}`
+      : draft.bidBudgetMin.trim()
+        ? `¥${draft.bidBudgetMin.trim()} 起`
+        : draft.bidBudgetMax.trim()
+          ? `最高 ¥${draft.bidBudgetMax.trim()}`
+          : "待设置";
+  const previewGenderLabel = genderLabels[draft.gender];
+  const previewAgeLabel = draft.age.trim() ? `${draft.age.trim()}岁` : "";
+  const previewServiceRatingLabel = `★${technician.rating.toFixed(1).replace(/\.0$/, "")}`;
+  const previewForeignerLabel = draft.canServeForeigners ? "外国人对应" : "暂未开启";
+  const previewFacts = [
+    { label: "服务范围", value: summarizePreviewList(draft.serviceAreas, 2) },
+    { label: "语言能力", value: summarizePreviewList(draft.languages, 2) },
+    { label: "支付方式", value: summarizePreviewList(draft.paymentMethods.map((item) => paymentOptionLabels[item]), 2) },
+    { label: "主打标签", value: summarizePreviewList(draft.profileTags.map((item) => item.replace(/^[^\u4e00-\u9fffA-Za-z0-9]+/, "").trim()), 2) }
+  ];
+  const previewPrimaryTags = previewTags.slice(0, 6);
+  const previewHiddenTagCount = Math.max(previewTags.length - previewPrimaryTags.length, 0);
+  const previewBio = draft.bio.trim() || "请补充擅长项目、接单说明和服务风格。";
+  const previewBioSummary = previewBio.length > 86 ? `${previewBio.slice(0, 86)}…` : previewBio;
+
+  useEffect(() => {
+    setDraft(buildDraft(technician));
+  }, [technician]);
+
+  const handleAvatarUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+
+      if (result) {
+        setDraft((current) => ({ ...current, avatar: result }));
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+
+  const handleSave = () => {
+    updateTechnicianEntity(technician.id, {
+      avatar: draft.avatar,
+      nickname: draft.nickname.trim() || technician.nickname?.trim() || technician.name,
+      identityLabel: draft.identityLabel,
+      gender: draft.gender,
+      age: draft.age.trim() || undefined,
+      height: draft.height.trim() ? `${draft.height.trim()}cm` : undefined,
+      languages: Array.from(new Set(draft.languages)),
+      bio: draft.bio.trim(),
+      serviceAreas: Array.from(new Set(draft.serviceAreas)),
+      profileTags: Array.from(new Set(draft.profileTags)),
+      canServeForeigners: draft.canServeForeigners,
+      bidBudgetMin: draft.bidBudgetMin.trim() || undefined,
+      bidBudgetMax: draft.bidBudgetMax.trim() || undefined,
+      paymentMethods: Array.from(new Set(draft.paymentMethods))
+    });
+    navigate(getSettingsBasePath(portal));
+  };
+
+  const chipClassName = (active: boolean, _tone: "primary" | "accent" | "warm" = "primary") =>
+    cn(
+      "rounded-full border px-3 py-2 text-xs font-black transition",
+      active
+        ? "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] text-[color:var(--client-primary)]"
+        : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
+    );
+  const previewShellClassName = cn(
+    "relative w-full overflow-hidden rounded-[32px] border px-5 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5",
+    isNight
+      ? "border-[color:color-mix(in_srgb,var(--client-line)_90%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-bg)_94%,#030d09),color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg))_56%,color-mix(in_srgb,var(--client-warm)_34%,var(--client-bg))_100%)] shadow-[0_22px_48px_rgba(0,0,0,0.28)]"
+      : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-bg)_88%,white),color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg))_58%,color-mix(in_srgb,var(--client-primary-soft)_74%,white)_100%)] shadow-[0_18px_38px_rgba(0,0,0,0.10)]"
+  );
+  const previewGlassClassName = cn(
+    "rounded-[22px] border backdrop-blur-sm",
+    isNight
+      ? "border-transparent bg-[color:color-mix(in_srgb,var(--client-surface)_92%,var(--client-bg))]"
+      : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,white)]"
+  );
+  const previewSubtleClassName = cn(
+    "rounded-full px-3 py-1 text-[11px] font-black",
+    "border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] text-[color:var(--client-text)]"
+  );
+
+  return (
+    <SettingsDetailPage
+      backTo={getSettingsBasePath(portal)}
+      contentClassName="space-y-6 pb-32 pt-[calc(env(safe-area-inset-top)+2.5rem)]"
+      info="技师资料已经恢复成独立页面维护，保留技师专属字段，不再使用我的页上层浮窗。"
+      title="资料编辑"
+    >
+      <section className="-mt-5 space-y-2">
+        <TitleWithInfo
+          as="h2"
+          className="gap-2.5"
+          info="这里预览的是技师主页信息卡的主视觉和公开资料重点。"
+          infoClassName="h-5 w-5 text-[11px]"
+          label="查看技师名片预览说明"
+          title="技师名片预览"
+          titleClassName="text-[17px] font-black tracking-[-0.02em] text-[color:var(--client-text)]"
+          variant="client"
+        />
+        <div>
+          <div className={cn("w-full", previewShellClassName)}>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--client-primary)_16%,transparent),transparent_32%),radial-gradient(circle_at_bottom_left,color-mix(in_srgb,var(--client-warm)_18%,transparent),transparent_34%)]" />
+            <div className="absolute inset-x-0 top-0 h-14 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-primary)_14%,transparent),transparent)]" />
+            <div className="relative z-10 flex items-start gap-3">
+              <AvatarImage alt={draft.nickname} className="h-20 w-20 shrink-0 rounded-[24px] shadow-[0_12px_24px_rgba(0,0,0,0.16)]" src={draft.avatar} />
+              <div className="min-w-0 flex-1 self-stretch">
+                <div className="grid h-20 min-w-0 grid-rows-[auto_auto_1fr_auto]">
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{draft.nickname}</h2>
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] text-[#081109] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]">
+                      <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 12 12">
+                        <path d="m2.5 6.1 2.1 2.1 4.9-4.9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                      </svg>
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <span className={previewSubtleClassName}>{previewGenderLabel}</span>
+                    {previewAgeLabel ? <span className={previewSubtleClassName}>{previewAgeLabel}</span> : null}
+                    {draft.height.trim() ? <span className={previewSubtleClassName}>{draft.height.trim()} cm</span> : null}
+                  </div>
+                  <p className="row-start-4 text-[12px] leading-none text-[color:var(--client-muted)]">ID {technician.systemId}</p>
+                </div>
+              </div>
+            </div>
+            <div className="relative z-10 mt-3 flex min-w-0 gap-1.5">
+              <div className={cn("min-w-0 basis-0 flex-1 px-2 py-2.5", previewGlassClassName)}>
+                <p className="text-[9px] font-black tracking-[0.04em] text-[color:var(--client-muted)]">外国人对应</p>
+                <p
+                  className={cn(
+                    "mt-1 break-words text-[11px] font-black leading-4",
+                    draft.canServeForeigners ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]"
+                  )}
+                >
+                  {previewForeignerLabel}
+                </p>
+              </div>
+              <div className={cn("min-w-0 basis-0 flex-[1.08] px-2 py-2.5 text-center", previewGlassClassName)}>
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[color:var(--client-muted)]">接单预算</p>
+                <p className="mt-1 break-words text-[12px] font-black leading-4 text-[color:var(--client-text)]">{previewBudgetLabel}</p>
+              </div>
+              <div className={cn("min-w-0 basis-0 flex-1 px-2 py-2.5 text-right", previewGlassClassName)}>
+                <p className="text-[9px] font-black tracking-[0.04em] text-[color:var(--client-muted)]">服务评价</p>
+                <p className="mt-1 break-words text-[12px] font-black leading-4 text-[color:var(--client-text)]">{previewServiceRatingLabel}</p>
+              </div>
+            </div>
+            <div className="relative z-10 mt-4 grid grid-cols-2 gap-2">
+              {previewFacts.map((item) => (
+                <div className={cn("px-3 py-3", previewGlassClassName)} key={item.label}>
+                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[color:var(--client-muted)]">{item.label}</p>
+                  <p className="mt-1.5 text-[13px] font-black leading-5 text-[color:var(--client-text)]">{item.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className={cn("relative z-10 mt-3 px-4 py-3.5", previewGlassClassName)}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-black text-[color:var(--client-text)]">公开简介</p>
+                <span className={previewSubtleClassName}>{draft.profileTags.length} 个标签</span>
+              </div>
+              <p className="mt-2 text-[12px] leading-6 text-[color:var(--client-muted)]">{previewBioSummary}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {previewPrimaryTags.map((tag) => (
+                  <span
+                    className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-text)]"
+                    key={tag}
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {previewHiddenTagCount > 0 ? (
+                  <span className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)]">
+                    +{previewHiddenTagCount}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <SettingsSection
+        description="头像、昵称和基础身份信息会同步到技师主页与分享资料。"
+        headerMode="info"
+        panelClassName="p-4"
+        title="基础资料"
+      >
+        <div className="space-y-4">
+          <input accept="image/*" className="hidden" onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
+          <div className="flex flex-col gap-4 rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4 md:flex-row md:items-center">
+            <AvatarImage alt={draft.nickname} className="h-20 w-20 shrink-0" src={draft.avatar} />
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-black text-[color:var(--client-text)]">头像与昵称</p>
+              <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">从本地上传头像。姓名与实名认证信息继续在验证资料页维护。</p>
+            </div>
+            <SecondaryButton className="shrink-0" onClick={() => avatarInputRef.current?.click()}>
+              上传头像
+            </SecondaryButton>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="block md:col-span-2">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">昵称</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, nickname: event.target.value }))}
+                value={draft.nickname}
+              />
+              <span className="mb-2 mt-3 block text-xs font-black text-[color:var(--client-muted)]">性别</span>
+              <select
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, gender: event.target.value as TechnicianProfileDraft["gender"] }))}
+                value={draft.gender}
+              >
+                <option value="male">男</option>
+                <option value="female">女</option>
+                <option value="private">保密</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">年龄</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, age: event.target.value }))}
+                value={draft.age}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">身高（cm）</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                inputMode="numeric"
+                onChange={(event) => setDraft((current) => ({ ...current, height: event.target.value.replace(/[^\d]/g, "") }))}
+                placeholder="164"
+                value={draft.height}
+              />
+            </label>
+          </div>
+
+          <div className="space-y-2">
+            <span className="block text-xs font-black text-[color:var(--client-muted)]">身份显示</span>
+            <div className="grid gap-3 md:grid-cols-2">
+              {(["店铺所属技师", "个人技师"] as const).map((value) => {
+                const active = draft.identityLabel === value;
+
+                return (
+                  <button
+                    className={cn(
+                      "rounded-[24px] border px-4 py-4 text-left transition",
+                      active
+                        ? "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
+                        : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]"
+                    )}
+                    key={value}
+                    onClick={() => setDraft((current) => ({ ...current, identityLabel: value }))}
+                    type="button"
+                  >
+                    <div className="flex items-start gap-3">
+                      <SelectionIndicator active={active} />
+                      <div className="min-w-0">
+                        <p className="text-[15px] font-black text-[color:var(--client-text)]">{value}</p>
+                        <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">
+                          {value === "店铺所属技师" ? "适合仍以店铺排班和自动派单为主的资料展示。" : "适合更强调个人接单与自由档期的资料展示。"}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        action={<span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]">{draft.paymentMethods.length} 种支付</span>}
+        description="这里控制接单方式、沟通语言与预算区间。"
+        headerMode="info"
+        panelClassName="p-4"
+        title="接单偏好"
+      >
+        <div className="space-y-4">
+          <SettingsToggleRow
+            checked={draft.canServeForeigners}
+            description="开启后，主页资料会明确标注可接待外国人，方便平台推荐跨语种订单。"
+            onChange={(checked) => setDraft((current) => ({ ...current, canServeForeigners: checked }))}
+            title="服务外国人"
+          />
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">抢单预算下限</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, bidBudgetMin: event.target.value }))}
+                value={draft.bidBudgetMin}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">抢单预算上限</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, bidBudgetMax: event.target.value }))}
+                value={draft.bidBudgetMax}
+              />
+            </label>
+          </div>
+
+          <div>
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">支付方式</span>
+            <div className="flex flex-wrap gap-2">
+              {paymentOptions.map((option) => (
+                <button
+                  className={chipClassName(draft.paymentMethods.includes(option), "primary")}
+                  key={option}
+                  onClick={() => setDraft((current) => ({ ...current, paymentMethods: togglePaymentMethod(current.paymentMethods, option) }))}
+                  type="button"
+                >
+                  {paymentOptionLabels[option]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">语言能力</span>
+            <div className="flex flex-wrap gap-2" data-no-i18n>
+              {Array.from(new Set([...languageOptions, ...languages.map((item) => item.label)])).map((language) => (
+                <button
+                  className={chipClassName(draft.languages.includes(language))}
+                  key={language}
+                  onClick={() => setDraft((current) => ({ ...current, languages: toggleValue(current.languages, language) }))}
+                  type="button"
+                >
+                  {language}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        action={<span className="rounded-full bg-[color:rgba(62,140,108,0.14)] px-3 py-1 text-[11px] font-black text-[color:#1c6b4f]">{draft.serviceAreas.length} 个区域</span>}
+        description="服务区域和个性标签会直接影响主页资料卡、筛选结果和分享展示。"
+        headerMode="info"
+        panelClassName="p-4"
+        title="服务范围与标签"
+      >
+        <div className="space-y-5">
+          <div className="space-y-3">
+            <p className="text-[13px] font-black text-[color:var(--client-text)]">行政区域</p>
+            {adminAreaGroups.map((group) => (
+              <div key={group.title}>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-muted)]">{group.title}</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.items.map((area) => (
+                    <button
+                      className={chipClassName(draft.serviceAreas.includes(area), "primary")}
+                      key={`${group.title}-${area}`}
+                      onClick={() => setDraft((current) => ({ ...current, serviceAreas: toggleValue(current.serviceAreas, area) }))}
+                      type="button"
+                    >
+                      {area}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-[13px] font-black text-[color:var(--client-text)]">沿线 / 车站服务</p>
+            {railAreaGroups.map((group) => (
+              <div key={group.title}>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-muted)]">{group.title}</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.items.map((area) => (
+                    <button
+                      className={chipClassName(draft.serviceAreas.includes(area), "primary")}
+                      key={`${group.title}-${area}`}
+                      onClick={() => setDraft((current) => ({ ...current, serviceAreas: toggleValue(current.serviceAreas, area) }))}
+                      type="button"
+                    >
+                      {area}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-[13px] font-black text-[color:var(--client-text)]">技师标签</p>
+            {tagGroups.map((group) => (
+              <div key={group.title}>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-muted)]">{group.title}</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.tags.map((tag) => (
+                    <button
+                      className={chipClassName(draft.profileTags.includes(tag), "primary")}
+                      key={tag}
+                      onClick={() => setDraft((current) => ({ ...current, profileTags: toggleValue(current.profileTags, tag) }))}
+                      type="button"
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-4">
+            <p className="text-[12px] font-black text-[color:var(--client-text)]">当前资料摘要</p>
+            <p className="mt-2 text-[12px] leading-6 text-[color:var(--client-muted)]">
+              服务区域：{summarizeServiceRange(draft.serviceAreas)}
+            </p>
+            <p className="mt-1 text-[12px] leading-6 text-[color:var(--client-muted)]">
+              支付方式：{draft.paymentMethods.length > 0 ? draft.paymentMethods.map((item) => paymentOptionLabels[item]).join(" / ") : "未设置"}
+            </p>
+          </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection description="这里建议写清楚服务风格、擅长项目和沟通说明。" headerMode="info" panelClassName="p-4" title="自我介绍">
+        <div className="space-y-4">
+          <label className="block">
+            <textarea
+              className="min-h-[180px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-4 outline-none"
+              onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
+              value={draft.bio}
+            />
+          </label>
+          <div className="rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-4 py-3 text-xs leading-6 text-[color:var(--client-muted)]">
+            资料保存后会立即同步到技师主页信息卡；详细数据页面保持独立路由展示，不会再以透明浮层覆盖在我的页上方。
+          </div>
+        </div>
+      </SettingsSection>
+
+      <StickySaveBar onCancel={() => navigate(-1)} onSave={handleSave} />
+    </SettingsDetailPage>
+  );
+}
+
+function MerchantProfileSettingsPage({ portal, store }: { portal: UnifiedSettingsPortal; store: Store }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const availableTags = Array.from(new Set([...merchantTagPool, ...store.tags]));
+  const focus = searchParams.get("focus");
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const buildDraft = (source: Store) => ({
+    cover: source.cover,
+    gallery: [...source.gallery].slice(0, 5),
+    name: source.name,
+    area: source.area,
+    address: source.address,
+    businessHours: source.businessHours,
+    nextSlot: source.nextSlot,
+    priceLabel: source.priceLabel,
+    rankLabel: source.rankLabel,
+    description: source.description,
+    tags: [...source.tags],
+    mode: source.mode,
+    presentation: getStorePresentationConfig(source, detectStorePresentationIndustry(source))
+  });
+  const [draft, setDraft] = useState(() => buildDraft(store));
+  const updatePresentationDraft = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
+    setDraft((current) => ({ ...current, presentation: { ...current.presentation, [key]: value } }));
+  };
+
+  useEffect(() => {
+    setDraft(buildDraft(store));
+  }, [
+    store.id,
+    store.cover,
+    store.gallery,
+    store.name,
+    store.area,
+    store.address,
+    store.businessHours,
+    store.nextSlot,
+    store.priceLabel,
+    store.rankLabel,
+    store.description,
+    store.tags,
+    store.mode,
+    store.presentation
+  ]);
+  const handleCoverUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    const nextCover = await readImageFileAsDataUrl(file);
+    setDraft((current) => ({ ...current, cover: nextCover }));
+    event.target.value = "";
+  };
+
+  return (
+    <SettingsDetailPage
+      backTo={getSettingsBasePath(portal)}
+      contentClassName="space-y-8 pb-32"
+      info="店铺独有资料继续保留，但已经完全迁入统一设置页骨架，不再停留在商户我的页里分散维护。"
+      title="店铺信息维护"
+    >
+      <SectionBlock description="门店资料、展示信息和经营方式统一在这里维护，样式和交互与用户端设置页保持一致。" title="店铺资料">
+        <SurfacePanel className="space-y-4">
+          <div className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)]">
+            <img alt={draft.name} className="h-44 w-full object-cover" src={draft.cover} />
+            <div className="space-y-2 px-4 py-4">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">预览</p>
+              <p className="text-[24px] font-black text-[color:var(--client-text)]">{draft.name}</p>
+              <p className="text-sm font-semibold text-[color:var(--client-primary)]">{draft.rankLabel}</p>
+              <p className="text-sm leading-6 text-[color:var(--client-muted)]">{draft.presentation.subtitle}</p>
+              <p className="text-sm text-[color:var(--client-muted)]">{draft.area} · {draft.address}</p>
+              <p className="text-sm text-[color:var(--client-muted)]">
+                {draft.presentation.station} · {draft.businessHours} · 最近可约 {draft.nextSlot}
+              </p>
+            </div>
+          </div>
+        </SurfacePanel>
+
+        <SurfacePanel className={cn("space-y-4", focus === "gallery" && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)]")}>
+          <div>
+            <p className="text-sm font-black text-[color:var(--client-text)]">图片内容</p>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">服务展示里的轮播图、缩略图和环境图都从这里统一维护。</p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+            <input accept="image/*" className="hidden" onChange={handleCoverUpload} ref={coverInputRef} type="file" />
+            <div className="min-w-0">
+              <p className="text-sm font-black text-[color:var(--client-text)]">封面图片</p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">从本地上传新封面，不需要填写图片链接。</p>
+            </div>
+            <SecondaryButton className="shrink-0" onClick={() => coverInputRef.current?.click()}>
+              上传封面
+            </SecondaryButton>
+          </div>
+
+          <ImageGalleryManager
+            coverHint="最多 5 张，店铺详情页会按这里的顺序轮播；为空时自动回退到封面图。"
+            description="商户端可直接增减和替换店铺轮播图，保存后店铺详情页立即更新。"
+            images={draft.gallery}
+            label="店铺轮播图"
+            maxImages={5}
+            onChange={(gallery) => setDraft((current) => ({ ...current, gallery: gallery.slice(0, 5) }))}
+          />
+        </SurfacePanel>
+
+        <SurfacePanel className={cn("space-y-4", focus === "basic" && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)]")}>
+          <div>
+            <p className="text-sm font-black text-[color:var(--client-text)]">基础资料</p>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">店铺名称、地址、营业时间和经营方式会同步到服务展示信息卡。</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺名称</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+                value={draft.name}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">服务区域</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, area: event.target.value }))}
+                value={draft.area}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺地址</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))}
+                value={draft.address}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">营业时间</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, businessHours: event.target.value }))}
+                value={draft.businessHours}
+              />
+            </label>
+          </div>
+
+          <div>
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">经营方式</span>
+            <SegmentedTabs
+              items={[
+                { label: "上门服务", value: "home" },
+                { label: "到店服务", value: "store" }
+              ]}
+              onChange={(value) => setDraft((current) => ({ ...current, mode: value as Store["mode"] }))}
+              value={draft.mode}
+            />
+          </div>
+        </SurfacePanel>
+
+        <SurfacePanel className={cn("space-y-4", focus === "presentation" && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)]")}>
+          <div>
+            <p className="text-sm font-black text-[color:var(--client-text)]">展示信息</p>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">价格、角标、最近可约和介绍文案会同步到服务展示的图片与信息卡。</p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">价格说明</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, priceLabel: event.target.value }))}
+                value={draft.priceLabel}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">首页角标</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, rankLabel: event.target.value }))}
+                value={draft.rankLabel}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">最近可约</span>
+              <input
+                className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                onChange={(event) => setDraft((current) => ({ ...current, nextSlot: event.target.value }))}
+                value={draft.nextSlot}
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4">
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">前台首屏说明</span>
+              <textarea
+                className="min-h-[104px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
+                onChange={(event) => updatePresentationDraft("subtitle", event.target.value)}
+                value={draft.presentation.subtitle}
+              />
+            </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">最近车站</span>
+                <input
+                  className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                  onChange={(event) => updatePresentationDraft("station", event.target.value)}
+                  value={draft.presentation.station}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">距离说明</span>
+                <input
+                  className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 outline-none"
+                  onChange={(event) => updatePresentationDraft("distance", event.target.value)}
+                  value={draft.presentation.distance}
+                />
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">交通说明</span>
+              <textarea
+                className="min-h-[96px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
+                onChange={(event) => updatePresentationDraft("access", event.target.value)}
+                value={draft.presentation.access}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">到店提示</span>
+              <textarea
+                className="min-h-[96px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
+                onChange={(event) => updatePresentationDraft("routeGuide", event.target.value)}
+                value={draft.presentation.routeGuide}
+              />
+            </label>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">支付方式</span>
+                <textarea
+                  className="min-h-[104px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
+                  onChange={(event) => updatePresentationDraft("paymentMethods", settingsTextToList(event.target.value))}
+                  value={settingsListToText(draft.presentation.paymentMethods)}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">设备 / 服务标记</span>
+                <textarea
+                  className="min-h-[104px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
+                  onChange={(event) => updatePresentationDraft("equipment", settingsTextToList(event.target.value))}
+                  value={settingsListToText(draft.presentation.equipment)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺标签</span>
+            <div className="flex flex-wrap gap-2">
+              {availableTags.map((tag) => {
+                const active = draft.tags.includes(tag);
+
+                return (
+                  <button
+                    className={`rounded-full px-3 py-2 text-xs font-black ${
+                      active
+                        ? "bg-[color:var(--client-primary)] text-[#090806]"
+                        : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
+                    }`}
+                    key={tag}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        tags: current.tags.includes(tag) ? current.tags.filter((item) => item !== tag) : [...current.tags, tag]
+                      }))
+                    }
+                    type="button"
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">店铺介绍</span>
+            <textarea
+              className="min-h-[160px] w-full rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3 outline-none"
+              onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+              value={draft.description}
+            />
+          </label>
+        </SurfacePanel>
+      </SectionBlock>
+
+      <StickySaveBar
+        onCancel={() => navigate(-1)}
+        onSave={() => {
+          updateStoreEntity(store.id, {
+            cover: draft.cover,
+            gallery: draft.gallery.slice(0, 5),
+            name: draft.name,
+            area: draft.area,
+            address: draft.address,
+            businessHours: draft.businessHours,
+            nextSlot: draft.nextSlot,
+            priceLabel: draft.priceLabel,
+            rankLabel: draft.rankLabel,
+            description: draft.description,
+            tags: draft.tags,
+            mode: draft.mode,
+            presentation: normalizeStorePresentationConfig(draft.presentation, detectStorePresentationIndustry({ tags: draft.tags }))
+          });
+          navigate(getSettingsBasePath(portal));
+        }}
+      />
+    </SettingsDetailPage>
+  );
+}
+
+export function UnifiedSettingsProfilePage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { session } = useAuth();
+  const { customers, technicians, stores } = useEntityStore();
+  const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
+  const linkedTechnician = technicians.find((item) => item.id === session?.linkedTechnicianId);
+  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+
+  if (portal === "merchant") {
+    return (
+      <PortalScopedSettingsPage portal={portal}>
+        <MerchantProfileSettingsPage portal={portal} store={store} />
+      </PortalScopedSettingsPage>
+    );
+  }
+
+  if (portal === "technician") {
+    return (
+      <PortalScopedSettingsPage portal={portal}>
+        <TechnicianProfileSettingsPage portal={portal} technician={technician} />
+      </PortalScopedSettingsPage>
+    );
+  }
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <UserProfileSettingsPage customer={customer} portal={portal} technician={linkedTechnician} />
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const verificationCards =
+    portal === "merchant"
+      ? [
+          { title: "营业资质", description: "已提交营业执照、经营许可与主体证明。", status: "已认证" },
+          { title: "店铺主体", description: "结算账户、门店信息与店铺主体已完成关联。", status: "已核验" },
+          { title: "经营规则", description: "改期、退款与预约规则已确认，状态正常。", status: "正常" }
+        ]
+      : portal === "technician"
+        ? [
+            { title: "实名认证", description: "姓名、头像与接单主体一致，基础实名已通过。", status: "已完成" },
+            { title: "从业资料", description: "技师资料、服务信息与展示页已完成同步。", status: "已同步" },
+            { title: "服务信用", description: "接单、履约和取消记录稳定，可继续接单。", status: "良好" }
+          ]
+        : [
+            { title: "实名认证", description: "已通过基础实名校验。", status: "已完成" },
+            { title: "本人一致性", description: "头像、昵称与预约资料一致性正常。", status: "已核验" },
+            { title: "信用记录", description: "取消、支付与履约记录稳定。", status: "良好" }
+          ];
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} info="验证与资质统一从设置首页进入独立页面。" title={getVerificationTitle(portal)}>
+        <SectionBlock description="同一入口根据身份展示不同内容，但页面骨架和视觉规范已经统一。" title="验证状态">
+          <div className="grid gap-4 lg:grid-cols-3">
+            {verificationCards.map((item) => (
+              <SurfacePanel key={item.title}>
+                <p className="text-lg font-black text-[color:var(--client-text)]">{item.title}</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--client-muted)]">{item.description}</p>
+                <p className="mt-4 text-sm font-black text-[color:var(--client-primary)]">{item.status}</p>
+              </SurfacePanel>
+            ))}
+          </div>
+        </SectionBlock>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const navigate = useNavigate();
+  const { session } = useAuth();
+  const { technicians } = useEntityStore();
+  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
+  const [areas, setAreas] = useState<string[]>(technician.serviceAreas);
+
+  if (portal !== "technician") {
+    return (
+      <PortalScopedSettingsPage portal={portal}>
+        <SettingsDetailPage backTo={getSettingsBasePath(portal)} info="这个入口只在技师身份下显示。" title="服务范围">
+          <SettingsSection panelClassName="p-4" title="当前不可用">
+            <p className="text-sm leading-7 text-[color:var(--client-muted)]">服务范围是技师端独有设置项，用户端和店铺端不会展示这个页面。</p>
+          </SettingsSection>
+        </SettingsDetailPage>
+      </PortalScopedSettingsPage>
+    );
+  }
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} contentClassName="space-y-8 pb-32" info="服务范围改为技师身份下的独立设置页。" title="服务范围">
+        <SectionBlock description="服务范围不再散落在其他入口，统一从设置中心进入。" title="可服务区域">
+          <SurfacePanel>
+            <div className="flex flex-wrap gap-2">
+              {serviceAreaPool.map((area) => {
+                const active = areas.includes(area);
+
+                return (
+                  <button
+                    className={`rounded-full px-4 py-2 text-sm font-black ${
+                      active
+                        ? "bg-[color:var(--client-primary)] text-[#090806]"
+                        : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
+                    }`}
+                    key={area}
+                    onClick={() =>
+                      setAreas((current) => (current.includes(area) ? current.filter((item) => item !== area) : [...current, area]))
+                    }
+                    type="button"
+                  >
+                    {area}
+                  </button>
+                );
+              })}
+            </div>
+          </SurfacePanel>
+        </SectionBlock>
+
+        <StickySaveBar
+          onCancel={() => navigate(-1)}
+          onSave={() => {
+            updateTechnicianEntity(technician.id, { serviceAreas: areas });
+            navigate(getSettingsBasePath(portal));
+          }}
+        />
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { session } = useAuth();
+  const { customers, technicians, stores } = useEntityStore();
+  const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
+  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+  const businessPromoter = businessCpsPromoters[0];
+  const accountUsername = getAccountUsername({
+    portal,
+    customer,
+    technician,
+    store,
+    fallback: session?.username
+  });
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        info={portal === "business" ? "Afirieito 账号、安全、推广码和收款身份统一收口到同一页。" : "账户、安全、绑定信息统一收口到同一页。"}
+        navItems={getSettingsNavItems(portal)}
+        title="账户与安全"
+      >
+        <SettingsSection
+          description={portal === "business" ? "这里展示 NeeDoAfirieito 推广账号的基础绑定信息，不展示普通用户会员等级。" : "首页只显示摘要，这里承接三端账户、安全与主体绑定相关内容。"}
+          panelClassName={settingsListDividerClassName}
+          title="账户信息"
+        >
+          {portal === "business" ? (
+            <>
+              <SettingsListItem subtitle={`账号 ${accountUsername}`} title="Afirieito 登录账号" value="已启用" />
+              <SettingsListItem subtitle={businessPromoter?.inviteCode ?? "未分配推广码"} title="专属推广码" value="已绑定" />
+              <SettingsListItem subtitle={businessPromoter?.primaryChannel ?? "待设置"} title="默认推广渠道" value="可使用" />
+              <SettingsListItem subtitle="提现、税务与银行资料后续接入正式接口" title="收款身份" value="待复核" />
+              <SettingsListItem subtitle="只读取本人推广活动、素材、收益和结算数据" title="数据权限" value="Afirieito 专用" />
+            </>
+          ) : (
+            <>
+              <SettingsListItem subtitle={customer.phone || "未设置手机号"} title={portal === "merchant" ? "管理员手机" : "手机绑定"} value={customer.phone ? "已绑定" : "未设置"} />
+          <SettingsListItem subtitle={`用户名 ${accountUsername}`} title="登录方式" value="账号密码" />
+          <SettingsListItem subtitle="当前前端保留结构，未接入真实改密接口" title="登录密码" value="已设置" />
+          {portal === "merchant" ? (
+            <>
+              <SettingsListItem subtitle="店铺主体、资质与结算信息已绑定到当前门店账号" title="绑定信息" value="主体已绑定" />
+              <SettingsListItem subtitle="分账、提现与票据配置入口保留在统一账户页中" title="结算账户" value="待接入" />
+            </>
+          ) : portal === "technician" ? (
+            <>
+              <SettingsListItem subtitle="技师资料、接单身份与展示信息已关联" title="绑定信息" value="基础完成" />
+              <SettingsListItem subtitle="提现、结算与税务资料后续统一收口到这里" title="收款账户" value="待接入" />
+              <SettingsListItem subtitle="紧急联系人与位置共享会复用统一设置体系" title="紧急联系人" value="已配置" />
+            </>
+          ) : (
+            <>
+              <SettingsListItem subtitle="账号与资料主体已关联" title="绑定信息" value="基础完成" />
+              <SettingsListItem subtitle="演示环境未接入多设备记录" title="设备管理" value="当前设备" />
+            </>
+          )}
+            </>
+          )}
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsNotificationsPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const [portalSettings, setPortalSettings] = usePortalSettingsState(portal);
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} info="通知首页只显示摘要状态，详细开关放到独立页面。" navItems={getSettingsNavItems(portal)} title="通知设置">
+        <SettingsSection
+          description="消息、系统、预约与营销提醒统一集中在这里逐项控制。"
+          panelClassName="space-y-3 p-4"
+          title="消息与提醒"
+        >
+          <SettingsToggleRow
+            checked={portalSettings.message}
+            description="聊天与通讯录相关消息提醒"
+            onChange={(checked) => setPortalSettings((current) => ({ ...current, message: checked }))}
+            title="消息通知"
+          />
+          <SettingsToggleRow
+            checked={portalSettings.system}
+            description="系统公告、风控与平台通知"
+            onChange={(checked) => setPortalSettings((current) => ({ ...current, system: checked }))}
+            title="系统通知"
+          />
+          <SettingsToggleRow
+            checked={portalSettings.booking}
+            description="预约确认、改期、到时与服务提醒"
+            onChange={(checked) => setPortalSettings((current) => ({ ...current, booking: checked }))}
+            title="预约通知"
+          />
+          <SettingsToggleRow
+            checked={portalSettings.marketing}
+            description="优惠券、活动与回流营销提醒"
+            onChange={(checked) => setPortalSettings((current) => ({ ...current, marketing: checked }))}
+            title="营销通知"
+          />
+          <SettingsToggleRow
+            checked={portalSettings.sound}
+            description="声音、震动与横幅提醒方式"
+            onChange={(checked) => setPortalSettings((current) => ({ ...current, sound: checked }))}
+            title="声音与提醒方式"
+          />
+        </SettingsSection>
+
+        {portal === "technician" ? (
+          <SettingsSection
+            description="技师端原本散落在我的页里的接单与位置开关，已经迁入统一设置体系。"
+            panelClassName="space-y-3 p-4"
+            title="工作与位置"
+          >
+            {(() => {
+              const technicianSettings = portalSettings as TechnicianPortalSettingsState;
+
+              return (
+                <>
+                  <SettingsToggleRow
+                    checked={technicianSettings.autoAccept}
+                    description="自动接受符合风险规则的预约订单"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as TechnicianPortalSettingsState), autoAccept: checked }))
+                    }
+                    title="自动接单"
+                  />
+                  <SettingsToggleRow
+                    checked={technicianSettings.shareLocation}
+                    description="给紧急联系人同步位置与到达状态"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as TechnicianPortalSettingsState), shareLocation: checked }))
+                    }
+                    title="共享位置"
+                  />
+                  <SettingsToggleRow
+                    checked={technicianSettings.breakReminder}
+                    description="重要行程开始前提醒查看日程"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as TechnicianPortalSettingsState), breakReminder: checked }))
+                    }
+                    title="日程提醒"
+                  />
+                </>
+              );
+            })()}
+          </SettingsSection>
+        ) : null}
+
+        {portal === "merchant" ? (
+          <SettingsSection
+            description="商户端原有的经营开关保留，但页面结构、样式和交互统一复用了设置子页模块。"
+            panelClassName="space-y-3 p-4"
+            title="经营开关"
+          >
+            {(() => {
+              const merchantSettings = portalSettings as MerchantPortalSettingsState;
+
+              return (
+                <>
+                  <SettingsToggleRow
+                    checked={merchantSettings.storeOnline}
+                    description="控制门店是否继续接受新预约"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as MerchantPortalSettingsState), storeOnline: checked }))
+                    }
+                    title="店铺上线"
+                  />
+                  <SettingsToggleRow
+                    checked={merchantSettings.autoConfirm}
+                    description="自动确认符合规则的预约订单"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as MerchantPortalSettingsState), autoConfirm: checked }))
+                    }
+                    title="自动确认订单"
+                  />
+                  <SettingsToggleRow
+                    checked={merchantSettings.instantBooking}
+                    description="允许前台即时预约直接进入排班处理"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as MerchantPortalSettingsState), instantBooking: checked }))
+                    }
+                    title="即时预约"
+                  />
+                  <SettingsToggleRow
+                    checked={merchantSettings.reviewReminder}
+                    description="完成订单后提醒顾客进行评价"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as MerchantPortalSettingsState), reviewReminder: checked }))
+                    }
+                    title="评价提醒"
+                  />
+                </>
+              );
+            })()}
+          </SettingsSection>
+        ) : null}
+
+        {portal === "business" ? (
+          <SettingsSection
+            description="NeeDoAfirieito 独有通知集中到这里，不和用户端会员、预约等级混在一起。"
+            panelClassName="space-y-3 p-4"
+            title="Afirieito 通知"
+          >
+            {(() => {
+              const businessSettings = portalSettings as BusinessPortalSettingsState;
+
+              return (
+                <>
+                  <SettingsToggleRow
+                    checked={businessSettings.campaign}
+                    description="活动上架、预算变化、规则调整提醒"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as BusinessPortalSettingsState), campaign: checked }))
+                    }
+                    title="活动通知"
+                  />
+                  <SettingsToggleRow
+                    checked={businessSettings.material}
+                    description="素材审核、二维码更新、文案可用状态"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as BusinessPortalSettingsState), material: checked }))
+                    }
+                    title="素材通知"
+                  />
+                  <SettingsToggleRow
+                    checked={businessSettings.settlement}
+                    description="预估佣金、可提现、提现进度与账本变动"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as BusinessPortalSettingsState), settlement: checked }))
+                    }
+                    title="结算通知"
+                  />
+                  <SettingsToggleRow
+                    checked={businessSettings.risk}
+                    description="归因异常、素材违规、佣金冻结与复核结果"
+                    onChange={(checked) =>
+                      setPortalSettings((current) => ({ ...(current as BusinessPortalSettingsState), risk: checked }))
+                    }
+                    title="风控通知"
+                  />
+                </>
+              );
+            })()}
+          </SettingsSection>
+        ) : null}
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsHelpPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const supportPath = getSupportPath(portal);
+  const supportPrimaryLabel = portal === "user" ? "前往帮助中心" : portal === "business" ? "返回 Afirieito" : "前往消息中心";
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} info="帮助入口保持独立，避免设置首页被说明文案占满。" navItems={getSettingsNavItems(portal)} title="帮助与反馈">
+        <SettingsSection
+          description="帮助、反馈和平台支持统一承接在同一套详情页中。"
+          panelClassName={settingsListDividerClassName}
+          title="支持入口"
+        >
+          <SettingsListItem
+            subtitle={portal === "user" ? "前往帮助页查看客服入口与常见问题" : portal === "business" ? "NeeDoAfirieito 的活动、素材、归因和结算问题统一由平台支持承接" : "通过消息中心联系平台支持与问题反馈"}
+            title={portal === "user" ? "帮助中心" : "联系平台支持"}
+            to={supportPath}
+            value="进入"
+          />
+          <SettingsListItem subtitle="当前演示环境统一通过平台支持入口承接问题反馈" title="问题反馈" value="支持中" />
+        </SettingsSection>
+        <div className="flex justify-end">
+          <PrimaryButton to={supportPath}>{supportPrimaryLabel}</PrimaryButton>
+        </div>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+export function UnifiedSettingsAboutPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { language } = useI18n();
+  const { theme } = useClientTheme();
+  const t = (source: string) => translateText(source, language);
+  const currentThemeLabel = t(clientThemes.find((item) => item.id === theme)?.label ?? "活力黑白版");
+  const currentLanguageLabel = languages.find((item) => item.code === language)?.label ?? "简中";
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        info={t(portal === "business" ? "版本、主题、语言和当前 Afirieito 平台身份摘要独立收口到关于页。" : "版本、主题、语言和当前身份摘要独立收口到关于页。")}
+        navItems={getSettingsNavItems(portal)}
+        title={t(portal === "business" ? "关于 NeeDoAfirieito" : "关于 NeeDo")}
+      >
+        <SettingsSection panelClassName={settingsListDividerClassName} title={t("应用信息")}>
+          <SettingsListItem dataNoI18n title={t("当前版本")} value={appVersion} />
+          <SettingsListItem title={t("当前主题")} value={currentThemeLabel} />
+          <SettingsListItem dataNoI18n title={t("当前语言")} value={currentLanguageLabel} />
+          <SettingsListItem title={t("当前身份")} value={t(compactPortalLabels[portal].label)} />
+        </SettingsSection>
+        <SettingsSection panelClassName="p-4" title={t("说明")}>
+          <p className="text-sm leading-7 text-[color:var(--client-muted)]">
+            {t(portal === "business" ? "NeeDoAfirieito 是独立 Afirieito 前端，面向推广者处理活动、素材、归因、收益和提现；产运后台只读取和管理它产生的数据。" : "NeeDo 设置中心现在已经统一成一套三端共用模块。用户端作为基准实现，技师端与店铺端通过身份配置复用同一套首页、列表项、子页骨架与状态展示方式。")}
+          </p>
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+type LegalDocumentKind = "terms" | "privacy";
+
+function NoI18nText({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={className} data-no-i18n>
+      {children}
+    </span>
+  );
+}
+
+function splitLegalMetaItem(item: string) {
+  const separatorIndex = item.search(/[：:]/);
+
+  if (separatorIndex === -1) {
+    return {
+      label: "",
+      value: item
+    };
+  }
+
+  return {
+    label: item.slice(0, separatorIndex).trim(),
+    value: item.slice(separatorIndex + 1).trim()
+  };
+}
+
+function LegalDocumentMetaRows({
+  rows
+}: {
+  rows: Array<{
+    label: string;
+    value: string;
+  }>;
+}) {
+  return (
+    <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
+      {rows.map((item) => (
+        <div className="grid gap-1 px-4 py-3.5 sm:grid-cols-[9rem,1fr] sm:gap-4" key={`${item.label}-${item.value}`}>
+          {item.label ? <p className="text-[12px] font-black text-[color:var(--client-muted)]">{item.label}</p> : null}
+          <p className={cn("break-words text-[13px] font-semibold leading-6 text-[color:var(--client-text)]", item.label ? "" : "sm:col-span-2")}>
+            {item.value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UnifiedSettingsTermsDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { language } = useI18n();
+  const termsDocument = getLegalTermsDocument(language);
+  const copy = getLegalTermsUiCopy(language);
+  const metaRows = [
+    {
+      label: copy.languageLabel,
+      value: termsDocument.languageName
+    },
+    ...termsDocument.meta.map(splitLegalMetaItem),
+    {
+      label: copy.sectionCountLabel,
+      value: copy.sectionCountValue
+    }
+  ];
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        contentClassName="pb-28"
+        info={<NoI18nText>{copy.pageInfo}</NoI18nText>}
+        navItems={getSettingsNavItems(portal)}
+        title={<NoI18nText>{termsDocument.title}</NoI18nText>}
+      >
+        <SettingsSection
+          description={<NoI18nText>{copy.documentInfoDescription}</NoI18nText>}
+          panelClassName="p-0"
+          title={<NoI18nText>{copy.documentInfoTitle}</NoI18nText>}
+        >
+          <LegalDocumentMetaRows rows={metaRows} />
+        </SettingsSection>
+
+        <SettingsSection
+          description={<NoI18nText>{copy.bodyDescription}</NoI18nText>}
+          panelClassName="p-0"
+          title={<NoI18nText>{copy.bodyTitle}</NoI18nText>}
+        >
+          <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
+            {termsDocument.sections.map((section) => (
+              <article className="px-4 py-4 sm:px-5" key={section.title}>
+                <h3 className="break-words text-[15px] font-black leading-6 text-[color:var(--client-text)]">{section.title}</h3>
+                <div className="mt-3 space-y-2.5">
+                  {section.paragraphs.map((paragraph, paragraphIndex) => (
+                    <p className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]" key={`${section.title}-${paragraphIndex}`}>
+                      {paragraph}
+                    </p>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+function PrivacyBlock({ block }: { block: LegalPrivacyBlock }) {
+  if (block.kind === "bullet") {
+    return (
+      <li className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]">
+        {block.text}
+      </li>
+    );
+  }
+
+  return <p className="break-words text-[13px] leading-7 text-[color:var(--client-muted)]">{block.text}</p>;
+}
+
+function UnifiedSettingsPrivacyDocumentPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { language } = useI18n();
+  const privacyDocument = getLegalPrivacyDocument(language);
+  const copy = getLegalPrivacyUiCopy(language);
+  const metaRows = [
+    {
+      label: copy.languageLabel,
+      value: privacyDocument.languageName
+    },
+    ...privacyDocument.meta.map(splitLegalMetaItem),
+    {
+      label: copy.sectionCountLabel,
+      value: copy.sectionCountValue
+    }
+  ];
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        contentClassName="pb-28"
+        info={<NoI18nText>{copy.pageInfo}</NoI18nText>}
+        navItems={getSettingsNavItems(portal)}
+        title={<NoI18nText>{privacyDocument.title}</NoI18nText>}
+      >
+        <SettingsSection
+          description={<NoI18nText>{copy.documentInfoDescription}</NoI18nText>}
+          panelClassName="p-0"
+          title={<NoI18nText>{copy.documentInfoTitle}</NoI18nText>}
+        >
+          <LegalDocumentMetaRows rows={metaRows} />
+        </SettingsSection>
+
+        <SettingsSection
+          description={<NoI18nText>{copy.bodyDescription}</NoI18nText>}
+          panelClassName="p-0"
+          title={<NoI18nText>{copy.bodyTitle}</NoI18nText>}
+        >
+          <div className="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]" data-no-i18n>
+            {privacyDocument.sections.map((section) => (
+              <article className="px-4 py-4 sm:px-5" key={section.title}>
+                <h3 className="break-words text-[15px] font-black leading-6 text-[color:var(--client-text)]">{section.title}</h3>
+                <div className="mt-3 space-y-2.5">
+                  {section.blocks.some((block) => block.kind === "bullet") ? (
+                    <div className="space-y-2.5">
+                      {section.blocks.map((block, blockIndex) =>
+                        block.kind === "bullet" ? (
+                          <ul className="list-disc space-y-2.5 pl-5" key={`${section.title}-${blockIndex}`}>
+                            <PrivacyBlock block={block} />
+                          </ul>
+                        ) : (
+                          <PrivacyBlock block={block} key={`${section.title}-${blockIndex}`} />
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    section.blocks.map((block, blockIndex) => <PrivacyBlock block={block} key={`${section.title}-${blockIndex}`} />)
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+function UnifiedSettingsLegalDocumentPage({
+  portal,
+  kind
+}: {
+  portal: UnifiedSettingsPortal;
+  kind: LegalDocumentKind;
+}) {
+  if (kind === "terms") {
+    return <UnifiedSettingsTermsDocumentPage portal={portal} />;
+  }
+
+  return <UnifiedSettingsPrivacyDocumentPage portal={portal} />;
+}
+
+export function UnifiedSettingsTermsPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  return <UnifiedSettingsLegalDocumentPage kind="terms" portal={portal} />;
+}
+
+export function UnifiedSettingsPrivacyPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  return <UnifiedSettingsLegalDocumentPage kind="privacy" portal={portal} />;
+}
+
+export function UnifiedSettingsDeleteAccountPage({ portal }: { portal: UnifiedSettingsPortal }) {
+  const { language } = useI18n();
+  const t = (source: string) => translateText(source, language);
+  const [submitted, setSubmitted] = useState(false);
+  const checks =
+    portal === "business"
+      ? [
+          { title: "Afirieito 账号资料", subtitle: "退会后将停止使用 NeeDoAfirieito 前端，并按法规要求保留必要记录。", value: "需确认" },
+          { title: "佣金与提现", subtitle: "未结算佣金、冻结金额和提现争议处理完成前不能正式退会。", value: "需检查" },
+          { title: "推广链接与素材", subtitle: "退会后专属链接、二维码和素材授权将进入停止使用流程。", value: "需确认" },
+          { title: "演示账号", subtitle: "当前环境只展示退会入口，不会直接删除测试账号数据。", value: "演示中" }
+        ]
+      : [
+          { title: "账号资料", subtitle: "注销后将停止登录当前身份，并按法规要求处理必要记录。", value: "需确认" },
+          { title: "预约与结算", subtitle: "未完成预约、未结算金额和争议处理完成前不能正式退会。", value: "需检查" },
+          { title: "演示账号", subtitle: "当前环境只展示退会入口，不会直接删除测试账号数据。", value: "演示中" }
+        ];
+
+  return (
+    <PortalScopedSettingsPage portal={portal}>
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        info={t("账号注销会进入退会申请流程，正式环境需完成身份确认和未结事项检查。")}
+        navItems={getSettingsNavItems(portal)}
+        title={t("注销账号")}
+      >
+        <SettingsSection
+          description={t(portal === "business" ? "NeeDoAfirieito 使用独立退会确认，重点检查佣金、提现、推广链接和数据保留。" : "三端共用同一套退会入口，避免用户、技师和商户端规则不一致。")}
+          panelClassName={settingsListDividerClassName}
+          title={t("退会前确认")}
+        >
+          {checks.map((item) => (
+            <SettingsListItem key={item.title} subtitle={t(item.subtitle)} title={t(item.title)} value={t(item.value)} />
+          ))}
+        </SettingsSection>
+
+        <SettingsSection panelClassName="p-4" title={t("提交申请")}>
+          <div className="space-y-4">
+            <p className="text-sm leading-7 text-[color:var(--client-muted)]">
+              {t(submitted ? "退会申请已记录在演示状态中。" : "当前演示环境只展示退会入口与确认说明，不直接删除测试账号数据。")}
+            </p>
+            <PrimaryButton className="w-full" onClick={() => setSubmitted(true)}>
+              {t(submitted ? "已提交申请" : "提交注销申请")}
+            </PrimaryButton>
+          </div>
+        </SettingsSection>
+      </SettingsDetailPage>
+    </PortalScopedSettingsPage>
+  );
+}
+
+function StickySaveBar({
+  onCancel,
+  onSave
+}: {
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="safe-nav-bottom fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-4 pb-3 sm:px-6 lg:px-8">
+      <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+        <div className="grid gap-3 md:grid-cols-[160px,1fr]">
+          <SecondaryButton className="w-full" onClick={onCancel}>
+            取消
+          </SecondaryButton>
+          <PrimaryButton className="w-full" onClick={onSave}>
+            保存并返回设置中心
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}

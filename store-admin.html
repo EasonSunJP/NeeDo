@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="NeeDo 商户后台入口，支持门店订单、员工、排班、设计与店务配置。"
+    />
+    <link rel="icon" href="./favicon-v5.png?v=20260421-1" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32-v5.png?v=20260421-1" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180-v5.png?v=20260421-1" />
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="./icons/apple-touch-icon-180-v5.png?v=20260421-1" />
+    <link rel="manifest" href="./manifest-store-admin.webmanifest?v=20260421-1" />
+    <meta name="theme-color" content="#0F3D2E" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="NeeDo" />
+    <meta name="needo-hash" content="#/merchant-admin" />
+    <meta name="needo-title" content="NeeDo 商户后台" />
+    <meta name="needo-fallback-bg" content="./images/Backend Management System_bg.jpg" />
+    <title>NeeDo 商户后台</title>
+    <script>
+      (function () {
+        if (window.__needoBrowserNoiseGuardInstalled) {
+          return;
+        }
+
+        window.__needoBrowserNoiseGuardInstalled = true;
+
+        function messageOf(value) {
+          if (value instanceof Error) {
+            return [value.name, value.message, value.stack || ""].join(" ");
+          }
+
+          if (typeof value === "string") {
+            return value;
+          }
+
+          if (value && typeof value === "object" && "message" in value) {
+            return String(value.message || "");
+          }
+
+          return "";
+        }
+
+        function isIgnoredBrowserNoise(value) {
+          var message = messageOf(value).toLowerCase();
+          return message.indexOf("a listener indicated an asynchronous response") !== -1 &&
+            message.indexOf("message channel closed before a response was received") !== -1;
+        }
+
+        window.addEventListener("error", function (event) {
+          if (isIgnoredBrowserNoise(event.error || event.message)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener("unhandledrejection", function (event) {
+          if (isIgnoredBrowserNoise(event.reason)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        if (window.console && typeof window.console.error === "function") {
+          var originalConsoleError = window.console.error.bind(window.console);
+          window.console.error = function () {
+            for (var index = 0; index < arguments.length; index += 1) {
+              if (isIgnoredBrowserNoise(arguments[index])) {
+                return;
+              }
+            }
+
+            originalConsoleError.apply(null, arguments);
+          };
+        }
+      })();
+    </script>
+    <script>
+      (function () {
+        function messageOf(value) {
+          if (value instanceof Error) {
+            return [value.name, value.message, value.stack || ""].join(" ");
+          }
+
+          if (typeof value === "string") {
+            return value;
+          }
+
+          if (value && typeof value === "object") {
+            if ("message" in value) {
+              return String(value.message || "");
+            }
+
+            if ("reason" in value) {
+              return messageOf(value.reason);
+            }
+          }
+
+          return "";
+        }
+
+        function isIgnoredBrowserNoise(value) {
+          var message = messageOf(value).toLowerCase();
+          return message.indexOf("a listener indicated an asynchronous response") !== -1 &&
+            message.indexOf("message channel closed") !== -1;
+        }
+
+        window.onerror = function (message, source, line, column, error) {
+          return isIgnoredBrowserNoise(error || message || source);
+        };
+
+        window.onunhandledrejection = function (event) {
+          return isIgnoredBrowserNoise(event && (event.reason || event));
+        };
+
+        window.addEventListener("error", function (event) {
+          if (isIgnoredBrowserNoise(event.error || event.message || event.filename)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        });
+
+        window.addEventListener("unhandledrejection", function (event) {
+          if (isIgnoredBrowserNoise(event.reason || event)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        });
+      })();
+    </script>
+    <script type="module" src="./portal-entry.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      (function () {
+        function readMeta(name) {
+          var tag = document.querySelector('meta[name="' + name + '"]');
+          return tag ? (tag.getAttribute("content") || "").trim() : "";
+        }
+
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        }
+
+        function commandCard(command, description) {
+          return '<div style="border:1px solid rgba(255,255,255,0.12);border-radius:18px;padding:12px 12px 11px;background:rgba(8,8,8,0.22);"><div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;font-weight:700;color:#f0d490;">' + escapeHtml(command) + '</div><div style="margin-top:5px;font-size:12px;line-height:1.65;color:rgba(255,255,255,0.68);">' + escapeHtml(description) + "</div></div>";
+        }
+
+        var hashRoute = readMeta("needo-hash") || "#/";
+        var htmlTitle = readMeta("needo-title") || document.title || "NeeDo";
+        var fallbackBg = readMeta("needo-fallback-bg") || "./images/login_bg.jpg";
+        var fileName = window.location.pathname.split("/").pop() || "index.html";
+        var normalizedHash = hashRoute.charAt(0) === "#" ? hashRoute : "#" + hashRoute;
+
+        if (window.location.protocol === "file:" && !window.location.pathname.includes("/dist/")) {
+          var target = new URL("./dist/" + fileName, window.location.href);
+          target.hash = (window.location.hash || normalizedHash).replace(/^#/, "");
+          window.location.replace(target.href);
+          return;
+        }
+
+        if (window.location.protocol !== "file:") {
+          return;
+        }
+
+        var root = document.getElementById("root");
+        if (!root) {
+          return;
+        }
+
+        window.setTimeout(function () {
+          if (document.documentElement.dataset.needoBooted === "true" || root.childElementCount > 0 || root.textContent.trim().length > 0) {
+            return;
+          }
+
+          var shell = document.createElement("div");
+          shell.id = "needo-file-mode-fallback";
+          shell.style.position = "fixed";
+          shell.style.inset = "0";
+          shell.style.zIndex = "2147483647";
+          shell.style.display = "flex";
+          shell.style.alignItems = "flex-end";
+          shell.style.justifyContent = "center";
+          shell.style.padding = "24px 16px calc(24px + env(safe-area-inset-bottom))";
+          shell.style.color = "#ffffff";
+          shell.style.backgroundImage = "linear-gradient(180deg, rgba(8, 10, 12, 0.14) 0%, rgba(8, 10, 12, 0.34) 36%, rgba(8, 10, 12, 0.82) 100%), url('" + fallbackBg + "')";
+          shell.style.backgroundPosition = "center";
+          shell.style.backgroundSize = "cover";
+          shell.style.backgroundColor = "#090806";
+          shell.innerHTML =
+            '<div style="width:min(100%,520px);border:1px solid rgba(255,255,255,0.14);background:rgba(11,10,9,0.58);backdrop-filter:blur(18px);border-radius:28px;padding:20px 18px 18px;box-shadow:0 24px 80px rgba(0,0,0,0.32);font-family:Avenir Next,SF Pro Display,Noto Sans SC,Noto Sans JP,Segoe UI,ui-sans-serif,system-ui,sans-serif;"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;"><span style="display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,0.16);border-radius:999px;padding:7px 12px;font-size:11px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:rgba(255,255,255,0.78);">File Mode</span><span style="font-size:12px;font-weight:700;color:rgba(240,212,144,0.92);letter-spacing:0.08em;">NeeDo</span></div><h1 style="margin:16px 0 0;font-size:30px;line-height:1.02;font-weight:900;letter-spacing:-0.04em;">' +
+            escapeHtml(htmlTitle) +
+            '</h1><p style="margin:12px 0 0;font-size:14px;line-height:1.8;color:rgba(255,255,255,0.82);">你现在是直接用浏览器打开本地 HTML 文件。NeeDo 当前的构建产物基于 ES module，多数 Chromium 浏览器在 <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:999px;">file://</code> 模式下不会正常启动前端脚本，所以会看到白屏，也会误以为启动页、聊天页和错误页背景都丢了。</p><div style="margin-top:16px;border-radius:22px;background:rgba(255,255,255,0.08);padding:14px 14px 12px;"><p style="margin:0;font-size:12px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:rgba(240,212,144,0.88);">Recommended</p><p style="margin:10px 0 0;font-size:14px;line-height:1.8;color:rgba(255,255,255,0.84);">请改用下面任一方式打开项目：</p><div style="margin-top:10px;display:grid;gap:10px;">' +
+            commandCard("npm run dev", "同时启动前端和 mock backend，本地联调优先用这个。") +
+            commandCard("npm run preview", "先执行 npm run build，再用预览服务打开 dist。") +
+            '</div></div><p style="margin:14px 0 0;font-size:12px;line-height:1.7;color:rgba(255,255,255,0.62);">如果你只是想确认打包结果，请不要直接双击 <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:999px;">dist/*.html</code>，而是通过本地 HTTP 服务访问。</p></div>';
+          document.body.appendChild(shell);
+        }, 480);
+      })();
+    </script>
+  </body>
+</html>

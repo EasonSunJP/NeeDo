@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="description"
+      content="NeeDoAfirieito 独立联盟营销增长平台，支持推广计划、素材、归因、佣金、NDP 钱包与风控审计。"
+    />
+    <link rel="icon" href="./favicon-v5.png?v=20260421-1" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32-v5.png?v=20260421-1" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180-v5.png?v=20260421-1" />
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="./icons/apple-touch-icon-180-v5.png?v=20260421-1" />
+    <link rel="manifest" href="./manifest-afirieito.webmanifest?v=20260518-1" />
+    <meta name="theme-color" content="#061923" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="NeeDoAfirieito" />
+    <meta name="needo-hash" content="#/afirieito" />
+    <meta name="needo-title" content="NeeDoAfirieito" />
+    <meta name="needo-fallback-bg" content="./images/business_bg.jpg" />
+    <title>NeeDoAfirieito</title>
+    <script>
+      (function () {
+        if (window.__needoBrowserNoiseGuardInstalled) {
+          return;
+        }
+
+        window.__needoBrowserNoiseGuardInstalled = true;
+
+        function messageOf(value) {
+          if (value instanceof Error) {
+            return [value.name, value.message, value.stack || ""].join(" ");
+          }
+
+          if (typeof value === "string") {
+            return value;
+          }
+
+          if (value && typeof value === "object" && "message" in value) {
+            return String(value.message || "");
+          }
+
+          return "";
+        }
+
+        function isIgnoredBrowserNoise(value) {
+          var message = messageOf(value).toLowerCase();
+          return message.indexOf("a listener indicated an asynchronous response") !== -1 &&
+            message.indexOf("message channel closed") !== -1;
+        }
+
+        window.addEventListener("error", function (event) {
+          if (isIgnoredBrowserNoise(event.error || event.message)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener("unhandledrejection", function (event) {
+          if (isIgnoredBrowserNoise(event.reason)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <script type="module" src="./portal-entry.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

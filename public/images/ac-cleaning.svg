@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-label="Air conditioner cleaning service">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0b0b0b"/>
+      <stop offset="0.55" stop-color="#171717"/>
+      <stop offset="1" stop-color="#342510"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="1">
+      <stop offset="0" stop-color="#edbd61"/>
+      <stop offset="1" stop-color="#f2db91"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" x2="1">
+      <stop offset="0" stop-color="#52d6e8"/>
+      <stop offset="1" stop-color="#78ef80"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="24" flood-color="#000" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <circle cx="1300" cy="150" r="300" fill="#edbd61" opacity="0.12"/>
+  <circle cx="230" cy="770" r="360" fill="#52d6e8" opacity="0.08"/>
+  <g filter="url(#shadow)">
+    <rect x="195" y="160" width="1210" height="320" rx="56" fill="#f7f1df"/>
+    <rect x="260" y="230" width="1080" height="95" rx="24" fill="#151515"/>
+    <rect x="315" y="355" width="970" height="44" rx="22" fill="#d7d1c2"/>
+    <path d="M360 398h880" stroke="#2b2b2b" stroke-width="18" stroke-linecap="round" opacity="0.24"/>
+    <circle cx="1280" cy="278" r="36" fill="url(#gold)"/>
+  </g>
+  <g fill="none" stroke-linecap="round" stroke-width="22" opacity="0.95">
+    <path d="M455 600c95 78 218 78 315 0" stroke="url(#mint)"/>
+    <path d="M838 600c96 78 218 78 316 0" stroke="url(#mint)"/>
+    <path d="M610 705c76 56 176 56 252 0" stroke="#52d6e8"/>
+    <path d="M990 705c76 56 176 56 252 0" stroke="#78ef80"/>
+  </g>
+  <g transform="translate(250 560)">
+    <rect x="0" y="120" width="280" height="180" rx="34" fill="#202020"/>
+    <path d="M88 120V54c0-34 28-62 62-62h110" stroke="url(#gold)" stroke-width="26" stroke-linecap="round" fill="none"/>
+    <path d="M54 184h170M54 238h130" stroke="#edbd61" stroke-width="22" stroke-linecap="round"/>
+    <circle cx="244" cy="232" r="42" fill="#f05a5a"/>
+    <path d="m229 232 14 14 30-34" stroke="#fff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <g transform="translate(1050 535)">
+    <rect x="0" y="0" width="250" height="390" rx="44" fill="#202020"/>
+    <rect x="46" y="54" width="158" height="190" rx="26" fill="#2f2f2f"/>
+    <path d="M74 296h100" stroke="url(#gold)" stroke-width="22" stroke-linecap="round"/>
+    <path d="M86 340h74" stroke="#edbd61" stroke-width="18" stroke-linecap="round" opacity="0.72"/>
+    <circle cx="198" cy="328" r="18" fill="#78ef80"/>
+  </g>
+  <text x="195" y="850" fill="#f7f1df" font-family="Inter, Arial, sans-serif" font-size="74" font-weight="800">AC Deep Cleaning</text>
+  <text x="200" y="920" fill="#b7ad95" font-family="Inter, Arial, sans-serif" font-size="38" font-weight="600">disassembly · anti-mold · photo report</text>
+</svg>

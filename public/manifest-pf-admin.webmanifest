@@ -1,0 +1,31 @@
+{
+  "id": "./pf-admin.html#/admin",
+  "name": "NeeDo",
+  "short_name": "NeeDo",
+  "description": "NeeDo 运营后台入口，支持数据大盘、调度、用户、技师、店铺与营销管理。",
+  "start_url": "./pf-admin.html#/admin",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0F3D2E",
+  "theme_color": "#0F3D2E",
+  "icons": [
+    {
+      "src": "./icons/icon-192-v5.png?v=20260421-1",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512-v5.png?v=20260421-1",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/maskable-icon-512-v5.png?v=20260421-1",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

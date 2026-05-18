@@ -1,0 +1,31 @@
+{
+  "id": "./technician.html#/technician",
+  "name": "NeeDo",
+  "short_name": "NeeDo",
+  "description": "NeeDo 技师端入口，支持任务、日程、聊天、情报与收入查看。",
+  "start_url": "./technician.html#/technician",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0F3D2E",
+  "theme_color": "#0F3D2E",
+  "icons": [
+    {
+      "src": "./icons/icon-192-v5.png?v=20260421-1",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512-v5.png?v=20260421-1",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/maskable-icon-512-v5.png?v=20260421-1",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

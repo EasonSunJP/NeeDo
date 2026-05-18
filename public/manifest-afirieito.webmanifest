@@ -1,0 +1,28 @@
+{
+  "name": "NeeDoAfirieito",
+  "short_name": "NeeDoAfirieito",
+  "description": "NeeDoAfirieito 独立联盟营销增长平台",
+  "start_url": "/afirieito.html#/afirieito",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#061923",
+  "theme_color": "#061923",
+  "icons": [
+    {
+      "src": "/icons/icon-192-v5.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512-v5.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/maskable-icon-512-v5.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
