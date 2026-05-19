@@ -152,6 +152,14 @@ const navSections: AdminNavSection[] = [
       { label: "权限管理", to: "/admin/roles", icon: "权", children: ["角色管理", "管理员列表"] },
       { label: "出行设置", to: "/admin/travel-settings", icon: "行", children: ["打车设置", "电车设置", "公交价格", "城市车费"] }
     ]
+  },
+  {
+    key: "docs",
+    title: "文档",
+    items: [
+      { label: "操作文档", to: "/admin/docs", icon: "文", children: ["产运后台", "商户后台", "Afirieito 后台"] },
+      { label: "API 文档", to: "/admin/docs/api", icon: "A", children: ["全量 API", "显示开关", "关键字段"] }
+    ]
   }
 ];
 

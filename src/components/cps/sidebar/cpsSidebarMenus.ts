@@ -270,16 +270,16 @@ export const cpsSidebarMenus: CpsSidebarMenu[] = [
         label: "操作文档",
         path: "/NDA-admin/operation-docs",
         permission: "cps:docs:operation:view",
-        description: "后台使用说明、运营流程、结算流程和常见问题。",
-        features: ["后台使用说明", "运营流程", "结算流程", "常见问题"]
+        description: "查看与产运后台、商户后台保持一致的后台操作流程、权限口径、公告协同和结算风控说明。",
+        features: ["三端一致", "后台流程", "权限口径", "结算风控"]
       },
       {
         key: "api-docs",
         label: "API 文档",
         path: "/NDA-admin/api-docs",
         permission: "cps:docs:api:view",
-        description: "追踪、链接、归因、结算 API 文档和接入说明。",
-        features: ["追踪 API", "链接 API", "归因 API", "结算 API"]
+        description: "查看产运后台已开放给联盟营销后台的 API 分类，包含追踪、链接、归因、结算和关键字段说明。",
+        features: ["产运开启", "追踪 API", "链接素材", "返佣结算"]
       }
     ]
   }

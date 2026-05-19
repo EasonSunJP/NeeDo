@@ -83,6 +83,14 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     items: [
       { label: "门店设置", to: "/merchant-admin/settings", icon: "设", children: ["营业时间", "资质文件", "管理员"] }
     ]
+  },
+  {
+    key: "docs",
+    title: "文档",
+    items: [
+      { label: "操作文档", to: "/merchant-admin/docs", icon: "文", children: ["后台流程", "权限口径", "结算复核"] },
+      { label: "API 文档", to: "/merchant-admin/docs/api", icon: "A", children: ["产运开启", "店铺接口", "关键字段"] }
+    ]
   }
 ];
 
@@ -104,9 +112,24 @@ function routeMatches(item: MerchantAdminNavItem, pathname: string, search: stri
         })
       )
   );
+  const hasMoreSpecificPathRoute = sections.some((section) =>
+    section.items.some((candidate) => {
+      const candidateRoute = splitTo(candidate.to);
+
+      return (
+        candidateRoute.path !== path &&
+        candidateRoute.path.startsWith(`${path}/`) &&
+        (pathname === candidateRoute.path || pathname.startsWith(`${candidateRoute.path}/`))
+      );
+    })
+  );
 
   if (itemSearch) {
     return pathname === path && search === itemSearch;
+  }
+
+  if (hasMoreSpecificPathRoute) {
+    return false;
   }
 
   if (hasExactQueryRoute) {

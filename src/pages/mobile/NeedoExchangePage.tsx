@@ -37,6 +37,7 @@ export type ExchangePost = {
   time: string;
   area: string;
   budget: number;
+  budgetLabel?: string;
   detail: string;
   tags: string[];
   offers: number;
@@ -97,6 +98,24 @@ type InfoComposerDraft = {
   visibilityMode: "public" | "person" | "category" | "group";
   visibilityTarget: string;
   relatedVisible: boolean;
+};
+
+type DemandComposerDraft = {
+  title: string;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
+  area: string;
+  budgetMin: string;
+  budgetMax: string;
+  detail: string;
+};
+
+type PublishSuccessState = {
+  typeLabel: string;
+  ndpCost: number;
+  expiresInHours: number;
 };
 
 const exchangeServiceKeywordMap = [
@@ -528,14 +547,25 @@ function getComposerRoleByContext(context: MessageCenterContext) {
 }
 
 function getDefaultInfoDraft(): InfoComposerDraft {
+  const now = new Date();
+  const startAt = new Date(now);
+  startAt.setHours(22, 0, 0, 0);
+
+  if (startAt.getTime() <= now.getTime()) {
+    startAt.setDate(startAt.getDate() + 1);
+  }
+
+  const endAt = new Date(startAt.getTime() + 3 * 60 * 60 * 1000);
+  const recruitEndAt = new Date(startAt.getTime() + 90 * 60 * 1000);
+
   return {
     title: "今晚 22 点后可预约，限定折扣开放中",
-    startDate: "2026-04-16",
-    startTime: "22:00",
-    endDate: "2026-04-17",
-    endTime: "01:00",
-    recruitEndDate: "2026-04-16",
-    recruitEndTime: "23:30",
+    startDate: toDateInputValue(startAt),
+    startTime: toTimeInputValue(startAt),
+    endDate: toDateInputValue(endAt),
+    endTime: toTimeInputValue(endAt),
+    recruitEndDate: toDateInputValue(recruitEndAt),
+    recruitEndTime: toTimeInputValue(recruitEndAt),
     serviceMode: "store",
     address: "东京都港区六本木 3-2-1 Prince Tower 12F",
     serviceAreas: "新宿 / 六本木 / 涩谷 / 银座",
@@ -548,8 +578,152 @@ function getDefaultInfoDraft(): InfoComposerDraft {
   };
 }
 
+function padTwo(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function toDateInputValue(date: Date) {
+  return `${date.getFullYear()}-${padTwo(date.getMonth() + 1)}-${padTwo(date.getDate())}`;
+}
+
+function toTimeInputValue(date: Date) {
+  return `${padTwo(date.getHours())}:${padTwo(date.getMinutes())}`;
+}
+
+function toDateTimeInputValue(date: string, time: string) {
+  return `${date}T${time}`;
+}
+
+function parseComposerDateTime(date: string, time: string) {
+  const parsed = new Date(`${date}T${time}`);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatMonthDayTime(date: Date) {
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${padTwo(date.getHours())}:${padTwo(date.getMinutes())}`;
+}
+
 function formatComposerDateRange(startDate: string, startTime: string, endDate: string, endTime: string) {
-  return `${startDate} ${startTime} - ${endDate} ${endTime}`;
+  const startAt = parseComposerDateTime(startDate, startTime);
+  const endAt = parseComposerDateTime(endDate, endTime);
+
+  if (!startAt || !endAt) {
+    return `${startDate} ${startTime} ~ ${endDate} ${endTime}`;
+  }
+
+  return `${formatMonthDayTime(startAt)} ~ ${formatMonthDayTime(endAt)}`;
+}
+
+function getComposerDurationMs(startDate: string, startTime: string, endDate: string, endTime: string) {
+  const startAt = parseComposerDateTime(startDate, startTime);
+  const endAt = parseComposerDateTime(endDate, endTime);
+
+  if (!startAt || !endAt) {
+    return null;
+  }
+
+  return endAt.getTime() - startAt.getTime();
+}
+
+function getDefaultDemandDraft(context: MessageCenterContext): DemandComposerDraft {
+  const now = new Date();
+  const startAt = new Date(now);
+  startAt.setHours(22, 0, 0, 0);
+
+  if (startAt.getTime() <= now.getTime()) {
+    startAt.setDate(startAt.getDate() + 1);
+  }
+
+  const endAt = new Date(startAt.getTime() + 2 * 60 * 60 * 1000);
+
+  return {
+    title: context === "user" ? "今晚六本木酒店需要 2 位技师" : "今晚 22 点后有空闲，可 8 折预约",
+    startDate: toDateInputValue(startAt),
+    startTime: toTimeInputValue(startAt),
+    endDate: toDateInputValue(endAt),
+    endTime: toTimeInputValue(endAt),
+    area: context === "user" ? "六本木 · 王子酒店" : "新宿 / 六本木",
+    budgetMin: context === "user" ? "42000" : "12800",
+    budgetMax: context === "user" ? "52000" : "16000",
+    detail: context === "user" ? "需要 2 位技师，偏好中文沟通，预算可谈。" : "可移动到附近区域，支持平台内通话确认。"
+  };
+}
+
+function clampDemandDraftDuration(draft: DemandComposerDraft) {
+  const startAt = parseComposerDateTime(draft.startDate, draft.startTime);
+  const endAt = parseComposerDateTime(draft.endDate, draft.endTime);
+
+  if (!startAt || !endAt) {
+    return draft;
+  }
+
+  const maxEndAt = new Date(startAt.getTime() + 24 * 60 * 60 * 1000);
+  let nextEndAt = endAt;
+
+  if (endAt.getTime() <= startAt.getTime()) {
+    nextEndAt = new Date(startAt.getTime() + 60 * 60 * 1000);
+  } else if (endAt.getTime() > maxEndAt.getTime()) {
+    nextEndAt = maxEndAt;
+  }
+
+  if (nextEndAt.getTime() === endAt.getTime()) {
+    return draft;
+  }
+
+  return {
+    ...draft,
+    endDate: toDateInputValue(nextEndAt),
+    endTime: toTimeInputValue(nextEndAt)
+  };
+}
+
+function getDemandDurationHours(draft: DemandComposerDraft) {
+  const startAt = parseComposerDateTime(draft.startDate, draft.startTime);
+  const endAt = parseComposerDateTime(draft.endDate, draft.endTime);
+
+  if (!startAt || !endAt || endAt.getTime() <= startAt.getTime()) {
+    return 1;
+  }
+
+  return Math.min(24, Math.max(1, Math.ceil((endAt.getTime() - startAt.getTime()) / (60 * 60 * 1000))));
+}
+
+function getDemandMaxEndInputValue(draft: DemandComposerDraft) {
+  const startAt = parseComposerDateTime(draft.startDate, draft.startTime);
+
+  if (!startAt) {
+    return undefined;
+  }
+
+  const maxEndAt = new Date(startAt.getTime() + 24 * 60 * 60 * 1000);
+
+  return toDateTimeInputValue(toDateInputValue(maxEndAt), toTimeInputValue(maxEndAt));
+}
+
+function formatDemandBudgetRange(draft: Pick<DemandComposerDraft, "budgetMin" | "budgetMax">) {
+  const left = Number(draft.budgetMin) || 0;
+  const right = Number(draft.budgetMax) || left;
+  const min = Math.min(left, right);
+  const max = Math.max(left, right);
+
+  if (min === 0 && max === 0) {
+    return "未填写预算";
+  }
+
+  return min === max ? yen(min) : `${yen(min)} ~ ${yen(max)}`;
+}
+
+function getDemandBudgetValue(draft: DemandComposerDraft) {
+  return Math.max(Number(draft.budgetMin) || 0, Number(draft.budgetMax) || 0);
+}
+
+function getPublishNdpCost(type: ExchangePost["type"], budget: number) {
+  if (type === "reverse") {
+    return 6;
+  }
+
+  return Math.min(36, Math.max(12, 8 + Math.ceil(budget / 10000) * 2));
 }
 
 function getContextSeedCopy(context: MessageCenterContext) {
@@ -901,7 +1075,7 @@ export function storeForwardedExchange(context: MessageCenterContext, post: Exch
   }
 
   const key = getForwardStorageKey(context);
-  const content = `【NeeDo转发】${post.type === "demand" ? "需求" : "情报"} · ${post.title}\n时间：${post.time}\n地点：${post.area}\n预算：${yen(post.budget)}\n${post.detail}`;
+  const content = `【NeeDo转发】${post.type === "demand" ? "需求" : "情报"} · ${post.title}\n时间：${post.time}\n地点：${post.area}\n预算：${post.budgetLabel ?? yen(post.budget)}\n${post.detail}`;
 
   try {
     const stored = window.localStorage.getItem(key);
@@ -1053,6 +1227,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [showComposer, setShowComposer] = useState(false);
   const [composerStep, setComposerStep] = useState<"edit" | "preview">("edit");
+  const [publishSuccess, setPublishSuccess] = useState<PublishSuccessState | null>(null);
   const [sharePost, setSharePost] = useState<ExchangePost | null>(null);
   const [sharedContact, setSharedContact] = useState<ForwardContact | null>(null);
   const [likedPostIds, setLikedPostIds] = useState<string[]>([]);
@@ -1062,13 +1237,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   const appliedDemandPostIds = useNeedoDemandApplications(context);
   const bookedReversePostIds = useNeedoReverseBookings(context);
   const viewedPostIds = useNeedoViewedPosts(context);
-  const [draft, setDraft] = useState({
-    title: context === "user" ? "今晚六本木酒店需要 2 位技师" : "今晚 22 点后有空闲，可 8 折预约",
-    time: "22:00 - 24:00",
-    area: context === "user" ? "六本木 · 王子酒店" : "新宿 / 六本木",
-    budget: context === "user" ? "42000" : "12800",
-    detail: context === "user" ? "需要 2 位技师，偏好中文沟通，预算可谈。" : "可移动到附近区域，支持平台内通话确认。"
-  });
+  const [draft, setDraft] = useState<DemandComposerDraft>(() => getDefaultDemandDraft(context));
   const [demandImages, setDemandImages] = useState<string[]>([]);
   const [infoDraft, setInfoDraft] = useState<InfoComposerDraft>(getDefaultInfoDraft);
   const [infoImages, setInfoImages] = useState<string[]>([
@@ -1081,9 +1250,14 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   const composerType = getComposerTypeByContext(context);
   const canComposeOnActiveTab = activeType === "all" || activeType === composerType;
   const forwardContacts = getForwardContacts(context);
+  const homePath = context === "merchant" ? "/merchant" : context === "technician" ? "/technician" : "/";
+  const nearbyStoresPath = "/categories?type=store";
+  const nearbyTechniciansPath = "/categories?type=technician";
   const infoEndAt = `${infoDraft.endDate}T${infoDraft.endTime}`;
   const infoRecruitEndAt = `${infoDraft.recruitEndDate}T${infoDraft.recruitEndTime}`;
   const infoRecruitInvalid = new Date(infoRecruitEndAt).getTime() > new Date(infoEndAt).getTime();
+  const infoDurationMs = getComposerDurationMs(infoDraft.startDate, infoDraft.startTime, infoDraft.endDate, infoDraft.endTime);
+  const infoDurationInvalid = infoDurationMs === null || infoDurationMs <= 0 || infoDurationMs > 24 * 60 * 60 * 1000;
   const infoTargetLabel = infoDraft.visibilityMode === "public"
     ? "公开"
     : infoDraft.visibilityMode === "person"
@@ -1091,6 +1265,9 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
       : infoDraft.visibilityMode === "category"
         ? "仅指定分类"
         : "仅指定群组";
+  const composerTypeLabel = composerType === "demand" ? "需求" : "情报";
+  const demandTimeLabel = formatComposerDateRange(draft.startDate, draft.startTime, draft.endDate, draft.endTime);
+  const demandBudgetLabel = formatDemandBudgetRange(draft);
   const appliedDemandPostIdSet = useMemo(() => new Set(appliedDemandPostIds), [appliedDemandPostIds]);
   const bookedReversePostIdSet = useMemo(() => new Set(bookedReversePostIds), [bookedReversePostIds]);
   const viewedPostIdSet = useMemo(() => new Set(viewedPostIds), [viewedPostIds]);
@@ -1162,6 +1339,10 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
     setReplyBoosts((current) => ({ ...current, [postId]: (current[postId] ?? 0) + 1 }));
   };
 
+  const updateDemandDraft = (patch: Partial<DemandComposerDraft>) => {
+    setDraft((current) => clampDemandDraftDuration({ ...current, ...patch }));
+  };
+
   const resetInfoComposer = () => {
     setInfoDraft(getDefaultInfoDraft());
     setInfoImages([imageBank.home, imageBank.salon, stores[0].cover]);
@@ -1211,21 +1392,26 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
       return;
     }
 
-    if (composerType === "reverse" && (!infoDraft.title.trim() || infoRecruitInvalid)) {
+    if (composerType === "reverse" && (!infoDraft.title.trim() || infoRecruitInvalid || infoDurationInvalid)) {
       return;
     }
 
     const nextPostType = getComposerTypeByContext(context);
+    const normalizedDemandDraft = clampDemandDraftDuration(draft);
+    const demandBudgetValue = getDemandBudgetValue(normalizedDemandDraft);
+    const publishedDurationHours = nextPostType === "demand" ? getDemandDurationHours(normalizedDemandDraft) : 6;
+    const ndpCost = getPublishNdpCost(nextPostType, nextPostType === "demand" ? demandBudgetValue : Number(infoDraft.campaignPrice) || 0);
     const createdPost: ExchangePost = {
       id: `exchange-${Date.now()}`,
       type: nextPostType,
       author: copy.author,
       role: getComposerRoleByContext(context),
-      title: nextPostType === "demand" ? draft.title : infoDraft.title,
-      time: nextPostType === "demand" ? draft.time : formatComposerDateRange(infoDraft.startDate, infoDraft.startTime, infoDraft.endDate, infoDraft.endTime),
-      area: nextPostType === "demand" ? draft.area : infoDraft.serviceMode === "store" ? infoDraft.address : infoDraft.serviceAreas,
-      budget: nextPostType === "demand" ? Number(draft.budget) || 0 : Number(infoDraft.campaignPrice) || 0,
-      detail: nextPostType === "demand" ? draft.detail : infoDraft.detail,
+      title: nextPostType === "demand" ? normalizedDemandDraft.title : infoDraft.title,
+      time: nextPostType === "demand" ? formatComposerDateRange(normalizedDemandDraft.startDate, normalizedDemandDraft.startTime, normalizedDemandDraft.endDate, normalizedDemandDraft.endTime) : formatComposerDateRange(infoDraft.startDate, infoDraft.startTime, infoDraft.endDate, infoDraft.endTime),
+      area: nextPostType === "demand" ? normalizedDemandDraft.area : infoDraft.serviceMode === "store" ? infoDraft.address : infoDraft.serviceAreas,
+      budget: nextPostType === "demand" ? demandBudgetValue : Number(infoDraft.campaignPrice) || 0,
+      budgetLabel: nextPostType === "demand" ? formatDemandBudgetRange(normalizedDemandDraft) : undefined,
+      detail: nextPostType === "demand" ? normalizedDemandDraft.detail : infoDraft.detail,
       tags: nextPostType === "demand" ? ["新需求", "等待抢单", "平台担保"] : ["情报", "空档", "可立即约"],
       offers: 0,
       image:
@@ -1234,12 +1420,17 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
           : demandImages[0] ?? (context === "merchant" ? stores[0].cover : context === "technician" ? technicians[0].avatar : imageBank.home),
       publishedAt: new Date().toISOString(),
       expiresAt: nextPostType === "demand"
-        ? new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
+        ? new Date(Date.now() + publishedDurationHours * 60 * 60 * 1000).toISOString()
         : new Date(`${infoDraft.recruitEndDate}T${infoDraft.recruitEndTime}`).toISOString()
     };
 
     appendNeedoComposedPost(context, createdPost);
     setPosts((current) => [createdPost, ...current]);
+    setPublishSuccess({
+      typeLabel: nextPostType === "demand" ? "需求" : "情报",
+      ndpCost,
+      expiresInHours: nextPostType === "demand" ? publishedDurationHours : Math.max(1, Math.ceil((new Date(createdPost.expiresAt).getTime() - Date.now()) / (60 * 60 * 1000)))
+    });
     if (nextPostType === "reverse") {
       resetInfoComposer();
     }
@@ -1253,6 +1444,11 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
 
     storeForwardedExchange(context, sharePost, contact);
     setSharedContact(contact);
+  };
+
+  const navigateFromPublishSuccess = (to: string) => {
+    setPublishSuccess(null);
+    navigate(to);
   };
 
   return (
@@ -1280,7 +1476,6 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
             <MobileFullscreenHeader
               className={fullscreenHeaderClassName}
               onClose={closeComposer}
-              subtitle={<Badge tone={composerType === "demand" ? "yellow" : "green"}>{composerType === "demand" ? "需求" : "情报"}</Badge>}
               title={composerType === "demand" ? "发送需求" : composerStep === "preview" ? "预览情报" : "发送情报"}
             />
 
@@ -1300,26 +1495,85 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
 
                   <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
                     <div className="grid gap-3">
-                      {[
-                        ["title", "标题"],
-                        ["time", "时间"],
-                        ["area", "地点"],
-                        ["budget", "预算 / 价格"]
-                      ].map(([key, label]) => (
-                        <label className="block text-xs font-black text-ink/55" key={key}>
-                          {label}
+                      <label className="block text-xs font-black text-ink/55">
+                        类型
+                        <div className="mt-1 flex h-11 w-full items-center rounded-lg border border-line bg-paper px-3 text-sm font-black text-ink">
+                          {composerTypeLabel}
+                        </div>
+                      </label>
+                      <label className="block text-xs font-black text-ink/55">
+                        标题
+                        <input
+                          className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
+                          onChange={(event) => updateDemandDraft({ title: event.target.value })}
+                          value={draft.title}
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block text-xs font-black text-ink/55">
+                          开始时间
                           <input
                             className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
-                            onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-                            value={draft[key as keyof typeof draft]}
+                            onChange={(event) => {
+                              const [startDate, startTime] = event.target.value.split("T");
+                              if (startDate && startTime) {
+                                updateDemandDraft({ startDate, startTime });
+                              }
+                            }}
+                            type="datetime-local"
+                            value={toDateTimeInputValue(draft.startDate, draft.startTime)}
                           />
                         </label>
-                      ))}
+                        <label className="block text-xs font-black text-ink/55">
+                          结束时间
+                          <input
+                            className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
+                            max={getDemandMaxEndInputValue(draft)}
+                            min={toDateTimeInputValue(draft.startDate, draft.startTime)}
+                            onChange={(event) => {
+                              const [endDate, endTime] = event.target.value.split("T");
+                              if (endDate && endTime) {
+                                updateDemandDraft({ endDate, endTime });
+                              }
+                            }}
+                            type="datetime-local"
+                            value={toDateTimeInputValue(draft.endDate, draft.endTime)}
+                          />
+                        </label>
+                      </div>
+                      <label className="block text-xs font-black text-ink/55">
+                        地点
+                        <input
+                          className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
+                          onChange={(event) => updateDemandDraft({ area: event.target.value })}
+                          value={draft.area}
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block text-xs font-black text-ink/55">
+                          预算下限
+                          <input
+                            className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
+                            inputMode="numeric"
+                            onChange={(event) => updateDemandDraft({ budgetMin: event.target.value })}
+                            value={draft.budgetMin}
+                          />
+                        </label>
+                        <label className="block text-xs font-black text-ink/55">
+                          预算上限
+                          <input
+                            className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
+                            inputMode="numeric"
+                            onChange={(event) => updateDemandDraft({ budgetMax: event.target.value })}
+                            value={draft.budgetMax}
+                          />
+                        </label>
+                      </div>
                       <label className="block text-xs font-black text-ink/55">
                         详细要求
                         <textarea
                           className="mt-1 min-h-36 w-full resize-none rounded-lg border border-line bg-paper p-3 text-sm leading-6 outline-none"
-                          onChange={(event) => setDraft((current) => ({ ...current, detail: event.target.value }))}
+                          onChange={(event) => updateDemandDraft({ detail: event.target.value })}
                           placeholder="例如：到店前请先平台内联系，支持中文沟通 #夜间可约 #六本木"
                           value={draft.detail}
                         />
@@ -1328,24 +1582,14 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                   </section>
 
                   <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-                    <div className="flex items-start justify-between gap-3">
-                      <TitleWithInfo
-                        as="h3"
-                        info="可上传现场照片、位置示意或服务参考图，首张会作为卡片封面。"
-                        label="上传参考图说明"
-                        title="上传参考图"
-                        titleClassName="font-black"
-                        variant="paper"
-                      />
-                      <button
-                        className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-3 text-xs font-black text-[color:var(--client-text)] transition hover:border-[color:var(--client-primary)] hover:text-[color:var(--client-primary)]"
-                        onClick={() => demandImageInputRef.current?.click()}
-                        type="button"
-                      >
-                        <NeedoUploadIcon className="h-4 w-4" />
-                        上传
-                      </button>
-                    </div>
+                    <TitleWithInfo
+                      as="h3"
+                      info="可上传现场照片、位置示意或服务参考图，首张会作为卡片封面。"
+                      label="上传参考图说明"
+                      title="上传参考图"
+                      titleClassName="font-black"
+                      variant="paper"
+                    />
                     <input accept="image/*" className="hidden" multiple onChange={handleDemandImageUpload} ref={demandImageInputRef} type="file" />
                     <div className="mt-3 grid grid-cols-3 gap-2">
                       {Array.from({ length: 3 }, (_, index) => (
@@ -1363,21 +1607,21 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                     <h3 className="font-black">发布前确认</h3>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       {[
-                        ["类型", "需求"],
+                        ["类型", composerTypeLabel],
                         ["地点", draft.area],
-                        ["时间", draft.time],
-                        ["预算", yen(Number(draft.budget) || 0)]
+                        ["时间", demandTimeLabel],
+                        ["预算", demandBudgetLabel]
                       ].map(([label, value]) => (
                         <div className="rounded-lg bg-paper p-3" key={label}>
                           <p className="text-[11px] font-bold text-ink/45">{label}</p>
-                          <strong className="mt-1 block truncate text-sm">{value}</strong>
+                          <strong className="mt-1 block text-sm leading-5 text-ink">{value}</strong>
                         </div>
                       ))}
                     </div>
                     <div className="mt-3 rounded-lg bg-paper p-3">
                       <p className="text-[11px] font-bold text-ink/45">备注</p>
                       <div className="mt-2">
-                        <HighlightedTagText className="text-sm leading-6 text-ink/75" text={draft.detail || "未填写备注"} />
+                        <HighlightedTagText className="text-sm font-semibold leading-6 text-ink" text={draft.detail || "未填写备注"} />
                       </div>
                     </div>
                   </section>
@@ -1385,7 +1629,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
 
                 <MobileBottomActionBar contentClassName="flex justify-center">
                   <Button className="pointer-events-auto h-12 min-w-[240px] px-8 shadow-soft" disabled={!draft.title.trim()} onClick={publish}>
-                    发布到 NeeDo
+                    发送到 NeeDo
                   </Button>
                 </MobileBottomActionBar>
               </>
@@ -1405,6 +1649,12 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
 
                   <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
                     <div className="grid gap-3">
+                      <label className="block text-xs font-black text-ink/55">
+                        类型
+                        <div className="mt-1 flex h-11 w-full items-center rounded-lg border border-line bg-paper px-3 text-sm font-black text-ink">
+                          {composerTypeLabel}
+                        </div>
+                      </label>
                       <label className="block text-xs font-black text-ink/55">
                         标题
                         <input
@@ -1445,13 +1695,16 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                         <label className="block text-xs font-black text-ink/55">
                           活动结束时间
                           <input
-                            className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
+                            className={`mt-1 h-11 w-full rounded-lg border px-3 text-sm font-bold outline-none ${infoDurationInvalid ? "border-coral bg-coral/5 text-coral" : "border-line bg-paper"}`}
                             onChange={(event) => setInfoDraft((current) => ({ ...current, endTime: event.target.value }))}
                             type="time"
                             value={infoDraft.endTime}
                           />
                         </label>
                       </div>
+                      {infoDurationInvalid ? (
+                        <p className="text-xs font-bold text-coral">活动开始到结束必须大于 0 小时，且最多 24 小时。</p>
+                      ) : null}
 
                       <div className="grid grid-cols-2 gap-3">
                         <label className="block text-xs font-black text-ink/55">
@@ -1545,19 +1798,11 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                   </section>
 
                   <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-                    <div className="flex items-center justify-between gap-3">
+                    <div>
                       <div>
                         <h3 className="font-black">展示图片</h3>
                         <span className="mt-1 block text-xs font-bold text-ink/45">最多 9 张</span>
                       </div>
-                      <button
-                        className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-3 text-xs font-black text-[color:var(--client-text)] transition hover:border-[color:var(--client-primary)] hover:text-[color:var(--client-primary)]"
-                        onClick={() => infoImageInputRef.current?.click()}
-                        type="button"
-                      >
-                        <NeedoUploadIcon className="h-4 w-4" />
-                        上传
-                      </button>
                     </div>
                     <input accept="image/*" className="hidden" multiple onChange={handleInfoImageUpload} ref={infoImageInputRef} type="file" />
                     <div className="mt-3 grid grid-cols-3 gap-2">
@@ -1623,7 +1868,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                 <MobileBottomActionBar contentClassName="flex justify-center">
                   <Button
                     className="pointer-events-auto h-12 min-w-[240px] px-8 shadow-soft"
-                    disabled={!infoDraft.title.trim() || infoRecruitInvalid}
+                    disabled={!infoDraft.title.trim() || infoRecruitInvalid || infoDurationInvalid}
                     onClick={() => setComposerStep("preview")}
                   >
                     下一步
@@ -1662,7 +1907,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                       </div>
                     </div>
                     <div className="mt-3">
-                      <HighlightedTagText className="text-sm leading-6 text-ink/65" text={infoDraft.detail} />
+                      <HighlightedTagText className="text-sm font-semibold leading-6 text-ink" text={infoDraft.detail} />
                     </div>
                   </section>
 
@@ -1718,6 +1963,29 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
           </MobileFullscreenPage>
         )}
 
+        {publishSuccess ? (
+          <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[color:var(--client-overlay)] px-4 pb-6 pt-10">
+            <section className="safe-panel-bottom w-full max-w-[480px] rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] p-5 text-[color:var(--client-text)] shadow-[0_-26px_60px_rgba(0,0,0,0.24)]">
+              <div className="mx-auto h-1.5 w-12 rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)]" />
+              <h2 className="mt-5 text-[22px] font-black leading-tight">发送成功，本次消耗 {publishSuccess.ndpCost}NDP</h2>
+              <p className="mt-3 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+                本次{publishSuccess.typeLabel}信息将于匹配成功或 {publishSuccess.expiresInHours}小时后自动消除。
+              </p>
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                <Button className="h-12 px-2 text-[13px]" variant="secondary" onClick={() => navigateFromPublishSuccess(homePath)}>
+                  回到首页
+                </Button>
+                <Button className="h-12 px-2 text-[13px]" onClick={() => navigateFromPublishSuccess(nearbyStoresPath)}>
+                  附近店铺
+                </Button>
+                <Button className="h-12 px-2 text-[13px]" onClick={() => navigateFromPublishSuccess(nearbyTechniciansPath)}>
+                  附近技师
+                </Button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
         <section className="space-y-3">
           {visiblePosts.map((post) => {
             const serviceLabel = getExchangeServiceLabel(post);
@@ -1729,6 +1997,11 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
             const cornerBadgeClassName = isBooked
               ? "!border-[#2a815d] !bg-[#173b2b] !text-[#d9ffe8] shadow-[0_10px_24px_rgba(36,122,85,0.22)]"
               : undefined;
+            const budgetDisplay = post.budgetLabel ?? yen(post.budget);
+            const budgetDisplayClassName = cn(
+              "font-black leading-tight",
+              post.budgetLabel ? "text-[15px]" : "text-[24px] tracking-[-0.04em]"
+            );
 
             return (
               <article key={post.id}>
@@ -1788,7 +2061,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                       }
                       eyebrow={
                         post.budget > 0 ? (
-                          <span className="text-[24px] font-black leading-none tracking-[-0.04em]">{yen(post.budget)}</span>
+                          <span className={budgetDisplayClassName}>{budgetDisplay}</span>
                         ) : (
                           "最新情报"
                         )
@@ -1853,7 +2126,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                           translated={translatedPostIds.includes(post.id)}
                         />
                       }
-                      eyebrow={<span className="text-[24px] font-black leading-none tracking-[-0.04em]">{yen(post.budget)}</span>}
+                      eyebrow={<span className={budgetDisplayClassName}>{budgetDisplay}</span>}
                       noteValue={post.detail}
                       titlePrefix={serviceLabel ? `#${serviceLabel}` : undefined}
                       titleBadge={titleBadge}

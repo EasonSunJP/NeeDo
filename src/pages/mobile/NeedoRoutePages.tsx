@@ -44,6 +44,10 @@ const needoDetailCardClassName = "rounded-[28px] border border-line bg-white p-4
 const needoDetailInnerCardClassName = "rounded-[18px] bg-paper p-3";
 const needoPriceHighlightClassName = "text-[color:var(--client-primary)]";
 
+function getNeedoBudgetLabel(post: { budget: number; budgetLabel?: string }) {
+  return post.budgetLabel ?? yen(post.budget);
+}
+
 type NeedoTopActionIconName = "like" | "favorite" | "translate" | "forward";
 
 function NeedoTopActionIcon({ name }: { name: NeedoTopActionIconName }) {
@@ -393,7 +397,7 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
       ? "需预付定金"
       : "无需预付";
   const paymentRows = [
-    { label: post.type === "demand" ? "预算" : "价格", value: yen(post.budget), highlight: true },
+    { label: post.type === "demand" ? "预算" : "价格", value: getNeedoBudgetLabel(post), highlight: true },
     { label: post.type === "demand" ? "已预付" : "需预付", value: yen(detail.prepaidAmount), highlight: false },
     { label: "到场支付", value: yen(detail.cashAmount), highlight: false }
   ];
@@ -546,7 +550,7 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
       <footer className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-transparent px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-4">
         <div>
           <p className="text-xs font-bold text-ink/45">{post.type === "demand" ? "预计收入" : "价格"}</p>
-          <strong className={`text-xl ${needoPriceHighlightClassName}`}>{yen(post.budget)}</strong>
+          <strong className={`text-xl ${needoPriceHighlightClassName}`}>{getNeedoBudgetLabel(post)}</strong>
         </div>
         <Button
           className="min-w-[150px]"

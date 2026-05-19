@@ -9,6 +9,7 @@ import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
 import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
+import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
 import { AdminNotificationComposePage } from "./pages/admin/AdminNotificationComposePage";
 import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
@@ -60,6 +61,7 @@ import {
   MerchantAdminDispatchCenterSchedulePage
 } from "./pages/merchant-admin/dispatch-center/DispatchCenterRoutePages";
 import { MerchantAdminDesignPage } from "./pages/merchant-admin/MerchantAdminDesignPage";
+import { MerchantAdminDocsPage } from "./pages/merchant-admin/MerchantAdminDocsPage";
 import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrdersPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
 import { MerchantAdminSettingsPage } from "./pages/merchant-admin/MerchantAdminSettingsPage";
@@ -1104,6 +1106,8 @@ export default function App() {
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
               <Route path="/merchant-admin/design" element={protect("merchant", <MerchantAdminDesignPage />)} />
+              <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
+              <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
 
               <Route path="/technician" element={protect("technician", <TechnicianPortalPage />)} />
@@ -1165,6 +1169,8 @@ export default function App() {
               <Route path="/admin/notifications/compose" element={protect("admin", <AdminNotificationComposePage />)} />
               <Route path="/admin/notifications" element={protect("admin", <AdminNotificationsPage />)} />
               <Route path="/admin/support" element={protect("admin", <AdminSupportPage />)} />
+              <Route path="/admin/docs" element={protect("admin", <AdminDocsPage />)} />
+              <Route path="/admin/docs/api" element={protect("admin", <AdminDocsPage />)} />
               <Route path="/admin/data" element={protect("admin", <DataCenterPage />)} />
               <Route path="/admin/cities" element={protect("admin", <CitySettingsPage />)} />
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />

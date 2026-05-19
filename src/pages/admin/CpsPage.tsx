@@ -113,6 +113,7 @@ import {
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { cn, percent, yen } from "../../lib/utils";
 import { useI18n } from "../../i18n/I18nProvider";
+import { AdminDocsWorkspace } from "../../features/admin-docs/AdminDocsWorkspace";
 import { AdminNotificationComposeContent } from "./AdminNotificationComposePage";
 import { AdminNotificationsContent } from "./AdminNotificationsPage";
 import { CpsAccountManagementPage } from "../cps-admin/CpsAccountManagementPage";
@@ -5771,7 +5772,7 @@ export function CpsWorkspace({
         features: ["菜单配置检查", "路由挂载", "页面占位", "后续模块扩展"]
       } satisfies CpsSidebarPage)
     : null;
-  const placeholderPage = !hasModuleQuery && ((routePage && !routePage.workspaceModule ? routePage : null) ?? unknownRoutePage);
+  const placeholderPage = !hasModuleQuery ? (routePage && !routePage.workspaceModule ? routePage : null) ?? unknownRoutePage : null;
   const activeModule = hasModuleQuery ? getActiveModule(searchParams.get("module")) : routePage?.workspaceModule ?? "dashboard";
   const [selectedPromoter, setSelectedPromoter] = useState<BusinessCpsPromoter | null>(null);
   const [promoterEditorMode, setPromoterEditorMode] = useState<PromoterEditorMode | null>(null);
@@ -6025,10 +6026,15 @@ export function CpsWorkspace({
           )
         : null
     : null;
+  const businessDocsContent = scope === "business-admin" && placeholderPage?.key === "operation-docs"
+    ? <AdminDocsWorkspace mode="operation" surface="afirieito" />
+    : scope === "business-admin" && placeholderPage?.key === "api-docs"
+      ? <AdminDocsWorkspace mode="api" surface="afirieito" />
+      : null;
 
   return (
     <CpsRuntimeContext.Provider value={runtimeContext}>
-      {businessAnnouncementContent ?? (
+      {businessAnnouncementContent ?? businessDocsContent ?? (
         <ModuleShell actions={actions} description={header.description} title={header.title}>
         <CpsNoticeBanner />
         {scope === "ops-sync" ? (
