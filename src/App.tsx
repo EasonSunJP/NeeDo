@@ -127,6 +127,7 @@ import {
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
 import { OfficialNoticeAutoPopup } from "./components/ui/OfficialNoticeAutoPopup";
+import { NeedoPet } from "./components/ui/NeedoPet";
 import { clearNeedoStorage } from "./lib/browserStorage";
 import { isNonFatalBrowserRuntimeError } from "./lib/share";
 import { useEntityStore } from "./state/entityStore";
@@ -886,6 +887,7 @@ export default function App() {
                 <ScrollToTop />
                 <ShareFeedbackViewport />
                 <OfficialNoticeAutoPopup disabled={Boolean(splashPortal)} />
+                <NeedoPet disabled={Boolean(splashPortal)} />
                 <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/login/admin" element={<AdminLoginPage portal="admin" />} />

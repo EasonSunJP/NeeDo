@@ -30,6 +30,7 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { formatCustomerCreditScore } from "../../shared/profile-card/customerProfileLabels";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
+import { setNeedoPetEnabled, useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useProfileCardBackgroundSettings } from "../../state/profileCardBackgroundStore";
 import type { Customer, InfoCardVisibilityMode, InfoCardVisibilitySettings, Store, StorePresentationConfig, Technician } from "../../types/domain";
 import { clientThemes, useClientTheme, type ClientThemeDefinition } from "../../theme/ClientThemeProvider";
@@ -838,6 +839,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const { logout } = useAuth();
   const { language } = useI18n();
   const { theme } = useClientTheme();
+  const petSettings = useNeedoPetSettings();
   const [portalSettings] = usePortalSettingsState(portal);
   const profileCardBackgroundSettings = useProfileCardBackgroundSettings();
   const { customers, technicians, stores } = useEntityStore();
@@ -874,6 +876,12 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           <SettingsListItem title={t("UI 切换")} to={getSettingsPath(portal, "theme")} value={currentThemeLabel} />
           <SettingsListItem dataNoI18n title={t("语言")} to={getSettingsPath(portal, "language")} value={currentLanguageLabel} />
           <SettingsListItem title={t("身份切换")} to={getSettingsPath(portal, "portal")} value={t(compactPortalLabels[portal].label)} />
+          <SettingsToggleRow
+            checked={petSettings.enabled}
+            description={t("开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。")}
+            onChange={setNeedoPetEnabled}
+            title={t("电子宠物")}
+          />
         </SettingsSection>
 
         {isBusinessPortal ? null : (

@@ -17,6 +17,7 @@ import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import { getResolvedCarouselSlides, resolveCarouselTargetPath, useCarouselStore } from "../../state/homeCarouselStore";
+import { useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import { useUserOrders } from "../../state/userOrderStore";
 import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
@@ -602,6 +603,7 @@ export function HomePage() {
   const { language } = useI18n();
   const { session } = useAuth();
   const { config } = useHomeLayoutStore();
+  const petSettings = useNeedoPetSettings();
   const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
   const { customers, stores, technicians, revision: entityRevision } = useEntityStore();
   const userOrders = useUserOrders();
@@ -1018,7 +1020,7 @@ export function HomePage() {
         ) : null}
       </div>
 
-      <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />
+      {petSettings.enabled ? null : <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />}
 
       <LocationSheet
         currentLocationId={selectedLocation.id}

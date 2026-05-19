@@ -9,7 +9,7 @@ export function ClientActionDialog({
   actions,
   onClose,
   closeOnBackdrop = true,
-  placement = "bottom",
+  placement = "center",
   className,
   panelClassName
 }: {
