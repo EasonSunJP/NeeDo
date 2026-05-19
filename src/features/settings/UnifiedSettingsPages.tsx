@@ -605,11 +605,13 @@ function SelectionIndicator({ active }: { active: boolean }) {
 
 function SettingsToggleRow({
   title,
+  badge,
   description,
   checked,
   onChange
 }: {
   title: string;
+  badge?: string;
   description: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -617,7 +619,14 @@ function SettingsToggleRow({
   return (
     <div className="flex items-center justify-between gap-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3.5">
       <div className="min-w-0">
-        <p className="text-[15px] font-black text-[color:var(--client-text)]">{title}</p>
+        <p className="flex min-w-0 items-center gap-2 text-[15px] font-black text-[color:var(--client-text)]">
+          <span className="truncate">{title}</span>
+          {badge ? (
+            <span className="inline-flex h-5 shrink-0 items-center rounded-[8px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-2 text-[10px] font-black leading-none text-[color:var(--client-primary)]">
+              {badge}
+            </span>
+          ) : null}
+        </p>
         <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">{description}</p>
       </div>
       <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} />
@@ -876,12 +885,6 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           <SettingsListItem title={t("UI 切换")} to={getSettingsPath(portal, "theme")} value={currentThemeLabel} />
           <SettingsListItem dataNoI18n title={t("语言")} to={getSettingsPath(portal, "language")} value={currentLanguageLabel} />
           <SettingsListItem title={t("身份切换")} to={getSettingsPath(portal, "portal")} value={t(compactPortalLabels[portal].label)} />
-          <SettingsToggleRow
-            checked={petSettings.enabled}
-            description={t("开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。")}
-            onChange={setNeedoPetEnabled}
-            title={t("电子宠物")}
-          />
         </SettingsSection>
 
         {isBusinessPortal ? null : (
@@ -924,6 +927,13 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           title={t("通知与隐私")}
         >
           <SettingsListItem title={t("通知设置")} to={getSettingsPath(portal, "notifications")} value={t(summarizePortalSettingsState(portalSettings))} />
+          <SettingsToggleRow
+            badge="TEST"
+            checked={petSettings.enabled}
+            description={t("开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。")}
+            onChange={setNeedoPetEnabled}
+            title={t("电子宠物")}
+          />
         </SettingsSection>
 
         <SettingsSection
