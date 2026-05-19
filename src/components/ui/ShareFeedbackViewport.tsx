@@ -3,7 +3,7 @@ import { copyTextToClipboard } from "../../lib/share";
 import { NEEDO_SHARE_FEEDBACK_EVENT, type ShareFeedbackEvent } from "../../lib/shareFeedback";
 import { cn } from "../../lib/utils";
 import { Button } from "./Button";
-import { TitleWithInfo } from "./TitleWithInfo";
+import { ClientActionDialog } from "./ClientActionDialog";
 
 type ToastState = {
   id: number;
@@ -107,38 +107,32 @@ export function ShareFeedbackViewport() {
         </div>
       ) : null}
 
-      {manualCopy ? (
-        <div className="fixed inset-0 z-[125] flex items-end justify-center bg-black/45 px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-8 backdrop-blur-sm">
-          <section className="w-full max-w-[460px] rounded-[28px] border border-white/10 bg-[color:var(--client-surface)] p-5 text-[color:var(--client-text)] shadow-[0_30px_80px_rgba(0,0,0,0.22)]">
-            <p className="text-[11px] font-black tracking-[0.18em] text-[color:var(--client-muted)]">手动分享</p>
-            <TitleWithInfo
-              as="h2"
-              className="mt-2"
-              info={manualCopy.message}
-              label={`${manualCopy.title}说明`}
-              title={manualCopy.title}
-              titleClassName="text-xl font-black"
+      <ClientActionDialog
+        description={manualCopy?.message}
+        onClose={() => setManualCopy(null)}
+        open={Boolean(manualCopy)}
+        title={manualCopy?.title ?? ""}
+        actions={
+          <div className="grid grid-cols-2 gap-2">
+            <Button onClick={handleCopyManualLink} variant="secondary">
+              复制链接
+            </Button>
+            <Button onClick={() => setManualCopy(null)}>关闭</Button>
+          </div>
+        }
+      >
+        {manualCopy ? (
+          <label className="block">
+            <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">可手动复制的链接</span>
+            <input
+              className="h-12 w-full rounded-[18px] border border-line bg-paper px-4 text-sm font-semibold text-[color:var(--client-text)] outline-none"
+              onFocus={(event) => event.currentTarget.select()}
+              readOnly
+              value={manualCopy.url}
             />
-
-            <label className="mt-4 block">
-              <span className="mb-2 block text-xs font-black text-[color:var(--client-muted)]">可手动复制的链接</span>
-              <input
-                className="h-12 w-full rounded-[18px] border border-line bg-paper px-4 text-sm font-semibold text-[color:var(--client-text)] outline-none"
-                onFocus={(event) => event.currentTarget.select()}
-                readOnly
-                value={manualCopy.url}
-              />
-            </label>
-
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <Button onClick={handleCopyManualLink} variant="secondary">
-                复制链接
-              </Button>
-              <Button onClick={() => setManualCopy(null)}>关闭</Button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+          </label>
+        ) : null}
+      </ClientActionDialog>
     </>
   );
 }

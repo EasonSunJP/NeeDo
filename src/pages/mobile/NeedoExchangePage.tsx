@@ -14,6 +14,7 @@ import { merchantNavItems, technicianNavItems, userNavItems } from "../../compon
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { customers, imageBank, orders, stores, technicians } from "../../data/mock";
@@ -1551,7 +1552,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                       </label>
                       <div className="grid grid-cols-2 gap-3">
                         <label className="block text-xs font-black text-ink/55">
-                          预算下限
+                          预算下限（日元）
                           <input
                             className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
                             inputMode="numeric"
@@ -1560,7 +1561,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                           />
                         </label>
                         <label className="block text-xs font-black text-ink/55">
-                          预算上限
+                          预算上限（日元）
                           <input
                             className="mt-1 h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
                             inputMode="numeric"
@@ -1963,28 +1964,29 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
           </MobileFullscreenPage>
         )}
 
-        {publishSuccess ? (
-          <div className="fixed inset-0 z-[80] flex items-end justify-center bg-[color:var(--client-overlay)] px-4 pb-6 pt-10">
-            <section className="safe-panel-bottom w-full max-w-[480px] rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] p-5 text-[color:var(--client-text)] shadow-[0_-26px_60px_rgba(0,0,0,0.24)]">
-              <div className="mx-auto h-1.5 w-12 rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)]" />
-              <h2 className="mt-5 text-[22px] font-black leading-tight">发送成功，本次消耗 {publishSuccess.ndpCost}NDP</h2>
-              <p className="mt-3 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
-                本次{publishSuccess.typeLabel}信息将于匹配成功或 {publishSuccess.expiresInHours}小时后自动消除。
-              </p>
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <Button className="h-12 px-2 text-[13px]" variant="secondary" onClick={() => navigateFromPublishSuccess(homePath)}>
-                  回到首页
-                </Button>
-                <Button className="h-12 px-2 text-[13px]" onClick={() => navigateFromPublishSuccess(nearbyStoresPath)}>
-                  附近店铺
-                </Button>
-                <Button className="h-12 px-2 text-[13px]" onClick={() => navigateFromPublishSuccess(nearbyTechniciansPath)}>
-                  附近技师
-                </Button>
-              </div>
-            </section>
-          </div>
-        ) : null}
+        <ClientActionDialog
+          closeOnBackdrop={false}
+          description={
+            publishSuccess
+              ? `本次${publishSuccess.typeLabel}信息将于匹配成功或 ${publishSuccess.expiresInHours}小时后自动消除。`
+              : undefined
+          }
+          open={Boolean(publishSuccess)}
+          title={publishSuccess ? `发送成功，本次消耗 ${publishSuccess.ndpCost}NDP` : ""}
+          actions={
+            <div className="grid grid-cols-3 gap-2">
+              <Button className="h-12 px-2 text-[13px]" variant="secondary" onClick={() => navigateFromPublishSuccess(homePath)}>
+                回到首页
+              </Button>
+              <Button className="h-12 px-2 text-[13px]" onClick={() => navigateFromPublishSuccess(nearbyStoresPath)}>
+                附近店铺
+              </Button>
+              <Button className="h-12 px-2 text-[13px]" onClick={() => navigateFromPublishSuccess(nearbyTechniciansPath)}>
+                附近技师
+              </Button>
+            </div>
+          }
+        />
 
         <section className="space-y-3">
           {visiblePosts.map((post) => {
