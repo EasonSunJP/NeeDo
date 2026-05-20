@@ -37,10 +37,10 @@ type MomentActionBarProps = {
   liked: boolean;
   likeCount: number;
   replyCount: number;
-  translated: boolean;
+  translated?: boolean;
   onLike: () => void;
   onReply: () => void;
-  onTranslate: () => void;
+  onTranslate?: () => void;
   onForward: () => void;
 };
 
@@ -79,18 +79,20 @@ export function MomentActionBar({
         <MomentActionIcon name="reply" />
         <span>{replyCount}</span>
       </button>
-      <button
-        className={cn(
-          "inline-flex items-center gap-1.5 text-xs font-bold transition",
-          actionClass,
-          translated && (tone === "client" ? "text-[color:var(--client-primary)]" : dark ? "text-[#f3cf78]" : "text-moss")
-        )}
-        onClick={onTranslate}
-        type="button"
-      >
-        <MomentActionIcon name="translate" />
-        <span>翻译</span>
-      </button>
+      {onTranslate ? (
+        <button
+          className={cn(
+            "inline-flex items-center gap-1.5 text-xs font-bold transition",
+            actionClass,
+            translated && (tone === "client" ? "text-[color:var(--client-primary)]" : dark ? "text-[#f3cf78]" : "text-moss")
+          )}
+          onClick={onTranslate}
+          type="button"
+        >
+          <MomentActionIcon name="translate" />
+          <span>翻译</span>
+        </button>
+      ) : null}
       <button className={cn("inline-flex items-center gap-1.5 text-xs font-bold transition", actionClass)} onClick={onForward} type="button">
         <MomentActionIcon name="forward" />
         <span>转发</span>

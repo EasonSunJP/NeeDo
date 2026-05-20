@@ -249,10 +249,10 @@ export function ScheduleContactInfoPanel({
   }, [cycle, dispatchSnapshot.revision, excludedRanges, scope, storeId, storeTechnicians]);
   const emptyDetail =
     scope === "current"
-      ? "当前周期内没有符合筛选条件的联系信息。"
+      ? "当前周期内没有符合筛选条件的异常信息。"
       : scope === "next"
-        ? "下一周期内没有符合筛选条件的联系信息。"
-        : "当前与下一周期以外，暂无未来排班关联联系信息。";
+        ? "下一周期内没有符合筛选条件的异常信息。"
+        : "当前与下一周期以外，暂无未来排班关联异常信息。";
 
   return (
     <ContactInfoStatusPanel

@@ -2044,9 +2044,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                               bumpPostReply(post.id);
                               openDemandDetail(post);
                             }}
-                            onTranslate={() => togglePostTranslation(post.id)}
                             replyCount={getPostReplyCount(post) + (replyBoosts[post.id] ?? 0)}
-                            translated={translatedPostIds.includes(post.id)}
                           />
                         </div>
                       }
@@ -2111,9 +2109,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                               bumpPostReply(post.id);
                               openDemandDetail(post);
                             }}
-                            onTranslate={() => togglePostTranslation(post.id)}
                             replyCount={getPostReplyCount(post) + (replyBoosts[post.id] ?? 0)}
-                            translated={translatedPostIds.includes(post.id)}
                           />
                         </div>
                       }

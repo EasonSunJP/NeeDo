@@ -163,7 +163,7 @@ export function MobileChatComposer({
   const footerClass = dark ? "border-[#3d3018]/45 bg-[#0b0907]/96 backdrop-blur-xl" : "border-line bg-white/96 backdrop-blur-xl";
   const composerShellClass = dark ? "border-[#3d3018]/55 bg-[#14110e]" : "border-line bg-white";
   const composerLabelClass = dark ? "text-[#f7ead0]/38" : "text-ink/35";
-  const composerInputClass = dark ? "text-white placeholder:text-white/28" : "text-ink placeholder:text-ink/30";
+  const composerInputClass = dark ? "text-[color:var(--client-text)] placeholder:text-[color:var(--client-muted)]" : "text-ink placeholder:text-ink/45";
   const iconButtonClass = dark ? "border-[#4b3a1d]/55 bg-[#11100e] text-white/82" : "border-line bg-white text-ink/72";
 
   return (
@@ -233,7 +233,7 @@ export function MobileChatComposer({
               className={cn(
                 "focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-full transition",
                 draft.trim()
-                  ? (dark ? "bg-[#f3cf78] text-[#17130f]" : "bg-moss text-white")
+                  ? (dark ? "bg-[#f3cf78] text-[#17130f]" : "bg-moss text-[color:var(--client-primary-contrast)]")
                   : (dark ? "text-white/58 hover:text-white" : "text-ink/45 hover:text-ink")
               )}
               onClick={draft.trim() ? onSend : onVoice}

@@ -8,9 +8,43 @@ import {
   closeDispatchFeedback,
   getCycleFeedbackMatrix,
   getPlanningProgressForCycle,
-  sendDispatchFeedbackReminder
+  sendDispatchFeedbackReminder,
+  type DispatchScheduleCellStatus,
+  type DispatchScheduleGridData
 } from "../../dispatch-center/store";
-import { TechnicianAvatarBadge } from "../../dispatch-center/components/TechnicianListUi";
+import { ScheduleGrid } from "../../dispatch-center/components/ScheduleGrid";
+
+function getFeedbackCellScheduleStatus(status: "available" | "unavailable" | "none" | "updated"): DispatchScheduleCellStatus {
+  if (status === "available") {
+    return "open";
+  }
+
+  if (status === "updated") {
+    return "pending";
+  }
+
+  if (status === "unavailable") {
+    return "conflict";
+  }
+
+  return "closed";
+}
+
+function getFeedbackCellTitle(status: "available" | "unavailable" | "none" | "updated") {
+  if (status === "available") {
+    return "可上班";
+  }
+
+  if (status === "updated") {
+    return "已更新";
+  }
+
+  if (status === "unavailable") {
+    return "不可上班";
+  }
+
+  return "未反馈";
+}
 
 export function StepFeedbackCollection({
   cycle,
@@ -30,7 +64,6 @@ export function StepFeedbackCollection({
   const { technicians } = useEntityStore();
   const progress = getPlanningProgressForCycle(cycle.id);
   const isMobileSurface = surface === "mobile";
-  const stickyColumnWidth = "190px";
   const allRows = useMemo(() => getCycleFeedbackMatrix(cycle.id, dateKey), [cycle.id, dateKey]);
   const rows = useMemo(() => {
     if (filter === "all") {
@@ -57,6 +90,40 @@ export function StepFeedbackCollection({
   }, [allRows, filter]);
   const exceptionCount = allRows.filter((row) => row.unavailableHours > 0 || row.note.trim().length > 0).length;
   const technicianAvatarMap = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician.avatar])), [technicians]);
+  const feedbackGrid = useMemo<DispatchScheduleGridData>(() => ({
+    cycle,
+    dates: [dateKey],
+    headers: Array.from({ length: 24 }, (_, hour) => ({
+      key: `${dateKey}-${hour}`,
+      label: `${String(hour).padStart(2, "0")}:00`,
+      sublabel: "1h"
+    })),
+    nowHour: 0,
+    rows: rows.map((row) => ({
+      technicianId: row.technicianId,
+      technicianName: row.technicianName,
+      technicianSubtitle: `${row.submittedHours} 格可上班 · ${row.unavailableHours} 格不可上班`,
+      technicianAvatar: technicianAvatarMap.get(row.technicianId) ?? "",
+      scheduledHours: row.submittedHours,
+      cells: row.cells.map((cell) => {
+        const title = getFeedbackCellTitle(cell.status);
+
+        return {
+          id: `feedback-${row.technicianId}-${cell.date}-${cell.hour}`,
+          date: cell.date,
+          detail: row.note || cell.label,
+          darkened: false,
+          hour: cell.hour,
+          isCurrent: false,
+          status: getFeedbackCellScheduleStatus(cell.status),
+          technicianAvatar: technicianAvatarMap.get(row.technicianId) ?? "",
+          technicianId: row.technicianId,
+          technicianName: row.technicianName,
+          title
+        };
+      })
+    }))
+  }), [cycle, dateKey, rows, technicianAvatarMap]);
   const sectionClass = isMobileSurface
     ? "border-line bg-white/90 shadow-panel backdrop-blur-xl"
     : "merchant-dispatch-surface";
@@ -66,8 +133,6 @@ export function StepFeedbackCollection({
   const toggleActiveClass = isMobileSurface ? "border-moss bg-moss text-white" : "is-active";
   const deadlineClass = isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-field";
   const feedbackActionClass = "w-full px-3 font-black";
-  const tableShellClass = isMobileSurface ? "border-line bg-white/80" : "merchant-dispatch-table-shell";
-  const tableHeaderClass = isMobileSurface ? "bg-paper/70 text-ink/45" : "merchant-dispatch-table-header text-ink/45";
   const feedbackSummaryItems = [
     { label: "已提交", tone: "blue" as const, value: `${progress?.submittedCount ?? 0} 人` },
     { label: "已更新", tone: "yellow" as const, value: `${progress?.updatedCount ?? 0} 人` },
@@ -141,69 +206,15 @@ export function StepFeedbackCollection({
           ))}
         </div>
 
-        <div className="mt-4 overflow-x-auto">
-          <div className={cn("min-w-[1180px] rounded-[24px] border", tableShellClass)}>
-            <div
-              className={cn("grid border-b border-line text-center text-[11px] font-black", tableHeaderClass)}
-              style={{ gridTemplateColumns: `${stickyColumnWidth} repeat(24, minmax(40px, 1fr))` }}
-            >
-              <div className="sticky left-0 z-20 px-3 py-3 text-left">
-                <div className="flex items-center justify-between gap-2">
-                  <span>技师 / 小时</span>
-                </div>
-              </div>
-              {Array.from({ length: 24 }, (_, hour) => (
-                <div className="border-l border-line px-1 py-3" key={hour}>{String(hour).padStart(2, "0")}</div>
-              ))}
-            </div>
-
-            {rows.map((row) => (
-              <div
-                className="grid border-b border-line last:border-b-0"
-                key={row.technicianId}
-                style={{ gridTemplateColumns: `${stickyColumnWidth} repeat(24, minmax(40px, 1fr))` }}
-              >
-                <div
-                  className={cn(
-                    "sticky left-0 z-10 flex items-center gap-3 border-r border-line px-3 py-3",
-                    isMobileSurface ? "bg-white/80" : "bg-white"
-                  )}
-                >
-                  <TechnicianAvatarBadge alt={row.technicianName} className="h-10 w-10" src={technicianAvatarMap.get(row.technicianId)} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-ink">{row.technicianName}</p>
-                    <p className={cn("mt-1 text-xs", isMobileSurface ? "text-ink/50" : "text-ink/50")}>{row.submittedHours} 格可上班 · {row.unavailableHours} 格不可上班</p>
-                  </div>
-                </div>
-                {row.cells.map((cell) => (
-                  <div
-                    className={cn(
-                      "border-l border-line px-1 py-3 text-[11px] font-black",
-                      cell.status === "available"
-                        ? isMobileSurface
-                          ? "bg-moss/15 text-moss"
-                          : "merchant-dispatch-feedback-available"
-                        : cell.status === "updated"
-                          ? isMobileSurface
-                            ? "bg-lemon/25 text-[#795b00]"
-                            : "merchant-dispatch-feedback-updated"
-                          : cell.status === "unavailable"
-                            ? isMobileSurface
-                              ? "bg-coral/15 text-coral"
-                              : "merchant-dispatch-feedback-unavailable"
-                            : isMobileSurface
-                              ? "bg-white/80 text-ink/45"
-                              : "merchant-dispatch-feedback-empty"
-                    )}
-                    key={`${row.technicianId}-${cell.hour}`}
-                    title={cell.label}
-                  >
-                    {cell.status === "none" ? "" : cell.status === "updated" ? "改" : cell.status === "available" ? "可" : "不可"}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+        <div className="mt-4">
+          <ScheduleGrid
+            compactHeader
+            data={feedbackGrid}
+            onSelectCell={(cell) => onMessage(`${cell.technicianName ?? "技师"} ${cell.date} ${String(cell.hour ?? 0).padStart(2, "0")}:00：${cell.title}`)}
+            showActualWorkStatus={false}
+            stickyTop={surface === "mobile" ? "var(--client-schedule-substicky-top, 0px)" : undefined}
+            surface={surface}
+          />
         </div>
       </section>
       )}

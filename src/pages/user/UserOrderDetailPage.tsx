@@ -8,6 +8,7 @@ import {
   PrimaryButton
 } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
+import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { services } from "../../data/mock";
@@ -33,7 +34,7 @@ import {
 } from "../../state/orderServiceSessionStore";
 import { useEntityStore } from "../../state/entityStore";
 import { useUserOrders } from "../../state/userOrderStore";
-import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
+import type { Customer, Order, ServiceItem, Store, Technician } from "../../types/domain";
 
 function getPaymentCopy(paymentStatus: Order["paymentStatus"], mode: Order["mode"]) {
   if (paymentStatus === "paid") {
@@ -151,7 +152,7 @@ function getReservationInfoRows(order: Order, service: ServiceItem, store: Store
   ];
 }
 
-type ContactInfoEvent = { at: string; detail: string; operator: string; title: string };
+type ContactInfoEvent = { actorAvatarSrc?: string; at: string; detail: string; operator: string; title: string; tone?: "green" | "red" };
 
 function getUserReviewRewardDetail(review: NonNullable<OrderServiceSession["userReview"]>) {
   if (review.rewardStatus === "issued") {
@@ -175,13 +176,14 @@ function formatSessionEventTime(timestamp?: number) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
 }
 
-function getOrderServiceSessionEvents(order: Order, technician: Technician, session: OrderServiceSession): ContactInfoEvent[] {
+function getOrderServiceSessionEvents(order: Order, technician: Technician, customer: Customer, session: OrderServiceSession): ContactInfoEvent[] {
   const technicianName = order.technicianName ?? technician.name;
   const events: ContactInfoEvent[] = [];
 
   if (session.startedAt) {
     events.push({
       at: formatSessionEventTime(session.startedAt),
+      actorAvatarSrc: customer.avatar,
       detail: `客户确认开始服务，服务倒计时已开始计算。预计服务时长 ${session.baseDurationMinutes + session.addedDurationMinutes} 分钟。`,
       operator: order.customerName,
       title: "服务开始"
@@ -191,6 +193,7 @@ function getOrderServiceSessionEvents(order: Order, technician: Technician, sess
   session.extensionRequests.forEach((request) => {
     events.push({
       at: formatSessionEventTime(request.requestedAt),
+      actorAvatarSrc: customer.avatar,
       detail: `客户申请追加服务：${request.title}，追加 ${request.durationMinutes} 分钟，金额 ${yen(request.price)}。`,
       operator: order.customerName,
       title: "追加服务申请"
@@ -199,6 +202,7 @@ function getOrderServiceSessionEvents(order: Order, technician: Technician, sess
     if (request.status === "accepted" && request.respondedAt) {
       events.push({
         at: formatSessionEventTime(request.respondedAt),
+        actorAvatarSrc: technician.avatar,
         detail: `技师已接受追加服务，倒计时增加 ${request.durationMinutes} 分钟。`,
         operator: technicianName,
         title: "追加服务已接受"
@@ -208,9 +212,11 @@ function getOrderServiceSessionEvents(order: Order, technician: Technician, sess
     if ((request.status === "declined" || request.status === "dismissed") && request.respondedAt) {
       events.push({
         at: formatSessionEventTime(request.respondedAt),
+        actorAvatarSrc: technician.avatar,
         detail: "技师无法提供追加服务，非常抱歉。倒计时时间未追加。",
         operator: technicianName,
-        title: "追加服务已拒绝"
+        title: "追加服务已拒绝",
+        tone: "red"
       });
     }
   });
@@ -227,6 +233,7 @@ function getOrderServiceSessionEvents(order: Order, technician: Technician, sess
   if (session.userReview) {
     events.push({
       at: formatSessionEventTime(session.userReview.submittedAt),
+      actorAvatarSrc: customer.avatar,
       detail: getUserReviewRewardDetail(session.userReview),
       operator: order.customerName,
       title: "用户评价"
@@ -236,7 +243,7 @@ function getOrderServiceSessionEvents(order: Order, technician: Technician, sess
   return events;
 }
 
-function getContactInfoEvents(order: Order, store: Store, technician: Technician, session?: OrderServiceSession) {
+function getContactInfoEvents(order: Order, store: Store, technician: Technician, customer: Customer, session?: OrderServiceSession) {
   const providerName = order.storeName ?? store.name;
   const acceptedAt = order.createdAt.replace(/(\d{2}):(\d{2})$/, (_match, hour: string, minute: string) => {
     const nextMinute = Number(minute) + 3;
@@ -246,18 +253,21 @@ function getContactInfoEvents(order: Order, store: Store, technician: Technician
   const events: ContactInfoEvent[] = [
     {
       at: order.createdAt,
+      actorAvatarSrc: customer.avatar,
       detail: `${getOrderSourceLabel(order)} 创建预约，金额 ${yen(order.amount)}，支付状态 ${getPaymentCopy(order.paymentStatus, order.mode)}。`,
       operator: order.customerName,
       title: "预约创建"
     },
     {
       at: acceptedAt,
+      actorAvatarSrc: store.cover,
       detail: `${providerName} 接单，预约状态更新为 ${statusLabel(order.status)}。`,
       operator: providerName,
       title: "服务方接单"
     },
     {
       at: order.bookedAt,
+      actorAvatarSrc: store.cover,
       detail: `预约担当：${order.technicianName ?? technician.name}。`,
       operator: providerName,
       title: "担当信息"
@@ -265,7 +275,7 @@ function getContactInfoEvents(order: Order, store: Store, technician: Technician
   ];
 
   if (session) {
-    events.push(...getOrderServiceSessionEvents(order, technician, session));
+    events.push(...getOrderServiceSessionEvents(order, technician, customer, session));
   }
 
   return events.filter((event) => event.at).sort((left, right) => left.at.localeCompare(right.at));
@@ -293,24 +303,20 @@ function ContactInfoTimeline({
   events: ContactInfoEvent[];
 }) {
   return (
-    <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] shadow-panel">
-      <h2 className="border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-4 py-3 text-base font-black text-[color:var(--client-text)]">联系信息</h2>
-      <div className="space-y-0 px-4 py-2">
-        {events.map((event) => (
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 py-3" key={`${event.at}-${event.title}`}>
-            <span className="pt-1 text-[11px] font-black text-[color:var(--client-muted)]">{event.at}</span>
-            <div className="relative border-l border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] pl-4">
-              <span className="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full border border-white/70 bg-[color:var(--client-accent)]" />
-              <strong className="block text-sm font-black text-[color:var(--client-text)]">{event.title}</strong>
-              <p className="mt-1 whitespace-pre-line text-xs font-bold leading-5 text-[color:var(--client-muted)]">
-                <ContactInfoDetailText text={event.detail} />
-              </p>
-              <p className="mt-1 text-[11px] font-black text-[color:color-mix(in_srgb,var(--client-text)_78%,var(--client-muted)_22%)]">操作人：{event.operator}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
+    <ContactEventTimelinePanel
+      events={events.map((event, index) => ({
+        actorName: event.operator,
+        actorRole: event.title,
+        actorAvatarSrc: event.actorAvatarSrc,
+        atLabel: event.at,
+        id: `${event.at}-${event.title}-${index}`,
+        message: <ContactInfoDetailText text={event.detail} />,
+        title: event.title,
+        tone: event.tone ?? "green"
+      }))}
+      commentAuthorAvatarSrc={events[0]?.actorAvatarSrc}
+      title="联系信息"
+    />
   );
 }
 
@@ -345,7 +351,7 @@ export function UserOrderDetailPage() {
   const { orderId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { stores, technicians } = useEntityStore();
+  const { customers, stores, technicians } = useEntityStore();
   const userOrders = useUserOrders();
   const order = userOrders.find((item) => item.id === orderId) ?? userOrders[0];
   const routeState = location.state as { notice?: string } | null;
@@ -354,6 +360,7 @@ export function UserOrderDetailPage() {
   const baseDurationMinutes = selectedPackage.durationMinutes;
   const store = stores.find((item) => item.name === order.storeName) ?? stores[0];
   const technician = technicians.find((item) => item.name === order.technicianName) ?? technicians[0];
+  const customer = customers.find((item) => item.id === order.customerId) ?? customers[0];
   const [now, setNow] = useState(() => Date.now());
   const [startConfirmOpen, setStartConfirmOpen] = useState(false);
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
@@ -544,7 +551,7 @@ export function UserOrderDetailPage() {
         </section>
       ) : null}
 
-      <ContactInfoTimeline events={getContactInfoEvents(displayOrder, store, technician, serviceSession)} />
+      <ContactInfoTimeline events={getContactInfoEvents(displayOrder, store, technician, customer, serviceSession)} />
 
       <OrderDetailBottomActionMask>
         {isServiceInProgress ? (

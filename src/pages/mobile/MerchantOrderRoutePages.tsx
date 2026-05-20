@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
+import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -68,11 +69,12 @@ type ServicePackageSelection = {
 };
 
 type OrderContactInfoEvent = {
+  actorAvatarSrc?: string;
   at: string;
   title: string;
   detail: string;
   operator: string;
-  tone?: "default" | "accent";
+  tone?: "green" | "red";
 };
 
 const paymentMethodOptions = [
@@ -722,12 +724,14 @@ function buildOrderChangeDraft({
 function getOrderContactInfoEvents({
   assignedTechnician,
   changeDraft,
+  customer,
   order,
   service,
   store
 }: {
   assignedTechnician?: Technician;
   changeDraft?: MerchantOrderChangeDraft;
+  customer: Customer;
   order: Order;
   service: ServiceItem;
   store: Store;
@@ -735,25 +739,38 @@ function getOrderContactInfoEvents({
   const scenario = getOrderScenario(order, service);
   const providerName = order.storeName ?? store.name;
   const acceptedAt = addMinutesToOrderDateTime(order.createdAt, order.source === "line" ? 8 : 3);
+  const getActorAvatarSrc = (operator: string) => {
+    if (operator === order.customerName) {
+      return customer.avatar;
+    }
+
+    if (assignedTechnician && operator === assignedTechnician.name) {
+      return assignedTechnician.avatar;
+    }
+
+    return store.cover;
+  };
   const events: OrderContactInfoEvent[] = [
     {
       at: order.createdAt,
+      actorAvatarSrc: customer.avatar,
       detail: `${getOrderSourceLabel(order)} 创建预约，金额 ${yen(order.amount)}，支付手段 ${getPaymentMethodLabel(order)}。`,
       operator: order.customerName,
       title: "预约创建"
     },
     {
       at: acceptedAt,
+      actorAvatarSrc: store.cover,
       detail: `${providerName} 接单，预约状态更新为 ${statusLabel(order.status)}。`,
       operator: providerName,
-      title: "服务方接单",
-      tone: "accent"
+      title: "服务方接单"
     }
   ];
 
   if (assignedTechnician) {
     events.push({
       at: addMinutesToOrderDateTime(acceptedAt, 7),
+      actorAvatarSrc: store.cover,
       detail: `${scenario === "restaurant" ? "门店担当" : "担当技师"}变更为 ${assignedTechnician.name}。`,
       operator: providerName,
       title: "担当确认"
@@ -763,6 +780,7 @@ function getOrderContactInfoEvents({
   if (order.remark) {
     events.push({
       at: addMinutesToOrderDateTime(order.createdAt, 12),
+      actorAvatarSrc: customer.avatar,
       detail: `用户备注：${order.remark}`,
       operator: order.customerName,
       title: "备注同步"
@@ -772,10 +790,11 @@ function getOrderContactInfoEvents({
   if (order.status === "cancelled") {
     events.push({
       at: addMinutesToOrderDateTime(order.createdAt, 18),
+      actorAvatarSrc: customer.avatar,
       detail: "用户取消预约，系统保留订单状态和退款处理线索。",
       operator: order.customerName,
       title: "用户取消",
-      tone: "accent"
+      tone: "red"
     });
   }
 
@@ -783,10 +802,11 @@ function getOrderContactInfoEvents({
     changeDraft.changeLogs.forEach((log) => {
       events.push({
         at: log.at,
+        actorAvatarSrc: getActorAvatarSrc(log.operator),
         detail: log.detail,
         operator: log.operator,
         title: log.title,
-        tone: "accent"
+        tone: "green"
       });
     });
   }
@@ -877,30 +897,28 @@ function DispatchTechnicianMiniCard({
   );
 }
 
-function OrderContactInfoTimeline({ events }: { events: OrderContactInfoEvent[] }) {
+function OrderContactInfoTimeline({
+  commentAuthorAvatarSrc,
+  events
+}: {
+  commentAuthorAvatarSrc?: string;
+  events: OrderContactInfoEvent[];
+}) {
   return (
-    <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] shadow-panel">
-      <h2 className="border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-4 py-3 text-base font-black text-[color:var(--client-text)]">联系信息</h2>
-      <div className="space-y-0 px-4 py-2">
-        {events.map((event, index) => (
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 py-3" key={`${event.at}-${event.title}`}>
-            <span className="pt-1 text-[11px] font-black text-[color:var(--client-muted)]">{event.at}</span>
-            <div className="relative border-l border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] pl-4">
-              <span
-                className={cn(
-                  "absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full border border-white/70",
-                  event.tone === "accent" ? "bg-coral" : "bg-[color:var(--client-accent)]"
-                )}
-              />
-              <strong className="block text-sm font-black text-[color:var(--client-text)]">{event.title}</strong>
-              <p className="mt-1 whitespace-pre-line text-xs font-bold leading-5 text-[color:var(--client-muted)]">{event.detail}</p>
-              <p className="mt-1 text-[11px] font-black text-[color:color-mix(in_srgb,var(--client-text)_78%,var(--client-muted)_22%)]">操作人：{event.operator}</p>
-              {index === events.length - 1 ? <span className="absolute bottom-0 left-[-1px] h-3 w-px bg-[color:var(--client-surface)]" /> : null}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
+    <ContactEventTimelinePanel
+      events={events.map((event, index) => ({
+        actorName: event.operator,
+        actorRole: event.title,
+        actorAvatarSrc: event.actorAvatarSrc,
+        atLabel: event.at,
+        id: `${event.at}-${event.title}-${index}`,
+        message: event.detail,
+        title: event.title,
+        tone: event.tone ?? "green"
+      }))}
+      commentAuthorAvatarSrc={commentAuthorAvatarSrc}
+      title="联系信息"
+    />
   );
 }
 
@@ -1004,7 +1022,7 @@ function MerchantOrderDetailContent() {
   const serviceCardData = buildOrderServiceCardData(order, service, store, matchedService);
   const staffCardData = assignedTechnician ? undefined : buildUnassignedStaffCardData(order, store, scenario);
   const reservationInfoRows = getReservationInfoRows({ assignedTechnician, changeDraft: storedDraft, customer, order, service, store });
-  const contactInfoEvents = getOrderContactInfoEvents({ assignedTechnician, changeDraft: storedDraft, order, service, store });
+  const contactInfoEvents = getOrderContactInfoEvents({ assignedTechnician, changeDraft: storedDraft, customer, order, service, store });
   const returnTarget = readNavigationReturnTarget(location.search, location.state);
   const handleBack = () => {
     if (returnTarget) {
@@ -1090,7 +1108,7 @@ function MerchantOrderDetailContent() {
           </div>
         </section>
 
-        <OrderContactInfoTimeline events={contactInfoEvents} />
+        <OrderContactInfoTimeline commentAuthorAvatarSrc={store.cover} events={contactInfoEvents} />
       </main>
       <MobileBottomActionBar contentClassName="grid grid-cols-3 gap-2">
         <Button

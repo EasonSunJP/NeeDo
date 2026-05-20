@@ -6,10 +6,12 @@ export const mobileDetailInnerCardClassName = "rounded-[18px] bg-paper p-3";
 export function ServiceFlowSection({
   flow,
   className,
+  dataNoI18n = false,
   title = "服务流程"
 }: {
   flow: string[];
   className?: string;
+  dataNoI18n?: boolean;
   title?: string;
 }) {
   if (flow.length === 0) {
@@ -17,7 +19,7 @@ export function ServiceFlowSection({
   }
 
   return (
-    <section className={cn(mobileDetailCardClassName, className)}>
+    <section className={cn(mobileDetailCardClassName, className)} data-no-i18n={dataNoI18n || undefined}>
       <h2 className="font-black">{title}</h2>
       <div className="mt-3 space-y-2">
         {flow.map((step, index) => (

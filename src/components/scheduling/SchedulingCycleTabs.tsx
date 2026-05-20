@@ -109,7 +109,7 @@ function SchedulingCycleTabButton({
     >
       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
         <strong className="truncate text-sm font-black sm:text-base">{label}</strong>
-        <Badge className="max-w-full truncate px-1.5 text-[10px] sm:px-2 sm:text-xs" tone={tone ?? resolveSchedulingCycleTone(cycle)}>
+        <Badge className={cn("max-w-full truncate px-1.5 text-[10px] sm:px-2 sm:text-xs", active && "schedule-highlight-badge")} tone={tone ?? resolveSchedulingCycleTone(cycle)}>
           {cycle ? getCycleStatusLabel(cycle.status) : "未创建"}
         </Badge>
       </div>

@@ -54,6 +54,15 @@ export type DispatchNotificationRules = {
   lowBookingThreshold: number;
   discountEnabled: boolean;
   discountTemplate: string;
+  activeTemplateId?: string;
+  templates?: DispatchNotificationTemplate[];
+};
+
+export type DispatchNotificationTemplate = {
+  id: string;
+  title: string;
+  body: string;
+  updatedAt: string;
 };
 
 export type DispatchRuleSet = {

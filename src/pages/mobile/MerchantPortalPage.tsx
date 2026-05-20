@@ -802,11 +802,11 @@ function buildMerchantStaffHrStatusItems(technicians: Technician[]): MerchantCon
 
 function MerchantHomeContactStatusPanel({
   className,
-  emptyDetail = "当前筛选条件下没有今天的联系信息。",
+  emptyDetail = "当前筛选条件下没有今天的异常信息。",
   filter,
   items,
   onFilterChange,
-  title = "联系信息"
+  title = "异常信息"
 }: {
   className?: string;
   emptyDetail?: string;
@@ -817,7 +817,7 @@ function MerchantHomeContactStatusPanel({
 }) {
   return (
     <ContactInfoStatusPanel
-      className={className}
+      className={cn("mt-4", className)}
       emptyDateLabel="今日"
       emptyDetail={emptyDetail}
       emptyIcon={<AppIcon className="h-6 w-6" name="bell" />}
@@ -2290,11 +2290,11 @@ export function MerchantPortalPage() {
           />
         ) : activeView === "schedule" && merchantSchedulePrimaryTab === "appointments" ? (
           <MerchantHomeContactStatusPanel
-            emptyDetail="当前筛选条件下没有预约相关联系信息。"
+            emptyDetail="当前筛选条件下没有预约相关异常信息。"
             filter={appointmentContactStatusFilter}
             items={appointmentContactStatusItems}
             onFilterChange={setAppointmentContactStatusFilter}
-            title="联系信息"
+            title="异常信息"
           />
         ) : activeView !== "schedule" ? (
           <MerchantHomeContactStatusPanel

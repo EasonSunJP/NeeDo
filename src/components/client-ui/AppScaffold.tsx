@@ -580,7 +580,7 @@ export function PrimaryButton({
   return (
     <InteractiveWrapper
       className={cn(
-        "focus-ring inline-flex h-12 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[#0a0907] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:-translate-y-0.5",
+        "focus-ring inline-flex h-12 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:-translate-y-0.5",
         className
       )}
       onClick={onClick}
@@ -671,7 +671,7 @@ export function SegmentedTabs<T extends string>({
             className={cn(
               "client-segmented-tab rounded-full px-4 py-2.5 text-sm font-black transition",
               active
-                ? "bg-[color:var(--client-primary)] text-[#090806] shadow-[0_8px_22px_color-mix(in_srgb,var(--client-primary)_22%,transparent)]"
+                ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_8px_22px_color-mix(in_srgb,var(--client-primary)_22%,transparent)]"
                 : "text-[color:var(--client-muted)]"
             )}
             key={item.value}
@@ -784,7 +784,7 @@ export function FeatureSegmentedTabs<T extends string>({
           <button
             className={cn(
               "client-feature-segmented-tab flex min-h-[44px] min-w-0 flex-1 items-center justify-center rounded-full px-1 py-2 text-center text-[11px] font-black leading-none transition sm:px-2 sm:text-[13px]",
-              active ? "bg-[color:var(--client-primary)] text-[#090806]" : "text-[color:var(--client-muted)]"
+              active ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "text-[color:var(--client-muted)]"
             )}
             key={item.value}
             onClick={() => onChange(item.value)}

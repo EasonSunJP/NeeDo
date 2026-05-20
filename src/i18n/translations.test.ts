@@ -324,6 +324,14 @@ describe("translations", () => {
     expect(translateText("需求详情", "ko")).toBe("필요 상세");
   });
 
+  it("translates NeeDo detail content used by the translate action", () => {
+    expect(translateText("临时预约", "ja")).toBe("臨時予約");
+    expect(translateText("期限", "en")).toBe("Deadline");
+    expect(translateText("品川 临时预约 深度保洁", "en")).toBe("Shinagawa short-notice booking Deep cleaning");
+    expect(translateText("希望响应快、评价高，能提前确认交通和到达时间。接受平台担保和加急费用。", "en")).toContain("quick response");
+    expect(translateText("商铺设置了预约定金，预约时预付，尾款到场支付。", "ko")).toBe("매장에서 예약 보증금을 설정했습니다. 예약 시 선결제하고 잔금은 도착 후 결제합니다.");
+  });
+
   it("localizes merchant display module editor labels", () => {
     expect(translateText("第 1 张会同步为首图和店铺头像底图。", "ko")).toBe("첫 번째 이미지는 대표 이미지와 매장 아바타 배경으로 동기화됩니다.");
     expect(translateText("展示图片", "en")).toBe("Display images");

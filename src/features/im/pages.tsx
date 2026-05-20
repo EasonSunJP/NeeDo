@@ -3816,7 +3816,7 @@ export function ImConversationRoomPage({
     const actorKey = social.getActorForScope(scope as SocialPortalScope);
     const statusClassName = "whitespace-nowrap text-[11px] font-black text-[color:var(--client-muted)]";
     const actionClassName =
-      "rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[#090806] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]";
+      "rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]";
     const renderActionButton = (label: string, run: () => unknown | Promise<unknown>) => (
       <button
         className={actionClassName}
@@ -6051,7 +6051,7 @@ export function ImNewConversationPage() {
                           className={cn(
                             "min-h-11 rounded-full px-3 text-center transition",
                             active
-                              ? "bg-[color:var(--client-primary)] text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+                              ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
                               : "text-[color:var(--client-muted)]"
                           )}
                           key={option.value}
@@ -6068,7 +6068,7 @@ export function ImNewConversationPage() {
               ) : null}
             </section>
             <button
-              className="focus-ring inline-flex min-h-14 w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:var(--client-primary)] px-7 text-[15px] font-black text-[#090806] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_34%,transparent)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] disabled:bg-[color:color-mix(in_srgb,var(--client-line)_62%,var(--client-surface))] disabled:text-[color:var(--client-muted)] disabled:shadow-none"
+              className="focus-ring inline-flex min-h-14 w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:var(--client-primary)] px-7 text-[15px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_34%,transparent)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] disabled:bg-[color:color-mix(in_srgb,var(--client-line)_62%,var(--client-surface))] disabled:text-[color:var(--client-muted)] disabled:shadow-none"
               disabled={!canCreateGroup}
               onClick={() => void createGroup()}
               onPointerDown={stabilizeImMobileViewport}

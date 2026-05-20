@@ -21,6 +21,7 @@ import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { ChatConversationInfoCard } from "../../components/mobile/ChatConversationInfoCard";
+import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { MobileMessageCenter } from "../../components/mobile/MobileMessageCenter";
@@ -87,7 +88,7 @@ import { markShiftPlanningNotificationRead, useShiftPlanningStore } from "../../
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { NotificationType } from "../../types/shiftPlanning";
-import type { Order, ServiceItem, ServicePaymentMethod, Store, Technician } from "../../types/domain";
+import type { Customer, Order, ServiceItem, ServicePaymentMethod, Store, Technician } from "../../types/domain";
 import { ContactInfoDetailText, ServiceCountdownPill, ServiceReviewPrompt, type ServiceReviewTag } from "../../shared/order-detail/ServiceSessionUi";
 
 type TechnicianView = "tasks" | "schedule" | "moments" | "contacts" | "messages" | "me" | "workDetail";
@@ -223,7 +224,7 @@ const statusButtonMeta: Record<WorkStatus, { icon: string; caption: string; clas
   移动中: { icon: "↗", caption: "同步路线和预计到达", className: "bg-[color:color-mix(in_srgb,var(--client-warm)_18%,white_82%)] text-[color:var(--client-warm)]" },
   服务中: { icon: "▶", caption: "需输入客人验证码", className: "bg-[color:color-mix(in_srgb,var(--client-accent)_16%,white_84%)] text-[color:var(--client-accent)]" },
   休息: { icon: "☾", caption: "暂停接单并同步休息中", className: "bg-[color:color-mix(in_srgb,var(--client-warning)_22%,white_78%)] text-[color:var(--client-warning-ink)]" },
-  退勤: { icon: "■", caption: "下班后订单记为个人工单", className: "bg-[color:color-mix(in_srgb,var(--client-muted)_14%,white_86%)] text-[color:var(--client-muted)]" }
+  退勤: { icon: "■", caption: "下班后无法收到订单", className: "bg-[color:color-mix(in_srgb,var(--client-muted)_14%,white_86%)] text-[color:var(--client-muted)]" }
 };
 
 function getCompactStatusLabelClass(label: string) {
@@ -333,7 +334,7 @@ function findOrderPackage(order: Order, service: ServiceItem) {
   ) ?? service.packages[0];
 }
 
-type TechnicianOrderContactEvent = { at: string; detail: string; operator: string; title: string };
+type TechnicianOrderContactEvent = { actorAvatarSrc?: string; at: string; detail: string; operator: string; title: string; tone?: "green" | "red" };
 
 function getTechnicianOrderDetailRows(order: Order, service: ServiceItem, store: Store, technician: Technician): Array<[string, string]> {
   const { date, time } = getOrderDetailDateTime(order);
@@ -368,13 +369,14 @@ function formatTechnicianSessionEventTime(timestamp?: number) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
 }
 
-function getTechnicianOrderSessionEvents(order: Order, technician: Technician, session: OrderServiceSession): TechnicianOrderContactEvent[] {
+function getTechnicianOrderSessionEvents(order: Order, technician: Technician, customer: Customer, session: OrderServiceSession): TechnicianOrderContactEvent[] {
   const technicianName = order.technicianName ?? technician.name;
   const events: TechnicianOrderContactEvent[] = [];
 
   if (session.startedAt) {
     events.push({
       at: formatTechnicianSessionEventTime(session.startedAt),
+      actorAvatarSrc: session.status === "inService" ? technician.avatar : undefined,
       detail: `服务已开始，倒计时同步启动。预计服务时长 ${session.baseDurationMinutes + session.addedDurationMinutes} 分钟。`,
       operator: session.status === "inService" ? technicianName : "系统同步",
       title: "服务开始"
@@ -384,6 +386,7 @@ function getTechnicianOrderSessionEvents(order: Order, technician: Technician, s
   session.extensionRequests.forEach((request) => {
     events.push({
       at: formatTechnicianSessionEventTime(request.requestedAt),
+      actorAvatarSrc: customer.avatar,
       detail: `客户申请追加服务：${request.title}，追加 ${request.durationMinutes} 分钟，金额 ${yen(request.price)}。`,
       operator: order.customerName,
       title: "追加服务申请"
@@ -392,6 +395,7 @@ function getTechnicianOrderSessionEvents(order: Order, technician: Technician, s
     if (request.status === "accepted" && request.respondedAt) {
       events.push({
         at: formatTechnicianSessionEventTime(request.respondedAt),
+        actorAvatarSrc: technician.avatar,
         detail: `已接受追加服务，倒计时增加 ${request.durationMinutes} 分钟。`,
         operator: technicianName,
         title: "追加服务已接受"
@@ -401,9 +405,11 @@ function getTechnicianOrderSessionEvents(order: Order, technician: Technician, s
     if ((request.status === "declined" || request.status === "dismissed") && request.respondedAt) {
       events.push({
         at: formatTechnicianSessionEventTime(request.respondedAt),
+        actorAvatarSrc: technician.avatar,
         detail: "已拒绝追加服务，用户端已收到无法提供追加服务的提示。",
         operator: technicianName,
-        title: "追加服务已拒绝"
+        title: "追加服务已拒绝",
+        tone: "red"
       });
     }
   });
@@ -420,7 +426,7 @@ function getTechnicianOrderSessionEvents(order: Order, technician: Technician, s
   return events;
 }
 
-function getTechnicianOrderDetailEvents(order: Order, store: Store, technician: Technician, session?: OrderServiceSession) {
+function getTechnicianOrderDetailEvents(order: Order, store: Store, technician: Technician, customer: Customer, session?: OrderServiceSession) {
   const providerName = order.storeName ?? store.name;
   const acceptedAt = order.createdAt.replace(/(\d{2}):(\d{2})$/, (_match, hour: string, minute: string) => {
     const nextMinute = Number(minute) + 3;
@@ -430,18 +436,21 @@ function getTechnicianOrderDetailEvents(order: Order, store: Store, technician: 
   const events: TechnicianOrderContactEvent[] = [
     {
       at: order.createdAt,
+      actorAvatarSrc: customer.avatar,
       detail: `${getOrderDetailSourceLabel(order)} 创建预约，金额 ${yen(order.amount)}，支付状态 ${getOrderDetailPaymentCopy(order.paymentStatus, order.mode)}。`,
       operator: order.customerName,
       title: "预约创建"
     },
     {
       at: acceptedAt,
+      actorAvatarSrc: store.cover,
       detail: `${providerName} 接单，预约状态更新为 ${statusLabel(order.status)}。`,
       operator: providerName,
       title: "服务方接单"
     },
     {
       at: order.bookedAt,
+      actorAvatarSrc: store.cover,
       detail: `预约担当：${order.technicianName ?? technician.name}。`,
       operator: providerName,
       title: "担当信息"
@@ -449,7 +458,7 @@ function getTechnicianOrderDetailEvents(order: Order, store: Store, technician: 
   ];
 
   if (session) {
-    events.push(...getTechnicianOrderSessionEvents(order, technician, session));
+    events.push(...getTechnicianOrderSessionEvents(order, technician, customer, session));
   }
 
   return events.filter((event) => event.at).sort((left, right) => left.at.localeCompare(right.at));
@@ -472,29 +481,27 @@ function TechnicianOrderInfoTable({ rows, title }: { rows: Array<[string, string
 }
 
 function TechnicianOrderContactTimeline({
+  commentAuthorAvatarSrc,
   events
 }: {
+  commentAuthorAvatarSrc?: string;
   events: TechnicianOrderContactEvent[];
 }) {
   return (
-    <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] shadow-panel">
-      <h2 className="border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-4 py-3 text-base font-black text-[color:var(--client-text)]">联系信息</h2>
-      <div className="space-y-0 px-4 py-2">
-        {events.map((event) => (
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 py-3" key={`${event.at}-${event.title}`}>
-            <span className="pt-1 text-[11px] font-black text-[color:var(--client-muted)]">{event.at}</span>
-            <div className="relative border-l border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] pl-4">
-              <span className="absolute -left-[5px] top-1.5 h-2.5 w-2.5 rounded-full border border-white/70 bg-[color:var(--client-accent)]" />
-              <strong className="block text-sm font-black text-[color:var(--client-text)]">{event.title}</strong>
-              <p className="mt-1 whitespace-pre-line text-xs font-bold leading-5 text-[color:var(--client-muted)]">
-                <ContactInfoDetailText text={event.detail} />
-              </p>
-              <p className="mt-1 text-[11px] font-black text-[color:color-mix(in_srgb,var(--client-text)_78%,var(--client-muted)_22%)]">操作人：{event.operator}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
+    <ContactEventTimelinePanel
+      events={events.map((event, index) => ({
+        actorName: event.operator,
+        actorRole: event.title,
+        actorAvatarSrc: event.actorAvatarSrc,
+        atLabel: event.at,
+        id: `${event.at}-${event.title}-${index}`,
+        message: <ContactInfoDetailText text={event.detail} />,
+        title: event.title,
+        tone: event.tone ?? "green"
+      }))}
+      commentAuthorAvatarSrc={commentAuthorAvatarSrc}
+      title="联系信息"
+    />
   );
 }
 
@@ -4096,14 +4103,14 @@ export function TechnicianPortalPage() {
                   );
                 })}
               </div>
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-[20px] bg-paper px-4 py-3">
+              <div className="mt-3 rounded-[20px] bg-paper px-4 py-3">
                 <div>
                   <p className="text-[11px] font-bold text-ink/45">当前已同步状态</p>
-                  <p className="mt-1 text-sm font-black text-ink">{status}</p>
+                  <p className="mt-1 flex flex-wrap items-baseline gap-x-1 text-sm font-black text-ink">
+                    <span>{status}：</span>
+                    <span className="text-[11px] font-bold leading-4 text-ink/55">{statusButtonMeta[status].caption}</span>
+                  </p>
                 </div>
-                <span className={cn("inline-flex rounded-full px-3 py-1 text-[11px] font-black", statusButtonMeta[status].className)}>
-                  {statusButtonMeta[status].caption}
-                </span>
               </div>
             </section>
 
@@ -4383,7 +4390,7 @@ export function TechnicianPortalPage() {
                         </article>
                       ))
                     ) : (
-                      <div className="rounded-[22px] border border-white/8 bg-white/[0.05] px-4 py-4 text-sm leading-6 text-white/60">
+                      <div className="rounded-[16px] border border-white/[0.04] bg-white/[0.025] px-3 py-2.5 text-[11px] leading-5 text-white/45">
                         今天暂未写入新的排班安排，可以去排班里补充出勤、移动、休息或锁定时段。
                       </div>
                     )}
@@ -5597,7 +5604,10 @@ export function TechnicianPortalPage() {
                 </section>
               )}
 
-              <TechnicianOrderContactTimeline events={getTechnicianOrderDetailEvents(selectedTaskOrderDisplay, selectedTaskOrderStore, selectedTaskOrderTechnician, selectedTaskOrderSession)} />
+              <TechnicianOrderContactTimeline
+                commentAuthorAvatarSrc={baseTech.avatar}
+                events={getTechnicianOrderDetailEvents(selectedTaskOrderDisplay, selectedTaskOrderStore, selectedTaskOrderTechnician, selectedTaskOrderCustomer, selectedTaskOrderSession)}
+              />
             </main>
             <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-12">
               <div

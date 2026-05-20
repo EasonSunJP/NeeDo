@@ -261,7 +261,16 @@ function buildDefaultRuleSet(): DispatchCycle["ruleSet"] {
       lowBookingEnabled: true,
       lowBookingThreshold: 1,
       discountEnabled: true,
-      discountTemplate: "{{storeName}} {{date}} {{timeRange}} 空档加开，{{serviceName}} 限时优惠到 {{expireAt}}。"
+      discountTemplate: "{{name}}，{{storeName}} 已开放 {{date}} {{timeRange}} 的排班反馈，请在截止前确认。",
+      activeTemplateId: "dispatch-template-feedback-reminder",
+      templates: [
+        {
+          id: "dispatch-template-feedback-reminder",
+          title: "反馈提醒模板",
+          body: "{{name}}，{{storeName}} 已开放 {{date}} {{timeRange}} 的排班反馈，请在截止前确认。",
+          updatedAt: dispatchReferenceNow
+        }
+      ]
     }
   };
 }
@@ -1590,7 +1599,10 @@ function normalizeCycleRuleSet(cycle: DispatchCycle): DispatchCycle {
       },
       notificationRules: {
         ...defaultRuleSet.notificationRules,
-        ...cycle.ruleSet?.notificationRules
+        ...cycle.ruleSet?.notificationRules,
+        templates: Array.isArray(cycle.ruleSet?.notificationRules?.templates)
+          ? cycle.ruleSet.notificationRules.templates
+          : defaultRuleSet.notificationRules.templates
       }
     }
   };
@@ -3346,6 +3358,7 @@ export function previewDispatchNotificationTemplate(storeId: string, serviceName
 
   return template
     .replaceAll("{{storeName}}", store?.name ?? "NeeDo")
+    .replaceAll("{{name}}", "佐藤 美咲")
     .replaceAll("{{date}}", date)
     .replaceAll("{{timeRange}}", timeRange)
     .replaceAll("{{serviceName}}", serviceName)

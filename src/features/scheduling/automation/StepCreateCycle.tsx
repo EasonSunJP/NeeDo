@@ -12,7 +12,7 @@ import {
   getTemplateRowWeekday,
   type DispatchCycle
 } from "../../dispatch-center/domain";
-import { getDispatchContactGroup, getDispatchHolidayRules, previewDispatchNotificationTemplate, saveDispatchCycleDraft, launchDispatchCycle } from "../../dispatch-center/store";
+import { getDispatchContactGroup, getDispatchHolidayRules, saveDispatchCycleDraft, launchDispatchCycle } from "../../dispatch-center/store";
 
 function NumberStepper({
   label,
@@ -77,8 +77,38 @@ const rulePhases: Array<{ value: RulePhase; label: string; caption: string }> = 
   { value: "hours", label: "工时限制", caption: "日/周工时、休息天、服务缓冲" },
   { value: "priority", label: "特殊规则与优先级", caption: "临时技师、语言、工时优先" },
   { value: "technicians", label: "适用技师", caption: "本周期参与反馈或执行对象" },
-  { value: "notify", label: "通知模板", caption: "对象、渠道、阈值、模板预览" }
+  { value: "notify", label: "通知模板", caption: "模板、变量、阈值、预览" }
 ];
+
+const notificationTemplateVariables = [
+  { token: "{{name}}", label: "名称" },
+  { token: "{{storeName}}", label: "店铺名" },
+  { token: "{{date}}", label: "日期" },
+  { token: "{{timeRange}}", label: "时间段" },
+  { token: "{{serviceName}}", label: "服务名" },
+  { token: "{{expireAt}}", label: "截止时间" }
+];
+
+function renderDispatchNotificationTemplate(
+  template: string,
+  values: {
+    date: string;
+    expireAt: string;
+    name: string;
+    serviceName: string;
+    storeName: string;
+    timeRange: string;
+  }
+) {
+  return template
+    .replaceAll("{{name}}", values.name)
+    .replaceAll("{{storeName}}", values.storeName)
+    .replaceAll("{{date}}", values.date)
+    .replaceAll("{{timeRange}}", values.timeRange)
+    .replaceAll("{{serviceName}}", values.serviceName)
+    .replaceAll("{{couponName}}", "黄金周加钟券")
+    .replaceAll("{{expireAt}}", values.expireAt);
+}
 
 function RuleCardTitle({
   className = "mt-3",
@@ -152,13 +182,18 @@ export function StepCreateCycle({
   storeId: string;
   surface: "desktop" | "mobile";
 }) {
-  const { technicians } = useEntityStore();
+  const { stores, technicians } = useEntityStore();
+  const currentStore = useMemo(() => stores.find((store) => store.id === storeId) ?? stores[0], [storeId, stores]);
   const storeTechnicians = useMemo(() => technicians.filter((technician) => technician.storeId === storeId), [storeId, technicians]);
   const tempStaffGroup = getDispatchContactGroup(storeId);
   const [draft, setDraft] = useState<DispatchCycle>(cycle);
   const [rulePhase, setRulePhase] = useState<RulePhase>("history");
   const [slideDirection, setSlideDirection] = useState<"next" | "previous">("next");
   const [notificationPreview, setNotificationPreview] = useState("");
+  const [notificationTemplateTitle, setNotificationTemplateTitle] = useState("反馈提醒模板");
+  const [notificationTemplateBody, setNotificationTemplateBody] = useState(cycle.ruleSet.notificationRules.discountTemplate);
+  const [selectedNotificationTemplateId, setSelectedNotificationTemplateId] = useState(cycle.ruleSet.notificationRules.activeTemplateId ?? "");
+  const notificationBodyRef = useRef<HTMLTextAreaElement>(null);
   const pageTopRef = useRef<HTMLDivElement>(null);
   const isMobileSurface = surface === "mobile";
   const sectionClass = isMobileSurface
@@ -178,11 +213,16 @@ export function StepCreateCycle({
     ? "w-24 rounded-xl border border-line bg-white/80 px-3 py-2 text-right text-ink outline-none"
     : "merchant-dispatch-field merchant-dispatch-field-compact w-24 rounded-xl border px-3 py-2 text-right outline-none";
   const secondaryButtonClass = isMobileSurface ? "bg-white/80" : undefined;
+  const primaryButtonClass = isMobileSurface ? "schedule-wizard-primary-action" : undefined;
   const panelCardClass = isMobileSurface ? "border-line bg-white/80" : "merchant-dispatch-card";
   const noteClass = isMobileSurface ? "bg-paper/70 text-ink/60" : "merchant-dispatch-soft-note";
 
   useEffect(() => {
     setDraft(cycle);
+    const activeTemplate = cycle.ruleSet.notificationRules.templates?.find((template) => template.id === cycle.ruleSet.notificationRules.activeTemplateId);
+    setSelectedNotificationTemplateId(activeTemplate?.id ?? cycle.ruleSet.notificationRules.activeTemplateId ?? "");
+    setNotificationTemplateTitle(activeTemplate?.title ?? "反馈提醒模板");
+    setNotificationTemplateBody(activeTemplate?.body ?? cycle.ruleSet.notificationRules.discountTemplate);
   }, [cycle]);
 
   const weekdayHolidaySet = new Set(draft.regularHolidayWeekdays);
@@ -259,6 +299,86 @@ export function StepCreateCycle({
     onCycleChange(cycle);
     setNotificationPreview("");
     onMessage("已取消本页编辑，草稿恢复到最近保存状态。");
+  };
+
+  const insertNotificationVariable = (token: string) => {
+    const input = notificationBodyRef.current;
+    const start = input?.selectionStart ?? notificationTemplateBody.length;
+    const end = input?.selectionEnd ?? notificationTemplateBody.length;
+    const nextBody = `${notificationTemplateBody.slice(0, start)}${token}${notificationTemplateBody.slice(end)}`;
+
+    setNotificationTemplateBody(nextBody);
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
+
+  const saveNotificationTemplate = () => {
+    const title = notificationTemplateTitle.trim() || "排班通知模板";
+    const body = notificationTemplateBody.trim();
+
+    if (!body) {
+      onMessage("通知模板正文不能为空。");
+      return;
+    }
+
+    const templateId = selectedNotificationTemplateId || `dispatch-template-${Date.now()}`;
+    const nextTemplate = {
+      id: templateId,
+      title,
+      body,
+      updatedAt: "2026-04-20T10:30:00+09:00"
+    };
+    const previousTemplates = draft.ruleSet.notificationRules.templates ?? [];
+    const nextTemplates = previousTemplates.some((template) => template.id === templateId)
+      ? previousTemplates.map((template) => (template.id === templateId ? nextTemplate : template))
+      : [nextTemplate, ...previousTemplates];
+    const nextDraft = {
+      ...draft,
+      ruleSet: {
+        ...draft.ruleSet,
+        notificationRules: {
+          ...draft.ruleSet.notificationRules,
+          activeTemplateId: templateId,
+          discountTemplate: body,
+          templates: nextTemplates
+        }
+      },
+      updatedAt: "2026-04-20T10:30:00+09:00"
+    };
+    const result = saveDispatchCycleDraft(nextDraft);
+
+    setSelectedNotificationTemplateId(templateId);
+    setDraft(nextDraft);
+    onCycleChange(nextDraft);
+    onMessage(result.ok ? "通知模板已保存，可在本周期继续复用。" : result.message ?? "通知模板保存失败。");
+  };
+
+  const selectNotificationTemplate = (templateId: string) => {
+    const template = draft.ruleSet.notificationRules.templates?.find((item) => item.id === templateId);
+
+    if (!template) {
+      return;
+    }
+
+    setSelectedNotificationTemplateId(template.id);
+    setNotificationTemplateTitle(template.title);
+    setNotificationTemplateBody(template.body);
+    updateDraft({
+      ruleSet: {
+        ...draft.ruleSet,
+        notificationRules: {
+          ...draft.ruleSet.notificationRules,
+          activeTemplateId: template.id,
+          discountTemplate: template.body
+        }
+      }
+    });
   };
 
   return (
@@ -807,17 +927,94 @@ export function StepCreateCycle({
             <div>
               <Badge tone="blue">10/10</Badge>
               <RuleCardTitle
-                info="通知模板保留系统变量，商户只能调整阈值和附加文案，避免误删技师名、店铺名、周期和截止时间。"
+                info="通知正文支持和官方通知系统一致的模板保存与变量插入。{{name}} 会在技师或员工打开通知时替换成当前账号名称。"
                 surface={surface}
-                title="通知对象与渠道"
+                title="通知模板制作"
               />
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {["全部排班对象", "仅未反馈", "仅已变更", "仅指定技师"].map((label, index) => (
-                  <div className={cn("rounded-[22px] border px-4 py-3", panelCardClass)} key={label}>
-                    <p className="text-sm font-black">{label}</p>
-                    <Badge className="mt-3" tone={index === 0 ? "blue" : "neutral"}>{index === 0 ? "默认" : "可选"}</Badge>
-                  </div>
-                ))}
+              <div className="mt-4 grid gap-3">
+                <label className="block text-sm font-semibold text-ink">
+                  模板名称
+                  <input
+                    className={cn("mt-2 w-full rounded-2xl border px-4 py-3 font-black outline-none", isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-field")}
+                    onChange={(event) => setNotificationTemplateTitle(event.target.value)}
+                    placeholder="例如：反馈提醒模板"
+                    value={notificationTemplateTitle}
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-ink">
+                  模板正文
+                  <textarea
+                    className={cn("mt-2 min-h-[132px] w-full resize-y rounded-2xl border px-4 py-3 leading-7 outline-none", isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-field")}
+                    onChange={(event) => setNotificationTemplateBody(event.target.value)}
+                    placeholder="{{name}}，请确认本周期排班反馈。"
+                    ref={notificationBodyRef}
+                    value={notificationTemplateBody}
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {notificationTemplateVariables.map((item) => (
+                    <button
+                      className={cn("rounded-full border px-3 py-2 text-xs font-black transition", mutedPillClass)}
+                      key={item.token}
+                      onClick={() => insertNotificationVariable(item.token)}
+                      type="button"
+                    >
+                      插入{item.label} {item.token}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(draft.ruleSet.notificationRules.templates ?? []).map((template) => (
+                    <button
+                      className={cn(
+                        "rounded-full border px-3 py-2 text-xs font-black transition",
+                        mutedPillClass,
+                        selectedNotificationTemplateId === template.id && activeChoiceClass
+                      )}
+                      key={template.id}
+                      onClick={() => selectNotificationTemplate(template.id)}
+                      type="button"
+                    >
+                      {template.title}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button className={cn(primaryButtonClass, "w-full")} onClick={saveNotificationTemplate}>
+                    保存模板
+                  </Button>
+                  <Button
+                    className={cn(secondaryButtonClass, "w-full")}
+                    variant="secondary"
+                    onClick={() =>
+                      setNotificationPreview(
+                        renderDispatchNotificationTemplate(notificationTemplateBody, {
+                          date: draft.periodStart,
+                          expireAt: `${draft.periodStart} 23:59`,
+                          name: storeTechnicians[0]?.nickname || storeTechnicians[0]?.name || "佐藤 美咲",
+                          serviceName: "深层清洁套餐",
+                          storeName: currentStore?.name ?? "NeeDo",
+                          timeRange: "18:00-20:00"
+                        })
+                      )}
+                  >
+                    预览模板
+                  </Button>
+                </div>
+                <div className={cn("rounded-[22px] border px-4 py-3", panelCardClass)}>
+                  <p className="text-xs font-black text-ink/45">变量预览</p>
+                  <p className={cn("mt-2 text-sm leading-6", quietTextClass)}>
+                    {notificationPreview ||
+                      renderDispatchNotificationTemplate(notificationTemplateBody, {
+                        date: draft.periodStart,
+                        expireAt: `${draft.periodStart} 23:59`,
+                        name: storeTechnicians[0]?.nickname || storeTechnicians[0]?.name || "佐藤 美咲",
+                        serviceName: "深层清洁套餐",
+                        storeName: currentStore?.name ?? "NeeDo",
+                        timeRange: "18:00-20:00"
+                      })}
+                  </p>
+                </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {["App Push", "站内通知", "邮件", "短信", "LINE 通知"].map((channel) => (
@@ -865,34 +1062,13 @@ export function StepCreateCycle({
                     value={draft.ruleSet.notificationRules.lowBookingThreshold}
                   />
                 </label>
-                <label className={cn("block rounded-2xl border px-4 py-3 text-sm font-semibold", panelCardClass)}>
-                  商户附加通知文字
-                  <input
-                    className={cn("mt-2 w-full rounded-xl border px-3 py-2 outline-none", isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-field")}
-                    onChange={(event) =>
-                      updateDraft({
-                        ruleSet: {
-                          ...draft.ruleSet,
-                          notificationRules: {
-                            ...draft.ruleSet.notificationRules,
-                            discountTemplate: event.target.value
-                          }
-                        }
-                      })}
-                    value={draft.ruleSet.notificationRules.discountTemplate}
-                  />
-                </label>
-                <Button
-                  className={secondaryButtonClass}
-                  variant="secondary"
-                  onClick={() =>
-                    setNotificationPreview(
-                      previewDispatchNotificationTemplate(storeId, "深层清洁套餐", draft.periodStart, "18:00-20:00")
-                    )}
-                >
-                  预览通知模板
-                </Button>
-                {notificationPreview ? <p className={cn("rounded-2xl px-4 py-3 text-sm leading-6", noteClass)}>{notificationPreview}</p> : null}
+                <div className={cn("rounded-2xl border px-4 py-3 text-sm leading-6", panelCardClass)}>
+                  <p className="font-black text-ink">发送对象</p>
+                  <p className={quietTextClass}>默认发送给本周期排班对象；未反馈、已变更、指定技师等细分对象由提醒动作自动判断。</p>
+                </div>
+                <p className={cn("rounded-2xl px-4 py-3 text-sm leading-6", noteClass)}>
+                  当前模板会随本周期保存。保存后发起排班、提醒未反馈、提前结束收集都可以复用同一套变量正文。
+                </p>
               </div>
             </div>
           </div>
@@ -906,8 +1082,8 @@ export function StepCreateCycle({
         </p>
       ) : null}
 
-      <div className="sticky bottom-4 z-10">
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${actionColumnCount}, minmax(0, 1fr))` }}>
+      <div className="sticky bottom-4 z-40">
+        <div className={cn("grid gap-2 rounded-[28px] p-2", isMobileSurface && "schedule-wizard-action-dock")} style={{ gridTemplateColumns: `repeat(${actionColumnCount}, minmax(0, 1fr))` }}>
           {!isFirstRulePhase ? (
             <Button
               className={cn(secondaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
@@ -929,7 +1105,7 @@ export function StepCreateCycle({
           </Button>
           {isLastRulePhase ? (
             <Button
-              className="w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm"
+              className={cn(primaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
               disabled={!canSaveCycle}
               onClick={() => {
                 const saved = saveDispatchCycleDraft(draft);
@@ -962,7 +1138,7 @@ export function StepCreateCycle({
           )}
           {!isLastRulePhase ? (
             <Button
-              className="w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm"
+              className={cn(primaryButtonClass, "w-full min-w-0 whitespace-nowrap px-2 text-[12px] sm:px-4 sm:text-sm")}
               onClick={() => moveRulePhase(rulePhaseIndex + 1)}
             >
               下一步

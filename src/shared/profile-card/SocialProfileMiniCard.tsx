@@ -519,9 +519,7 @@ function ActionControl({
   const className = cn(
     "shrink-0 rounded-[14px] px-3 py-2 text-xs font-black shadow-panel transition",
     label === "关注"
-      ? dark
-        ? "bg-[color:var(--client-primary)] text-black"
-        : "bg-[color:var(--client-primary)] text-white"
+      ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
       : dark
         ? "bg-white/10 text-white"
         : "bg-paper text-ink"

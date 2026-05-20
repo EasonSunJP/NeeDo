@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../../components/mobile/MobileFullscreenPage";
+import { ContactEventTimelinePanel } from "../../../components/mobile/ContactEventTimeline";
 import {
   ContactInfoStatusPanel,
+  ContactInfoActionConfirmDialog,
+  getContactInfoActionClassName,
+  getContactInfoTagClassName,
+  resolveContactInfoEventPresentation,
+  type ContactInfoStatusAction,
   type ContactInfoStatusFilter,
   type ContactInfoStatusResolution
 } from "../../../components/mobile/ContactInfoStatusPanel";
@@ -12,10 +18,13 @@ import { Badge, type BadgeTone } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { Drawer } from "../../../components/ui/Drawer";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
-import { ImChatComposer, type ImChatComposerPanel } from "../../im/components";
-import { cn } from "../../../lib/utils";
-import { useClientTheme } from "../../../theme/ClientThemeProvider";
+import { orders } from "../../../data/mock";
+import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
+import { shareContent } from "../../../lib/share";
+import { cn, statusLabel as formatOrderStatusLabel, yen } from "../../../lib/utils";
 import { useEntityStore } from "../../../state/entityStore";
+import { SocialProfileMiniCard } from "../../../shared/profile-card";
+import type { Customer, Order } from "../../../types/domain";
 import { ScheduleGrid, scheduleLegendItems, type ScheduleLegendFilter } from "./ScheduleGrid";
 import { FloatingActionWindow } from "./FloatingActionWindow";
 import { ScheduleCellDetailContent } from "./ScheduleCellDetailContent";
@@ -196,6 +205,7 @@ function filterScheduleGridData(
 }
 
 type MobileContactStatusItem = {
+  affectedBookings?: MobileContactAffectedBooking[];
   id: string;
   actorAvatarSrc?: string;
   actorName: string;
@@ -223,6 +233,26 @@ type MobileContactStatusItem = {
   };
   title: string;
   tone?: "neutral" | "red";
+};
+
+type MobileContactAffectedBooking = {
+  addressLabel: string;
+  avatarSrc?: string;
+  chatTo?: string;
+  customer?: Customer;
+  customerName: string;
+  endLabel: string;
+  id: string;
+  modeLabel: string;
+  order: Order;
+  orderId: string;
+  orderNo: string;
+  reason?: string;
+  serviceName: string;
+  startLabel: string;
+  statusLabel: string;
+  technicianName?: string;
+  timeLabel: string;
 };
 
 type MobileContactStatusTimelineEvent = {
@@ -297,21 +327,248 @@ function ContactStatusAvatar({
   );
 }
 
+function googleRouteUrl(destination: string) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=transit`;
+}
+
+function getAffectedBookingBadgeClassName(tone: BadgeTone) {
+  switch (tone) {
+    case "green":
+      return "border border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] text-[color:var(--client-primary)]";
+    case "yellow":
+      return "border border-[#f3cf78]/45 bg-[#f3cf78]/16 text-[#ffe5a4]";
+    case "red":
+      return "border border-[#ef5b55]/48 bg-[#ef5b55]/16 text-[#ff7f74]";
+    case "blue":
+      return "border border-[#69d8ff]/42 bg-[#69d8ff]/16 text-[#a8ecff]";
+    case "neutral":
+    default:
+      return "border border-white/18 bg-white/10 text-white/72";
+  }
+}
+
+function AffectedBookingIconButton({
+  children,
+  danger,
+  label,
+  onClick,
+  to
+}: {
+  children: ReactNode;
+  danger?: boolean;
+  label: string;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+  to?: string;
+}) {
+  const className = cn(
+    "focus-ring inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md transition active:scale-[0.96]",
+    danger
+      ? "border-[#ff8b7f]/60 bg-[linear-gradient(180deg,#ff7f72_0%,#ff5f58_52%,#ef3f3a_100%)] shadow-[0_10px_24px_rgba(255,78,70,0.32)] hover:brightness-105"
+      : "border-white/20 bg-black/32 hover:bg-white/16"
+  );
+
+  if (to) {
+    return (
+      <Link
+        aria-label={label}
+        className={className}
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+        to={to}
+      >
+        {children}
+      </Link>
+    );
+  }
+
+  return (
+    <button
+      aria-label={label}
+      className={className}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(event);
+      }}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function AffectedBookingMiniCard({
+  booking,
+  onCancel,
+  onOpen
+}: {
+  booking: MobileContactAffectedBooking;
+  onCancel?: (booking: MobileContactAffectedBooking) => void;
+  onOpen?: (booking: MobileContactAffectedBooking) => void;
+}) {
+  const handleOpen = () => onOpen?.(booking);
+  const handleShare = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    void shareContent({
+      copiedMessage: "预约服务卡链接已复制",
+      text: `${booking.serviceName}\n${booking.startLabel} - ${booking.endLabel}\n${booking.customerName}`,
+      title: booking.serviceName,
+      url: `/merchant/orders/${booking.orderId}`
+    });
+  };
+
+  return (
+    <article className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-3.5 text-white shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+      <div className="relative">
+        <div className="client-feature-aura client-feature-aura--soft absolute inset-0" />
+        <div className="relative">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap gap-2">
+                <Badge className={getAffectedBookingBadgeClassName("blue")} tone="blue">
+                  {booking.statusLabel}
+                </Badge>
+                <Badge className={getAffectedBookingBadgeClassName("neutral")} tone="neutral">
+                  {booking.modeLabel}
+                </Badge>
+              </div>
+              <h4 className="mt-3 text-[18px] font-black leading-6 tracking-[-0.01em] text-white">
+                {booking.serviceName}
+              </h4>
+              <p className="mt-2 text-xs leading-5 text-white/60">开始时间：{booking.startLabel}</p>
+              <p className="text-xs leading-5 text-white/60">预计结束：{booking.endLabel}</p>
+            </div>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex items-center gap-1.5">
+                {booking.chatTo ? (
+                  <AffectedBookingIconButton label="联系用户" to={booking.chatTo}>
+                    <AppIcon className="h-4 w-4" name="chat" />
+                  </AffectedBookingIconButton>
+                ) : null}
+                <AffectedBookingIconButton label="转发服务卡" onClick={handleShare}>
+                  <AppIcon className="h-4 w-4" name="share" />
+                </AffectedBookingIconButton>
+                {onCancel ? (
+                  <AffectedBookingIconButton danger label="取消预约" onClick={() => onCancel(booking)}>
+                    <AppIcon className="h-4 w-4" name="close" />
+                  </AffectedBookingIconButton>
+                ) : null}
+              </div>
+              <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)] px-4 py-3 text-right text-[color:var(--client-text)] shadow-soft">
+                <p className="text-[10px] font-bold text-[color:var(--client-muted)]">预估收入</p>
+                <strong className="mt-1 block text-[18px] font-black text-[color:var(--client-accent-text)]">
+                  {yen(booking.order.amount)}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          {booking.customer ? (
+            <SocialProfileMiniCard
+              actionLabel="好友"
+              className="mt-4"
+              customer={booking.customer}
+              dark
+              onOpenDetails={handleOpen}
+            />
+          ) : (
+            <div className="mt-4 grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5 rounded-[18px] border border-white/10 bg-white/[0.06] px-3 py-3">
+              <ContactStatusAvatar name={booking.customerName} src={booking.avatarSrc}>
+                <span>{booking.customerName.slice(0, 1)}</span>
+              </ContactStatusAvatar>
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-black text-white">{booking.customerName}</p>
+                <p className="mt-1 truncate text-[12px] font-bold text-white/60">{booking.orderNo}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3 rounded-[20px] border border-white/10 bg-white/[0.06] px-4 py-3">
+            <p className="text-[11px] font-bold text-white/45">服务地址</p>
+            <p className="mt-1 text-sm font-black text-white">{booking.addressLabel}</p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <a
+              className="focus-ring inline-flex h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] text-sm font-black text-white transition hover:bg-white/[0.1]"
+              href={googleRouteUrl(booking.addressLabel)}
+              rel="noreferrer"
+              target="_blank"
+            >
+              打开导航
+            </a>
+            <button
+              className="focus-ring inline-flex h-10 items-center justify-center rounded-[16px] bg-[color:var(--client-primary)] px-3 text-sm font-black text-[#090806] transition hover:brightness-95"
+              onClick={handleOpen}
+              type="button"
+            >
+              查看预约
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function ContactStatusDetailContent({
   extraTimeline,
   item,
   onCandidateResponse,
+  onCommentSubmit,
+  onOpenAffectedBooking,
+  onRecommendedAction,
   onSelectReplacementCandidate,
   replacementFlow
 }: {
   extraTimeline: MobileContactStatusTimelineEvent[];
   item: MobileContactStatusItem;
   onCandidateResponse?: (response: "available" | "unavailable") => void;
+  onCommentSubmit?: (comment: string) => void;
+  onOpenAffectedBooking?: (booking: MobileContactAffectedBooking) => void;
+  onRecommendedAction?: (action: ContactInfoStatusAction) => void;
   onSelectReplacementCandidate?: (row: MobileContactTemplateCalendarRow) => void;
   replacementFlow?: ContactReplacementFlow;
 }) {
   const timeline = [...item.statusTimeline, ...extraTimeline];
   const conflicts = item.template?.conflicts ?? item.conflicts ?? [];
+  const presentation = resolveContactInfoEventPresentation(item);
+  const [pendingConfirmAction, setPendingConfirmAction] = useState<ContactInfoStatusAction | null>(null);
+  const cancelAffectedBookingAction = presentation.actions.find((action) =>
+    action.id === "bulk_cancel_booking" || action.id === "cancel_booking"
+  );
+  const executeRecommendedAction = (action: ContactInfoStatusAction) => {
+    onRecommendedAction?.(action);
+  };
+  const handleRecommendedAction = (action: ContactInfoStatusAction) => {
+    if (action.disabled) {
+      return;
+    }
+
+    if (action.id === "review_affected_bookings") {
+      const booking = item.affectedBookings?.[0];
+
+      if (booking) {
+        onOpenAffectedBooking?.(booking);
+      }
+      return;
+    }
+
+    if (action.requiresConfirm) {
+      setPendingConfirmAction(action);
+      return;
+    }
+
+    executeRecommendedAction(action);
+  };
+  const handleConfirmRecommendedAction = () => {
+    if (!pendingConfirmAction) {
+      return;
+    }
+
+    executeRecommendedAction(pendingConfirmAction);
+    setPendingConfirmAction(null);
+  };
 
   return (
     <div className="grid gap-4">
@@ -334,6 +591,13 @@ function ContactStatusDetailContent({
         <div className="mt-4 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] px-3 py-3">
           <p className="text-[11px] font-black text-ink/45">发起时间</p>
           <strong className="mt-1 block text-sm font-black text-ink">{item.occurredAtLabel}</strong>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {[...presentation.eventTags, ...presentation.relatedTags].map((tag) => (
+            <span className={cn("shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-black leading-none", getContactInfoTagClassName(tag.tone))} key={`${tag.label}-${tag.tone ?? "neutral"}`}>
+              {tag.label}
+            </span>
+          ))}
         </div>
       </section>
 
@@ -359,6 +623,27 @@ function ContactStatusDetailContent({
                     <p className="text-[12px] font-black leading-5 text-[#ef4444]">{conflict}</p>
                   </div>
                 ))}
+              </div>
+            ) : null}
+
+            {item.affectedBookings?.length ? (
+              <div className="grid gap-2 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_22%,var(--client-line)_78%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-3 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[12px] font-black text-ink">被影响预约</p>
+                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-2 py-1 text-[10px] font-black leading-none text-[color:var(--client-primary)]">
+                    {item.affectedBookings.length} 件
+                  </span>
+                </div>
+                <div className="grid gap-2">
+                  {item.affectedBookings.map((booking) => (
+                    <AffectedBookingMiniCard
+                      booking={booking}
+                      key={booking.id}
+                      onCancel={cancelAffectedBookingAction ? () => handleRecommendedAction(cancelAffectedBookingAction) : undefined}
+                      onOpen={onOpenAffectedBooking}
+                    />
+                  ))}
+                </div>
               </div>
             ) : null}
 
@@ -417,7 +702,7 @@ function ContactStatusDetailContent({
                       <div className="min-w-0">
                         <p className="truncate text-[12px] font-black text-ink">补位确认：{replacementFlow.candidateName}</p>
                         <p className="mt-1 text-[11px] font-bold leading-5 text-ink/52">
-                          {replacementFlow.requestedMessage ? `已发送：${replacementFlow.requestedMessage}` : "已选择候选人，可在下方输入框继续编辑确认消息。"}
+                          {replacementFlow.requestedMessage ? `已发送：${replacementFlow.requestedMessage}` : "已选择候选人，可点击时间轴评论发送确认消息。"}
                         </p>
                       </div>
                     </div>
@@ -449,7 +734,7 @@ function ContactStatusDetailContent({
                   ) : null}
                   {replacementFlow.response && !replacementFlow.decision ? (
                     <p className="mt-3 rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] px-3 py-2 text-[11px] font-bold leading-5 text-ink/56">
-                      候选人回复后，可使用输入框上方固定处理按钮进行批准或否决。
+                      候选人回复后，可使用下方推荐处理按钮进行批准或否决。
                     </p>
                   ) : null}
                 </div>
@@ -461,130 +746,59 @@ function ContactStatusDetailContent({
         )}
       </section>
 
+      <ContactEventTimelinePanel
+        className="rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)]"
+        commentAuthorAvatarSrc={timeline.find((event) => event.actorAvatarSrc)?.actorAvatarSrc}
+        events={timeline.map((event) => ({
+          actorAvatarSrc: event.actorAvatarSrc,
+          actorName: event.actorName,
+          actorRole: event.actorRole,
+          atLabel: event.atLabel,
+          conflicts: event.conflicts,
+          icon: event.icon,
+          id: event.id,
+          message: event.message,
+          reason: event.reason,
+          reasonLabel: event.reasonLabel,
+          title: event.actorRole,
+          tone: event.tone
+        }))}
+        headerVariant="plain"
+        onCommentSubmit={onCommentSubmit}
+        title="处理状态"
+      />
+
       <section className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] p-4">
-        <p className="text-sm font-black text-ink">处理状态</p>
-        <div className="mt-4 grid gap-0">
-          {timeline.map((event, index) => (
-            <div className="grid grid-cols-[78px,22px,minmax(0,1fr)] gap-3" key={event.id}>
-              <div className="pt-1 text-right text-[12px] font-black leading-5 text-ink/45">
-                {event.atLabel}
-              </div>
-              <div className="relative flex justify-center pb-7 pt-1">
-                {index > 0 ? (
-                  <span className="absolute left-1/2 top-0 h-2 w-px -translate-x-1/2 bg-[color:color-mix(in_srgb,var(--client-primary)_56%,var(--client-line)_44%)]" />
-                ) : null}
-                {index < timeline.length - 1 ? (
-                  <span className="absolute bottom-0 left-1/2 top-[18px] w-px -translate-x-1/2 bg-[color:color-mix(in_srgb,var(--client-primary)_56%,var(--client-line)_44%)]" />
-                ) : null}
-                <span
-                  className={cn(
-                    "relative z-[1] h-[14px] w-[14px] rounded-full shadow-[0_0_0_4px_color-mix(in_srgb,var(--client-bg)_86%,transparent)]",
-                    event.tone === "red"
-                      ? "bg-[#ef4444]"
-                      : event.tone === "green"
-                        ? "bg-[color:var(--client-primary)]"
-                        : "bg-[color:color-mix(in_srgb,var(--client-primary)_78%,var(--client-line)_22%)]"
-                  )}
-                />
-              </div>
-              <div className={cn("pb-5", index === timeline.length - 1 && "pb-0")}>
-                <div className="grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
-                  <ContactStatusAvatar name={event.actorName} src={event.actorAvatarSrc} tone={event.tone === "red" ? "red" : "neutral"}>
-                    {event.icon ?? <span>{event.actorName.slice(0, 1) || "管"}</span>}
-                  </ContactStatusAvatar>
-                  <div className="min-w-0">
-                    <div
-                      className={cn(
-                        "max-w-full rounded-[18px] rounded-tl-[8px] px-3.5 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.08)]",
-                        event.tone === "red"
-                          ? "border border-[#ef4444]/35 bg-[#ef4444]/10"
-                          : "bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-primary)_8%)]"
-                      )}
-                    >
-                      <p className={cn("text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-ink")}>
-                        <span>{event.actorName}（{event.actorRole}）：</span>
-                        <span>{event.message}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                {event.conflicts && event.conflicts.length > 0 ? (
-                  <div className="mt-2 grid gap-2 pl-[50px]">
-                    {event.conflicts.map((conflict) => (
-                      <div className="grid grid-cols-[auto,minmax(0,1fr)] items-start gap-2 rounded-[14px] border border-[#ef4444]/45 bg-[#ef4444]/10 px-3 py-2" key={conflict}>
-                        <RedAlertIcon />
-                        <p className="text-[12px] font-black leading-5 text-[#ef4444]">{conflict}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {event.reason ? (
-                  <div className="mt-2 grid grid-cols-[34px,minmax(0,1fr)] gap-2 pl-[50px]">
-                    <span className={cn("pt-2 text-[11px] font-black", event.tone === "red" ? "text-[#ef4444]" : "text-ink/45")}>
-                      {event.reasonLabel ?? "理由"}
-                    </span>
-                    <p
-                      className={cn(
-                        "rounded-[14px] border px-3 py-2 text-[12px] font-bold leading-5",
-                        event.tone === "red"
-                          ? "border-[#ef4444]/45 bg-[#ef4444]/10 text-[#ef4444]"
-                          : "border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] text-ink/58"
-                      )}
-                    >
-                      {event.reason}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-black text-ink">推荐处理</p>
+          <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-primary)]">
+            {presentation.actions.length} 个动作
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {presentation.actions.map((action) => (
+            <button
+              aria-label={action.requiresConfirm ? `${action.label}，需要确认` : action.label}
+              className={cn(
+                "focus-ring min-h-10 rounded-full border px-3.5 py-2 text-[12px] font-black transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45",
+                getContactInfoActionClassName(action.tone)
+              )}
+              disabled={action.disabled}
+              key={action.id}
+              onClick={() => handleRecommendedAction(action)}
+              type="button"
+            >
+              {action.label}
+            </button>
           ))}
         </div>
       </section>
-    </div>
-  );
-}
 
-function ContactStatusDecisionBar({
-  decision,
-  onDecision
-}: {
-  decision?: ContactDecision;
-  onDecision: (decision: ContactDecision) => void;
-}) {
-  const decisionButtons: Array<{ label: string; value: ContactDecision }> = [
-    { label: "批准", value: "approved" },
-    { label: "否决", value: "rejected" }
-  ];
-
-  return (
-    <div className="shrink-0 border-t border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_86%,transparent)] px-4 py-2.5 shadow-[0_-12px_30px_rgba(0,0,0,0.1)] backdrop-blur-xl">
-      <div className="mx-auto grid w-full max-w-[360px] grid-cols-2 gap-3">
-        {decisionButtons.map((button) => {
-          const active = decision === button.value;
-          const isReject = button.value === "rejected";
-
-          return (
-            <button
-              aria-pressed={active}
-              className={cn(
-                "focus-ring h-10 rounded-full border px-3 text-[13px] font-black transition",
-                isReject
-                  ? active
-                    ? "border-[#ef4444] bg-[#ef4444] text-white shadow-[0_10px_22px_rgba(239,68,68,0.22)]"
-                    : "border-[#ef4444]/35 bg-[#ef4444]/10 text-[#ef4444]"
-                  : active
-                    ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
-                    : "border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] text-[color:var(--client-primary)]"
-              )}
-              key={button.value}
-              onClick={() => onDecision(button.value)}
-              type="button"
-            >
-              {button.label}
-            </button>
-          );
-        })}
-      </div>
+      <ContactInfoActionConfirmDialog
+        action={pendingConfirmAction}
+        onCancel={() => setPendingConfirmAction(null)}
+        onConfirm={handleConfirmRecommendedAction}
+      />
     </div>
   );
 }
@@ -602,7 +816,6 @@ export function DispatchOverviewWorkspace({
   storeId: string;
   surface: "desktop" | "mobile";
 }) {
-  const { isNight } = useClientTheme();
   const { language } = useI18n();
   const [view, setView] = useState<ScheduleViewSegmentedValue>("day");
   const [dateKey, setDateKey] = useState("2026-04-20");
@@ -611,8 +824,6 @@ export function DispatchOverviewWorkspace({
   const [scheduleLegendFilter, setScheduleLegendFilter] = useState<ScheduleLegendFilter | null>(null);
   const [scheduleSearchQuery, setScheduleSearchQuery] = useState("");
   const [scheduleStatusFilter, setScheduleStatusFilter] = useState<ScheduleDetailStatusFilter>("all");
-  const [contactReplyDraft, setContactReplyDraft] = useState("");
-  const [contactComposerPanel, setContactComposerPanel] = useState<ImChatComposerPanel>(null);
   const [contactReplacementFlows, setContactReplacementFlows] = useState<Record<string, ContactReplacementFlow>>({});
   const [contactStatusExtraTimeline, setContactStatusExtraTimeline] = useState<Record<string, MobileContactStatusTimelineEvent[]>>({});
   const [contactStatusFilter, setContactStatusFilter] = useState<MobileContactStatusFilter>("active");
@@ -647,6 +858,10 @@ export function DispatchOverviewWorkspace({
   const technicianById = useMemo(
     () => new Map(entitySnapshot.technicians.map((technician) => [technician.id, technician])),
     [entitySnapshot.technicians]
+  );
+  const customerById = useMemo(
+    () => new Map(entitySnapshot.customers.map((customer) => [customer.id, customer])),
+    [entitySnapshot.customers]
   );
   const currentStore = useMemo(
     () => entitySnapshot.stores.find((store) => store.id === storeId) ?? entitySnapshot.stores[0],
@@ -888,6 +1103,36 @@ export function DispatchOverviewWorkspace({
             `${targetTechnician?.name ?? "调班对象"} 调班后当日连续上班 10 小时，超过 8 小时上限。`
           ]
         : ["该时段已有已确认订单，暂时无法减少出勤人数。"];
+      const affectedOrder = orders[index % Math.max(orders.length, 1)];
+      const affectedCustomer = affectedOrder ? customerById.get(affectedOrder.customerId) : undefined;
+      const [shiftStartTime = "00:00", shiftEndTime = "00:00"] = shiftWindow.split("-");
+      const affectedAreaLabel = affectedOrder ? [affectedOrder.city, affectedOrder.area].filter(Boolean).join("") : "";
+      const affectedAddress = affectedOrder
+        ? (affectedOrder.storeName ?? affectedAreaLabel) || currentStore?.address || "服务地址待确认"
+        : "服务地址待确认";
+      const affectedBookings: MobileContactAffectedBooking[] = affectedOrder
+        ? [
+            {
+              addressLabel: affectedAddress,
+              avatarSrc: affectedCustomer?.avatar,
+              chatTo: getMessagePath("merchant", getMerchantCustomerConversationId(affectedOrder.customerId)),
+              customer: affectedCustomer,
+              customerName: affectedOrder.customerName,
+              endLabel: `${item.dateKey} ${shiftEndTime}`,
+              id: `${itemId}-affected-${affectedOrder.id}`,
+              modeLabel: affectedOrder.mode === "home" ? "上门服务" : "到店服务",
+              order: affectedOrder,
+              orderId: affectedOrder.id,
+              orderNo: affectedOrder.orderNo,
+              reason: conflicts[0],
+              serviceName: affectedOrder.itemName,
+              startLabel: `${item.dateKey} ${shiftStartTime}`,
+              statusLabel: formatOrderStatusLabel(affectedOrder.status),
+              technicianName: isShiftSwap ? targetTechnician?.name ?? affectedOrder.technicianName : item.technician.name,
+              timeLabel: `${shiftDateLabel} ${shiftWindow}`
+            }
+          ]
+        : [];
       const statusTimeline: MobileContactStatusTimelineEvent[] = isShiftSwap
         ? [
             {
@@ -931,6 +1176,7 @@ export function DispatchOverviewWorkspace({
           ];
 
       statusItems.push({
+        affectedBookings,
         actorAvatarSrc: item.technician.avatar,
         actorName: item.technician.name,
         actorRole: "技师",
@@ -1101,6 +1347,8 @@ export function DispatchOverviewWorkspace({
   }, [
     activeTechnicians,
     contactStatusDecisions,
+    customerById,
+    currentStore?.address,
     currentStore?.cover,
     floatingTasks,
     isMobileSurface,
@@ -1213,6 +1461,29 @@ export function DispatchOverviewWorkspace({
       }
     }
   };
+  const openAffectedBooking = (booking: MobileContactAffectedBooking) => {
+    const target = resolveScheduleEventDetailTarget(
+      {
+        detailTargetId: booking.orderId,
+        detailTargetType: "order_detail",
+        eventType: "booking",
+        orderId: booking.orderId
+      },
+      surface === "desktop" ? "merchant-admin" : "merchant"
+    );
+
+    if (target.action !== "open") {
+      return;
+    }
+
+    const returnTo = buildCurrentRoute(location);
+    navigate(withReturnTo(target.route, returnTo), {
+      state: {
+        returnState: isMobileSurface && scheduleDetailOpen ? { reopenScheduleDetail: true } : undefined,
+        returnTo
+      }
+    });
+  };
   const addContactStatusTimelineEvent = (itemId: string, event: Omit<MobileContactStatusTimelineEvent, "id" | "atLabel"> & { atLabel?: string }) => {
     setContactStatusExtraTimeline((current) => ({
       ...current,
@@ -1232,7 +1503,11 @@ export function DispatchOverviewWorkspace({
     }
 
     const candidateName = row.mentionName ?? row.name.split(" / ").pop() ?? row.name;
-    const mention = `@${candidateName}`;
+    const existingFlow = contactReplacementFlows[selectedContactStatusItem.id];
+
+    if (existingFlow?.candidateId === row.id) {
+      return;
+    }
 
     setContactReplacementFlows((current) => ({
       ...current,
@@ -1242,41 +1517,137 @@ export function DispatchOverviewWorkspace({
         candidateName
       }
     }));
-    setContactReplyDraft((current) => {
-      if (current.includes(mention)) {
-        return current;
-      }
-
-      return current.trim() ? `${current.trimEnd()} ${mention} ` : `${mention} 请确认是否可以补位`;
-    });
-  };
-  const sendContactReply = () => {
-    if (!selectedContactStatusItem || !contactReplyDraft.trim()) {
-      return;
-    }
-
-    const message = contactReplyDraft.trim();
-    const flow = contactReplacementFlows[selectedContactStatusItem.id];
-
     addContactStatusTimelineEvent(selectedContactStatusItem.id, {
       actorAvatarSrc: currentStore?.cover,
       actorName: "管理员",
       actorRole: "管理员",
-      message
+      message: `已将 ${candidateName} 加入替补名单`,
+      reason: "等待候选人确认是否可以覆盖受影响时段。",
+      reasonLabel: "替补",
+      tone: "green"
+    });
+  };
+  const submitContactStatusComment = (comment: string) => {
+    const selectedItem = currentSelectedContactStatusItem ?? selectedContactStatusItem;
+    const message = comment.trim();
+
+    if (!selectedItem || !message) {
+      return;
+    }
+
+    const flow = contactReplacementFlows[selectedItem.id];
+
+    addContactStatusTimelineEvent(selectedItem.id, {
+      actorAvatarSrc: currentStore?.cover,
+      actorName: "管理员",
+      actorRole: "评论",
+      message,
+      tone: "green"
     });
 
     if (flow) {
       setContactReplacementFlows((current) => ({
         ...current,
-        [selectedContactStatusItem.id]: {
+        [selectedItem.id]: {
           ...flow,
           requestedMessage: message
         }
       }));
     }
+  };
+  const getRecommendedActionDecision = (action: ContactInfoStatusAction): ContactDecision | null => {
+    if (action.id.startsWith("approve_")) {
+      return "approved";
+    }
 
-    setContactReplyDraft("");
-    setContactComposerPanel(null);
+    if (action.id.startsWith("reject_")) {
+      return "rejected";
+    }
+
+    return null;
+  };
+  const getRecommendedActionResult = (item: MobileContactStatusItem, action: ContactInfoStatusAction, decision: ContactDecision | null) => {
+    if (decision === "approved") {
+      return {
+        message: `批准了该${item.title}`,
+        reason: "已进入下一步排班同步。",
+        reasonLabel: "结果"
+      };
+    }
+
+    if (decision === "rejected") {
+      return {
+        message: `不批准该${item.title}`,
+        reason: item.conflicts?.[0] ?? "当前申请暂不通过，需要重新调整后再提交。",
+        reasonLabel: "理由"
+      };
+    }
+
+    if (action.id === "bulk_reschedule") {
+      return {
+        message: "已将受影响预约加入批量改期处理",
+        reason: "待关联预约、排班或通知记录同步。",
+        reasonLabel: "同步"
+      };
+    }
+
+    if (action.id === "bulk_cancel_booking") {
+      return {
+        message: "已批量取消受影响预约",
+        reason: "已释放相关预约时段，并等待通知记录同步。",
+        reasonLabel: "确认"
+      };
+    }
+
+    return {
+      message: `已完成：${action.label}`,
+      reason: "已写入操作日志，并等待关联预约、排班或通知记录同步。",
+      reasonLabel: action.tone === "danger" ? "确认" : "同步"
+    };
+  };
+  const recordRecommendedAction = (action: ContactInfoStatusAction) => {
+    const selectedItem = currentSelectedContactStatusItem ?? selectedContactStatusItem;
+
+    if (!selectedItem) {
+      return;
+    }
+
+    if (action.id === "review_affected_bookings") {
+      return;
+    }
+
+    const decision = selectedItem.requiresDecision ? getRecommendedActionDecision(action) : null;
+    const result = getRecommendedActionResult(selectedItem, action, decision);
+
+    addContactStatusTimelineEvent(selectedItem.id, {
+      actorAvatarSrc: currentStore?.cover,
+      actorName: "管理员",
+      actorRole: "管理员",
+      conflicts: decision === "rejected" ? selectedItem.conflicts : undefined,
+      message: result.message,
+      reason: result.reason,
+      reasonLabel: result.reasonLabel,
+      tone: decision === "rejected" || action.tone === "danger" ? "red" : "green"
+    });
+
+    if (decision) {
+      const flow = contactReplacementFlows[selectedItem.id];
+
+      setContactStatusDecisions((current) => ({
+        ...current,
+        [selectedItem.id]: decision
+      }));
+
+      if (flow) {
+        setContactReplacementFlows((current) => ({
+          ...current,
+          [selectedItem.id]: {
+            ...flow,
+            decision
+          }
+        }));
+      }
+    }
   };
   const recordCandidateResponse = (response: "available" | "unavailable") => {
     if (!selectedContactStatusItem) {
@@ -1305,47 +1676,6 @@ export function DispatchOverviewWorkspace({
       reason: response === "available" ? undefined : "该时段已有个人安排，无法覆盖。"
     });
   };
-    const recordAdminDecision = (decision: ContactDecision) => {
-      const selectedItem = currentSelectedContactStatusItem ?? selectedContactStatusItem;
-
-      if (!selectedItem) {
-        return;
-      }
-
-      const flow = contactReplacementFlows[selectedItem.id];
-
-      setContactStatusDecisions((current) => ({
-        ...current,
-        [selectedItem.id]: decision
-      }));
-
-      if (flow) {
-        setContactReplacementFlows((current) => ({
-          ...current,
-          [selectedItem.id]: {
-            ...flow,
-            decision
-          }
-        }));
-      }
-
-      addContactStatusTimelineEvent(selectedItem.id, {
-        actorAvatarSrc: currentStore?.cover,
-        actorName: "管理员",
-        actorRole: "管理员",
-        conflicts: decision === "rejected" ? selectedItem.conflicts : undefined,
-        message: decision === "approved" ? `批准了该${selectedItem.title}` : `否决了该${selectedItem.title}`,
-        reason: decision === "approved"
-          ? flow
-            ? `${flow.candidateName} 已确认可补位，原预约承接不受影响。`
-            : "管理员确认后通过，排班会进入下一步同步。"
-          : flow?.response === "available"
-            ? "管理员仍需重新评估当日排班风险。"
-            : selectedItem.conflicts?.[0] ?? "当前申请暂不通过，需要重新调整后再提交。",
-        reasonLabel: decision === "rejected" ? "冲突" : "理由",
-        tone: decision === "rejected" ? "red" : "green"
-      });
-    };
 
   return (
     <>
@@ -1437,7 +1767,7 @@ export function DispatchOverviewWorkspace({
       {isMobileSurface ? (
         <ContactInfoStatusPanel
           className={cn("mt-4", cardClass)}
-          emptyDetail="当前筛选条件下没有联系信息。"
+          emptyDetail="当前筛选条件下没有异常信息。"
           emptyIcon={<ComputerAvatarIcon />}
           emptyId="dispatch-contact-empty"
           filter={contactStatusFilter}
@@ -1559,6 +1889,7 @@ export function DispatchOverviewWorkspace({
                   })}
                 </div>
 		                <ScheduleGrid
+		                  className="client-mobile-schedule-detail__schedule-grid"
 		                  collapsedTechnicians={collapsedTechnicians}
 		                  compactHeader
 		                  data={detailScheduleGrid}
@@ -1584,34 +1915,23 @@ export function DispatchOverviewWorkspace({
       {isMobileSurface && currentSelectedContactStatusItem ? (
         <MobileFullscreenPage className="z-[95]">
           <MobileFullscreenHeader
-            closeLabel="关闭联系信息详情"
+            closeLabel="关闭异常信息详情"
             onClose={() => setSelectedContactStatusItem(null)}
             subtitle={`${currentSelectedContactStatusItem.dateLabel} · ${currentSelectedContactStatusItem.markerLabel}`}
-            title="联系信息详情"
+            title="异常信息详情"
           />
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
             <ContactStatusDetailContent
               extraTimeline={contactStatusExtraTimeline[currentSelectedContactStatusItem.id] ?? []}
               item={currentSelectedContactStatusItem}
               onCandidateResponse={recordCandidateResponse}
+              onCommentSubmit={submitContactStatusComment}
+              onOpenAffectedBooking={openAffectedBooking}
+              onRecommendedAction={recordRecommendedAction}
               onSelectReplacementCandidate={selectReplacementCandidate}
               replacementFlow={contactReplacementFlows[currentSelectedContactStatusItem.id]}
             />
           </div>
-          {currentSelectedContactStatusItem.requiresDecision ? (
-            <ContactStatusDecisionBar
-              decision={contactStatusDecisions[currentSelectedContactStatusItem.id]}
-              onDecision={recordAdminDecision}
-            />
-          ) : null}
-          <ImChatComposer
-            draft={contactReplyDraft}
-            isNight={isNight}
-            onDraftChange={setContactReplyDraft}
-            onPanelChange={setContactComposerPanel}
-            onSend={sendContactReply}
-            panel={contactComposerPanel}
-          />
         </MobileFullscreenPage>
       ) : null}
 

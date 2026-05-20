@@ -6,6 +6,9 @@
   color: #16171a;
   background: #f7f7f2;
   --avatar-radius: clamp(6px, 30%, 24px);
+  --client-primary-contrast: #ffffff;
+  --client-primary-contrast-muted: rgba(255, 255, 255, 0.86);
+  --client-primary-contrast-soft: rgba(255, 255, 255, 0.72);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -1157,10 +1160,10 @@ img {
   --client-text: #163630;
   --client-muted: rgba(22, 54, 48, 0.68);
   --client-soft-muted: rgba(22, 54, 48, 0.46);
-  --client-primary: rgb(60, 136, 126);
-  --client-primary-strong: #275f57;
-  --client-primary-soft: rgba(60, 136, 126, 0.14);
-  --client-nav-active: rgba(60, 136, 126, 0.16);
+  --client-primary: #367a71;
+  --client-primary-strong: #245a53;
+  --client-primary-soft: rgba(54, 122, 113, 0.14);
+  --client-nav-active: rgba(54, 122, 113, 0.16);
   --client-accent-text: #1f5b51;
   --client-bottom-nav-max-width: 880px;
   --client-bottom-nav-inline-gap: 12px;
@@ -1180,10 +1183,13 @@ img {
   --client-schedule-substicky-top: calc(env(safe-area-inset-top, 0px) + 92px);
   --client-sticky-content-layer: 24;
   --client-sticky-tab-layer: 120;
-  --client-needo-bg: linear-gradient(135deg, #4f978d 0%, #3c887e 55%, #2a675f 100%);
-  --client-needo-active-bg: linear-gradient(135deg, #569f95 0%, #3c887e 52%, #255d55 100%);
+  --client-needo-bg: linear-gradient(135deg, #367a71 0%, #2f6f66 55%, #245a53 100%);
+  --client-needo-active-bg: linear-gradient(135deg, #3f897f 0%, #327269 52%, #23524c 100%);
   --client-needo-border: rgba(255, 255, 255, 0.58);
   --client-needo-text: #f8fffc;
+  --client-primary-contrast: var(--client-needo-text);
+  --client-primary-contrast-muted: color-mix(in srgb, var(--client-primary-contrast) 86%, transparent);
+  --client-primary-contrast-soft: color-mix(in srgb, var(--client-primary-contrast) 72%, transparent);
   --client-accent: #df5b52;
   --client-warning: #f3c84c;
   --client-warning-soft: rgba(243, 200, 76, 0.18);
@@ -1195,8 +1201,8 @@ img {
   --client-schedule-sticky-bg: #f6fbf8;
   --client-schedule-sticky-edge: linear-gradient(90deg, rgba(246, 251, 248, 0.98), rgba(246, 251, 248, 0));
   --client-schedule-sticky-shadow: 14px 0 24px rgba(21, 57, 51, 0.12);
-  --pin-badge-fill: #43a07b;
-  --pin-badge-glyph: #163630;
+  --pin-badge-fill: var(--client-primary);
+  --pin-badge-glyph: var(--client-primary-contrast);
   --needo-compose-button-bg: var(--client-needo-bg);
   --needo-compose-button-fg: var(--client-needo-text);
   --needo-compose-button-border: var(--client-needo-border);
@@ -1448,7 +1454,7 @@ body:has(.client-theme-noir-gold),
   --client-needo-bg: linear-gradient(135deg, #c4a6ff 0%, #856cff 58%, #62d7ff 100%);
   --client-needo-active-bg: linear-gradient(135deg, #d6c4ff 0%, #9b82ff 52%, #7be4ff 100%);
   --client-needo-border: rgba(248, 231, 255, 0.7);
-  --client-needo-text: #ffffff;
+  --client-needo-text: #080a1a;
   --client-accent: #ff6fae;
   --client-warning: #ffca6f;
   --client-warning-soft: rgba(255, 202, 111, 0.18);
@@ -1466,9 +1472,9 @@ body:has(.client-theme-noir-gold),
   --client-schedule-sticky-edge: linear-gradient(90deg, #1f2444, rgba(31, 36, 68, 0));
   --client-schedule-sticky-shadow: 16px 0 30px rgba(4, 5, 15, 0.44);
   --pin-badge-fill: var(--client-accent);
-  --pin-badge-glyph: #ffffff;
+  --pin-badge-glyph: var(--client-needo-text);
   --needo-compose-button-bg: linear-gradient(135deg, #ff6fae 0%, #8a75ff 58%, #62d7ff 100%);
-  --needo-compose-button-fg: #ffffff;
+  --needo-compose-button-fg: var(--client-needo-text);
   --needo-compose-button-border: rgba(248, 231, 255, 0.68);
   --needo-compose-button-shadow: 0 18px 42px rgba(255, 111, 174, 0.28), 0 0 34px rgba(138, 117, 255, 0.22);
   --client-shadow: 0 28px 72px rgba(3, 5, 18, 0.5), 0 0 42px rgba(255, 111, 174, 0.13);
@@ -2291,30 +2297,52 @@ body:has(.merchant-analytics-clean-shell),
   color: #3a2c00 !important;
 }
 
-.client-theme-day .bg-moss.text-white,
-.client-theme-day button.bg-moss,
-.client-theme-day a.bg-moss {
-  color: #f6fffc !important;
+.client-shell :where(
+  .bg-moss,
+  [class~="bg-[color:var(--client-primary)]"],
+  [class~="!bg-[color:var(--client-primary)]"],
+  [class~="hover:bg-moss"]:hover,
+  [class*="bg-[linear-gradient"][class*="var(--client-primary)"]
+) {
+  color: var(--client-primary-contrast) !important;
 }
 
-.client-theme-night .bg-moss.text-white,
-.client-theme-night button.bg-moss,
-.client-theme-night a.bg-moss {
-  color: var(--client-needo-text) !important;
+.client-shell :where(
+  [class*="hover:bg-[color:var(--client-primary)]"],
+  [class*="hover:bg-[linear-gradient"][class*="var(--client-primary)"]
+):hover {
+  color: var(--client-primary-contrast) !important;
 }
 
-.client-theme-day .bg-moss .text-white\/55,
-.client-theme-day .bg-moss .text-white\/60,
-.client-theme-day .bg-moss .text-white\/65,
-.client-theme-day .bg-moss .text-white\/70 {
-  color: rgba(246, 255, 252, 0.72) !important;
+.client-shell :where(
+  .bg-moss,
+  [class~="bg-[color:var(--client-primary)]"],
+  [class~="!bg-[color:var(--client-primary)]"],
+  [class*="bg-[linear-gradient"][class*="var(--client-primary)"]
+) :where(.text-white, [class~="text-[#090806]"], [class~="text-[#0a0907]"], [class~="text-[#081109]"], [class~="text-[#06100b]"]) {
+  color: var(--client-primary-contrast) !important;
 }
 
-.client-theme-night .bg-moss .text-white\/55,
-.client-theme-night .bg-moss .text-white\/60,
-.client-theme-night .bg-moss .text-white\/65,
-.client-theme-night .bg-moss .text-white\/70 {
-  color: rgba(8, 17, 8, 0.64) !important;
+.client-shell :where(
+  .bg-moss,
+  [class~="bg-[color:var(--client-primary)]"],
+  [class~="!bg-[color:var(--client-primary)]"],
+  [class*="bg-[linear-gradient"][class*="var(--client-primary)"]
+) :where(
+  .text-white\/55,
+  .text-white\/58,
+  .text-white\/60,
+  .text-white\/62,
+  .text-white\/65,
+  .text-white\/70,
+  .text-white\/72,
+  .text-white\/76,
+  .text-white\/80,
+  .text-white\/82,
+  .text-white\/86,
+  .text-white\/90
+) {
+  color: var(--client-primary-contrast-muted) !important;
 }
 
 .client-theme-day [class~="text-[#090806]"],
@@ -2540,19 +2568,19 @@ body:has(.merchant-analytics-clean-shell),
 .client-theme-neon-pink .bg-moss.text-white,
 .client-theme-neon-pink button.bg-moss,
 .client-theme-neon-pink a.bg-moss {
-  color: #ffffff !important;
+  color: var(--client-primary-contrast) !important;
 }
 
 .client-theme-neon-pink .bg-moss .text-white\/55,
 .client-theme-neon-pink .bg-moss .text-white\/60,
 .client-theme-neon-pink .bg-moss .text-white\/65,
 .client-theme-neon-pink .bg-moss .text-white\/70 {
-  color: rgba(255, 255, 255, 0.72) !important;
+  color: var(--client-primary-contrast-muted) !important;
 }
 
 .client-theme-neon-pink [class~="text-[#090806]"],
 .client-theme-neon-pink [class~="text-[#0a0907]"] {
-  color: #ffffff !important;
+  color: var(--client-primary-contrast) !important;
 }
 
 .client-theme-neon-pink .category-icon {
@@ -3153,6 +3181,42 @@ body:has(.merchant-analytics-clean-shell),
   display: none;
 }
 
+.client-mobile-schedule-detail__body {
+  --client-mobile-schedule-detail-pad-start: 1rem;
+  --client-mobile-schedule-detail-pad-end: 1rem;
+  background: var(--client-bg);
+}
+
+.client-mobile-schedule-detail__schedule-grid {
+  margin-inline: 0;
+}
+
+.client-shell .schedule-highlight-badge,
+.merchant-admin-shell .schedule-highlight-badge {
+  border: 1px solid color-mix(in srgb, var(--client-needo-text, var(--merchant-dispatch-on-accent, #07100d)) 24%, transparent) !important;
+  background: color-mix(in srgb, var(--client-needo-text, var(--merchant-dispatch-on-accent, #07100d)) 12%, transparent) !important;
+  color: var(--client-needo-text, var(--merchant-dispatch-on-accent, #07100d)) !important;
+  text-shadow: none !important;
+}
+
+.client-shell .schedule-wizard-action-dock {
+  border: 1px solid color-mix(in srgb, var(--client-line) 78%, transparent);
+  background: color-mix(in srgb, var(--client-bg) 94%, var(--client-surface) 6%);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 color-mix(in srgb, var(--client-text) 6%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.24);
+  backdrop-filter: blur(18px) saturate(1.24);
+}
+
+.client-shell .schedule-wizard-primary-action {
+  background: var(--client-primary) !important;
+  color: var(--client-needo-text) !important;
+  box-shadow:
+    0 18px 34px color-mix(in srgb, var(--client-primary) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 20%, transparent) !important;
+}
+
 @media (orientation: landscape) and (max-height: 560px) {
   .client-mobile-schedule-detail__inner {
     width: 100vw !important;
@@ -3221,7 +3285,9 @@ body:has(.merchant-analytics-clean-shell),
 
   .client-mobile-schedule-detail__body {
     --client-mobile-schedule-detail-grid-header-top: 44px;
-    padding-inline: max(env(safe-area-inset-left, 0px), 10px) max(env(safe-area-inset-right, 0px), 10px);
+    --client-mobile-schedule-detail-pad-start: max(env(safe-area-inset-left, 0px), 10px);
+    --client-mobile-schedule-detail-pad-end: max(env(safe-area-inset-right, 0px), 10px);
+    padding-inline: var(--client-mobile-schedule-detail-pad-start) var(--client-mobile-schedule-detail-pad-end);
   }
 
   .client-mobile-schedule-detail__grid-legend {
@@ -3956,8 +4022,8 @@ body:has(.merchant-analytics-clean-shell),
   --client-line: rgba(22, 54, 48, 0.12);
   --client-text: #163630;
   --client-muted: rgba(22, 54, 48, 0.68);
-  --client-primary: rgb(60, 136, 126);
-  --client-primary-strong: #275f57;
+  --client-primary: #367a71;
+  --client-primary-strong: #245a53;
   --client-accent: #df5b52;
   --client-needo-text: #f8fffc;
 }

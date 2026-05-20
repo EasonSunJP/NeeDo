@@ -11,9 +11,11 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
+import { TranslationIcon } from "../../components/ui/LanguageSwitcher";
 import { ShareNetworkIconPath } from "../../components/ui/ShareNetworkIcon";
 import { services, stores, technicians } from "../../data/mock";
 import { useI18n } from "../../i18n/I18nProvider";
+import { translateText, type Language } from "../../i18n/translations";
 import { getForwardContacts, type ForwardContact } from "../../lib/forwardContacts";
 import { getMessagePath, type MessageCenterContext } from "../../lib/messageCenter";
 import { yen } from "../../lib/utils";
@@ -67,11 +69,7 @@ function NeedoTopActionIcon({ name }: { name: NeedoTopActionIconName }) {
   }
 
   if (name === "translate") {
-    return (
-      <>
-        <path d="M5 6.5h9M8 6.5c0 5-1.6 8.4-4 11M9.5 11c1 2.3 2.7 4.6 5.2 6.6M13.5 6.5h5.5M17 4v15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-      </>
-    );
+    return null;
   }
 
   return <ShareNetworkIconPath />;
@@ -100,43 +98,60 @@ function NeedoTopActionButton({
       title={label}
       type="button"
     >
-      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-        <NeedoTopActionIcon name={name} />
-      </svg>
+      {name === "translate" ? (
+        <TranslationIcon className="h-6 w-6" />
+      ) : (
+        <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+          <NeedoTopActionIcon name={name} />
+        </svg>
+      )}
       <span className="sr-only">{label}</span>
     </button>
   );
 }
 
 function NeedoDetailHero({
-  post,
   booked,
+  bookedLabel,
+  image,
   applied,
-  onPreview
+  appliedLabel,
+  onPreview,
+  previewLabel,
+  title,
+  type,
+  typeLabel
 }: {
-  post: ExchangePost;
   booked: boolean;
+  bookedLabel: string;
+  image: string;
   applied: boolean;
+  appliedLabel: string;
   onPreview: () => void;
+  previewLabel: string;
+  title: string;
+  type: ExchangePost["type"];
+  typeLabel: string;
 }) {
   return (
     <button
-      aria-label="放大头图"
+      aria-label={previewLabel}
       className="focus-ring relative h-[204px] w-full overflow-hidden rounded-[28px] bg-ink text-left text-white shadow-soft"
+      data-no-i18n
       onClick={onPreview}
       type="button"
     >
-      <img alt={post.title} className="absolute inset-0 h-full w-full object-cover opacity-45" src={post.image} />
+      <img alt={title} className="absolute inset-0 h-full w-full object-cover opacity-45" src={image} />
       <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/30 to-ink" />
       <div className="relative flex h-full flex-col justify-between p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Badge tone={post.type === "demand" ? "yellow" : "green"}>{post.type === "demand" ? "需求" : "情报"}</Badge>
-            {booked ? <Badge tone="green">已预约</Badge> : applied ? <Badge tone="blue">应募中</Badge> : null}
+            <Badge tone={type === "demand" ? "yellow" : "green"}>{typeLabel}</Badge>
+            {booked ? <Badge tone="green">{bookedLabel}</Badge> : applied ? <Badge tone="blue">{appliedLabel}</Badge> : null}
           </div>
         </div>
         <div className="min-h-0">
-          <h1 className="overflow-hidden text-[26px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{post.title}</h1>
+          <h1 className="overflow-hidden text-[26px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]">{title}</h1>
         </div>
       </div>
     </button>
@@ -316,6 +331,16 @@ function useNeedoBack(context: MessageCenterContext) {
   };
 }
 
+function getNeedoExpiryText(post: Pick<ExchangePost, "expiresAt" | "type">, language: Language) {
+  return {
+    zh: `${post.type === "demand" ? "需求" : "情报"}有效至 ${formatExpiryDate(post.expiresAt, language)}`,
+    "zh-Hant": `${post.type === "demand" ? "需求" : "情報"}有效至 ${formatExpiryDate(post.expiresAt, language)}`,
+    ja: `掲載終了 ${formatExpiryDate(post.expiresAt, language)}`,
+    en: `Valid until ${formatExpiryDate(post.expiresAt, language)}`,
+    ko: `${post.type === "demand" ? "요청" : "정보"} 마감 ${formatExpiryDate(post.expiresAt, language)}`
+  }[language];
+}
+
 function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) {
   const navigate = useNavigate();
   const closePage = useNeedoBack(context);
@@ -343,6 +368,7 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
   useEffect(() => {
     setApplicationFeedbackOpen(false);
     setHeroPreviewOpen(false);
+    setTranslated(false);
   }, [postId]);
 
   useEffect(() => {
@@ -371,7 +397,10 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
   const miniProfile = resolveNeedoMiniProfile(post, detail, context);
   const relatedService = resolveNeedoCheckoutService(post);
   const remainingMs = new Date(post.expiresAt).getTime() - nowMs;
-  const countdownLabel = formatCountdown(remainingMs, language);
+  const detailLanguage = translated ? language : "zh";
+  const uiText = (source: string) => translateText(source, language);
+  const detailText = (source: string) => translated ? translateText(source, language) : source;
+  const countdownLabel = formatCountdown(remainingMs, detailLanguage);
   const applied = post.type === "demand" && appliedDemandPostIds.includes(post.id);
   const booked = post.type === "reverse" && bookedReversePostIds.includes(post.id);
   const commentCount = getPostReplyCount(post);
@@ -379,13 +408,7 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
   const statusHint = post.type === "demand" ? "提交完成，请等待用户判断。若对方确认，平台会继续推进后续流程。" : "预约已提交，请等待对方确认。若对方通过，平台会继续推进后续流程。";
   const pendingLabel = post.type === "demand" ? "等待判断" : "等待确认";
   const feedbackTitle = post.type === "demand" ? "提交完成" : "预约已提交";
-  const expiryText = {
-    zh: `${post.type === "demand" ? "需求" : "情报"}有效至 ${formatExpiryDate(post.expiresAt, language)}`,
-    "zh-Hant": `${post.type === "demand" ? "需求" : "情報"}有效至 ${formatExpiryDate(post.expiresAt, language)}`,
-    ja: `掲載終了 ${formatExpiryDate(post.expiresAt, language)}`,
-    en: `Valid until ${formatExpiryDate(post.expiresAt, language)}`,
-    ko: `${post.type === "demand" ? "요청" : "정보"} 마감 ${formatExpiryDate(post.expiresAt, language)}`
-  }[language];
+  const expiryText = getNeedoExpiryText(post, detailLanguage);
   const paymentCaption = post.type === "demand"
     ? detail.paymentStatus
     : detail.prepaidAmount > 0
@@ -401,6 +424,7 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
     { label: post.type === "demand" ? "已预付" : "需预付", value: yen(detail.prepaidAmount), highlight: false },
     { label: "到场支付", value: yen(detail.cashAmount), highlight: false }
   ];
+  const serviceFlow = relatedService.flow.map(detailText);
 
   const forwardExchangePost = (contact: ForwardContact) => {
     storeForwardedExchange(context, post, contact);
@@ -435,11 +459,11 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
       </div>
       <div className="pointer-events-none absolute inset-x-0 safe-floating-top z-[90] flex justify-end px-4">
         <div className="pointer-events-auto flex items-center gap-1.5">
-          <NeedoTopActionButton active={liked} label={`点赞 ${getPostLikeCount(post) + (liked ? 1 : 0)}`} name="like" onClick={() => setLiked((current) => !current)} />
-          <NeedoTopActionButton active={favorited} label="收藏" name="favorite" onClick={() => setFavorited((current) => !current)} />
-          <NeedoTopActionButton active={translated} label="翻译" name="translate" onClick={() => setTranslated((current) => !current)} />
+          <NeedoTopActionButton active={liked} label={`${uiText("点赞")} ${getPostLikeCount(post) + (liked ? 1 : 0)}`} name="like" onClick={() => setLiked((current) => !current)} />
+          <NeedoTopActionButton active={favorited} label={uiText("收藏")} name="favorite" onClick={() => setFavorited((current) => !current)} />
+          <NeedoTopActionButton active={translated} label={uiText("翻译")} name="translate" onClick={() => setTranslated((current) => !current)} />
           <NeedoTopActionButton
-            label="转发"
+            label={uiText("转发")}
             name="forward"
             onClick={() => {
               setSharePost(post);
@@ -450,26 +474,32 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
       </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 safe-header-top px-4 pb-3 text-[color:var(--client-text)]">
         <div className="min-w-0 pl-[56px] pr-[212px]">
-          <div className="truncate text-base font-black">{post.type === "demand" ? "需求详情" : "情报详情"}</div>
-          <p className="mt-0.5 truncate text-[11px] font-bold leading-5 text-ink/45">{`${post.time} · ${post.area}`}</p>
+          <div className="truncate text-base font-black">{uiText(post.type === "demand" ? "需求详情" : "情报详情")}</div>
+          <p className="mt-0.5 truncate text-[11px] font-bold leading-5 text-ink/45" data-no-i18n>{detailText(`${post.time} · ${post.area}`)}</p>
         </div>
       </div>
       <main className="scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+8.5rem)] pt-[var(--client-sticky-tab-single-spacer)]">
         <NeedoDetailHero
           applied={applied}
+          appliedLabel={detailText("应募中")}
           booked={booked}
+          bookedLabel={detailText("已预约")}
+          image={post.image}
           onPreview={() => setHeroPreviewOpen(true)}
-          post={post}
+          previewLabel={uiText("放大头图")}
+          title={detailText(post.title)}
+          type={post.type}
+          typeLabel={detailText(post.type === "demand" ? "需求" : "情报")}
         />
 
-        <section className={needoDetailCardClassName}>
+        <section className={needoDetailCardClassName} data-no-i18n>
           <div>
-            <p className="text-[11px] font-black text-ink/45">介绍</p>
-            <HighlightedTagText className="mt-2 block text-sm font-semibold leading-6 text-ink/68" tagClassName="text-[color:var(--client-primary)]" text={post.detail} />
+            <p className="text-[11px] font-black text-ink/45">{uiText("介绍")}</p>
+            <HighlightedTagText className="mt-2 block text-sm font-semibold leading-6 text-ink/68" tagClassName="text-[color:var(--client-primary)]" text={detailText(post.detail)} />
           </div>
           <div className="mt-3 rounded-[18px] bg-paper px-3.5 py-3">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] font-black text-ink/45">期限</p>
+              <p className="text-[11px] font-black text-ink/45">{uiText("期限")}</p>
               <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-primary)]">
                 {countdownLabel}
               </span>
@@ -479,53 +509,54 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
         </section>
 
         {post.type === "demand" && applied ? (
-          <section className="rounded-[28px] border border-sky/30 bg-sky/10 p-4 shadow-panel">
+          <section className="rounded-[28px] border border-sky/30 bg-sky/10 p-4 shadow-panel" data-no-i18n>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-black text-[#245a80]">当前状态</p>
-                <h2 className="mt-1 text-lg font-black text-ink">应募中</h2>
-                <p className="mt-2 text-sm leading-6 text-ink/65">{statusHint}</p>
+                <p className="text-xs font-black text-[#245a80]">{uiText("当前状态")}</p>
+                <h2 className="mt-1 text-lg font-black text-ink">{detailText("应募中")}</h2>
+                <p className="mt-2 text-sm leading-6 text-ink/65">{detailText(statusHint)}</p>
               </div>
-              <Badge tone="blue">{pendingLabel}</Badge>
+              <Badge tone="blue">{detailText(pendingLabel)}</Badge>
             </div>
           </section>
         ) : null}
 
-        <section className={needoDetailCardClassName}>
-          <SectionTitle caption={paymentCaption} title="支付信息">
-            <Badge tone={detail.prepaidAmount > 0 ? "green" : "yellow"}>{paymentBadgeLabel}</Badge>
+        <section className={needoDetailCardClassName} data-no-i18n>
+          <SectionTitle caption={detailText(paymentCaption)} title={uiText("支付信息")}>
+            <Badge tone={detail.prepaidAmount > 0 ? "green" : "yellow"}>{detailText(paymentBadgeLabel)}</Badge>
           </SectionTitle>
           <div className="mt-3 grid grid-cols-3 gap-2">
             {paymentRows.map((row) => (
               <div className={needoDetailInnerCardClassName} key={row.label}>
-                <p className="text-[11px] font-bold text-ink/45">{row.label}</p>
+                <p className="text-[11px] font-bold text-ink/45">{uiText(row.label)}</p>
                 <strong className={row.highlight ? `mt-1 block text-[18px] font-black leading-none ${needoPriceHighlightClassName}` : "mt-1 block text-sm"}>{row.value}</strong>
               </div>
             ))}
           </div>
         </section>
 
-        <ServiceFlowSection flow={relatedService.flow} />
+        <ServiceFlowSection dataNoI18n flow={serviceFlow} title={uiText("服务流程")} />
 
         <SocialProfileMiniCard data={miniProfile.data} detailTo={miniProfile.detailTo} />
 
-        <section className={needoDetailCardClassName}>
-          <h2 className="font-black">服务要求</h2>
+        <section className={needoDetailCardClassName} data-no-i18n>
+          <h2 className="font-black">{uiText("服务要求")}</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {post.tags.map((tag) => (
-              <span className="rounded-[18px] bg-paper px-3 py-2 text-xs font-bold text-ink/60" key={tag}>{tag}</span>
+              <span className="rounded-[18px] bg-paper px-3 py-2 text-xs font-bold text-ink/60" key={tag}>{detailText(tag)}</span>
             ))}
           </div>
           <div className="mt-3 rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55">
-            <strong className="text-ink">安全提示：</strong>
-            抢单前请确认人数、到达方式、酒店登记、现金尾款和特殊要求。平台内沟通会自动归档到订单。
+            <strong className="text-ink">{uiText("安全提示：")}</strong>
+            {" "}
+            {detailText("抢单前请确认人数、到达方式、酒店登记、现金尾款和特殊要求。平台内沟通会自动归档到订单。")}
           </div>
         </section>
 
-        <section className={needoDetailCardClassName}>
+        <section className={needoDetailCardClassName} data-no-i18n>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-black">评论</h2>
-            <Badge tone="green">{commentCount} 条</Badge>
+            <h2 className="font-black">{uiText("评论")}</h2>
+            <Badge tone="green">{detailText(`${commentCount} 条`)}</Badge>
           </div>
           <div className="mt-3 space-y-3">
             {detail.reviews.map((review) => (
@@ -537,7 +568,7 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
                       <strong className="truncate text-sm">{review.commenterName}</strong>
                       <span className="shrink-0 text-xs text-ink/45">{review.date}</span>
                     </div>
-                    <p className="mt-2 text-xs leading-5 text-ink/60">{review.content}</p>
+                    <p className="mt-2 text-xs leading-5 text-ink/60">{detailText(review.content)}</p>
                   </div>
                 </div>
               </article>
@@ -548,8 +579,8 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
 
       <ClientEdgeMask className="z-10" edge="bottom" mode="absolute" />
       <footer className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-[1fr,auto] items-center gap-3 border-t border-transparent bg-transparent px-4 pb-[max(env(safe-area-inset-bottom),12px)] pt-4">
-        <div>
-          <p className="text-xs font-bold text-ink/45">{post.type === "demand" ? "预计收入" : "价格"}</p>
+        <div data-no-i18n>
+          <p className="text-xs font-bold text-ink/45">{uiText(post.type === "demand" ? "预计收入" : "价格")}</p>
           <strong className={`text-xl ${needoPriceHighlightClassName}`}>{getNeedoBudgetLabel(post)}</strong>
         </div>
         <Button
@@ -562,22 +593,22 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
             ? { zh: "已过期", "zh-Hant": "已過期", ja: "掲載終了", en: "Expired", ko: "만료됨" }[language]
             : post.type === "demand"
               ? applied
-                ? "应募中"
-                : "提交抢单"
+                ? uiText("应募中")
+                : uiText("提交抢单")
               : booked
-                ? "已预约"
-                : "立即预约"}
+                ? uiText("已预约")
+                : uiText("立即预约")}
         </Button>
       </footer>
 
       {heroPreviewOpen ? (
         <div className="fixed inset-0 z-[96] bg-black/90 px-4 py-6">
-          <button aria-label="关闭头图预览" className="absolute inset-0" onClick={() => setHeroPreviewOpen(false)} type="button" />
+          <button aria-label={uiText("关闭头图预览")} className="absolute inset-0" onClick={() => setHeroPreviewOpen(false)} type="button" />
           <div className="absolute right-4 top-[calc(env(safe-area-inset-top)+12px)] z-[97]">
-            <MobileFullscreenCloseButton className="border-white/25 bg-black/40 text-white" label="关闭大图" onClose={() => setHeroPreviewOpen(false)} />
+            <MobileFullscreenCloseButton className="border-white/25 bg-black/40 text-white" label={uiText("关闭大图")} onClose={() => setHeroPreviewOpen(false)} />
           </div>
           <div className="pointer-events-none relative z-[96] mx-auto flex h-full w-full max-w-[480px] items-center justify-center">
-            <img alt={post.title} className="max-h-full w-full rounded-[28px] object-contain shadow-soft" src={post.image} />
+            <img alt={detailText(post.title)} className="max-h-full w-full rounded-[28px] object-contain shadow-soft" data-no-i18n src={post.image} />
           </div>
         </div>
       ) : null}
@@ -590,18 +621,19 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
           <div className="mx-auto flex h-full w-full max-w-[480px] items-center">
             <section
               className="w-full rounded-[28px] border border-white/8 bg-[#161616] p-5 text-white shadow-[0_28px_80px_rgba(0,0,0,0.48)]"
+              data-no-i18n
               onClick={(event) => event.stopPropagation()}
             >
-              <Badge tone="blue">应募中</Badge>
-              <h2 className="mt-3 text-2xl font-black text-white">{feedbackTitle}</h2>
-              <p className="mt-2 text-sm leading-6 text-white/78">{statusHint}</p>
+              <Badge tone="blue">{detailText("应募中")}</Badge>
+              <h2 className="mt-3 text-2xl font-black text-white">{detailText(feedbackTitle)}</h2>
+              <p className="mt-2 text-sm leading-6 text-white/78">{detailText(statusHint)}</p>
               <div className="mt-5 grid grid-cols-2 gap-2">
                 <Button
                   className="border-white/12 bg-white/8 text-white hover:bg-white/12"
                   onClick={() => setApplicationFeedbackOpen(false)}
                   variant="secondary"
                 >
-                  继续查看
+                  {uiText("继续查看")}
                 </Button>
                 <Button
                   className="shadow-[0_12px_28px_rgba(178,255,0,0.24)]"
@@ -610,7 +642,7 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
                     closePage();
                   }}
                 >
-                  返回 NeeDo
+                  {uiText("返回 NeeDo")}
                 </Button>
               </div>
             </section>

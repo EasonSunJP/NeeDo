@@ -438,7 +438,7 @@ export function ImChatComposer({
     : "min-h-[40px] min-w-0 flex-1 rounded-[22px] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,var(--client-bg)_38%)] px-3 py-2 shadow-[inset_0_0_0_1px_rgba(21,33,27,0.12)]";
   const composerIconButtonClass = "shrink-0 text-[color:var(--client-muted)]";
   const composerTextareaClass =
-    "max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-soft-muted)]";
+    "max-h-[132px] min-h-[24px] w-full resize-none border-none bg-transparent p-0 text-[15px] leading-6 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
   const composerPanelClass =
     "mt-3 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,var(--client-bg)_14%)] p-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-text)_16%,transparent)] backdrop-blur-xl";
   const composerEmojiButtonClass =
@@ -1298,7 +1298,7 @@ export function ConversationRow({
             stopPropagation
             to={avatarTo}
           />
-          {group ? <span className="absolute -bottom-1 -right-1 rounded-full bg-[color:var(--client-primary)] px-1 py-0.5 text-[9px] font-bold text-[#090806]">群</span> : null}
+          {group ? <span className="absolute -bottom-1 -right-1 rounded-full bg-[color:var(--client-primary)] px-1 py-0.5 text-[9px] font-bold text-[color:var(--client-primary-contrast)]">群</span> : null}
         </div>
         {body}
       </div>
@@ -1945,7 +1945,7 @@ export function MessageBubble({
   renderContactCard?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
   renderContactCardAction?: (contactCard: NonNullable<MessageExt["contactCard"]>, message: ConversationMessage) => ReactNode;
 }) {
-  const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[#090806]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
+  const bubbleClass = isMine ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const disappearing = message.ext?.disappearing;
   const [expandedReactionEmoji, setExpandedReactionEmoji] = useState<string | null>(null);
   const quotedPreview = quotedMessage?.content || (quotedMessage ? previewLabel(quotedMessage.type) : "");
@@ -2007,7 +2007,7 @@ export function MessageBubble({
             </span>
           <div className="min-w-0">
             <p className="truncate text-[14px] font-medium">{message.ext?.fileName ?? "未命名文件"}</p>
-            <p className="mt-1 text-xs text-ink/45">{formatSize(message.ext?.fileSize)}</p>
+            <p className={cn("mt-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{formatSize(message.ext?.fileSize)}</p>
           </div>
         </div>
       );
@@ -2015,11 +2015,11 @@ export function MessageBubble({
 
     if (message.type === "location") {
       return (
-        <div className="w-[220px] overflow-hidden rounded-2xl bg-black/[0.04]">
+        <div className={cn("w-[220px] overflow-hidden rounded-2xl", isMine ? "bg-[color:color-mix(in_srgb,var(--client-primary-contrast)_12%,transparent)]" : "bg-black/[0.04]")}>
           <div className="h-24 bg-[linear-gradient(135deg,#b6e3cf_0%,#dff2ea_55%,#f9fbf7_100%)]" />
           <div className="px-3 py-3">
             <p className="text-[14px] font-medium">{message.ext?.location?.title ?? "位置"}</p>
-            <p className="mt-1 text-xs leading-5 text-ink/45">{message.ext?.location?.address}</p>
+            <p className={cn("mt-1 text-xs leading-5", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/45")}>{message.ext?.location?.address}</p>
           </div>
         </div>
       );
@@ -2042,12 +2042,12 @@ export function MessageBubble({
               <AvatarImage alt={card.displayName} className="h-12 w-12" src={card.avatar} />
               <div className="min-w-0">
                 <p className="truncate text-[14px] font-black">{card.displayName}</p>
-                <p className="mt-1 line-clamp-1 text-xs text-ink/52">{caption}</p>
+                <p className={cn("mt-1 line-clamp-1 text-xs", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/52")}>{caption}</p>
               </div>
             </div>
           </button>
           <div className="flex items-center justify-between gap-3 border-t border-black/5 px-3 py-2">
-            <span className="text-[11px] font-black text-ink/42">{contactCardKindLabel(card.profileKind)}</span>
+            <span className={cn("text-[11px] font-black", isMine ? "text-[color:var(--client-primary-contrast-muted)]" : "text-ink/42")}>{contactCardKindLabel(card.profileKind)}</span>
             {action}
           </div>
         </div>
@@ -2075,7 +2075,7 @@ export function MessageBubble({
     />
   );
   const quoteNode = quotedMessage ? (
-    <div className={cn("mb-2 w-full border-b pb-2", isMine ? "border-black/[0.05] text-[#102819]/72" : "border-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] text-[color:var(--client-muted)]")}>
+    <div className={cn("mb-2 w-full border-b pb-2", isMine ? "border-[color:color-mix(in_srgb,var(--client-primary-contrast)_18%,transparent)] text-[color:var(--client-primary-contrast-muted)]" : "border-[color:color-mix(in_srgb,var(--client-line)_18%,transparent)] text-[color:var(--client-muted)]")}>
       <div className="flex min-w-0 items-center gap-2">
         {quotedSenderAvatar ? (
           <AvatarImage alt={quotedAuthor} className="h-7 w-7 shrink-0" src={quotedSenderAvatar} />

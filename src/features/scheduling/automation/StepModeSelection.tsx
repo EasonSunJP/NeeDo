@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
+import { InfoTooltipTrigger } from "../../../components/ui/TitleWithInfo";
 import { cn } from "../../../lib/utils";
 import { addDays, getCycleModeLabel, type DispatchCycle, type DispatchCycleMode } from "../../dispatch-center/domain";
 import { saveDispatchCycleDraft } from "../../dispatch-center/store";
@@ -58,11 +59,14 @@ export function StepModeSelection({
     ? "border-line bg-white/90 shadow-panel backdrop-blur-xl"
     : "merchant-dispatch-surface";
   const cardClass = isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-choice";
-  const activeCardClass = isMobileSurface ? "border-moss bg-moss text-white" : "is-active";
+  const activeCardClass = isMobileSurface
+    ? "border-transparent bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
+    : "is-active";
   const softPanelClass = isMobileSurface ? "bg-paper/70" : "merchant-dispatch-soft-panel";
   const quietTextClass = isMobileSurface ? "text-ink/60" : "text-ink/58";
   const labelTextClass = isMobileSurface ? "text-ink/45" : "text-moss/70";
   const secondaryButtonClass = isMobileSurface ? "bg-white/80" : undefined;
+  const primaryButtonClass = isMobileSurface ? "schedule-wizard-primary-action" : undefined;
 
   useEffect(() => {
     setDraft(cycle);
@@ -115,14 +119,26 @@ export function StepModeSelection({
                 type="button"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <strong className="text-base font-black">{item.title}</strong>
-                  {item.recommended ? <Badge tone={active ? "yellow" : "green"}>默认推荐</Badge> : null}
+                  <strong className="text-xl font-black leading-tight">{item.title}</strong>
+                  <InfoTooltipTrigger
+                    className={active ? "schedule-highlight-badge" : undefined}
+                    content={
+                      <div className="space-y-2">
+                        <p><span className="font-black">商户：</span>{item.merchantRole}</p>
+                        <p><span className="font-black">技师：</span>{item.technicianRole}</p>
+                        <p><span className="font-black">确认：</span>{item.confirmation}</p>
+                      </div>
+                    }
+                    label={`${item.title}说明`}
+                    variant={surface === "mobile" ? "client" : "paper"}
+                  />
+                  {item.recommended ? <Badge className={active ? "schedule-highlight-badge" : undefined} tone={active ? "yellow" : "green"}>默认推荐</Badge> : null}
                 </div>
-                <p className="mt-2 text-sm font-semibold opacity-80">{item.scenario}</p>
-                <div className="mt-4 space-y-2 text-sm leading-6 opacity-85">
-                  <p><span className="font-black">商户：</span>{item.merchantRole}</p>
-                  <p><span className="font-black">技师：</span>{item.technicianRole}</p>
-                  <p><span className="font-black">确认：</span>{item.confirmation}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge className={active ? "schedule-highlight-badge" : undefined} tone="neutral">{item.scenario}</Badge>
+                  <Badge className={active ? "schedule-highlight-badge" : undefined} tone={item.confirmation.includes("自动") ? "green" : "yellow"}>
+                    {item.confirmation}
+                  </Badge>
                 </div>
               </button>
             );
@@ -148,7 +164,7 @@ export function StepModeSelection({
         </div>
       </section>
 
-      <div className="flex flex-wrap justify-center gap-3 pt-1">
+      <div className={cn("flex flex-wrap justify-center gap-3 pt-1", isMobileSurface && "schedule-wizard-action-dock rounded-[28px] p-2")}>
         <Button
           className={cn(secondaryButtonClass, "min-w-[132px]")}
           variant="secondary"
@@ -160,7 +176,7 @@ export function StepModeSelection({
           保存草稿
         </Button>
         <Button
-          className="min-w-[196px]"
+          className={cn(primaryButtonClass, "min-w-[196px]")}
           onClick={() => {
             const nextDraft = { ...draft, currentStep: 2 as const };
             const result = saveDispatchCycleDraft(nextDraft);
