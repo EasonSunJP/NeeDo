@@ -6419,9 +6419,13 @@ body:has(.merchant-analytics-clean-shell),
   background: var(--client-bg);
 }
 
+.service-review-prompt-overlay {
+  margin-top: 0 !important;
+}
+
 .service-review-prompt__header {
   margin-top: 0;
-  padding-top: max(env(safe-area-inset-top, 0px), 6px);
+  padding-top: 12px;
   background-color: var(--client-bg);
   background-image: linear-gradient(
     180deg,

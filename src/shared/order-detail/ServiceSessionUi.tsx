@@ -245,7 +245,7 @@ export function ServiceReviewPrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-[150] bg-[color:var(--client-bg)] text-[color:var(--client-text)]" data-info-tooltip-portal-host>
+    <div className="service-review-prompt-overlay fixed inset-0 z-[150] bg-[color:var(--client-bg)] text-[color:var(--client-text)]" data-info-tooltip-portal-host>
       <div className="service-review-prompt mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[color:var(--client-bg)] shadow-soft">
         <MobileFullscreenHeader
           className="service-review-prompt__header"
