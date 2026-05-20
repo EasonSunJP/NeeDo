@@ -52,6 +52,7 @@ import {
   ImHeaderAction,
   ImIcon,
   ImMessageActionSheet,
+  ImMessageSelectionHandles,
   hasActiveImMessageTextSelection,
   type ImMessageActionSheetItem,
   type ImMessageReactionSummary,
@@ -632,10 +633,10 @@ function MessagePressable({
   return (
     <div
       onContextMenu={(event) => {
-        event.preventDefault();
         if (hasActiveImMessageTextSelection(event.currentTarget)) {
           return;
         }
+        event.preventDefault();
         onOpenMenu();
       }}
       onPointerCancel={clearPress}
@@ -3393,7 +3394,7 @@ export function ImConversationRoomPage({
   const recordingStreamRef = useRef<MediaStream | null>(null);
 
   useDocumentScrollLock(true);
-  useIosScrollContainer(listRef);
+  useIosScrollContainer(listRef, Boolean(menuState));
 
   useEffect(() => {
     recordingRef.current = recording;
@@ -4572,15 +4573,18 @@ export function ImConversationRoomPage({
               const { primaryActions, listActions } = createMessageActions(menuState.message);
 
               return (
-                <ImMessageActionSheet
-                  actions={primaryActions}
-                  expanded={messageMenuExpanded}
-                  isNight={isNight}
-                  listActions={listActions}
-                  onClose={closeMessageMenu}
-                  onExpandedChange={setMessageMenuExpanded}
-                  onReact={(reaction) => toggleMessageReaction(menuState.message, reaction)}
-                />
+                <>
+                  <ImMessageSelectionHandles active messageRoot={messageRefs.current[menuState.message.id]} />
+                  <ImMessageActionSheet
+                    actions={primaryActions}
+                    expanded={messageMenuExpanded}
+                    isNight={isNight}
+                    listActions={listActions}
+                    onClose={closeMessageMenu}
+                    onExpandedChange={setMessageMenuExpanded}
+                    onReact={(reaction) => toggleMessageReaction(menuState.message, reaction)}
+                  />
+                </>
               );
             })()
           ) : (

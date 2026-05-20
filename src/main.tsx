@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
 import "./styles.css";
+import { getClientPwaThemeColors, getInitialClientThemeState } from "./theme/ClientThemeProvider";
 
 const rootElement = document.getElementById("root")!;
 const displayModeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(display-mode: standalone)") : null;
@@ -46,7 +47,29 @@ function syncDisplayMode() {
   document.body.dataset.needoDisplayMode = mode;
 }
 
+function syncInitialClientPwaTheme() {
+  const colors = getClientPwaThemeColors(getInitialClientThemeState().theme);
+  const root = document.documentElement;
+  const body = document.body;
+  const themeColorMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  const appleStatusBarMeta = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]');
+
+  root.style.setProperty("--needo-pwa-theme-color", colors.themeColor);
+  root.style.setProperty("--needo-pwa-status-bg", colors.statusBackground);
+  root.style.setProperty("--client-top-chrome-bg", colors.statusBackground);
+
+  if (body) {
+    body.style.setProperty("--needo-pwa-theme-color", colors.themeColor);
+    body.style.setProperty("--needo-pwa-status-bg", colors.statusBackground);
+    body.style.setProperty("--client-top-chrome-bg", colors.statusBackground);
+  }
+
+  themeColorMeta?.setAttribute("content", colors.themeColor);
+  appleStatusBarMeta?.setAttribute("content", "black-translucent");
+}
+
 syncDisplayMode();
+syncInitialClientPwaTheme();
 
 if (displayModeQuery) {
   if (typeof displayModeQuery.addEventListener === "function") {

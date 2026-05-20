@@ -276,7 +276,7 @@ export const floatingHeaderControlButtonClassName =
   "focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] text-[color:var(--client-text)] shadow-[0_14px_30px_rgba(0,0,0,0.14)] backdrop-blur-xl transition active:scale-[0.97]";
 
 const appTopBarSurfaceClassName =
-  "border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-bg)] shadow-[0_14px_32px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)]";
+  "border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-top-chrome-bg)] shadow-[0_14px_32px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)]";
 
 export function FloatingBackButton({
   onClick,

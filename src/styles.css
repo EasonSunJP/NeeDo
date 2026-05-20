@@ -5,6 +5,8 @@
 :root {
   color: #16171a;
   background: #f7f7f2;
+  --needo-pwa-theme-color: #02070c;
+  --needo-pwa-status-bg: #02070c;
   --avatar-radius: clamp(6px, 30%, 24px);
   --client-primary-contrast: #ffffff;
   --client-primary-contrast-muted: rgba(255, 255, 255, 0.86);
@@ -68,9 +70,14 @@ body {
   overscroll-behavior-y: auto;
 }
 
+html[data-needo-display-mode="standalone"] {
+  background: var(--needo-pwa-status-bg, #02070c);
+}
+
 html[data-needo-display-mode="standalone"] body,
 html[data-needo-display-mode="standalone"] #root {
   min-height: 100dvh;
+  background: var(--needo-pwa-status-bg, #02070c);
 }
 
 button,
@@ -264,11 +271,20 @@ img {
   overflow: hidden;
 }
 
+.needo-pet-sprite-shell.is-idle-motion {
+  height: 158px;
+  overflow: hidden;
+}
+
 .needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell {
   transform: scaleX(-1);
 }
 
 .needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell.is-atlas {
+  transform: none;
+}
+
+.needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell.is-idle-motion {
   transform: none;
 }
 
@@ -288,6 +304,21 @@ img {
 
 .needo-pet-sprite-frame.is-secondary {
   opacity: 0;
+}
+
+.needo-pet-idle-motion-image {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: block;
+  width: 132px;
+  height: 143px;
+  object-fit: contain;
+  object-position: center bottom;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  -webkit-user-select: none;
 }
 
 .needo-pet-atlas-window {
@@ -659,6 +690,69 @@ img {
   font-size: 12px;
   line-height: 1.5;
   padding: 10px;
+}
+
+.needo-pet-free-roam {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--client-line, #dbe5d2) 46%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--client-surface, #ffffff) 70%, transparent);
+  padding: 8px 10px;
+}
+
+.needo-pet-free-roam div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.needo-pet-free-roam span {
+  color: var(--client-muted, #6f7e70);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.needo-pet-free-roam strong {
+  color: var(--client-text, #152116);
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.needo-pet-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 26px;
+  border: 1px solid color-mix(in srgb, var(--client-line, #dbe5d2) 76%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--client-bg, #ffffff) 76%, var(--client-muted, #6f7e70) 24%);
+  padding: 2px;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.needo-pet-switch span {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--client-elevated, #ffffff);
+  box-shadow: 0 2px 6px rgba(16, 24, 20, 0.18);
+  transition: transform 180ms ease;
+}
+
+.needo-pet-switch.is-on {
+  border-color: color-mix(in srgb, var(--client-primary, #67a970) 64%, transparent);
+  background: color-mix(in srgb, var(--client-primary, #67a970) 72%, var(--client-accent, #3f6b4e) 28%);
+}
+
+.needo-pet-switch.is-on span {
+  transform: translateX(18px);
 }
 
 .needo-pet-meters {
@@ -1152,6 +1246,7 @@ img {
   overflow-x: hidden;
   overflow-x: clip;
   --client-bg: #ffffff;
+  --client-top-chrome-bg: #f6fbf8;
   --client-bg-soft: rgba(255, 255, 255, 0.82);
   --client-hero: rgba(255, 255, 255, 0.92);
   --client-surface: rgba(255, 255, 255, 0.7);
@@ -1214,9 +1309,28 @@ img {
   min-height: 100vh;
   overflow-x: hidden;
   overscroll-behavior-x: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   background: #ffffff !important;
   background-size: auto;
   color: var(--client-text);
+}
+
+.client-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 2147483000;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--client-top-chrome-bg, var(--needo-pwa-status-bg, #02070c));
+  pointer-events: none;
+}
+
+.client-shell :where(input, textarea, [contenteditable="true"], [contenteditable=""], [data-im-message-selectable-text="true"], [data-allow-text-selection="true"], .select-text) {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .client-shell.client-mobile-fullscreen-page {
@@ -1230,6 +1344,7 @@ img {
 .client-theme-night {
   --client-edge-mask-rgb: 0 0 0;
   --client-bg: #02070c;
+  --client-top-chrome-bg: #02070c;
   --client-bg-soft: rgba(7, 22, 34, 0.8);
   --client-hero: rgba(9, 27, 41, 0.78);
   --client-surface: rgba(24, 39, 50, 0.84);
@@ -1265,7 +1380,7 @@ img {
   --client-shadow: 0 34px 82px rgba(0, 0, 0, 0.56), 0 0 34px rgba(186, 255, 67, 0.08);
   --client-overlay: rgba(0, 0, 0, 0.74);
   background:
-    linear-gradient(180deg, #071827 0, #071827 33dvh, #06121d 50dvh, #02070c 66dvh, #02070c 100%),
+    linear-gradient(180deg, var(--client-top-chrome-bg) 0, var(--client-top-chrome-bg) 18dvh, #06121d 50dvh, #02070c 66dvh, #02070c 100%),
     radial-gradient(circle at 82% 0%, rgba(90, 132, 162, 0.1), transparent 24rem),
     linear-gradient(122deg, rgba(255, 255, 255, 0.024) 0 1px, transparent 1px 96px),
     var(--client-bg) !important;
@@ -1280,6 +1395,7 @@ img {
 .client-theme-noir-gold {
   --client-theme-name: "black-gold";
   --client-bg: #000000;
+  --client-top-chrome-bg: #000000;
   --client-bg-soft: rgba(20, 20, 20, 0.82);
   --client-hero: rgba(34, 34, 32, 0.72);
   --client-surface: rgba(28, 28, 27, 0.8);
@@ -1329,6 +1445,7 @@ body:has(.client-theme-noir-gold),
 .client-theme-vital-mono {
   --client-theme-name: "vital-mono";
   --client-bg: #f7f7f8;
+  --client-top-chrome-bg: #f7f7f8;
   --client-bg-soft: rgba(255, 255, 255, 0.9);
   --client-hero: rgba(255, 255, 255, 0.94);
   --client-surface: rgba(255, 255, 255, 0.88);
@@ -1383,6 +1500,7 @@ body:has(.client-theme-noir-gold),
 .client-theme-cool-black-gray {
   --client-theme-name: "cool-black-gray";
   --client-bg: #0a0d10;
+  --client-top-chrome-bg: #0a0d10;
   --client-bg-soft: rgba(28, 34, 39, 0.78);
   --client-hero: rgba(31, 37, 42, 0.72);
   --client-surface: rgba(30, 36, 41, 0.74);
@@ -1440,6 +1558,7 @@ body:has(.client-theme-noir-gold),
 .client-theme-lovely-neon {
   --client-theme-name: "neon-pink";
   --client-bg: #080a1a;
+  --client-top-chrome-bg: #080a1a;
   --client-bg-soft: rgba(30, 34, 66, 0.72);
   --client-hero: rgba(42, 45, 86, 0.64);
   --client-surface: rgba(39, 43, 80, 0.62);
@@ -1506,6 +1625,7 @@ body:has(.client-theme-noir-gold),
 .client-theme-light-green,
 .client-theme-jade-light {
   --client-theme-name: "light-green";
+  --client-top-chrome-bg: #f6fbf8;
 }
 
 .client-shell.merchant-analytics-clean-shell {
@@ -6890,6 +7010,12 @@ html.im-conversation-scroll-lock #root {
   touch-action: auto;
 }
 
+.im-conversation-scroll.im-conversation-scroll--text-selecting {
+  overflow-y: hidden !important;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
 [data-im-message-selectable-text="true"] {
   cursor: text;
   user-select: text;
@@ -6899,6 +7025,36 @@ html.im-conversation-scroll-lock #root {
 
 [data-im-message-selected="true"] [data-im-message-bubble="true"] {
   overflow: visible;
+}
+
+[data-im-message-action-sheet="true"],
+[data-im-message-action-sheet="true"] * {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.im-message-selection-handle {
+  position: fixed;
+  z-index: 80;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.96);
+  border-radius: 9999px;
+  background: #2488ff;
+  box-shadow: 0 8px 18px rgba(0, 64, 160, 0.24);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.im-message-selection-handle--start {
+  transform: translate(-50%, -42%);
+}
+
+.im-message-selection-handle--end {
+  transform: translate(-50%, -58%);
 }
 
 .client-shell.business-cps-shell {

@@ -1771,13 +1771,12 @@ export function MerchantPortalPage() {
       showTopEdgeMask={activeView !== "orders"}
     >
       {activeView === "dashboard" ? (
-        <FloatingHomeHeader panelClassName="rounded-none border-black/6 bg-white px-0 pb-0 shadow-[0_14px_32px_rgba(0,0,0,0.08)] backdrop-blur-none">
+        <FloatingHomeHeader panelClassName="rounded-none border-transparent bg-transparent px-0 pb-0 shadow-none backdrop-blur-none">
           <SharedHomeHeader
             avatarAlt={store.name}
             avatarLabel="打开经营数据中心"
             avatarSrc={store.cover}
             avatarTo={merchantPortalConfig.myPath}
-            forceLight
             locationLabel={getMerchantLocationLabel(store)}
             locationTo="/merchant/settings/profile"
             settingsLabel="打开设置中心"

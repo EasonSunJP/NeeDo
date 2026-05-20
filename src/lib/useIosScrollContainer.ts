@@ -45,8 +45,12 @@ export function useDocumentScrollLock(active: boolean, className = "im-conversat
   }, [active, className]);
 }
 
-export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | null>) {
+export function useIosScrollContainer<T extends HTMLElement>(ref: RefObject<T | null>, disabled = false) {
   useEffect(() => {
+    if (disabled) {
+      return undefined;
+    }
+
     const element = ref.current;
 
     if (!element || typeof window === "undefined") {

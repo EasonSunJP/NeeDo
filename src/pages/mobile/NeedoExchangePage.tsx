@@ -1456,10 +1456,9 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
     <MobileShell navItems={getNavItems(context)}>
       <FloatingHomeHeader
         className="relative z-10"
-        panelClassName="relative overflow-hidden border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_92%,transparent),color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_12%))] shadow-[0_18px_40px_rgba(0,0,0,0.1)]"
+        panelClassName="rounded-none border-transparent bg-transparent px-0 pb-0 shadow-none backdrop-blur-none"
       >
         <FeatureSegmentedTabs
-          className="client-feature-segmented-tabs--single-frame"
           items={[
             { label: "全部", value: "all" },
             { label: "需求", value: "demand" },

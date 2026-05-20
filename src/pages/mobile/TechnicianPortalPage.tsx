@@ -3959,13 +3959,12 @@ export function TechnicianPortalPage() {
   return (
     <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"}>
       {activeView === "tasks" ? (
-        <FloatingHomeHeader panelClassName="rounded-none border-black/6 bg-white px-0 pb-0 shadow-[0_14px_32px_rgba(0,0,0,0.08)] backdrop-blur-none">
+        <FloatingHomeHeader panelClassName="rounded-none border-transparent bg-transparent px-0 pb-0 shadow-none backdrop-blur-none">
           <SharedHomeHeader
             avatarAlt={techProfile.nickname}
             avatarLabel="打开我的页面"
             avatarSrc={techProfile.avatar}
             avatarTo="/technician/me"
-            forceLight
             locationLabel={activeOrder?.area ? `东京 · ${activeOrder.area}` : "东京 · 新宿区"}
             locationTo="/technician/settings/service-range"
             settingsLabel="打开技师设置"

@@ -25,7 +25,7 @@ export function FloatingHomeHeader({
             className={cn(
               "safe-header-top rounded-b-[28px] border px-4 pb-3 backdrop-blur-xl",
               dark
-                ? "border-white/10 bg-[linear-gradient(180deg,rgba(11,15,14,0.94),rgba(17,24,23,0.84))] text-white shadow-[0_20px_42px_rgba(0,0,0,0.32)]"
+                ? "border-white/10 bg-[color:var(--client-top-chrome-bg)] text-white shadow-[0_20px_42px_rgba(0,0,0,0.32)]"
                 : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-text)] shadow-[0_18px_40px_rgba(0,0,0,0.1)]",
               panelClassName
             )}

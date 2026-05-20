@@ -33,7 +33,7 @@ import { ShareNetworkIcon } from "../ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "./MobileFullscreenHeader";
 import { MobileChatComposer, type MobileChatComposerAction } from "./MobileChatComposer";
-import { ImMessageActionSheet, hasActiveImMessageTextSelection, type ImMessageActionSheetItem, type ImMessageReactionSummary } from "../../features/im/components";
+import { ImMessageActionSheet, ImMessageSelectionHandles, hasActiveImMessageTextSelection, type ImMessageActionSheetItem, type ImMessageReactionSummary } from "../../features/im/components";
 import { ChatConversationInfoCard } from "./ChatConversationInfoCard";
 import { ContactGroupIcon } from "./ContactGroupIcon";
 import { EntityDetailPage } from "./EntityDetailPage";
@@ -838,10 +838,10 @@ function ChatMessagePressable({
   return (
     <div
       onContextMenu={(event) => {
-        event.preventDefault();
         if (hasActiveImMessageTextSelection(event.currentTarget)) {
           return;
         }
+        event.preventDefault();
         onOpenMenu();
       }}
       onPointerCancel={clearPress}
@@ -1275,7 +1275,7 @@ export function MobileMessageCenter({ context = "user" }: { context?: MessageCen
   }, [context, entityRevision]);
 
   useDocumentScrollLock(isChatOpen);
-  useIosScrollContainer(chatListRef);
+  useIosScrollContainer(chatListRef, Boolean(selectedMessage));
 
   useEffect(() => {
     if (!selectedMessageId) {
@@ -3191,15 +3191,18 @@ export function MobileMessageCenter({ context = "user" }: { context?: MessageCen
                     const { primaryActions, listActions } = getChatMessageActions(selectedMessage);
 
                     return (
-                      <ImMessageActionSheet
-                        actions={primaryActions}
-                        expanded={messageActionExpanded}
-                        isNight={isNight}
-                        listActions={listActions}
-                        onClose={closeMessageActions}
-                        onExpandedChange={setMessageActionExpanded}
-                        onReact={(reaction) => toggleChatMessageReaction(selectedMessage, reaction)}
-                      />
+                      <>
+                        <ImMessageSelectionHandles active messageRoot={chatMessageRefs.current[selectedMessage.id]} />
+                        <ImMessageActionSheet
+                          actions={primaryActions}
+                          expanded={messageActionExpanded}
+                          isNight={isNight}
+                          listActions={listActions}
+                          onClose={closeMessageActions}
+                          onExpandedChange={setMessageActionExpanded}
+                          onReact={(reaction) => toggleChatMessageReaction(selectedMessage, reaction)}
+                        />
+                      </>
                     );
                   })()
                 ) : (

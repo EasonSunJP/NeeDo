@@ -2,11 +2,13 @@ import { useSyncExternalStore } from "react";
 
 export type NeedoPetSettings = {
   enabled: boolean;
+  freeRoam: boolean;
 };
 
 const settingsKey = "needo.digital-pet.settings.v2";
 const defaultSettings: NeedoPetSettings = {
-  enabled: false
+  enabled: false,
+  freeRoam: false
 };
 const listeners = new Set<() => void>();
 let cachedSettings = defaultSettings;
@@ -19,12 +21,13 @@ function readStoredSettings(): NeedoPetSettings {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(settingsKey) ?? "null") as Partial<NeedoPetSettings> | null;
     const nextSettings = {
-      enabled: typeof parsed?.enabled === "boolean" ? parsed.enabled : defaultSettings.enabled
+      enabled: typeof parsed?.enabled === "boolean" ? parsed.enabled : defaultSettings.enabled,
+      freeRoam: typeof parsed?.freeRoam === "boolean" ? parsed.freeRoam : defaultSettings.freeRoam
     };
 
-    return nextSettings.enabled === cachedSettings.enabled ? cachedSettings : nextSettings;
+    return nextSettings.enabled === cachedSettings.enabled && nextSettings.freeRoam === cachedSettings.freeRoam ? cachedSettings : nextSettings;
   } catch {
-    return cachedSettings.enabled === defaultSettings.enabled ? cachedSettings : defaultSettings;
+    return cachedSettings.enabled === defaultSettings.enabled && cachedSettings.freeRoam === defaultSettings.freeRoam ? cachedSettings : defaultSettings;
   }
 }
 
@@ -43,7 +46,7 @@ function writeSettingsSnapshot(settings: NeedoPetSettings) {
 function emitSettingsChange() {
   const nextSettings = readStoredSettings();
 
-  if (nextSettings.enabled === cachedSettings.enabled) {
+  if (nextSettings.enabled === cachedSettings.enabled && nextSettings.freeRoam === cachedSettings.freeRoam) {
     return;
   }
 
@@ -55,6 +58,17 @@ export function setNeedoPetEnabled(enabled: boolean) {
   const nextSettings = {
     ...cachedSettings,
     enabled
+  };
+
+  cachedSettings = nextSettings;
+  writeSettingsSnapshot(nextSettings);
+  listeners.forEach((listener) => listener());
+}
+
+export function setNeedoPetFreeRoam(freeRoam: boolean) {
+  const nextSettings = {
+    ...cachedSettings,
+    freeRoam
   };
 
   cachedSettings = nextSettings;

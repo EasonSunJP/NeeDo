@@ -26,6 +26,11 @@ type ClientThemeState = {
   preferenceMode: ClientThemePreferenceMode;
 };
 
+type ClientPwaThemeColors = {
+  themeColor: string;
+  statusBackground: string;
+};
+
 const ClientThemeContext = createContext<ClientThemeContextValue | null>(null);
 const themeStorageKey = "needo.client.theme";
 const themePreferenceModeStorageKey = "needo.client.theme.mode";
@@ -33,6 +38,32 @@ const systemDarkModeMediaQuery = "(prefers-color-scheme: dark)";
 const defaultDayClientTheme: ClientTheme = "light-green";
 const defaultNightClientTheme: ClientTheme = "dark-green";
 const defaultClientTheme: ClientTheme = defaultDayClientTheme;
+const clientPwaThemeColors: Record<ClientTheme, ClientPwaThemeColors> = {
+  "light-green": {
+    themeColor: "#f6fbf8",
+    statusBackground: "#f6fbf8"
+  },
+  "dark-green": {
+    themeColor: "#02070c",
+    statusBackground: "#02070c"
+  },
+  "black-gold": {
+    themeColor: "#000000",
+    statusBackground: "#000000"
+  },
+  "vital-mono": {
+    themeColor: "#f7f7f8",
+    statusBackground: "#f7f7f8"
+  },
+  "cool-black-gray": {
+    themeColor: "#0a0d10",
+    statusBackground: "#0a0d10"
+  },
+  "neon-pink": {
+    themeColor: "#080a1a",
+    statusBackground: "#080a1a"
+  }
+};
 
 type LegacyMediaQueryList = MediaQueryList & {
   addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
@@ -125,8 +156,38 @@ export function getClientThemeModeClassName(theme: ClientTheme | LegacyClientThe
   return isNightClientTheme(theme) ? "client-theme-night" : "client-theme-day";
 }
 
+export function getClientPwaThemeColors(theme: ClientTheme | LegacyClientTheme | string | null | undefined): ClientPwaThemeColors {
+  return clientPwaThemeColors[normalizeTheme(theme)];
+}
+
 function normalizeThemePreferenceMode(mode: string | null | undefined): ClientThemePreferenceMode {
   return mode === "manual" ? "manual" : "auto";
+}
+
+function syncClientPwaTheme(theme: ClientTheme) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const colors = getClientPwaThemeColors(theme);
+  const root = document.documentElement;
+  const body = document.body;
+  const themeColorMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  const appleStatusBarMeta = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]');
+
+  root.style.setProperty("--needo-pwa-theme-color", colors.themeColor);
+  root.style.setProperty("--needo-pwa-status-bg", colors.statusBackground);
+  root.style.setProperty("--client-top-chrome-bg", colors.statusBackground);
+  root.dataset.needoClientTheme = theme;
+
+  if (body) {
+    body.style.setProperty("--needo-pwa-theme-color", colors.themeColor);
+    body.style.setProperty("--needo-pwa-status-bg", colors.statusBackground);
+    body.style.setProperty("--client-top-chrome-bg", colors.statusBackground);
+  }
+
+  themeColorMeta?.setAttribute("content", colors.themeColor);
+  appleStatusBarMeta?.setAttribute("content", "black-translucent");
 }
 
 export function detectSystemClientTheme(): ClientTheme {
@@ -167,6 +228,10 @@ export function ClientThemeProvider({ children }: { children: ReactNode }) {
     writeBrowserStorage(themeStorageKey, theme, { silent: true });
     writeBrowserStorage(themePreferenceModeStorageKey, preferenceMode, { silent: true });
   }, [preferenceMode, theme]);
+
+  useEffect(() => {
+    syncClientPwaTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function" || preferenceMode !== "auto") {

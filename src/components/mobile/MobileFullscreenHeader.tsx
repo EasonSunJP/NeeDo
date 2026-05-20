@@ -4,10 +4,10 @@ import { AppIcon, floatingHeaderControlButtonClassName } from "../client-ui/AppS
 import { TitleWithInfo } from "../ui/TitleWithInfo";
 
 export const mobileFullscreenHeaderSurfaceClassName =
-  "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,var(--client-surface)_4%)] text-[color:var(--client-text)] shadow-[0_14px_34px_rgba(0,0,0,0.10)]";
+  "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-top-chrome-bg)] text-[color:var(--client-text)] shadow-[0_14px_34px_rgba(0,0,0,0.10)]";
 
 export const mobileFullscreenHeaderDarkSurfaceClassName =
-  "border-white/10 bg-[#050505] text-white shadow-[0_14px_34px_rgba(0,0,0,0.22)]";
+  "border-white/10 bg-[color:var(--client-top-chrome-bg)] text-white shadow-[0_14px_34px_rgba(0,0,0,0.22)]";
 
 export function MobileFullscreenCloseButton({
   onClose,

@@ -42,7 +42,7 @@ export function UnifiedChatHomePage({
       data-role-type={roleType}
     >
       <div className="fixed inset-x-0 top-0 z-40 mx-auto w-full max-w-[880px]">
-        <header className="safe-header-top border-b border-[color:color-mix(in_srgb,var(--client-line)_50%,transparent)] bg-[linear-gradient(90deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),color-mix(in_srgb,var(--client-surface)_72%,var(--client-bg)_28%))] backdrop-blur-xl">
+        <header className="safe-header-top border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,transparent)] backdrop-blur-xl">
           <div className="px-5 pb-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 flex-1">{titleNode}</div>

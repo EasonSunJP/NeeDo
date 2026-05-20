@@ -1425,6 +1425,485 @@ export function hasActiveImMessageTextSelection(root: HTMLElement | null | undef
   return root.contains(selection.anchorNode) || root.contains(selection.focusNode);
 }
 
+type ImSelectionOffsets = {
+  end: number;
+  length: number;
+  start: number;
+};
+
+type ImSelectionHandlePosition = {
+  x: number;
+  y: number;
+};
+
+type ImSelectionHandlePositions = {
+  end: ImSelectionHandlePosition | null;
+  start: ImSelectionHandlePosition | null;
+};
+
+type ImSelectionHandleDrag = {
+  handle: "start" | "end";
+  pointerOffsetX: number;
+  pointerOffsetY: number;
+};
+
+function getImSelectableTextRoot(messageRoot: HTMLElement | null | undefined) {
+  return messageRoot?.querySelector<HTMLElement>("[data-im-message-selectable-text='true']") ?? null;
+}
+
+function getTextLength(root: HTMLElement) {
+  return root.textContent?.length ?? 0;
+}
+
+function getSelectionOffset(root: HTMLElement, node: Node, offset: number) {
+  if (!root.contains(node)) {
+    return null;
+  }
+
+  const range = document.createRange();
+  range.setStart(root, 0);
+
+  try {
+    range.setEnd(node, offset);
+  } catch {
+    return null;
+  }
+
+  return range.toString().length;
+}
+
+function resolveTextOffset(root: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const length = getTextLength(root);
+  let remaining = Math.max(0, Math.min(offset, length));
+  let lastTextNode: Text | null = null;
+
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode as Text;
+    lastTextNode = textNode;
+
+    if (remaining <= textNode.length) {
+      return { node: textNode, offset: remaining };
+    }
+
+    remaining -= textNode.length;
+  }
+
+  return lastTextNode ? { node: lastTextNode, offset: lastTextNode.length } : null;
+}
+
+function getVisibleRangeRects(range: Range) {
+  return Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+}
+
+function getCurrentTextSelectionOffsets(root: HTMLElement): ImSelectionOffsets | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const selection = window.getSelection();
+  const length = getTextLength(root);
+
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed || length === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  const start = getSelectionOffset(root, range.startContainer, range.startOffset);
+  const end = getSelectionOffset(root, range.endContainer, range.endOffset);
+
+  if (start === null || end === null) {
+    return null;
+  }
+
+  return {
+    end: Math.max(0, Math.min(end, length)),
+    length,
+    start: Math.max(0, Math.min(start, length))
+  };
+}
+
+function hasNonCollapsedDocumentSelection() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const selection = window.getSelection();
+  return Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed);
+}
+
+function setTextSelectionOffsets(root: HTMLElement, start: number, end: number) {
+  const length = getTextLength(root);
+  const nextStart = Math.max(0, Math.min(start, Math.max(0, length - 1)));
+  const nextEnd = Math.max(nextStart + 1, Math.min(end, length));
+  const startPoint = resolveTextOffset(root, nextStart);
+  const endPoint = resolveTextOffset(root, nextEnd);
+
+  if (!startPoint || !endPoint) {
+    return;
+  }
+
+  const range = document.createRange();
+  range.setStart(startPoint.node, startPoint.offset);
+  range.setEnd(endPoint.node, endPoint.offset);
+
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+function getTextOffsetFromCharacterRects(root: HTMLElement, clientX: number, clientY: number) {
+  const length = getTextLength(root);
+
+  if (length === 0) {
+    return null;
+  }
+
+  const characters: Array<{ offset: number; rect: DOMRect }> = [];
+
+  for (let index = 0; index < length; index += 1) {
+    const startPoint = resolveTextOffset(root, index);
+    const endPoint = resolveTextOffset(root, index + 1);
+
+    if (!startPoint || !endPoint) {
+      continue;
+    }
+
+    const range = document.createRange();
+    range.setStart(startPoint.node, startPoint.offset);
+    range.setEnd(endPoint.node, endPoint.offset);
+    characters.push(...getVisibleRangeRects(range).map((rect) => ({ offset: index, rect })));
+  }
+
+  if (characters.length === 0) {
+    return null;
+  }
+
+  const verticalDistance = (rect: DOMRect) => {
+    if (clientY < rect.top) {
+      return rect.top - clientY;
+    }
+
+    if (clientY > rect.bottom) {
+      return clientY - rect.bottom;
+    }
+
+    return 0;
+  };
+  const closestDistance = Math.min(...characters.map((item) => verticalDistance(item.rect)));
+  const lineCharacters = characters
+    .filter((item) => Math.abs(verticalDistance(item.rect) - closestDistance) <= 0.5)
+    .sort((left, right) => left.rect.left - right.rect.left || left.offset - right.offset);
+  const firstCharacter = lineCharacters[0];
+  const lastCharacter = lineCharacters[lineCharacters.length - 1];
+
+  if (!firstCharacter || !lastCharacter) {
+    return null;
+  }
+
+  if (clientX <= firstCharacter.rect.left) {
+    return firstCharacter.offset;
+  }
+
+  for (const item of lineCharacters) {
+    const midpoint = item.rect.left + item.rect.width / 2;
+
+    if (clientX < midpoint) {
+      return item.offset;
+    }
+  }
+
+  return Math.min(length, lastCharacter.offset + 1);
+}
+
+function getCaretOffsetFromPoint(root: HTMLElement, clientX: number, clientY: number) {
+  const characterOffset = getTextOffsetFromCharacterRects(root, clientX, clientY);
+
+  if (characterOffset !== null) {
+    return characterOffset;
+  }
+
+  const rect = root.getBoundingClientRect();
+  const safeClientX = Math.max(rect.left + 1, Math.min(clientX, rect.right - 1));
+  const safeClientY = Math.max(rect.top + 1, Math.min(clientY, rect.bottom - 1));
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+  };
+  const caretPosition = doc.caretPositionFromPoint?.(safeClientX, safeClientY);
+
+  if (caretPosition) {
+    const offset = getSelectionOffset(root, caretPosition.offsetNode, caretPosition.offset);
+    if (offset !== null) {
+      return offset;
+    }
+  }
+
+  const caretRange = doc.caretRangeFromPoint?.(safeClientX, safeClientY);
+
+  if (caretRange) {
+    const offset = getSelectionOffset(root, caretRange.startContainer, caretRange.startOffset);
+    if (offset !== null) {
+      return offset;
+    }
+  }
+
+  return null;
+}
+
+function getCaretPosition(root: HTMLElement, offset: number, edge: "start" | "end"): ImSelectionHandlePosition | null {
+  const point = resolveTextOffset(root, offset);
+
+  if (!point) {
+    return null;
+  }
+
+  const range = document.createRange();
+  range.setStart(point.node, point.offset);
+  range.collapse(true);
+  const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+
+  if (rect.width > 0 || rect.height > 0) {
+    return {
+      x: edge === "start" ? rect.left : rect.right,
+      y: edge === "start" ? rect.top : rect.bottom
+    };
+  }
+
+  const fallbackStart = Math.max(0, offset - 1);
+  const fallbackEnd = Math.min(getTextLength(root), Math.max(offset + 1, 1));
+  const fallbackStartPoint = resolveTextOffset(root, fallbackStart);
+  const fallbackEndPoint = resolveTextOffset(root, fallbackEnd);
+
+  if (!fallbackStartPoint || !fallbackEndPoint) {
+    return null;
+  }
+
+  const fallbackRange = document.createRange();
+  fallbackRange.setStart(fallbackStartPoint.node, fallbackStartPoint.offset);
+  fallbackRange.setEnd(fallbackEndPoint.node, fallbackEndPoint.offset);
+  const fallbackRect = fallbackRange.getClientRects()[0] ?? fallbackRange.getBoundingClientRect();
+
+  return {
+    x: edge === "start" ? fallbackRect.left : fallbackRect.right,
+    y: edge === "start" ? fallbackRect.top : fallbackRect.bottom
+  };
+}
+
+function getSelectionHandlePositions(root: HTMLElement): ImSelectionHandlePositions {
+  const selection = window.getSelection();
+
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return { end: null, start: null };
+  }
+
+  const range = selection.getRangeAt(0);
+
+  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
+    return { end: null, start: null };
+  }
+
+  const rects = getVisibleRangeRects(range);
+
+  if (rects.length > 0) {
+    const startRect = rects[0];
+    const endRect = rects[rects.length - 1];
+
+    return {
+      end: { x: endRect.right, y: endRect.bottom },
+      start: { x: startRect.left, y: startRect.top }
+    };
+  }
+
+  const offsets = getCurrentTextSelectionOffsets(root);
+
+  if (!offsets) {
+    return { end: null, start: null };
+  }
+
+  return {
+    end: getCaretPosition(root, offsets.end, "end"),
+    start: getCaretPosition(root, offsets.start, "start")
+  };
+}
+
+export function ImMessageSelectionHandles({
+  active,
+  messageRoot
+}: {
+  active: boolean;
+  messageRoot: HTMLElement | null | undefined;
+}) {
+  const [positions, setPositions] = useState<ImSelectionHandlePositions>({ end: null, start: null });
+  const dragRef = useRef<ImSelectionHandleDrag | null>(null);
+  const lastOffsetsRef = useRef<ImSelectionOffsets | null>(null);
+
+  useEffect(() => {
+    const textRoot = active ? getImSelectableTextRoot(messageRoot) : null;
+
+    if (!textRoot || typeof window === "undefined") {
+      setPositions({ end: null, start: null });
+      lastOffsetsRef.current = null;
+      return undefined;
+    }
+
+    const updatePositions = () => {
+      const offsets = getCurrentTextSelectionOffsets(textRoot);
+
+      if (!offsets) {
+        if ((dragRef.current || hasNonCollapsedDocumentSelection()) && lastOffsetsRef.current) {
+          setTextSelectionOffsets(textRoot, lastOffsetsRef.current.start, lastOffsetsRef.current.end);
+          setPositions(getSelectionHandlePositions(textRoot));
+          return;
+        }
+
+        setPositions({ end: null, start: null });
+        return;
+      }
+
+      lastOffsetsRef.current = offsets;
+      setPositions(getSelectionHandlePositions(textRoot));
+    };
+
+    const frame = window.requestAnimationFrame(updatePositions);
+    document.addEventListener("selectionchange", updatePositions);
+    window.addEventListener("resize", updatePositions);
+    window.addEventListener("scroll", updatePositions, true);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("selectionchange", updatePositions);
+      window.removeEventListener("resize", updatePositions);
+      window.removeEventListener("scroll", updatePositions, true);
+    };
+  }, [active, messageRoot]);
+
+  const restoreLastSelection = (textRoot: HTMLElement | null) => {
+    const offsets = lastOffsetsRef.current;
+
+    if (!textRoot || !offsets) {
+      return;
+    }
+
+    if (!getCurrentTextSelectionOffsets(textRoot)) {
+      setTextSelectionOffsets(textRoot, offsets.start, offsets.end);
+    }
+
+    setPositions(getSelectionHandlePositions(textRoot));
+  };
+
+  const startHandleDrag = (handle: "start" | "end", event: ReactPointerEvent<HTMLButtonElement>) => {
+    const textRoot = getImSelectableTextRoot(messageRoot);
+    const handlePosition = handle === "start" ? positions.start : positions.end;
+
+    if (!textRoot || !handlePosition) {
+      return;
+    }
+
+    dragRef.current = {
+      handle,
+      pointerOffsetX: event.clientX - handlePosition.x,
+      pointerOffsetY: event.clientY - handlePosition.y
+    };
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Some mobile WebViews expose pointer events without reliable capture.
+    }
+
+    const moveSelectionHandle = (nativeEvent: PointerEvent) => {
+      const drag = dragRef.current;
+
+      if (!drag || drag.handle !== handle) {
+        return;
+      }
+
+      const offsets = getCurrentTextSelectionOffsets(textRoot);
+      const nextOffset = getCaretOffsetFromPoint(
+        textRoot,
+        nativeEvent.clientX - drag.pointerOffsetX,
+        nativeEvent.clientY - drag.pointerOffsetY
+      );
+
+      if (!offsets || nextOffset === null) {
+        return;
+      }
+
+      if (nativeEvent.cancelable) {
+        nativeEvent.preventDefault();
+      }
+
+      nativeEvent.stopPropagation();
+
+      if (handle === "start") {
+        setTextSelectionOffsets(textRoot, Math.min(nextOffset, offsets.end - 1), offsets.end);
+      } else {
+        setTextSelectionOffsets(textRoot, offsets.start, Math.max(nextOffset, offsets.start + 1));
+      }
+
+      lastOffsetsRef.current = getCurrentTextSelectionOffsets(textRoot) ?? lastOffsetsRef.current;
+      setPositions(getSelectionHandlePositions(textRoot));
+    };
+
+    const endSelectionHandleDrag = (nativeEvent?: PointerEvent) => {
+      if (nativeEvent?.cancelable) {
+        nativeEvent.preventDefault();
+      }
+
+      nativeEvent?.stopPropagation();
+      dragRef.current = null;
+      window.removeEventListener("pointermove", moveSelectionHandle, { capture: true });
+      window.removeEventListener("pointerup", endSelectionHandleDrag, { capture: true });
+      window.removeEventListener("pointercancel", endSelectionHandleDrag, { capture: true });
+      window.requestAnimationFrame(() => restoreLastSelection(textRoot));
+    };
+
+    window.addEventListener("pointermove", moveSelectionHandle, { capture: true, passive: false });
+    window.addEventListener("pointerup", endSelectionHandleDrag, { capture: true });
+    window.addEventListener("pointercancel", endSelectionHandleDrag, { capture: true });
+  };
+
+  if (!active || !positions.start || !positions.end) {
+    return null;
+  }
+
+  const keepSelectionOnHandleEvent = (event: ReactPointerEvent<HTMLButtonElement> | ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.requestAnimationFrame(() => restoreLastSelection(getImSelectableTextRoot(messageRoot)));
+  };
+
+  return (
+    <>
+      <button
+        aria-label="调整选区起点"
+        className="im-message-selection-handle im-message-selection-handle--start"
+        onClick={keepSelectionOnHandleEvent}
+        onFocus={(event) => event.currentTarget.blur()}
+        onPointerDown={(event) => startHandleDrag("start", event)}
+        onPointerUp={keepSelectionOnHandleEvent}
+        style={{ left: positions.start.x, top: positions.start.y }}
+        tabIndex={-1}
+        type="button"
+      />
+      <button
+        aria-label="调整选区终点"
+        className="im-message-selection-handle im-message-selection-handle--end"
+        onClick={keepSelectionOnHandleEvent}
+        onFocus={(event) => event.currentTarget.blur()}
+        onPointerDown={(event) => startHandleDrag("end", event)}
+        onPointerUp={keepSelectionOnHandleEvent}
+        style={{ left: positions.end.x, top: positions.end.y }}
+        tabIndex={-1}
+        type="button"
+      />
+    </>
+  );
+}
+
 const imQuickReactions = ["OK", "😂", "🤣", "👍", "🥹", "😭"];
 const imDefaultReactions = [
   "OK", "👍", "🙏", "💪", "🫰", "👏", "🙌", "+1",

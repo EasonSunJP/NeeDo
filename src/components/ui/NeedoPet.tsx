@@ -7,7 +7,7 @@ import { useSocial } from "../../features/social/context";
 import type { SocialPortalScope } from "../../features/social/types";
 import { useI18n } from "../../i18n/I18nProvider";
 import { cn } from "../../lib/utils";
-import { setNeedoPetEnabled, useNeedoPetSettings } from "../../state/needoPetSettings";
+import { setNeedoPetEnabled, setNeedoPetFreeRoam, useNeedoPetSettings } from "../../state/needoPetSettings";
 import { NotificationBadge } from "./NotificationBadge";
 
 type PetCareState = {
@@ -94,7 +94,7 @@ const bubbleCompactWidth = 252;
 const bubbleMaxHeight = 144;
 const panelPreferredWidth = 282;
 const panelCompactWidth = 300;
-const panelEstimatedHeight = 470;
+const panelEstimatedHeight = 522;
 const panelMaxHeight = 560;
 const initialCare: PetCareState = {
   alive: true,
@@ -540,6 +540,11 @@ const petSpriteSrc: Record<PetSpriteKey, string> = {
 };
 
 const xiaobaiAtlasSrc = "/images/needo-pet/needo-xiaobai-spritesheet.webp";
+const xiaobaiIdleClips = [
+  { durationMs: 6_600, src: "/images/needo-pet/xiao-bai-idle-question-cheer.png" },
+  { durationMs: 3_600, src: "/images/needo-pet/xiao-bai-idle-sparkle.png" },
+  { durationMs: 6_600, src: "/images/needo-pet/xiao-bai-idle-heart-thanks.png" }
+] as const;
 const xiaobaiAtlasRows: Partial<Record<PetSpriteKey, number>> = {
   angry: 5,
   failed: 5,
@@ -575,7 +580,39 @@ function getSecondaryPetSprite(sprite: PetSpriteKey): PetSpriteKey | null {
   return null;
 }
 
+function getNextIdleClipIndex(currentIndex: number) {
+  if (xiaobaiIdleClips.length <= 1) {
+    return 0;
+  }
+
+  const offset = 1 + Math.floor(Math.random() * (xiaobaiIdleClips.length - 1));
+  return (currentIndex + offset) % xiaobaiIdleClips.length;
+}
+
+function NeedoPetIdleMotion() {
+  const [clipIndex, setClipIndex] = useState(0);
+  const clip = xiaobaiIdleClips[clipIndex] ?? xiaobaiIdleClips[0];
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setClipIndex((current) => getNextIdleClipIndex(current));
+    }, clip.durationMs);
+
+    return () => window.clearTimeout(timer);
+  }, [clip.durationMs, clip.src]);
+
+  return (
+    <span className="needo-pet-sprite-shell is-idle-motion" data-sprite="idle">
+      <img key={clip.src} alt="" className="needo-pet-idle-motion-image" draggable={false} src={clip.src} />
+    </span>
+  );
+}
+
 function NeedoPetSprite({ facing, sprite }: { facing: PetFacing; sprite: PetSpriteKey }) {
+  if (sprite === "idle") {
+    return <NeedoPetIdleMotion />;
+  }
+
   const atlasRow = sprite === "running" && facing === "left" ? 2 : xiaobaiAtlasRows[sprite];
 
   if (typeof atlasRow === "number") {
@@ -786,6 +823,12 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const bubblePlacement = bubbleVisible ? getBubblePlacement(positionRef.current, motion.facing) : null;
   const panelPlacement = panelOpen ? getPanelPlacement(positionRef.current, motion.facing) : null;
   const goodbyeLabel = language === "ja" ? "バイバイ" : language === "en" ? "Bye" : language === "ko" ? "안녕" : language === "zh-Hant" ? "再見" : "再见";
+  const panelSummaryText =
+    totalReminderCount > 0
+      ? `当前有 ${totalReminderCount} 条提醒，我会用气泡帮你归纳。`
+      : petSettings.freeRoam
+        ? "当前没有未读提醒，我会继续在界面上自由巡游。"
+        : "当前没有未读提醒，我会在固定位置待机。";
 
   useEffect(() => {
     persistCareState(care);
@@ -895,7 +938,11 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
           mode = "rest";
           velocity.x *= 0.94;
           velocity.y *= 0.94;
-        } else if (!idleEnough && !manualHold) {
+        } else if (manualHold) {
+          mode = "rest";
+          velocity.x *= 0.86;
+          velocity.y *= 0.86;
+        } else if (!petSettings.freeRoam || !idleEnough) {
           const anchor = getAnchorPosition();
           anchorTarget = anchor;
           mode = "anchor";
@@ -904,10 +951,6 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
           velocity.y *= 0.78;
           position.x += (anchor.x - position.x) * 0.085;
           position.y += (anchor.y - position.y) * 0.085;
-        } else if (manualHold) {
-          mode = "rest";
-          velocity.x *= 0.86;
-          velocity.y *= 0.86;
         } else {
           mode = "roam";
 
@@ -983,7 +1026,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       window.removeEventListener("beforeunload", persist);
       persist();
     };
-  }, [care.alive, isAuthenticated, panelOpen, petDisabled]);
+  }, [care.alive, isAuthenticated, panelOpen, petDisabled, petSettings.freeRoam]);
 
   if (petDisabled || !isAuthenticated || location.pathname.startsWith("/login")) {
     return null;
@@ -1038,7 +1081,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
         hunger: clamp(current.hunger - 7),
         hygiene: clamp(current.hygiene - 4)
       }),
-      "玩得很开心。我会继续在屏幕上自由活动。"
+      "玩得很开心。心情恢复了。"
     );
   };
 
@@ -1074,6 +1117,10 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
     setPanelOpen(false);
     setBubble(null);
     setNeedoPetEnabled(false);
+  };
+
+  const toggleFreeRoam = () => {
+    setNeedoPetFreeRoam(!petSettings.freeRoam);
   };
 
   const openBubbleAction = () => {
@@ -1243,8 +1290,22 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
               ×
             </button>
           </div>
-          <div className="needo-pet-panel-summary">
-            {totalReminderCount > 0 ? `当前有 ${totalReminderCount} 条提醒，我会用气泡帮你归纳。` : "当前没有未读提醒，我会继续在界面上自由巡游。"}
+          <div className="needo-pet-panel-summary">{panelSummaryText}</div>
+          <div className="needo-pet-free-roam">
+            <div>
+              <span>自由活动</span>
+              <strong>{petSettings.freeRoam ? "开启" : "关闭"}</strong>
+            </div>
+            <button
+              aria-checked={petSettings.freeRoam}
+              aria-label="自由活动"
+              className={cn("needo-pet-switch", petSettings.freeRoam && "is-on")}
+              onClick={toggleFreeRoam}
+              role="switch"
+              type="button"
+            >
+              <span />
+            </button>
           </div>
           <div className="needo-pet-meters">
             <CareMeter label="饱腹" value={care.hunger} />
