@@ -208,6 +208,25 @@ img {
 .needo-pet-layer {
   --needo-pet-x: calc(100vw - 156px);
   --needo-pet-y: 58vh;
+  --client-bg: #ffffff;
+  --client-surface: rgba(255, 255, 255, 0.7);
+  --client-elevated: rgba(255, 255, 255, 0.84);
+  --client-line: rgba(22, 54, 48, 0.12);
+  --client-text: #163630;
+  --client-muted: rgba(22, 54, 48, 0.68);
+  --client-primary: #367a71;
+  --client-primary-strong: #245a53;
+  --client-primary-soft: rgba(54, 122, 113, 0.14);
+  --client-needo-text: #f8fffc;
+  --client-primary-contrast: var(--client-needo-text);
+  --client-accent: #df5b52;
+  --client-warning: #f3c84c;
+  --client-warning-soft: rgba(243, 200, 76, 0.18);
+  --needo-compose-button-bg: var(--client-primary);
+  --needo-compose-button-fg: var(--client-needo-text);
+  --needo-compose-button-border: color-mix(in srgb, var(--client-primary) 34%, transparent);
+  --needo-compose-button-shadow: 0 18px 36px color-mix(in srgb, var(--client-primary) 28%, transparent);
+  --client-shadow: 0 24px 58px rgba(21, 57, 51, 0.14);
   position: fixed;
   left: 0;
   top: 0;
@@ -487,31 +506,45 @@ img {
 
 .needo-pet-count {
   position: absolute;
-  right: 12px;
-  top: 24px;
+  right: -10px;
+  top: -24px;
+  z-index: 4;
+  pointer-events: none;
+  box-shadow: 0 8px 18px rgba(255, 76, 68, 0.34);
 }
 
 .needo-pet-bubble {
+  --needo-pet-bubble-tint: var(--client-primary, #367a71);
   position: absolute;
   box-sizing: border-box;
   top: var(--needo-pet-bubble-y, -84px);
   left: var(--needo-pet-bubble-x, 104px);
   width: var(--needo-pet-bubble-width, min(268px, calc(100vw - 28px)));
-  max-height: var(--needo-pet-bubble-max-height, 144px);
-  overflow: auto;
-  border: 1px solid color-mix(in srgb, var(--client-line, #dbe5d2) 82%, transparent);
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--client-elevated, var(--client-surface, #ffffff)) 92%, transparent);
-  box-shadow: 0 18px 44px rgba(10, 14, 22, 0.24);
+  max-height: var(--needo-pet-bubble-max-height, 220px);
+  overflow: hidden;
+  scrollbar-width: none;
+  border: 1px solid color-mix(in srgb, var(--needo-pet-bubble-tint) 36%, var(--client-line, #dbe5d2));
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--client-elevated, var(--client-surface, #ffffff)) 92%, var(--needo-pet-bubble-tint) 8%),
+      color-mix(in srgb, var(--client-surface, #ffffff) 86%, var(--client-bg, #ffffff) 14%)
+    );
+  box-shadow: var(--client-shadow, 0 18px 44px rgba(10, 14, 22, 0.24)), 0 0 0 1px color-mix(in srgb, var(--needo-pet-bubble-tint) 14%, transparent);
   color: var(--client-text, #152116);
   display: grid;
-  gap: 6px;
-  padding: 13px 34px 13px 14px;
+  gap: 8px;
+  padding: 13px 34px 14px 14px;
   pointer-events: auto;
   transform-origin: var(--needo-pet-bubble-origin-x, 20px) 100%;
   animation: needo-pet-pop 180ms ease-out both;
   -webkit-backdrop-filter: blur(18px) saturate(1.1);
   backdrop-filter: blur(18px) saturate(1.1);
+}
+
+.needo-pet-bubble::-webkit-scrollbar {
+  display: none;
 }
 
 .needo-pet-layer[data-facing="left"] .needo-pet-bubble {
@@ -538,26 +571,77 @@ img {
   right: auto;
 }
 
-.needo-pet-bubble strong {
-  font-size: 13px;
-  line-height: 1.25;
-}
-
-.needo-pet-bubble span {
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .needo-pet-bubble.is-notice {
-  border-color: color-mix(in srgb, var(--client-primary, #47a058) 58%, var(--client-line, #dbe5d2));
+  --needo-pet-bubble-tint: var(--client-primary, #47a058);
 }
 
 .needo-pet-bubble.is-care {
-  border-color: color-mix(in srgb, #e0b84f 58%, var(--client-line, #dbe5d2));
+  --needo-pet-bubble-tint: var(--client-warning, #e0b84f);
 }
 
 .needo-pet-bubble.is-danger {
-  border-color: color-mix(in srgb, #e74f4f 62%, var(--client-line, #dbe5d2));
+  --needo-pet-bubble-tint: #e74f4f;
+}
+
+.needo-pet-bubble.is-happy {
+  --needo-pet-bubble-tint: var(--client-primary, #47a058);
+}
+
+.needo-pet-bubble-title {
+  position: relative;
+  z-index: 1;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.22;
+  color: var(--client-text, #152116);
+}
+
+.needo-pet-bubble-body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.needo-pet-bubble-summary,
+.needo-pet-bubble-info,
+.needo-pet-bubble-copy {
+  margin: 0;
+  color: var(--client-muted, rgba(21, 33, 22, 0.68));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.needo-pet-bubble-info {
+  border-left: 2px solid color-mix(in srgb, var(--needo-pet-bubble-tint) 76%, transparent);
+  padding-left: 8px;
+}
+
+.needo-pet-bubble-highlight,
+.needo-pet-bubble-separator {
+  display: inline;
+}
+
+.needo-pet-bubble-emphasis {
+  color: var(--client-primary-strong, var(--client-primary, #367a71));
+  font-weight: 950;
+  background: linear-gradient(
+    180deg,
+    transparent 57%,
+    color-mix(in srgb, var(--needo-pet-bubble-tint) 26%, transparent) 57%
+  );
+  padding: 0 1px;
+}
+
+.needo-pet-bubble-emphasis.is-number {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1.05;
+  margin-right: 2px;
+  vertical-align: -0.08em;
 }
 
 .needo-pet-bubble-close {
@@ -570,23 +654,28 @@ img {
   place-items: center;
   border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--client-line, #dbe5d2) 44%, transparent);
+  background: color-mix(in srgb, var(--client-line, #dbe5d2) 52%, var(--client-elevated, #ffffff));
   color: inherit;
   font-size: 14px;
   line-height: 1;
+  z-index: 2;
 }
 
 .needo-pet-bubble-action {
+  position: relative;
+  z-index: 1;
   width: fit-content;
   min-width: 56px;
-  border: 0;
+  min-height: 36px;
+  border: 1px solid var(--needo-compose-button-border, color-mix(in srgb, var(--client-primary, #3f6b4e) 30%, transparent));
   border-radius: 999px;
-  background: var(--client-primary, var(--client-accent, #3f6b4e));
-  color: var(--client-primary-contrast, var(--client-accent-contrast, #ffffff));
-  font-size: 12px;
-  font-weight: 800;
+  background: var(--needo-compose-button-bg, var(--client-primary, var(--client-accent, #3f6b4e)));
+  box-shadow: var(--needo-compose-button-shadow, 0 12px 24px color-mix(in srgb, var(--client-primary, #3f6b4e) 18%, transparent));
+  color: var(--needo-compose-button-fg, var(--client-primary-contrast, var(--client-needo-text, #ffffff)));
+  font-size: 13px;
+  font-weight: 950;
   line-height: 1;
-  padding: 8px 12px;
+  padding: 9px 16px;
 }
 
 .needo-pet-panel {
@@ -1339,6 +1428,54 @@ img {
   height: 100dvh;
   min-height: 100dvh;
   overflow: hidden;
+}
+
+.needo-login-logo {
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--client-primary) 76%, #ffffff 6%, #000000 18%),
+      color-mix(in srgb, var(--client-primary) 62%, #000000 38%) 58%,
+      color-mix(in srgb, var(--client-primary-strong) 58%, #000000 42%)
+    );
+  border: 1px solid color-mix(in srgb, var(--client-primary) 38%, var(--client-bg) 62%);
+}
+
+.needo-login-logo__mark {
+  display: block;
+}
+
+.client-theme-light-green .needo-login-logo,
+.client-theme-jade-light .needo-login-logo {
+  background: linear-gradient(145deg, #4a968b 0%, #367a71 54%, #214b45 100%);
+  border-color: rgba(54, 122, 113, 0.32);
+}
+
+.client-theme-dark-green .needo-login-logo {
+  background: linear-gradient(145deg, #77ba24 0%, #4f9324 54%, #1f5d36 100%);
+  border-color: rgba(186, 255, 67, 0.42);
+}
+
+.client-theme-black-gold .needo-login-logo,
+.client-theme-noir-gold .needo-login-logo {
+  background: linear-gradient(145deg, #bc8f3d 0%, #75541c 56%, #322312 100%);
+  border-color: rgba(254, 222, 160, 0.42);
+}
+
+.client-theme-vital-mono .needo-login-logo {
+  background: linear-gradient(145deg, #3f4042 0%, #202124 58%, #070708 100%);
+  border-color: rgba(32, 33, 36, 0.28);
+}
+
+.client-theme-cool-black-gray .needo-login-logo {
+  background: linear-gradient(145deg, #1aa9be 0%, #0e6f83 54%, #08303a 100%);
+  border-color: rgba(24, 210, 240, 0.42);
+}
+
+.client-theme-neon-pink .needo-login-logo,
+.client-theme-lovely-neon .needo-login-logo {
+  background: linear-gradient(145deg, #ad65e9 0%, #7556dd 54%, #243d82 100%);
+  border-color: rgba(255, 111, 174, 0.44);
 }
 
 .client-theme-night {

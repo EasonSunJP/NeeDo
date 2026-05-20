@@ -469,11 +469,11 @@ function getPetAnimationState({
     return "failed";
   }
 
-  if (expression === "notice") {
-    return "waving";
+  if (panelOpen || mode === "anchor" || mode === "rest") {
+    return "idle";
   }
 
-  if (panelOpen || mode === "anchor" || mode === "rest") {
+  if (expression === "notice") {
     return "idle";
   }
 
@@ -499,6 +499,10 @@ function getPetSpriteKey({
     return "failed";
   }
 
+  if (panelOpen || mode === "anchor" || mode === "rest" || expression === "notice") {
+    return "idle";
+  }
+
   if (mode === "roam") {
     return "running";
   }
@@ -511,92 +515,40 @@ function getPetSpriteKey({
     return "waiting";
   }
 
-  if (care.hunger < 26) {
-    return "hungry";
-  }
-
-  if (care.hygiene < 24) {
-    return "angry";
-  }
-
-  if (care.energy < 26 || expression === "tired") {
-    return "sleeping";
-  }
-
-  if (expression === "notice") {
-    return "notice";
-  }
-
-  if (panelOpen) {
-    return "phone";
-  }
-
-  if (care.fun > 86) {
-    return "happy";
-  }
-
-  if (expression === "sad") {
-    return "failed";
-  }
-
   return "idle";
 }
 
-const petSpriteSrc: Record<PetSpriteKey, string> = {
-  angry: "/images/needo-pet/xiao-bai-angry.png",
-  failed: "/images/needo-pet/xiao-bai-failed.png",
-  happy: "/images/needo-pet/xiao-bai-happy.png",
-  hungry: "/images/needo-pet/xiao-bai-hungry.png",
-  idle: "/images/needo-pet/xiao-bai-idle.png",
-  jumping: "/images/needo-pet/xiao-bai-jumping.png",
-  notice: "/images/needo-pet/xiao-bai-notice.png",
-  phone: "/images/needo-pet/xiao-bai-phone.png",
-  running: "/images/needo-pet/xiao-bai-running.png",
-  sleeping: "/images/needo-pet/xiao-bai-sleeping.png",
-  waiting: "/images/needo-pet/xiao-bai-waiting.png",
-  waving: "/images/needo-pet/xiao-bai-waving.png"
-};
+const xiaobaiPetAssetVersion = "20260521b";
 
-const xiaobaiAtlasSrc = "/images/needo-pet/needo-xiaobai-spritesheet.webp";
-const xiaobaiIdleClips = [
-  { durationMs: 6_600, src: "/images/needo-pet/xiao-bai-idle-question-cheer.png" },
-  { durationMs: 3_600, src: "/images/needo-pet/xiao-bai-idle-sparkle.png" },
-  { durationMs: 6_600, src: "/images/needo-pet/xiao-bai-idle-heart-thanks.png" }
-] as const;
-const xiaobaiAtlasRows: Partial<Record<PetSpriteKey, number>> = {
-  angry: 5,
-  failed: 5,
-  happy: 3,
-  hungry: 6,
-  idle: 0,
-  jumping: 4,
-  notice: 3,
-  phone: 8,
-  running: 1,
-  sleeping: 0,
-  waiting: 6,
-  waving: 3
-};
-
-function getSecondaryPetSprite(sprite: PetSpriteKey): PetSpriteKey | null {
-  if (sprite === "running") {
-    return "jumping";
-  }
-
-  if (sprite === "idle") {
-    return "happy";
-  }
-
-  if (sprite === "notice") {
-    return "waving";
-  }
-
-  if (sprite === "hungry") {
-    return "waiting";
-  }
-
-  return null;
+function getVersionedPetAsset(src: string) {
+  return `${src}?v=${xiaobaiPetAssetVersion}`;
 }
+
+const petSpriteSrc: Record<PetSpriteKey, string> = {
+  angry: getVersionedPetAsset("/images/needo-pet/xiao-bai-angry.png"),
+  failed: getVersionedPetAsset("/images/needo-pet/xiao-bai-failed.png"),
+  happy: getVersionedPetAsset("/images/needo-pet/xiao-bai-happy.png"),
+  hungry: getVersionedPetAsset("/images/needo-pet/xiao-bai-hungry.png"),
+  idle: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle.png"),
+  jumping: getVersionedPetAsset("/images/needo-pet/xiao-bai-jumping.png"),
+  notice: getVersionedPetAsset("/images/needo-pet/xiao-bai-notice.png"),
+  phone: getVersionedPetAsset("/images/needo-pet/xiao-bai-phone.png"),
+  running: getVersionedPetAsset("/images/needo-pet/xiao-bai-running.png"),
+  sleeping: getVersionedPetAsset("/images/needo-pet/xiao-bai-sleeping.png"),
+  waiting: getVersionedPetAsset("/images/needo-pet/xiao-bai-waiting.png"),
+  waving: getVersionedPetAsset("/images/needo-pet/xiao-bai-waving.png")
+};
+
+const xiaobaiIdleClips = [
+  { durationMs: 6_600, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-question-cheer.png") },
+  { durationMs: 3_600, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-sparkle.png") },
+  { durationMs: 6_600, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-heart-thanks.png") },
+  { durationMs: 4_950, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-angry.png") },
+  { durationMs: 5_850, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-sad.png") },
+  { durationMs: 5_200, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-sleepy.png") },
+  { durationMs: 6_350, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-excited.png") },
+  { durationMs: 5_000, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-thinking.png") }
+] as const;
 
 function getNextIdleClipIndex(currentIndex: number) {
   if (xiaobaiIdleClips.length <= 1) {
@@ -608,7 +560,7 @@ function getNextIdleClipIndex(currentIndex: number) {
 }
 
 function NeedoPetIdleMotion() {
-  const [clipIndex, setClipIndex] = useState(0);
+  const [clipIndex, setClipIndex] = useState(() => Math.floor(Math.random() * xiaobaiIdleClips.length));
   const clip = xiaobaiIdleClips[clipIndex] ?? xiaobaiIdleClips[0];
 
   useEffect(() => {
@@ -626,34 +578,14 @@ function NeedoPetIdleMotion() {
   );
 }
 
-function NeedoPetSprite({ facing, sprite }: { facing: PetFacing; sprite: PetSpriteKey }) {
+function NeedoPetSprite({ sprite }: { sprite: PetSpriteKey }) {
   if (sprite === "idle") {
     return <NeedoPetIdleMotion />;
   }
 
-  const atlasRow = sprite === "running" && facing === "left" ? 2 : xiaobaiAtlasRows[sprite];
-
-  if (typeof atlasRow === "number") {
-    const atlasStyle = {
-      "--needo-pet-atlas-row": atlasRow,
-      "--needo-pet-atlas-src": `url("${xiaobaiAtlasSrc}")`
-    } as CSSProperties;
-
-    return (
-      <span className="needo-pet-sprite-shell is-atlas" data-sprite={sprite} style={atlasStyle}>
-        <span className="needo-pet-atlas-window">
-          <span aria-hidden="true" className="needo-pet-atlas-image" />
-        </span>
-      </span>
-    );
-  }
-
-  const secondarySprite = getSecondaryPetSprite(sprite);
-
   return (
     <span className="needo-pet-sprite-shell" data-sprite={sprite}>
-      <img alt="" className="needo-pet-sprite-frame is-primary" draggable={false} src={petSpriteSrc[sprite]} />
-      {secondarySprite ? <img alt="" className="needo-pet-sprite-frame is-secondary" draggable={false} src={petSpriteSrc[secondarySprite]} /> : null}
+      <img alt="" className="needo-pet-sprite-frame" draggable={false} src={petSpriteSrc[sprite]} />
     </span>
   );
 }
@@ -738,6 +670,33 @@ function NeedoPetMascot({ expression }: { expression: PetExpression }) {
   );
 }
 
+function NeedoPetBubbleBody({ bubble }: { bubble: PetBubble }) {
+  const highlights = bubble.highlights ?? [];
+
+  return (
+    <div className="needo-pet-bubble-body">
+      {highlights.length > 0 ? (
+        <p className="needo-pet-bubble-summary">
+          {highlights.map((item, index) => (
+            <span className="needo-pet-bubble-highlight" key={item.id}>
+              {index > 0 ? <span className="needo-pet-bubble-separator">，</span> : null}
+              <strong className="needo-pet-bubble-emphasis is-number">{item.value}</strong>
+              <span>{item.label}</span>
+            </span>
+          ))}
+        </p>
+      ) : null}
+      {bubble.infoTitle ? (
+        <p className="needo-pet-bubble-info">
+          <span>最新情报：</span>
+          <strong className="needo-pet-bubble-emphasis">{bubble.infoTitle}</strong>
+        </p>
+      ) : null}
+      {bubble.text ? <p className="needo-pet-bubble-copy">{bubble.text}</p> : null}
+    </div>
+  );
+}
+
 function CareMeter({ label, value }: { label: string; value: number }) {
   return (
     <div className="needo-pet-meter">
@@ -755,6 +714,7 @@ function CareMeter({ label, value }: { label: string; value: number }) {
 export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const { isAuthenticated, session } = useAuth();
   const { language } = useI18n();
+  const { theme } = useClientTheme();
   const petSettings = useNeedoPetSettings();
   const location = useLocation();
   const navigate = useNavigate();
@@ -763,6 +723,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const imRole = clientRole ?? "user";
   const imStore = useImStore(imRole);
   const [care, setCare] = useState<PetCareState>(() => readCareState());
+  const [externalInfoPosts, setExternalInfoPosts] = useState<NeedoExternalInfoPost[]>(() => readNeedoExternalInfoPosts());
   const [panelOpen, setPanelOpen] = useState(false);
   const [bubble, setBubble] = useState<PetBubble | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -826,15 +787,13 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
 
     return items
       .filter((item) => item.count > 0)
-      .map((item) => ({
-        ...item,
-        label: `${item.count} 条${item.label}`
-      }));
+      .map((item) => ({ ...item }));
   }, [clientRole, imStore.conversations, imStore.friendRequests, social]);
 
+  const latestExternalInfoTitle = useMemo(() => getLatestExternalInfoTitle(externalInfoPosts), [externalInfoPosts]);
   const totalReminderCount = reminders.reduce((sum, item) => sum + item.count, 0);
   const primaryReminder = reminders[0];
-  const expression = getCareExpression(care, totalReminderCount > 0);
+  const expression = getCareExpression(care, totalReminderCount > 0 || Boolean(latestExternalInfoTitle));
   const animationState = getPetAnimationState({ expression, facing: motion.facing, mode: motion.mode, panelOpen });
   const spriteKey = getPetSpriteKey({ care, expression, mode: motion.mode, panelOpen });
   const bubbleVisible = Boolean(bubble && !panelOpen && !dragging && settled);
@@ -851,6 +810,12 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   useEffect(() => {
     persistCareState(care);
   }, [care]);
+
+  useEffect(() => {
+    return subscribeNeedoExternalInfoPosts(() => {
+      setExternalInfoPosts(readNeedoExternalInfoPosts());
+    });
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -877,14 +842,16 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       return;
     }
 
-    if (totalReminderCount > 0) {
-      const summary = buildReminderSummary(reminders);
+    if (totalReminderCount > 0 || latestExternalInfoTitle) {
+      const highlights = buildReminderHighlights(reminders);
       setBubble({
         actionLabel: "查看",
-        actionPath: primaryReminder?.path,
-        id: `notice-${reminders.map((item) => `${item.type}:${item.count}`).join("-")}`,
-        text: summary ? `${summary}。我先帮你归纳好了，点这里可以直接去处理。` : "你有新的提醒需要查看。",
-        title: "新提醒",
+        actionPath: primaryReminder?.path ?? "/needo?tab=reverse",
+        highlights,
+        id: `notice-${reminders.map((item) => `${item.type}:${item.count}`).join("-")}-${latestExternalInfoTitle}`,
+        infoTitle: latestExternalInfoTitle || undefined,
+        text: highlights.length > 0 ? "我先帮你归纳好了，点这里可以直接去处理。" : "我从情报页抓到了新的优惠标题，可以直接去看。",
+        title: highlights.length > 0 ? "新提醒" : "新情报",
         tone: "notice"
       });
       return;
@@ -896,7 +863,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       const timer = window.setTimeout(() => setBubble(careBubble), 900);
       return () => window.clearTimeout(timer);
     }
-  }, [care, isAuthenticated, panelOpen, petDisabled, primaryReminder?.path, reminders, totalReminderCount]);
+  }, [care, isAuthenticated, latestExternalInfoTitle, panelOpen, petDisabled, primaryReminder?.path, reminders, totalReminderCount]);
 
   useEffect(() => {
     if (petDisabled || !isAuthenticated) {
@@ -1261,7 +1228,12 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
 
   return (
     <div
-      className={cn("needo-pet-layer", panelOpen && "is-panel-open")}
+      className={cn(
+        "needo-pet-layer",
+        getClientThemeModeClassName(theme),
+        getClientThemeClassName(theme),
+        panelOpen && "is-panel-open"
+      )}
       data-animation={animationState}
       data-facing={motion.facing}
       data-motion={motion.mode}
@@ -1273,8 +1245,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
           <button aria-label="关闭宠物气泡" className="needo-pet-bubble-close" onClick={() => setBubble(null)} type="button">
             ×
           </button>
-          <strong>{bubble.title}</strong>
-          <span>{bubble.text}</span>
+          <strong className="needo-pet-bubble-title">{bubble.title}</strong>
+          <NeedoPetBubbleBody bubble={bubble} />
           {bubble.actionPath ? (
             <button className="needo-pet-bubble-action" onClick={openBubbleAction} type="button">
               {bubble.actionLabel ?? "查看"}
@@ -1293,9 +1265,9 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
         onPointerUp={finishPointerInteraction}
         type="button"
       >
-        <NeedoPetSprite facing={motion.facing} sprite={spriteKey} />
-        {totalReminderCount > 0 ? <NotificationBadge className="needo-pet-count" count={totalReminderCount} size="sm" /> : null}
+        <NeedoPetSprite sprite={spriteKey} />
       </button>
+      {totalReminderCount > 0 ? <NotificationBadge className="needo-pet-count" count={totalReminderCount} size="sm" /> : null}
       {panelOpen ? (
         <div className="needo-pet-panel" data-page-drag-ignore="true" style={panelStyle}>
           <div className="needo-pet-panel-header">

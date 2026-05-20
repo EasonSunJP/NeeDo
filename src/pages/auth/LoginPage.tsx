@@ -5,7 +5,7 @@ import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
-import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
+import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 
 type LoginPanelMode = "welcome" | "account";
 
@@ -35,7 +35,7 @@ type FrontendLoginCopy = {
   portals: Record<PortalScope, { label: string; shortLabel: string; title: string; subtitle: string }>;
 };
 
-const loginIconUrl = "/icons/needo-login-check.png";
+const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
 
 const portalEntryRoute: Record<PortalScope, string> = {
   user: "/",
@@ -358,8 +358,8 @@ function normalizePortal(value?: string | null): PortalScope {
 
 function AppMark() {
   return (
-    <div className="mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px] bg-[color:var(--client-primary)] shadow-[0_22px_46px_color-mix(in_srgb,var(--client-primary)_34%,transparent)]">
-      <img alt="" aria-hidden="true" className="h-full w-full object-cover" draggable="false" src={loginIconUrl} />
+    <div className="needo-login-logo mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px]">
+      <img alt="" aria-hidden="true" className="needo-login-logo__mark h-full w-full object-cover" draggable="false" src={loginIconMarkUrl} />
     </div>
   );
 }
@@ -378,11 +378,19 @@ function openPortalEntry(portal: PortalScope, route: string) {
   window.location.assign(target.href);
 }
 
+function getPostLoginRoute(portal: PortalScope, redirectPath: string | null) {
+  if (portal === "user") {
+    return portalEntryRoute.user;
+  }
+
+  return redirectPath || portalEntryRoute[portal];
+}
+
 export function LoginPage() {
   const { portal } = useParams();
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
-  const { isNight } = useClientTheme();
+  const { theme, isNight } = useClientTheme();
   const { canAccess, isAuthenticated, login, loginWithProvider, logout, session, switchPortal: switchSessionPortal } = useAuth();
   const requestedPortal = normalizePortal(portal);
   const redirectPath = searchParams.get("redirect");
@@ -399,9 +407,8 @@ export function LoginPage() {
 
   const copy = loginCopy[language];
   const activePortalCopy = copy.portals[activePortal];
-  const nextPath = useMemo(() => redirectPath || portalEntryRoute[activePortal], [activePortal, redirectPath]);
+  const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
   const hasActiveAccess = isAuthenticated && canAccess(activePortal);
-  const loginTheme = isNight ? "dark-green" : "light-green";
 
   const clearFeedback = () => {
     setError("");
@@ -448,8 +455,8 @@ export function LoginPage() {
     <div
       className={cn(
         "client-shell flex min-h-[100dvh] bg-[color:var(--client-bg)] px-5 text-[color:var(--client-text)]",
-        isNight ? "client-theme-night" : "client-theme-day",
-        getClientThemeClassName(loginTheme)
+        getClientThemeModeClassName(theme),
+        getClientThemeClassName(theme)
       )}
       data-no-i18n
     >
