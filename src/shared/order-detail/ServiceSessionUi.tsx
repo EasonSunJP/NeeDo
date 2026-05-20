@@ -115,92 +115,27 @@ export function ServiceRingAlert({
   );
 }
 
-type ServiceStampIconName = "appeal" | "service" | "empathy" | "energy";
-
 const stampVisuals: Array<{
-  accent: string;
-  border: string;
-  icon: ServiceStampIconName;
-  iconBox: string;
-  surface: string;
+  iconSrc: string;
+  tone: "appeal" | "service" | "empathy" | "energy";
 }> = [
   {
-    accent: "text-[#cdb7ff]",
-    border: "border-[#cdb7ff]/24",
-    icon: "appeal",
-    iconBox: "border-[#cdb7ff]/18 bg-[#cdb7ff]/10",
-    surface: "bg-[#201b2b]"
+    iconSrc: "/images/generated/ui/review-stamp-appeal.svg",
+    tone: "appeal"
   },
   {
-    accent: "text-[#9edbf0]",
-    border: "border-[#9edbf0]/24",
-    icon: "service",
-    iconBox: "border-[#9edbf0]/18 bg-[#9edbf0]/10",
-    surface: "bg-[#192631]"
+    iconSrc: "/images/generated/ui/review-stamp-service.svg",
+    tone: "service"
   },
   {
-    accent: "text-[#efc46f]",
-    border: "border-[#efc46f]/24",
-    icon: "empathy",
-    iconBox: "border-[#efc46f]/18 bg-[#efc46f]/10",
-    surface: "bg-[#2b2319]"
+    iconSrc: "/images/generated/ui/review-stamp-empathy.svg",
+    tone: "empathy"
   },
   {
-    accent: "text-[#f3aa86]",
-    border: "border-[#f3aa86]/24",
-    icon: "energy",
-    iconBox: "border-[#f3aa86]/18 bg-[#f3aa86]/10",
-    surface: "bg-[#2b1f1b]"
-  },
-  {
-    accent: "text-[#f5a6bd]",
-    border: "border-[#f5a6bd]/24",
-    icon: "empathy",
-    iconBox: "border-[#f5a6bd]/18 bg-[#f5a6bd]/10",
-    surface: "bg-[#2b1d25]"
-  },
-  {
-    accent: "text-[#9fb9f4]",
-    border: "border-[#9fb9f4]/24",
-    icon: "service",
-    iconBox: "border-[#9fb9f4]/18 bg-[#9fb9f4]/10",
-    surface: "bg-[#1b2230]"
+    iconSrc: "/images/generated/ui/review-stamp-energy.svg",
+    tone: "energy"
   }
 ];
-
-function ServiceStampIcon({ name }: { name: ServiceStampIconName }) {
-  switch (name) {
-    case "appeal":
-      return (
-        <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
-          <circle cx="10" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.8" />
-          <path d="M4.6 19.2c.7-3.6 2.8-5.5 6.2-5.5 1.4 0 2.7.3 3.7 1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-          <path d="M17.4 19.1s-3.4-2.1-4.2-4c-.5-1.2.3-2.4 1.6-2.4.8 0 1.5.4 2.6 1.6 1.1-1.2 1.8-1.6 2.6-1.6 1.3 0 2.1 1.2 1.6 2.4-.8 1.9-4.2 4-4.2 4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.6" />
-        </svg>
-      );
-    case "service":
-      return (
-        <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
-          <path d="M12 4.3c2 1.5 4.3 2.2 6.8 2.2v4.4c0 4.3-2.5 7.1-6.8 8.7-4.3-1.6-6.8-4.4-6.8-8.7V6.5c2.5 0 4.8-.7 6.8-2.2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
-          <path d="m8.9 12.1 2 2 4.3-4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-        </svg>
-      );
-    case "empathy":
-      return (
-        <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
-          <path d="M6.6 6.5h10.8a3 3 0 0 1 3 3v4.1a3 3 0 0 1-3 3h-4.7l-4.1 3v-3h-2a3 3 0 0 1-3-3V9.5a3 3 0 0 1 3-3Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
-          <path d="M12 13.7s-2.8-1.7-3.4-3.2c-.4-.9.2-1.8 1.1-1.8.6 0 1.1.3 2.3 1.5 1.2-1.2 1.7-1.5 2.3-1.5.9 0 1.5.9 1.1 1.8-.6 1.5-3.4 3.2-3.4 3.2Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.45" />
-        </svg>
-      );
-    case "energy":
-      return (
-        <svg aria-hidden="true" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24">
-          <path d="M4 13.1h3.3l1.9-4.2 3.1 8.2 2.1-4h5.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-          <path d="M6.4 7.4A7.7 7.7 0 0 1 12 5a7.8 7.8 0 0 1 7.3 5.1M17.6 17.2A7.7 7.7 0 0 1 12 19a7.8 7.8 0 0 1-6.5-3.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
-        </svg>
-      );
-  }
-}
 
 function normalizeReviewTags(tags: Array<string | ServiceReviewTag>) {
   return tags.map<ServiceReviewTag>((tag) => typeof tag === "string" ? { label: tag } : tag);
@@ -304,15 +239,16 @@ export function ServiceReviewPrompt({
 
   return (
     <div className="fixed inset-0 z-[150] bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
-      <div className="mx-auto flex h-full w-full max-w-[480px] flex-col overflow-hidden bg-[color:var(--client-bg)] shadow-soft">
+      <div className="service-review-prompt mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[color:var(--client-bg)] shadow-soft">
         <MobileFullscreenHeader
+          className="service-review-prompt__header"
           closeLabel="关闭评价"
           onClose={onSkip}
           subtitle="服务评价"
           title={title}
         />
 
-        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+156px)] pt-4">
           <section className="mb-4">
             <p className="max-w-[310px] text-sm font-bold leading-6 text-[color:var(--client-muted)]">{message}</p>
           </section>
@@ -358,10 +294,13 @@ export function ServiceReviewPrompt({
                 );
               })}
             </div>
+            <p className="mt-2 text-center text-[11px] font-bold leading-4 text-[color:var(--client-soft-muted)]">
+              评价会在随机次数后反应，不会马上反应
+            </p>
           </section>
 
           <section className="mt-4">
-            <div className={cn("grid gap-3", hasStampTags ? "grid-cols-4" : "grid-cols-2 sm:grid-cols-3")}>
+            <div className={cn("grid overflow-visible", hasStampTags ? "grid-cols-4 gap-2.5 px-0.5 pt-2" : "grid-cols-2 gap-3 sm:grid-cols-3")}>
               {baseTags.map((tag, index) => {
                 const selected = selectedTags.includes(tag.label);
                 const count = tagCounts[tag.label] ?? tag.count ?? 0;
@@ -374,13 +313,9 @@ export function ServiceReviewPrompt({
                     className={cn(
                       "focus-ring relative min-w-0 transition active:scale-95",
                       isStamp
-                        ? cn(
-                            "grid aspect-[0.96/1] min-h-[78px] grid-rows-[30px_minmax(0,1fr)] items-center rounded-[20px] border px-2.5 pb-2.5 pt-3 text-center font-black text-[color:var(--client-text)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] backdrop-blur sm:min-h-[92px]",
-                            stampVisual.surface,
-                            stampVisual.border
-                          )
+                        ? cn("service-review-stamp", `service-review-stamp--${stampVisual.tone}`, selected ? "is-selected" : "")
                         : "rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] px-3 py-3 text-sm font-black text-[color:var(--client-text)]",
-                      selected ? "ring-2 ring-[color:var(--client-primary)]" : "",
+                      selected && !isStamp ? "ring-2 ring-[color:var(--client-primary)]" : "",
                       disabledByStampLimit ? "cursor-not-allowed opacity-48 saturate-50" : ""
                     )}
                     disabled={disabledByStampLimit}
@@ -390,20 +325,29 @@ export function ServiceReviewPrompt({
                   >
                     {isStamp ? (
                       <>
-                        <span className="pointer-events-none absolute inset-x-2 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.22),transparent)]" />
-                        <span className={cn("relative z-10 mx-auto grid h-8 w-8 place-items-center rounded-[12px] border", stampVisual.iconBox, stampVisual.accent)}>
-                          <ServiceStampIcon name={stampVisual.icon} />
+                        <span className="service-review-stamp__icon">
+                          <img
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                            src={stampVisual.iconSrc}
+                          />
                         </span>
-                        <span className="relative z-10 mt-1.5 block w-full">
+                        <span className="service-review-stamp__label">
                           {renderStampLabel(tag.label)}
+                        </span>
+                        <span className="service-review-stamp__count">
+                          ×{count}
                         </span>
                       </>
                     ) : (
                       <span className="break-words">{tag.label}</span>
                     )}
-                    <span className="absolute -right-1.5 -top-2 rounded-full bg-[#6f7480] px-2.5 py-1 text-xs font-black text-white shadow-[0_8px_18px_rgba(0,0,0,0.2)]">
-                      ×{count}
-                    </span>
+                    {!isStamp ? (
+                      <span className="absolute -right-1.5 -top-2 rounded-full bg-[#6f7480] px-2.5 py-1 text-xs font-black text-white shadow-[0_8px_18px_rgba(0,0,0,0.2)]">
+                        ×{count}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
@@ -443,30 +387,40 @@ export function ServiceReviewPrompt({
                     ×{tagCounts[customTag.label] ?? 1}
                   </span>
                 </button>
-              ) : null}
+              ) : (
+                <span className="inline-flex min-h-8 items-center px-0.5 text-sm font-black text-[color:var(--client-text)]">
+                  暂无评价标签
+                </span>
+              )}
             </div>
           </section>
         </main>
 
-        <footer className="shrink-0 space-y-3 bg-[linear-gradient(180deg,transparent,color-mix(in_srgb,var(--client-bg)_94%,transparent)_20%,var(--client-bg)_100%)] px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+14px)] pt-2">
-          {submitHint ? (
-            <p className="text-center text-xs font-black text-[#f7c948]">{submitHint}</p>
-          ) : null}
-          <div className="grid grid-cols-[0.78fr_1fr] gap-3">
-            <button
-              className="focus-ring h-12 rounded-[20px] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] text-sm font-black text-[color:var(--client-muted)]"
-              onClick={onSkip}
-              type="button"
-            >
-              {skipLabel}
-            </button>
-            <button
-              className="focus-ring h-12 rounded-[20px] bg-[color:var(--client-primary)] px-3 text-sm font-black text-[#090806] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
-              onClick={() => onSubmit({ rating, tags: selectedTags, tagCounts })}
-              type="button"
-            >
-              {submitLabel}
-            </button>
+        <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-40 px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+14px)] pt-16">
+          <div
+            aria-hidden="true"
+            className="absolute inset-x-0 bottom-0 h-full bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_68%,transparent)_28%,color-mix(in_srgb,var(--client-bg)_94%,transparent)_58%,var(--client-bg)_100%)]"
+          />
+          <div className="pointer-events-auto relative space-y-3">
+            {submitHint ? (
+              <p className="text-center text-xs font-black text-[#f7c948]">{submitHint}</p>
+            ) : null}
+            <div className="grid grid-cols-[0.78fr_1fr] gap-3">
+              <button
+                className="focus-ring h-12 rounded-[20px] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] text-sm font-black text-[color:var(--client-muted)]"
+                onClick={onSkip}
+                type="button"
+              >
+                {skipLabel}
+              </button>
+              <button
+                className="focus-ring h-12 rounded-[20px] bg-[color:var(--client-primary)] px-3 text-sm font-black text-[#090806] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
+                onClick={() => onSubmit({ rating, tags: selectedTags, tagCounts })}
+                type="button"
+              >
+                {submitLabel}
+              </button>
+            </div>
           </div>
         </footer>
       </div>

@@ -4,7 +4,7 @@ export type NeedoPetSettings = {
   enabled: boolean;
 };
 
-const settingsKey = "needo.digital-pet.settings.v1";
+const settingsKey = "needo.digital-pet.settings.v2";
 const defaultSettings: NeedoPetSettings = {
   enabled: false
 };

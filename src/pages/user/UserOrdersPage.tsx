@@ -215,7 +215,7 @@ function OrderActionButton({
   onClick,
   tone
 }: {
-  icon: "calendar" | "star";
+  icon: "calendar" | "chat" | "check" | "star";
   label: string;
   onClick: () => void;
   tone: "primary" | "secondary";
@@ -223,7 +223,13 @@ function OrderActionButton({
   const ButtonComponent = tone === "primary" ? PrimaryButton : SecondaryButton;
 
   return (
-    <ButtonComponent className="h-11 w-full rounded-[16px] px-3 text-[13px]" onClick={onClick}>
+    <ButtonComponent
+      className={cn(
+        "user-orders-action-button h-11 w-full rounded-[16px] px-2 text-[12px]",
+        tone === "primary" && "user-orders-primary-action-button"
+      )}
+      onClick={onClick}
+    >
       <AppIcon className="h-4 w-4 shrink-0" name={icon} />
       <span className="min-w-0 truncate">{label}</span>
     </ButtonComponent>
@@ -429,9 +435,15 @@ export function UserOrdersPage() {
                             />
                           </div>
 
-                          <div className="mt-2.5 grid grid-cols-2 gap-2">
-                            <OrderActionButton icon="star" label="写评论" onClick={() => setReviewingOrderId(order.id)} tone="secondary" />
-                            <OrderActionButton icon="calendar" label="再次预约" onClick={() => navigate(getRebookPath(order, provider))} tone="primary" />
+                          <div className="user-orders-action-row mt-2.5 grid grid-cols-3 gap-1.5">
+                            <OrderActionButton icon="chat" label="评论" onClick={() => setReviewingOrderId(order.id)} tone="secondary" />
+                            <OrderActionButton icon="check" label="详细" onClick={() => navigate(`/orders/${order.id}`)} tone="secondary" />
+                            <OrderActionButton
+                              icon="calendar"
+                              label="再次预约"
+                              onClick={() => navigate(getRebookPath(order, provider))}
+                              tone="primary"
+                            />
                           </div>
                         </div>
                       </div>

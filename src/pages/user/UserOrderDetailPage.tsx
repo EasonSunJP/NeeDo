@@ -390,7 +390,7 @@ export function UserOrderDetailPage() {
     `/orders/${order.id}`
   );
   const closeDetail = () => {
-    navigate("/", { replace: true });
+    navigate("/orders", { replace: true });
   };
   const serviceCardData = buildUserOrderServiceCardData(displayOrder, service, store);
   const paymentSummaryItems = [

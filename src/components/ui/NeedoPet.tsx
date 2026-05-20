@@ -64,6 +64,15 @@ type MotionVelocity = {
   y: number;
 };
 
+type FloatingPlacement = {
+  arrowX?: number;
+  maxHeight: number;
+  originX?: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
 type PetDragSession = {
   moved: boolean;
   offsetX: number;
@@ -79,6 +88,14 @@ const petSize = { width: 132, height: 158 };
 const petPeekVisible = 38;
 const idleRoamDelay = 10_000;
 const dragEdgeThreshold = 34;
+const floatingViewportPadding = 12;
+const bubblePreferredWidth = 268;
+const bubbleCompactWidth = 252;
+const bubbleMaxHeight = 144;
+const panelPreferredWidth = 282;
+const panelCompactWidth = 300;
+const panelEstimatedHeight = 470;
+const panelMaxHeight = 560;
 const initialCare: PetCareState = {
   alive: true,
   energy: 78,
@@ -141,6 +158,75 @@ function clampDragPosition(position: MotionPosition) {
   return {
     x: clamp(position.x, bounds.minX, bounds.maxX),
     y: clamp(position.y, bounds.minY, bounds.maxY)
+  };
+}
+
+function getBubblePlacement(position: MotionPosition, facing: PetFacing): FloatingPlacement {
+  if (typeof window === "undefined") {
+    return {
+      arrowX: 20,
+      maxHeight: bubbleMaxHeight,
+      originX: 20,
+      width: bubblePreferredWidth,
+      x: 104,
+      y: -84
+    };
+  }
+
+  const padding = floatingViewportPadding;
+  const viewportWidth = Math.max(1, window.innerWidth);
+  const viewportHeight = Math.max(1, window.innerHeight);
+  const width = Math.max(180, Math.min(viewportWidth - padding * 2, viewportWidth <= 520 ? bubbleCompactWidth : bubblePreferredWidth));
+  const maxHeight = Math.min(bubbleMaxHeight, Math.max(96, viewportHeight - padding * 2));
+  const pointerX = facing === "left" ? position.x + 10 : position.x + petSize.width - 10;
+  const preferredViewportX = facing === "left" ? pointerX - width + 20 : pointerX - 20;
+  const minViewportX = padding;
+  const maxViewportX = Math.max(minViewportX, viewportWidth - width - padding);
+  const viewportX = clamp(preferredViewportX, minViewportX, maxViewportX);
+  const minViewportY = padding;
+  const maxViewportY = Math.max(minViewportY, viewportHeight - maxHeight - padding - 10);
+  const viewportY = clamp(position.y - 84, minViewportY, maxViewportY);
+  const arrowX = clamp(pointerX - viewportX, 18, width - 18);
+
+  return {
+    arrowX,
+    maxHeight,
+    originX: arrowX,
+    width,
+    x: viewportX - position.x,
+    y: viewportY - position.y
+  };
+}
+
+function getPanelPlacement(position: MotionPosition, facing: PetFacing): FloatingPlacement {
+  if (typeof window === "undefined") {
+    return {
+      maxHeight: panelMaxHeight,
+      width: panelPreferredWidth,
+      x: 140,
+      y: -312
+    };
+  }
+
+  const padding = floatingViewportPadding;
+  const viewportWidth = Math.max(1, window.innerWidth);
+  const viewportHeight = Math.max(1, window.innerHeight);
+  const width = Math.max(244, Math.min(viewportWidth - padding * 2, viewportWidth <= 520 ? panelCompactWidth : panelPreferredWidth));
+  const maxHeight = Math.min(panelMaxHeight, Math.max(240, viewportHeight - padding * 2));
+  const preferredViewportX = facing === "left" ? position.x - width - 8 : position.x + petSize.width + 8;
+  const minViewportX = padding;
+  const maxViewportX = Math.max(minViewportX, viewportWidth - width - padding);
+  const viewportX = clamp(preferredViewportX, minViewportX, maxViewportX);
+  const estimatedHeight = Math.min(panelEstimatedHeight, maxHeight);
+  const minViewportY = padding;
+  const maxViewportY = Math.max(minViewportY, viewportHeight - maxHeight - padding);
+  const viewportY = clamp(position.y + petSize.height - estimatedHeight, minViewportY, maxViewportY);
+
+  return {
+    maxHeight,
+    width,
+    x: viewportX - position.x,
+    y: viewportY - position.y
   };
 }
 
@@ -493,10 +579,15 @@ function NeedoPetSprite({ facing, sprite }: { facing: PetFacing; sprite: PetSpri
   const atlasRow = sprite === "running" && facing === "left" ? 2 : xiaobaiAtlasRows[sprite];
 
   if (typeof atlasRow === "number") {
+    const atlasStyle = {
+      "--needo-pet-atlas-row": atlasRow,
+      "--needo-pet-atlas-src": `url("${xiaobaiAtlasSrc}")`
+    } as CSSProperties;
+
     return (
-      <span className="needo-pet-sprite-shell is-atlas" data-sprite={sprite} style={{ "--needo-pet-atlas-row": atlasRow } as CSSProperties}>
+      <span className="needo-pet-sprite-shell is-atlas" data-sprite={sprite} style={atlasStyle}>
         <span className="needo-pet-atlas-window">
-          <img alt="" className="needo-pet-atlas-image" draggable={false} src={xiaobaiAtlasSrc} />
+          <span aria-hidden="true" className="needo-pet-atlas-image" />
         </span>
       </span>
     );
@@ -622,6 +713,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const [dragging, setDragging] = useState(false);
   const [settled, setSettled] = useState(false);
   const [motion, setMotion] = useState<{ facing: PetFacing; mode: PetMotionMode }>({ facing: "right", mode: "roam" });
+  const [, setViewportRevision] = useState(0);
   const petRef = useRef<HTMLDivElement | null>(null);
   const positionRef = useRef<MotionPosition>(readMotionPosition());
   const velocityRef = useRef<MotionVelocity>({ x: -0.42, y: 0.18 });
@@ -691,6 +783,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const animationState = getPetAnimationState({ expression, facing: motion.facing, mode: motion.mode, panelOpen });
   const spriteKey = getPetSpriteKey({ care, expression, mode: motion.mode, panelOpen });
   const bubbleVisible = Boolean(bubble && !panelOpen && !dragging && settled);
+  const bubblePlacement = bubbleVisible ? getBubblePlacement(positionRef.current, motion.facing) : null;
+  const panelPlacement = panelOpen ? getPanelPlacement(positionRef.current, motion.facing) : null;
   const goodbyeLabel = language === "ja" ? "バイバイ" : language === "en" ? "Bye" : language === "ko" ? "안녕" : language === "zh-Hant" ? "再見" : "再见";
 
   useEffect(() => {
@@ -703,6 +797,18 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
     }, 60_000);
 
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const refreshPlacement = () => setViewportRevision((current) => current + 1);
+
+    window.addEventListener("resize", refreshPlacement);
+    window.addEventListener("orientationchange", refreshPlacement);
+
+    return () => {
+      window.removeEventListener("resize", refreshPlacement);
+      window.removeEventListener("orientationchange", refreshPlacement);
+    };
   }, []);
 
   useEffect(() => {
@@ -850,8 +956,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
                 y: clamp(position.y, 8, maxY)
               };
 
-	        const horizontalDelta = positionRef.current.x - previousX;
-	        const nextFacing: PetFacing = Math.abs(horizontalDelta) > 0.08 ? (horizontalDelta >= 0 ? "right" : "left") : velocity.x >= 0 ? "right" : "left";
+        const horizontalDelta = positionRef.current.x - previousX;
+        const nextFacing: PetFacing = Math.abs(horizontalDelta) > 0.08 ? (horizontalDelta >= 0 ? "right" : "left") : velocity.x >= 0 ? "right" : "left";
         setMotion((current) => (current.mode === mode && current.facing === nextFacing ? current : { facing: nextFacing, mode }));
         const nextSettled =
           mode === "rest" ||
@@ -1069,6 +1175,24 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
     "--needo-pet-x": `${Math.round(positionRef.current.x)}px`,
     "--needo-pet-y": `${Math.round(positionRef.current.y)}px`
   } as CSSProperties;
+  const bubbleStyle = bubblePlacement
+    ? ({
+        "--needo-pet-bubble-arrow-x": `${Math.round(bubblePlacement.arrowX ?? 20)}px`,
+        "--needo-pet-bubble-max-height": `${Math.round(bubblePlacement.maxHeight)}px`,
+        "--needo-pet-bubble-origin-x": `${Math.round(bubblePlacement.originX ?? 20)}px`,
+        "--needo-pet-bubble-width": `${Math.round(bubblePlacement.width)}px`,
+        "--needo-pet-bubble-x": `${Math.round(bubblePlacement.x)}px`,
+        "--needo-pet-bubble-y": `${Math.round(bubblePlacement.y)}px`
+      } as CSSProperties)
+    : undefined;
+  const panelStyle = panelPlacement
+    ? ({
+        "--needo-pet-panel-max-height": `${Math.round(panelPlacement.maxHeight)}px`,
+        "--needo-pet-panel-width": `${Math.round(panelPlacement.width)}px`,
+        "--needo-pet-panel-x": `${Math.round(panelPlacement.x)}px`,
+        "--needo-pet-panel-y": `${Math.round(panelPlacement.y)}px`
+      } as CSSProperties)
+    : undefined;
 
   return (
     <div
@@ -1080,7 +1204,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       style={containerStyle}
     >
       {bubbleVisible && bubble ? (
-        <div className={cn("needo-pet-bubble", `is-${bubble.tone}`)} data-page-drag-ignore="true">
+        <div className={cn("needo-pet-bubble", `is-${bubble.tone}`)} data-page-drag-ignore="true" style={bubbleStyle}>
           <button aria-label="关闭宠物气泡" className="needo-pet-bubble-close" onClick={() => setBubble(null)} type="button">
             ×
           </button>
@@ -1108,7 +1232,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
         {totalReminderCount > 0 ? <NotificationBadge className="needo-pet-count" count={totalReminderCount} size="sm" /> : null}
       </button>
       {panelOpen ? (
-        <div className="needo-pet-panel" data-page-drag-ignore="true">
+        <div className="needo-pet-panel" data-page-drag-ignore="true" style={panelStyle}>
           <div className="needo-pet-panel-header">
             <div>
               <span>小白 / Xiaobai</span>
