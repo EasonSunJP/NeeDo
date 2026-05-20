@@ -175,7 +175,7 @@ export function InfoTooltipTrigger({
   }, [open, panelMode]);
 
   const portalHost =
-    (triggerRef.current?.closest(".client-shell, .merchant-admin-shell, .admin-shell") as HTMLElement | null) ??
+    (triggerRef.current?.closest("[data-info-tooltip-portal-host], .client-shell, .merchant-admin-shell, .admin-shell") as HTMLElement | null) ??
     (typeof document !== "undefined" ? document.body : null);
 
   return (

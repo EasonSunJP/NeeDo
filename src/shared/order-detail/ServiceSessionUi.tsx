@@ -204,6 +204,12 @@ export function ServiceReviewPrompt({
     Object.fromEntries(baseTags.map((tag) => [tag.label, tag.count ?? 0]))
   );
   const selectedStampTag = selectedTags.find((label) => baseTags.some((tag) => tag.kind === "stamp" && tag.label === label));
+  const headerInfo = (
+    <div className="grid gap-1">
+      <p className="text-xs font-black text-[color:var(--client-primary)]">服务评价</p>
+      <p>{message}</p>
+    </div>
+  );
 
   const clickTag = (label: string) => {
     if (selectedTags.includes(label)) {
@@ -239,21 +245,17 @@ export function ServiceReviewPrompt({
   };
 
   return (
-    <div className="fixed inset-0 z-[150] bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
+    <div className="fixed inset-0 z-[150] bg-[color:var(--client-bg)] text-[color:var(--client-text)]" data-info-tooltip-portal-host>
       <div className="service-review-prompt mx-auto flex h-[100dvh] w-full max-w-[480px] flex-col overflow-hidden bg-[color:var(--client-bg)] shadow-soft">
         <MobileFullscreenHeader
           className="service-review-prompt__header"
           closeLabel="关闭评价"
+          info={headerInfo}
           onClose={onSkip}
-          subtitle="服务评价"
           title={title}
         />
 
         <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+156px)] pt-4">
-          <section className="mb-4">
-            <p className="max-w-[310px] text-sm font-bold leading-6 text-[color:var(--client-muted)]">{message}</p>
-          </section>
-
           {topContent ? <div className="mb-4">{topContent}</div> : null}
 
           <section className="rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] px-4 py-5 shadow-panel">
