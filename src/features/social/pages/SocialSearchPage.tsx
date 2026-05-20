@@ -1,23 +1,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
-import { Button } from "../../../components/ui/Button";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { AppIcon, AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
+import { getLocationAreaHints } from "../../../lib/location";
+import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
+import { useHomeLocationPreference } from "../../../state/homeLocationStore";
 import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
+import { type SocialTimelineLocationContext } from "../timeline";
 import {
-  MediaLightbox,
-  MediaPlayGlyph,
-  getSocialMediaPreviewUrl,
   navItemsForSocialScope,
   SearchTabs,
   SocialEmptyState,
   SocialPostItem,
-  SocialProfileRow,
   SocialTopActions
 } from "../components/SocialUi";
-import { profileKey } from "../utils";
-import type { SocialMediaItem } from "../types";
+import { profileKey, sortPostsByNewest } from "../utils";
+import type { SocialPost, SocialSearchTab } from "../types";
 
 export function SocialSearchPage() {
   const location = useLocation();
@@ -25,53 +24,92 @@ export function SocialSearchPage() {
   const { tag: routeTag } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const scope = getSocialScopeFromPathname(location.pathname);
-  const { getActorForScope, search, getTagFeed, getTimeline, getTrendingTags, getUnreadNotificationCount } = useSocial();
+  const {
+    getActorForScope,
+    search,
+    getTagFeed,
+    getTimeline,
+    getTimelineFeed,
+    getProfilePosts,
+    getUnreadNotificationCount
+  } = useSocial();
   const actorKey = getActorForScope(scope);
+  const { config: homeLocationConfig } = useHomeLayoutStore();
+  const { state: homeLocationPreference } = useHomeLocationPreference();
+  const selectedHomeLocation =
+    homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ?? homeLocationConfig.locations[0];
   const tag = routeTag ?? searchParams.get("tag") ?? "";
   const q = searchParams.get("q") ?? "";
   const [input, setInput] = useState(routeTag ? `#${routeTag}` : tag || q);
-  const [tab, setTab] = useState<"all" | "profiles" | "posts" | "media" | "tags">(tag ? "posts" : "all");
-  const [lightbox, setLightbox] = useState<{ media: SocialMediaItem[]; index: number } | null>(null);
-  const discoveryResult = useMemo(() => search(""), [search]);
+  const [tab, setTab] = useState<SocialSearchTab>(tag ? "latest" : "nearby");
   const queryResult = useMemo(() => search(q), [q, search]);
-  const tagResult = useMemo(() => (tag ? search(tag) : { profiles: [], posts: [], tags: [] }), [search, tag]);
   const tagFeed = useMemo(() => (tag ? getTagFeed(tag) : []), [getTagFeed, tag]);
-  const trendingTags = getTrendingTags().slice(0, 8);
+  const isTagPage = Boolean(tag);
+  const profileResults = q ? queryResult.profiles : [];
+  const nearbyLocationContext = useMemo<SocialTimelineLocationContext>(() => {
+    const areaHints = getLocationAreaHints(selectedHomeLocation);
+
+    return {
+      ...(homeLocationPreference.source === "device" && homeLocationPreference.coordinates ? { coords: homeLocationPreference.coordinates } : {}),
+      ...(areaHints.length > 0 ? { areaHints } : {})
+    };
+  }, [
+    homeLocationPreference.coordinates?.lat,
+    homeLocationPreference.coordinates?.lng,
+    homeLocationPreference.source,
+    selectedHomeLocation
+  ]);
+  const nearbyFeed = useMemo(
+    () => getTimelineFeed("nearby", actorKey, nearbyLocationContext).slice(0, 12),
+    [actorKey, getTimelineFeed, nearbyLocationContext]
+  );
+  const latestFeed = useMemo(() => getTimeline("for-you", actorKey).slice(0, 12), [actorKey, getTimeline]);
+  const followingFeed = useMemo(() => getTimeline("following", actorKey).slice(0, 12), [actorKey, getTimeline]);
+  const friendsFeed = useMemo(() => getTimelineFeed("friends", actorKey).slice(0, 12), [actorKey, getTimelineFeed]);
+  const profileMatchedPosts = useMemo(
+    () => sortPostsByNewest(profileResults.flatMap((profile) => getProfilePosts(profileKey(profile), "posts", actorKey))),
+    [actorKey, getProfilePosts, profileResults]
+  );
+  const mergedSearchPosts = useMemo(
+    () => mergeSocialSearchPosts(q ? [...queryResult.posts, ...profileMatchedPosts] : latestFeed),
+    [latestFeed, profileMatchedPosts, q, queryResult.posts]
+  );
 
   useEffect(() => {
     setInput(routeTag ? `#${routeTag}` : tag || q);
+
     if (tag) {
-      setTab("posts");
+      setTab("latest");
     }
   }, [q, routeTag, tag]);
 
-  const isTagPage = Boolean(tag);
-  const profileResults = isTagPage ? tagResult.profiles : q ? queryResult.profiles : discoveryResult.profiles;
-  const postResults = isTagPage ? tagFeed : q ? queryResult.posts : getTimeline("for-you", actorKey).slice(0, 8);
-  const mediaResults = postResults.flatMap((post) =>
-    post.media.map((media, index) => ({
-      post,
-      media,
-      index
-    }))
-  );
-  const relatedTags = isTagPage ? trendingTags.filter((item) => item.tag !== tag).slice(0, 6) : q ? queryResult.tags : trendingTags;
-  const showProfiles = tab === "all" || tab === "profiles";
-  const showPosts = tab === "all" || tab === "posts";
-  const showMedia = tab === "all" || tab === "media";
-  const showTags = tab === "all" || tab === "tags";
+  const postResults = useMemo(() => {
+    const scopedSearchPosts = isTagPage ? sortPostsByNewest(tagFeed) : mergedSearchPosts;
+
+    if (tab === "latest") {
+      return scopedSearchPosts;
+    }
+
+    const feed = tab === "nearby" ? nearbyFeed : tab === "following" ? followingFeed : friendsFeed;
+
+    if (q || isTagPage) {
+      return filterSearchPostsByFeed(scopedSearchPosts, feed);
+    }
+
+    return feed;
+  }, [friendsFeed, followingFeed, isTagPage, mergedSearchPosts, nearbyFeed, q, tab, tagFeed]);
 
   return (
-    <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
+    <PageScaffold contentClassName="pb-28" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
       <AppTopBar
-        actions={<SocialTopActions scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />}
-        info="搜索用户、店铺、技师、动态和 hashtag"
+        actions={<SocialTopActions hideSearch scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />}
+        info="只能搜索 3 公里以内陌生人的公开动态、关注中账号和朋友的动态。"
         title="动态搜索"
       />
 
-      <SurfacePanel className="space-y-4 rounded-[30px] p-5">
+      <SurfacePanel className="-mt-6 space-y-2 rounded-[28px] !p-2">
         <form
-          className="flex flex-col gap-3 sm:flex-row"
+          className="flex items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault();
             const next = input.trim();
@@ -79,181 +117,89 @@ export function SocialSearchPage() {
             if (!next) {
               setSearchParams({});
               navigate(socialPaths.search(scope));
-              setTab("all");
+              setTab("nearby");
               return;
             }
 
             if (next.startsWith("#")) {
               navigate(socialPaths.hashtag(scope, next.slice(1)));
-              setTab("posts");
+              setTab("latest");
               return;
             }
 
             navigate(socialPaths.search(scope, next));
+            setTab("nearby");
           }}
         >
-          <input
-            className="h-12 flex-1 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-5 outline-none"
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="搜索 @用户、#话题、动态内容"
-            value={input}
-          />
-          <Button className="h-12 px-6" type="submit">
+          <div className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4">
+            <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
+            <input
+              className="h-full min-w-0 flex-1 bg-transparent text-[16px] font-bold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="搜索 @用户、#话题、动态内容"
+              value={input}
+            />
+          </div>
+          <button
+            className="focus-ring relative inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[#090806] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition active:scale-[0.97]"
+            type="submit"
+          >
             搜索
-          </Button>
+            <span className="absolute -right-1 -top-2 rounded-full border border-[color:var(--client-bg)] bg-[color:var(--client-surface)] px-1.5 py-0.5 text-[10px] font-black leading-none text-[color:var(--client-primary)] shadow-[0_6px_14px_rgba(0,0,0,0.22)]">
+              3km
+            </span>
+          </button>
         </form>
         <SearchTabs onChange={setTab} value={tab} />
       </SurfacePanel>
 
       {isTagPage ? (
-        <SurfacePanel className="space-y-3 rounded-[30px] p-5">
+        <SurfacePanel className="mt-4 space-y-3 rounded-[28px] p-4">
           <p className="text-[11px] font-black tracking-[0.18em] text-[color:var(--client-primary)]">话题页</p>
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <TitleWithInfo
-                as="h2"
-                info="这是统一 social 搜索页里的 hashtag 时间线入口，不再只是标签列表。"
-                infoClassName="h-5 w-5 text-[11px]"
-                label={`#${tag} 说明`}
-                title={`#${tag}`}
-                titleClassName="text-[28px] font-black tracking-[-0.03em] text-[color:var(--client-text)]"
-              />
-            </div>
-            <p className="text-sm font-semibold text-[color:var(--client-muted)]">{postResults.length} 条公开动态</p>
+            <TitleWithInfo
+              as="h2"
+              info="话题页会按当前搜索范围过滤动态：附近、最新、关注和好友。"
+              infoClassName="h-5 w-5 text-[11px]"
+              label={`#${tag} 说明`}
+              title={`#${tag}`}
+              titleClassName="text-[26px] font-black text-[color:var(--client-text)]"
+            />
+            <p className="text-sm font-semibold text-[color:var(--client-muted)]">{postResults.length} 条动态</p>
           </div>
         </SurfacePanel>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="space-y-6">
-          {showProfiles ? (
-            <SearchSection
-              emptyAction={<PrimaryButton to={socialPaths.timeline(scope)}>回到时间线</PrimaryButton>}
-              emptyDescription="还没有匹配到相关资料。可以换关键词，或者直接浏览推荐流里的资料跳转。"
-              items={profileResults.length}
-              title="用户 / 店铺 / 技师"
-            >
-              <div className="grid gap-4">
-                {profileResults.slice(0, tab === "all" ? 4 : profileResults.length).map((profile) => (
-                  <SocialProfileRow actorKey={actorKey} key={profileKey(profile)} profile={profile} scope={scope} />
-                ))}
-              </div>
-            </SearchSection>
-          ) : null}
-
-          {showPosts ? (
-            <SearchSection
-              emptyAction={<PrimaryButton to={socialPaths.timeline(scope)}>去看推荐动态</PrimaryButton>}
-              emptyDescription={isTagPage ? "这个 hashtag 还没有内容。你可以先发一条带标签的动态。" : "暂时没有命中动态内容。可以切换到标签搜索，或者换更宽泛的关键词。"}
-              items={postResults.length}
-              title={isTagPage ? `#${tag} 时间线` : "动态结果"}
-            >
-              <div className="overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]">
-                {postResults.slice(0, tab === "all" && !isTagPage ? 4 : postResults.length).map((post) => (
-                  <SocialPostItem actorKey={actorKey} key={post.id} post={post} scope={scope} />
-                ))}
-              </div>
-            </SearchSection>
-          ) : null}
-
-          {showMedia ? (
-            <SearchSection
-              emptyAction={<PrimaryButton to={socialPaths.timeline(scope)}>回到时间线</PrimaryButton>}
-              emptyDescription={isTagPage ? "这个 hashtag 还没有媒体内容。" : "当前没有命中图片或视频内容。"}
-              items={mediaResults.length}
-              title={isTagPage ? `#${tag} 媒体` : "媒体结果"}
-            >
-              <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
-                {mediaResults.slice(0, tab === "all" ? 6 : mediaResults.length).map(({ post, media, index }) => (
-                  <button
-                    className="group relative block overflow-hidden border-0 bg-black p-0 text-left"
-                    key={`${post.id}-${media.id}`}
-                    onClick={() => setLightbox({ media: post.media, index })}
-                    type="button"
-                  >
-                    {media.type === "video" ? (
-                      <>
-                        <video className="h-[220px] w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]" muted poster={media.thumbnailUrl ? getSocialMediaPreviewUrl({ url: media.thumbnailUrl }) : undefined} src={media.url} />
-                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                          <span className="grid h-11 w-11 place-items-center rounded-full bg-black/58 text-white">
-                            <MediaPlayGlyph className="ml-0.5 h-4 w-4" />
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <img alt={media.alt ?? ""} className="h-[220px] w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]" src={getSocialMediaPreviewUrl(media)} />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </SearchSection>
-          ) : null}
-
-          {lightbox ? (
-            <MediaLightbox
-              activeIndex={lightbox.index}
-              media={lightbox.media}
-              onChange={(index) => setLightbox((current) => (current ? { ...current, index } : current))}
-              onClose={() => setLightbox(null)}
-            />
-          ) : null}
-
-          {showTags ? (
-            <SearchSection
-              emptyAction={<PrimaryButton to={socialPaths.timeline(scope)}>浏览热门话题</PrimaryButton>}
-              emptyDescription="当前没有匹配的标签内容。你也可以直接在发帖时创建新的 hashtag。"
-              items={relatedTags.length}
-              title={isTagPage ? "相关话题" : "Hashtag"}
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                {relatedTags.map((item) => (
-                  <Link
-                    className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-4 transition hover:bg-[color:color-mix(in_srgb,var(--client-surface)_70%,transparent)]"
-                    key={item.tag}
-                    to={socialPaths.hashtag(scope, item.tag)}
-                  >
-                    <p className="text-base font-black text-[color:var(--client-text)]">#{item.tag}</p>
-                    <p className="mt-1 text-sm text-[color:var(--client-muted)]">{item.count} 条相关动态</p>
-                  </Link>
-                ))}
-              </div>
-            </SearchSection>
-          ) : null}
-
-          {profileResults.length === 0 && postResults.length === 0 && mediaResults.length === 0 && relatedTags.length === 0 ? (
-            <SocialEmptyState
-              action={<PrimaryButton to={socialPaths.timeline(scope)}>回到动态首页</PrimaryButton>}
-              description="当前关键字还没有搜索结果。你可以换更短的关键词，或者直接从热门话题进入。"
-              title="没有匹配结果"
-            />
-          ) : null}
-        </section>
-
-        <aside className="space-y-4">
-          <SurfacePanel className="space-y-4">
-            <h2 className="text-lg font-black text-[color:var(--client-text)]">热门话题</h2>
-            <div className="grid gap-3">
-              {trendingTags.map((item) => (
-                <Link
-                  className="rounded-[20px] bg-[color:color-mix(in_srgb,var(--client-surface)_68%,transparent)] px-4 py-3 transition hover:bg-[color:color-mix(in_srgb,var(--client-surface)_80%,transparent)]"
-                  key={item.tag}
-                  to={socialPaths.hashtag(scope, item.tag)}
-                >
-                  <p className="text-sm font-black text-[color:var(--client-text)]">#{item.tag}</p>
-                  <p className="mt-1 text-xs font-semibold text-[color:var(--client-muted)]">{item.count} 条动态</p>
-                </Link>
-              ))}
-            </div>
-          </SurfacePanel>
-
-          <SurfacePanel className="space-y-3">
-            <h2 className="text-lg font-black text-[color:var(--client-text)]">发现位预留</h2>
-            <p className="text-sm leading-7 text-[color:var(--client-muted)]">热门动态、相关账号和 hashtag 时间线都已经归入同一套搜索页，后续可以继续接推荐算法或后端榜单接口。</p>
-          </SurfacePanel>
-        </aside>
-      </div>
+      <SearchSection
+        emptyAction={<PrimaryButton to={socialPaths.timeline(scope)}>回到动态首页</PrimaryButton>}
+        emptyDescription={q || isTagPage ? "当前范围内还没有命中动态。可以换更短的关键词，或切到最新、关注、好友范围再试。" : "当前范围暂时没有动态。可以切换到最新、关注或好友。"}
+        items={postResults.length}
+        title="搜索结果"
+      >
+        <div className="-mx-4 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] sm:-mx-6">
+          {postResults.map((post) => (
+            <SocialPostItem actorKey={actorKey} key={post.id} post={post} scope={scope} />
+          ))}
+        </div>
+      </SearchSection>
     </PageScaffold>
   );
+}
+
+function mergeSocialSearchPosts(posts: SocialPost[]) {
+  const postMap = new Map<string, SocialPost>();
+
+  posts.forEach((post) => {
+    postMap.set(post.id, post);
+  });
+
+  return sortPostsByNewest([...postMap.values()]);
+}
+
+function filterSearchPostsByFeed(posts: SocialPost[], feed: SocialPost[]) {
+  const feedIds = new Set(feed.map((post) => post.id));
+
+  return posts.filter((post) => feedIds.has(post.id));
 }
 
 function SearchSection({
@@ -270,12 +216,12 @@ function SearchSection({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-4">
+    <section className="mt-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-black text-[color:var(--client-text)]">{title}</h2>
-        <p className="text-sm font-semibold text-[color:var(--client-muted)]">{items} 项</p>
+        <p className="text-sm font-semibold text-[color:var(--client-muted)]">{items} 条</p>
       </div>
-      {items > 0 ? children : <SocialEmptyState action={emptyAction} description={emptyDescription} title={`${title}暂无结果`} />}
+      {items > 0 ? children : <SocialEmptyState action={emptyAction} description={emptyDescription} title="暂无搜索结果" />}
     </section>
   );
 }

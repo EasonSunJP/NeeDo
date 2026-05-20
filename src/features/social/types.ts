@@ -24,7 +24,7 @@ export type SocialTimelineFilterTab = "nearby" | "friends" | "mine";
 
 export type SocialProfileTab = "posts" | "replies" | "media" | "likes";
 
-export type SocialSearchTab = "all" | "profiles" | "posts" | "media" | "tags";
+export type SocialSearchTab = "nearby" | "latest" | "following" | "friends";
 
 export type SocialMediaType = "image" | "video";
 

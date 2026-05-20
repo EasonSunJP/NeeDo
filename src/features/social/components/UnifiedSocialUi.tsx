@@ -38,7 +38,7 @@ import { useImStore } from "../../im/store";
 import type { ImUser } from "../../im/model";
 import { useSocial } from "../context";
 import { socialPaths } from "../paths";
-import type { SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialTimelineFilterTab } from "../types";
+import type { SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialSearchTab, SocialTimelineFilterTab } from "../types";
 import {
   buildAbsoluteUrl,
   buildProfileMentionMatcher,
@@ -2408,14 +2408,16 @@ export function SocialSidebarSection({
 
 export function SocialTopActions({
   scope,
-  unreadCount
+  unreadCount,
+  hideSearch = false
 }: {
   scope: SocialPortalScope;
   unreadCount?: number;
+  hideSearch?: boolean;
 }) {
   return (
     <>
-      <IconButton icon="search" label="搜索动态" to={socialPaths.search(scope)} />
+      {hideSearch ? null : <IconButton icon="search" label="搜索动态" to={socialPaths.search(scope)} />}
       <div className="relative">
         <IconButton icon="bell" label="通知" to={socialPaths.notifications(scope)} />
         {unreadCount && unreadCount > 0 ? (
@@ -2463,21 +2465,25 @@ export function SearchTabs({
   value,
   onChange
 }: {
-  value: "all" | "profiles" | "posts" | "media" | "tags";
-  onChange: (value: "all" | "profiles" | "posts" | "media" | "tags") => void;
+  value: SocialSearchTab;
+  onChange: (value: SocialSearchTab) => void;
 }) {
+  const items: Array<{ label: string; value: SocialSearchTab }> = [
+    { label: "附近", value: "nearby" },
+    { label: "最新", value: "latest" },
+    { label: "关注", value: "following" },
+    { label: "好友", value: "friends" }
+  ];
+
   return (
-    <LineTabs
-      items={[
-        { label: "综合", value: "all" },
-        { label: "用户", value: "profiles" },
-        { label: "动态", value: "posts" },
-        { label: "媒体", value: "media" },
-        { label: "标签", value: "tags" }
-      ]}
-      onChange={onChange}
-      value={value}
-    />
+    <div>
+      <FeatureSegmentedTabs
+        className="client-feature-segmented-tabs--single-frame !min-h-10 !border-0 !bg-transparent !p-0 !shadow-none !backdrop-blur-none"
+        items={items}
+        onChange={onChange}
+        value={value}
+      />
+    </div>
   );
 }
 

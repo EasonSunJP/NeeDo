@@ -6925,3 +6925,819 @@ Cannot exec '/bin/zsh': Operation not permitted
 
 
 [1;1H[0J9:34:14 AM [vite] (client) hmr update /src/styles.css (x2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:47:50 AM [vite] (client) hmr update /src/styles.css (x3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:47:50 AM [vite] (client) hmr update /src/styles.css (x3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:48:20 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+9:48:24 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:24 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialSearchPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:48:20 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+9:48:26 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:26 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialSearchPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx
+9:48:29 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:29 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:48:32 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:48:30 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+9:48:32 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:32 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:48:47 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx (x2)
+9:48:50 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:50 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialSearchPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx
+9:48:53 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:53 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:48:47 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+9:48:50 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:50 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialSearchPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx
+9:48:53 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+9:48:53 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:49:09 AM [vite] (client) hmr update /src/styles.css, /src/features/social/pages/SocialSearchPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:49:09 AM [vite] (client) hmr update /src/features/social/pages/SocialSearchPage.tsx, /src/styles.css
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:49:59 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:49:59 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:55:11 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx (x2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J9:55:11 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx (x2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:10:29 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx (x3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:10:29 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx (x3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:12:14 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx (x4)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:12:14 AM [vite] (client) page reload src/features/social/pages/SocialSearchPage.tsx (x4)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:15:44 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:15:44 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+10:15:50 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:15:50 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+10:16:01 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:16:01 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+10:16:01 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:16:01 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+10:16:16 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:16:16 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:18:08 AM [vite] (client) hmr update /src/features/social/pages/SocialSearchPage.tsx, /src/styles.css
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:18:08 AM [vite] (client) hmr update /src/styles.css, /src/features/social/pages/SocialSearchPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:19:54 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:19:54 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+10:19:59 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:19:59 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+10:20:02 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:20:02 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+10:19:58 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:19:58 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+10:20:02 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:20:02 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:21:33 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+10:21:36 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:21:36 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:21:32 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+10:21:41 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:21:41 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+10:21:38 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:21:38 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+10:21:43 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:21:43 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:25:33 AM [vite] (client) hmr update /src/features/social/pages/SocialSearchPage.tsx, /src/styles.css
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:25:33 AM [vite] (client) hmr update /src/styles.css, /src/features/social/pages/SocialSearchPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:25:46 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:25:46 AM [vite] (client) hmr update /src/styles.css, /src/features/social/components/UnifiedSocialUi.tsx
+10:25:49 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:25:49 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+10:25:52 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:25:52 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+10:25:49 AM [vite] (client) hmr invalidate /src/features/social/components/UnifiedSocialUi.tsx Could not Fast Refresh ("getSocialMediaPreviewUrl" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:25:49 AM [vite] (client) hmr update /src/pages/mobile/NeedoExchangePage.tsx, /src/pages/user/StoreDetailPage.tsx, /src/pages/mobile/TechnicianPortalPage.tsx, /src/features/im/pages.tsx, /src/features/social/pages/SocialDraftsPage.tsx, /src/features/social/pages/SocialComposerPage.tsx, /src/features/social/pages/SocialNotificationsPage.tsx, /src/features/social/pages/SocialMediaViewerPage.tsx, /src/features/social/pages/SocialRelationshipsPage.tsx, /src/features/social/pages/SocialRepostPage.tsx, /src/features/social/pages/SocialPostDetailPage.tsx, /src/features/social/pages/SocialTimelinePage.tsx, /src/features/social/pages/SocialProfilePage.tsx, /src/features/im/components.tsx, /src/features/social/pages/SocialSearchPage.tsx
+10:25:53 AM [vite] (client) hmr invalidate /src/pages/mobile/NeedoExchangePage.tsx Could not Fast Refresh ("confirmNeedoReverseBooking" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+10:25:53 AM [vite] (client) hmr update /src/App.tsx, /src/pages/admin/NeedoExchangeAdminPage.tsx, /src/pages/mobile/NeedoRoutePages.tsx, /src/pages/user/CheckoutPage.tsx
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:27:08 AM [vite] (client) hmr update /src/features/social/pages/SocialSearchPage.tsx, /src/styles.css
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J10:27:08 AM [vite] (client) hmr update /src/styles.css, /src/features/social/pages/SocialSearchPage.tsx
