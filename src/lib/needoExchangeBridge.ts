@@ -16,6 +16,7 @@ export type NeedoExternalInfoPost = {
 };
 
 const storageKey = "needo.exchange.external.info.v1";
+const postsChangedEventName = "needo.exchange.external.info.changed";
 
 function readRawPosts() {
   if (typeof window === "undefined") {
@@ -70,6 +71,14 @@ function writeRawPosts(posts: NeedoExternalInfoPost[]) {
   window.localStorage.setItem(storageKey, JSON.stringify(posts));
 }
 
+function notifyPostsChanged() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(postsChangedEventName));
+}
+
 export function readNeedoExternalInfoPosts() {
   return readRawPosts().sort((left, right) => new Date(right.publishedAt).getTime() - new Date(left.publishedAt).getTime());
 }
@@ -86,6 +95,27 @@ export function appendNeedoExternalInfoPost(
   };
 
   writeRawPosts([nextPost, ...readRawPosts()]);
+  notifyPostsChanged();
 
   return nextPost;
+}
+
+export function subscribeNeedoExternalInfoPosts(listener: () => void) {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const handleStorage = (event: StorageEvent) => {
+    if (!event.key || event.key === storageKey) {
+      listener();
+    }
+  };
+
+  window.addEventListener(postsChangedEventName, listener);
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    window.removeEventListener(postsChangedEventName, listener);
+    window.removeEventListener("storage", handleStorage);
+  };
 }

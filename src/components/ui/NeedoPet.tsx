@@ -6,8 +6,10 @@ import { useImStore } from "../../features/im/store";
 import { useSocial } from "../../features/social/context";
 import type { SocialPortalScope } from "../../features/social/types";
 import { useI18n } from "../../i18n/I18nProvider";
+import { readNeedoExternalInfoPosts, subscribeNeedoExternalInfoPosts, type NeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { cn } from "../../lib/utils";
 import { setNeedoPetEnabled, setNeedoPetFreeRoam, useNeedoPetSettings } from "../../state/needoPetSettings";
+import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { NotificationBadge } from "./NotificationBadge";
 
 type PetCareState = {
@@ -45,11 +47,19 @@ type ReminderItem = {
   type: "contacts" | "messages" | "moments";
 };
 
+type PetBubbleHighlight = {
+  id: string;
+  label: string;
+  value: string;
+};
+
 type PetBubble = {
   actionLabel?: string;
   actionPath?: string;
+  highlights?: PetBubbleHighlight[];
   id: string;
-  text: string;
+  infoTitle?: string;
+  text?: string;
   title: string;
   tone: "care" | "danger" | "happy" | "notice";
 };
@@ -91,7 +101,7 @@ const dragEdgeThreshold = 34;
 const floatingViewportPadding = 12;
 const bubblePreferredWidth = 268;
 const bubbleCompactWidth = 252;
-const bubbleMaxHeight = 144;
+const bubbleMaxHeight = 220;
 const panelPreferredWidth = 282;
 const panelCompactWidth = 300;
 const panelEstimatedHeight = 522;
@@ -376,15 +386,23 @@ function getRolePrefix(role: ImRoleType) {
   return role === "user" ? "" : `/${role}`;
 }
 
-function buildReminderSummary(reminders: ReminderItem[]) {
-  if (reminders.length === 0) {
-    return "";
-  }
+function buildReminderHighlights(reminders: ReminderItem[]) {
+  return reminders.slice(0, 3).map((item) => ({
+    id: item.type,
+    label: item.label,
+    value: `${item.count} 条`
+  }));
+}
 
-  return reminders
-    .slice(0, 3)
-    .map((item) => item.label)
-    .join("，");
+function getLatestExternalInfoTitle(posts: NeedoExternalInfoPost[]) {
+  const now = Date.now();
+  const latestActivePost = posts.find((post) => {
+    const expiresAt = new Date(post.expiresAt).getTime();
+    return Number.isNaN(expiresAt) || expiresAt > now;
+  });
+  const latestPost = latestActivePost ?? posts[0];
+
+  return latestPost?.title.trim() ?? "";
 }
 
 function getLowCareBubble(care: PetCareState): PetBubble | null {
