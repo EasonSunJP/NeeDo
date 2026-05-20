@@ -62,7 +62,7 @@ export function FloatingActionWindow({
   const mobileCardClassName =
     "border-[rgba(255,255,255,0.1)] bg-[linear-gradient(180deg,rgba(66,69,72,0.9)_0%,rgba(44,47,50,0.92)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_36px_rgba(0,0,0,0.22)]";
   const mobileMinimizeClassName =
-    "focus-ring grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] text-[color:var(--client-primary)] shadow-[0_12px_24px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:bg-[color:var(--client-primary)] hover:text-[#090806]";
+    "focus-ring grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)_10%)] text-[color:var(--client-primary)] shadow-[0_12px_24px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:bg-[color:var(--client-primary)] hover:text-[color:var(--client-primary-contrast)]";
   const mobileActionClassName =
     "bg-[#c7ff00] text-[#1a1d12] shadow-[0_16px_30px_rgba(167,216,0,0.28)]";
 

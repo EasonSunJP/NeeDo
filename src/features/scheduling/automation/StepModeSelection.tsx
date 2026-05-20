@@ -58,10 +58,8 @@ export function StepModeSelection({
   const sectionClass = isMobileSurface
     ? "border-line bg-white/90 shadow-panel backdrop-blur-xl"
     : "merchant-dispatch-surface";
-  const cardClass = isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-choice";
-  const activeCardClass = isMobileSurface
-    ? "border-transparent bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
-    : "is-active";
+  const cardClass = isMobileSurface ? "schedule-mode-choice-card" : "merchant-dispatch-choice";
+  const activeCardClass = "is-active";
   const softPanelClass = isMobileSurface ? "bg-paper/70" : "merchant-dispatch-soft-panel";
   const quietTextClass = isMobileSurface ? "text-ink/60" : "text-ink/58";
   const labelTextClass = isMobileSurface ? "text-ink/45" : "text-moss/70";

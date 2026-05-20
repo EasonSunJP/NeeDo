@@ -806,7 +806,7 @@ export function TechnicianShiftPlanningPanel({
                 title="商户已安排的正式排班"
               />
               <div className="flex flex-wrap gap-2">
-                <Button className="bg-[color:var(--client-primary)] text-[#090806]" size="sm" onClick={() => setMessage("已确认收到本次商户直接排班，排班已合并到我的排班。")}>
+                <Button className="bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" size="sm" onClick={() => setMessage("已确认收到本次商户直接排班，排班已合并到我的排班。")}>
                   确认收到
                 </Button>
                 <Button
@@ -1138,7 +1138,7 @@ export function TechnicianShiftPlanningPanel({
 
           <div className="flex justify-end">
             <Button
-              className="h-12 w-full bg-[color:var(--client-primary)] text-[#090806] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_18%,transparent)] sm:w-auto sm:min-w-[220px]"
+              className="h-12 w-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_18%,transparent)] sm:w-auto sm:min-w-[220px]"
               onClick={() => onStepChange?.(selectedPlanningMethod)}
               size="lg"
             >
@@ -1181,7 +1181,7 @@ export function TechnicianShiftPlanningPanel({
                   导入历史模板
                 </Button>
                 {activeStep === "oneClick" ? (
-                  <Button className="bg-[color:var(--client-primary)] text-[#090806]" disabled={!canEdit} size="sm" onClick={runOneClickGeneration}>
+                  <Button className="bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" disabled={!canEdit} size="sm" onClick={runOneClickGeneration}>
                     {scheduleContext.requiresStoreConfirmation ? "一键生成" : "一键生成并预览发布"}
                   </Button>
                 ) : null}
@@ -1427,7 +1427,7 @@ export function TechnicianShiftPlanningPanel({
                       ? "当前周期已锁定或已确认，如需变更请等待商户重新开放。"
                       : "当前时段暂不可发布，可能是店铺黑屏、营业时间限制或当前周期只读。"}
                 </div>
-                <Button className="bg-[color:var(--client-primary)] text-[#090806] lg:min-w-[220px]" disabled={!canEdit} onClick={submitResponse}>
+                <Button className="bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] lg:min-w-[220px]" disabled={!canEdit} onClick={submitResponse}>
                   {response
                     ? scheduleContext.requiresStoreConfirmation
                       ? "更新排班反馈"

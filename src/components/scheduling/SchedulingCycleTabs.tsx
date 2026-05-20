@@ -98,7 +98,7 @@ function SchedulingCycleTabButton({
         "h-full min-w-0 rounded-[18px] border px-2.5 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55 sm:rounded-[22px] sm:px-4",
         isMobileSurface
           ? active
-            ? "border-transparent bg-[color:var(--client-primary)] text-[#090806] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]"
+            ? "border-transparent bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]"
             : "border-[color:color-mix(in_srgb,var(--client-line)_44%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)] hover:border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)]"
           : "merchant-dispatch-cycle-card",
         !isMobileSurface && active && "is-active"

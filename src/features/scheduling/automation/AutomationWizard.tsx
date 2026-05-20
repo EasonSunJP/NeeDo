@@ -42,7 +42,7 @@ function isScheduleBoardCycle(cycle: DispatchCycle) {
 function CompactStepProgress({ currentStep, surface }: { currentStep: DispatchStep; surface: "desktop" | "mobile" }) {
   const isMobileSurface = surface === "mobile";
   const activeDotClass = isMobileSurface
-    ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]"
+    ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
     : "border-[color:color-mix(in_srgb,var(--admin-accent)_42%,var(--admin-line))] bg-[color:var(--admin-accent)] text-[color:var(--merchant-dispatch-on-accent)]";
   const inactiveDotClass = isMobileSurface
     ? "border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-muted)]"

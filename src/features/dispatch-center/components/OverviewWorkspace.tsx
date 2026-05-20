@@ -678,7 +678,7 @@ function ContactStatusDetailContent({
                           className={cn(
                             "focus-ring mt-2 h-8 rounded-full px-3 text-[11px] font-black transition",
                             replacementFlow?.candidateId === row.id
-                              ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]"
+                              ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
                               : "border border-[color:color-mix(in_srgb,var(--client-primary)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] text-[color:var(--client-primary)]"
                           )}
                           onClick={() => onSelectReplacementCandidate?.(row)}

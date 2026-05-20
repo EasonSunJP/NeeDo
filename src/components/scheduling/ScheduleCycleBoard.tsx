@@ -91,7 +91,7 @@ export function ScheduleCycleBoard({
     "focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border transition",
     isMobileSurface
       ? editing
-        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
+        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
         : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-[color:var(--client-muted)] hover:text-[color:var(--client-primary)]"
       : editing
         ? "border-[color:var(--admin-accent)] bg-[color:var(--admin-accent)] text-[color:var(--merchant-dispatch-on-accent,#fff)] shadow-[0_12px_26px_color-mix(in_srgb,var(--admin-accent)_26%,transparent)]"
