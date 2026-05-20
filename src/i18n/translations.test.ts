@@ -42,6 +42,13 @@ describe("translations", () => {
     expect(translateText("设置", "zh-Hant")).not.toMatch(/^=|#NAME|__xludf/);
   });
 
+  it("localizes the PWA install settings entry", () => {
+    expect(translateText("安装APP", "ja")).toBe("アプリをインストール");
+    expect(translateText("添加到主屏幕", "en")).toBe("Add to Home Screen");
+    expect(translateText("打开安装提示", "ko")).toBe("설치 안내 열기");
+    expect(translateText("关闭窗口", "en")).toBe("Close");
+  });
+
   it("joins split string literals from exported spreadsheet formulas", () => {
     const source = "为进一步定位前后台启动后一闪即白屏的问题，系统已暂时旁路登录输入页，统一改为测试账号 admin / 123456 自动进入各端口。";
     const translated = translateText(source, "en");

@@ -22,6 +22,14 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { languages, translateText, type Language } from "../../i18n/translations";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import {
+  detectPwaInstallPlatform,
+  normalizePwaInstallPromptOutcome,
+  shouldShowPwaInstallSetting,
+  type BeforeInstallPromptEvent,
+  type PwaInstallPlatform,
+  type PwaInstallPromptOutcome
+} from "../../lib/pwaInstall";
+import {
   detectStorePresentationIndustry,
   getStorePresentationConfig,
   normalizeStorePresentationConfig
@@ -634,6 +642,259 @@ function SettingsToggleRow({
   );
 }
 
+type LegacyMediaQueryList = MediaQueryList & {
+  addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+  removeListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+};
+
+type PwaInstallDialogStatus = "guide" | "prompting" | PwaInstallPromptOutcome;
+
+const pwaDisplayModeQueries = [
+  "(display-mode: standalone)",
+  "(display-mode: fullscreen)",
+  "(display-mode: minimal-ui)"
+];
+
+function usePwaInstallPrompt() {
+  const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [platform, setPlatform] = useState<PwaInstallPlatform>(() => detectPwaInstallPlatform());
+  const [showInstallEntry, setShowInstallEntry] = useState(() => shouldShowPwaInstallSetting());
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncInstallEntry = () => {
+      setPlatform(detectPwaInstallPlatform(window.navigator));
+      setShowInstallEntry(shouldShowPwaInstallSetting(window));
+    };
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setPromptEvent(event as BeforeInstallPromptEvent);
+      syncInstallEntry();
+    };
+    const handleAppInstalled = () => {
+      setPromptEvent(null);
+      syncInstallEntry();
+    };
+    const mediaQueries = pwaDisplayModeQueries
+      .map((query) => {
+        try {
+          return window.matchMedia(query) as LegacyMediaQueryList;
+        } catch {
+          return null;
+        }
+      })
+      .filter((item): item is LegacyMediaQueryList => Boolean(item));
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    window.addEventListener("pageshow", syncInstallEntry);
+    window.addEventListener("visibilitychange", syncInstallEntry);
+    mediaQueries.forEach((query) => {
+      if (typeof query.addEventListener === "function") {
+        query.addEventListener("change", syncInstallEntry);
+      } else {
+        query.addListener?.(syncInstallEntry);
+      }
+    });
+    syncInstallEntry();
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+      window.removeEventListener("pageshow", syncInstallEntry);
+      window.removeEventListener("visibilitychange", syncInstallEntry);
+      mediaQueries.forEach((query) => {
+        if (typeof query.removeEventListener === "function") {
+          query.removeEventListener("change", syncInstallEntry);
+        } else {
+          query.removeListener?.(syncInstallEntry);
+        }
+      });
+    };
+  }, []);
+
+  const promptInstall = async (): Promise<PwaInstallPromptOutcome> => {
+    if (!promptEvent) {
+      return "unavailable";
+    }
+
+    try {
+      const promptChoice = await promptEvent.prompt();
+      const userChoice = promptChoice ?? (await promptEvent.userChoice.catch(() => undefined));
+
+      setPromptEvent(null);
+
+      return normalizePwaInstallPromptOutcome(userChoice);
+    } catch {
+      setPromptEvent(null);
+
+      return "unavailable";
+    }
+  };
+
+  return {
+    hasNativePrompt: Boolean(promptEvent),
+    platform,
+    promptInstall,
+    showInstallEntry
+  };
+}
+
+function getPwaInstallSettingValue(platform: PwaInstallPlatform, hasNativePrompt: boolean) {
+  if (hasNativePrompt) {
+    return "可安装";
+  }
+
+  if (platform === "ios") {
+    return "添加到主屏幕";
+  }
+
+  if (platform === "android") {
+    return "浏览器安装";
+  }
+
+  return "查看指引";
+}
+
+function getPwaInstallSettingSubtitle(platform: PwaInstallPlatform, hasNativePrompt: boolean) {
+  if (hasNativePrompt) {
+    return "打开手机系统安装提示";
+  }
+
+  if (platform === "ios") {
+    return "iPhone 通过 Safari 分享菜单添加";
+  }
+
+  if (platform === "android") {
+    return "Android 会优先调用浏览器安装入口";
+  }
+
+  return "从浏览器菜单安装 NeeDo";
+}
+
+function getPwaInstallDialogMessage(status: PwaInstallDialogStatus, platform: PwaInstallPlatform) {
+  if (status === "accepted") {
+    return "安装已完成，之后可以从主屏幕打开。";
+  }
+
+  if (status === "dismissed") {
+    return "你取消了安装，可以稍后再试。";
+  }
+
+  if (status === "unavailable") {
+    return "系统安装提示暂时不可用，请使用浏览器菜单添加到主屏幕。";
+  }
+
+  if (status === "prompting") {
+    return "正在打开系统安装提示。";
+  }
+
+  if (platform === "ios") {
+    return "iPhone 不开放网页自动弹出安装确认，请按下面步骤添加。";
+  }
+
+  return "如果系统没有弹出安装确认，请从浏览器菜单选择安装或添加到主屏幕。";
+}
+
+function getPwaInstallSteps(platform: PwaInstallPlatform) {
+  if (platform === "ios") {
+    return ["确认正在 Safari 中打开", "点击底部分享按钮", "选择添加到主屏幕", "点击添加后从主屏幕打开"];
+  }
+
+  if (platform === "android") {
+    return ["保持当前页面在浏览器中打开", "点击安装提示或浏览器菜单", "选择安装应用", "安装后从主屏幕打开"];
+  }
+
+  return ["保持当前页面在支持 PWA 的浏览器中打开", "点击地址栏或浏览器菜单中的安装", "确认安装", "安装后从系统应用列表打开"];
+}
+
+function PwaInstallGuideDialog({
+  open,
+  platform,
+  status,
+  hasNativePrompt,
+  onClose,
+  onInstall,
+  t
+}: {
+  open: boolean;
+  platform: PwaInstallPlatform;
+  status: PwaInstallDialogStatus;
+  hasNativePrompt: boolean;
+  onClose: () => void;
+  onInstall: () => void;
+  t: (source: string) => string;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  const canOpenNativePrompt = hasNativePrompt && status !== "accepted" && status !== "prompting";
+  const steps = getPwaInstallSteps(platform);
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/58 px-4 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-[calc(env(safe-area-inset-top)+24px)] backdrop-blur-md sm:items-center sm:pb-6"
+      onClick={onClose}
+      role="presentation"
+    >
+      <section
+        aria-modal="true"
+        className="w-full max-w-[440px] rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,black)] p-4 text-[color:var(--client-text)] shadow-[0_24px_80px_rgba(0,0,0,0.34)]"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[18px] font-black tracking-[-0.02em]">{t("安装APP")}</p>
+            <p className="mt-1 text-[13px] leading-6 text-[color:var(--client-muted)]">{t(getPwaInstallDialogMessage(status, platform))}</p>
+          </div>
+          <button
+            aria-label={t("关闭窗口")}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-[color:var(--client-muted)]"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {steps.map((step, index) => (
+            <div
+              className="flex gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_70%,transparent)] px-3.5 py-3"
+              key={step}
+            >
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] text-xs font-black text-[#090806]">
+                {index + 1}
+              </span>
+              <p className="min-w-0 pt-1 text-[13px] font-black leading-5">{t(step)}</p>
+            </div>
+          ))}
+        </div>
+
+        {platform === "ios" ? (
+          <p className="mt-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] px-3.5 py-3 text-[12px] font-semibold leading-5 text-[color:var(--client-muted)]">
+            {t("请在 Safari 打开后添加；微信、LINE 等内置浏览器可能没有这个菜单。")}
+          </p>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <SecondaryButton className="h-11 justify-center" onClick={onClose}>
+            {t("关闭窗口")}
+          </SecondaryButton>
+          <PrimaryButton className="h-11 justify-center" onClick={canOpenNativePrompt ? onInstall : onClose}>
+            {t(canOpenNativePrompt ? "打开安装提示" : "我知道了")}
+          </PrimaryButton>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 const defaultInfoCardVisibility: InfoCardVisibilitySettings = {
   mode: "public",
   tagIds: [],
@@ -861,6 +1122,24 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const currentLanguageLabel = languages.find((item) => item.code === language)?.label ?? "简中";
   const switchedFromPortal = Boolean((location.state as SettingsNavigationState | null)?.settingsSwitchedFromPortal);
   const isBusinessPortal = portal === "business";
+  const pwaInstall = usePwaInstallPrompt();
+  const [pwaInstallDialogOpen, setPwaInstallDialogOpen] = useState(false);
+  const [pwaInstallDialogStatus, setPwaInstallDialogStatus] = useState<PwaInstallDialogStatus>("guide");
+  const handlePwaInstallRequest = async () => {
+    if (pwaInstall.hasNativePrompt) {
+      setPwaInstallDialogStatus("prompting");
+
+      const outcome = await pwaInstall.promptInstall();
+
+      setPwaInstallDialogStatus(outcome);
+      setPwaInstallDialogOpen(true);
+
+      return;
+    }
+
+    setPwaInstallDialogStatus("guide");
+    setPwaInstallDialogOpen(true);
+  };
 
   return (
     <PortalScopedSettingsPage portal={portal}>
@@ -885,6 +1164,16 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           <SettingsListItem title={t("UI 切换")} to={getSettingsPath(portal, "theme")} value={currentThemeLabel} />
           <SettingsListItem dataNoI18n title={t("语言")} to={getSettingsPath(portal, "language")} value={currentLanguageLabel} />
           <SettingsListItem title={t("身份切换")} to={getSettingsPath(portal, "portal")} value={t(compactPortalLabels[portal].label)} />
+          {pwaInstall.showInstallEntry ? (
+            <SettingsListItem
+              onClick={() => {
+                void handlePwaInstallRequest();
+              }}
+              subtitle={t(getPwaInstallSettingSubtitle(pwaInstall.platform, pwaInstall.hasNativePrompt))}
+              title={t("安装APP")}
+              value={t(getPwaInstallSettingValue(pwaInstall.platform, pwaInstall.hasNativePrompt))}
+            />
+          ) : null}
         </SettingsSection>
 
         {isBusinessPortal ? null : (
@@ -956,6 +1245,17 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
             value={t("重置")}
           />
         </SettingsSection>
+        <PwaInstallGuideDialog
+          hasNativePrompt={pwaInstall.hasNativePrompt}
+          onClose={() => setPwaInstallDialogOpen(false)}
+          onInstall={() => {
+            void handlePwaInstallRequest();
+          }}
+          open={pwaInstallDialogOpen}
+          platform={pwaInstall.platform}
+          status={pwaInstallDialogStatus}
+          t={t}
+        />
       </SettingsHomePage>
     </PortalScopedSettingsPage>
   );
