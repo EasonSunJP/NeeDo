@@ -64,6 +64,11 @@ type PetBubble = {
   tone: "care" | "danger" | "happy" | "notice";
 };
 
+type PetMotionClip = {
+  durationMs: number;
+  src: string;
+};
+
 type MotionPosition = {
   x: number;
   y: number;
@@ -518,7 +523,7 @@ function getPetSpriteKey({
   return "idle";
 }
 
-const xiaobaiPetAssetVersion = "20260521b";
+const xiaobaiPetAssetVersion = "20260521d";
 
 function getVersionedPetAsset(src: string) {
   return `${src}?v=${xiaobaiPetAssetVersion}`;
@@ -549,38 +554,88 @@ const xiaobaiIdleClips = [
   { durationMs: 6_350, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-excited.png") },
   { durationMs: 5_000, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-thinking.png") }
 ] as const;
+const xiaobaiRunningClips = [
+  { durationMs: 2_150, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
+  { durationMs: 2_200, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
+] as const;
 
-function getNextIdleClipIndex(currentIndex: number) {
-  if (xiaobaiIdleClips.length <= 1) {
+function getNextMotionClipIndex(currentIndex: number, clipCount: number) {
+  if (clipCount <= 1) {
     return 0;
   }
 
-  const offset = 1 + Math.floor(Math.random() * (xiaobaiIdleClips.length - 1));
-  return (currentIndex + offset) % xiaobaiIdleClips.length;
+  const offset = 1 + Math.floor(Math.random() * (clipCount - 1));
+  return (currentIndex + offset) % clipCount;
 }
 
-function NeedoPetIdleMotion() {
-  const [clipIndex, setClipIndex] = useState(() => Math.floor(Math.random() * xiaobaiIdleClips.length));
-  const clip = xiaobaiIdleClips[clipIndex] ?? xiaobaiIdleClips[0];
+function NeedoPetMotionSequence({
+  clips,
+  sprite
+}: {
+  clips: readonly PetMotionClip[];
+  sprite: "idle" | "running";
+}) {
+  const [clipIndex, setClipIndex] = useState(() => Math.floor(Math.random() * clips.length));
+  const [fallbackSrc, setFallbackSrc] = useState<string | null>(null);
+  const clip = clips[clipIndex] ?? clips[0];
 
   useEffect(() => {
+    clips.forEach((item) => {
+      const image = new Image();
+      image.src = item.src;
+    });
+  }, [clips]);
+
+  useEffect(() => {
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      setClipIndex((current) => getNextIdleClipIndex(current));
+      const nextIndex = getNextMotionClipIndex(clipIndex, clips.length);
+      const nextClip = clips[nextIndex] ?? clips[0];
+      const image = new Image();
+      const switchClip = () => {
+        if (cancelled) {
+          return;
+        }
+        setFallbackSrc(clip.src);
+        setClipIndex(nextIndex);
+      };
+
+      image.onload = switchClip;
+      image.src = nextClip.src;
+
+      if (image.complete && image.naturalWidth > 0) {
+        switchClip();
+      }
     }, clip.durationMs);
 
-    return () => window.clearTimeout(timer);
-  }, [clip.durationMs, clip.src]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [clip.durationMs, clip.src, clipIndex, clips]);
 
   return (
-    <span className="needo-pet-sprite-shell is-idle-motion" data-sprite="idle">
-      <img key={clip.src} alt="" className="needo-pet-idle-motion-image" draggable={false} src={clip.src} />
+    <span className={cn("needo-pet-sprite-shell is-motion", sprite === "idle" ? "is-idle-motion" : "is-running-motion")} data-sprite={sprite}>
+      {fallbackSrc ? <img alt="" className="needo-pet-motion-image is-fallback" draggable={false} src={fallbackSrc} /> : null}
+      <img
+        key={clip.src}
+        alt=""
+        className="needo-pet-motion-image is-active"
+        draggable={false}
+        onLoad={() => setFallbackSrc(null)}
+        src={clip.src}
+      />
     </span>
   );
 }
 
 function NeedoPetSprite({ sprite }: { sprite: PetSpriteKey }) {
   if (sprite === "idle") {
-    return <NeedoPetIdleMotion />;
+    return <NeedoPetMotionSequence clips={xiaobaiIdleClips} sprite="idle" />;
+  }
+
+  if (sprite === "running") {
+    return <NeedoPetMotionSequence clips={xiaobaiRunningClips} sprite="running" />;
   }
 
   return (

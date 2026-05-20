@@ -285,22 +285,14 @@ img {
   -webkit-user-select: none;
 }
 
-.needo-pet-sprite-shell.is-atlas {
+.needo-pet-sprite-shell.is-motion {
   height: 158px;
   overflow: hidden;
-}
-
-.needo-pet-sprite-shell.is-idle-motion {
-  height: 158px;
-  overflow: hidden;
+  background: transparent;
 }
 
 .needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell {
   transform: scaleX(-1);
-}
-
-.needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell.is-atlas {
-  transform: none;
 }
 
 .needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell.is-idle-motion {
@@ -321,17 +313,14 @@ img {
     transform 180ms ease;
 }
 
-.needo-pet-sprite-frame.is-secondary {
-  opacity: 0;
-}
-
-.needo-pet-idle-motion-image {
+.needo-pet-motion-image {
   position: absolute;
   left: 0;
   bottom: 0;
   display: block;
   width: 132px;
   height: 143px;
+  background: transparent;
   object-fit: contain;
   object-position: center bottom;
   user-select: none;
@@ -340,59 +329,12 @@ img {
   -webkit-user-select: none;
 }
 
-.needo-pet-atlas-window {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  display: block;
-  width: 132px;
-  height: 143px;
-  overflow: hidden;
-  user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
+.needo-pet-motion-image.is-fallback {
+  z-index: 0;
 }
 
-.needo-pet-atlas-image {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: block;
-  width: 1056px;
-  max-width: none;
-  height: 143px;
-  background-image: var(--needo-pet-atlas-src);
-  background-position: 0 calc(-143px * var(--needo-pet-atlas-row, 0));
-  background-repeat: no-repeat;
-  background-size: 1056px 1287px;
-  user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-user-drag: none;
-  -webkit-user-select: none;
-  animation: needo-pet-atlas-frames 1000ms steps(8, end) infinite;
-}
-
-.needo-pet-sprite-shell.is-atlas[data-sprite="running"] .needo-pet-atlas-image {
-  animation-duration: 1000ms;
-}
-
-.needo-pet-sprite-shell.is-atlas[data-sprite="idle"] .needo-pet-atlas-image,
-.needo-pet-sprite-shell.is-atlas[data-sprite="sleeping"] .needo-pet-atlas-image {
-  animation-duration: 1000ms;
-}
-
-.needo-pet-sprite-shell[data-sprite="running"] .is-primary,
-.needo-pet-sprite-shell[data-sprite="idle"] .is-primary,
-.needo-pet-sprite-shell[data-sprite="notice"] .is-primary,
-.needo-pet-sprite-shell[data-sprite="hungry"] .is-primary {
-  animation: needo-pet-frame-primary 1.6s steps(1, end) infinite;
-}
-
-.needo-pet-sprite-shell[data-sprite="running"] .is-secondary,
-.needo-pet-sprite-shell[data-sprite="idle"] .is-secondary,
-.needo-pet-sprite-shell[data-sprite="notice"] .is-secondary,
-.needo-pet-sprite-shell[data-sprite="hungry"] .is-secondary {
-  animation: needo-pet-frame-secondary 1.6s steps(1, end) infinite;
+.needo-pet-motion-image.is-active {
+  z-index: 1;
 }
 
 .needo-pet-svg {
@@ -506,8 +448,8 @@ img {
 
 .needo-pet-count {
   position: absolute;
-  right: -10px;
-  top: -24px;
+  right: 12px;
+  top: 58px;
   z-index: 4;
   pointer-events: none;
   box-shadow: 0 8px 18px rgba(255, 76, 68, 0.34);
@@ -1042,34 +984,6 @@ img {
   100% {
     opacity: 1;
     transform: scale(1) translateY(0);
-  }
-}
-
-@keyframes needo-pet-frame-primary {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes needo-pet-frame-secondary {
-  0%,
-  49% {
-    opacity: 0;
-  }
-  50%,
-  100% {
-    opacity: 1;
-  }
-}
-
-@keyframes needo-pet-atlas-frames {
-  to {
-    transform: translateX(-1056px);
   }
 }
 
