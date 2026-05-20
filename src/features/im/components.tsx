@@ -1411,6 +1411,20 @@ export type ImMessageReactionSummary = {
   reactedByMe?: boolean;
 };
 
+export function hasActiveImMessageTextSelection(root: HTMLElement | null | undefined) {
+  if (typeof window === "undefined" || !root) {
+    return false;
+  }
+
+  const selection = window.getSelection();
+
+  if (!selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) {
+    return false;
+  }
+
+  return root.contains(selection.anchorNode) || root.contains(selection.focusNode);
+}
+
 const imQuickReactions = ["OK", "😂", "🤣", "👍", "🥹", "😭"];
 const imDefaultReactions = [
   "OK", "👍", "🙏", "💪", "🫰", "👏", "🙌", "+1",
@@ -2155,7 +2169,7 @@ export function MessageBubble({
       {!isMine ? avatarNode : null}
       <div className={cn("flex flex-col", message.type === "contact-card" ? "max-w-[calc(100%-3.25rem)]" : "max-w-[78%]", isMine ? "items-end" : "items-start")}>
         {showSender && !isMine ? <p className="mb-1 px-1 text-[11px] font-bold text-[color:var(--client-muted)]">{senderName}</p> : null}
-        <div className={cn("inline-flex min-w-0 max-w-full overflow-hidden", bubbleShellClass)}>{contentNode}</div>
+        <div className={cn("inline-flex min-w-0 max-w-full overflow-hidden", bubbleShellClass)} data-im-message-bubble="true">{contentNode}</div>
         {disappearing ? <DisappearingCountdownStatus disappearing={disappearing} now={disappearingNow} /> : null}
         {status ? <p className={cn("mt-1 px-1 text-[11px] font-bold", message.status === "failed" ? "text-[#ef4f3f]" : "text-[color:var(--client-muted)]")}>{status}</p> : null}
       </div>

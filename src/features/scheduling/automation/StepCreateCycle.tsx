@@ -203,8 +203,8 @@ export function StepCreateCycle({
   const quietTextClass = isMobileSurface ? "text-ink/60" : "text-ink/58";
   const labelTextClass = isMobileSurface ? "text-ink/45" : "text-moss/70";
   const mutedChoiceClass = isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-choice";
-  const mutedPillClass = isMobileSurface ? "border-line bg-white/80 text-ink/60" : "merchant-dispatch-toggle";
-  const activeChoiceClass = isMobileSurface ? "border-moss bg-moss text-white" : "is-active";
+  const mutedPillClass = isMobileSurface ? "schedule-wizard-choice-pill" : "merchant-dispatch-toggle";
+  const activeChoiceClass = "is-active";
   const activeMutedPillClass = isMobileSurface ? "border-line bg-paper text-ink" : "is-active";
   const inputClass = isMobileSurface
     ? "mt-2 w-full rounded-2xl border border-line bg-white/80 px-4 py-3 text-ink outline-none"
@@ -1082,7 +1082,7 @@ export function StepCreateCycle({
         </p>
       ) : null}
 
-      <div className="sticky bottom-4 z-40">
+      <div className={cn("sticky z-40", isMobileSurface ? "schedule-wizard-action-shell" : "bottom-4")}>
         <div className={cn("grid gap-2 rounded-[28px] p-2", isMobileSurface && "schedule-wizard-action-dock")} style={{ gridTemplateColumns: `repeat(${actionColumnCount}, minmax(0, 1fr))` }}>
           {!isFirstRulePhase ? (
             <Button

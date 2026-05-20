@@ -389,7 +389,7 @@ export function MobileShell({
       {resolvedNavItems.length > 0 ? (
         <nav
           className={cn(
-            "safe-nav-bottom client-bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full pt-2",
+            "safe-nav-bottom client-bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full pt-2",
             "border-t border-transparent bg-transparent text-[color:var(--client-text)] shadow-none"
           )}
           style={{

@@ -2956,7 +2956,7 @@ export function TechnicianScheduleEditorRoutePage() {
         aria-hidden="true"
         className="pointer-events-none fixed bottom-0 left-1/2 z-30 h-[calc(env(safe-area-inset-bottom)+9.5rem)] w-full max-w-[960px] -translate-x-1/2 bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_76%,transparent)_42%,var(--client-bg)_100%)]"
       />
-      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-40 flex justify-center px-4">
+      <div className="client-bottom-action-shell pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-40 flex justify-center px-4">
         <div className="pointer-events-auto">
           <Button
             className={cn(

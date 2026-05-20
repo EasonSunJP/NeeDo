@@ -1170,6 +1170,8 @@ img {
   --client-edge-mask-rgb: 255 255 255;
   --client-edge-mask-top-height: calc(env(safe-area-inset-top) + 8.75rem);
   --client-edge-mask-bottom-height: calc(env(safe-area-inset-bottom) + 9.5rem);
+  --client-main-nav-layer: 100;
+  --client-main-nav-action-offset: calc(150px + env(safe-area-inset-bottom, 0px));
   --client-tab-frame-height: 48px;
   --client-tab-button-height: 40px;
   --client-sticky-tab-top: calc(env(safe-area-inset-top, 0px) + 12px);
@@ -1655,6 +1657,7 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .client-shell .client-bottom-nav {
+  z-index: var(--client-main-nav-layer) !important;
   background: transparent !important;
   border-color: transparent !important;
   color: var(--client-muted) !important;
@@ -3225,12 +3228,39 @@ body:has(.merchant-analytics-clean-shell),
   backdrop-filter: blur(18px) saturate(1.24);
 }
 
+.client-shell .schedule-wizard-action-shell,
+.client-shell .client-bottom-action-shell {
+  bottom: var(--client-main-nav-action-offset) !important;
+  z-index: 40 !important;
+}
+
 .client-shell .schedule-wizard-primary-action {
   background: var(--client-primary) !important;
   color: var(--client-primary-contrast) !important;
   box-shadow:
     0 18px 34px color-mix(in srgb, var(--client-primary) 28%, transparent),
     inset 0 1px 0 color-mix(in srgb, #ffffff 20%, transparent) !important;
+}
+
+.client-shell .schedule-wizard-choice-pill {
+  border-color: color-mix(in srgb, var(--client-primary) 26%, var(--client-line)) !important;
+  background: color-mix(in srgb, var(--client-surface) 84%, transparent) !important;
+  color: var(--client-muted) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent) !important;
+}
+
+.client-shell .schedule-wizard-choice-pill.is-active {
+  border-color: color-mix(in srgb, var(--client-primary) 84%, var(--client-line)) !important;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--client-primary) 94%, #ffffff 6%),
+      var(--client-primary)
+    ) !important;
+  color: var(--client-primary-contrast) !important;
+  box-shadow:
+    0 12px 26px color-mix(in srgb, var(--client-primary) 24%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 22%, transparent) !important;
 }
 
 @media (orientation: landscape) and (max-height: 560px) {
@@ -6853,6 +6883,22 @@ html.im-conversation-scroll-lock #root {
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   will-change: scroll-position;
+}
+
+.im-conversation-scroll.im-conversation-scroll--text-selecting,
+.im-conversation-scroll.im-conversation-scroll--text-selecting [data-im-message-selectable-text="true"] {
+  touch-action: auto;
+}
+
+[data-im-message-selectable-text="true"] {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: auto;
+}
+
+[data-im-message-selected="true"] [data-im-message-bubble="true"] {
+  overflow: visible;
 }
 
 .client-shell.business-cps-shell {

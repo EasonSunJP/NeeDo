@@ -52,6 +52,7 @@ import {
   ImHeaderAction,
   ImIcon,
   ImMessageActionSheet,
+  hasActiveImMessageTextSelection,
   type ImMessageActionSheetItem,
   type ImMessageReactionSummary,
   ImSearchTrigger,
@@ -607,6 +608,11 @@ function MessagePressable({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearPress();
+
+    if (hasActiveImMessageTextSelection(event.currentTarget)) {
+      return;
+    }
+
     pressStartRef.current = { x: event.clientX, y: event.clientY };
     timerRef.current = window.setTimeout(onOpenMenu, 380);
   };
@@ -627,6 +633,9 @@ function MessagePressable({
     <div
       onContextMenu={(event) => {
         event.preventDefault();
+        if (hasActiveImMessageTextSelection(event.currentTarget)) {
+          return;
+        }
         onOpenMenu();
       }}
       onPointerCancel={clearPress}
@@ -4123,6 +4132,10 @@ export function ImConversationRoomPage({
       return;
     }
 
+    if (menuState && hasActiveImMessageTextSelection(messageRefs.current[menuState.message.id])) {
+      return;
+    }
+
     closeConversationFloatingUi();
   };
 
@@ -4443,10 +4456,14 @@ export function ImConversationRoomPage({
           ) : null}
 
           <div
-            className="im-conversation-scroll scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1 py-3"
+            className={cn("im-conversation-scroll scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-scroll overscroll-y-contain px-1 py-3", menuState && "im-conversation-scroll--text-selecting")}
             data-page-drag-ignore="true"
             data-scroll-drag-ignore="true"
             onClick={() => {
+              if (menuState && hasActiveImMessageTextSelection(messageRefs.current[menuState.message.id])) {
+                return;
+              }
+
               if (menuState) {
                 closeMessageMenu();
               }
@@ -4488,6 +4505,7 @@ export function ImConversationRoomPage({
               return (
                 <div
                   className={cn("relative rounded-3xl transition", menuState ? "z-20" : "z-10", flashMessageId === message.id && "bg-[#fff7d4]", menuState?.message.id === message.id && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]")}
+                  data-im-message-selected={menuState?.message.id === message.id ? "true" : undefined}
                   key={message.id}
                   ref={(element) => {
                     messageRefs.current[message.id] = element;

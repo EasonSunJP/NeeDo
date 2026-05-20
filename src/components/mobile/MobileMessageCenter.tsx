@@ -33,7 +33,7 @@ import { ShareNetworkIcon } from "../ui/ShareNetworkIcon";
 import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "./MobileFullscreenHeader";
 import { MobileChatComposer, type MobileChatComposerAction } from "./MobileChatComposer";
-import { ImMessageActionSheet, type ImMessageActionSheetItem, type ImMessageReactionSummary } from "../../features/im/components";
+import { ImMessageActionSheet, hasActiveImMessageTextSelection, type ImMessageActionSheetItem, type ImMessageReactionSummary } from "../../features/im/components";
 import { ChatConversationInfoCard } from "./ChatConversationInfoCard";
 import { ContactGroupIcon } from "./ContactGroupIcon";
 import { EntityDetailPage } from "./EntityDetailPage";
@@ -814,6 +814,11 @@ function ChatMessagePressable({
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearPress();
+
+    if (hasActiveImMessageTextSelection(event.currentTarget)) {
+      return;
+    }
+
     pressStartRef.current = { x: event.clientX, y: event.clientY };
     timerRef.current = window.setTimeout(onOpenMenu, 380);
   };
@@ -834,6 +839,9 @@ function ChatMessagePressable({
     <div
       onContextMenu={(event) => {
         event.preventDefault();
+        if (hasActiveImMessageTextSelection(event.currentTarget)) {
+          return;
+        }
         onOpenMenu();
       }}
       onPointerCancel={clearPress}
@@ -1900,6 +1908,10 @@ export function MobileMessageCenter({ context = "user" }: { context?: MessageCen
     }
 
     if (event.target.closest("[data-im-composer-root='true'], [data-im-message-action-sheet='true']")) {
+      return;
+    }
+
+    if (selectedMessageId && hasActiveImMessageTextSelection(chatMessageRefs.current[selectedMessageId])) {
       return;
     }
 
@@ -3093,10 +3105,14 @@ export function MobileMessageCenter({ context = "user" }: { context?: MessageCen
                 ) : null}
 
                 <div
-                  className={cn("im-conversation-scroll relative min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-scroll overscroll-y-contain px-4 py-5", chatMessageAreaClass)}
+                  className={cn("im-conversation-scroll relative min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-scroll overscroll-y-contain px-4 py-5", chatMessageAreaClass, selectedMessage && "im-conversation-scroll--text-selecting")}
                   data-page-drag-ignore="true"
                   data-scroll-drag-ignore="true"
                   onClick={() => {
+                    if (selectedMessageId && hasActiveImMessageTextSelection(chatMessageRefs.current[selectedMessageId])) {
+                      return;
+                    }
+
                     if (selectedMessage) {
                       closeMessageActions();
                     }
@@ -3110,6 +3126,7 @@ export function MobileMessageCenter({ context = "user" }: { context?: MessageCen
                   {activeMessages.map((message) => (
                     <div
                       className={cn("relative rounded-3xl transition", selectedMessage ? "z-20" : "z-10", selectedMessageId === message.id && (isNight ? "bg-white/[0.06]" : "bg-moss/10"))}
+                      data-im-message-selected={selectedMessageId === message.id ? "true" : undefined}
                       key={message.id}
                       ref={(element) => {
                         chatMessageRefs.current[message.id] = element;
@@ -3128,6 +3145,7 @@ export function MobileMessageCenter({ context = "user" }: { context?: MessageCen
                                 "min-w-0 max-w-full overflow-hidden rounded-[18px] px-3.5 py-2.5 text-sm shadow-panel",
                                 message.from === "me" ? meBubbleClass : message.from === "system" ? systemBubbleClass : themBubbleClass
                               )}
+                              data-im-message-bubble="true"
                             >
                               {message.replyTo ? (
                                 <div className={cn("mb-2 border-b pb-2", message.from === "me" ? "border-white/[0.06] text-white/78" : isNight ? "border-white/[0.05] text-[#f7ead0]/58" : "border-black/[0.04] text-ink/52")}>

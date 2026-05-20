@@ -3010,7 +3010,7 @@ function StickySaveBar({
   onSave: () => void;
 }) {
   return (
-    <div className="safe-nav-bottom fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-4 pb-3 sm:px-6 lg:px-8">
+    <div className="safe-nav-bottom client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-4 pb-3 sm:px-6 lg:px-8">
       <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl">
         <div className="grid gap-3 md:grid-cols-[160px,1fr]">
           <SecondaryButton className="w-full" onClick={onCancel}>
