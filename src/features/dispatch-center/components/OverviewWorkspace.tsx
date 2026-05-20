@@ -418,48 +418,47 @@ function AffectedBookingMiniCard({
   };
 
   return (
-    <article className="overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] p-3.5 text-white shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+    <article className="overflow-hidden rounded-[24px] border border-white/10 bg-[color:color-mix(in_srgb,var(--client-surface)_72%,var(--client-bg)_28%)] p-3.5 text-white shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
       <div className="relative">
-        <div className="client-feature-aura client-feature-aura--soft absolute inset-0" />
         <div className="relative">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap gap-2">
-                <Badge className={getAffectedBookingBadgeClassName("blue")} tone="blue">
-                  {booking.statusLabel}
-                </Badge>
-                <Badge className={getAffectedBookingBadgeClassName("neutral")} tone="neutral">
-                  {booking.modeLabel}
-                </Badge>
-              </div>
-              <h4 className="mt-3 text-[18px] font-black leading-6 tracking-[-0.01em] text-white">
-                {booking.serviceName}
-              </h4>
-              <p className="mt-2 text-xs leading-5 text-white/60">开始时间：{booking.startLabel}</p>
+            <div className="flex min-w-0 flex-wrap gap-2">
+              <Badge className={getAffectedBookingBadgeClassName("blue")} tone="blue">
+                {booking.statusLabel}
+              </Badge>
+              <Badge className={getAffectedBookingBadgeClassName("neutral")} tone="neutral">
+                {booking.modeLabel}
+              </Badge>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {booking.chatTo ? (
+                <AffectedBookingIconButton label="联系用户" to={booking.chatTo}>
+                  <AppIcon className="h-4 w-4" name="chat" />
+                </AffectedBookingIconButton>
+              ) : null}
+              <AffectedBookingIconButton label="转发服务卡" onClick={handleShare}>
+                <AppIcon className="h-4 w-4" name="share" />
+              </AffectedBookingIconButton>
+              {onCancel ? (
+                <AffectedBookingIconButton danger label="取消预约" onClick={() => onCancel(booking)}>
+                  <AppIcon className="h-4 w-4" name="close" />
+                </AffectedBookingIconButton>
+              ) : null}
+            </div>
+          </div>
+          <h4 className="mt-3 text-[18px] font-black leading-6 tracking-[-0.01em] text-white">
+            {booking.serviceName}
+          </h4>
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr),auto] items-start gap-3">
+            <div className="min-w-0 pt-1">
+              <p className="text-xs leading-5 text-white/60">开始时间：{booking.startLabel}</p>
               <p className="text-xs leading-5 text-white/60">预计结束：{booking.endLabel}</p>
             </div>
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <div className="flex items-center gap-1.5">
-                {booking.chatTo ? (
-                  <AffectedBookingIconButton label="联系用户" to={booking.chatTo}>
-                    <AppIcon className="h-4 w-4" name="chat" />
-                  </AffectedBookingIconButton>
-                ) : null}
-                <AffectedBookingIconButton label="转发服务卡" onClick={handleShare}>
-                  <AppIcon className="h-4 w-4" name="share" />
-                </AffectedBookingIconButton>
-                {onCancel ? (
-                  <AffectedBookingIconButton danger label="取消预约" onClick={() => onCancel(booking)}>
-                    <AppIcon className="h-4 w-4" name="close" />
-                  </AffectedBookingIconButton>
-                ) : null}
-              </div>
-              <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)] px-4 py-3 text-right text-[color:var(--client-text)] shadow-soft">
-                <p className="text-[10px] font-bold text-[color:var(--client-muted)]">预估收入</p>
-                <strong className="mt-1 block text-[18px] font-black text-[color:var(--client-accent-text)]">
-                  {yen(booking.order.amount)}
-                </strong>
-              </div>
+            <div className="h-[54px] w-[42%] min-w-[156px] max-w-[172px] justify-self-end rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)] px-4 py-2 text-right text-[color:var(--client-text)] shadow-soft">
+              <p className="text-[10px] font-bold leading-none text-[color:var(--client-muted)]">预估收入</p>
+              <strong className="mt-1.5 block text-[18px] font-black leading-none text-[color:var(--client-accent-text)]">
+                {yen(booking.order.amount)}
+              </strong>
             </div>
           </div>
 
@@ -627,8 +626,8 @@ function ContactStatusDetailContent({
             ) : null}
 
             {item.affectedBookings?.length ? (
-              <div className="grid gap-2 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_22%,var(--client-line)_78%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-3 py-3">
-                <div className="flex items-center justify-between gap-3">
+              <div className="grid gap-2">
+                <div className="flex items-center gap-2">
                   <p className="text-[12px] font-black text-ink">被影响预约</p>
                   <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-2 py-1 text-[10px] font-black leading-none text-[color:var(--client-primary)]">
                     {item.affectedBookings.length} 件
