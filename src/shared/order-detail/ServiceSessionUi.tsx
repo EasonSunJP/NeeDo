@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { Badge } from "../../components/ui/Badge";
 import { cn } from "../../lib/utils";
 
 export type ServiceReviewTag = {
@@ -388,9 +389,9 @@ export function ServiceReviewPrompt({
                   </span>
                 </button>
               ) : (
-                <span className="inline-flex min-h-8 items-center px-0.5 text-sm font-black text-[color:var(--client-text)]">
+                <Badge className="service-review-empty-tag" tone="neutral">
                   暂无评价标签
-                </span>
+                </Badge>
               )}
             </div>
           </section>
