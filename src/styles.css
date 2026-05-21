@@ -238,6 +238,12 @@ img {
   will-change: transform;
 }
 
+.needo-pet-layer[class*="client-theme-"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
 .needo-pet-button {
   position: absolute;
   inset: 0;

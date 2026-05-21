@@ -79,6 +79,12 @@ type MotionVelocity = {
   y: number;
 };
 
+type PetMotionState = {
+  facing: PetFacing;
+  mode: PetMotionMode;
+  moving: boolean;
+};
+
 type FloatingPlacement = {
   arrowX?: number;
   maxHeight: number;
@@ -462,11 +468,13 @@ function getCareExpression(care: PetCareState, hasNotice: boolean): PetExpressio
 function getPetAnimationState({
   expression,
   facing,
+  moving,
   mode,
   panelOpen
 }: {
   expression: PetExpression;
   facing: PetFacing;
+  moving: boolean;
   mode: PetMotionMode;
   panelOpen: boolean;
 }): PetAnimationState {
@@ -474,56 +482,40 @@ function getPetAnimationState({
     return "failed";
   }
 
-  if (panelOpen || mode === "anchor" || mode === "rest") {
+  if (panelOpen || mode === "rest") {
     return "idle";
   }
 
-  if (expression === "notice") {
-    return "idle";
+  if (moving) {
+    return facing === "left" ? "running-left" : "running-right";
   }
 
-  if (mode === "peek" || mode === "climb") {
-    return "waiting";
-  }
-
-  return facing === "left" ? "running-left" : "running-right";
+  return "idle";
 }
 
 function getPetSpriteKey({
   care,
   expression,
-  mode,
+  moving,
   panelOpen
 }: {
   care: PetCareState;
   expression: PetExpression;
-  mode: PetMotionMode;
+  moving: boolean;
   panelOpen: boolean;
 }): PetSpriteKey {
   if (!care.alive || expression === "dead") {
     return "failed";
   }
 
-  if (panelOpen || mode === "anchor" || mode === "rest" || expression === "notice") {
-    return "idle";
-  }
-
-  if (mode === "roam") {
+  if (!panelOpen && moving) {
     return "running";
-  }
-
-  if (mode === "climb") {
-    return "jumping";
-  }
-
-  if (mode === "peek") {
-    return "waiting";
   }
 
   return "idle";
 }
 
-const xiaobaiPetAssetVersion = "20260521d";
+const xiaobaiPetAssetVersion = "20260521g";
 
 function getVersionedPetAsset(src: string) {
   return `${src}?v=${xiaobaiPetAssetVersion}`;
@@ -555,8 +547,8 @@ const xiaobaiIdleClips = [
   { durationMs: 5_000, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-thinking.png") }
 ] as const;
 const xiaobaiRunningClips = [
-  { durationMs: 2_150, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
-  { durationMs: 2_200, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
+  { durationMs: 6_400, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
+  { durationMs: 8_400, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
 ] as const;
 
 function getNextMotionClipIndex(currentIndex: number, clipCount: number) {
@@ -631,11 +623,11 @@ function NeedoPetMotionSequence({
 
 function NeedoPetSprite({ sprite }: { sprite: PetSpriteKey }) {
   if (sprite === "idle") {
-    return <NeedoPetMotionSequence clips={xiaobaiIdleClips} sprite="idle" />;
+    return <NeedoPetMotionSequence key="idle" clips={xiaobaiIdleClips} sprite="idle" />;
   }
 
   if (sprite === "running") {
-    return <NeedoPetMotionSequence clips={xiaobaiRunningClips} sprite="running" />;
+    return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} sprite="running" />;
   }
 
   return (
@@ -783,7 +775,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const [bubble, setBubble] = useState<PetBubble | null>(null);
   const [dragging, setDragging] = useState(false);
   const [settled, setSettled] = useState(false);
-  const [motion, setMotion] = useState<{ facing: PetFacing; mode: PetMotionMode }>({ facing: "right", mode: "roam" });
+  const [motion, setMotion] = useState<PetMotionState>({ facing: "right", mode: "anchor", moving: false });
   const [, setViewportRevision] = useState(0);
   const petRef = useRef<HTMLDivElement | null>(null);
   const positionRef = useRef<MotionPosition>(readMotionPosition());
@@ -849,8 +841,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const totalReminderCount = reminders.reduce((sum, item) => sum + item.count, 0);
   const primaryReminder = reminders[0];
   const expression = getCareExpression(care, totalReminderCount > 0 || Boolean(latestExternalInfoTitle));
-  const animationState = getPetAnimationState({ expression, facing: motion.facing, mode: motion.mode, panelOpen });
-  const spriteKey = getPetSpriteKey({ care, expression, mode: motion.mode, panelOpen });
+  const animationState = getPetAnimationState({ expression, facing: motion.facing, moving: motion.moving, mode: motion.mode, panelOpen });
+  const spriteKey = getPetSpriteKey({ care, expression, moving: motion.moving, panelOpen });
   const bubbleVisible = Boolean(bubble && !panelOpen && !dragging && settled);
   const bubblePlacement = bubbleVisible ? getBubblePlacement(positionRef.current, motion.facing) : null;
   const panelPlacement = panelOpen ? getPanelPlacement(positionRef.current, motion.facing) : null;
@@ -956,6 +948,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       if (!draggingRef.current) {
         const position = positionRef.current;
         const previousX = position.x;
+        const previousY = position.y;
         const velocity = velocityRef.current;
         const maxX = Math.max(8, window.innerWidth - petSize.width - 8);
         const maxY = Math.max(8, window.innerHeight - petSize.height - 8);
@@ -1040,8 +1033,29 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
               };
 
         const horizontalDelta = positionRef.current.x - previousX;
+        const verticalDelta = positionRef.current.y - previousY;
+        const distanceMoved = Math.hypot(horizontalDelta, verticalDelta);
+        const anchorDistance = anchorTarget
+          ? Math.hypot(positionRef.current.x - anchorTarget.x, positionRef.current.y - anchorTarget.y)
+          : 0;
+        const peekDistance = peekTargetRef.current
+          ? Math.hypot(positionRef.current.x - peekTargetRef.current.x, positionRef.current.y - peekTargetRef.current.y)
+          : 0;
+        const nextMoving =
+          !panelOpen &&
+          mode !== "dead" &&
+          mode !== "rest" &&
+          (mode === "roam" ||
+            mode === "climb" ||
+            (mode === "anchor" && anchorDistance > 6) ||
+            (mode === "peek" && peekDistance > 6) ||
+            distanceMoved > 0.2);
         const nextFacing: PetFacing = Math.abs(horizontalDelta) > 0.08 ? (horizontalDelta >= 0 ? "right" : "left") : velocity.x >= 0 ? "right" : "left";
-        setMotion((current) => (current.mode === mode && current.facing === nextFacing ? current : { facing: nextFacing, mode }));
+        setMotion((current) =>
+          current.mode === mode && current.facing === nextFacing && current.moving === nextMoving
+            ? current
+            : { facing: nextFacing, mode, moving: nextMoving }
+        );
         const nextSettled =
           mode === "rest" ||
           mode === "dead" ||
@@ -1187,7 +1201,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       startX: event.clientX,
       startY: event.clientY
     };
-    setMotion((current) => ({ ...current, mode: "rest" }));
+    setMotion((current) => ({ ...current, mode: "rest", moving: false }));
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
