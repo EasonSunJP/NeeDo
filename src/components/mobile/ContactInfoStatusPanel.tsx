@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from "react";
-import { AppIcon } from "../client-ui/AppScaffold";
 import { ContactEventTimelinePanel } from "./ContactEventTimeline";
 import { MobileFullscreenHeader } from "./MobileFullscreenHeader";
 import { MobileFullscreenPage } from "./MobileFullscreenPage";
@@ -65,6 +64,130 @@ const contactInfoStatusFilterOptions: Array<{ label: string; value: ContactInfoS
   { label: "已解决", value: "resolved" },
   { label: "全部", value: "all" }
 ];
+
+function ContactInfoComputerIcon({ className, warning = false }: { className?: string; warning?: boolean }) {
+  return (
+    <span className={cn("relative grid h-5 w-5 place-items-center", className)}>
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <rect height="11" rx="2.4" stroke="currentColor" strokeWidth="1.9" width="16" x="4" y="5" />
+        <path d="M9 19h6M12 16v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
+      </svg>
+      {warning ? (
+        <span className="absolute -right-1 -top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-[#ef4444] px-0.5 text-[9px] font-black leading-none text-white">
+          !
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function isContactInfoBlockingItem(item: Pick<ContactInfoStatusItem, "detail" | "status" | "statusLabel" | "title" | "tone">) {
+  const text = `${item.title} ${item.statusLabel} ${item.detail}`;
+
+  return item.tone === "red" || item.status === "expired" || /异常|異常|阻断|阻斷|冲突|衝突|失败|失敗|过期|過期|取消|未到|迟到|遅刻|风险|風險/i.test(text);
+}
+
+function getContactInfoStatusIcon(item: Pick<ContactInfoStatusItem, "detail" | "icon" | "status" | "statusLabel" | "title" | "tone">) {
+  return item.title === "系统信息" ? <ContactInfoComputerIcon warning={isContactInfoBlockingItem(item)} /> : item.icon;
+}
+
+function padTimeSegment(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function getContactInfoTodayParts() {
+  const now = new Date();
+
+  return {
+    day: now.getDate(),
+    hour: now.getHours(),
+    minute: now.getMinutes(),
+    month: now.getMonth() + 1,
+    second: now.getSeconds(),
+    year: now.getFullYear()
+  };
+}
+
+function getContactInfoTodayKey() {
+  const today = getContactInfoTodayParts();
+
+  return `${today.year}-${padTimeSegment(today.month)}-${padTimeSegment(today.day)}`;
+}
+
+function getTimePartsFromText(value: string) {
+  const match = value.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    hour: Math.max(0, Math.min(23, Number(match[1]))),
+    minute: Math.max(0, Math.min(59, Number(match[2]))),
+    second: Math.max(0, Math.min(59, Number(match[3] ?? 0)))
+  };
+}
+
+function formatContactInfoTimestamp(value?: string, detail?: string) {
+  const raw = value?.trim();
+
+  if (!raw || raw === "-") {
+    return "-";
+  }
+
+  const today = getContactInfoTodayParts();
+  const fallbackTime = getTimePartsFromText(`${raw} ${detail ?? ""}`) ?? {
+    hour: today.hour,
+    minute: today.minute,
+    second: today.second
+  };
+  let year = today.year;
+  let month = today.month;
+  let day = today.day;
+  let time = fallbackTime;
+
+  if (/^(现在|刚刚)$/.test(raw)) {
+    time = { hour: today.hour, minute: today.minute, second: today.second };
+  } else if (/^(今日|今天)/.test(raw)) {
+    time = getTimePartsFromText(raw) ?? fallbackTime;
+  } else {
+    const isoMatch = raw.match(/(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+    const compactMatch = raw.match(/\b(\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})\b/);
+    const chineseMatch = raw.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/);
+    const slashMatch = raw.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+    const match = isoMatch ?? compactMatch ?? chineseMatch ?? slashMatch;
+
+    if (match) {
+      if (match === isoMatch) {
+        year = Number(match[1]);
+        month = Number(match[2]);
+        day = Number(match[3]);
+      } else if (match === compactMatch) {
+        year = 2000 + Number(match[1]);
+        month = Number(match[2]);
+        day = Number(match[3]);
+      } else if (match === chineseMatch) {
+        year = match[1] ? Number(match[1]) : today.year;
+        month = Number(match[2]);
+        day = Number(match[3]);
+      } else {
+        month = Number(match[1]);
+        day = Number(match[2]);
+      }
+    } else if (!getTimePartsFromText(raw)) {
+      return raw;
+    }
+  }
+
+  const dateKey = `${year}-${padTimeSegment(month)}-${padTimeSegment(day)}`;
+  const timeLabel = `${padTimeSegment(time.hour)}:${padTimeSegment(time.minute)}:${padTimeSegment(time.second)}`;
+
+  if (dateKey === getContactInfoTodayKey()) {
+    return `今天 ${timeLabel}`;
+  }
+
+  return `${year}年${month}月${day}日 ${timeLabel}`;
+}
 
 type ContactInfoEventPresentation = {
   actions: ContactInfoStatusAction[];
@@ -356,7 +479,7 @@ export function ContactInfoActionConfirmDialog({
 }
 
 function getContactInfoDisplayTime(item: ContactInfoStatusItem) {
-  return item.timestampLabel ?? item.dateLabel ?? "-";
+  return formatContactInfoTimestamp(item.timestampLabel ?? item.dateLabel ?? "-", item.detail);
 }
 
 function getContactInfoStatusDetail(item: ContactInfoStatusItem) {
@@ -384,11 +507,12 @@ function buildDefaultTimeline(item: ContactInfoStatusItem): ContactInfoStatusTim
       actorRole: "异常信息生成",
       atLabel,
       detail: item.detail,
-      icon: item.icon,
+      icon: getContactInfoStatusIcon(item),
       id: `${item.id}-created`,
       message: item.detail,
       operator: item.title,
-      title: "异常信息生成"
+      title: "异常信息生成",
+      tone: isContactInfoBlockingItem(item) ? "red" : "green"
     },
     {
       actorName: "系统",
@@ -424,7 +548,7 @@ function ContactInfoStatusDefaultDetail<TItem extends ContactInfoStatusItem>({
       {
         actorName: "当前负责人",
         actorRole: action.label,
-        atLabel: "刚刚",
+        atLabel: formatContactInfoTimestamp("刚刚"),
         detail: `已执行推荐动作：${action.label}。系统会把本次处理写入操作日志，并同步关联业务记录。`,
         id: `${item.id}-${action.id}-${current.length}`,
         message: `已执行推荐动作：${action.label}。系统会把本次处理写入操作日志，并同步关联业务记录。`,
@@ -474,7 +598,7 @@ function ContactInfoStatusDefaultDetail<TItem extends ContactInfoStatusItem>({
                   : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-muted)]"
               )}
             >
-              {item.icon}
+              {getContactInfoStatusIcon(item)}
             </span>
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -555,10 +679,10 @@ function ContactInfoStatusRow<TItem extends ContactInfoStatusItem>({
           "grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[18px] border text-base font-black",
           item.tone === "red"
             ? "border-[#ef5b55]/30 bg-[#ef5b55]/12 text-[#ef5b55]"
-            : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-muted)]"
+          : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-muted)]"
         )}
       >
-        {item.icon}
+        {getContactInfoStatusIcon(item)}
       </span>
       <span className="min-w-0 self-center">
         <span className="grid min-w-0 grid-cols-[minmax(0,1fr),auto] items-start gap-2">
@@ -597,7 +721,7 @@ export function ContactInfoStatusPanel<TItem extends ContactInfoStatusItem>({
   className,
   emptyDateLabel = "-",
   emptyDetail = "当前筛选条件下没有异常信息。",
-  emptyIcon = <AppIcon className="h-6 w-6" name="bell" />,
+  emptyIcon = <ContactInfoComputerIcon className="h-6 w-6" />,
   emptyId = "contact-info-empty",
   emptyStatusLabel = "空",
   emptyTitle = "系统信息",

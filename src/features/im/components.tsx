@@ -32,6 +32,7 @@ export function ImIcon({
 	    | "chevron-down"
 	    | "search"
 	    | "add"
+    | "close"
 	    | "edit"
 	    | "more"
     | "mute"
@@ -48,6 +49,7 @@ export function ImIcon({
     | "file"
     | "location"
     | "card"
+    | "calendar"
     | "friend"
     | "scan"
     | "payment"
@@ -95,6 +97,14 @@ export function ImIcon({
     return (
       <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
         <path d="M12 5v14M5 12h14" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
+      </svg>
+    );
+  }
+
+  if (name === "close") {
+    return (
+      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+        <path d="m7 7 10 10M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
       </svg>
     );
   }
@@ -232,6 +242,16 @@ export function ImIcon({
         <rect height="14" rx="2.5" stroke="currentColor" strokeWidth="2" width="18" x="3" y="5" />
         <circle cx="9" cy="11" r="2" stroke="currentColor" strokeWidth="2" />
         <path d="M14 10h4M14 14h3" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  if (name === "calendar") {
+    return (
+      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+        <rect height="15" rx="3" stroke="currentColor" strokeWidth="2" width="16" x="4" y="5" />
+        <path d="M8 3.5v4M16 3.5v4M4 9.5h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+        <path d="M8 13h3M8 16h5.5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
       </svg>
     );
   }
@@ -1370,12 +1390,20 @@ export function ImBottomSheet({
   open,
   title,
   onClose,
-  children
+  children,
+  panelClassName,
+  bodyClassName,
+  showCloseButton = false,
+  closeLabel = "关闭"
 }: {
   open: boolean;
   title?: string;
   onClose: () => void;
   children: ReactNode;
+  panelClassName?: string;
+  bodyClassName?: string;
+  showCloseButton?: boolean;
+  closeLabel?: string;
 }) {
   if (!open) {
     return null;
@@ -1383,10 +1411,26 @@ export function ImBottomSheet({
 
   return (
     <div className="fixed inset-0 z-50 bg-[color:var(--client-overlay)]" onClick={onClose}>
-      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]" onClick={(event) => event.stopPropagation()}>
+      <div
+        className={cn(
+          "absolute inset-x-0 bottom-0 mx-auto w-full max-w-[880px] rounded-t-[32px] bg-[color:var(--client-surface)] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-18px_48px_rgba(0,0,0,0.16)]",
+          panelClassName
+        )}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {showCloseButton ? (
+          <button
+            aria-label={closeLabel}
+            className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,var(--client-bg)_16%)] text-[color:var(--client-text)] shadow-[0_12px_28px_rgba(0,0,0,0.14)] backdrop-blur-xl transition active:scale-95"
+            onClick={onClose}
+            type="button"
+          >
+            <ImIcon className="h-4 w-4" name="close" />
+          </button>
+        ) : null}
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]" />
         {title ? <h3 className="mb-3 text-center text-sm font-black text-[color:var(--client-muted)]">{title}</h3> : null}
-        {children}
+        {bodyClassName ? <div className={bodyClassName}>{children}</div> : children}
       </div>
     </div>
   );
@@ -2304,6 +2348,8 @@ function previewLabel(type: ImMessageType) {
     file: "文件",
     location: "位置",
     "contact-card": "名片",
+    "service-card": "服务",
+    "schedule-invite": "日程邀请",
     system: "系统消息",
     recalled: "撤回消息"
   };
@@ -2545,6 +2591,67 @@ export function MessageBubble({
           </div>
         </div>
       );
+    }
+
+    if (message.type === "service-card" && message.ext?.serviceCard) {
+      const card = message.ext.serviceCard;
+      const tags = (card.tags ?? []).slice(0, 3);
+      const cardBody = (
+        <div className="w-[292px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]">
+          <div className="flex gap-3 p-3">
+            <img alt={card.name} className="h-20 w-20 shrink-0 rounded-[18px] object-cover" src={card.cover} />
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-2 text-[14px] font-black leading-5">{card.name}</p>
+              <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">{card.summary}</p>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {tags.map((tag) => (
+                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]" key={tag}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-black text-[color:var(--client-muted)]">{card.providerName ?? "店铺服务"}</p>
+              <p className="mt-0.5 text-[13px] font-black text-[color:var(--client-text)]">{card.priceLabel}{card.durationLabel ? ` · ${card.durationLabel}` : ""}</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)]">服务</span>
+          </div>
+        </div>
+      );
+
+      return card.href ? <Link to={card.href}>{cardBody}</Link> : cardBody;
+    }
+
+    if (message.type === "schedule-invite" && message.ext?.scheduleInvite) {
+      const invite = message.ext.scheduleInvite;
+      const cardBody = (
+        <div className="w-[288px] max-w-[82vw] overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]">
+          <div className="flex items-start gap-3 p-3">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-primary)_16%,var(--client-surface)_84%)] text-[color:var(--client-primary)]">
+              <ImIcon name="calendar" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface)_88%)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]">
+                  {invite.statusLabel ?? "待确认"}
+                </span>
+                {invite.hostName ? <span className="min-w-0 truncate text-[10px] font-black text-[color:var(--client-muted)]">{invite.hostName}</span> : null}
+              </div>
+              <p className="mt-2 line-clamp-2 text-[14px] font-black leading-5">{invite.title}</p>
+              <p className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]">{invite.date} · {invite.timeRange}</p>
+              {invite.attendeeLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">邀请对象：{invite.attendeeLabel}</p> : null}
+              {invite.location ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">{invite.location}</p> : null}
+              {invite.reminderLabel ? <p className="mt-1 truncate text-[11px] font-bold text-[color:var(--client-muted)]">提醒：{invite.reminderLabel}</p> : null}
+            </div>
+          </div>
+          {invite.note ? <p className="border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-3 py-2 text-[11px] font-bold leading-5 text-[color:var(--client-muted)]">{invite.note}</p> : null}
+        </div>
+      );
+
+      return invite.href ? <Link to={invite.href}>{cardBody}</Link> : cardBody;
     }
 
     return <p className="min-w-0 max-w-full break-words text-[15px] [overflow-wrap:anywhere]" data-im-message-selectable-text="true">{message.content}</p>;

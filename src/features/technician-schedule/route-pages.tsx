@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -9,13 +9,14 @@ import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { ScheduleDraftRangeBlock } from "../../components/scheduling/ScheduleDraftRangeBlock";
 import { useAuth } from "../../auth/AuthProvider";
 import { orders as demoOrders, services } from "../../data/mock";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
 import { useEntityStore } from "../../state/entityStore";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
-import { getScheduleOrderDetailRoute, resolveScheduleEventDetailTarget } from "../../lib/scheduleDetailTarget";
+import { getScheduleOrderDetailRoute, resolveScheduleEventDetailTarget, type ScheduleDetailTargetActor } from "../../lib/scheduleDetailTarget";
 import { buildCurrentRoute, readNavigationReturnTarget, withReturnTo } from "../../lib/navigationReturn";
 import {
   cancelTechnicianScheduleTransferRequest,
@@ -67,6 +68,7 @@ import {
   intersectRange,
   intervalToRange,
   isDateInPeriod,
+  minutesToTime,
   padNumber,
   resolveScheduleEventPreset,
   getScheduleEventKindForPreset,
@@ -698,6 +700,7 @@ function computeScheduleBrief(items: TechnicianCalendarItem[], period: Technicia
   const conflictItemIds = buildConflictItemIdSet(periodItems);
 
   return {
+    itemCount: periodItems.length,
     orderCount: bookingItems.length,
     hasConflict: conflictItemIds.size > 0,
     estimatedRevenue:
@@ -1138,29 +1141,36 @@ function StandaloneSchedulePage({
   children: ReactNode;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isNight } = useClientTheme();
   const scheduleThemeRootClass = useScheduleThemeRootClassName();
+  const fallbackBackPath = location.pathname.startsWith("/schedule") ? "/schedule" : "/technician/schedule";
 
   return (
     <MobileShell navItems={[]}>
       <div
         className={cn(
           scheduleThemeRootClass,
-          "mx-auto flex min-h-[100dvh] w-full max-w-[960px] flex-col bg-[color:var(--client-bg)] text-[color:var(--client-text)]"
+          "mx-auto flex h-[100dvh] min-h-[100dvh] w-full max-w-[960px] flex-col overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]"
         )}
       >
         <MobileFullscreenHeader
           action={action}
-          className="border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_90%,transparent)] text-[color:var(--client-text)]"
+          className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
           dark={isNight}
-          onBack={onBack ?? (() => navigate("/technician/schedule"))}
+          onBack={onBack ?? (() => navigate(fallbackBackPath))}
           subtitle={subtitle}
           title={title}
         />
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-3 pb-8">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3 pb-8">{children}</main>
       </div>
     </MobileShell>
   );
+}
+
+function useScheduleBasePath() {
+  const location = useLocation();
+  return location.pathname.startsWith("/schedule") ? "/schedule" : "/technician/schedule";
 }
 
 function SummaryCard({ label, value }: { label: string; value: number }) {
@@ -1229,39 +1239,87 @@ function BriefCard({
 function AgendaItemCard({
   item,
   hasConflict,
-  onOpen
+  onOpen,
+  onInvite
 }: {
   item: TechnicianCalendarItem;
   hasConflict: boolean;
   onOpen: (item: TechnicianCalendarItem) => void;
+  onInvite?: (item: TechnicianCalendarItem) => void;
 }) {
   const itemSurface = getItemSurfacePresentation(item, hasConflict);
   const itemBadge = getItemBadgePresentation(item, hasConflict);
 
   return (
-    <button
+    <article
       className={cn("w-full rounded-[18px] border px-3.5 py-3 text-left transition", itemSurface.className)}
-      onClick={() => onOpen(item)}
       style={itemSurface.style}
-      type="button"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <ScheduleBadge style={itemBadge.style} tone={itemBadge.tone}>{getItemDisplayLabel(item)}</ScheduleBadge>
-        {item.transferStatus ? <ScheduleBadge tone={getTransferTone(item.transferStatus)}>{getTransferStatusLabel(item.transferStatus)}</ScheduleBadge> : null}
-        {item.badgeLabel ? <ScheduleBadge tone="neutral">{item.badgeLabel}</ScheduleBadge> : null}
-      </div>
-      <div className="mt-2.5 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-black">{item.title}</h3>
-          <p className="mt-1 text-xs font-bold opacity-75">
-            {item.startTime} - {item.endTime} · {item.subtitle}
-          </p>
-          {item.note ? <p className="mt-2 text-xs leading-5 opacity-80">{item.note}</p> : null}
+      <button className="block w-full text-left" onClick={() => onOpen(item)} type="button">
+        <div className="flex flex-wrap items-center gap-2">
+          <ScheduleBadge style={itemBadge.style} tone={itemBadge.tone}>{getItemDisplayLabel(item)}</ScheduleBadge>
+          {item.transferStatus ? <ScheduleBadge tone={getTransferTone(item.transferStatus)}>{getTransferStatusLabel(item.transferStatus)}</ScheduleBadge> : null}
+          {item.badgeLabel ? <ScheduleBadge tone="neutral">{item.badgeLabel}</ScheduleBadge> : null}
         </div>
-        {typeof item.amount === "number" ? <strong className="text-sm font-black">{formatCurrency(item.amount)}</strong> : null}
-      </div>
-    </button>
+        <div className="mt-2.5 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-sm font-black">{item.title}</h3>
+            <p className="mt-1 text-xs font-bold opacity-75">
+              {item.startTime} - {item.endTime} · {item.subtitle}
+            </p>
+            {item.note ? <p className="mt-2 text-xs leading-5 opacity-80">{item.note}</p> : null}
+          </div>
+          {typeof item.amount === "number" ? <strong className="text-sm font-black">{formatCurrency(item.amount)}</strong> : null}
+        </div>
+      </button>
+      {onInvite ? (
+        <button
+          className="mt-3 inline-flex items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,transparent)] px-3 py-1.5 text-[11px] font-black"
+          onClick={() => onInvite(item)}
+          type="button"
+        >
+          邀请
+        </button>
+      ) : null}
+    </article>
   );
+}
+
+const scheduleDraftSnapMinutes = 15;
+const scheduleDraftMinDurationMinutes = 30;
+
+type ScheduleDraftDragMode = "resize-start" | "resize-end";
+
+function snapScheduleDraftMinute(value: number) {
+  return Math.round(value / scheduleDraftSnapMinutes) * scheduleDraftSnapMinutes;
+}
+
+function clampScheduleDraftMinute(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getScheduleDraftPointerMinute(event: { clientY: number }, element: HTMLElement, rowHeight: number) {
+  const rect = element.getBoundingClientRect();
+  const relativeY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+  const rawMinute = (relativeY / rowHeight) * 60;
+
+  return clampScheduleDraftMinute(snapScheduleDraftMinute(rawMinute), 0, 24 * 60 - 1);
+}
+
+function normalizeScheduleDraftRange(startMinute: number, endCandidate: number) {
+  const clampedEnd = clampScheduleDraftMinute(snapScheduleDraftMinute(endCandidate), 0, 24 * 60 - 1);
+
+  if (clampedEnd >= startMinute) {
+    return {
+      start: startMinute,
+      end: clampScheduleDraftMinute(Math.max(clampedEnd, startMinute + scheduleDraftMinDurationMinutes), 0, 24 * 60 - 1)
+    };
+  }
+
+  return {
+    start: clampScheduleDraftMinute(Math.min(clampedEnd, startMinute - scheduleDraftMinDurationMinutes), 0, 24 * 60 - 1),
+    end: startMinute
+  };
 }
 
 function DayTimeline({
@@ -1280,42 +1338,194 @@ function DayTimeline({
   const { backgroundItems, foregroundLayouts, laneCount } = buildTimelineLayouts(items);
   const rowHeight = 64;
   const totalHeight = rowHeight * 24;
+  const [draftRange, setDraftRange] = useState<MinuteRange | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const canvasPressRef = useRef<{ moved: boolean; x: number; y: number } | null>(null);
+  const dragModeRef = useRef<ScheduleDraftDragMode | null>(null);
+  const dragRangeRef = useRef<MinuteRange | null>(null);
+  const resizeBaseRangeRef = useRef<MinuteRange | null>(null);
+  const setActiveDraftRange = (range: MinuteRange | null) => {
+    dragRangeRef.current = range;
+    setDraftRange(range);
+  };
+
+  useEffect(() => {
+    dragModeRef.current = null;
+    resizeBaseRangeRef.current = null;
+    canvasPressRef.current = null;
+    setActiveDraftRange(null);
+  }, [date]);
+
+  const updateDraftRangeFromPointer = (event: ReactPointerEvent<HTMLElement>) => {
+    const canvas = canvasRef.current;
+    const mode = dragModeRef.current;
+
+    if (!canvas || !mode) {
+      return;
+    }
+
+    const pointerMinute = getScheduleDraftPointerMinute(event, canvas, rowHeight);
+
+    const baseRange = resizeBaseRangeRef.current ?? dragRangeRef.current;
+
+    if (!baseRange) {
+      return;
+    }
+
+    if (mode === "resize-start") {
+      setActiveDraftRange({
+        end: baseRange.end,
+        start: clampScheduleDraftMinute(pointerMinute, 0, baseRange.end - scheduleDraftMinDurationMinutes)
+      });
+      return;
+    }
+
+    setActiveDraftRange({
+      end: clampScheduleDraftMinute(pointerMinute, baseRange.start + scheduleDraftMinDurationMinutes, 24 * 60 - 1),
+      start: baseRange.start
+    });
+  };
+  const handleDraftCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!onCreate || event.button !== 0) {
+      return;
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest("button,a,input,textarea,[data-schedule-range-handle],[data-schedule-create-action],[data-schedule-draft-range-block]")) {
+      return;
+    }
+
+    if (canvasPressRef.current?.moved) {
+      canvasPressRef.current = null;
+      return;
+    }
+
+    canvasPressRef.current = null;
+    const startMinute = clampScheduleDraftMinute(getScheduleDraftPointerMinute(event, event.currentTarget, rowHeight), 0, 24 * 60 - scheduleDraftMinDurationMinutes);
+    const range = normalizeScheduleDraftRange(startMinute, startMinute + scheduleDraftMinDurationMinutes);
+
+    resizeBaseRangeRef.current = range;
+    setActiveDraftRange(range);
+  };
+  const handleDraftCanvasPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!onCreate || (event.button !== 0 && event.pointerType === "mouse")) {
+      canvasPressRef.current = null;
+      return;
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest("button,a,input,textarea,[data-schedule-range-handle],[data-schedule-create-action],[data-schedule-draft-range-block]")) {
+      canvasPressRef.current = null;
+      return;
+    }
+
+    canvasPressRef.current = {
+      moved: false,
+      x: event.clientX,
+      y: event.clientY
+    };
+  };
+  const handleDraftCanvasPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const press = canvasPressRef.current;
+
+    if (!press || press.moved) {
+      return;
+    }
+
+    const deltaX = event.clientX - press.x;
+    const deltaY = event.clientY - press.y;
+
+    if (Math.hypot(deltaX, deltaY) > 8) {
+      press.moved = true;
+    }
+  };
+  const handleDraftPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!dragModeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateDraftRangeFromPointer(event);
+  };
+  const handleDraftPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!dragModeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragModeRef.current = null;
+    resizeBaseRangeRef.current = dragRangeRef.current;
+  };
+  const handleDraftPointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragModeRef.current = null;
+    resizeBaseRangeRef.current = dragRangeRef.current;
+  };
+  const handleDraftResizePointerDown = (mode: ScheduleDraftDragMode, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!draftRange || (event.button !== 0 && event.pointerType === "mouse")) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    dragModeRef.current = mode;
+    resizeBaseRangeRef.current = draftRange;
+    dragRangeRef.current = draftRange;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const createDraftEvent = () => {
+    if (!draftRange || !onCreate) {
+      return;
+    }
+
+    onCreate(date, minutesToTime(draftRange.start), minutesToTime(draftRange.end));
+  };
 
   return (
     <div className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)]">
       <div className="grid grid-cols-[68px,1fr]">
         <div className="border-r border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)]">
           {Array.from({ length: 24 }, (_, hour) => (
-            <button
-              className={cn(
-                "flex h-16 w-full items-start justify-center border-b border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] px-2 py-2.5 text-[11px] font-black text-[color:var(--client-muted)] last:border-b-0",
-                !onCreate && "cursor-default"
-              )}
-              disabled={!onCreate}
+            <div
+              className="flex h-16 w-full items-start justify-center border-b border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] px-2 py-2.5 text-[11px] font-black text-[color:var(--client-muted)] last:border-b-0"
               key={hour}
-              onClick={() => onCreate?.(date, `${padNumber(hour)}:00`, hour === 23 ? "23:59" : `${padNumber(hour + 1)}:00`)}
-              type="button"
             >
               {padNumber(hour)}:00
-            </button>
+            </div>
           ))}
         </div>
-        <div className="relative" style={{ height: totalHeight }}>
+        <div
+          aria-label={onCreate ? "点击创建新行程时间，拖动手柄调整时长" : "日程时间轴"}
+          className="relative select-none touch-pan-y"
+          data-schedule-create-canvas="true"
+          onClick={handleDraftCanvasClick}
+          onPointerCancel={() => {
+            canvasPressRef.current = null;
+          }}
+          onPointerDown={handleDraftCanvasPointerDown}
+          onPointerMove={handleDraftCanvasPointerMove}
+          ref={canvasRef}
+          style={{ height: totalHeight }}
+        >
           {Array.from({ length: 24 }, (_, hour) => (
-            <button
+            <div
               className={cn(
                 "absolute inset-x-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] px-3 text-left last:border-b-0",
-                onCreate && "hover:bg-[color:color-mix(in_srgb,var(--client-elevated)_58%,transparent)]",
-                !onCreate && "cursor-default"
+                onCreate && "hover:bg-[color:color-mix(in_srgb,var(--client-elevated)_58%,transparent)]"
               )}
-              disabled={!onCreate}
               key={hour}
-              onClick={() => onCreate?.(date, `${padNumber(hour)}:00`, hour === 23 ? "23:59" : `${padNumber(hour + 1)}:00`)}
               style={{ top: hour * rowHeight, height: rowHeight }}
-              type="button"
             >
-              <span className="sr-only">{onCreate ? `添加 ${padNumber(hour)}:00 行程` : `${padNumber(hour)}:00 时段`}</span>
-            </button>
+              <span className="sr-only">{onCreate ? `点击添加 ${padNumber(hour)}:00 行程` : `${padNumber(hour)}:00 时段`}</span>
+            </div>
           ))}
 
           {backgroundItems.map((item) => {
@@ -1389,19 +1599,63 @@ function DayTimeline({
               </button>
             );
           })}
+
+          {draftRange && onCreate ? (
+            <ScheduleDraftRangeBlock
+              action={(
+                <button
+                  className="rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]"
+                  data-schedule-create-action="true"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    createDraftEvent();
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  type="button"
+                >
+                  创建
+                </button>
+              )}
+              className="left-2 right-2"
+              onEndHandlePointerDown={(event) => handleDraftResizePointerDown("resize-end", event)}
+              onHandlePointerCancel={handleDraftPointerCancel}
+              onHandlePointerMove={handleDraftPointerMove}
+              onHandlePointerUp={handleDraftPointerUp}
+              onStartHandlePointerDown={(event) => handleDraftResizePointerDown("resize-start", event)}
+              style={{
+                top: (draftRange.start / 60) * rowHeight + 6,
+                height: Math.max((Math.max(draftRange.end - draftRange.start, scheduleDraftMinDurationMinutes) / 60) * rowHeight - 12, 58)
+              }}
+              subtitle="拖动上下手柄调整时间"
+              timeRange={`${minutesToTime(draftRange.start)} - ${minutesToTime(draftRange.end)}`}
+              title="新建行程"
+            />
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function EmptyDayState({ date, onCreate }: { date: string; onCreate: (date: string, startTime: string, endTime: string) => void }) {
+function EmptyDayState({
+  date,
+  onCreate,
+  title = "这一天还没有行程",
+  caption = "可以直接在空白时间新建可排班、请假、锁定、休息或移动安排。",
+  createLabel = "添加行程"
+}: {
+  date: string;
+  onCreate: (date: string, startTime: string, endTime: string) => void;
+  title?: string;
+  caption?: string;
+  createLabel?: string;
+}) {
   return (
     <div className="rounded-[20px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-4 text-sm leading-6 text-[color:var(--client-muted)]">
-      <strong className="block text-[color:var(--client-text)]">这一天还没有行程</strong>
-      <p className="mt-1">可以直接在空白时间新建可排班、请假、锁定、休息或移动安排。</p>
+      <strong className="block text-[color:var(--client-text)]">{title}</strong>
+      <p className="mt-1">{caption}</p>
       <Button className={cn("mt-3", getScheduleButtonClassName("primary"))} onClick={() => onCreate(date, "10:00", "11:00")} size="sm">
-        添加行程
+        {createLabel}
       </Button>
     </div>
   );
@@ -1418,6 +1672,37 @@ const scheduleEventCategoryOptions: Array<{ preset: TechnicianScheduleEventPrese
   { preset: "date", label: "约会" },
   { preset: "holiday", label: "假期" }
 ];
+
+export type TechnicianScheduleWorkspaceCopy = {
+  summaryLabels?: {
+    confirmedHours?: string;
+    bookedHours?: string;
+    freeHours?: string;
+    tentativeHours?: string;
+  };
+  tableInfo?: string;
+  tableInfoLabel?: string;
+  tableTitle?: string;
+  countLabel?: string;
+  countValue?: (brief: ReturnType<typeof computeScheduleBrief>) => string;
+  statusLabel?: string;
+  revenueLabel?: string;
+  createButtonLabel?: string;
+  displayInfoEntries?: string;
+  displayInfoAll?: string;
+  displayInfoLabel?: string;
+  displayTitle?: string;
+  dayHeadingSuffix?: string;
+  emptyTitle?: string;
+  emptyCaption?: string;
+};
+
+export type TechnicianScheduleWorkspaceProps = {
+  basePath?: string;
+  copy?: TechnicianScheduleWorkspaceCopy;
+  detailActor?: ScheduleDetailTargetActor;
+  revenueSlot?: "revenue" | "create";
+};
 
 function ScheduleCategoryIcon({ preset, className }: { preset: TechnicianScheduleEventPreset; className?: string }) {
   const sharedProps = {
@@ -1504,17 +1789,24 @@ function ScheduleCategoryIcon({ preset, className }: { preset: TechnicianSchedul
   }
 }
 
-export function TechnicianScheduleWorkspace() {
+export function TechnicianScheduleWorkspace({
+  basePath = "/technician/schedule",
+  copy,
+  detailActor = "technician",
+  revenueSlot = "revenue"
+}: TechnicianScheduleWorkspaceProps = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const scheduleThemeRootClass = useScheduleThemeRootClassName();
-  const { currentStore, currentTechnician, items, assignedShifts, visibleBookings, visibleCustomEvents, incomingInvitations } =
+  const { customers, technicians, currentStore, currentTechnician, items, assignedShifts, visibleBookings, visibleCustomEvents, incomingInvitations } =
     useTechnicianScheduleContext();
   const [view, setView] = useState<TechnicianScheduleView>("day");
   const [densityMode, setDensityMode] = useState<TechnicianScheduleDensityMode>("entries");
   const [anchorDate, setAnchorDate] = useState(getTodayDateKey());
   const [selectedDate, setSelectedDate] = useState(getTodayDateKey());
   const [banner, setBanner] = useState<ScheduleBannerMessage | null>(null);
+  const [inviteItem, setInviteItem] = useState<TechnicianCalendarItem | null>(null);
+  const [inviteTargetFilter, setInviteTargetFilter] = useState<ScheduleSyncTargetFilterTag>("all");
   const period = getPeriod(view, anchorDate);
 
   useEffect(() => {
@@ -1526,13 +1818,23 @@ export function TechnicianScheduleWorkspace() {
 
   const summary = computeScheduleSummary(assignedShifts, visibleBookings, visibleCustomEvents, period);
   const brief = computeScheduleBrief(items, period);
+  const summaryLabels = {
+    confirmedHours: copy?.summaryLabels?.confirmedHours ?? "确定上班",
+    bookedHours: copy?.summaryLabels?.bookedHours ?? "已定预约",
+    freeHours: copy?.summaryLabels?.freeHours ?? "空闲",
+    tentativeHours: copy?.summaryLabels?.tentativeHours ?? "待定"
+  };
+  const countLabel = copy?.countLabel ?? "单数";
+  const countValue = copy?.countValue?.(brief) ?? `${brief.orderCount} 单`;
   const periodItems = items.filter((item) => isDateInPeriod(item.date, period));
   const selectedDateItems = periodItems.filter((item) => item.date === selectedDate);
   const groupedPeriodItems = groupItemsByDate(periodItems);
   const selectedDateConflictItemIds = buildConflictItemIdSet(selectedDateItems);
+  const inviteTargets = buildContactTargets(currentStore, currentTechnician.id, technicians, customers).filter((target) => target.type === "technician" || target.type === "friend");
+  const filteredInviteTargets = inviteTargets.filter((target) => inviteTargetFilter === "all" || target.type === inviteTargetFilter);
 
   const openItem = (item: TechnicianCalendarItem) => {
-    const target = resolveScheduleEventDetailTarget(item, "technician");
+    const target = resolveScheduleEventDetailTarget(item, detailActor);
 
     if (target.action === "open" && target.targetType === "order_detail") {
       const returnTo = buildCurrentRoute(location);
@@ -1540,11 +1842,11 @@ export function TechnicianScheduleWorkspace() {
       return;
     }
 
-    navigate(`/technician/schedule/events/${item.sourceId}`);
+    navigate(`${basePath}/events/${item.sourceId}`);
   };
 
   const openCreate = (date: string, startTime: string, endTime: string) => {
-    navigate(`/technician/schedule/new?date=${date}&start=${startTime}&end=${endTime}`);
+    navigate(`${basePath}/new?date=${date}&start=${startTime}&end=${endTime}`);
   };
 
   const changeView = (nextView: TechnicianScheduleView) => {
@@ -1577,13 +1879,21 @@ export function TechnicianScheduleWorkspace() {
     }
 
     if (selectedDateItems.length === 0) {
-      return <EmptyDayState date={selectedDate} onCreate={openCreate} />;
+      return (
+        <EmptyDayState
+          caption={copy?.emptyCaption}
+          createLabel={copy?.createButtonLabel}
+          date={selectedDate}
+          onCreate={openCreate}
+          title={copy?.emptyTitle}
+        />
+      );
     }
 
     return (
       <div className="space-y-3">
         {selectedDateItems.map((item) => (
-          <AgendaItemCard hasConflict={selectedDateConflictItemIds.has(item.id)} item={item} key={item.id} onOpen={openItem} />
+          <AgendaItemCard hasConflict={selectedDateConflictItemIds.has(item.id)} item={item} key={item.id} onInvite={setInviteItem} onOpen={openItem} />
         ))}
       </div>
     );
@@ -1593,21 +1903,21 @@ export function TechnicianScheduleWorkspace() {
     <div className={cn(scheduleThemeRootClass, "space-y-3")}>
       <section className={cn(schedulePanelClass, "p-3")}>
         <div className="grid grid-cols-4 gap-2">
-          <SummaryCard label="确定上班" value={summary.confirmedHours} />
-          <SummaryCard label="已定预约" value={summary.bookedHours} />
-          <SummaryCard label="空闲" value={summary.freeHours} />
-          <SummaryCard label="待定" value={summary.tentativeHours} />
+          <SummaryCard label={summaryLabels.confirmedHours} value={summary.confirmedHours} />
+          <SummaryCard label={summaryLabels.bookedHours} value={summary.bookedHours} />
+          <SummaryCard label={summaryLabels.freeHours} value={summary.freeHours} />
+          <SummaryCard label={summaryLabels.tentativeHours} value={summary.tentativeHours} />
         </div>
       </section>
 
       <section className={cn(schedulePanelClass, "p-3")}>
         <ScheduleSectionHeading
-          info="按当前日 / 周 / 月视图切换查看同一套排班数据，统计与下方列表都会跟随当前周期同步。"
-          label="查看排班表说明"
+          info={copy?.tableInfo ?? "按当前日 / 周 / 月视图切换查看同一套排班数据，统计与下方列表都会跟随当前周期同步。"}
+          label={copy?.tableInfoLabel ?? "查看排班表说明"}
           right={
             <ScheduleViewSegmentedTabs onChange={(nextView) => changeView(nextView as TechnicianScheduleView)} value={view} />
           }
-          title="排班表"
+          title={copy?.tableTitle ?? "排班表"}
         />
 
         <div className="client-sticky-control-panel mt-3">
@@ -1638,13 +1948,27 @@ export function TechnicianScheduleWorkspace() {
         </div>
 
         <div className="mt-3 grid grid-cols-[0.9fr_0.9fr_1.35fr] gap-2">
-          <BriefCard label="单数" value={`${brief.orderCount} 单`} />
+          <BriefCard label={countLabel} value={countValue} />
           <BriefCard
-            label="状态"
+            label={copy?.statusLabel ?? "状态"}
             tone={brief.hasConflict ? "red" : "green"}
             value={brief.hasConflict ? "有冲突" : "正常"}
           />
-          <BriefCard label="预计流水" value={formatCurrency(brief.estimatedRevenue)} wide />
+          {revenueSlot === "create" ? (
+            <button
+              className={cn(scheduleInsetClass, "focus-ring min-w-0 px-3.5 py-2.5 text-left transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)]")}
+              onClick={() => openCreate(selectedDate, "10:00", "11:00")}
+              type="button"
+            >
+              <p className="truncate text-[11px] font-black tracking-[0.02em] text-[color:var(--client-muted)]">{copy?.revenueLabel ?? "创建"}</p>
+              <strong className="mt-2 flex items-center justify-between gap-2 text-base font-black text-[color:var(--client-text)]">
+                {copy?.createButtonLabel ?? "创建"}
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]">+</span>
+              </strong>
+            </button>
+          ) : (
+            <BriefCard label={copy?.revenueLabel ?? "预计流水"} value={formatCurrency(brief.estimatedRevenue)} wide />
+          )}
         </div>
 
         {banner ? (
@@ -1687,8 +2011,8 @@ export function TechnicianScheduleWorkspace() {
 
         <div className="mt-4 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)] p-3">
           <ScheduleSectionHeading
-            info={densityMode === "entries" ? "只展示已有事件，列表更紧凑。" : "显示完整时间轴，可直接点击空白时间新建行程。"}
-            label="查看排班展示区说明"
+            info={densityMode === "entries" ? (copy?.displayInfoEntries ?? "只展示已有事件，列表更紧凑。") : (copy?.displayInfoAll ?? "显示完整时间轴，可直接点击空白时间新建行程。")}
+            label={copy?.displayInfoLabel ?? "查看排班展示区说明"}
             right={
               <div className="client-segmented-tabs inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] p-1">
               {([
@@ -1711,7 +2035,7 @@ export function TechnicianScheduleWorkspace() {
               ))}
             </div>
             }
-            title="排班展示区"
+            title={copy?.displayTitle ?? "排班展示区"}
           />
 
           {view === "day" ? (
@@ -1748,7 +2072,7 @@ export function TechnicianScheduleWorkspace() {
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-black text-[color:var(--client-text)]">
-                    <ScheduleDynamicText>{formatLongDate(selectedDate)}</ScheduleDynamicText> 排班
+                    <ScheduleDynamicText>{formatLongDate(selectedDate)}</ScheduleDynamicText> {copy?.dayHeadingSuffix ?? "排班"}
                   </h3>
                   <Button className={getScheduleButtonClassName("secondary")} onClick={() => openCreate(selectedDate, "10:00", "11:00")} size="sm" variant="secondary">
                     添加行程
@@ -1795,7 +2119,7 @@ export function TechnicianScheduleWorkspace() {
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-black text-[color:var(--client-text)]">
-                    <ScheduleDynamicText>{formatLongDate(selectedDate)}</ScheduleDynamicText> 排班
+                    <ScheduleDynamicText>{formatLongDate(selectedDate)}</ScheduleDynamicText> {copy?.dayHeadingSuffix ?? "排班"}
                   </h3>
                   <Button className={getScheduleButtonClassName("secondary")} onClick={() => openCreate(selectedDate, "10:00", "11:00")} size="sm" variant="secondary">
                     添加行程
@@ -1807,6 +2131,62 @@ export function TechnicianScheduleWorkspace() {
           )}
         </div>
       </section>
+
+      <Drawer
+        defaultWidth={520}
+        maxWidth={720}
+        minWidth={320}
+        onClose={() => setInviteItem(null)}
+        open={Boolean(inviteItem)}
+        resizable={false}
+        title="邀请好友或同事"
+      >
+        {inviteItem ? (
+          <div className="space-y-4">
+            <div className={cn(scheduleInsetClass, "px-4 py-3")}>
+              <ScheduleBadge tone="blue">日程邀请</ScheduleBadge>
+              <h3 className="mt-2 text-base font-black text-[color:var(--client-text)]">{inviteItem.title}</h3>
+              <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
+                {formatLongDate(inviteItem.date)} · {inviteItem.startTime} - {inviteItem.endTime}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {scheduleSyncTargetFilterOptions
+                .filter((option) => option.value === "all" || option.value === "technician" || option.value === "friend")
+                .map((option) => (
+                  <button
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-black transition",
+                      inviteTargetFilter === option.value
+                        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+                        : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_80%,transparent)] text-[color:var(--client-muted)]"
+                    )}
+                    key={option.value}
+                    onClick={() => setInviteTargetFilter(option.value)}
+                    type="button"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+            </div>
+
+            <div className="space-y-2.5">
+              {filteredInviteTargets.map((target) => (
+                <SyncTargetProfileCard
+                  actionLabel="发送邀请"
+                  key={`${target.type}-${target.id}`}
+                  onClick={() => {
+                    setBanner({ tone: "green", text: `已向 ${target.label} 发送日程邀请。` });
+                    setInviteItem(null);
+                  }}
+                  target={target}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </Drawer>
     </div>
   );
 }
@@ -2382,6 +2762,7 @@ function useRouteItem(itemId?: string) {
 
 export function TechnicianScheduleDetailRoutePage() {
   const navigate = useNavigate();
+  const scheduleBasePath = useScheduleBasePath();
   const { eventId } = useParams<{ eventId: string }>();
   const { snapshot, item, customEvent, booking, shift, owningShift, transferPreview, acceptedCount, currentTechnician, technicians } = useRouteItem(eventId);
 
@@ -2506,7 +2887,7 @@ export function TechnicianScheduleDetailRoutePage() {
                     className={getScheduleButtonClassName("secondary")}
                     onClick={() => {
                       cancelTechnicianScheduleTransferRequest(latestRequest.id);
-                      navigate(`/technician/schedule/events/${eventId}`);
+                      navigate(`${scheduleBasePath}/events/${eventId}`);
                     }}
                     size="sm"
                     variant="secondary"
@@ -2545,14 +2926,14 @@ export function TechnicianScheduleDetailRoutePage() {
 
         {isEditableCustomEvent && customEvent ? (
           <div className="flex gap-2">
-            <Button className={getScheduleButtonClassName("primary")} onClick={() => navigate(`/technician/schedule/events/${customEvent.id}/edit`)} size="sm">
+            <Button className={getScheduleButtonClassName("primary")} onClick={() => navigate(`${scheduleBasePath}/events/${customEvent.id}/edit`)} size="sm">
               编辑行程
             </Button>
             <Button
               className={getScheduleButtonClassName("secondary")}
               onClick={() => {
                 deleteTechnicianScheduleEvent(customEvent.id);
-                navigate("/technician/schedule");
+                navigate(scheduleBasePath);
               }}
               size="sm"
               variant="secondary"
@@ -2568,6 +2949,7 @@ export function TechnicianScheduleDetailRoutePage() {
 
 export function TechnicianScheduleEditorRoutePage() {
   const navigate = useNavigate();
+  const scheduleBasePath = useScheduleBasePath();
   const [searchParams] = useSearchParams();
   const { eventId } = useParams<{ eventId: string }>();
   const { customers, technicians, currentStore, currentTechnician, assignedShifts, visibleCustomEvents } = useTechnicianScheduleContext();
@@ -2677,12 +3059,24 @@ export function TechnicianScheduleEditorRoutePage() {
       syncTargets
     });
 
-    navigate(`/technician/schedule/events/${nextId}`);
+    navigate(`${scheduleBasePath}/events/${nextId}`);
   };
 
   return (
-    <StandaloneSchedulePage subtitle={editingEvent ? "编辑完整行程信息" : "新建完整行程信息"} title={editingEvent ? "编辑行程" : "添加行程"}>
-      <section className="space-y-4 pb-28">
+    <StandaloneSchedulePage
+      action={
+        <Button
+          className={cn("rounded-full px-5", getScheduleButtonClassName("primary"))}
+          onClick={saveEvent}
+          size="sm"
+        >
+          保存
+        </Button>
+      }
+      subtitle={editingEvent ? "编辑完整行程信息" : "新建完整行程信息"}
+      title={editingEvent ? "编辑行程" : "添加行程"}
+    >
+      <section className="space-y-4 pb-6">
         {banner ? <ScheduleBadge tone={banner.tone}>{banner.text}</ScheduleBadge> : null}
 
         <article className={cn(schedulePanelClass, "px-4 py-4")}>
@@ -2952,23 +3346,6 @@ export function TechnicianScheduleEditorRoutePage() {
         </article>
       </section>
 
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed bottom-0 left-1/2 z-30 h-[calc(env(safe-area-inset-bottom)+9.5rem)] w-full max-w-[960px] -translate-x-1/2 bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_76%,transparent)_42%,var(--client-bg)_100%)]"
-      />
-      <div className="client-bottom-action-shell pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-40 flex justify-center px-4">
-        <div className="pointer-events-auto">
-          <Button
-            className={cn(
-              "min-w-[180px] rounded-full px-8 py-3 text-base shadow-[0_18px_34px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]",
-              getScheduleButtonClassName("primary")
-            )}
-            onClick={saveEvent}
-          >
-            保存
-          </Button>
-        </div>
-      </div>
     </StandaloneSchedulePage>
   );
 }

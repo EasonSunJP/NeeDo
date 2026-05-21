@@ -769,25 +769,25 @@ export function HomePage() {
       icon: "map" as const
     },
     {
-      id: "home-service",
-      title: "上门按摩",
-      caption: "服务上门",
-      to: "/categories?type=service&category=massage&tag=tag-massage-door",
-      icon: "sparkles" as const
+      id: "nearby-technicians",
+      title: "附近技师",
+      caption: "按距离查找",
+      to: "/categories?type=technician",
+      icon: "manager" as const
     },
     {
-      id: "pet",
-      title: "宠物相关",
-      caption: "宠物护理",
-      to: "/categories?type=service&category=pet&tag=tag-pet-care",
-      icon: "heart" as const
+      id: "find-service",
+      title: "查找服务",
+      caption: "服务列表",
+      to: "/categories?type=service",
+      icon: "search" as const
     },
     {
-      id: "all",
-      title: "全部分类",
-      caption: "查看更多",
-      to: "/categories",
-      icon: "globe" as const
+      id: "my-schedule",
+      title: "我的日程",
+      caption: "行程管理",
+      to: "/schedule",
+      icon: "calendar" as const
     }
   ];
 

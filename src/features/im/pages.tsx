@@ -6,6 +6,8 @@ import {
   useRef,
   useState,
   type ChangeEvent as ReactChangeEvent,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
@@ -14,14 +16,16 @@ import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
+import { ScheduleDraftRangeBlock } from "../../components/scheduling/ScheduleDraftRangeBlock";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import type { MyQrCodePurpose } from "../../components/mobile/MyQrCodeButton";
 import { UnifiedScanSimulator } from "../../components/mobile/UnifiedScanSimulator";
 import { FloatingBackButton } from "../../components/client-ui/AppScaffold";
 import { chatBgUrl } from "../../assets/runtime/images";
-import { customers, imageBank } from "../../data/mock";
+import { customers, imageBank, orders, services } from "../../data/mock";
 import { parseBrowserStorageJson } from "../../lib/browserStorage";
 import { clampMessageText } from "../../lib/messageTextLimits";
+import { getStorePresentationConfig } from "../../lib/storePresentation";
 import { useDocumentScrollLock, useIosScrollContainer } from "../../lib/useIosScrollContainer";
 import {
   getMerchantStaffEmploymentLabel,
@@ -38,7 +42,18 @@ import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembers
 import { SocialProfileMiniCard } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
+import { getTechnicianScheduleStoreSnapshot } from "../../state/technicianScheduleStore";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
+import {
+  addDays,
+  formatLongDate,
+  formatShortDate,
+  getTodayDateKey,
+  getWeekDates,
+  minutesToTime,
+  padNumber,
+  timeToMinutes
+} from "../technician-schedule/model";
 import { createImApi } from "./api";
 import {
   ContactSummaryCard,
@@ -124,6 +139,7 @@ import { socialPaths } from "../social/paths";
 import type { SocialMediaItem, SocialPortalScope } from "../social/types";
 import { profileKey } from "../social/utils";
 import { useDineInStore } from "../dine-in/store";
+import type { ServiceItem, Store, Technician } from "../../types/domain";
 
 function buildContactCaption(user?: ImUser, _contact?: ContactRelation) {
   return getImContactSignatureCaption(user);
@@ -272,6 +288,734 @@ function formatConversationDisappearingCountdown(countdown?: Partial<Conversatio
 
 function formatDisappearingStartModeLabel(mode?: ConversationDisappearingStartMode) {
   return mode === "read_by_all" ? "全员看过后开始倒计时" : "按发送时间开始倒计时";
+}
+
+type ImServiceShareOption = {
+  service: ServiceItem;
+  provider?: Store | Technician;
+  providerType?: "store" | "technician";
+  href?: string;
+};
+
+type ImScheduleInviteOption = NonNullable<MessageExt["scheduleInvite"]> & {
+  endTime: string;
+  id: string;
+  meta: string;
+  sourceType: "order" | "booking" | "shift" | "event" | "open";
+  startTime: string;
+};
+
+function formatServicePriceLabel(service: ServiceItem) {
+  return `¥${service.priceFrom.toLocaleString("ja-JP")} 起`;
+}
+
+function formatServiceDurationLabel(service: ServiceItem) {
+  const duration = service.packages[0]?.durationMinutes;
+  return duration ? `${duration} 分钟` : service.fastestArrival;
+}
+
+function getScopedStorePath(scope: ImRoleType, storeId?: string) {
+  if (!storeId) {
+    return undefined;
+  }
+
+  if (scope === "merchant") {
+    return `/merchant/stores/${storeId}`;
+  }
+
+  return scope === "user" ? `/stores/${storeId}` : undefined;
+}
+
+function resolveCurrentServiceProvider(
+  scope: ImRoleType,
+  currentUser: ImUser | undefined,
+  entityStore: ReturnType<typeof useEntityStore>
+): { provider?: Store | Technician; providerType?: "store" | "technician"; homeStore?: Store } {
+  if (scope === "merchant") {
+    const homeStore = entityStore.stores.find((item) => item.id === currentUser?.entityId) ?? entityStore.stores[0];
+    return { provider: homeStore, providerType: "store", homeStore };
+  }
+
+  if (scope === "technician") {
+    const technician = entityStore.technicians.find((item) => item.id === currentUser?.entityId) ?? entityStore.technicians[0];
+    const homeStore = entityStore.stores.find((item) => item.id === technician?.storeId) ?? entityStore.stores[0];
+    return { provider: technician, providerType: "technician", homeStore };
+  }
+
+  return {};
+}
+
+function inferServiceCategoryIds(homeStore?: Store, provider?: Store | Technician) {
+  const text = [
+    ...(homeStore?.tags ?? []),
+    homeStore?.description,
+    ...(provider && "skills" in provider ? provider.skills : [])
+  ].join(" ");
+  const categoryIds: string[] = [];
+
+  if (/按摩|护理|肩颈|芳疗|放松|理疗/.test(text)) {
+    categoryIds.push("massage", "care");
+  }
+
+  if (/美甲|美睫|美业|皮肤|美容/.test(text)) {
+    categoryIds.push("beauty");
+  }
+
+  if (/保洁|清扫|清洁|修水管|收纳/.test(text)) {
+    categoryIds.push("cleaning", "deep", "storage");
+  }
+
+  if (/空调|家电/.test(text)) {
+    categoryIds.push("appliance");
+  }
+
+  if (/宠物/.test(text)) {
+    categoryIds.push("pet");
+  }
+
+  return Array.from(new Set(categoryIds));
+}
+
+function buildServiceShareOptions(scope: ImRoleType, currentUser: ImUser | undefined, entityStore: ReturnType<typeof useEntityStore>): ImServiceShareOption[] {
+  const { provider, providerType, homeStore } = resolveCurrentServiceProvider(scope, currentUser, entityStore);
+
+  if (!provider) {
+    return [];
+  }
+
+  const configuredServiceIds = new Set(
+    getStorePresentationConfig(homeStore).menuCards?.map((item) => item.sourceServiceId).filter(Boolean) ?? []
+  );
+  const configured = configuredServiceIds.size > 0
+    ? services.filter((service) => configuredServiceIds.has(service.id))
+    : [];
+  const categoryIds = inferServiceCategoryIds(homeStore, provider);
+  const inferred = categoryIds.length > 0
+    ? services.filter((service) => categoryIds.includes(service.categoryId))
+    : services.slice(0, 8);
+  const ranked = [...configured, ...inferred, ...services].filter((service, index, list) => list.findIndex((item) => item.id === service.id) === index);
+  const href = providerType === "store" ? getScopedStorePath(scope, provider.id) : undefined;
+
+  return ranked.slice(0, 10).map((service) => ({
+    href,
+    provider,
+    providerType,
+    service
+  }));
+}
+
+function normalizeClockTime(value: string | undefined, fallback = "10:00") {
+  if (!value) {
+    return fallback;
+  }
+
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+
+  if (!match) {
+    return fallback;
+  }
+
+  const hour = Math.max(0, Math.min(23, Number(match[1])));
+  const minute = Math.max(0, Math.min(59, Number(match[2])));
+
+  return `${padNumber(hour)}:${padNumber(minute)}`;
+}
+
+function inferOrderDurationMinutes(itemName: string) {
+  const match = itemName.match(/(\d+)\s*分钟/);
+  const duration = match ? Number(match[1]) : 60;
+
+  return Number.isFinite(duration) && duration > 0 ? Math.min(duration, 240) : 60;
+}
+
+function parseOrderScheduleTime(bookedAt: string, itemName: string) {
+  const [date = "", time = ""] = bookedAt.split(" ");
+  const startTime = normalizeClockTime(time);
+  const endTime = minutesToTime(timeToMinutes(startTime) + inferOrderDurationMinutes(itemName));
+
+  return {
+    date,
+    endTime,
+    startTime,
+    timeRange: `${startTime} - ${endTime}`
+  };
+}
+
+function buildScheduleInviteOptions(scope: ImRoleType, currentUser: ImUser | undefined, entityStore: ReturnType<typeof useEntityStore>): ImScheduleInviteOption[] {
+  const scheduleSnapshot = getTechnicianScheduleStoreSnapshot();
+  const currentStoreId = scope === "merchant"
+    ? currentUser?.entityId
+    : scope === "technician"
+      ? entityStore.technicians.find((item) => item.id === currentUser?.entityId)?.storeId
+      : undefined;
+  const currentTechnicianId = scope === "technician" ? currentUser?.entityId : undefined;
+  const currentCustomerId = scope === "user" ? currentUser?.entityId : undefined;
+
+  const orderOptions = orders
+    .filter((order) => !currentCustomerId || order.customerId === currentCustomerId)
+    .filter((order) => ["pending", "unpaid", "confirmed", "scheduled", "inService"].includes(order.status))
+    .slice(0, 6)
+    .map((order): ImScheduleInviteOption => {
+      const time = parseOrderScheduleTime(order.bookedAt, order.itemName);
+      const href = scope === "merchant" ? `/merchant/orders/${order.id}` : scope === "technician" ? `/technician/orders/${order.id}` : `/orders/${order.id}`;
+
+      return {
+        endTime: time.endTime,
+        id: `order-${order.id}`,
+        scheduleId: order.id,
+        title: order.itemName,
+        date: time.date,
+        timeRange: time.timeRange,
+        location: order.storeName ?? `${order.city} / ${order.area}`,
+        hostName: order.technicianName ?? order.storeName ?? order.customerName,
+        note: order.remark ?? "邀请对方一起确认这段预约行程。",
+        statusLabel: order.status === "inService" ? "服务中" : "待确认",
+        href,
+        meta: "预约",
+        sourceType: "order",
+        startTime: time.startTime
+      };
+    });
+
+  const scheduleOptions = [
+    ...scheduleSnapshot.bookings
+      .filter((booking) => (!currentStoreId || booking.storeId === currentStoreId) && (!currentTechnicianId || booking.technicianId === currentTechnicianId))
+      .map((booking): ImScheduleInviteOption => ({
+        endTime: booking.endTime,
+        id: `booking-${booking.id}`,
+        scheduleId: booking.id,
+        title: booking.title,
+        date: booking.date,
+        timeRange: `${booking.startTime} - ${booking.endTime}`,
+        location: booking.customerName,
+        hostName: booking.customerName,
+        note: booking.note ?? "邀请对方加入这段预约日程。",
+        statusLabel: "预约",
+        href: booking.orderId ? (scope === "merchant" ? `/merchant/orders/${booking.orderId}` : scope === "technician" ? `/technician/orders/${booking.orderId}` : `/orders/${booking.orderId}`) : undefined,
+        meta: "预约",
+        sourceType: "booking",
+        startTime: booking.startTime
+      })),
+    ...scheduleSnapshot.dutyShifts
+      .filter((shift) => (!currentStoreId || shift.storeId === currentStoreId) && (!currentTechnicianId || shift.technicianId === currentTechnicianId))
+      .map((shift): ImScheduleInviteOption => ({
+        endTime: shift.endTime,
+        id: `shift-${shift.id}`,
+        scheduleId: shift.id,
+        title: shift.title,
+        date: shift.date,
+        timeRange: `${shift.startTime} - ${shift.endTime}`,
+        location: shift.shiftLabel,
+        note: "邀请好友或同事一起确认这段日程。",
+        statusLabel: "日程",
+        href: scope === "technician" ? `/technician/schedule/events/${shift.id}` : undefined,
+        meta: "排班",
+        sourceType: "shift",
+        startTime: shift.startTime
+      })),
+    ...scheduleSnapshot.customEvents
+      .filter((event) => (!currentStoreId || event.storeId === currentStoreId) && (!currentTechnicianId || event.technicianId === currentTechnicianId))
+      .map((event): ImScheduleInviteOption => ({
+        endTime: event.endTime,
+        id: `event-${event.id}`,
+        scheduleId: event.id,
+        title: event.title,
+        date: event.date,
+        timeRange: `${event.startTime} - ${event.endTime}`,
+        location: event.location,
+        note: event.note ?? "邀请对方一起加入这段日程。",
+        statusLabel: "日程",
+        href: scope === "technician" ? `/technician/schedule/events/${event.id}` : undefined,
+        meta: "自建",
+        sourceType: "event",
+        startTime: event.startTime
+      }))
+  ];
+
+  return [...scheduleOptions, ...orderOptions]
+    .filter((item, index, list) => list.findIndex((candidate) => candidate.id === item.id) === index)
+    .slice(0, 12);
+}
+
+function compareScheduleInviteOptions(left: ImScheduleInviteOption, right: ImScheduleInviteOption) {
+  const dateCompare = left.date.localeCompare(right.date);
+
+  if (dateCompare !== 0) {
+    return dateCompare;
+  }
+
+  return left.startTime.localeCompare(right.startTime);
+}
+
+function buildOpenScheduleInviteOption({
+  date,
+  endTime,
+  hostName,
+  location,
+  startTime
+}: {
+  date: string;
+  endTime: string;
+  hostName?: string;
+  location?: string;
+  startTime: string;
+}): ImScheduleInviteOption {
+  return {
+    date,
+    endTime,
+    hostName,
+    id: `open-${date}-${startTime}-${endTime}`,
+    location,
+    meta: "可选时间",
+    scheduleId: `invite-${date}-${startTime}-${endTime}`,
+    sourceType: "open",
+    startTime,
+    statusLabel: "邀请",
+    timeRange: `${startTime} - ${endTime}`,
+    title: "邀请参加行程"
+  };
+}
+
+const SCHEDULE_INVITE_ROW_HEIGHT = 64;
+const SCHEDULE_INVITE_SNAP_MINUTES = 15;
+const SCHEDULE_INVITE_MIN_DURATION = 30;
+const SCHEDULE_INVITE_DEFAULT_REMINDER = "开始前15分钟";
+const SCHEDULE_INVITE_REMINDER_OPTIONS = ["开始时提醒", SCHEDULE_INVITE_DEFAULT_REMINDER, "开始前30分钟", "不提醒"];
+
+type ScheduleInviteMinuteRange = {
+  endMinute: number;
+  startMinute: number;
+};
+
+type ScheduleInviteDragMode = "resize-start" | "resize-end";
+
+function snapScheduleInviteMinute(value: number) {
+  return Math.round(value / SCHEDULE_INVITE_SNAP_MINUTES) * SCHEDULE_INVITE_SNAP_MINUTES;
+}
+
+function clampScheduleInviteMinute(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getScheduleInviteTimelineBounds(options: ImScheduleInviteOption[]) {
+  const starts = options.map((item) => timeToMinutes(item.startTime));
+  const ends = options.map((item) => timeToMinutes(item.endTime));
+  const earliest = starts.length > 0 ? Math.min(...starts) : 8 * 60;
+  const latest = ends.length > 0 ? Math.max(...ends) : 22 * 60;
+  const startHour = Math.max(6, Math.min(8, Math.floor(earliest / 60)));
+  const endHour = Math.min(24, Math.max(23, Math.ceil(latest / 60)));
+
+  return {
+    endMinute: endHour * 60,
+    startMinute: startHour * 60
+  };
+}
+
+function getScheduleInvitePointerMinute(
+  event: { clientY: number },
+  element: HTMLElement,
+  bounds: ScheduleInviteMinuteRange
+) {
+  const rect = element.getBoundingClientRect();
+  const relativeY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+  const rawMinute = bounds.startMinute + (relativeY / SCHEDULE_INVITE_ROW_HEIGHT) * 60;
+
+  return clampScheduleInviteMinute(snapScheduleInviteMinute(rawMinute), bounds.startMinute, bounds.endMinute);
+}
+
+function getScheduleInviteCreateStartMinute(
+  event: { clientY: number },
+  element: HTMLElement,
+  bounds: ScheduleInviteMinuteRange
+) {
+  return clampScheduleInviteMinute(getScheduleInvitePointerMinute(event, element, bounds), bounds.startMinute, bounds.endMinute - SCHEDULE_INVITE_MIN_DURATION);
+}
+
+function normalizeScheduleInviteDragRange(startMinute: number, endCandidate: number, bounds: ScheduleInviteMinuteRange) {
+  const clampedEnd = clampScheduleInviteMinute(snapScheduleInviteMinute(endCandidate), bounds.startMinute, bounds.endMinute);
+
+  if (clampedEnd >= startMinute) {
+    return {
+      startMinute,
+      endMinute: clampScheduleInviteMinute(Math.max(clampedEnd, startMinute + SCHEDULE_INVITE_MIN_DURATION), bounds.startMinute, bounds.endMinute)
+    };
+  }
+
+  return {
+    startMinute: clampScheduleInviteMinute(Math.min(clampedEnd, startMinute - SCHEDULE_INVITE_MIN_DURATION), bounds.startMinute, bounds.endMinute),
+    endMinute: startMinute
+  };
+}
+
+function scheduleInviteRangeStyle(range: ScheduleInviteMinuteRange, bounds: ScheduleInviteMinuteRange) {
+  const top = ((range.startMinute - bounds.startMinute) / 60) * SCHEDULE_INVITE_ROW_HEIGHT;
+  const height = Math.max(58, ((range.endMinute - range.startMinute) / 60) * SCHEDULE_INVITE_ROW_HEIGHT);
+
+  return {
+    height,
+    top
+  };
+}
+
+function formatScheduleInviteEditorDate(date: string) {
+  const [, month = "", day = ""] = date.split("-");
+  const weekday = ["日", "一", "二", "三", "四", "五", "六"][new Date(`${date}T00:00:00`).getDay()];
+
+  return `${Number(month)}月 ${Number(day)}日（星期${weekday}）`;
+}
+
+type ScheduleInviteTimelineTone = "available" | "scheduled" | "booked" | "conflict-pending" | "other" | "travel";
+
+function buildScheduleInviteTimelineStyle(tone: ScheduleInviteTimelineTone) {
+  return {
+    "--schedule-semantic-border": `var(--schedule-tone-${tone}-border)`,
+    "--schedule-semantic-fill": `var(--schedule-tone-${tone}-bg)`,
+    "--schedule-semantic-fill-strong": `var(--schedule-tone-${tone}-bg)`,
+    "--schedule-semantic-shadow": `color-mix(in srgb, var(--schedule-tone-${tone}-border) 18%, transparent)`,
+    "--schedule-semantic-text": `var(--schedule-tone-${tone}-text)`,
+    "--schedule-semantic-text-shadow": `var(--schedule-tone-${tone}-text-shadow, none)`
+  } as CSSProperties;
+}
+
+function getScheduleInviteTimelineTone(sourceType: ImScheduleInviteOption["sourceType"]): ScheduleInviteTimelineTone {
+  if (sourceType === "shift") {
+    return "scheduled";
+  }
+
+  if (sourceType === "booking" || sourceType === "order") {
+    return "booked";
+  }
+
+  if (sourceType === "event") {
+    return "other";
+  }
+
+  return "available";
+}
+
+function ImScheduleInviteTimeTable({
+  className,
+  date,
+  hostName,
+  location,
+  onSelect,
+  options,
+  selectedInvite
+}: {
+  className?: string;
+  date: string;
+  hostName?: string;
+  location?: string;
+  onSelect: (invite: ImScheduleInviteOption) => void;
+  options: ImScheduleInviteOption[];
+  selectedInvite: ImScheduleInviteOption | null;
+}) {
+  const sortedOptions = [...options].sort(compareScheduleInviteOptions);
+  const bounds = getScheduleInviteTimelineBounds(sortedOptions);
+  const hours = Array.from(
+    { length: Math.max(1, Math.ceil((bounds.endMinute - bounds.startMinute) / 60)) },
+    (_, index) => Math.floor(bounds.startMinute / 60) + index
+  );
+  const canvasHeight = hours.length * SCHEDULE_INVITE_ROW_HEIGHT;
+  const selectedRange =
+    selectedInvite?.sourceType === "open"
+      ? {
+        endMinute: timeToMinutes(selectedInvite.endTime),
+        startMinute: timeToMinutes(selectedInvite.startTime)
+      }
+      : null;
+  const [draftRange, setDraftRange] = useState<ScheduleInviteMinuteRange | null>(selectedRange);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const canvasPressRef = useRef<{ moved: boolean; x: number; y: number } | null>(null);
+  const dragModeRef = useRef<ScheduleInviteDragMode | null>(null);
+  const dragRangeRef = useRef<ScheduleInviteMinuteRange | null>(selectedRange);
+  const resizeBaseRangeRef = useRef<ScheduleInviteMinuteRange | null>(selectedRange);
+
+  useEffect(() => {
+    const nextRange =
+      selectedInvite?.sourceType === "open"
+        ? {
+          endMinute: timeToMinutes(selectedInvite.endTime),
+          startMinute: timeToMinutes(selectedInvite.startTime)
+        }
+        : null;
+
+    dragRangeRef.current = nextRange;
+    dragModeRef.current = null;
+    resizeBaseRangeRef.current = nextRange;
+    setDraftRange(nextRange);
+  }, [selectedInvite?.id]);
+
+  const setActiveDragRange = (range: ScheduleInviteMinuteRange | null) => {
+    dragRangeRef.current = range;
+    setDraftRange(range);
+  };
+
+  const updateActiveRangeFromPointer = (event: ReactPointerEvent<HTMLElement>) => {
+    const canvas = canvasRef.current;
+    const mode = dragModeRef.current;
+
+    if (!canvas || !mode) {
+      return;
+    }
+
+    const pointerMinute = getScheduleInvitePointerMinute(event, canvas, bounds);
+
+    const baseRange = resizeBaseRangeRef.current ?? dragRangeRef.current;
+
+    if (!baseRange) {
+      return;
+    }
+
+    if (mode === "resize-start") {
+      setActiveDragRange({
+        endMinute: baseRange.endMinute,
+        startMinute: clampScheduleInviteMinute(pointerMinute, bounds.startMinute, baseRange.endMinute - SCHEDULE_INVITE_MIN_DURATION)
+      });
+      return;
+    }
+
+    setActiveDragRange({
+      endMinute: clampScheduleInviteMinute(pointerMinute, baseRange.startMinute + SCHEDULE_INVITE_MIN_DURATION, bounds.endMinute),
+      startMinute: baseRange.startMinute
+    });
+  };
+
+  const commitDragRange = (range: ScheduleInviteMinuteRange | null) => {
+    if (!range) {
+      return;
+    }
+
+    onSelect(buildOpenScheduleInviteOption({
+      date,
+      endTime: minutesToTime(range.endMinute),
+      hostName,
+      location,
+      startTime: minutesToTime(range.startMinute)
+    }));
+  };
+
+  const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest("[data-schedule-range-handle],[data-schedule-draft-range-block]")) {
+      return;
+    }
+
+    if (canvasPressRef.current?.moved) {
+      canvasPressRef.current = null;
+      return;
+    }
+
+    canvasPressRef.current = null;
+    const target = event.currentTarget;
+    const startMinute = getScheduleInviteCreateStartMinute(event, target, bounds);
+    const range = normalizeScheduleInviteDragRange(startMinute, startMinute + SCHEDULE_INVITE_MIN_DURATION, bounds);
+
+    resizeBaseRangeRef.current = range;
+    setActiveDragRange(range);
+  };
+
+  const handleCanvasPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 && event.pointerType === "mouse") {
+      canvasPressRef.current = null;
+      return;
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest("[data-schedule-range-handle],[data-schedule-draft-range-block]")) {
+      canvasPressRef.current = null;
+      return;
+    }
+
+    canvasPressRef.current = {
+      moved: false,
+      x: event.clientX,
+      y: event.clientY
+    };
+  };
+
+  const handleCanvasPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const press = canvasPressRef.current;
+
+    if (!press || press.moved) {
+      return;
+    }
+
+    const deltaX = event.clientX - press.x;
+    const deltaY = event.clientY - press.y;
+
+    if (Math.hypot(deltaX, deltaY) > 8) {
+      press.moved = true;
+    }
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!dragModeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragModeRef.current = null;
+    resizeBaseRangeRef.current = dragRangeRef.current;
+  };
+
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragModeRef.current = null;
+    resizeBaseRangeRef.current = dragRangeRef.current;
+  };
+  const handleResizePointerDown = (mode: ScheduleInviteDragMode, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 && event.pointerType === "mouse") {
+      return;
+    }
+
+    const range = draftRange ?? selectedRange;
+
+    if (!range) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    dragModeRef.current = mode;
+    resizeBaseRangeRef.current = range;
+    dragRangeRef.current = range;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const handleResizePointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!dragModeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateActiveRangeFromPointer(event);
+  };
+  const activeRange = draftRange ?? selectedRange;
+
+  return (
+    <div className={cn("flex min-h-0 flex-col rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-surface)_28%)] p-2", className)}>
+      <div className="mb-2 flex items-center justify-between gap-3 px-2 text-[11px] font-black text-[color:var(--client-muted)]">
+        <span>创建邀请时间</span>
+        <span className="shrink-0 text-[color:var(--client-primary)]">15分钟刻度</span>
+      </div>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_86%,transparent)]"
+        data-im-schedule-invite-scroll="true"
+      >
+        <div className="grid grid-cols-[64px,minmax(0,1fr)]" style={{ height: canvasHeight }}>
+          <div className="relative border-r border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)]">
+            {hours.map((hour) => (
+              <div
+                className="absolute left-0 right-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_45%,transparent)] px-2 pt-2 text-right text-[11px] font-black text-[color:var(--client-muted)]"
+                key={`${date}-rail-${hour}`}
+                style={{
+                  height: SCHEDULE_INVITE_ROW_HEIGHT,
+                  top: (hour * 60 - bounds.startMinute) / 60 * SCHEDULE_INVITE_ROW_HEIGHT
+                }}
+              >
+                {padNumber(hour)}:00
+              </div>
+            ))}
+          </div>
+          <div
+            aria-label="点击创建邀请时间，拖动手柄调整时长"
+            className="relative select-none overflow-hidden touch-pan-y"
+            data-im-schedule-invite-canvas="true"
+            onClick={handleCanvasClick}
+            onPointerCancel={() => {
+              canvasPressRef.current = null;
+            }}
+            onPointerDown={handleCanvasPointerDown}
+            onPointerMove={handleCanvasPointerMove}
+            ref={canvasRef}
+            style={{ height: canvasHeight }}
+          >
+            {hours.map((hour) => (
+              <div
+                className="absolute left-0 right-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_34%,transparent)]"
+                key={`${date}-line-${hour}`}
+                style={{
+                  height: SCHEDULE_INVITE_ROW_HEIGHT,
+                  top: (hour * 60 - bounds.startMinute) / 60 * SCHEDULE_INVITE_ROW_HEIGHT
+                }}
+              />
+            ))}
+            {sortedOptions.map((invite) => {
+              const range = {
+                endMinute: timeToMinutes(invite.endTime),
+                startMinute: timeToMinutes(invite.startTime)
+              };
+              const clampedRange = {
+                endMinute: clampScheduleInviteMinute(range.endMinute, bounds.startMinute, bounds.endMinute),
+                startMinute: clampScheduleInviteMinute(range.startMinute, bounds.startMinute, bounds.endMinute)
+              };
+
+              if (clampedRange.endMinute <= bounds.startMinute || clampedRange.startMinute >= bounds.endMinute) {
+                return null;
+              }
+
+              const toneStyle = buildScheduleInviteTimelineStyle(getScheduleInviteTimelineTone(invite.sourceType));
+
+              return (
+                <div
+                  className="pointer-events-none absolute left-3 right-3 overflow-hidden rounded-[16px] border border-[color:var(--schedule-semantic-border)] bg-[linear-gradient(180deg,var(--schedule-semantic-fill),var(--schedule-semantic-fill-strong))] px-3 py-2.5 text-left text-[color:var(--schedule-semantic-text)] opacity-90 shadow-[0_12px_28px_var(--schedule-semantic-shadow)] [text-shadow:var(--schedule-semantic-text-shadow)]"
+                  key={invite.id}
+                  style={{
+                    ...scheduleInviteRangeStyle(clampedRange, bounds),
+                    ...toneStyle
+                  }}
+                >
+                  <span className="inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--schedule-semantic-border)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--schedule-semantic-fill)_72%,transparent)] px-2 py-0.5 text-[10px] font-black">
+                    {invite.meta}
+                  </span>
+                  <strong className="mt-1.5 block truncate text-[13px] font-black leading-5">{invite.title}</strong>
+                  <span className="mt-1 block truncate text-[11px] font-bold opacity-75">
+                    {invite.startTime} - {invite.endTime}
+                    {invite.location ? ` · ${invite.location}` : ""}
+                  </span>
+                </div>
+              );
+            })}
+            {activeRange ? (
+              <ScheduleDraftRangeBlock
+                action={(
+                  <button
+                    className="rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      commitDragRange(activeRange);
+                    }}
+                    type="button"
+                  >
+                    创建
+                  </button>
+                )}
+                className="left-2 right-2"
+                onEndHandlePointerDown={(event) => handleResizePointerDown("resize-end", event)}
+                onHandlePointerCancel={handlePointerCancel}
+                onHandlePointerMove={handleResizePointerMove}
+                onHandlePointerUp={handlePointerUp}
+                onStartHandlePointerDown={(event) => handleResizePointerDown("resize-start", event)}
+                style={scheduleInviteRangeStyle(activeRange, bounds)}
+                subtitle="拖动上下手柄调整时间"
+                timeRange={`${minutesToTime(activeRange.startMinute)} - ${minutesToTime(activeRange.endMinute)}`}
+                title="新建行程"
+              />
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function getConversationAvatar(store: ReturnType<typeof useImStore>, conversation: Conversation) {
@@ -3373,6 +4117,18 @@ export function ImConversationRoomPage({
   const [mediaPreview, setMediaPreview] = useState<ConversationMessage | null>(null);
   const [contactCardPickerOpen, setContactCardPickerOpen] = useState(false);
   const [contactCardQuery, setContactCardQuery] = useState("");
+  const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  const [serviceCardQuery, setServiceCardQuery] = useState("");
+  const [scheduleInvitePickerOpen, setScheduleInvitePickerOpen] = useState(false);
+  const [scheduleInviteDate, setScheduleInviteDate] = useState(getTodayDateKey());
+  const [selectedScheduleInvite, setSelectedScheduleInvite] = useState<ImScheduleInviteOption | null>(null);
+  const [scheduleInviteEditorOpen, setScheduleInviteEditorOpen] = useState(false);
+  const [scheduleInviteTitleInput, setScheduleInviteTitleInput] = useState("");
+  const [scheduleInviteLocationInput, setScheduleInviteLocationInput] = useState("");
+  const [scheduleInviteNoteInput, setScheduleInviteNoteInput] = useState("");
+  const [scheduleInviteReminder, setScheduleInviteReminder] = useState(SCHEDULE_INVITE_DEFAULT_REMINDER);
+  const [scheduleInviteExtraAttendeeIds, setScheduleInviteExtraAttendeeIds] = useState<string[]>([]);
+  const [scheduleInviteAttendeePickerOpen, setScheduleInviteAttendeePickerOpen] = useState(false);
   const [hiddenMessageIds, setHiddenMessageIds] = useState<string[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
@@ -3594,6 +4350,7 @@ export function ImConversationRoomPage({
   const contact = conversation?.contactUserId ? store.contacts.find((item) => item.targetUserId === conversation.contactUserId) : undefined;
   const partner = conversation?.contactUserId ? store.usersById[conversation.contactUserId] : undefined;
   const blocked = Boolean(contact?.isBlocked);
+  const currentUser = store.currentUserId ? store.usersById[store.currentUserId] : undefined;
   const activeContactByUserId = useMemo(
     () =>
       new Map(
@@ -3605,14 +4362,13 @@ export function ImConversationRoomPage({
   );
   const currentSocialActor = social.profiles[social.getActorForScope(scope as SocialPortalScope)];
   const currentReactionPerson = useMemo<ImReactionPerson>(() => {
-    const currentUser = store.currentUserId ? store.usersById[store.currentUserId] : undefined;
-
     return {
       id: store.currentUserId ?? "me",
       name: currentSocialActor?.displayName ?? (currentUser ? getDisplayName(currentUser, activeContactByUserId.get(currentUser.id)) : "我"),
       avatar: currentSocialActor?.avatar ?? currentUser?.avatar
     };
-  }, [activeContactByUserId, currentSocialActor?.avatar, currentSocialActor?.displayName, store.currentUserId, store.usersById]);
+  }, [activeContactByUserId, currentSocialActor?.avatar, currentSocialActor?.displayName, currentUser, store.currentUserId]);
+  const scheduleInviteAttendeeLabel = partner ? getDisplayName(partner, contact) : conversation?.title ?? "当前会话";
   const shareableCardUsers = useMemo(() => {
     return buildShareableCardUsers({
       activeContactByUserId,
@@ -3633,6 +4389,90 @@ export function ImConversationRoomPage({
         .some((field) => typeof field === "string" && field.toLowerCase().includes(keyword))
     );
   }, [contactCardQuery, shareableCardUsers]);
+  const scheduleInviteSelectableAttendees = useMemo(() => {
+    const excludedIds = new Set([partner?.id, store.currentUserId].filter((id): id is string => Boolean(id)));
+
+    return shareableCardUsers.filter((user) => !excludedIds.has(user.id));
+  }, [partner?.id, shareableCardUsers, store.currentUserId]);
+  const scheduleInviteExtraAttendees = useMemo(() => {
+    const selectedIds = new Set(scheduleInviteExtraAttendeeIds);
+
+    return scheduleInviteSelectableAttendees
+      .filter((user) => selectedIds.has(user.id))
+      .map((user) => {
+        const contactForUser = activeContactByUserId.get(user.id);
+        const captionPrefix = getShareableCardCaptionPrefix(scope, user, store.currentUserId, currentUser);
+        const caption = captionPrefix
+          ? `${captionPrefix} · ${user.signature ?? user.region ?? user.userIdLabel}`
+          : buildContactCaption(user, contactForUser) || user.userIdLabel;
+
+        return {
+          avatar: user.avatar,
+          caption,
+          id: user.id,
+          label: getDisplayName(user, contactForUser)
+        };
+      });
+  }, [activeContactByUserId, currentUser, scheduleInviteExtraAttendeeIds, scheduleInviteSelectableAttendees, scope, store.currentUserId]);
+  const scheduleInviteAttendees = useMemo(() => {
+    const primary = {
+      avatar: partner?.avatar,
+      caption: partner ? buildContactCaption(partner, contact) || partner.userIdLabel : "当前会话",
+      id: partner?.id ?? conversation?.id ?? "current-conversation",
+      label: scheduleInviteAttendeeLabel
+    };
+
+    return [primary, ...scheduleInviteExtraAttendees];
+  }, [contact, conversation?.id, partner, scheduleInviteAttendeeLabel, scheduleInviteExtraAttendees]);
+  const scheduleInviteAttendeeSummary = useMemo(
+    () => scheduleInviteAttendees.map((attendee) => attendee.label).join("、"),
+    [scheduleInviteAttendees]
+  );
+  const serviceShareOptions = useMemo(
+    () => buildServiceShareOptions(scope, currentUser, entityStore),
+    [currentUser, entityStore, scope]
+  );
+  const filteredServiceShareOptions = useMemo(() => {
+    const keyword = serviceCardQuery.trim().toLowerCase();
+
+    if (!keyword) {
+      return serviceShareOptions;
+    }
+
+    return serviceShareOptions.filter(({ service, provider }) =>
+      [service.name, service.summary, provider?.name, ...(service.tags ?? []), ...(service.serviceAreas ?? [])]
+        .some((field) => typeof field === "string" && field.toLowerCase().includes(keyword))
+    );
+  }, [serviceCardQuery, serviceShareOptions]);
+  const scheduleInviteOptions = useMemo(
+    () => buildScheduleInviteOptions(scope, currentUser, entityStore),
+    [currentUser, entityStore, scope]
+  );
+  const scheduleInviteCountByDate = useMemo(() => {
+    return scheduleInviteOptions.reduce<Map<string, number>>((accumulator, invite) => {
+      accumulator.set(invite.date, (accumulator.get(invite.date) ?? 0) + 1);
+      return accumulator;
+    }, new Map());
+  }, [scheduleInviteOptions]);
+  const scheduleInviteWeekDates = useMemo(() => getWeekDates(scheduleInviteDate), [scheduleInviteDate]);
+  const scheduleInviteDayOptions = useMemo(
+    () => scheduleInviteOptions.filter((invite) => invite.date === scheduleInviteDate).sort(compareScheduleInviteOptions),
+    [scheduleInviteDate, scheduleInviteOptions]
+  );
+  const selectedScheduleInviteForDate = selectedScheduleInvite?.date === scheduleInviteDate ? selectedScheduleInvite : null;
+  const scheduleInviteHostName = currentReactionPerson.name;
+  const scheduleInviteLocation = useMemo(() => {
+    if (scope === "merchant") {
+      return entityStore.stores.find((item) => item.id === currentUser?.entityId)?.name;
+    }
+
+    if (scope === "technician") {
+      const technician = entityStore.technicians.find((item) => item.id === currentUser?.entityId);
+      return entityStore.stores.find((item) => item.id === technician?.storeId)?.name ?? technician?.serviceAreas[0];
+    }
+
+    return currentUser?.region;
+  }, [currentUser?.entityId, currentUser?.region, entityStore.stores, entityStore.technicians, scope]);
   const wallpaperFilter = isNight ? "saturate(0.8) brightness(0.42)" : "saturate(0.76) brightness(1.08)";
   const wallpaperOverlay = isNight
     ? "linear-gradient(90deg, rgba(0,0,0,0.62) 0%, rgba(7,20,29,0.54) 100%), linear-gradient(180deg, rgba(4,4,4,0.12) 0%, rgba(4,4,4,0.18) 24%, rgba(4,4,4,0.52) 100%)"
@@ -3816,6 +4656,132 @@ export function ImConversationRoomPage({
     setQuotedMessageId(undefined);
     setContactCardPickerOpen(false);
     setContactCardQuery("");
+  };
+
+  const sendServiceCard = async ({ service, provider, providerType, href }: ImServiceShareOption) => {
+    if (blocked || !config.chatCapabilityConfig.allowedMessageTypes.includes("service-card")) {
+      return;
+    }
+
+    await store.sendMessage(conversationId, "service-card", service.name, {
+      quotedMessageId,
+      ext: {
+        serviceCard: {
+          serviceId: service.id,
+          name: service.name,
+          cover: service.cover,
+          summary: service.summary,
+          priceLabel: formatServicePriceLabel(service),
+          durationLabel: formatServiceDurationLabel(service),
+          providerName: provider?.name,
+          providerId: provider?.id,
+          providerType,
+          href,
+          tags: service.tags.slice(0, 4)
+        }
+      }
+    });
+    setQuotedMessageId(undefined);
+    setServicePickerOpen(false);
+    setServiceCardQuery("");
+    setPanel(null);
+  };
+
+  const closeScheduleInvitePicker = () => {
+    setScheduleInvitePickerOpen(false);
+    setSelectedScheduleInvite(null);
+    setScheduleInviteEditorOpen(false);
+    setScheduleInviteTitleInput("");
+    setScheduleInviteLocationInput("");
+    setScheduleInviteNoteInput("");
+    setScheduleInviteReminder(SCHEDULE_INVITE_DEFAULT_REMINDER);
+    setScheduleInviteExtraAttendeeIds([]);
+    setScheduleInviteAttendeePickerOpen(false);
+  };
+
+  const openScheduleInvitePicker = () => {
+    setPanel(null);
+    setScheduleInviteDate(getTodayDateKey());
+    setSelectedScheduleInvite(null);
+    setScheduleInviteEditorOpen(false);
+    setScheduleInviteTitleInput("");
+    setScheduleInviteLocationInput("");
+    setScheduleInviteNoteInput("");
+    setScheduleInviteReminder(SCHEDULE_INVITE_DEFAULT_REMINDER);
+    setScheduleInviteExtraAttendeeIds([]);
+    setScheduleInviteAttendeePickerOpen(false);
+    setScheduleInvitePickerOpen(true);
+  };
+
+  const selectScheduleInviteDate = (date: string) => {
+    setScheduleInviteDate(date);
+    setSelectedScheduleInvite(null);
+    setScheduleInviteEditorOpen(false);
+  };
+
+  const shiftScheduleInviteWeek = (direction: -1 | 1) => {
+    setScheduleInviteDate((current) => addDays(current, direction * 7));
+    setSelectedScheduleInvite(null);
+    setScheduleInviteEditorOpen(false);
+  };
+
+  const openScheduleInviteEditor = (invite: ImScheduleInviteOption) => {
+    setSelectedScheduleInvite(invite);
+    setScheduleInviteTitleInput(invite.sourceType === "open" ? "" : invite.title || "");
+    setScheduleInviteLocationInput(invite.location ?? scheduleInviteLocation ?? "");
+    setScheduleInviteNoteInput(invite.note ?? "");
+    setScheduleInviteReminder(invite.reminderLabel ?? SCHEDULE_INVITE_DEFAULT_REMINDER);
+    setScheduleInviteAttendeePickerOpen(false);
+    setScheduleInviteEditorOpen(true);
+  };
+
+  const toggleScheduleInviteExtraAttendee = (userId: string) => {
+    setScheduleInviteExtraAttendeeIds((current) =>
+      current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId]
+    );
+  };
+
+  const sendScheduleInvite = async (invite: ImScheduleInviteOption) => {
+    if (blocked || !config.chatCapabilityConfig.allowedMessageTypes.includes("schedule-invite")) {
+      return;
+    }
+
+    const preparedInvite: ImScheduleInviteOption = {
+      ...invite,
+      attendeeLabel: scheduleInviteAttendeeSummary,
+      location: scheduleInviteLocationInput.trim() || undefined,
+      note: scheduleInviteNoteInput.trim() || undefined,
+      reminderLabel: scheduleInviteReminder,
+      title: scheduleInviteTitleInput.trim() || "（无标题）"
+    };
+
+    await store.sendMessage(conversationId, "schedule-invite", preparedInvite.title, {
+      quotedMessageId,
+      ext: {
+        scheduleInvite: {
+          scheduleId: preparedInvite.scheduleId,
+          title: preparedInvite.title,
+          date: preparedInvite.date,
+          timeRange: preparedInvite.timeRange,
+          location: preparedInvite.location,
+          hostName: preparedInvite.hostName,
+          note: preparedInvite.note,
+          attendeeLabel: preparedInvite.attendeeLabel,
+          reminderLabel: preparedInvite.reminderLabel,
+          statusLabel: preparedInvite.statusLabel,
+          href: preparedInvite.href
+        }
+      }
+    });
+    setQuotedMessageId(undefined);
+    setScheduleInvitePickerOpen(false);
+    setSelectedScheduleInvite(null);
+    setScheduleInviteEditorOpen(false);
+    setScheduleInviteExtraAttendeeIds([]);
+    setScheduleInviteAttendeePickerOpen(false);
+    setPanel(null);
   };
 
   const renderContactCardAction = (card: ContactCardPayload, message?: ConversationMessage) => {
@@ -4335,6 +5301,13 @@ export function ImConversationRoomPage({
     { key: "file", label: "文件", icon: "file" as const, run: () => void sendPresetMessage("file") },
     { key: "location", label: "位置", icon: "location" as const, run: () => void sendPresetMessage("location") },
     { key: "card", label: "名片", icon: "card" as const, run: () => void sendPresetMessage("contact-card") },
+    { key: "service", label: "发送服务", icon: "service" as const, run: () => {
+      setPanel(null);
+      setServicePickerOpen(true);
+    } },
+    { key: "schedule", label: "日程邀请", icon: "calendar" as const, run: () => {
+      openScheduleInvitePicker();
+    } },
     { key: "group", label: "发起群聊", icon: "group" as const, run: () => navigate(appendQuery(config.routes.newConversation, { mode: "group", from: conversationId })) }
   ].filter((action) => {
     if (action.key === "group") {
@@ -4343,6 +5316,14 @@ export function ImConversationRoomPage({
 
     if (action.key === "card") {
       return config.chatCapabilityConfig.allowedMessageTypes.includes("contact-card");
+    }
+
+    if (action.key === "service") {
+      return scope !== "user" && config.chatCapabilityConfig.allowedMessageTypes.includes("service-card");
+    }
+
+    if (action.key === "schedule") {
+      return config.chatCapabilityConfig.allowedMessageTypes.includes("schedule-invite");
     }
 
     if (action.key === "image" || action.key === "camera") {
@@ -4673,6 +5654,292 @@ export function ImConversationRoomPage({
             )}
           </section>
         </div>
+      </ImBottomSheet>
+
+      <ImBottomSheet onClose={() => setServicePickerOpen(false)} open={servicePickerOpen} title="发送服务">
+        <div className="space-y-3 pb-2">
+          <input
+            className="h-11 w-full rounded-2xl border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] px-4 text-[15px] text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
+            onChange={(event) => setServiceCardQuery(event.target.value)}
+            placeholder="从店铺服务列表中选择"
+            value={serviceCardQuery}
+          />
+
+          <section className="max-h-[62dvh] space-y-2 overflow-y-auto rounded-[24px] bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-surface)_28%)] p-2">
+            {filteredServiceShareOptions.length > 0 ? (
+              filteredServiceShareOptions.map((option) => (
+                <button
+                  className="grid w-full grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:var(--client-surface)] p-2 text-left"
+                  key={option.service.id}
+                  onClick={() => void sendServiceCard(option)}
+                  type="button"
+                >
+                  <img alt={option.service.name} className="h-16 w-16 rounded-[18px] object-cover" src={option.service.cover} />
+                  <span className="min-w-0">
+                    <strong className="block truncate text-[14px] font-black text-[color:var(--client-text)]">{option.service.name}</strong>
+                    <span className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">{option.service.summary}</span>
+                    <span className="mt-1 block truncate text-[11px] font-black text-[color:var(--client-primary)]">
+                      {option.provider?.name ?? "店铺服务"} · {formatServicePriceLabel(option.service)}
+                    </span>
+                  </span>
+                  <span className="rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)]">发送</span>
+                </button>
+              ))
+            ) : (
+              <div className="px-4 py-10 text-center text-sm text-[color:var(--client-muted)]">
+                当前店铺还没有可发送服务
+              </div>
+            )}
+          </section>
+        </div>
+      </ImBottomSheet>
+
+      <ImBottomSheet
+        bodyClassName="min-h-0 flex-1 overflow-visible"
+        closeLabel="关闭行程邀请"
+        onClose={closeScheduleInvitePicker}
+        open={scheduleInvitePickerOpen}
+        panelClassName="flex h-[78dvh] max-h-[calc(100dvh-72px)] flex-col bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,var(--client-bg)_10%)]"
+        showCloseButton
+        title={scheduleInviteEditorOpen ? "设置行程邀请" : "选择日程邀请时间"}
+      >
+        {scheduleInviteEditorOpen && selectedScheduleInviteForDate ? (
+          <div className="flex h-full min-h-0 flex-col gap-3 pb-2" data-im-schedule-invite-editor="true">
+            <section className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.10)]">
+              <input
+                className="h-12 w-full !rounded-none border-b border-[color:color-mix(in_srgb,var(--client-primary)_56%,var(--client-line))] bg-transparent px-0 text-[24px] font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
+                onChange={(event) => setScheduleInviteTitleInput(event.target.value)}
+                placeholder="添加标题"
+                value={scheduleInviteTitleInput}
+              />
+
+              <div className="grid grid-cols-[36px,minmax(0,1fr)] gap-3">
+                <span className="mt-0.5 grid h-9 w-9 place-items-center text-[color:var(--client-muted)]">
+                  <ImIcon name="calendar" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">
+                    {formatScheduleInviteEditorDate(selectedScheduleInviteForDate.date)}　{selectedScheduleInviteForDate.timeRange}
+                  </p>
+                  <p className="mt-1 text-[12px] font-bold text-[color:var(--client-muted)]">时区 · 不重复</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[36px,minmax(0,1fr)] gap-3 border-y border-[color:color-mix(in_srgb,var(--client-line)_46%,transparent)] py-3">
+                <span className="mt-0.5 grid h-9 w-9 place-items-center text-[color:var(--client-muted)]">
+                  <ImIcon name="group" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">邀请对象</p>
+                    </div>
+                    <button
+                      aria-expanded={scheduleInviteAttendeePickerOpen}
+                      aria-label="添加邀请对象"
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,var(--client-surface)_86%)] text-[color:var(--client-primary)] transition active:scale-95"
+                      onClick={() => setScheduleInviteAttendeePickerOpen((open) => !open)}
+                      type="button"
+                    >
+                      <ImIcon className="h-4 w-4" name="plus" />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {scheduleInviteAttendees.map((attendee) => (
+                      <span
+                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] px-2.5 py-1.5 text-[12px] font-black text-[color:var(--client-text)]"
+                        key={attendee.id}
+                      >
+                        {attendee.avatar ? <img alt="" className="h-5 w-5 rounded-full object-cover" src={attendee.avatar} /> : <ImIcon className="h-3.5 w-3.5 text-[color:var(--client-muted)]" name="group" />}
+                        <span className="max-w-[168px] truncate">{attendee.label}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {scheduleInviteAttendeePickerOpen ? (
+                    <div className="mt-3 max-h-44 space-y-2 overflow-y-auto border-t border-[color:color-mix(in_srgb,var(--client-line)_42%,transparent)] pt-3">
+                      {scheduleInviteSelectableAttendees.length > 0 ? (
+                        scheduleInviteSelectableAttendees.map((user) => {
+                          const selected = scheduleInviteExtraAttendeeIds.includes(user.id);
+                          const contactForUser = activeContactByUserId.get(user.id);
+                          const captionPrefix = getShareableCardCaptionPrefix(scope, user, store.currentUserId, currentUser);
+                          const caption = captionPrefix
+                            ? `${captionPrefix} · ${user.signature ?? user.region ?? user.userIdLabel}`
+                            : buildContactCaption(user, contactForUser) || user.userIdLabel;
+
+                          return (
+                            <button
+                              className={cn(
+                                "grid w-full grid-cols-[36px,minmax(0,1fr)_28px] items-center gap-3 rounded-[16px] border px-2.5 py-2 text-left transition",
+                                selected
+                                  ? "border-[color:color-mix(in_srgb,var(--client-primary)_54%,transparent)] bg-[color:var(--client-primary-soft)]"
+                                  : "border-[color:color-mix(in_srgb,var(--client-line)_52%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_62%,transparent)]"
+                              )}
+                              key={user.id}
+                              onClick={() => toggleScheduleInviteExtraAttendee(user.id)}
+                              type="button"
+                            >
+                              <img alt="" className="h-9 w-9 rounded-full object-cover" src={user.avatar} />
+                              <span className="min-w-0">
+                                <strong className="block truncate text-[13px] font-black text-[color:var(--client-text)]">{getDisplayName(user, contactForUser)}</strong>
+                                <span className="mt-0.5 block truncate text-[11px] font-bold text-[color:var(--client-muted)]">{caption}</span>
+                              </span>
+                              <span
+                                className={cn(
+                                  "grid h-7 w-7 place-items-center rounded-full border",
+                                  selected
+                                    ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+                                    : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] text-[color:var(--client-muted)]"
+                                )}
+                              >
+                                <ImIcon className="h-3.5 w-3.5" name={selected ? "check" : "plus"} />
+                              </span>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <p className="rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_48%,transparent)] px-3 py-3 text-center text-[12px] font-bold text-[color:var(--client-muted)]">暂无可添加对象</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[36px,minmax(0,1fr)] gap-3">
+                <span className="mt-0.5 grid h-9 w-9 place-items-center text-[color:var(--client-muted)]">
+                  <ImIcon name="location" />
+                </span>
+                <input
+                  className="h-10 min-w-0 !rounded-none border-b border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-transparent px-0 text-[15px] font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
+                  onChange={(event) => setScheduleInviteLocationInput(event.target.value)}
+                  placeholder="添加地点"
+                  value={scheduleInviteLocationInput}
+                />
+              </div>
+
+              <div className="grid grid-cols-[36px,minmax(0,1fr)] gap-3">
+                <span className="mt-1 grid h-9 w-9 place-items-center text-[color:var(--client-muted)]">
+                  <ImIcon name="edit" />
+                </span>
+                <textarea
+                  className="min-h-[76px] min-w-0 resize-none rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_58%,var(--client-surface)_42%)] px-3 py-2.5 text-[14px] font-bold leading-5 text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)]"
+                  onChange={(event) => setScheduleInviteNoteInput(event.target.value)}
+                  placeholder="添加说明"
+                  value={scheduleInviteNoteInput}
+                />
+              </div>
+
+              <div className="grid grid-cols-[36px,minmax(0,1fr)] gap-3">
+                <span className="mt-0.5 grid h-9 w-9 place-items-center text-[color:var(--client-muted)]">
+                  <ImIcon name="calendar" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">NeeDo 日程</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {SCHEDULE_INVITE_REMINDER_OPTIONS.map((option) => (
+                      <button
+                        className={cn(
+                          "rounded-full border px-3 py-1.5 text-[11px] font-black transition",
+                          scheduleInviteReminder === option
+                            ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+                            : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_58%,transparent)] text-[color:var(--client-muted)]"
+                        )}
+                        key={option}
+                        onClick={() => setScheduleInviteReminder(option)}
+                        type="button"
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div className="flex shrink-0 items-center justify-end gap-3 overflow-visible px-1.5 pb-3 pt-1">
+              <button
+                className="rounded-full px-4 py-2.5 text-[13px] font-black text-[color:var(--client-primary)]"
+                onClick={() => setScheduleInviteEditorOpen(false)}
+                type="button"
+              >
+                调整时间
+              </button>
+              <button
+                className="rounded-full bg-[color:var(--client-primary)] px-5 py-2.5 text-[13px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_12px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
+                onClick={() => void sendScheduleInvite(selectedScheduleInviteForDate)}
+                type="button"
+              >
+                保存并发送
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-full min-h-0 flex-col gap-3 pb-2">
+            <section className="shrink-0 rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.10)]">
+              <div className="grid grid-cols-[40px,1fr,40px] items-center gap-2">
+                <button
+                  aria-label="上一周"
+                  className="grid h-10 w-10 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] text-lg font-black text-[color:var(--client-text)]"
+                  onClick={() => shiftScheduleInviteWeek(-1)}
+                  type="button"
+                >
+                  ‹
+                </button>
+                <div className="min-w-0 text-center">
+                  <strong className="block truncate text-sm font-black text-[color:var(--client-text)]">我的日程表</strong>
+                  <span className="mt-0.5 block truncate text-[11px] font-bold text-[color:var(--client-muted)]">{formatLongDate(scheduleInviteDate)}</span>
+                </div>
+                <button
+                  aria-label="下一周"
+                  className="grid h-10 w-10 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] text-lg font-black text-[color:var(--client-text)]"
+                  onClick={() => shiftScheduleInviteWeek(1)}
+                  type="button"
+                >
+                  ›
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-7 gap-1.5">
+                {scheduleInviteWeekDates.map((date) => {
+                  const selected = date === scheduleInviteDate;
+                  const count = scheduleInviteCountByDate.get(date) ?? 0;
+                  return (
+                    <button
+                      className={cn(
+                        "relative min-h-[58px] rounded-[16px] border px-1 py-2 text-center transition",
+                        selected
+                          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
+                          : "border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-[color:var(--client-muted)]"
+                      )}
+                      key={date}
+                      onClick={() => selectScheduleInviteDate(date)}
+                      type="button"
+                    >
+                      <span className="block text-[10px] font-bold">{date === getTodayDateKey() ? "今天" : formatShortDate(date).replace("/", ".")}</span>
+                      <strong className="mt-1 block text-[12px] font-black">{["日", "一", "二", "三", "四", "五", "六"][new Date(`${date}T00:00:00`).getDay()]}</strong>
+                      {count > 0 ? (
+                        <span className="absolute right-[-5px] top-[-5px] grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-[#ef4f3f] px-1 text-[10px] font-black text-white">
+                          {count}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <ImScheduleInviteTimeTable
+              className="min-h-0 flex-1"
+              date={scheduleInviteDate}
+              hostName={scheduleInviteHostName}
+              location={scheduleInviteLocation}
+              onSelect={openScheduleInviteEditor}
+              options={scheduleInviteDayOptions}
+              selectedInvite={selectedScheduleInviteForDate}
+            />
+          </div>
+        )}
       </ImBottomSheet>
 
       <ImBottomSheet onClose={() => setMediaPreview(null)} open={Boolean(mediaPreview)}>
@@ -5471,6 +6738,7 @@ export function ImNewConversationPage() {
           : mode === "forward"
             ? "选择聊天"
             : "新建聊天";
+  const groupSourceConversationId = isGroupMode ? searchParams.get("from") : null;
   const forwardMessageId = searchParams.get("messageId");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -5514,6 +6782,17 @@ export function ImNewConversationPage() {
     () => new Set(store.contacts.filter((contact) => contact.relationStatus === "active" && !contact.isBlocked).map((contact) => contact.targetUserId)),
     [store.contacts]
   );
+  const selectableGroupContactUserIds = useMemo(() => {
+    return new Set(
+      store.contacts
+        .filter((contact) => {
+          const user = store.usersById[contact.targetUserId];
+
+          return Boolean(user) && contact.relationStatus === "active" && !contact.isBlocked && isContactVisibleForRole(scope, user, contact);
+        })
+        .map((contact) => contact.targetUserId)
+    );
+  }, [scope, store.contacts, store.usersById]);
   const availableFriendCandidates = useMemo(() => store.users.filter((user) => {
     if (user.id === store.currentUserId || user.serviceAccount) {
       return false;
@@ -5544,6 +6823,7 @@ export function ImNewConversationPage() {
   const indexClearTimerRef = useRef<number | null>(null);
   const activeDragLetterRef = useRef<ContactIndexLetter | null>(null);
   const activePointerIdRef = useRef<number | null>(null);
+  const groupSourceSelectionRef = useRef<string | null>(null);
   const [activeIndexLetter, setActiveIndexLetter] = useState<ContactIndexLetter | null>(null);
   const scannedUser = scannedUserId
     ? availableFriendCandidates.find((user) => user.id === scannedUserId) ?? null
@@ -5559,6 +6839,35 @@ export function ImNewConversationPage() {
       window.clearTimeout(indexClearTimerRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isGroupMode) {
+      groupSourceSelectionRef.current = null;
+      return;
+    }
+
+    if (!groupSourceConversationId || groupSourceSelectionRef.current === groupSourceConversationId) {
+      return;
+    }
+
+    const sourceConversation = store.conversations.find((conversation) => conversation.id === groupSourceConversationId);
+
+    if (!sourceConversation) {
+      return;
+    }
+
+    const sourceMemberIds = sourceConversation.contactUserId ? [sourceConversation.contactUserId] : sourceConversation.memberIds;
+    const nextSelectedIds = sourceMemberIds.filter(
+      (userId) => userId !== store.currentUserId && selectableGroupContactUserIds.has(userId)
+    );
+
+    if (nextSelectedIds.length === 0) {
+      return;
+    }
+
+    groupSourceSelectionRef.current = groupSourceConversationId;
+    setSelectedIds((current) => Array.from(new Set([...nextSelectedIds, ...current])));
+  }, [groupSourceConversationId, isGroupMode, selectableGroupContactUserIds, store.conversations, store.currentUserId]);
 
   const clearIndexHighlight = () => {
     if (indexClearTimerRef.current !== null) {

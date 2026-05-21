@@ -301,7 +301,9 @@ img {
   transform: scaleX(-1);
 }
 
-.needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell.is-idle-motion {
+.needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell.is-idle-motion,
+.needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell.is-one-shot-motion,
+.needo-pet-layer[data-facing="left"] .needo-pet-sprite-shell[data-sprite="grave"] {
   transform: none;
 }
 

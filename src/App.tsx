@@ -89,6 +89,7 @@ import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
+import { UserSchedulePage } from "./pages/user/UserSchedulePage";
 import {
   UserSettingsAccountPage,
   UserSettingsAboutPage,
@@ -904,6 +905,10 @@ export default function App() {
               <Route path="/profiles/:entityType/:id/following" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />
               <Route path="/checkout/:serviceId" element={protect("user", <CheckoutPage />)} />
+              <Route path="/schedule" element={protect("user", <UserSchedulePage />)} />
+              <Route path="/schedule/new" element={protect("user", <TechnicianScheduleEditorRoutePage />)} />
+              <Route path="/schedule/events/:eventId/edit" element={protect("user", <TechnicianScheduleEditorRoutePage />)} />
+              <Route path="/schedule/events/:eventId" element={protect("user", <TechnicianScheduleDetailRoutePage />)} />
               <Route path="/scan" element={protect("user", <DineInScanPage />)} />
               <Route path="/q/:token" element={protect("user", <DineInQrRedirectPage />)} />
               <Route path="/dine/:sessionId/menu" element={protect("user", <DineInCustomerMenuPage />)} />

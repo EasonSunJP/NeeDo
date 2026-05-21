@@ -17,28 +17,36 @@ type PetCareState = {
   energy: number;
   fun: number;
   hunger: number;
+  hungerEmptySinceAt: number | null;
   hygiene: number;
   lastUpdatedAt: number;
   version: 1;
 };
 
 type PetMotionMode = "anchor" | "roam" | "climb" | "peek" | "rest" | "dead";
-type PetAnimationState = "failed" | "idle" | "running-left" | "running-right" | "waiting" | "waving";
+type PetAnimationState = "dying" | "entering" | "exiting" | "failed" | "grave" | "idle" | "reviving" | "running-left" | "running-right" | "waiting" | "waving";
 type PetFacing = "left" | "right";
 type PetExpression = "happy" | "notice" | "tired" | "sad" | "dead";
+type PetTransitionState = "death" | "enter" | "exit" | "revive" | null;
 type PetSpriteKey =
   | "angry"
+  | "death"
+  | "enter"
+  | "exit"
   | "failed"
   | "happy"
+  | "grave"
   | "hungry"
   | "idle"
   | "jumping"
   | "notice"
   | "phone"
+  | "revive"
   | "running"
   | "sleeping"
   | "waiting"
   | "waving";
+type PetOneShotSpriteKey = "death" | "enter" | "exit" | "revive";
 
 type ReminderItem = {
   count: number;
@@ -108,6 +116,7 @@ const petPositionStorageKey = "needo.digital-pet.position.v1";
 const petSize = { width: 132, height: 158 };
 const petPeekVisible = 38;
 const idleRoamDelay = 10_000;
+const hungerDeathDelay = 10 * 60_000;
 const dragEdgeThreshold = 34;
 const floatingViewportPadding = 12;
 const bubblePreferredWidth = 268;
@@ -122,6 +131,7 @@ const initialCare: PetCareState = {
   energy: 78,
   fun: 76,
   hunger: 82,
+  hungerEmptySinceAt: null,
   hygiene: 86,
   lastUpdatedAt: Date.now(),
   version: 1
@@ -293,6 +303,13 @@ function normalizeCareState(input: Partial<PetCareState> | null | undefined): Pe
     energy: clamp(Number(base.energy)),
     fun: clamp(Number(base.fun)),
     hunger: clamp(Number(base.hunger)),
+    hungerEmptySinceAt: Number.isFinite(base.hungerEmptySinceAt)
+      ? Number(base.hungerEmptySinceAt)
+      : Number(base.hunger) <= 0
+        ? Number.isFinite(base.lastUpdatedAt)
+          ? Number(base.lastUpdatedAt)
+          : Date.now()
+        : null,
     hygiene: clamp(Number(base.hygiene)),
     lastUpdatedAt: Number.isFinite(base.lastUpdatedAt) ? Number(base.lastUpdatedAt) : Date.now(),
     version: 1
@@ -303,24 +320,38 @@ function decayCareState(state: PetCareState, now = Date.now()): PetCareState {
   const elapsedHours = Math.max(0, (now - state.lastUpdatedAt) / 3_600_000);
 
   if (elapsedHours < 0.01) {
-    return state;
+    return state.hunger > 0 && state.hungerEmptySinceAt
+      ? {
+          ...state,
+          hungerEmptySinceAt: null
+        }
+      : state;
+  }
+
+  const rawHunger = state.hunger - elapsedHours * 2.4;
+  const nextHunger = clamp(rawHunger);
+  let hungerEmptySinceAt = nextHunger <= 0 ? state.hungerEmptySinceAt : null;
+
+  if (nextHunger <= 0 && !hungerEmptySinceAt) {
+    if (state.hunger > 0) {
+      const hoursUntilEmpty = state.hunger / 2.4;
+      hungerEmptySinceAt = state.lastUpdatedAt + Math.min(elapsedHours, hoursUntilEmpty) * 3_600_000;
+    } else {
+      hungerEmptySinceAt = state.lastUpdatedAt;
+    }
   }
 
   const next = {
     ...state,
-    hunger: clamp(state.hunger - elapsedHours * 2.4),
+    hunger: nextHunger,
+    hungerEmptySinceAt,
     hygiene: clamp(state.hygiene - elapsedHours * 1.6),
     fun: clamp(state.fun - elapsedHours * 2.0),
     energy: clamp(state.energy - elapsedHours * 1.2),
     lastUpdatedAt: now
   };
-  const criticallyLow = [next.hunger, next.hygiene, next.fun, next.energy].filter((value) => value <= 2).length;
-  const averageCare = (next.hunger + next.hygiene + next.fun + next.energy) / 4;
 
-  return {
-    ...next,
-    alive: state.alive && criticallyLow < 2 && averageCare > 6
-  };
+  return next;
 }
 
 function readCareState() {
@@ -470,16 +501,34 @@ function getPetAnimationState({
   facing,
   moving,
   mode,
-  panelOpen
+  panelOpen,
+  transition
 }: {
   expression: PetExpression;
   facing: PetFacing;
   moving: boolean;
   mode: PetMotionMode;
   panelOpen: boolean;
+  transition: PetTransitionState;
 }): PetAnimationState {
+  if (transition === "death") {
+    return "dying";
+  }
+
+  if (transition === "enter") {
+    return "entering";
+  }
+
+  if (transition === "exit") {
+    return "exiting";
+  }
+
+  if (transition === "revive") {
+    return "reviving";
+  }
+
   if (expression === "dead" || mode === "dead") {
-    return "failed";
+    return "grave";
   }
 
   if (panelOpen || mode === "rest") {
@@ -497,15 +546,33 @@ function getPetSpriteKey({
   care,
   expression,
   moving,
-  panelOpen
+  panelOpen,
+  transition
 }: {
   care: PetCareState;
   expression: PetExpression;
   moving: boolean;
   panelOpen: boolean;
+  transition: PetTransitionState;
 }): PetSpriteKey {
+  if (transition === "death") {
+    return "death";
+  }
+
+  if (transition === "enter") {
+    return "enter";
+  }
+
+  if (transition === "exit") {
+    return "exit";
+  }
+
+  if (transition === "revive") {
+    return "revive";
+  }
+
   if (!care.alive || expression === "dead") {
-    return "failed";
+    return "grave";
   }
 
   if (!panelOpen && moving) {
@@ -515,7 +582,7 @@ function getPetSpriteKey({
   return "idle";
 }
 
-const xiaobaiPetAssetVersion = "20260521g";
+const xiaobaiPetAssetVersion = "20260521h";
 
 function getVersionedPetAsset(src: string) {
   return `${src}?v=${xiaobaiPetAssetVersion}`;
@@ -523,13 +590,18 @@ function getVersionedPetAsset(src: string) {
 
 const petSpriteSrc: Record<PetSpriteKey, string> = {
   angry: getVersionedPetAsset("/images/needo-pet/xiao-bai-angry.png"),
+  death: getVersionedPetAsset("/images/needo-pet/xiao-bai-death.png"),
+  enter: getVersionedPetAsset("/images/needo-pet/xiao-bai-enter.png"),
+  exit: getVersionedPetAsset("/images/needo-pet/xiao-bai-exit.png"),
   failed: getVersionedPetAsset("/images/needo-pet/xiao-bai-failed.png"),
   happy: getVersionedPetAsset("/images/needo-pet/xiao-bai-happy.png"),
+  grave: getVersionedPetAsset("/images/needo-pet/xiao-bai-grave.png"),
   hungry: getVersionedPetAsset("/images/needo-pet/xiao-bai-hungry.png"),
   idle: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle.png"),
   jumping: getVersionedPetAsset("/images/needo-pet/xiao-bai-jumping.png"),
   notice: getVersionedPetAsset("/images/needo-pet/xiao-bai-notice.png"),
   phone: getVersionedPetAsset("/images/needo-pet/xiao-bai-phone.png"),
+  revive: getVersionedPetAsset("/images/needo-pet/xiao-bai-revive.png"),
   running: getVersionedPetAsset("/images/needo-pet/xiao-bai-running.png"),
   sleeping: getVersionedPetAsset("/images/needo-pet/xiao-bai-sleeping.png"),
   waiting: getVersionedPetAsset("/images/needo-pet/xiao-bai-waiting.png"),
@@ -550,6 +622,16 @@ const xiaobaiRunningClips = [
   { durationMs: 6_400, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
   { durationMs: 8_400, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
 ] as const;
+const xiaobaiOneShotClips: Record<PetOneShotSpriteKey, PetMotionClip> = {
+  death: { durationMs: 7_450, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-death.png") },
+  enter: { durationMs: 3_000, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-enter.png") },
+  exit: { durationMs: 4_800, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-exit.png") },
+  revive: { durationMs: 6_550, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-revive.png") }
+};
+
+function isOneShotSprite(sprite: PetSpriteKey): sprite is PetOneShotSpriteKey {
+  return sprite === "death" || sprite === "enter" || sprite === "exit" || sprite === "revive";
+}
 
 function getNextMotionClipIndex(currentIndex: number, clipCount: number) {
   if (clipCount <= 1) {
@@ -621,13 +703,33 @@ function NeedoPetMotionSequence({
   );
 }
 
-function NeedoPetSprite({ sprite }: { sprite: PetSpriteKey }) {
+function NeedoPetOneShotMotion({ runId, sprite }: { runId: number; sprite: PetOneShotSpriteKey }) {
+  const clip = xiaobaiOneShotClips[sprite];
+
+  return (
+    <span className={cn("needo-pet-sprite-shell is-motion is-one-shot-motion", `is-${sprite}-motion`)} data-sprite={sprite}>
+      <img
+        key={`${clip.src}-${runId}`}
+        alt=""
+        className="needo-pet-motion-image is-active"
+        draggable={false}
+        src={clip.src}
+      />
+    </span>
+  );
+}
+
+function NeedoPetSprite({ runId, sprite }: { runId: number; sprite: PetSpriteKey }) {
   if (sprite === "idle") {
     return <NeedoPetMotionSequence key="idle" clips={xiaobaiIdleClips} sprite="idle" />;
   }
 
   if (sprite === "running") {
     return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} sprite="running" />;
+  }
+
+  if (isOneShotSprite(sprite)) {
+    return <NeedoPetOneShotMotion key={sprite} runId={runId} sprite={sprite} />;
   }
 
   return (
@@ -776,6 +878,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const [dragging, setDragging] = useState(false);
   const [settled, setSettled] = useState(false);
   const [motion, setMotion] = useState<PetMotionState>({ facing: "right", mode: "anchor", moving: false });
+  const [petTransition, setPetTransition] = useState<PetTransitionState>(null);
+  const [petTransitionRunId, setPetTransitionRunId] = useState(0);
   const [, setViewportRevision] = useState(0);
   const petRef = useRef<HTMLDivElement | null>(null);
   const positionRef = useRef<MotionPosition>(readMotionPosition());
@@ -790,6 +894,13 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const lastInteractionRef = useRef(typeof performance === "undefined" ? 0 : performance.now());
   const manualHoldUntilRef = useRef(0);
   const peekTargetRef = useRef<MotionPosition | null>(null);
+  const careRef = useRef(care);
+  const motionRef = useRef(motion);
+  const petSettingsRef = useRef(petSettings);
+  const petTransitionRef = useRef<PetTransitionState>(null);
+  const petTransitionRunIdRef = useRef(0);
+  const petTransitionTimerRef = useRef<number | null>(null);
+  const hasShownEntryRef = useRef(false);
   const petDisabled = disabled || !petSettings.enabled;
 
   const applyPosition = () => {
@@ -801,6 +912,157 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
 
     element.style.setProperty("--needo-pet-x", `${Math.round(positionRef.current.x)}px`);
     element.style.setProperty("--needo-pet-y", `${Math.round(positionRef.current.y)}px`);
+  };
+
+  const clearPetTransitionTimer = () => {
+    if (petTransitionTimerRef.current !== null) {
+      window.clearTimeout(petTransitionTimerRef.current);
+      petTransitionTimerRef.current = null;
+    }
+  };
+
+  const setPetTransitionState = (nextTransition: PetTransitionState) => {
+    petTransitionRef.current = nextTransition;
+    setPetTransition(nextTransition);
+
+    if (nextTransition) {
+      petTransitionRunIdRef.current += 1;
+      setPetTransitionRunId(petTransitionRunIdRef.current);
+    }
+  };
+
+  const stopPetMotion = (mode: PetMotionMode) => {
+    draggingRef.current = false;
+    dragSessionRef.current = null;
+    setDragging(false);
+    velocityRef.current = { x: 0, y: 0 };
+    peekTargetRef.current = null;
+    climbTargetRef.current = null;
+    setMotion((current) => ({ facing: current.facing, mode, moving: false }));
+  };
+
+  const finishEntryTransition = () => {
+    clearPetTransitionTimer();
+    setPetTransitionState(null);
+    setSettled(true);
+    stopPetMotion("anchor");
+    lastInteractionRef.current = performance.now();
+    manualHoldUntilRef.current = performance.now() + 3_000;
+  };
+
+  const startEntryTransition = () => {
+    clearPetTransitionTimer();
+    positionRef.current = getAnchorPosition();
+    applyPosition();
+    setPanelOpen(false);
+    stopPetMotion("rest");
+    setSettled(false);
+    setPetTransitionState("enter");
+    petTransitionTimerRef.current = window.setTimeout(finishEntryTransition, xiaobaiOneShotClips.enter.durationMs);
+  };
+
+  const startReturnToAnchorTransition = () => {
+    if (petTransitionRef.current || !careRef.current.alive) {
+      return false;
+    }
+
+    clearPetTransitionTimer();
+    setPanelOpen(false);
+    setBubble(null);
+    stopPetMotion("rest");
+    setSettled(false);
+    setPetTransitionState("exit");
+    manualHoldUntilRef.current = performance.now() + xiaobaiOneShotClips.exit.durationMs + xiaobaiOneShotClips.enter.durationMs + 3_000;
+    petTransitionTimerRef.current = window.setTimeout(() => {
+      positionRef.current = getAnchorPosition();
+      applyPosition();
+      stopPetMotion("rest");
+      setPetTransitionState("enter");
+      petTransitionTimerRef.current = window.setTimeout(finishEntryTransition, xiaobaiOneShotClips.enter.durationMs);
+    }, xiaobaiOneShotClips.exit.durationMs);
+
+    return true;
+  };
+
+  const startExitAndDisable = () => {
+    if (petTransitionRef.current) {
+      return;
+    }
+
+    clearPetTransitionTimer();
+    setPanelOpen(false);
+    setBubble(null);
+    stopPetMotion("rest");
+    setSettled(false);
+    setPetTransitionState("exit");
+    petTransitionTimerRef.current = window.setTimeout(() => {
+      clearPetTransitionTimer();
+      setNeedoPetEnabled(false);
+      setPetTransitionState(null);
+    }, xiaobaiOneShotClips.exit.durationMs);
+  };
+
+  const startDeathTransition = () => {
+    if (petTransitionRef.current || !careRef.current.alive) {
+      return;
+    }
+
+    clearPetTransitionTimer();
+    setPanelOpen(false);
+    setBubble(null);
+    stopPetMotion("dead");
+    setSettled(true);
+    setPetTransitionState("death");
+    petTransitionTimerRef.current = window.setTimeout(() => {
+      const now = Date.now();
+      clearPetTransitionTimer();
+      setCare((current) => ({
+        ...current,
+        alive: false,
+        hunger: 0,
+        hungerEmptySinceAt: current.hungerEmptySinceAt ?? now,
+        lastUpdatedAt: now
+      }));
+      stopPetMotion("dead");
+      setPetTransitionState(null);
+    }, xiaobaiOneShotClips.death.durationMs);
+  };
+
+  const startReviveTransition = () => {
+    if (petTransitionRef.current) {
+      return;
+    }
+
+    clearPetTransitionTimer();
+    setPanelOpen(false);
+    setBubble(null);
+    stopPetMotion("rest");
+    setSettled(false);
+    setPetTransitionState("revive");
+    petTransitionTimerRef.current = window.setTimeout(() => {
+      const now = Date.now();
+      clearPetTransitionTimer();
+      setCare({
+        ...initialCare,
+        hunger: 64,
+        hungerEmptySinceAt: null,
+        hygiene: 64,
+        fun: 64,
+        energy: 64,
+        lastUpdatedAt: now
+      });
+      setPetTransitionState(null);
+      setBubble({
+        id: `revive-${now}`,
+        text: "我回来了。这次要记得偶尔喂养、清扫和陪我玩。",
+        title: "复活完成",
+        tone: "happy"
+      });
+      stopPetMotion("anchor");
+      setSettled(true);
+      lastInteractionRef.current = performance.now();
+      manualHoldUntilRef.current = performance.now() + 5_000;
+    }, xiaobaiOneShotClips.revive.durationMs);
   };
 
   const reminders = useMemo<ReminderItem[]>(() => {
@@ -841,9 +1103,9 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const totalReminderCount = reminders.reduce((sum, item) => sum + item.count, 0);
   const primaryReminder = reminders[0];
   const expression = getCareExpression(care, totalReminderCount > 0 || Boolean(latestExternalInfoTitle));
-  const animationState = getPetAnimationState({ expression, facing: motion.facing, moving: motion.moving, mode: motion.mode, panelOpen });
-  const spriteKey = getPetSpriteKey({ care, expression, moving: motion.moving, panelOpen });
-  const bubbleVisible = Boolean(bubble && !panelOpen && !dragging && settled);
+  const animationState = getPetAnimationState({ expression, facing: motion.facing, moving: motion.moving, mode: motion.mode, panelOpen, transition: petTransition });
+  const spriteKey = getPetSpriteKey({ care, expression, moving: motion.moving, panelOpen, transition: petTransition });
+  const bubbleVisible = Boolean(bubble && !panelOpen && !dragging && settled && !petTransition);
   const bubblePlacement = bubbleVisible ? getBubblePlacement(positionRef.current, motion.facing) : null;
   const panelPlacement = panelOpen ? getPanelPlacement(positionRef.current, motion.facing) : null;
   const goodbyeLabel = language === "ja" ? "バイバイ" : language === "en" ? "Bye" : language === "ko" ? "안녕" : language === "zh-Hant" ? "再見" : "再见";
@@ -853,6 +1115,22 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       : petSettings.freeRoam
         ? "当前没有未读提醒，我会继续在界面上自由巡游。"
         : "当前没有未读提醒，我会在固定位置待机。";
+
+  useEffect(() => {
+    careRef.current = care;
+  }, [care]);
+
+  useEffect(() => {
+    motionRef.current = motion;
+  }, [motion]);
+
+  useEffect(() => {
+    petSettingsRef.current = petSettings;
+  }, [petSettings]);
+
+  useEffect(() => {
+    petTransitionRef.current = petTransition;
+  }, [petTransition]);
 
   useEffect(() => {
     persistCareState(care);
@@ -885,7 +1163,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (petDisabled || !isAuthenticated) {
+    if (petDisabled || !isAuthenticated || petTransition) {
       return;
     }
 
@@ -910,7 +1188,36 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       const timer = window.setTimeout(() => setBubble(careBubble), 900);
       return () => window.clearTimeout(timer);
     }
-  }, [care, isAuthenticated, latestExternalInfoTitle, panelOpen, petDisabled, primaryReminder?.path, reminders, totalReminderCount]);
+  }, [care, isAuthenticated, latestExternalInfoTitle, panelOpen, petDisabled, petTransition, primaryReminder?.path, reminders, totalReminderCount]);
+
+  useEffect(() => {
+    if (petDisabled || !isAuthenticated || location.pathname.startsWith("/login")) {
+      hasShownEntryRef.current = false;
+      return;
+    }
+
+    if (!hasShownEntryRef.current && care.alive) {
+      hasShownEntryRef.current = true;
+      startEntryTransition();
+    }
+  }, [care.alive, isAuthenticated, location.pathname, petDisabled]);
+
+  useEffect(() => {
+    if (petDisabled || !isAuthenticated || !care.alive || petTransition || care.hunger > 0 || !care.hungerEmptySinceAt) {
+      return;
+    }
+
+    const remainingMs = hungerDeathDelay - (Date.now() - care.hungerEmptySinceAt);
+
+    if (remainingMs <= 0) {
+      startDeathTransition();
+      return;
+    }
+
+    const timer = window.setTimeout(startDeathTransition, remainingMs);
+
+    return () => window.clearTimeout(timer);
+  }, [care.alive, care.hunger, care.hungerEmptySinceAt, isAuthenticated, petDisabled, petTransition]);
 
   useEffect(() => {
     if (petDisabled || !isAuthenticated) {
@@ -924,6 +1231,17 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
 
       lastInteractionRef.current = performance.now();
       manualHoldUntilRef.current = 0;
+
+      const currentMotion = motionRef.current;
+
+      if (
+        petSettingsRef.current.freeRoam &&
+        careRef.current.alive &&
+        !petTransitionRef.current &&
+        (currentMotion.moving || currentMotion.mode === "roam" || currentMotion.mode === "climb" || currentMotion.mode === "peek")
+      ) {
+        startReturnToAnchorTransition();
+      }
     };
     const activeEvents: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "wheel", "scroll", "touchstart"];
 
@@ -946,6 +1264,13 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       lastFrameRef.current = time;
 
       if (!draggingRef.current) {
+        if (petTransitionRef.current) {
+          velocityRef.current = { x: 0, y: 0 };
+          applyPosition();
+          animationFrameRef.current = window.requestAnimationFrame(animate);
+          return;
+        }
+
         const position = positionRef.current;
         const previousX = position.x;
         const previousY = position.y;
@@ -964,9 +1289,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
           velocity.x *= 0.86;
           velocity.y *= 0.86;
         } else if (!care.alive) {
-          velocity.x *= 0.9;
+          velocity.x = 0;
           velocity.y = 0;
-          position.y += (maxY - position.y) * 0.045;
         } else if (panelOpen) {
           mode = "rest";
           velocity.x *= 0.94;
@@ -1091,6 +1415,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       const next = updater(decayCareState(current));
       return {
         ...next,
+        hungerEmptySinceAt: next.hunger > 0 ? null : next.hungerEmptySinceAt ?? Date.now(),
         lastUpdatedAt: Date.now()
       };
     });
@@ -1151,26 +1476,11 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   };
 
   const revivePet = () => {
-    setCare({
-      ...initialCare,
-      hunger: 64,
-      hygiene: 64,
-      fun: 64,
-      energy: 64,
-      lastUpdatedAt: Date.now()
-    });
-    setBubble({
-      id: `revive-${Date.now()}`,
-      text: "我回来了。这次要记得偶尔喂养、清扫和陪我玩。",
-      title: "复活完成",
-      tone: "happy"
-    });
+    startReviveTransition();
   };
 
   const sayGoodbye = () => {
-    setPanelOpen(false);
-    setBubble(null);
-    setNeedoPetEnabled(false);
+    startExitAndDisable();
   };
 
   const toggleFreeRoam = () => {
@@ -1185,6 +1495,11 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (petTransitionRef.current) {
+      event.preventDefault();
+      return;
+    }
+
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     draggingRef.current = true;
@@ -1334,7 +1649,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
         onPointerUp={finishPointerInteraction}
         type="button"
       >
-        <NeedoPetSprite sprite={spriteKey} />
+        <NeedoPetSprite runId={petTransitionRunId} sprite={spriteKey} />
       </button>
       {totalReminderCount > 0 ? <NotificationBadge className="needo-pet-count" count={totalReminderCount} size="sm" /> : null}
       {panelOpen ? (

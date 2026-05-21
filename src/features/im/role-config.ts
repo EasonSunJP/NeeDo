@@ -87,7 +87,7 @@ const roleConfigMap: Record<ImRoleType, ImRoleConfig> = {
       allowGroupConversation: true,
       allowVoiceCall: true,
       allowVideoCall: true,
-      allowedMessageTypes: ["text", "emoji", "image", "voice", "video", "file", "location", "contact-card"],
+      allowedMessageTypes: ["text", "emoji", "image", "voice", "video", "file", "location", "contact-card", "schedule-invite"],
       shareableProfileKinds: ["person", "technician", "store"]
     },
     profileCardConfig: {
@@ -111,7 +111,7 @@ const roleConfigMap: Record<ImRoleType, ImRoleConfig> = {
       allowGroupConversation: true,
       allowVoiceCall: true,
       allowVideoCall: false,
-      allowedMessageTypes: ["text", "emoji", "image", "voice", "video", "file", "location", "contact-card"],
+      allowedMessageTypes: ["text", "emoji", "image", "voice", "video", "file", "location", "contact-card", "service-card", "schedule-invite"],
       shareableProfileKinds: ["person", "technician", "store"]
     },
     profileCardConfig: {
@@ -135,7 +135,7 @@ const roleConfigMap: Record<ImRoleType, ImRoleConfig> = {
       allowGroupConversation: true,
       allowVoiceCall: true,
       allowVideoCall: false,
-      allowedMessageTypes: ["text", "emoji", "image", "voice", "video", "file", "location", "contact-card"],
+      allowedMessageTypes: ["text", "emoji", "image", "voice", "video", "file", "location", "contact-card", "service-card", "schedule-invite"],
       shareableProfileKinds: ["person", "technician", "store"]
     },
     profileCardConfig: {

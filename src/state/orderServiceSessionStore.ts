@@ -261,6 +261,10 @@ export function useOrderServiceSession(orderId: string | undefined, baseDuration
   return snapshot[orderId] ?? createDefaultSession(orderId, baseDurationMinutes);
 }
 
+export function useOrderServiceSessions() {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
 export function getOrderServiceTotalMinutes(session: OrderServiceSession) {
   return session.baseDurationMinutes + session.addedDurationMinutes;
 }

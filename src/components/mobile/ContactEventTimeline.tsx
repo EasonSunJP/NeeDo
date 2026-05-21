@@ -107,11 +107,13 @@ export function ContactEventTimeline({
         const actorRole = event.actorRole ?? event.title;
         const message = event.message ?? event.detail;
         const isLastEvent = index === renderedEvents.length - 1;
+        const isSystemEvent = isSystemTimelineEvent(event, actorName, actorRole);
+        const systemIcon = isSystemEvent ? <ContactEventTimelineComputerIcon warning={isBlockingSystemTimelineEvent(event, actorName, actorRole)} /> : undefined;
 
         return (
-          <div className="grid grid-cols-[78px,22px,minmax(0,1fr)] gap-3" key={event.id}>
-            <div className="whitespace-pre-line pt-1 text-right text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums">
-              {event.atLabel}
+          <div className="grid grid-cols-[96px,22px,minmax(0,1fr)] gap-3" key={event.id}>
+            <div className="break-words whitespace-pre-line pt-1 text-right text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums">
+              {formatContactTimelineAtLabel(event.atLabel, message)}
             </div>
             <div className="relative flex justify-center pb-7 pt-1">
               {index > 0 ? (
@@ -123,7 +125,7 @@ export function ContactEventTimeline({
             <div className={cn("min-w-0 pb-5", index === renderedEvents.length - 1 && "pb-0")}>
               <div className="grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
                 <ContactEventTimelineAvatar
-                  icon={event.icon}
+                  icon={systemIcon ?? event.icon}
                   name={actorName}
                   src={event.actorAvatarSrc}
                   tone={event.tone === "red" ? "red" : "neutral"}
@@ -228,7 +230,7 @@ function ContactEventTimelineCommentRow({
   }, [commentOpen]);
 
   return (
-    <div className="grid grid-cols-[78px,22px,minmax(0,1fr)] gap-3">
+    <div className="grid grid-cols-[96px,22px,minmax(0,1fr)] gap-3">
       <div />
       <div className="relative flex justify-center py-1">
         <button
@@ -291,6 +293,7 @@ export function ContactEventTimelinePanel({
   commentAuthorRole,
   commentButtonLabel,
   commentPlaceholder,
+  emptyLabel,
   events,
   headerVariant = "bar",
   onCommentSubmit,
@@ -303,6 +306,7 @@ export function ContactEventTimelinePanel({
   commentAuthorRole?: string;
   commentButtonLabel?: string;
   commentPlaceholder?: string;
+  emptyLabel?: ReactNode;
   events: ContactEventTimelineEntry[];
   headerVariant?: "bar" | "plain";
   onCommentSubmit?: (comment: string) => void;
@@ -329,6 +333,7 @@ export function ContactEventTimelinePanel({
         commentAuthorRole={commentAuthorRole}
         commentButtonLabel={commentButtonLabel}
         commentPlaceholder={commentPlaceholder}
+        emptyLabel={emptyLabel}
         events={events}
         onCommentSubmit={onCommentSubmit}
       />
@@ -375,6 +380,154 @@ function ContactEventTimelineAvatar({
       )}
     >
       {src ? <img alt={typeof name === "string" ? name : "时间轴头像"} className="h-full w-full rounded-[14px] object-cover" src={src} /> : icon ?? <span>{fallback || "管"}</span>}
+    </span>
+  );
+}
+
+function getTimelineNodeText(value: ReactNode) {
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+
+  return "";
+}
+
+function padTimelineTimeSegment(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function getTimelineTodayParts() {
+  const now = new Date();
+
+  return {
+    day: now.getDate(),
+    hour: now.getHours(),
+    minute: now.getMinutes(),
+    month: now.getMonth() + 1,
+    second: now.getSeconds(),
+    year: now.getFullYear()
+  };
+}
+
+function getTimelineTodayKey() {
+  const today = getTimelineTodayParts();
+
+  return `${today.year}-${padTimelineTimeSegment(today.month)}-${padTimelineTimeSegment(today.day)}`;
+}
+
+function getTimelineTimePartsFromText(value: string) {
+  const match = value.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    hour: Math.max(0, Math.min(23, Number(match[1]))),
+    minute: Math.max(0, Math.min(59, Number(match[2]))),
+    second: Math.max(0, Math.min(59, Number(match[3] ?? 0)))
+  };
+}
+
+function formatContactTimelineAtLabel(value: ReactNode, fallback?: ReactNode) {
+  const raw = getTimelineNodeText(value).trim();
+
+  if (!raw || raw === "-") {
+    return value;
+  }
+
+  const fallbackText = getTimelineNodeText(fallback);
+  const today = getTimelineTodayParts();
+  const fallbackTime = getTimelineTimePartsFromText(`${raw} ${fallbackText}`) ?? {
+    hour: today.hour,
+    minute: today.minute,
+    second: today.second
+  };
+  let year = today.year;
+  let month = today.month;
+  let day = today.day;
+  let time = fallbackTime;
+
+  if (/^(现在|刚刚)$/.test(raw)) {
+    time = { hour: today.hour, minute: today.minute, second: today.second };
+  } else if (/^(今日|今天)/.test(raw)) {
+    time = getTimelineTimePartsFromText(raw) ?? fallbackTime;
+  } else {
+    const isoMatch = raw.match(/(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+    const compactMatch = raw.match(/\b(\d{2})[.\/-](\d{1,2})[.\/-](\d{1,2})\b/);
+    const chineseMatch = raw.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/);
+    const slashMatch = raw.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+    const match = isoMatch ?? compactMatch ?? chineseMatch ?? slashMatch;
+
+    if (match) {
+      if (match === isoMatch) {
+        year = Number(match[1]);
+        month = Number(match[2]);
+        day = Number(match[3]);
+      } else if (match === compactMatch) {
+        year = 2000 + Number(match[1]);
+        month = Number(match[2]);
+        day = Number(match[3]);
+      } else if (match === chineseMatch) {
+        year = match[1] ? Number(match[1]) : today.year;
+        month = Number(match[2]);
+        day = Number(match[3]);
+      } else {
+        month = Number(match[1]);
+        day = Number(match[2]);
+      }
+    } else if (!getTimelineTimePartsFromText(raw)) {
+      return value;
+    }
+  }
+
+  const dateKey = `${year}-${padTimelineTimeSegment(month)}-${padTimelineTimeSegment(day)}`;
+  const timeLabel = `${padTimelineTimeSegment(time.hour)}:${padTimelineTimeSegment(time.minute)}:${padTimelineTimeSegment(time.second)}`;
+
+  if (dateKey === getTimelineTodayKey()) {
+    return `今天 ${timeLabel}`;
+  }
+
+  return `${year}年${month}月${day}日 ${timeLabel}`;
+}
+
+function isSystemTimelineEvent(event: ContactEventTimelineEntry, actorName: ReactNode, actorRole: ReactNode) {
+  const text = [
+    getTimelineNodeText(actorName),
+    getTimelineNodeText(actorRole),
+    getTimelineNodeText(event.title),
+    getTimelineNodeText(event.operator)
+  ].join(" ");
+
+  return /系统|系統|system/i.test(text);
+}
+
+function isBlockingSystemTimelineEvent(event: ContactEventTimelineEntry, actorName: ReactNode, actorRole: ReactNode) {
+  const text = [
+    getTimelineNodeText(actorName),
+    getTimelineNodeText(actorRole),
+    getTimelineNodeText(event.title),
+    getTimelineNodeText(event.operator),
+    getTimelineNodeText(event.message),
+    getTimelineNodeText(event.detail),
+    getTimelineNodeText(event.reason)
+  ].join(" ");
+
+  return event.tone === "red" || Boolean(event.conflicts?.length) || /异常|異常|阻断|阻斷|冲突|衝突|失败|失敗|过期|過期|取消|未到|迟到|遅刻|风险|風險/i.test(text);
+}
+
+function ContactEventTimelineComputerIcon({ warning = false }: { warning?: boolean }) {
+  return (
+    <span className="relative grid h-5 w-5 place-items-center">
+      <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <rect height="11" rx="2.4" stroke="currentColor" strokeWidth="1.9" width="16" x="4" y="5" />
+        <path d="M9 19h6M12 16v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
+      </svg>
+      {warning ? (
+        <span className="absolute -right-1 -top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-[#ef4444] px-0.5 text-[9px] font-black leading-none text-white">
+          !
+        </span>
+      ) : null}
     </span>
   );
 }

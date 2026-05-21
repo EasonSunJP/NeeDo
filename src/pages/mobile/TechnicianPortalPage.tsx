@@ -21,7 +21,7 @@ import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { ChatConversationInfoCard } from "../../components/mobile/ChatConversationInfoCard";
-import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
+import { ContactEventTimelinePanel, type ContactEventTimelineEntry, type ContactEventTimelineTone } from "../../components/mobile/ContactEventTimeline";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { MobileMessageCenter } from "../../components/mobile/MobileMessageCenter";
@@ -75,7 +75,8 @@ import {
   respondOrderExtensionRequest,
   startOrderService,
   type OrderServiceSession,
-  useOrderServiceSession
+  useOrderServiceSession,
+  useOrderServiceSessions
 } from "../../state/orderServiceSessionStore";
 import {
   addSharedSchedules,
@@ -126,6 +127,19 @@ type TechnicianScheduleEvent = {
   note: string;
   planType?: TechnicianPlanType;
   isEstimated?: boolean;
+};
+type TechnicianStatusTimelineRecord = {
+  actorName: string;
+  actorRole: string;
+  atLabel: string;
+  id: string;
+  message: ReactNode;
+  sortAt: number;
+  title: string;
+  tone: ContactEventTimelineTone;
+};
+type TechnicianStatusLogOptions = Partial<Pick<TechnicianStatusTimelineRecord, "actorName" | "actorRole" | "title" | "tone">> & {
+  messageNode?: ReactNode;
 };
 
 const technicianCustomerReviewTags: ServiceReviewTag[] = [
@@ -367,6 +381,295 @@ function formatTechnicianSessionEventTime(timestamp?: number) {
   const date = new Date(timestamp);
 
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+}
+
+function formatTechnicianStatusTimelineTime(timestamp: number) {
+  const date = new Date(timestamp);
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}\n${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function formatTechnicianStatusDateTime(timestamp: number) {
+  const date = new Date(timestamp);
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function parseTechnicianDateTime(value?: string) {
+  if (!value) {
+    return Number.NaN;
+  }
+
+  return new Date(value.replace(" ", "T")).getTime();
+}
+
+function formatTechnicianOrderSubjectText(order: Order) {
+  return `订单ID ${order.orderNo}（${order.id}），客人 ${order.customerName}`;
+}
+
+function TechnicianTimelineLink({ children, to }: { children: ReactNode; to: string }) {
+  return (
+    <Link
+      className="font-black text-[color:var(--client-primary)] underline decoration-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] decoration-2 underline-offset-2"
+      to={to}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function TechnicianTimelineOrderSubject({ order }: { order: Order }) {
+  return (
+    <>
+      订单ID{" "}
+      <TechnicianTimelineLink to={`/technician/orders/${order.id}`}>
+        {order.orderNo}（{order.id}）
+      </TechnicianTimelineLink>
+      ，客人{" "}
+      <TechnicianTimelineLink to={getScopedProfileDetailPath("technician", "user", order.customerId)}>
+        {order.customerName}
+      </TechnicianTimelineLink>
+    </>
+  );
+}
+
+function createTechnicianStatusTimelineRecord({
+  actorName,
+  actorRole,
+  message,
+  idSeed,
+  sortAt,
+  title,
+  tone = "green"
+}: {
+  actorName: string;
+  actorRole: string;
+  idSeed: string;
+  message: ReactNode;
+  sortAt: number;
+  title: string;
+  tone?: ContactEventTimelineTone;
+}): TechnicianStatusTimelineRecord {
+  return {
+    actorName,
+    actorRole,
+    atLabel: formatTechnicianStatusTimelineTime(sortAt),
+    id: `system-${title}-${sortAt}-${idSeed}`,
+    message,
+    sortAt,
+    title,
+    tone
+  };
+}
+
+function getTechnicianStatusTimelineMeta(message: string): Pick<TechnicianStatusTimelineRecord, "actorName" | "actorRole" | "title" | "tone"> {
+  if (/SOS|不正确|请输入|无法|不能|过去|需要|未输入|不完整|拒绝|取消|错误|失败|异常/.test(message)) {
+    return {
+      actorName: "系统",
+      actorRole: "异常信息",
+      title: "异常信息",
+      tone: "red"
+    };
+  }
+
+  if (/聊天|电话|分享|转发|同步给用户|同步给门店|通知/.test(message)) {
+    return {
+      actorName: "我",
+      actorRole: "联系执行",
+      title: "联系执行",
+      tone: "green"
+    };
+  }
+
+  if (/资料|头像|本人确认|认证|文件|KYC|信息卡/.test(message)) {
+    return {
+      actorName: "我",
+      actorRole: "资料执行",
+      title: "资料执行",
+      tone: "green"
+    };
+  }
+
+  if (/排班|时段|出勤|移动|休息|退勤|共享排班|锁定|派单/.test(message)) {
+    return {
+      actorName: "系统",
+      actorRole: "排班执行",
+      title: "排班执行",
+      tone: "green"
+    };
+  }
+
+  if (/服务|验证码|订单|承接|评价|追加/.test(message)) {
+    return {
+      actorName: "我",
+      actorRole: "履约执行",
+      title: "履约执行",
+      tone: "green"
+    };
+  }
+
+  return {
+    actorName: "系统",
+    actorRole: "执行信息",
+    title: "执行信息",
+    tone: "green"
+  };
+}
+
+function buildTechnicianOperationalStatusRecords({
+  orders,
+  referenceTimestamp,
+  scheduleEvents,
+  sessions
+}: {
+  orders: Order[];
+  referenceTimestamp: number;
+  scheduleEvents: TechnicianScheduleEvent[];
+  sessions: Record<string, OrderServiceSession>;
+}) {
+  const orderById = new Map(orders.map((order) => [order.id, order]));
+  const records: TechnicianStatusTimelineRecord[] = [];
+
+  orders.forEach((order) => {
+    const session = sessions[order.id];
+
+    if (session?.startedAt) {
+      records.push(createTechnicianStatusTimelineRecord({
+        actorName: "系统",
+        actorRole: "开始服务",
+        idSeed: `${order.id}-started-${session.startedAt}`,
+        message: <>开始服务：<TechnicianTimelineOrderSubject order={order} />，项目 {order.itemName}，开始时间 {formatTechnicianStatusDateTime(session.startedAt)}。</>,
+        sortAt: session.startedAt,
+        title: "开始服务"
+      }));
+    } else if (order.status === "inService") {
+      const startedAt = parseTechnicianDateTime(order.bookedAt);
+
+      if (Number.isFinite(startedAt)) {
+        records.push(createTechnicianStatusTimelineRecord({
+          actorName: "系统",
+          actorRole: "开始服务",
+          idSeed: `${order.id}-started-fallback-${startedAt}`,
+          message: <>开始服务：<TechnicianTimelineOrderSubject order={order} />，项目 {order.itemName}，开始时间 {order.bookedAt}。</>,
+          sortAt: startedAt,
+          title: "开始服务"
+        }));
+      }
+    }
+
+    session?.extensionRequests.forEach((request) => {
+      records.push(createTechnicianStatusTimelineRecord({
+        actorName: order.customerName,
+        actorRole: "加钟申请",
+        idSeed: `${order.id}-extension-request-${request.id}`,
+        message: <>客人申请加钟：<TechnicianTimelineOrderSubject order={order} />，加钟项目 {request.title}，追加 {request.durationMinutes} 分钟，金额 {yen(request.price)}。</>,
+        sortAt: request.requestedAt,
+        title: "加钟申请"
+      }));
+
+      if (request.status === "accepted" && request.respondedAt) {
+        records.push(createTechnicianStatusTimelineRecord({
+          actorName: "我",
+          actorRole: "开始加钟",
+          idSeed: `${order.id}-extension-accepted-${request.id}`,
+          message: <>开始加钟：<TechnicianTimelineOrderSubject order={order} />，加钟项目 {request.title}，追加 {request.durationMinutes} 分钟，开始时间 {formatTechnicianStatusDateTime(request.respondedAt)}。</>,
+          sortAt: request.respondedAt,
+          title: "开始加钟"
+        }));
+      }
+
+      if ((request.status === "declined" || request.status === "dismissed") && request.respondedAt) {
+        records.push(createTechnicianStatusTimelineRecord({
+          actorName: "我",
+          actorRole: "加钟异常",
+          idSeed: `${order.id}-extension-declined-${request.id}`,
+          message: <>加钟未开始：<TechnicianTimelineOrderSubject order={order} />，加钟项目 {request.title} 已拒绝，请确认用户端提示。</>,
+          sortAt: request.respondedAt,
+          title: "加钟异常",
+          tone: "red"
+        }));
+      }
+    });
+
+    if (session?.completedAt) {
+      records.push(createTechnicianStatusTimelineRecord({
+        actorName: "系统",
+        actorRole: "结束服务",
+        idSeed: `${order.id}-completed-${session.completedAt}`,
+        message: <>结束服务：<TechnicianTimelineOrderSubject order={order} />，项目 {order.itemName}，结束时间 {formatTechnicianStatusDateTime(session.completedAt)}。</>,
+        sortAt: session.completedAt,
+        title: "结束服务"
+      }));
+    }
+
+    const bookedAt = parseTechnicianDateTime(order.bookedAt);
+    const lateAt = bookedAt + 10 * 60_000;
+
+    if (
+      Number.isFinite(bookedAt) &&
+      referenceTimestamp > lateAt &&
+      !session?.startedAt &&
+      ["pending", "confirmed", "scheduled"].includes(order.status)
+    ) {
+      records.push(createTechnicianStatusTimelineRecord({
+        actorName: "系统",
+        actorRole: "迟到异常",
+        idSeed: `${order.id}-late-${lateAt}`,
+        message: <>还没开始服务，已经迟到：<TechnicianTimelineOrderSubject order={order} />，预约时间 {order.bookedAt}，请立即联系客人确认到达和开始服务。</>,
+        sortAt: lateAt,
+        title: "迟到异常",
+        tone: "red"
+      }));
+    }
+  });
+
+  scheduleEvents.forEach((event) => {
+    const eventStartsAt = parseTechnicianDateTime(`${event.date} ${event.startTime}`);
+
+    if (!Number.isFinite(eventStartsAt)) {
+      return;
+    }
+
+    if (event.planType === "leave") {
+      records.push(createTechnicianStatusTimelineRecord({
+        actorName: "我",
+        actorRole: "请假",
+        idSeed: `${event.id}-leave-${eventStartsAt}`,
+        message: `请假：${event.date} ${event.startTime}-${event.endTime}，${event.note || "该时段不可安排服务"}。`,
+        sortAt: eventStartsAt,
+        title: "请假",
+        tone: "red"
+      }));
+    }
+
+    if (event.status === "booked" && event.orderId) {
+      const order = orderById.get(event.orderId);
+      const session = sessions[event.orderId];
+      const customerLateAt = eventStartsAt + 15 * 60_000;
+
+      if (
+        order &&
+        referenceTimestamp > customerLateAt &&
+        !session?.startedAt &&
+        /未到|客人迟到|联系客人|待确认/.test(event.note)
+      ) {
+        records.push(createTechnicianStatusTimelineRecord({
+          actorName: "系统",
+          actorRole: "客人迟到",
+          idSeed: `${order.id}-customer-late-${customerLateAt}`,
+          message: <>客人迟到，请联系客人：<TechnicianTimelineOrderSubject order={order} />，排班时间 {event.date} {event.startTime}-{event.endTime}，当前说明：{event.note}。</>,
+          sortAt: customerLateAt,
+          title: "客人迟到",
+          tone: "red"
+        }));
+      }
+    }
+  });
+
+  return records
+    .sort((left, right) => right.sortAt - left.sortAt)
+    .filter((record, index, sortedRecords) => sortedRecords.findIndex((item) => item.id === record.id) === index)
+    .slice(0, 20);
 }
 
 function getTechnicianOrderSessionEvents(order: Order, technician: Technician, customer: Customer, session: OrderServiceSession): TechnicianOrderContactEvent[] {
@@ -2240,7 +2543,7 @@ export function TechnicianPortalPage() {
   const [taskOrderTab, setTaskOrderTab] = useState<TechnicianTaskOrderTab>("pending");
   const [selectedTaskOrder, setSelectedTaskOrder] = useState<Order | null>(null);
   const [acceptedTaskOrderIds, setAcceptedTaskOrderIds] = useState<string[]>([]);
-  const [contactLog, setContactLog] = useState("暂无联系记录");
+  const [statusTimelineRecords, setStatusTimelineRecords] = useState<TechnicianStatusTimelineRecord[]>([]);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
   const [schedulePrimaryTab, setSchedulePrimaryTab] = useState<"mySchedule" | "planning">("mySchedule");
   const [schedulePlanningStep, setSchedulePlanningStep] = useState<TechnicianPlanningStep>("rules");
@@ -2272,6 +2575,43 @@ export function TechnicianPortalPage() {
   const [dayScheduleEditor, setDayScheduleEditor] = useState<DayScheduleEditorState | null>(null);
   const [nextCustomerCardOpen, setNextCustomerCardOpen] = useState(false);
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
+  const setContactLog = (message: string, options: TechnicianStatusLogOptions = {}) => {
+    setStatusTimelineRecords((current) => {
+      const meta = getTechnicianStatusTimelineMeta(message);
+      const timestamp = Date.now();
+
+      return [
+        ...current,
+        {
+          actorName: options.actorName ?? meta.actorName,
+          actorRole: options.actorRole ?? meta.actorRole,
+          atLabel: formatTechnicianStatusTimelineTime(timestamp),
+          id: `technician-status-${timestamp}-${current.length}`,
+          message: options.messageNode ?? message,
+          sortAt: timestamp,
+          title: options.title ?? meta.title,
+          tone: options.tone ?? meta.tone
+        }
+      ].slice(-24);
+    });
+  };
+  const setOrderContactLog = (
+    prefix: string,
+    order: Order,
+    suffix = "",
+    options: TechnicianStatusLogOptions = {}
+  ) => {
+    setContactLog(`${prefix}${formatTechnicianOrderSubjectText(order)}${suffix}`, {
+      ...options,
+      messageNode: (
+        <>
+          {prefix}
+          <TechnicianTimelineOrderSubject order={order} />
+          {suffix}
+        </>
+      )
+    });
+  };
   const kycCopy = getKycCopy(language);
   const kycDocumentTypeLabels = kycCopy.documentTypeLabels;
   const selectedCountryCatalog =
@@ -2472,7 +2812,7 @@ export function TechnicianPortalPage() {
     setAcceptedTaskOrderIds((current) => current.includes(order.id) ? current : [...current, order.id]);
     setSelectedTaskOrder(null);
     setTasksPanelTab("schedule");
-    setContactLog(`已承接 ${order.itemName}，订单已加入今日仅排班展示。`);
+    setOrderContactLog(`已承接 ${order.itemName}：`, order, "，订单已加入今日仅排班展示。");
   };
   const shareTaskOrder = (order: Order) => {
     void shareContent({
@@ -2545,6 +2885,7 @@ export function TechnicianPortalPage() {
   const selectedTaskOrderPackage = selectedTaskOrder && selectedTaskOrderService ? findOrderPackage(selectedTaskOrder, selectedTaskOrderService) : null;
   const selectedTaskOrderBaseDurationMinutes = selectedTaskOrderPackage?.durationMinutes ?? (selectedTaskOrder ? getOrderEstimatedDurationMinutes(selectedTaskOrder) : 60);
   const selectedTaskOrderSession = useOrderServiceSession(selectedTaskOrder?.id, selectedTaskOrderBaseDurationMinutes);
+  const orderServiceSessions = useOrderServiceSessions();
   const selectedTaskOrderDisplay: Order | null = selectedTaskOrder
     ? {
         ...selectedTaskOrder,
@@ -2570,6 +2911,58 @@ export function TechnicianPortalPage() {
         ["来源", getOrderDetailSourceLabel(selectedTaskOrderDisplay)]
       ]
     : [];
+  const technicianStatusOrderIds = new Set<string>();
+  scheduleEvents.forEach((event) => {
+    if (event.orderId) {
+      technicianStatusOrderIds.add(event.orderId);
+    }
+  });
+  acceptedTaskOrderIds.forEach((orderId) => technicianStatusOrderIds.add(orderId));
+  technicianStatusOrderIds.add(nextServiceOrder.id);
+  technicianStatusOrderIds.add(upcomingServiceOrder.id);
+  if (currentServiceOrder) {
+    technicianStatusOrderIds.add(currentServiceOrder.id);
+  }
+  if (secondaryNextServiceOrder) {
+    technicianStatusOrderIds.add(secondaryNextServiceOrder.id);
+  }
+  if (selectedTaskOrder) {
+    technicianStatusOrderIds.add(selectedTaskOrder.id);
+  }
+  const technicianStatusOrders = orders.filter((order) => technicianStatusOrderIds.has(order.id));
+  const operationalStatusTimelineRecords = buildTechnicianOperationalStatusRecords({
+    orders: technicianStatusOrders,
+    referenceTimestamp: parseTechnicianDateTime(technicianHomeReferenceTime),
+    scheduleEvents,
+    sessions: orderServiceSessions
+  });
+  const statusTimelineEntries = [...operationalStatusTimelineRecords, ...statusTimelineRecords]
+    .sort((left, right) => right.sortAt - left.sortAt)
+    .slice(0, 24)
+    .map<ContactEventTimelineEntry>((event) => ({
+      actorAvatarSrc: event.actorName === "我" ? techProfile.avatar : undefined,
+      actorName: event.actorName === "我" ? techProfile.nickname : event.actorName,
+      actorRole: event.actorRole,
+      atLabel: event.atLabel,
+      id: event.id,
+      message: event.message,
+      title: event.title,
+      tone: event.tone
+    }));
+  const renderTechnicianStatusTimeline = (className?: string) => (
+    <ContactEventTimelinePanel
+      className={className}
+      commentAuthorAvatarSrc={techProfile.avatar}
+      commentAuthorName={techProfile.nickname}
+      commentAuthorRole="补充记录"
+      commentButtonLabel="补充记录"
+      commentPlaceholder="记录执行经过、异常原因或后续处理..."
+      emptyLabel="暂无执行 / 异常记录"
+      events={statusTimelineEntries}
+      onCommentSubmit={(comment) => setContactLog(comment, { actorName: "我", actorRole: "补充记录", title: "补充记录", tone: "green" })}
+      title="状态记录"
+    />
+  );
   const rangeDates = getRangeDates(scheduleAnchorDate, scheduleScope);
   const rangeEvents = scheduleEvents.filter((event) => rangeDates.includes(event.date));
   const timelineBaseDate = scheduleScope === "day" ? scheduleAnchorDate : (scheduleSelectedDate ?? null);
@@ -3432,11 +3825,11 @@ export function TechnicianPortalPage() {
   };
 
   const requestTaskOrderChange = (order: Order) => {
-    setContactLog(`已为 ${order.itemName} 发起预约变更申请，系统会同步给用户和门店担当。`);
+    setOrderContactLog(`已为 ${order.itemName} 发起预约变更申请：`, order, "，系统会同步给用户和门店担当。");
   };
 
   const requestTaskOrderCancel = (order: Order) => {
-    setContactLog(`已为 ${order.itemName} 提交取消处理申请。`);
+    setOrderContactLog(`已为 ${order.itemName} 提交取消处理申请：`, order, "。");
   };
 
   const focusTaskOrderServiceCodeInput = () => {
@@ -3449,6 +3842,7 @@ export function TechnicianPortalPage() {
   const submitServiceCode = (targetOrder: Order) => {
     if (!serviceCode.trim()) {
       setCodeError("请输入服务验证码后再开始服务。");
+      setOrderContactLog(`${targetOrder.itemName} 服务验证码未输入，无法开始服务：`, targetOrder, "。");
 
       if (selectedTaskOrder?.id === targetOrder.id) {
         focusTaskOrderServiceCodeInput();
@@ -3459,6 +3853,7 @@ export function TechnicianPortalPage() {
 
     if (serviceCode.trim() !== getServiceStartCode(targetOrder.id)) {
       setCodeError("验证码不正确，请让用户在用户端订单详情中出示验证码后再开始服务。");
+      setOrderContactLog(`${targetOrder.itemName} 服务验证码不正确，开始服务已阻止：`, targetOrder, "。");
       return;
     }
 
@@ -3469,7 +3864,7 @@ export function TechnicianPortalPage() {
     startOrderService(targetOrder.id, getOrderEstimatedDurationMinutes(targetOrder));
     setServiceSessionNow(Date.now());
     setStatus("服务中");
-    setContactLog(`${targetOrder.itemName} 验证码通过，服务已开始并写入状态记录。`);
+    setOrderContactLog(`${targetOrder.itemName} 验证码通过，服务已开始并写入状态记录：`, targetOrder, "。");
   };
 
   const finishTaskOrderService = (targetOrder: Order) => {
@@ -3478,7 +3873,7 @@ export function TechnicianPortalPage() {
     setTechnicianServiceReviewOpen(true);
     setServiceSessionNow(Date.now());
     setStatus("出勤");
-    setContactLog(`${targetOrder.itemName} 已标记服务结束，状态已同步给用户端。`);
+    setOrderContactLog(`${targetOrder.itemName} 已标记服务结束，状态已同步给用户端：`, targetOrder, "。");
   };
 
   const requestFinishTaskOrderService = (targetOrder: Order) => {
@@ -3512,11 +3907,19 @@ export function TechnicianPortalPage() {
     );
     setExtensionRequestCollapsed(false);
     setServiceSessionNow(Date.now());
-    setContactLog(
-      accepted
-        ? `已接受 ${selectedTaskOrderPendingExtensionRequest.title}，倒计时追加 ${selectedTaskOrderPendingExtensionRequest.durationMinutes} 分钟。`
-        : `已拒绝 ${selectedTaskOrderPendingExtensionRequest.title}，用户端已收到无法提供追加服务的提示。`
-    );
+    if (accepted) {
+      setOrderContactLog(
+        `已接受 ${selectedTaskOrderPendingExtensionRequest.title}，倒计时追加 ${selectedTaskOrderPendingExtensionRequest.durationMinutes} 分钟：`,
+        selectedTaskOrder,
+        "。"
+      );
+    } else {
+      setOrderContactLog(
+        `已拒绝 ${selectedTaskOrderPendingExtensionRequest.title}：`,
+        selectedTaskOrder,
+        "，用户端已收到无法提供追加服务的提示。"
+      );
+    }
   };
 
   const handleStatusSync = (nextStatus: WorkStatus) => {
@@ -3839,6 +4242,8 @@ export function TechnicianPortalPage() {
             )}
           </div>
         </section>
+
+        {renderTechnicianStatusTimeline()}
       </PageScaffold>
     );
   }
@@ -4435,6 +4840,8 @@ export function TechnicianPortalPage() {
                 </div>
               )}
             </section>
+
+            {renderTechnicianStatusTimeline()}
           </>
         )}
 
@@ -4457,19 +4864,29 @@ export function TechnicianPortalPage() {
                 />
               </div>
             </div>
+
+            {renderTechnicianStatusTimeline("mt-4 mb-[calc(220px+env(safe-area-inset-bottom))]")}
           </>
         )}
 
+        {activeView === "moments" && renderTechnicianStatusTimeline()}
+
         {activeView === "contacts" && (
-          <ImScopeProvider scope="technician">
-            <ImContactsListPage />
-          </ImScopeProvider>
+          <>
+            <ImScopeProvider scope="technician">
+              <ImContactsListPage />
+            </ImScopeProvider>
+            {renderTechnicianStatusTimeline()}
+          </>
         )}
 
         {activeView === "messages" && (
-          <ImScopeProvider scope="technician">
-            <ImMessagesEntryPage />
-          </ImScopeProvider>
+          <>
+            <ImScopeProvider scope="technician">
+              <ImMessagesEntryPage />
+            </ImScopeProvider>
+            {renderTechnicianStatusTimeline()}
+          </>
         )}
 
         {activeView === "me" && (
@@ -4635,13 +5052,11 @@ export function TechnicianPortalPage() {
                           <p className="mt-2 text-xs leading-5 text-ink/58">{event.customer} · {event.note}</p>
                         </article>
                       ))}
-                      <div className="rounded-lg bg-paper px-3 py-3 text-xs leading-5 text-ink/58">
-                        当前状态记录：{contactLog}
-                      </div>
                     </div>
                   </section>
                 </>
               )}
+              {renderTechnicianStatusTimeline()}
             </div>
           </>
         )}
@@ -5836,18 +6251,6 @@ export function TechnicianPortalPage() {
           </div>
         )}
 
-
-        <section
-          className={cn(
-            "rounded-lg border border-line bg-white p-3 shadow-panel",
-            activeView === "schedule" && "mb-[calc(220px+env(safe-area-inset-bottom))]"
-          )}
-        >
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="font-bold">状态记录</span>
-            <span className="text-right text-xs text-ink/55">{contactLog}</span>
-          </div>
-        </section>
       </div>
     </MobileShell>
   );

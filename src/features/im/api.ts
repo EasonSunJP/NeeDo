@@ -1625,7 +1625,7 @@ async function handleMessagesRequest(scope: ImRoleType, url: URL, method: string
     }
   }
 
-  if (method === "POST" && ["text", "image", "voice", "video", "file", "location", "contact-card"].includes(action ?? "")) {
+  if (method === "POST" && ["text", "image", "voice", "video", "file", "location", "contact-card", "service-card", "schedule-invite"].includes(action ?? "")) {
     const type = action as ImMessageType;
     const conversationId = String(body.conversationId ?? "");
 

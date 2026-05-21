@@ -13,7 +13,19 @@ export type ImProfileKind = "person" | "technician" | "store" | "service";
 export type ImRelationStatus = "active" | "deleted";
 export type ImFriendRequestStatus = "pending" | "accepted" | "rejected" | "expired";
 export type ImConversationType = "single" | "group" | "system";
-export type ImMessageType = "text" | "emoji" | "image" | "voice" | "video" | "file" | "location" | "contact-card" | "system" | "recalled";
+export type ImMessageType =
+  | "text"
+  | "emoji"
+  | "image"
+  | "voice"
+  | "video"
+  | "file"
+  | "location"
+  | "contact-card"
+  | "service-card"
+  | "schedule-invite"
+  | "system"
+  | "recalled";
 export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
 export type ConversationDisappearingStartMode = "sent" | "read_by_all";
 export type GroupInfoEditPolicy = "owner" | "members";
@@ -207,6 +219,32 @@ export type MessageExt = {
     entityId?: string;
     userIdLabel?: string;
     headline?: string;
+  };
+  serviceCard?: {
+    serviceId: string;
+    name: string;
+    cover: string;
+    summary: string;
+    priceLabel: string;
+    durationLabel?: string;
+    providerName?: string;
+    providerId?: string;
+    providerType?: "store" | "technician";
+    href?: string;
+    tags?: string[];
+  };
+  scheduleInvite?: {
+    scheduleId: string;
+    title: string;
+    date: string;
+    timeRange: string;
+    location?: string;
+    hostName?: string;
+    note?: string;
+    attendeeLabel?: string;
+    reminderLabel?: string;
+    statusLabel?: string;
+    href?: string;
   };
   mentions?: string[];
   mentionAll?: boolean;
@@ -893,6 +931,14 @@ export function buildMessagePreview(message: ConversationMessage, currentUserId:
 
   if (message.type === "contact-card") {
     return message.ext?.contactCard?.displayName ? `[名片] ${message.ext.contactCard.displayName}` : "[名片]";
+  }
+
+  if (message.type === "service-card") {
+    return message.ext?.serviceCard?.name ? `[服务] ${message.ext.serviceCard.name}` : "[服务]";
+  }
+
+  if (message.type === "schedule-invite") {
+    return message.ext?.scheduleInvite?.title ? `[日程邀请] ${message.ext.scheduleInvite.title}` : "[日程邀请]";
   }
 
   return message.content;
