@@ -32,7 +32,7 @@ function getSummaryItems(stats: ScheduleSummaryStats) {
     {
       accent: "var(--schedule-tone-booked-bg)",
       key: "booked",
-      label: "已定预约",
+      label: "有预约",
       value: stats.booked
     },
     {

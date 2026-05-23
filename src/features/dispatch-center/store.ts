@@ -123,7 +123,8 @@ export type DispatchOverviewRangeSummary = {
   conflictCountLabel: string;
 };
 
-export type DispatchScheduleCellStatus = "open" | "confirmed" | "booked" | "conflict" | "pending" | "other" | "closed";
+export type DispatchScheduleCellStatus = "idle" | "open" | "confirmed" | "booked" | "conflict" | "pending" | "other" | "closed";
+export type DispatchScheduleServiceStatus = "pending" | "inService" | "completed" | "exception";
 
 export type DispatchScheduleDaySlot = {
   hour: number;
@@ -137,6 +138,8 @@ export type DispatchScheduleDaySlot = {
   isClickable?: boolean;
   detailTargetType?: ScheduleDetailTargetType;
   detailTargetId?: string;
+  serviceStatus?: DispatchScheduleServiceStatus;
+  serviceExceptionLabel?: string;
   darkened: boolean;
   isCurrent: boolean;
 };
@@ -158,6 +161,8 @@ export type DispatchScheduleCell = {
   detailTargetType?: ScheduleDetailTargetType;
   detailTargetId?: string;
   dayTimeline?: DispatchScheduleDaySlot[];
+  serviceStatus?: DispatchScheduleServiceStatus;
+  serviceExceptionLabel?: string;
   darkened: boolean;
   isCurrent: boolean;
 };
@@ -211,6 +216,13 @@ function parseBookedAt(bookedAt: string, durationMinutes = 90) {
     startTime,
     endTime: addMinutes(startTime, durationMinutes)
   };
+}
+
+function getScheduleExceptionLabel(orderId: string | undefined, technicianId: string, hour: number) {
+  const seed = `${orderId ?? "appointment"}:${technicianId}:${hour}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const labels = ["技师迟到", "客人迟到", "待取消"];
+
+  return labels[seed % labels.length] ?? "待处理";
 }
 
 function fillMatrixHours(templateType: DispatchCycle["templateType"], ranges: Array<{ dayIndex: number; startHour: number; endHour: number }>) {
@@ -462,7 +474,7 @@ function buildSeedFinalShifts(
 
   dates.forEach((date, dateIndex) => {
     technicians.forEach((technicianId, techIndex) => {
-      for (let hour = 10; hour < 20; hour += 2) {
+      for (let hour = 10; hour < 21; hour += 1) {
         const status =
           techIndex % 6 === 5 && hour >= 18
             ? "waitlisted"
@@ -865,6 +877,16 @@ function ensureCycleDisplayData() {
           ...buildSeedFinalShifts(cycle.storeId, cycle.id, missingTechnicianIds, getCycleDisplaySeedStartDate(cycle))
         );
       }
+
+      const existingShiftKeys = new Set(
+        state.finalShifts
+          .filter((shift) => shift.cycleId === cycle.id)
+          .map((shift) => `${shift.technicianId}:${shift.date}:${shift.hour}`)
+      );
+      const expectedDisplayShifts = buildSeedFinalShifts(cycle.storeId, cycle.id, cycle.targetTechnicianIds, getCycleDisplaySeedStartDate(cycle));
+      state.finalShifts.push(
+        ...expectedDisplayShifts.filter((shift) => !existingShiftKeys.has(`${shift.technicianId}:${shift.date}:${shift.hour}`))
+      );
     }
   });
 }
@@ -1789,6 +1811,12 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
   const scheduleSnapshot = getScheduleStoreSnapshot();
   const currentHour = Number(dispatchReferenceNow.slice(11, 13));
   const hours = Array.from({ length: 24 }, (_, hour) => hour);
+  const arrangementByOrderId = new Map(
+    state.arrangements
+      .filter((arrangement) => arrangement.storeId === storeId && arrangement.date === dateKey)
+      .map((arrangement) => [arrangement.orderId, arrangement])
+  );
+  const orderById = new Map(orders.map((order) => [order.id, order]));
 
   const rows = technicians
     .filter((technician) => !cycle || cycle.targetTechnicianIds.includes(technician.id))
@@ -1839,6 +1867,18 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
         let detail = isOpen ? "可排班 / 可预约" : "非开放时段";
         const linkedSchedule = liveSchedules.find((schedule) => schedule.orderId) ?? liveSchedules[0];
         const orderId = linkedSchedule?.orderId;
+        const linkedArrangement = orderId ? arrangementByOrderId.get(orderId) : undefined;
+        const linkedOrderStatus = orderId ? orderById.get(orderId)?.status : undefined;
+        const serviceStatus: DispatchScheduleServiceStatus | undefined =
+          linkedArrangement?.status === "inService" || linkedOrderStatus === "inService" || linkedSchedule?.eventType === "attendance"
+            ? "inService"
+            : linkedArrangement?.status === "completed" || linkedOrderStatus === "completed"
+              ? "completed"
+              : linkedArrangement?.status === "pending"
+                ? "pending"
+                : linkedArrangement || orderId
+                  ? "exception"
+                  : undefined;
         const eventType = linkedSchedule?.eventType ?? (orderId ? "booking" : undefined);
         const detailTargetType = linkedSchedule?.detailTargetType ?? (orderId ? "order_detail" : undefined);
         const detailTargetId = linkedSchedule?.detailTargetId ?? orderId;
@@ -1849,7 +1889,7 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
           detail = "当前时段存在重叠预约或任务。";
         } else if (liveSchedules.some((schedule) => schedule.status === "booked")) {
           status = "booked";
-          title = "已定预约";
+          title = "有预约";
           detail = liveSchedules[0]?.orderId ? `订单 ${liveSchedules[0].orderId}` : "已绑定预约";
         } else if (liveSchedules.some((schedule) => schedule.status === "blocked")) {
           status = "other";
@@ -1883,6 +1923,15 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
           isClickable: linkedSchedule?.isClickable ?? Boolean(detailTargetId),
           detailTargetType,
           detailTargetId,
+          serviceStatus: status === "booked" || status === "conflict" || status === "pending" ? serviceStatus : undefined,
+          serviceExceptionLabel:
+            status === "conflict"
+              ? "预约冲突"
+              : status === "pending" || serviceStatus === "pending"
+                ? "待取消"
+                : status === "booked" && serviceStatus !== "inService" && serviceStatus !== "completed"
+                  ? getScheduleExceptionLabel(orderId, technician.id, hour)
+                  : undefined,
           darkened: isPast,
           isCurrent: dateKey === dispatchReferenceDateKey && hour === currentHour
         } satisfies DispatchScheduleCell;
@@ -1968,6 +2017,8 @@ function buildPeriodGrid(storeId: string, cycle: DispatchCycle | null, startDate
             isClickable: cell.isClickable,
             detailTargetType: cell.detailTargetType,
             detailTargetId: cell.detailTargetId,
+            serviceStatus: cell.serviceStatus,
+            serviceExceptionLabel: cell.serviceExceptionLabel,
             darkened: cell.darkened,
             isCurrent: cell.isCurrent
           })),

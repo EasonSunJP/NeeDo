@@ -103,6 +103,12 @@ function formatDateShortLabel(dateKey: string) {
   return month && day ? `${Number(month)}/${Number(day)}` : dateKey;
 }
 
+function formatDateMonthDayLabel(dateKey: string) {
+  const [, month = "", day = ""] = dateKey.split("-");
+
+  return month && day ? `${month}/${day}` : dateKey;
+}
+
 function formatDateTimeLabel(dateKey: string, hour = 10) {
   const [, month = "", day = ""] = dateKey.split("-");
   const time = `${String(hour).padStart(2, "0")}:00`;
@@ -148,7 +154,7 @@ const scheduleDetailStatusFilters: Array<{ label: string; value: ScheduleDetailS
   { label: "全部", value: "all" },
   { label: "可排班", value: "open" },
   { label: "确认班次", value: "confirmed" },
-  { label: "已定预约", value: "booked" },
+  { label: "有预约", value: "booked" },
   { label: "冲突 / 待定", value: "conflict" },
   { label: "其他行程", value: "other" }
 ];
@@ -1202,7 +1208,7 @@ export function DispatchOverviewWorkspace({
                   : technicianIndex % 3 === 0
                     ? ["10:00-16:00 已排班", "17:00-20:00 可补位"]
                     : technicianIndex % 3 === 1
-                      ? ["12:00-18:00 已定预约", "19:00-21:00 已排班"]
+                      ? ["12:00-18:00 有预约", "19:00-21:00 已排班"]
                       : ["休息", "18:00-22:00 可支援"];
                 const canFillIn = technician.id !== item.technician.id && slots.some((slot) => slot.includes("可补位") || slot.includes("可支援"));
 
@@ -1231,7 +1237,7 @@ export function DispatchOverviewWorkspace({
                 const slots = isApplicant
                   ? ["14:00-18:00 已排班", `${shiftWindow} 调班转出`]
                   : isTarget
-                    ? ["16:00-18:00 已排班", `${shiftWindow} 已定预约（冲突）`, "20:00-22:00 超过上限（冲突）"]
+                    ? ["16:00-18:00 已排班", `${shiftWindow} 有预约（冲突）`, "20:00-22:00 超过上限（冲突）"]
                     : technicianIndex % 2 === 0
                       ? ["10:00-16:00 已排班", "18:00-20:00 可支援"]
                       : ["休息", "18:00-22:00 可排班"];
@@ -1709,12 +1715,17 @@ export function DispatchOverviewWorkspace({
             <ScheduleViewSegmentedTabs className="shrink-0" onChange={setView} value={view} />
           ) : (
             <div className="flex flex-wrap gap-2">
-              <input
-                className={cn("rounded-full border px-4 py-2 text-sm font-semibold text-ink outline-none", fieldClass)}
-                onChange={(event) => setDateKey(event.target.value)}
-                type="date"
-                value={dateKey}
-              />
+              <label className={cn("relative grid min-h-10 min-w-[104px] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-full border px-4 py-2 text-sm font-semibold text-ink", fieldClass)}>
+                <span>{formatDateMonthDayLabel(dateKey)}</span>
+                <AppIcon className="h-4 w-4 text-ink/55" name="calendar" />
+                <input
+                  aria-label="选择日期"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  onChange={(event) => setDateKey(event.target.value)}
+                  type="date"
+                  value={dateKey}
+                />
+              </label>
               <ScheduleViewSegmentedTabs onChange={setView} value={view} />
             </div>
           )}
@@ -1805,12 +1816,17 @@ export function DispatchOverviewWorkspace({
             />
             <div className="client-mobile-schedule-detail__toolbar grid gap-2 px-4 pb-3 pt-2">
               <div className="client-mobile-schedule-detail__date-row grid grid-cols-[minmax(132px,0.58fr)_minmax(0,1fr)] gap-2">
-                <input
-                  className={cn("min-w-0 rounded-full border px-3 text-[13px] font-black text-ink outline-none", fieldClass)}
-                  onChange={(event) => setDateKey(event.target.value)}
-                  type="date"
-                  value={dateKey}
-                />
+                <label className={cn("relative grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-full border px-3 text-[13px] font-black text-ink", fieldClass)}>
+                  <span className="truncate">{formatDateMonthDayLabel(dateKey)}</span>
+                  <AppIcon className="h-4 w-4 text-ink/55" name="calendar" />
+                  <input
+                    aria-label="选择日期"
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                    onChange={(event) => setDateKey(event.target.value)}
+                    type="date"
+                    value={dateKey}
+                  />
+                </label>
                 <ScheduleViewSegmentedTabs className="w-full [&_.client-segmented-tab]:flex-1" onChange={setView} value={view} />
               </div>
               <div className="client-mobile-schedule-detail__search-row grid grid-cols-[minmax(0,1fr)_112px] gap-2">

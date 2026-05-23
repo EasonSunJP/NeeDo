@@ -31,6 +31,7 @@ import { OrderServiceMiniCard } from "../../components/mobile/OrderServiceMiniCa
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { merchantNavItems, roleBasedTabConfig } from "../../components/mobile/navItems";
+import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
 import { Badge } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
@@ -42,7 +43,6 @@ import { ImScopeProvider } from "../../features/im/scope";
 import { useImStore } from "../../features/im/store";
 import { MerchantPrimaryNavCarousel } from "../../features/merchant-navigation/MerchantPrimaryNavCarousel";
 import { AutomationWizard } from "../../features/scheduling/automation/AutomationWizard";
-import { MerchantAppointmentScheduleWorkspace } from "../../features/technician-schedule/route-pages";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getStoreCardDecorationConfig } from "../../lib/storeUiDecoration";
@@ -846,24 +846,9 @@ function MerchantScheduleHeaderTabs({
   return (
     <FloatingHomeHeader
       className="relative z-10"
-      panelClassName="relative overflow-hidden border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_92%,transparent),color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_12%))] shadow-[0_18px_40px_rgba(0,0,0,0.1)]"
+      panelClassName="relative overflow-hidden"
     >
-      <div className="grid h-12 grid-cols-3 items-center gap-2">
-        {tabs.map((tab) => (
-          <button
-            aria-pressed={value === tab.value}
-            className={cn(
-              "h-10 rounded-full px-2 text-[15px] font-black text-[color:var(--client-muted)] transition",
-              value === tab.value && "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-            )}
-            key={tab.value}
-            onClick={() => onChange(tab.value)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <FeatureSegmentedTabs items={tabs} onChange={onChange} value={value} variant="header" />
     </FloatingHomeHeader>
   );
 }
@@ -884,24 +869,9 @@ function MerchantStaffHeaderTabs({
   return (
     <FloatingHomeHeader
       className="relative z-10"
-      panelClassName="relative overflow-hidden border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_92%,transparent),color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_12%))] shadow-[0_18px_40px_rgba(0,0,0,0.1)]"
+      panelClassName="relative overflow-hidden"
     >
-      <div className="grid h-12 grid-cols-3 items-center gap-2">
-        {tabs.map((tab) => (
-          <button
-            aria-pressed={value === tab.value}
-            className={cn(
-              "h-10 rounded-full px-2 text-[15px] font-black text-[color:var(--client-muted)] transition",
-              value === tab.value && "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-            )}
-            key={tab.value}
-            onClick={() => onChange(tab.value)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <FeatureSegmentedTabs items={tabs} onChange={onChange} value={value} variant="header" />
     </FloatingHomeHeader>
   );
 }
@@ -1787,7 +1757,7 @@ export function MerchantPortalPage() {
       {activeView === "me" ? (
         <FloatingHomeHeader
           stacked
-          panelClassName="rounded-none border-black/6 bg-white px-0 pb-0 shadow-[0_14px_32px_rgba(0,0,0,0.08)] backdrop-blur-none"
+          panelClassName="relative overflow-hidden"
         >
           <SharedHomeHeader
             avatarAlt={store.name}
@@ -1807,6 +1777,7 @@ export function MerchantPortalPage() {
             ]}
             onChange={(value) => updateMerchantMeTab(value as MerchantMeTab)}
             value={activeMeTab}
+            variant="header"
           />
         </FloatingHomeHeader>
       ) : null}
@@ -2133,7 +2104,7 @@ export function MerchantPortalPage() {
               />
             ) : null}
             {merchantSchedulePrimaryTab === "appointments" ? (
-              <MerchantAppointmentScheduleWorkspace storeId={store.id} />
+              <UnifiedUserCalendar currentStore={store} displayMode="parallel" scope="merchant" />
             ) : null}
             {merchantSchedulePrimaryTab === "planning" ? (
               <AutomationWizard operatorId={store.id} storeId={store.id} surface="mobile" />

@@ -250,6 +250,7 @@ export function DataTable<T>({
       return next;
     });
     setColumnSearch((current) => ({ ...current, [columnKey]: "" }));
+    setSortState((current) => (current?.key === columnKey ? null : current));
   };
 
   const applyColumnState = (columnKey: string, payload: TableColumnHeaderApplyPayload) => {

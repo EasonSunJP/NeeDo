@@ -9,9 +9,8 @@ import type { DispatchScheduleCell, DispatchScheduleCellStatus, DispatchSchedule
 type ScheduleDetailTone = "available" | "scheduled" | "booked" | "conflictPending" | "other" | "standby" | "travel" | "inService" | "extraTime" | "breakBuffer" | "closed";
 
 const legendItems: Array<{ label: string; tone: ScheduleDetailTone }> = [
-  { label: "可排班", tone: "available" },
   { label: "已排班", tone: "scheduled" },
-  { label: "已定预约", tone: "booked" },
+  { label: "有预约", tone: "booked" },
   { label: "冲突 / 待定", tone: "conflictPending" },
   { label: "其他行程", tone: "other" },
   { label: "待机", tone: "standby" },
@@ -22,9 +21,10 @@ const legendItems: Array<{ label: string; tone: ScheduleDetailTone }> = [
 ];
 
 const daySlotStatusLabel: Record<DispatchScheduleCellStatus, string> = {
+  idle: "未选择",
   open: "可排班",
   confirmed: "已排班",
-  booked: "已定预约",
+  booked: "有预约",
   conflict: "冲突 / 待定",
   pending: "冲突 / 待定",
   other: "其他行程",

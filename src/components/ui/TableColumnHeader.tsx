@@ -204,6 +204,7 @@ export function TableColumnHeader({
   const handleClearFilter = () => {
     setDraftSearchValue("");
     setDraftSelectedValues(filterOptions);
+    setDraftSortDirection(undefined);
     onClearFilter();
   };
 
@@ -280,8 +281,13 @@ export function TableColumnHeader({
                 应用
               </button>
             ) : null}
-            <button className="needo-table-filter-clear" onClick={handleClearFilter} type="button">
-              清除筛选
+            <button
+              aria-label={`取消${title}筛选排序`}
+              className="needo-table-filter-clear"
+              onClick={handleClearFilter}
+              type="button"
+            >
+              取消筛选
             </button>
           </div>
         </div>

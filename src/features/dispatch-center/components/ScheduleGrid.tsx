@@ -1,22 +1,13 @@
-import { useCallback, useRef, useState, type CSSProperties, type ReactNode, type UIEvent as ReactUIEvent } from "react";
+import { useCallback, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent as ReactUIEvent } from "react";
 import { Badge, type BadgeTone } from "../../../components/ui/Badge";
 import { NotificationBadge } from "../../../components/ui/NotificationBadge";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { translateText, type Language, type LocalizedText } from "../../../i18n/translations";
 import { useHorizontalDragScroll } from "../../../lib/useHorizontalDragScroll";
 import { cn } from "../../../lib/utils";
+import { getScheduleClosedCellStyle } from "../../../components/scheduling/scheduleGridVisuals";
 import type { DispatchScheduleCell, DispatchScheduleCellStatus, DispatchScheduleGridData } from "../store";
 import { TechnicianAvatarBadge, TechnicianColumnToggleIcon } from "./TechnicianListUi";
-
-function getClosedCellStyle(surface: "desktop" | "mobile", backgroundOffsetX = 0, backgroundOffsetY = 0) {
-  return {
-    backgroundPosition: `${-backgroundOffsetX}px ${-backgroundOffsetY}px`,
-    backgroundImage:
-      surface === "mobile"
-        ? "repeating-linear-gradient(135deg, rgba(0,0,0,0.28) 0, rgba(0,0,0,0.28) 16px, rgba(255,255,255,0.08) 16px, rgba(255,255,255,0.08) 32px)"
-        : "repeating-linear-gradient(135deg, rgba(0,0,0,0.24) 0, rgba(0,0,0,0.24) 16px, rgba(255,255,255,0.08) 16px, rgba(255,255,255,0.08) 32px)"
-  } satisfies CSSProperties;
-}
 
 function getScheduleCellCssTone(status: DispatchScheduleCellStatus) {
   if (status === "open") {
@@ -92,6 +83,30 @@ type PeriodTimelineRange = {
   endHour: number;
 };
 
+type ScheduleGridDayCellAction = {
+  className?: string;
+  onClick?: () => void;
+  onMouseDown?: () => void;
+  onMouseEnter?: () => void;
+  onMouseUp?: () => void;
+  title?: string;
+};
+
+type ScheduleGridDayPrimaryRangeResize = {
+  endIndex: number;
+  nextEndIndex: number;
+  nextStartIndex: number;
+  rowIndex: number;
+  startIndex: number;
+};
+
+type ScheduleGridRowHeaderContext = {
+  collapsedTechnicians: boolean;
+  isMobileSurface: boolean;
+  rowIndex: number;
+  surface: "desktop" | "mobile";
+};
+
 export type ScheduleLegendFilter = "available" | "scheduled" | "booked" | "conflictPending" | "other" | "standby" | "travel" | "inService" | "extraTime" | "breakBuffer";
 
 export const scheduleLegendItems: Array<{
@@ -100,9 +115,8 @@ export const scheduleLegendItems: Array<{
   tone: BadgeTone;
   value: ScheduleLegendFilter;
 }> = [
-  { className: "schedule-legend-badge schedule-legend-badge--available", label: "可排班", tone: "blue", value: "available" },
   { className: "schedule-legend-badge schedule-legend-badge--scheduled", label: "已排班", tone: "green", value: "scheduled" },
-  { className: "schedule-legend-badge schedule-legend-badge--booked", label: "已定预约", tone: "green", value: "booked" },
+  { className: "schedule-legend-badge schedule-legend-badge--booked", label: "有预约", tone: "green", value: "booked" },
   { className: "schedule-legend-badge schedule-legend-badge--conflict-pending", label: "冲突 / 待定", tone: "red", value: "conflictPending" },
   { className: "schedule-legend-badge schedule-legend-badge--other", label: "其他行程", tone: "yellow", value: "other" },
   { className: "schedule-legend-badge schedule-legend-badge--standby", label: "待机", tone: "dark", value: "standby" },
@@ -115,9 +129,10 @@ export const scheduleLegendItems: Array<{
 const periodWorkStatuses = new Set<DispatchScheduleCellStatus>(["confirmed", "booked", "conflict", "pending"]);
 const openWorkStatuses = new Set<DispatchScheduleCellStatus>(["open"]);
 const bookedAppointmentStatuses = new Set<DispatchScheduleCellStatus>(["booked"]);
-const dayPrimaryBarStatuses = new Set<DispatchScheduleCellStatus>(["open", "confirmed", "booked", "conflict", "pending", "other"]);
+const dayScheduledBaseStatuses = new Set<DispatchScheduleCellStatus>(["confirmed", "booked", "conflict", "pending"]);
+const dayAppointmentBarStatuses = new Set<DispatchScheduleCellStatus>(["booked", "conflict", "pending"]);
 const dayConfirmedWorkStatuses = new Set<DispatchScheduleCellStatus>(["confirmed", "booked"]);
-const dayPendingWorkStatuses = new Set<DispatchScheduleCellStatus>(["pending", "open"]);
+const dayPendingWorkStatuses = new Set<DispatchScheduleCellStatus>(["pending"]);
 const actualWorkLegendFilters = new Set<ScheduleLegendFilter>(["standby", "travel", "inService", "extraTime", "breakBuffer"]);
 const travelFilterPattern = /移动|移動|travel|traffic|路程|路线|上门前|预计移动/i;
 const inServiceFilterPattern = /服务中|服務中|service|inService|进行中|進行中|履约|履約/i;
@@ -137,7 +152,7 @@ type DayTimelineRange = {
   status: DispatchScheduleCellStatus;
 };
 
-type DayWorkStatus = "standby" | "travel" | "inService" | "extraTime" | "breakBuffer";
+type DayWorkStatus = "standby" | "travel" | "inService" | "extraTime" | "breakBuffer" | "serviceException";
 
 type DayWorkStatusRange = {
   endHour: number;
@@ -224,7 +239,8 @@ function countBookedAppointmentSegmentsInCells(cells: DispatchScheduleCell[]) {
       return count;
     }
 
-    return cells[index - 1]?.status === "booked" ? count : count + 1;
+    const previousCell = cells[index - 1];
+    return previousCell?.status === "booked" && getAppointmentMergeKey(previousCell) === getAppointmentMergeKey(cell) ? count : count + 1;
   }, 0);
 }
 
@@ -232,16 +248,63 @@ function hasOrderDetailTarget(cell: DispatchScheduleCell | undefined) {
   return Boolean(cell?.detailTargetType === "order_detail" && cell.detailTargetId) || Boolean(cell?.orderId);
 }
 
-function buildDayTimelineRanges(cells: DispatchScheduleCell[], statuses: Set<DispatchScheduleCellStatus>, lane: DayTimelineLane) {
+function getAppointmentIdentity(cell: Pick<DispatchScheduleCell, "appointmentId" | "date" | "detailTargetId" | "hour" | "orderId">) {
+  return cell.orderId ?? cell.detailTargetId ?? cell.appointmentId ?? `${cell.date}:${cell.hour ?? "day"}`;
+}
+
+function getAppointmentMergeKey(cell: DispatchScheduleCell) {
+  return `${cell.status}:${getAppointmentIdentity(cell)}`;
+}
+
+function hasActualService(cell: DispatchScheduleCell) {
+  return cell.serviceStatus === "inService" || cell.serviceStatus === "completed" || cell.eventType === "attendance";
+}
+
+function isMissingServiceExceptionCell(cell: DispatchScheduleCell) {
+  return cell.status === "booked" && !hasActualService(cell);
+}
+
+function isDayExceptionCell(cell: DispatchScheduleCell) {
+  return cell.status === "conflict" || cell.status === "pending" || isMissingServiceExceptionCell(cell);
+}
+
+function getDayTimelineMergeKey(status: DispatchScheduleCellStatus) {
+  if (status === "booked") {
+    return "booked";
+  }
+
+  if (status === "confirmed") {
+    return "confirmed";
+  }
+
+  if (status === "conflict" || status === "pending") {
+    return "conflictPending";
+  }
+
+  return status;
+}
+
+function buildDayTimelineRanges(
+  cells: DispatchScheduleCell[],
+  statuses: Set<DispatchScheduleCellStatus>,
+  lane: DayTimelineLane,
+  options: {
+    includeCell?: (cell: DispatchScheduleCell) => boolean;
+    mergeKey?: (cell: DispatchScheduleCell) => string;
+  } = {}
+) {
   return cells.reduce<DayTimelineRange[]>((ranges, cell, index) => {
-    if (!statuses.has(cell.status)) {
+    if (!statuses.has(cell.status) || options.includeCell?.(cell) === false) {
       return ranges;
     }
 
     const previous = ranges[ranges.length - 1];
     const cellHour = cell.hour ?? index;
+    const previousCell = previous?.cells[previous.cells.length - 1];
+    const previousMergeKey = previousCell ? options.mergeKey?.(previousCell) ?? getDayTimelineMergeKey(previousCell.status) : null;
+    const currentMergeKey = options.mergeKey?.(cell) ?? getDayTimelineMergeKey(cell.status);
 
-    if (previous && previous.endIndex === index) {
+    if (previous && previous.endIndex === index && previousMergeKey === currentMergeKey) {
       previous.cells.push(cell);
       previous.endIndex = index + 1;
       previous.endHour = cellHour + 1;
@@ -383,7 +446,8 @@ function toWorkStatusRange(
   status: DayWorkStatus,
   startIndex: number,
   endIndex: number,
-  targetSearchRange?: { startIndex: number; endIndex: number }
+  targetSearchRange?: { startIndex: number; endIndex: number },
+  label?: string
 ): DayWorkStatusRange | null {
   const orderTargetCell =
     status === "standby" || status === "breakBuffer"
@@ -407,7 +471,7 @@ function toWorkStatusRange(
   return {
     endHour,
     endIndex,
-    label: status === "standby" ? "待机" : status === "travel" ? "移动中" : status === "inService" ? "服务中" : status === "extraTime" ? "加钟" : "休息/缓冲",
+    label: label ?? (status === "standby" ? "待机" : status === "travel" ? "移动中" : status === "inService" ? "服务中" : status === "extraTime" ? "加钟" : status === "serviceException" ? "待处理" : "休息/缓冲"),
     representativeCell,
     startHour,
     startIndex,
@@ -467,36 +531,50 @@ function shouldUseRichActualRoute(seed: number) {
   return seed % 5 === 0 || seed % 5 === 2 || seed % 5 === 4;
 }
 
-function buildDayWorkStatusRanges(cells: DispatchScheduleCell[], technicianId?: string) {
-  const seed = getStableTechnicianSeed(technicianId ?? cells[0]?.technicianId);
-  const workSpans = buildContiguousCellRanges(cells, isWorkStatusCell);
+function getServiceRangeLabel(cells: DispatchScheduleCell[], startIndex: number, endIndex: number) {
+  return cells.slice(startIndex, endIndex).some((cell) => cell.serviceStatus === "completed") ? "已完成" : "服务中";
+}
+
+function getExceptionRangeLabel(cells: DispatchScheduleCell[], startIndex: number, endIndex: number) {
+  const cell = cells.slice(startIndex, endIndex).find(isDayExceptionCell) ?? cells[startIndex];
+
+  if (!cell) {
+    return "待处理";
+  }
+
+  if (cell.status === "conflict") {
+    return "预约冲突";
+  }
+
+  if (cell.status === "pending") {
+    return "待确认";
+  }
+
+  return cell.serviceExceptionLabel ?? "待处理";
+}
+
+function buildDayWorkStatusRanges(cells: DispatchScheduleCell[], _technicianId?: string) {
+  const workSpans = buildContiguousCellRanges(cells, (cell) => dayScheduledBaseStatuses.has(cell.status));
   const ranges: DayWorkStatusRange[] = [];
 
   workSpans.forEach((span) => {
-    const occupied = new Set<number>();
     const overlayRanges: DayWorkStatusRange[] = [];
-    const spanOrderTargetCell = findNearestOrderTargetCell(cells, span.startIndex, span.endIndex, span.startIndex, span.endIndex);
-    const standbyStartOffset = seed % 5 === 0 ? -1 : seed % 5 === 1 ? 1 : 0;
-    const standbyEndOffset = seed % 6 === 0 ? 2 : seed % 6 === 1 ? -1 : seed % 6 === 2 ? 1 : 0;
-    let standbyStartIndex = clampTimelineIndex(span.startIndex + standbyStartOffset, 0, cells.length - 1);
-    let standbyEndIndex = clampTimelineIndex(span.endIndex + standbyEndOffset, standbyStartIndex + 1, cells.length);
 
-    const appendOverlayRange = (status: Exclude<DayWorkStatus, "standby">, startIndex: number, endIndex: number) => {
+    const appendOverlayRange = (status: Exclude<DayWorkStatus, "standby">, startIndex: number, endIndex: number, label?: string) => {
       const range = toWorkStatusRange(cells, status, startIndex, endIndex, {
         startIndex: span.startIndex,
         endIndex: span.endIndex
-      });
+      }, label);
       if (!range) {
         return;
       }
 
       overlayRanges.push(range);
-      markStatusWindow(startIndex, endIndex, occupied);
     };
 
-    buildContiguousCellRanges(cells, (cell) => cell.status === "booked").forEach((range) => {
+    buildContiguousCellRanges(cells, (cell) => hasActualService(cell)).forEach((range) => {
       if (range.startIndex >= span.startIndex && range.endIndex <= span.endIndex) {
-        appendOverlayRange("inService", range.startIndex, range.endIndex);
+        appendOverlayRange("inService", range.startIndex, range.endIndex, getServiceRangeLabel(cells, range.startIndex, range.endIndex));
       }
     });
 
@@ -506,66 +584,12 @@ function buildDayWorkStatusRanges(cells: DispatchScheduleCell[], technicianId?: 
       }
     });
 
-    const spanLength = span.endIndex - span.startIndex;
-    const canAddServiceRoute = Boolean(spanOrderTargetCell);
-    const canAddRichRoute = canAddServiceRoute && shouldUseRichActualRoute(seed) && spanLength >= 8;
-    let addedRichRoute = false;
-
-    if (canAddRichRoute) {
-      const secondServiceLength = seed % 2 === 0 ? 2 : 1;
-      const totalRouteLength = 6 + secondServiceLength;
-      const desiredRouteEnd = Math.min(cells.length, span.endIndex + (seed % 3 === 0 ? 2 : 1));
-      const routeStart = Math.max(span.startIndex, desiredRouteEnd - totalRouteLength);
-      const routeEnd = routeStart + totalRouteLength;
-
-      if (routeEnd <= cells.length && canUseStatusWindow(routeStart, routeEnd, occupied)) {
-        let cursor = routeStart;
-        appendOverlayRange("inService", cursor, cursor + 1);
-        cursor += 1;
-        appendOverlayRange("extraTime", cursor, cursor + 2);
-        cursor += 2;
-        appendOverlayRange("travel", cursor, cursor + 1);
-        cursor += 1;
-        appendOverlayRange("breakBuffer", cursor, cursor + 1);
-        cursor += 1;
-        appendOverlayRange("inService", cursor, cursor + secondServiceLength);
-        cursor += secondServiceLength;
-        appendOverlayRange("travel", cursor, cursor + 1);
-        addedRichRoute = true;
-      }
-    }
-
-    if (canAddServiceRoute && !addedRichRoute && !overlayRanges.some((range) => range.status === "inService") && spanLength >= 3) {
-      const serviceLength = spanLength >= 8 ? 2 : 1;
-      const preferredServiceStart = span.startIndex + 1 + (seed % Math.max(1, spanLength - serviceLength - 1));
-      const serviceStart = findStatusWindow(preferredServiceStart, serviceLength, span.startIndex, span.endIndex, occupied);
-      if (serviceStart != null) {
-        appendOverlayRange("inService", serviceStart, serviceStart + serviceLength);
-      }
-    }
-
-    if (!addedRichRoute && !overlayRanges.some((range) => range.status === "breakBuffer") && spanLength >= 5) {
-      const preferredBreakStart = span.startIndex + Math.min(spanLength - 2, 4 + (seed % 3));
-      const breakStart = findStatusWindow(preferredBreakStart, 1, span.startIndex, span.endIndex, occupied);
-      if (breakStart != null) {
-        appendOverlayRange("breakBuffer", breakStart, breakStart + 1);
-      }
-    }
-
-    const serviceRanges = canAddServiceRoute && !addedRichRoute ? overlayRanges.filter((range) => range.status === "inService") : [];
-    serviceRanges.slice(0, 2).forEach((range, index) => {
-      const preferredTravelStart = index % 2 === 0 ? range.startIndex - 1 : range.endIndex;
-      const travelStart = findStatusWindow(preferredTravelStart, 1, span.startIndex, span.endIndex, occupied);
-      if (travelStart != null) {
-        appendOverlayRange("travel", travelStart, travelStart + 1);
+    buildContiguousCellRanges(cells, isDayExceptionCell).forEach((range) => {
+      if (range.startIndex >= span.startIndex && range.endIndex <= span.endIndex) {
+        appendOverlayRange("serviceException", range.startIndex, range.endIndex, getExceptionRangeLabel(cells, range.startIndex, range.endIndex));
       }
     });
-
-    overlayRanges.forEach((range) => {
-      standbyStartIndex = Math.min(standbyStartIndex, range.startIndex);
-      standbyEndIndex = Math.max(standbyEndIndex, range.endIndex);
-    });
-    const standbyRange = toWorkStatusRange(cells, "standby", standbyStartIndex, standbyEndIndex);
+    const standbyRange = toWorkStatusRange(cells, "standby", span.startIndex, span.endIndex);
     if (standbyRange) {
       ranges.push(standbyRange);
     }
@@ -616,7 +640,8 @@ function getCellLegendSearchText(cell: DispatchScheduleCell) {
     cell.status,
     cell.title,
     cell.detail,
-    ...(cell.dayTimeline?.flatMap((slot) => [slot.status, slot.title, slot.detail]) ?? [])
+    cell.serviceExceptionLabel ?? "",
+    ...(cell.dayTimeline?.flatMap((slot) => [slot.status, slot.title, slot.detail, slot.serviceExceptionLabel ?? ""]) ?? [])
   ].join(" ");
 }
 
@@ -636,7 +661,9 @@ function cellMatchesLegendFilter(cell: DispatchScheduleCell, filter: ScheduleLeg
   }
 
   if (filter === "conflictPending") {
-    return statuses.some((status) => status === "conflict" || status === "pending");
+    return statuses.some((status) => status === "conflict" || status === "pending") ||
+      Boolean(cell.serviceExceptionLabel) ||
+      Boolean(cell.dayTimeline?.some((slot) => slot.serviceExceptionLabel));
   }
 
   if (filter === "other") {
@@ -679,6 +706,10 @@ function rowMatchesLegendFilter(
 
   const isDayGridRow = row.cells.some((cell) => cell.hour != null);
 
+  if (isDayGridRow && filter === "conflictPending") {
+    return row.cells.some(isDayExceptionCell);
+  }
+
   if (isDayGridRow && actualWorkLegendFilters.has(filter)) {
     const workStatusFilter: DayWorkStatus =
       filter === "standby" ? "standby" : filter === "travel" ? "travel" : filter === "inService" ? "inService" : filter === "extraTime" ? "extraTime" : "breakBuffer";
@@ -720,14 +751,27 @@ function getDayTimelineBarStyle(
 }
 
 function getPrimaryRangeLabel(range: DayTimelineRange, language: Language) {
+  if (range.cells.every((cell) => cell.title === "OK")) {
+    return "OK";
+  }
+
   const statusLabel = getPrimaryRangeTone(range) === "confirmed"
     ? getLocalizedTimelineLabel("work", language)
     : range.cells.some((cell) => cell.status === "pending")
       ? getLocalizedTimelineLabel("pending", language)
       : getLocalizedTimelineLabel("storeOpen", language);
-  const appointmentLabel = getLocalizedTimelineLabel("appointments", language, range.appointmentCount);
 
-  return `${formatPeriodHour(range.startHour)}-${formatPeriodHour(range.endHour)} ${statusLabel} · ${appointmentLabel}`;
+  return `${formatPeriodHour(range.startHour)}-${formatPeriodHour(range.endHour)} ${statusLabel}`;
+}
+
+function getAppointmentRangeLabel(range: DayTimelineRange, language: Language) {
+  const statusLabel = range.cells.some((cell) => cell.status === "conflict")
+    ? translateText("预约冲突", language)
+    : range.cells.some((cell) => cell.status === "pending")
+      ? translateText("待确认", language)
+      : translateText("有预约", language);
+
+  return `${formatPeriodHour(range.startHour)}-${formatPeriodHour(range.endHour)} ${statusLabel}`;
 }
 
 function buildPeriodTimelineRanges(cell: DispatchScheduleCell, statuses: Set<DispatchScheduleCellStatus>) {
@@ -783,8 +827,13 @@ export function ScheduleGrid({
   onLegendFilterChange,
   onSelectDate,
   onSelectCell,
+  onResizeDayPrimaryRange,
   onToggleCollapsed,
+  getDayCellAction,
+  renderRowHeader,
   showActualWorkStatus = true,
+  stickyHeaderLabel,
+  stickyColumnWidthPx: stickyColumnWidthPxOverride,
   stickyTop,
   surface
 }: {
@@ -792,13 +841,18 @@ export function ScheduleGrid({
   compactHeader?: boolean;
   data: DispatchScheduleGridData;
   className?: string;
+  getDayCellAction?: (cell: DispatchScheduleCell, row: DispatchScheduleGridData["rows"][number], rowIndex: number, cellIndex: number) => ScheduleGridDayCellAction | null;
   legendActions?: ReactNode;
   legendFilter?: ScheduleLegendFilter | null;
   onLegendFilterChange?: (filter: ScheduleLegendFilter | null) => void;
+  onResizeDayPrimaryRange?: (resize: ScheduleGridDayPrimaryRangeResize) => void;
   onSelectDate?: (dateKey: string) => void;
   onSelectCell?: (cell: DispatchScheduleCell) => void;
   onToggleCollapsed?: () => void;
+  renderRowHeader?: (row: DispatchScheduleGridData["rows"][number], context: ScheduleGridRowHeaderContext) => ReactNode;
   showActualWorkStatus?: boolean;
+  stickyColumnWidthPx?: number;
+  stickyHeaderLabel?: string;
   stickyTop?: string;
   surface: "desktop" | "mobile";
 }) {
@@ -806,7 +860,9 @@ export function ScheduleGrid({
   const { language } = useI18n();
   const isPeriodGrid = data.dates.length > 1;
   const isDayGrid = !isPeriodGrid;
-  const stickyColumnWidthPx = collapsedTechnicians ? (surface === "mobile" ? 72 : 84) : surface === "mobile" ? 176 : 248;
+  const stickyColumnWidthPx = collapsedTechnicians
+    ? surface === "mobile" ? 72 : 84
+    : stickyColumnWidthPxOverride ?? (surface === "mobile" ? 176 : 248);
   const stickyColumnWidth = `${stickyColumnWidthPx}px`;
   const dataColumnWidthPx = isPeriodGrid ? (isMobileSurface ? 96 : 112) : 58;
   const columnWidth = isPeriodGrid ? `${dataColumnWidthPx}px` : "minmax(58px,1fr)";
@@ -855,7 +911,7 @@ export function ScheduleGrid({
   const headerBgClass = isMobileSurface ? "" : "merchant-dispatch-table-header";
   const rowBgClass = isMobileSurface ? "" : "merchant-dispatch-card";
   const toggleClass = isMobileSurface ? "border-line bg-white/80 text-ink/60 hover:border-moss hover:text-ink" : "merchant-dispatch-toggle";
-  const closedCellStyle = getClosedCellStyle(surface);
+  const closedCellStyle = getScheduleClosedCellStyle(surface);
   const stickySurfaceStyle = {
     background: isMobileSurface
       ? "var(--client-schedule-sticky-bg, var(--client-elevated))"
@@ -872,6 +928,15 @@ export function ScheduleGrid({
     background: isMobileSurface
       ? "var(--client-schedule-mask-bg, var(--client-bg))"
       : "var(--merchant-dispatch-table-mask-bg, var(--admin-bg, #ffffff))"
+  } satisfies CSSProperties;
+  const scheduleSurfaceBackground = isMobileSurface
+    ? "var(--client-schedule-sticky-bg, var(--client-bg))"
+    : "var(--merchant-dispatch-table-sticky-bg, var(--admin-surface, #ffffff))";
+  const scheduleSurfaceStyle = {
+    background: scheduleSurfaceBackground
+  } satisfies CSSProperties;
+  const edgeGuardStyle = {
+    background: scheduleSurfaceBackground
   } satisfies CSSProperties;
   const stickyHeaderStyle = {
     ...stickySurfaceStyle,
@@ -890,7 +955,7 @@ export function ScheduleGrid({
     : `max(${data.headers.length * dataColumnWidthPx}px, calc(1024px - ${stickyColumnWidth}))`;
   const mobileHeaderToggleClass =
     "focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] shadow-[0_12px_24px_rgba(0,0,0,0.12)] transition";
-  const stickyHeaderLabel = translateText(data.dates.length === 1 ? "技师 / 小时" : "技师 / 日期", language);
+  const resolvedStickyHeaderLabel = stickyHeaderLabel ?? translateText(data.dates.length === 1 ? "技师 / 小时" : "技师 / 日期", language);
   const hasInteractiveDateHeaders = isPeriodGrid && Boolean(onSelectDate);
   const updateLegendFilter = (nextFilter: ScheduleLegendFilter | null) => {
     if (legendFilter === undefined) {
@@ -930,17 +995,84 @@ export function ScheduleGrid({
       opacity: 1
     } satisfies CSSProperties;
   };
+  const startDayPrimaryRangeResize = useCallback((
+    event: ReactPointerEvent<HTMLElement>,
+    rowIndex: number,
+    range: Pick<DayTimelineRange, "endIndex" | "startIndex">,
+    edge: "start" | "end"
+  ) => {
+    if (!onResizeDayPrimaryRange) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const rowElement = event.currentTarget.closest("[data-schedule-day-row]");
+    if (!(rowElement instanceof HTMLElement)) {
+      return;
+    }
+
+    const columnCount = Math.max(1, data.headers.length);
+    let nextStartIndex = range.startIndex;
+    let nextEndIndex = range.endIndex;
+    const clampIndex = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+    const updateFromClientX = (clientX: number) => {
+      const rect = rowElement.getBoundingClientRect();
+      const columnWidthPx = rect.width / columnCount;
+      const rawIndex = clampIndex(Math.floor((clientX - rect.left) / Math.max(1, columnWidthPx)), 0, columnCount - 1);
+
+      if (edge === "start") {
+        nextStartIndex = clampIndex(rawIndex, 0, range.endIndex - 1);
+      } else {
+        nextEndIndex = clampIndex(rawIndex + 1, range.startIndex + 1, columnCount);
+      }
+    };
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      updateFromClientX(moveEvent.clientX);
+    };
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      updateFromClientX(upEvent.clientX);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+
+      if (nextStartIndex === range.startIndex && nextEndIndex === range.endIndex) {
+        return;
+      }
+
+      onResizeDayPrimaryRange({
+        endIndex: range.endIndex,
+        nextEndIndex,
+        nextStartIndex,
+        rowIndex,
+        startIndex: range.startIndex
+      });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  }, [data.headers.length, onResizeDayPrimaryRange]);
 
   const renderDayTimelineRow = (row: DispatchScheduleGridData["rows"][number], rowIndex: number) => {
-    const primaryRanges = buildDayTimelineRanges(row.cells, dayPrimaryBarStatuses, "primary");
+    const primaryRanges = buildDayTimelineRanges(row.cells, dayScheduledBaseStatuses, "primary", {
+      mergeKey: (cell) => cell.title === "OK" ? "draft-ok" : "scheduled-base"
+    });
+    const appointmentRanges = buildDayTimelineRanges(row.cells, dayAppointmentBarStatuses, "primary", {
+      mergeKey: getAppointmentMergeKey
+    });
     const workStatusRanges = showActualWorkStatus ? buildDayWorkStatusRanges(row.cells, row.technicianId) : [];
     const isLastRow = rowIndex === visibleRows.length - 1;
     const standbyRanges = workStatusRanges.filter((range) => range.status === "standby");
     const activeWorkStatusRanges = workStatusRanges.filter((range) => range.status !== "standby");
-    const hasTimelineContent = primaryRanges.length > 0 || standbyRanges.length > 0 || activeWorkStatusRanges.length > 0;
+    const hasOpenCells = row.cells.some((cell) => cell.status === "open");
+    const hasTimelineContent = hasOpenCells || primaryRanges.length > 0 || appointmentRanges.length > 0 || standbyRanges.length > 0 || activeWorkStatusRanges.length > 0;
+    const dayCellActions = getDayCellAction
+      ? row.cells.map((cell, cellIndex) => getDayCellAction(cell, row, rowIndex, cellIndex))
+      : [];
+    const hasDayCellActions = dayCellActions.some(Boolean);
 
     return (
       <div
+        data-schedule-day-row
         className={cn(
           "relative overflow-hidden border-b border-r border-line",
           rowBgClass,
@@ -948,6 +1080,7 @@ export function ScheduleGrid({
           isLastRow && "rounded-br-[28px]"
         )}
         style={{
+          ...scheduleSurfaceStyle,
           gridColumn: `span ${data.headers.length}`,
           height: scheduleRowHeight,
           minHeight: scheduleRowHeight
@@ -976,20 +1109,69 @@ export function ScheduleGrid({
         >
           {primaryRanges.map((range) => {
             const label = getPrimaryRangeLabel(range, language);
+            const showResizeHandles = label === "OK";
 
             return (
               <button
                 aria-label={label}
                 className={cn(
                   "focus-ring relative h-full min-w-0 overflow-hidden rounded-none border px-2 text-left text-[11px] font-black leading-4 shadow-[0_10px_20px_rgba(0,0,0,0.16)] transition hover:brightness-110",
+                  showResizeHandles && "px-6 text-center text-[13px]",
                   range.isCurrent && "brightness-105"
                 )}
                 key={`${row.technicianId}-primary-${range.startIndex}-${range.endIndex}`}
                 onClick={() => onSelectCell?.(range.representativeCell)}
                 style={{
-                  ...getDayTimelineBarStyle(range, surface),
+                  ...getScheduleToneStyle("scheduled"),
                   gridColumn: `${range.startIndex + 1} / ${range.endIndex + 1}`,
                   marginInline: "3px"
+                }}
+                title={label}
+                type="button"
+              >
+                {showResizeHandles ? (
+                  <>
+                    <span aria-hidden="true" className="pointer-events-none absolute left-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-black/45 shadow-[0_0_0_1px_rgba(255,255,255,0.32)]" />
+                    <span aria-hidden="true" className="pointer-events-none absolute right-1.5 top-1/2 h-6 w-1 -translate-y-1/2 rounded-full bg-black/45 shadow-[0_0_0_1px_rgba(255,255,255,0.32)]" />
+                  </>
+                ) : null}
+                <span
+                  className={cn(
+                    "pointer-events-none absolute inset-y-0 flex items-center whitespace-nowrap transition-opacity",
+                    showResizeHandles && "left-6 right-6 justify-center"
+                  )}
+                  style={showResizeHandles ? { opacity: 1 } : getDayTimelineLabelStyle(range)}
+                >
+                  {label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          className={cn(
+            "absolute inset-x-0 z-[38] grid items-center",
+            isMobileSurface ? "top-[12px] h-[28px]" : "top-[11px] h-[30px]"
+          )}
+          style={dayTimelineGridStyle}
+        >
+          {appointmentRanges.map((range) => {
+            const label = getAppointmentRangeLabel(range, language);
+
+            return (
+              <button
+                aria-label={label}
+                className={cn(
+                  "focus-ring relative min-w-0 overflow-hidden rounded-[5px] border px-1.5 text-left font-black leading-none shadow-[0_8px_18px_rgba(0,0,0,0.22)] transition hover:brightness-110",
+                  isMobileSurface ? "h-[24px] text-[10px]" : "h-[26px] text-[10px]"
+                )}
+                key={`${row.technicianId}-appointment-${range.startIndex}-${range.endIndex}-${getAppointmentIdentity(range.representativeCell)}`}
+                onClick={() => onSelectCell?.(range.representativeCell)}
+                style={{
+                  ...getDayTimelineBarStyle(range, surface),
+                  gridColumn: `${range.startIndex + 1} / ${range.endIndex + 1}`,
+                  marginInline: "7px"
                 }}
                 title={label}
                 type="button"
@@ -1042,7 +1224,7 @@ export function ScheduleGrid({
           style={dayTimelineGridStyle}
         >
           {activeWorkStatusRanges.map((range) => {
-            const tone = range.status === "breakBuffer" ? "breakBuffer" : range.status === "extraTime" ? "extraTime" : range.status;
+            const tone = range.status === "serviceException" ? "conflictPending" : range.status === "breakBuffer" ? "breakBuffer" : range.status === "extraTime" ? "extraTime" : range.status;
             const label = translateText(range.label, language);
 
             return (
@@ -1059,7 +1241,7 @@ export function ScheduleGrid({
                   gridColumn: `${range.startIndex + 1} / ${range.endIndex + 1}`,
                   gridRow: "1",
                   marginInline: "4px",
-                  zIndex: range.status === "extraTime" ? 4 : range.status === "inService" ? 3 : range.status === "breakBuffer" ? 2 : 1
+                  zIndex: range.status === "serviceException" ? 5 : range.status === "extraTime" ? 4 : range.status === "inService" ? 3 : range.status === "breakBuffer" ? 2 : 1
                 }}
                 title={`${formatPeriodHour(range.startHour)}-${formatPeriodHour(range.endHour)} ${label}`}
                 type="button"
@@ -1070,7 +1252,49 @@ export function ScheduleGrid({
           })}
         </div>
 
-        {onSelectCell ? (
+        {hasDayCellActions ? (
+          <div
+            className="absolute inset-0 z-[55] grid"
+            style={dayTimelineGridStyle}
+          >
+            {row.cells.map((cell, cellIndex) => {
+              const action = dayCellActions[cellIndex];
+
+              return (
+                <button
+                  aria-label={action?.title ?? `${formatPeriodHour(cell.hour ?? 0)} ${translateText(cell.title, language)} ${translateText(cell.detail, language)}`}
+                  className={cn("focus-ring min-w-0 border-r border-transparent text-left transition hover:bg-white/10", action?.className)}
+                  key={`${cell.id}-action`}
+                  onClick={(event) => {
+                    if (event.currentTarget.dataset.schedulePointerHandled === "true") {
+                      delete event.currentTarget.dataset.schedulePointerHandled;
+                      return;
+                    }
+
+                    if (action?.onClick) {
+                      action.onClick();
+                      return;
+                    }
+
+                    action?.onMouseDown?.();
+                  }}
+                  onMouseEnter={action?.onMouseEnter}
+                  onMouseUp={action?.onMouseUp}
+                  onPointerDown={(event) => {
+                    if (!action?.onMouseDown) {
+                      return;
+                    }
+
+                    event.currentTarget.dataset.schedulePointerHandled = "true";
+                    action.onMouseDown();
+                  }}
+                  title={action?.title}
+                  type="button"
+                />
+              );
+            })}
+          </div>
+        ) : onSelectCell ? (
           <div
             className="absolute inset-0 z-20 grid"
             style={dayTimelineGridStyle}
@@ -1084,6 +1308,45 @@ export function ScheduleGrid({
                 type="button"
               />
             ))}
+          </div>
+        ) : null}
+
+        {onResizeDayPrimaryRange ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-2 z-[65] grid h-[38px] items-center"
+            style={dayTimelineGridStyle}
+          >
+            {primaryRanges.map((range) => {
+              const label = getPrimaryRangeLabel(range, language);
+
+              if (label !== "OK") {
+                return null;
+              }
+
+              return (
+                <span
+                  className="pointer-events-none relative h-full min-w-0"
+                  key={`${row.technicianId}-resize-${range.startIndex}-${range.endIndex}`}
+                  style={{
+                    gridColumn: `${range.startIndex + 1} / ${range.endIndex + 1}`,
+                    marginInline: "3px"
+                  }}
+                >
+                  <button
+                    aria-label="调整开始时间"
+                    className="pointer-events-auto absolute left-0 top-1/2 h-8 w-5 -translate-y-1/2 cursor-ew-resize rounded-full"
+                    onPointerDown={(event) => startDayPrimaryRangeResize(event, rowIndex, range, "start")}
+                    type="button"
+                  />
+                  <button
+                    aria-label="调整结束时间"
+                    className="pointer-events-auto absolute right-0 top-1/2 h-8 w-5 -translate-y-1/2 cursor-ew-resize rounded-full"
+                    onPointerDown={(event) => startDayPrimaryRangeResize(event, rowIndex, range, "end")}
+                    type="button"
+                  />
+                </span>
+              );
+            })}
           </div>
         ) : null}
 
@@ -1117,7 +1380,7 @@ export function ScheduleGrid({
             <span
               key={`closed-${block.startRow}-${block.endRow}-${block.startIndex}-${block.endIndex}`}
               style={{
-                ...getClosedCellStyle(surface, block.startIndex * dataColumnWidthPx, block.startRow * scheduleRowHeightPx),
+                ...getScheduleClosedCellStyle(surface, block.startIndex * dataColumnWidthPx, block.startRow * scheduleRowHeightPx),
                 gridColumn: `${block.startIndex + 1} / ${block.endIndex + 1}`,
                 gridRow: `${block.startRow + 1} / ${block.endRow + 1}`
               }}
@@ -1197,7 +1460,7 @@ export function ScheduleGrid({
           <div className={cn("relative z-10 flex gap-2", collapsedTechnicians ? "justify-center" : "items-start justify-between")}>
             {!collapsedTechnicians ? (
               <div className="min-w-0">
-                <p className={cn("text-xs font-black uppercase tracking-[0.16em]", isMobileSurface ? "text-ink/45" : "text-ink/45")}>{stickyHeaderLabel}</p>
+                <p className={cn("text-xs font-black uppercase tracking-[0.16em]", isMobileSurface ? "text-ink/45" : "text-ink/45")}>{resolvedStickyHeaderLabel}</p>
               </div>
             ) : null}
             {onToggleCollapsed && isMobileSurface ? (
@@ -1222,7 +1485,18 @@ export function ScheduleGrid({
   );
 
   return (
-    <div className={cn("overflow-visible border", wrapperClass, className)} ref={wrapperRef} style={initialScheduleScrollStyle}>
+    <div
+      className={cn("relative isolate overflow-visible border", wrapperClass, className)}
+      ref={wrapperRef}
+      style={{
+        ...initialScheduleScrollStyle,
+        ...scheduleSurfaceStyle
+      }}
+    >
+      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -left-px z-[95] w-[2px]" style={edgeGuardStyle} />
+      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -right-px z-[95] w-[2px]" style={edgeGuardStyle} />
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-px z-[95] h-[2px]" style={edgeGuardStyle} />
+      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -bottom-px z-[95] h-[2px]" style={edgeGuardStyle} />
       {!compactHeader ? (
         <div className="flex items-center justify-end gap-3 border-b border-line px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -1263,13 +1537,14 @@ export function ScheduleGrid({
         </div>
       ) : null}
 
-      <div className="relative overflow-visible">
+      <div className="relative overflow-visible" style={scheduleSurfaceStyle}>
         {renderScheduleHeader()}
 
         <div
           className="scrollbar-none cursor-grab overflow-x-auto overflow-y-visible active:cursor-grabbing"
           ref={scrollRef}
           style={{
+            ...scheduleSurfaceStyle,
             touchAction: "pan-y",
             WebkitOverflowScrolling: "touch",
             overscrollBehaviorX: "contain"
@@ -1280,6 +1555,7 @@ export function ScheduleGrid({
           <div
             className="relative grid"
             style={{
+              ...scheduleSurfaceStyle,
               gridTemplateColumns: `${stickyColumnWidth} repeat(${data.headers.length}, ${columnWidth})`,
               minWidth: `calc(${stickyColumnWidth} + ${scrollGridMinWidth})`
             }}
@@ -1300,13 +1576,17 @@ export function ScheduleGrid({
                 style={stickyRowStyle}
               >
                 <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-0" style={stickySurfaceStyle} />
-                <div className={cn("relative z-10 flex min-w-0 items-center gap-2.5", collapsedTechnicians ? "justify-center" : "")}>
-                  <TechnicianAvatarBadge alt={row.technicianName} className={cn(isMobileSurface ? "h-10 w-10" : "h-11 w-11")} src={row.technicianAvatar} />
-                  <div className={cn("min-w-0", collapsedTechnicians && "hidden")}>
-                    <p className="truncate text-sm font-black text-ink">{row.technicianName}</p>
-                    <p className={cn("mt-1 truncate text-xs", isMobileSurface ? "text-ink/50" : "text-ink/50")}>{row.technicianSubtitle}</p>
+                {renderRowHeader ? (
+                  renderRowHeader(row, { collapsedTechnicians, isMobileSurface, rowIndex, surface })
+                ) : (
+                  <div className={cn("relative z-10 flex min-w-0 items-center gap-2.5", collapsedTechnicians ? "justify-center" : "")}>
+                    <TechnicianAvatarBadge alt={row.technicianName} className={cn(isMobileSurface ? "h-10 w-10" : "h-11 w-11")} src={row.technicianAvatar} />
+                    <div className={cn("min-w-0", collapsedTechnicians && "hidden")}>
+                      <p className="truncate text-sm font-black text-ink">{row.technicianName}</p>
+                      <p className={cn("mt-1 truncate text-xs", isMobileSurface ? "text-ink/50" : "text-ink/50")}>{row.technicianSubtitle}</p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
               {isDayGrid ? renderDayTimelineRow(row, rowIndex) : row.cells.map((cell, cellIndex) => {
                 const hasPeriodTimeline = cell.hour == null && Boolean(cell.dayTimeline?.length);

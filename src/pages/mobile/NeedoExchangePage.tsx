@@ -1456,7 +1456,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
     <MobileShell navItems={getNavItems(context)}>
       <FloatingHomeHeader
         className="relative z-10"
-        panelClassName="rounded-none border-transparent bg-transparent px-0 pb-0 shadow-none backdrop-blur-none"
+        panelClassName="relative overflow-hidden"
       >
         <FeatureSegmentedTabs
           items={[
@@ -1466,6 +1466,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
           ]}
           onChange={(nextValue) => setActiveType(nextValue)}
           value={activeType}
+          variant="header"
         />
       </FloatingHomeHeader>
 

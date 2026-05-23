@@ -5,6 +5,7 @@ import {
   adaptSlotMatrix,
   createDefaultTechnicianSpecialRules,
   formatHourLabel,
+  getDateKeysBetween,
   generateTechnicianAvailabilityDraft,
   getActivePolicyForStore,
   getConfirmedShiftStatusLabel,
@@ -18,20 +19,23 @@ import {
   isLongSchedulingRange,
   resolveScheduleContext,
   resolveImportedTemplateMatrix,
-  resolveStoreSlotStatus
+  resolveStoreSlotStatus,
+  resolveTechnicianSlotStatus
 } from "../../lib/shiftPlanning";
 import { parseDateKey } from "../../lib/oneClickSchedule";
 import type {
   ScheduleSlotOverride,
   ScheduleTemplate,
   ShiftTemplateType,
+  SlotMatrix,
   StorePlanningStatus,
   TechnicianAutoGenerateSummary
 } from "../../types/shiftPlanning";
 import { cn, hasLocalizedTitleText } from "../../lib/utils";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
-import { TitleWithInfo } from "../ui/TitleWithInfo";
+import { InfoTooltipTrigger, TitleWithInfo } from "../ui/TitleWithInfo";
+import { ScheduleMatrixGrid, getScheduleMatrixCellClassName, type ScheduleMatrixGridRow } from "./ScheduleMatrixGrid";
 import { ShiftMatrixEditor } from "./ShiftMatrixEditor";
 import { TechnicianSmartPreferencePanel } from "./TechnicianSmartPreferencePanel";
 
@@ -55,7 +59,7 @@ function toneForPolicyStatus(status: StorePlanningStatus) {
   return "neutral";
 }
 
-export type TechnicianPlanningStep = "rules" | "oneClick" | "manual" | "confirm";
+export type TechnicianPlanningStep = "mode" | "rules" | "oneClick" | "manual" | "confirm";
 
 type DayOverrideDraft = {
   date: string;
@@ -184,6 +188,14 @@ function formatPreferenceValue(value: number) {
   return `${value > 0 ? "+" : ""}${value}%`;
 }
 
+function formatDayHourSummary(summary: { dayCount: number; hourCount: number }) {
+  return `${summary.dayCount}天（${summary.hourCount}小时）`;
+}
+
+function formatDayHourRatio(current: { dayCount: number; hourCount: number }, total: { dayCount: number; hourCount: number }) {
+  return `${current.dayCount}天/${total.dayCount}天（${current.hourCount}小时/${total.hourCount}小时）`;
+}
+
 function formatRuleStatusLabel(notificationType: string) {
   const labelMap: Record<string, string> = {
     store_opened_period: "商户开放排班",
@@ -198,17 +210,36 @@ function formatRuleStatusLabel(notificationType: string) {
   return labelMap[notificationType] ?? notificationType;
 }
 
+function resolveTemplateDayDate(templateType: ShiftTemplateType, startDate: string, endDate: string, dayIndex: number) {
+  const dates = getDateKeysBetween(startDate, endDate);
+
+  if (dates.length === 0 || templateType === "day") {
+    return startDate;
+  }
+
+  if (templateType === "week") {
+    const weekdayOrder = [1, 2, 3, 4, 5, 6, 0];
+    const targetWeekday = weekdayOrder[dayIndex] ?? parseDateKey(startDate).getDay();
+
+    return dates.find((date) => parseDateKey(date).getDay() === targetWeekday) ?? dates[0] ?? startDate;
+  }
+
+  return dates[Math.min(Math.max(0, dayIndex), dates.length - 1)] ?? startDate;
+}
+
 export function TechnicianShiftPlanningPanel({
   technicianId,
   storeId,
-  activeStep = "rules",
+  activeStep = "mode",
   selectedPlanningMethod = "oneClick",
+  onPlanningMethodChange,
   onStepChange
 }: {
   technicianId: string;
   storeId: string;
   activeStep?: TechnicianPlanningStep;
   selectedPlanningMethod?: Extract<TechnicianPlanningStep, "oneClick" | "manual">;
+  onPlanningMethodChange?: (method: Extract<TechnicianPlanningStep, "oneClick" | "manual">) => void;
   onStepChange?: (step: TechnicianPlanningStep) => void;
 }) {
   const { technicians, stores } = useEntityStore();
@@ -273,19 +304,61 @@ export function TechnicianShiftPlanningPanel({
   const [selectedOverrideDate, setSelectedOverrideDate] = useState("2026-04-20");
   const [autoSummary, setAutoSummary] = useState<TechnicianAutoGenerateSummary | null>(null);
   const [draft, setDraft] = useState<TechnicianPlanningDraft | null>(null);
+  const [templateRestDayIndexes, setTemplateRestDayIndexes] = useState<Set<number>>(() => new Set());
+  const [dayOverridePaintStatus, setDayOverridePaintStatus] = useState<DayOverrideDraft["status"] | null>(null);
 
   useEffect(() => {
     if (!policy || !storeTemplate) {
       return;
     }
 
+    const initialTemplateType = responseTemplate?.templateType ?? "week";
+    const initialStartDate = response?.periodStart ?? policy.startDate;
+    const initialEndDate = response?.periodEnd ?? policy.endDate;
+    const initialSlotMatrix = responseTemplate?.slotMatrix?.map((row) => [...row]) ?? storeTemplate.slotMatrix.map((row) => row.map(() => false));
+    const initialRestDayIndexes = new Set<number>();
+
+    if (responseTemplate) {
+      initialSlotMatrix.forEach((row, dayIndex) => {
+        const hasEditableHour = row.some((_, hour) =>
+          getEditableTemplateCellState({
+            templateType: initialTemplateType,
+            dayIndex,
+            hour,
+            startDate: initialStartDate,
+            endDate: initialEndDate,
+            storePolicy: policy,
+            storeTemplate,
+            overrides: shiftPlanning.slotOverrides
+          })
+        );
+        const hasActiveEditableHour = row.some((active, hour) =>
+          active &&
+          getEditableTemplateCellState({
+            templateType: initialTemplateType,
+            dayIndex,
+            hour,
+            startDate: initialStartDate,
+            endDate: initialEndDate,
+            storePolicy: policy,
+            storeTemplate,
+            overrides: shiftPlanning.slotOverrides
+          })
+        );
+
+        if (hasEditableHour && !hasActiveEditableHour) {
+          initialRestDayIndexes.add(dayIndex);
+        }
+      });
+    }
+
     setDraft({
-      templateType: responseTemplate?.templateType ?? "week",
+      templateType: initialTemplateType,
       importSource: responseTemplate?.importSource ?? null,
       repeatEnabled: responseTemplate?.repeatEnabled ?? true,
-      startDate: response?.periodStart ?? policy.startDate,
-      endDate: response?.periodEnd ?? policy.endDate,
-      slotMatrix: responseTemplate?.slotMatrix?.map((row) => [...row]) ?? storeTemplate.slotMatrix.map((row) => row.map(() => false)),
+      startDate: initialStartDate,
+      endDate: initialEndDate,
+      slotMatrix: initialSlotMatrix,
       specialRules: response?.specialRules ?? createDefaultTechnicianSpecialRules(),
       dayOverrides: responseOverrides.map((override) => ({
         date: override.date,
@@ -294,11 +367,12 @@ export function TechnicianShiftPlanningPanel({
         reason: override.reason
       }))
     });
+    setTemplateRestDayIndexes(initialRestDayIndexes);
     setSelectedOverrideDate(response?.periodStart ?? policy.startDate);
     setAutoSummary(null);
     setMessage(null);
     setSelectedScheduleRequestKind(null);
-  }, [policy, response, responseOverrides, responseTemplate, storeTemplate]);
+  }, [policy, response, responseOverrides, responseTemplate, shiftPlanning.slotOverrides, storeTemplate]);
 
   useEffect(() => {
     if (!policy) {
@@ -313,6 +387,12 @@ export function TechnicianShiftPlanningPanel({
       return policy.startDate;
     });
   }, [policy]);
+
+  useEffect(() => {
+    const stopPainting = () => setDayOverridePaintStatus(null);
+    window.addEventListener("mouseup", stopPainting);
+    return () => window.removeEventListener("mouseup", stopPainting);
+  }, []);
 
   const isStoreDirectAssignContext = scheduleContext.context === "STORE_DIRECT_ASSIGN";
   const canEdit = isStoreDirectAssignContext
@@ -352,13 +432,15 @@ export function TechnicianShiftPlanningPanel({
   );
   const storeSlotSummary = useMemo(() => {
     if (!policy || !storeTemplate) {
-      return { lockedCount: 0, openCount: 0 };
+      return { lockedCount: 0, lockedDayCount: 0, openCount: 0, openDayCount: 0 };
     }
 
     let openCount = 0;
     let lockedCount = 0;
+    const openDates = new Set<string>();
+    const lockedDates = new Set<string>();
 
-    for (let date = policy.startDate; date <= policy.endDate; ) {
+    getDateKeysBetween(policy.startDate, policy.endDate).forEach((date) => {
       for (let hour = 0; hour < 24; hour += 1) {
         const slotStatus = resolveStoreSlotStatus({
           policy,
@@ -370,18 +452,63 @@ export function TechnicianShiftPlanningPanel({
 
         if (slotStatus === "opened") {
           openCount += 1;
+          openDates.add(date);
         } else if (slotStatus === "locked") {
           lockedCount += 1;
+          lockedDates.add(date);
         }
       }
+    });
 
-      const [year, month, day] = date.split("-").map(Number);
-      const nextDate = new Date(year, month - 1, day + 1);
-      date = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(nextDate.getDate()).padStart(2, "0")}`;
+    return { lockedCount, lockedDayCount: lockedDates.size, openCount, openDayCount: openDates.size };
+  }, [policy, shiftPlanning.slotOverrides, storeTemplate]);
+  const technicianFeedbackSummary = useMemo(() => {
+    if (!policy || !storeTemplate || !response || !responseTemplate) {
+      return { availableDayCount: 0, availableHourCount: 0 };
     }
 
-    return { lockedCount, openCount };
-  }, [policy, shiftPlanning.slotOverrides, storeTemplate]);
+    let availableHourCount = 0;
+    const availableDates = new Set<string>();
+
+    getDateKeysBetween(policy.startDate, policy.endDate).forEach((date) => {
+      for (let hour = 0; hour < 24; hour += 1) {
+        const storeSlotStatus = resolveStoreSlotStatus({
+          policy,
+          template: storeTemplate,
+          overrides: shiftPlanning.slotOverrides,
+          date,
+          hour
+        });
+
+        if (storeSlotStatus !== "opened") {
+          continue;
+        }
+
+        const technicianSlotStatus = resolveTechnicianSlotStatus({
+          policy,
+          storeTemplate,
+          response,
+          responseTemplate,
+          overrides: shiftPlanning.slotOverrides,
+          date,
+          hour
+        });
+
+        if (technicianSlotStatus === "available") {
+          availableHourCount += 1;
+          availableDates.add(date);
+        }
+      }
+    });
+
+    return { availableDayCount: availableDates.size, availableHourCount };
+  }, [policy, response, responseTemplate, shiftPlanning.slotOverrides, storeTemplate]);
+  const storeOpenDayHourSummary = { dayCount: storeSlotSummary.openDayCount, hourCount: storeSlotSummary.openCount };
+  const finalBookableDayHourSummary = useMemo(() => {
+    const dates = new Set(finalBookableSlots.map((slot) => slot.date));
+
+    return { dayCount: dates.size, hourCount: finalBookableSlots.length };
+  }, [finalBookableSlots]);
   const confirmedCount = confirmedShifts.filter((shift) => shift.shiftStatus === "confirmed").length;
   const waitlistedCount = confirmedShifts.filter((shift) => shift.shiftStatus === "waitlisted").length;
   const finalAvailableCount = finalBookableSlots.filter((slot) => slot.status === "available").length;
@@ -415,45 +542,55 @@ export function TechnicianShiftPlanningPanel({
   const longPeriod = isLongSchedulingRange(policy.startDate, policy.endDate);
   const isSelfFinalContext = scheduleContext.context === "INDIVIDUAL_SELF_FINAL" || scheduleContext.context === "STORE_TECH_SELF_FINAL";
   const usesFinalBookableProjection = isSelfFinalContext || isStoreDirectAssignContext;
-  const summaryCards: Array<[string, string, BadgeTone]> = [
-    ["当前上下文", getScheduleContextLabel(scheduleContext.context), "blue"],
+  const usesStoreApplicationLeaveActions = scheduleContext.requiresStoreConfirmation || isStoreDirectAssignContext;
+  const summaryCards: Array<[string, string]> = [
     [
       scheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "商户开放" : isStoreDirectAssignContext ? "商户安排" : "店铺约束",
       scheduleContext.context === "STORE_CONFIRM_REQUIRED"
-        ? `${storeSlotSummary.openCount} 格`
+        ? formatDayHourSummary(storeOpenDayHourSummary)
         : isStoreDirectAssignContext
-          ? `${finalBookableSlots.length} 格已生效`
-          : `${storeSlotSummary.openCount} 格允许发布`,
-      "green"
+          ? formatDayHourSummary(finalBookableDayHourSummary)
+          : formatDayHourSummary(storeOpenDayHourSummary),
     ],
     [
       isStoreDirectAssignContext ? "我的确认" : isSelfFinalContext ? "我的发布" : "我的反馈",
-      isStoreDirectAssignContext ? "只读 / 可申请" : `${counts.availableCount} / ${counts.unavailableCount}`,
-      "yellow"
+      isStoreDirectAssignContext
+        ? "只读 / 可申请"
+        : isSelfFinalContext
+          ? formatDayHourSummary({ dayCount: technicianFeedbackSummary.availableDayCount, hourCount: counts.availableCount })
+          : formatDayHourRatio(
+              { dayCount: technicianFeedbackSummary.availableDayCount, hourCount: technicianFeedbackSummary.availableHourCount },
+              storeOpenDayHourSummary
+            )
     ],
     [
       usesFinalBookableProjection ? "最终可预约" : "最终确认",
-      usesFinalBookableProjection ? `${finalAvailableCount} / ${finalConflictCount}` : `${confirmedCount} / ${waitlistedCount}`,
-      "neutral"
+      usesFinalBookableProjection ? `${finalAvailableCount} / ${finalConflictCount}` : `${confirmedCount} / ${waitlistedCount}`
     ]
   ];
-  const manualStepCaption = isStoreDirectAssignContext ? "步骤 3" : selectedPlanningMethod === "manual" ? "步骤 1" : "步骤 2";
-  const confirmStepCaption = selectedPlanningMethod === "manual" && !isStoreDirectAssignContext ? "步骤 2" : "步骤 3";
   const currentStepCopy: Record<TechnicianPlanningStep, { caption: string; title: string }> = {
-    rules: {
+    mode: {
       caption: "步骤 1",
-      title: isStoreDirectAssignContext ? "查看商户直接排班" : isSelfFinalContext ? "发布规则设定" : "排班规则设定"
+      title: "模式选择"
+    },
+    rules: {
+      caption: "步骤 2",
+      title: isStoreDirectAssignContext
+        ? "查看商户直接排班"
+        : selectedPlanningMethod === "manual"
+          ? isSelfFinalContext ? "发布设置" : "排班设置"
+          : isSelfFinalContext ? "发布规则设定" : "规则设定"
     },
     oneClick: {
-      caption: "步骤 2",
-      title: isStoreDirectAssignContext ? "确认收到" : isSelfFinalContext ? "发布上班时间" : "按规则自动生成反馈"
+      caption: "步骤 3",
+      title: isStoreDirectAssignContext ? "确认收到" : isSelfFinalContext ? "自动生成上班时间" : "自动生成反馈"
     },
     manual: {
-      caption: manualStepCaption,
-      title: isStoreDirectAssignContext ? "申请更改" : isSelfFinalContext ? "手动发布上班时间" : "手动提交反馈"
+      caption: "步骤 3",
+      title: isStoreDirectAssignContext ? "申请更改" : isSelfFinalContext ? "生成上班时间" : "生成反馈"
     },
     confirm: {
-      caption: confirmStepCaption,
+      caption: "步骤 4",
       title: usesFinalBookableProjection ? "最终可预约结果" : "确定排班"
     }
   };
@@ -465,19 +602,19 @@ export function TechnicianShiftPlanningPanel({
   }> = [
     {
       step: "oneClick",
-      title: scheduleContext.requiresStoreConfirmation ? "按规则自动生成反馈" : "按规则自动生成上班时间",
+      title: "自动模式",
       caption: scheduleContext.requiresStoreConfirmation
-        ? "读取商户开放格子，按商户规则、个人偏好和历史模板生成可上班反馈，再提交给商户最终确认。"
-        : "按店铺允许发布时段、店铺约束和个人偏好生成可发布上班时间。",
-      badge: scheduleContext.requiresStoreConfirmation ? "生成反馈" : "生成发布"
+        ? "先完成规则设定，再由系统按商户开放时段、个人偏好和历史模板自动生成反馈。"
+        : "先完成发布规则，再由系统按店铺允许时段和个人偏好自动生成上班时间。",
+      badge: "默认自动"
     },
     {
       step: "manual",
-      title: scheduleContext.requiresStoreConfirmation ? "手动提交反馈" : "手动发布上班时间",
+      title: "手动模式",
       caption: scheduleContext.requiresStoreConfirmation
-        ? "直接点选可上班 / 不可上班时段并提交，商户最终确认后才进入可预约结果。"
-        : "手动点选上班时间并发布，通过店铺校验后直接进入最终可预约投影。",
-      badge: scheduleContext.requiresStoreConfirmation ? "商户确认模式" : "技师自主排班"
+        ? "先进入排班设置，再按日期和小时手动生成反馈，最后等待商户确定排班。"
+        : "先进入发布设置，再手动生成上班时间，通过店铺校验后进入最终可预约投影。",
+      badge: "手动"
     }
   ];
   const leaveRequestDate = selectedOverrideDate >= policy.startDate && selectedOverrideDate <= policy.endDate ? selectedOverrideDate : policy.startDate;
@@ -530,7 +667,77 @@ export function TechnicianShiftPlanningPanel({
     );
   };
 
-  const applyOverrideToggle = (hour: number) => {
+  const updateDraftSlotMatrix = (nextMatrix: SlotMatrix) => {
+    setTemplateRestDayIndexes((current) => {
+      const next = new Set(current);
+
+      nextMatrix.forEach((row, dayIndex) => {
+        if (row.some(Boolean)) {
+          next.delete(dayIndex);
+        }
+      });
+
+      return next;
+    });
+    setDraft((current) => (current ? { ...current, slotMatrix: nextMatrix } : current));
+  };
+  const requestTemplateDayLeave = (dayIndex: number) => {
+    const targetDate = resolveTemplateDayDate(draft.templateType, draft.startDate, draft.endDate, dayIndex);
+
+    setSelectedOverrideDate(targetDate);
+    setSelectedScheduleRequestKind("leave");
+    setMessage("请假申请入口已打开，提交后会进入商户处理，最终排班不会被直接改写。");
+  };
+
+  const getTemplateDayActionState = (dayIndex: number) => ({
+    overtimeBlocked: false,
+    rest: templateRestDayIndexes.has(dayIndex)
+  });
+
+  const toggleTemplateDayRest = (dayIndex: number) => {
+    if (!canEdit) {
+      return;
+    }
+
+    const currentlyResting = templateRestDayIndexes.has(dayIndex);
+
+    setTemplateRestDayIndexes((current) => {
+      const next = new Set(current);
+
+      if (currentlyResting) {
+        next.delete(dayIndex);
+      } else {
+        next.add(dayIndex);
+      }
+
+      return next;
+    });
+    setDraft((current) => {
+      if (!current || !current.slotMatrix[dayIndex]) {
+        return current;
+      }
+
+      const nextMatrix = current.slotMatrix.map((row) => [...row]);
+      nextMatrix[dayIndex] = nextMatrix[dayIndex].map((_, hour) => {
+        const editable = getEditableTemplateCellState({
+          templateType: current.templateType,
+          dayIndex,
+          hour,
+          startDate: current.startDate,
+          endDate: current.endDate,
+          storePolicy: policy,
+          storeTemplate,
+          overrides: shiftPlanning.slotOverrides
+        });
+
+        return editable ? currentlyResting : false;
+      });
+
+      return { ...current, slotMatrix: nextMatrix };
+    });
+  };
+
+  const applyOverrideStatus = (hour: number, nextStatus: DayOverrideDraft["status"]) => {
     const storeSlotStatus = resolveStoreSlotStatus({
       policy,
       template: storeTemplate,
@@ -542,9 +749,6 @@ export function TechnicianShiftPlanningPanel({
     if (storeSlotStatus === "closed" || !canEdit) {
       return;
     }
-
-    const existing = draft.dayOverrides.find((override) => override.date === selectedOverrideDate && override.hour === hour);
-    const nextStatus: DayOverrideDraft["status"] = existing?.status === "available" ? "unavailable" : "available";
 
     setDraft((current) =>
       current
@@ -563,6 +767,95 @@ export function TechnicianShiftPlanningPanel({
         : current
     );
   };
+  const resizeDailyOverrideRange = (_rowIndex: number, startHour: number, endHour: number, nextStartHour: number, nextEndHour: number) => {
+    if (!canEdit) {
+      return;
+    }
+
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const keptOverrides = current.dayOverrides.filter(
+        (override) => override.date !== selectedOverrideDate || override.hour < startHour || override.hour >= endHour
+      );
+      const nextOverrides = [...keptOverrides];
+
+      for (let hour = nextStartHour; hour < nextEndHour; hour += 1) {
+        const storeSlotStatus = resolveStoreSlotStatus({
+          policy,
+          template: storeTemplate,
+          overrides: shiftPlanning.slotOverrides,
+          date: selectedOverrideDate,
+          hour
+        });
+
+        if (storeSlotStatus !== "closed") {
+          nextOverrides.push({
+            date: selectedOverrideDate,
+            hour,
+            status: "available",
+            reason: "技师单日微调"
+          });
+        }
+      }
+
+      return { ...current, dayOverrides: nextOverrides };
+    });
+  };
+
+  const dailyOverrideMatrixRows: ScheduleMatrixGridRow[] = [
+    {
+      cells: Array.from({ length: 24 }, (_, hour) => {
+        const override = selectedDateOverrideMap.get(hour);
+        const storeSlotStatus = resolveStoreSlotStatus({
+          policy,
+          template: storeTemplate,
+          overrides: shiftPlanning.slotOverrides,
+          date: selectedOverrideDate,
+          hour
+        });
+        const disabled = storeSlotStatus === "closed" || !canEdit;
+        const active = override?.status === "available";
+        const hint = disabled
+          ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺关闭"}：${formatHourLabel(hour)}`
+          : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`;
+        const nextStatus: DayOverrideDraft["status"] = active ? "unavailable" : "available";
+
+        return {
+          active,
+          className: cn(
+            getScheduleMatrixCellClassName(active, disabled),
+            active && !disabled && "ring-1 ring-inset ring-[color:color-mix(in_srgb,var(--client-primary)_52%,transparent)]"
+          ),
+          disabled,
+          hint,
+          key: `${selectedOverrideDate}-${hour}`,
+          onMouseDown: () => {
+            if (disabled) {
+              return;
+            }
+
+            setDayOverridePaintStatus(nextStatus);
+            applyOverrideStatus(hour, nextStatus);
+          },
+          onMouseEnter: () => {
+            if (disabled || dayOverridePaintStatus == null) {
+              return;
+            }
+
+            applyOverrideStatus(hour, dayOverridePaintStatus);
+          },
+          onMouseUp: () => setDayOverridePaintStatus(null),
+          selected: active && !disabled
+        };
+      }),
+      indexLabel: selectedOverrideDateMeta.dateLabel,
+      key: selectedOverrideDate,
+      title: selectedOverrideDateMeta.weekdayLabel
+    }
+  ];
 
   const applyImportedTemplate = () => {
     if (!selectedImportOption) {
@@ -579,7 +872,7 @@ export function TechnicianShiftPlanningPanel({
       return;
     }
 
-    setDraft((current) => (current ? { ...current, slotMatrix: importedMatrix } : current));
+    updateDraftSlotMatrix(importedMatrix);
     setMessage(`已导入历史模板：${selectedImportOption.label}。`);
   };
 
@@ -654,9 +947,81 @@ export function TechnicianShiftPlanningPanel({
 
     return <span className="mt-1 block text-[11px] text-[color:var(--client-muted)]">该规则由商户统一设定，不可修改。</span>;
   };
+  const manualPlanningSetup = activeStep === "rules" && selectedPlanningMethod === "manual" && !isStoreDirectAssignContext;
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]">
+      {activeStep === "mode" && !isStoreDirectAssignContext ? (
+        <section className={planningSectionClass}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">{currentStepCopy.mode.caption}</p>
+                <PlanningBadge tone="blue">{getScheduleContextLabel(scheduleContext.context)}</PlanningBadge>
+                <PlanningBadge tone={selectedPlanningMethod === "manual" ? "yellow" : "green"}>
+                  {selectedPlanningMethod === "manual" ? "手动模式" : "默认自动"}
+                </PlanningBadge>
+              </div>
+              <div className="mt-2">
+                <PlanningSectionHeading
+                  info="先选择本周期的反馈生成方式。自动模式会先设定规则再自动生成反馈；手动模式会先进入排班设置再生成反馈。"
+                  title={currentStepCopy.mode.title}
+                />
+              </div>
+            </div>
+            <PlanningBadge className="self-start" tone={toneForPolicyStatus(policy.status)}>{getPolicyStatusLabel(policy.status)}</PlanningBadge>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {methodChoices.map((item) => {
+              const active = selectedPlanningMethod === item.step;
+
+              return (
+                <button
+                  className={cn(
+                    "rounded-[20px] border px-4 py-4 text-left transition",
+                    active
+                      ? "border-[color:color-mix(in_srgb,var(--client-primary)_38%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
+                      : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] text-[color:var(--client-text)]"
+                  )}
+                  key={item.step}
+                  onClick={() => onPlanningMethodChange?.(item.step)}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <strong className="truncate text-base font-black">{item.title}</strong>
+                      <InfoTooltipTrigger
+                        className={cn(
+                          "h-5 w-5",
+                          active && "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] text-[color:var(--client-primary-strong)]"
+                        )}
+                        content={item.caption}
+                        label={`${item.title}说明`}
+                        variant="client"
+                      />
+                    </div>
+                    <PlanningBadge tone={active ? "green" : "neutral"}>{item.badge}</PlanningBadge>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <Button
+              className="h-12 w-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_18%,transparent)] sm:w-auto sm:min-w-[220px]"
+              onClick={() => onStepChange?.("rules")}
+              size="lg"
+            >
+              {selectedPlanningMethod === "manual"
+                ? scheduleContext.requiresStoreConfirmation ? "下一步：排班设置" : "下一步：发布设置"
+                : scheduleContext.requiresStoreConfirmation ? "下一步：规则设定" : "下一步：发布规则设定"}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
       {activeStep === "rules" || isStoreDirectAssignContext ? (
       <section className={planningSectionClass}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -709,18 +1074,73 @@ export function TechnicianShiftPlanningPanel({
           </div>
         ) : null}
 
+        {manualPlanningSetup ? (
+          <>
+            <ShiftMatrixEditor
+              accent="technician"
+              activeLabel={scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班"}
+              caption={
+                scheduleContext.requiresStoreConfirmation
+                  ? "直接点选本周期可接受时段。灰色格子表示商户未开放或当前周期不可编辑。"
+                  : "直接点选本周期可发布上班时段。灰色格子表示店铺不允许发布或当前周期不可编辑。"
+              }
+              disabledLabel={scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺不允许发布"}
+              dayActionMode={usesStoreApplicationLeaveActions ? "leave" : "availability"}
+              getCellDisabled={(dayIndex, hour) =>
+                !canEdit || !getEditableTemplateCellState({
+                  templateType: draft.templateType,
+                  dayIndex,
+                  hour,
+                  startDate: draft.startDate,
+                  endDate: draft.endDate,
+                  storePolicy: policy,
+                  storeTemplate,
+                  overrides: shiftPlanning.slotOverrides
+                })
+              }
+              getCellHint={(dayIndex, hour, active, disabled) =>
+                disabled
+                  ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺未允许发布"}：${formatHourLabel(hour)}`
+                  : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`
+              }
+              getDayActionState={getTemplateDayActionState}
+              inactiveLabel="不可排班"
+              layout="connected"
+              matrix={draft.slotMatrix}
+              onChange={updateDraftSlotMatrix}
+              onRequestDayLeave={usesStoreApplicationLeaveActions ? requestTemplateDayLeave : undefined}
+              onToggleDayRest={toggleTemplateDayRest}
+              startDate={draft.startDate}
+              stickyAxis={false}
+              templateType={draft.templateType}
+              title={scheduleContext.requiresStoreConfirmation ? "手动反馈表" : "手动发布表"}
+            />
+            <div className="mt-4 flex justify-end">
+              <Button
+                className="h-12 w-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_18%,transparent)] sm:w-auto sm:min-w-[220px]"
+                onClick={() => onStepChange?.("manual")}
+                size="lg"
+              >
+                {scheduleContext.requiresStoreConfirmation ? "下一步：生成反馈" : "下一步：生成上班"}
+              </Button>
+            </div>
+          </>
+        ) : null}
+
+        {!manualPlanningSetup ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map(([label, value, tone]) => (
+          {summaryCards.map(([label, value]) => (
             <article className={cn(planningInsetClass, "p-3")} key={label}>
               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[color:var(--client-muted)]">{label}</p>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <strong className="text-lg font-black text-[color:var(--client-text)]">{value}</strong>
-                <PlanningBadge tone={tone}>{label}</PlanningBadge>
+              <div className="mt-3">
+                <strong className="w-full min-w-0 text-[17px] font-black leading-6 text-[color:var(--client-text)] sm:w-auto">{value}</strong>
               </div>
             </article>
           ))}
         </div>
+        ) : null}
 
+        {!manualPlanningSetup ? (
         <div className={cn(planningInsetClass, "mt-4 p-3")}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <PlanningSectionHeading
@@ -788,6 +1208,7 @@ export function TechnicianShiftPlanningPanel({
             </div>
           ) : null}
         </div>
+        ) : null}
       </section>
       ) : null}
 
@@ -866,48 +1287,14 @@ export function TechnicianShiftPlanningPanel({
         </>
       ) : null}
 
-      {activeStep === "rules" && !isStoreDirectAssignContext && (
+      {activeStep === "rules" && selectedPlanningMethod !== "manual" && !isStoreDirectAssignContext && (
         <>
           <TechnicianSmartPreferencePanel storeId={storeId} technicianId={technicianId} />
 
           <section className={planningSectionClass}>
-            <PlanningSectionHeading
-              info="先选择本次反馈方式。商户确认模式会把结果作为反馈提交给商户；技师自主排班模式会把发布结果直接投影到最终可预约时间。"
-              title="反馈方式"
-            />
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {methodChoices.map((item) => {
-                const active = selectedPlanningMethod === item.step;
-
-                return (
-                  <button
-                    className={cn(
-                      "rounded-[20px] border px-4 py-4 text-left transition",
-                      active
-                        ? "border-[color:color-mix(in_srgb,var(--client-primary)_38%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
-                        : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] text-[color:var(--client-text)]"
-                    )}
-                    key={item.step}
-                    onClick={() => onStepChange?.(item.step)}
-                    type="button"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <strong className="text-base font-black">{item.title}</strong>
-                      <PlanningBadge tone={active ? "green" : "neutral"}>{item.badge}</PlanningBadge>
-                    </div>
-                    <span className={cn("mt-3 block text-sm font-semibold leading-6", active ? "text-[color:var(--client-primary-strong)]/82" : "text-[color:var(--client-muted)]")}>
-                      {item.caption}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <section className={planningSectionClass}>
             <div className="flex items-start justify-between gap-3">
               <PlanningSectionHeading
-                info="定义本次反馈的模板周期、生效时间和是否循环。最终生成结果会在第二步里完成。"
+                info="定义本次反馈的模板周期、生效时间和是否循环。最终生成结果会在第三步完成。"
                 right={<PlanningBadge tone="neutral">{draft.templateType === "day" ? "日模板" : draft.templateType === "week" ? "周模板" : "月模板"}</PlanningBadge>}
                 title="规则生效范围"
               />
@@ -1142,9 +1529,7 @@ export function TechnicianShiftPlanningPanel({
               onClick={() => onStepChange?.(selectedPlanningMethod)}
               size="lg"
             >
-              {selectedPlanningMethod === "manual"
-                ? scheduleContext.requiresStoreConfirmation ? "下一步：手动提交反馈" : "下一步：手动发布上班"
-                : scheduleContext.requiresStoreConfirmation ? "下一步：自动生成反馈" : "下一步：自动生成上班"}
+              {scheduleContext.requiresStoreConfirmation ? "下一步：自动生成反馈" : "下一步：自动生成上班"}
             </Button>
           </div>
         </>
@@ -1166,8 +1551,8 @@ export function TechnicianShiftPlanningPanel({
                 }
                 title={
                   activeStep === "oneClick"
-                    ? scheduleContext.requiresStoreConfirmation ? "按规则自动生成反馈" : "根据店铺规则生成可发布上班时间"
-                    : scheduleContext.requiresStoreConfirmation ? "手动提交反馈" : "手动发布上班时间"
+                    ? scheduleContext.requiresStoreConfirmation ? "自动生成反馈" : "根据店铺规则生成可发布上班时间"
+                    : scheduleContext.requiresStoreConfirmation ? "生成反馈" : "生成上班时间"
                 }
               />
               <div className="flex flex-wrap gap-2">
@@ -1291,6 +1676,7 @@ export function TechnicianShiftPlanningPanel({
                     : "直接点选本周期可发布上班时段。灰色格子表示店铺不允许发布或当前周期不可编辑。"
               }
               disabledLabel={scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺不允许发布"}
+              dayActionMode={usesStoreApplicationLeaveActions ? "leave" : "availability"}
               getCellDisabled={(dayIndex, hour) =>
                 !canEdit || !getEditableTemplateCellState({
                   templateType: draft.templateType,
@@ -1308,9 +1694,13 @@ export function TechnicianShiftPlanningPanel({
                   ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺未允许发布"}：${formatHourLabel(hour)}`
                   : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`
               }
+              getDayActionState={getTemplateDayActionState}
               inactiveLabel="不可排班"
+              layout="connected"
               matrix={draft.slotMatrix}
-              onChange={(nextMatrix) => setDraft((current) => (current ? { ...current, slotMatrix: nextMatrix } : current))}
+              onChange={updateDraftSlotMatrix}
+              onRequestDayLeave={usesStoreApplicationLeaveActions ? requestTemplateDayLeave : undefined}
+              onToggleDayRest={toggleTemplateDayRest}
               startDate={draft.startDate}
               stickyAxis={false}
               templateType={draft.templateType}
@@ -1344,75 +1734,19 @@ export function TechnicianShiftPlanningPanel({
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <PlanningBadge tone="blue">{scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班"}</PlanningBadge>
               <PlanningBadge tone="neutral">不可排班</PlanningBadge>
               <PlanningBadge tone="yellow">{scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺关闭"}</PlanningBadge>
             </div>
 
-            <div className="mt-4 min-w-0 max-w-full overflow-hidden rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] [contain:layout_paint]">
-              <div
-                className="max-w-full overflow-x-auto overscroll-x-contain"
-                data-page-drag-ignore="true"
-                style={{
-                  WebkitOverflowScrolling: "touch"
-                }}
-              >
-                <div className="min-w-[1216px]">
-                  <div className="grid grid-cols-[112px_repeat(24,minmax(46px,1fr))] border-b border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)] text-center text-[11px] font-black text-[color:var(--client-muted)]">
-                    <div className="relative z-[1] flex flex-col items-start justify-center gap-0.5 border-r border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)] px-3 py-3 text-left">
-                      <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[color:var(--client-muted)]">日期</span>
-                      <span className="text-xs font-black text-[color:var(--client-text)]">/ 小时</span>
-                    </div>
-                    {Array.from({ length: 24 }, (_, hour) => (
-                      <div className="border-l border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] px-1 py-3" key={`override-hour-${hour}`}>
-                        {String(hour).padStart(2, "0")}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-[112px_repeat(24,minmax(46px,1fr))]">
-                    <div className="relative z-[1] flex h-14 min-w-[112px] flex-col justify-center gap-0.5 border-r border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-3 text-left">
-                      <span className="text-[10px] font-black uppercase tracking-[0.14em] text-[color:var(--client-muted)]">{selectedOverrideDateMeta.dateLabel}</span>
-                      <span className="truncate text-sm font-black text-[color:var(--client-text)]">{selectedOverrideDateMeta.weekdayLabel}</span>
-                    </div>
-                    {Array.from({ length: 24 }, (_, hour) => {
-                      const override = selectedDateOverrideMap.get(hour);
-                      const storeSlotStatus = resolveStoreSlotStatus({
-                        policy,
-                        template: storeTemplate,
-                        overrides: shiftPlanning.slotOverrides,
-                        date: selectedOverrideDate,
-                        hour
-                      });
-                      const disabled = storeSlotStatus === "closed" || !canEdit;
-                      const active = override?.status === "available";
-                      const hint = disabled
-                        ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺关闭"}：${formatHourLabel(hour)}`
-                        : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`;
-
-                      return (
-                        <button
-                          className={cn(
-                            "h-14 border-l px-0 transition",
-                            disabled
-                              ? "cursor-not-allowed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[repeating-linear-gradient(135deg,rgba(148,163,184,0.18)_0,rgba(148,163,184,0.18)_8px,rgba(255,255,255,0.88)_8px,rgba(255,255,255,0.88)_16px)] text-[color:color-mix(in_srgb,var(--client-muted)_40%,transparent)]"
-                              : active
-                                ? "border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
-                                : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-[color:var(--client-muted)] hover:border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] hover:text-[color:var(--client-primary-strong)]"
-                          )}
-                          key={`${selectedOverrideDate}-${hour}`}
-                          onClick={() => applyOverrideToggle(hour)}
-                          title={hint}
-                          type="button"
-                        >
-                          <span className="sr-only">{hint}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <ScheduleMatrixGrid
+              activeCellLabel="OK"
+              activeCellStatus="confirmed"
+              headerBottomLabel="/ 小时"
+              headerTopLabel="日期"
+              onResizeActiveRange={resizeDailyOverrideRange}
+              rows={dailyOverrideMatrixRows}
+              stickyAxis
+            />
           </section>
 
           <div className="sticky bottom-4 z-10">

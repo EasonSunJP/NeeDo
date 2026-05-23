@@ -1909,13 +1909,18 @@ body:has(.merchant-analytics-clean-shell),
   padding-inline: 10px !important;
 }
 
-.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--single-frame {
+.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--single-frame,
+.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header {
   border: 0;
   background: transparent !important;
   padding: 0 !important;
   box-shadow: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header {
+  gap: 8px;
 }
 
 .client-shell .client-fixed-tab-bar {

@@ -734,19 +734,24 @@ export function ScheduleViewSegmentedTabs({
   );
 }
 
-function getAdaptiveTabLabelClass(label: ReactNode) {
+function getAdaptiveTabLabelClass(label: ReactNode, options: { relaxed?: boolean } = {}) {
   if (typeof label !== "string") {
     return "inline-flex min-w-0 max-w-full items-center justify-center";
   }
 
   const length = Array.from(label.replace(/\s/g, "")).length;
+  const relaxed = Boolean(options.relaxed);
 
-  if (length <= 3) {
+  if (length <= 4 || (relaxed && length <= 5)) {
     return "inline-block max-w-full whitespace-nowrap";
   }
 
+  if (relaxed && length <= 8) {
+    return "inline-block w-[112%] max-w-[112%] -mx-[6%] whitespace-nowrap [transform:scaleX(0.9)] [transform-origin:center]";
+  }
+
   if (length <= 5) {
-    return "inline-block w-[122%] max-w-[122%] -mx-[11%] whitespace-nowrap [transform:scaleX(0.82)] [transform-origin:center]";
+    return "inline-block w-[112%] max-w-[112%] -mx-[6%] whitespace-nowrap [transform:scaleX(0.9)] [transform-origin:center]";
   }
 
   if (length <= 8) {
@@ -760,19 +765,25 @@ export function FeatureSegmentedTabs<T extends string>({
   items,
   value,
   onChange,
-  className
+  className,
+  variant = "default"
 }: {
   items: Array<{ label: ReactNode; value: T }>;
   value: T;
   onChange: (value: T) => void;
   className?: string;
+  variant?: "default" | "header";
 }) {
   const { language } = useI18n();
+  const isHeaderVariant = variant === "header";
 
   return (
     <div
       className={cn(
-        "client-feature-segmented-tabs flex w-full items-stretch gap-0.5 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_28px_rgba(0,0,0,0.12)] backdrop-blur-xl",
+        "client-feature-segmented-tabs flex w-full items-stretch rounded-full",
+        isHeaderVariant
+          ? "client-feature-segmented-tabs--header gap-2 border-0 bg-transparent p-0 shadow-none"
+          : "gap-0.5 border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_28px_rgba(0,0,0,0.12)] backdrop-blur-xl",
         className
       )}
     >
@@ -783,14 +794,17 @@ export function FeatureSegmentedTabs<T extends string>({
         return (
           <button
             className={cn(
-              "client-feature-segmented-tab flex min-h-[44px] min-w-0 flex-1 items-center justify-center rounded-full px-1 py-2 text-center text-[11px] font-black leading-none transition sm:px-2 sm:text-[13px]",
-              active ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]" : "text-[color:var(--client-muted)]"
+              "client-feature-segmented-tab flex min-w-0 flex-1 items-center justify-center rounded-full px-1 py-2 text-center text-[11px] font-black leading-none transition sm:px-2 sm:text-[13px]",
+              isHeaderVariant ? "min-h-[48px]" : "min-h-[44px]",
+              active
+                ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+                : "text-[color:var(--client-muted)]"
             )}
             key={item.value}
             onClick={() => onChange(item.value)}
             type="button"
           >
-            <span className={cn("overflow-hidden", getAdaptiveTabLabelClass(label))}>{label}</span>
+            <span className={cn("overflow-hidden", getAdaptiveTabLabelClass(label, { relaxed: isHeaderVariant }))}>{label}</span>
           </button>
         );
       })}

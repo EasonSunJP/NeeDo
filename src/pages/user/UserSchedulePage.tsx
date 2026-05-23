@@ -4,6 +4,7 @@ import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig, userNavItems } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
+import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
 import { useAuth } from "../../auth/AuthProvider";
 import { cn } from "../../lib/utils";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
@@ -70,7 +71,7 @@ export function UserSchedulePage() {
           <span
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              isNight ? "bg-white/12 text-white" : "bg-[color:var(--client-primary-soft)] text-[#3c887e]"
+              isNight ? "bg-white/12 text-[color:var(--client-primary)]" : "bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
             )}
           >
             <AppIcon className="h-4 w-4" name="search" />
@@ -79,13 +80,25 @@ export function UserSchedulePage() {
         </Link>
       </FloatingHomeHeader>
 
-      <div className="px-4 pb-28 pt-2.5">
-        <TechnicianScheduleWorkspace
-          basePath="/schedule"
-          copy={userScheduleCopy}
-          detailActor="user"
-          revenueSlot="create"
-        />
+      <div className="space-y-3 px-4 pb-28 pt-2.5">
+        <UnifiedUserCalendar currentCustomer={currentCustomer} />
+
+        <details className="group rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-2 text-sm font-black text-[color:var(--client-text)] [&::-webkit-details-marker]:hidden">
+            <span>舊版日程工作區</span>
+            <span className="grid h-7 w-7 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] text-[color:var(--client-muted)] transition group-open:rotate-180">
+              ˅
+            </span>
+          </summary>
+          <div className="pt-2">
+            <TechnicianScheduleWorkspace
+              basePath="/schedule"
+              copy={userScheduleCopy}
+              detailActor="user"
+              revenueSlot="create"
+            />
+          </div>
+        </details>
       </div>
     </MobileShell>
   );

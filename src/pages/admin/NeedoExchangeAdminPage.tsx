@@ -1292,6 +1292,8 @@ export function NeedoExchangeAdminPage({ mode }: { mode: NeedoExchangeAdminMode 
       return next;
     });
     setColumnSearch((current) => ({ ...current, [columnKey]: "" }));
+    setSortState((current) => (current?.key === columnKey ? null : current));
+    setSelectedRowKeys([]);
   };
 
   const applyColumnState = (columnKey: NeedoTableColumnKey, payload: TableColumnHeaderApplyPayload) => {

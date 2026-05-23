@@ -35,6 +35,7 @@ import {
   type TechnicianScheduleSetupType
 } from "../../components/scheduling/TechnicianScheduleSetupModal";
 import { TechnicianShiftPlanningPanel, type TechnicianPlanningStep } from "../../components/scheduling/TechnicianShiftPlanningPanel";
+import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
@@ -47,7 +48,6 @@ import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages
 import { ImScopeProvider } from "../../features/im/scope";
 import { useSocial } from "../../features/social/context";
 import { IdentityBadge, VerificationBadge } from "../../features/social/components/SocialUi";
-import { TechnicianScheduleWorkspace } from "../../features/technician-schedule/route-pages";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
@@ -2546,7 +2546,7 @@ export function TechnicianPortalPage() {
   const [statusTimelineRecords, setStatusTimelineRecords] = useState<TechnicianStatusTimelineRecord[]>([]);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
   const [schedulePrimaryTab, setSchedulePrimaryTab] = useState<"mySchedule" | "planning">("mySchedule");
-  const [schedulePlanningStep, setSchedulePlanningStep] = useState<TechnicianPlanningStep>("rules");
+  const [schedulePlanningStep, setSchedulePlanningStep] = useState<TechnicianPlanningStep>("mode");
   const [schedulePlanningMethod, setSchedulePlanningMethod] = useState<Extract<TechnicianPlanningStep, "oneClick" | "manual">>("oneClick");
   const [scheduleDisplayMode, setScheduleDisplayMode] = useState<ScheduleDisplayMode>("day");
   const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("day");
@@ -2689,6 +2689,14 @@ export function TechnicianPortalPage() {
 
     setSchedulePlanningStep(nextStep);
   };
+  const updateSchedulePlanningMethod = (nextMethod: Extract<TechnicianPlanningStep, "oneClick" | "manual">) => {
+    setSchedulePlanningMethod(nextMethod);
+    setSchedulePlanningStep((currentStep) => (currentStep === "oneClick" || currentStep === "manual" ? nextMethod : currentStep));
+  };
+  const effectiveSchedulePlanningStep =
+    activeScheduleContext.context === "STORE_DIRECT_ASSIGN" && schedulePlanningStep === "mode"
+      ? "rules"
+      : schedulePlanningStep;
   const schedulePlanningProgressSteps: Array<{
     value: TechnicianPlanningStep;
     step: string;
@@ -2702,26 +2710,33 @@ export function TechnicianPortalPage() {
         ]
       : [
           {
-            value: "rules",
+            value: "mode",
             step: "1",
-            label: activeScheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "规则设定" : "发布规则设定"
+            label: "模式选择"
+          },
+          {
+            value: "rules",
+            step: "2",
+            label: schedulePlanningMethod === "manual"
+              ? activeScheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "排班设置" : "发布设置"
+              : activeScheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "规则设定" : "发布规则设定"
           },
           {
             value: schedulePlanningMethod,
-            step: "2",
+            step: "3",
             label: schedulePlanningMethod === "manual"
-              ? activeScheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "手动提交反馈" : "手动发布上班"
+              ? activeScheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "生成反馈" : "生成上班"
               : activeScheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "自动生成反馈" : "自动生成上班"
           },
           {
             value: "confirm",
-            step: "3",
+            step: "4",
             label: activeScheduleContext.context === "STORE_CONFIRM_REQUIRED" ? "确定排班" : "最终可预约结果"
           }
         ];
   const activeSchedulePlanningStepIndex = Math.max(
     0,
-    schedulePlanningProgressSteps.findIndex((item) => item.value === schedulePlanningStep)
+    schedulePlanningProgressSteps.findIndex((item) => item.value === effectiveSchedulePlanningStep)
   );
   const baseScheduleEvents: TechnicianScheduleEvent[] = sharedSchedules
     .filter((schedule) => schedule.staffId === baseTech.id)
@@ -4276,26 +4291,30 @@ export function TechnicianPortalPage() {
   const scheduleTopControls = (
     <FloatingHomeHeader
       className="relative z-10"
-      panelClassName="relative overflow-hidden border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_92%,transparent),color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_12%))] shadow-[0_18px_40px_rgba(0,0,0,0.1)]"
-      spacerClassName={schedulePrimaryTab === "planning" ? "h-[var(--client-technician-planning-header-spacer)]" : undefined}
+      panelClassName="relative overflow-hidden"
     >
-      <div className="grid h-12 grid-cols-2 items-center gap-2">
-        {scheduleTopTabs.map((tab) => (
-          <button
-            aria-pressed={schedulePrimaryTab === tab.value}
+      <FeatureSegmentedTabs
+        items={scheduleTopTabs}
+        onChange={setSchedulePrimaryTab}
+        value={schedulePrimaryTab}
+        variant="header"
+      />
+      {schedulePrimaryTab === "mySchedule" ? (
+        <Link
+          className="focus-ring flex h-12 items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] px-3 shadow-[0_12px_30px_rgba(0,0,0,0.07)]"
+          to="/technician/schedule"
+        >
+          <span
             className={cn(
-              "h-10 rounded-full px-2 text-[15px] font-black text-[color:var(--client-muted)] transition",
-              schedulePrimaryTab === tab.value &&
-                "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+              isNight ? "bg-white/12 text-[color:var(--client-primary)]" : "bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
             )}
-            key={tab.value}
-            onClick={() => setSchedulePrimaryTab(tab.value)}
-            type="button"
           >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+            <AppIcon className="h-4 w-4" name="search" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[14px] font-black text-[color:var(--client-text)]">行程搜索</span>
+        </Link>
+      ) : null}
 
       {schedulePrimaryTab === "planning" ? (
         <div className="space-y-3">
@@ -4379,7 +4398,7 @@ export function TechnicianPortalPage() {
       ) : null}
       {activeView === "me" ? (
         <FloatingHomeHeader
-          panelClassName="client-portal-framed-header !border-[#8b7bff47] !bg-[#211f3c] shadow-[0_18px_42px_rgba(0,0,0,0.28)]"
+          panelClassName="relative overflow-hidden"
           stacked
         >
           <div className="flex items-center justify-between gap-3">
@@ -4415,6 +4434,7 @@ export function TechnicianPortalPage() {
             ]}
             onChange={(value) => updateTechnicianMeTab(value as TechnicianMeTab)}
             value={activeMeTab}
+            variant="header"
           />
         </FloatingHomeHeader>
       ) : null}
@@ -4851,12 +4871,13 @@ export function TechnicianPortalPage() {
 
             <div className={cn(scheduleThemeRootClass, "w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]")}>
               <div className={cn("space-y-4", schedulePrimaryTab !== "mySchedule" && "hidden")}>
-                <TechnicianScheduleWorkspace />
+                <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" />
               </div>
 
               <div className={cn("w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]", schedulePrimaryTab !== "planning" && "hidden")}>
                 <TechnicianShiftPlanningPanel
-                  activeStep={schedulePlanningStep}
+                  activeStep={effectiveSchedulePlanningStep}
+                  onPlanningMethodChange={updateSchedulePlanningMethod}
                   onStepChange={updateSchedulePlanningStep}
                   selectedPlanningMethod={schedulePlanningMethod}
                   storeId={store.id}

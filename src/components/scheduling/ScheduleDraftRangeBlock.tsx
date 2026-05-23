@@ -4,6 +4,10 @@ import { cn } from "../../lib/utils";
 type ScheduleDraftRangeBlockProps = {
   action?: ReactNode;
   className?: string;
+  onBlockPointerCancel?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onBlockPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onBlockPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onBlockPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onEndHandlePointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onHandlePointerCancel?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onHandlePointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -18,6 +22,10 @@ type ScheduleDraftRangeBlockProps = {
 export function ScheduleDraftRangeBlock({
   action,
   className,
+  onBlockPointerCancel,
+  onBlockPointerDown,
+  onBlockPointerMove,
+  onBlockPointerUp,
   onEndHandlePointerDown,
   onHandlePointerCancel,
   onHandlePointerMove,
@@ -36,9 +44,14 @@ export function ScheduleDraftRangeBlock({
     <div
       className={cn(
         "absolute z-20 overflow-visible rounded-[20px] border-2 border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,var(--client-surface)_82%)] px-4 py-2.5 text-[color:var(--client-primary-strong)] shadow-[0_0_0_4px_color-mix(in_srgb,var(--client-primary)_14%,transparent)]",
+        onBlockPointerDown && "touch-none cursor-grab active:cursor-grabbing",
         className
       )}
       data-schedule-draft-range-block="true"
+      onPointerCancel={onBlockPointerCancel}
+      onPointerDown={onBlockPointerDown}
+      onPointerMove={onBlockPointerMove}
+      onPointerUp={onBlockPointerUp}
       style={style}
     >
       <button
