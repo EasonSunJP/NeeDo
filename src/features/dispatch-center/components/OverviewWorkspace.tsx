@@ -18,6 +18,7 @@ import { Badge, type BadgeTone } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { Drawer } from "../../../components/ui/Drawer";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
+import { ScheduleCycleCalendarBoard } from "../../../components/scheduling/ScheduleCycleCalendarBoard";
 import { orders } from "../../../data/mock";
 import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
 import { shareContent } from "../../../lib/share";
@@ -25,7 +26,6 @@ import { cn, statusLabel as formatOrderStatusLabel, yen } from "../../../lib/uti
 import { useEntityStore } from "../../../state/entityStore";
 import { SocialProfileMiniCard } from "../../../shared/profile-card";
 import type { Customer, Order } from "../../../types/domain";
-import { ScheduleGrid, scheduleLegendItems, type ScheduleLegendFilter } from "./ScheduleGrid";
 import { FloatingActionWindow } from "./FloatingActionWindow";
 import { ScheduleCellDetailContent } from "./ScheduleCellDetailContent";
 import { SpecialTaskPool } from "./SpecialTaskPool";
@@ -44,8 +44,7 @@ import {
   minimizeFloatingTask,
   useDispatchCenterStore,
   type DispatchScheduleCell,
-  type DispatchScheduleCellStatus,
-  type DispatchScheduleGridData
+  type DispatchScheduleCellStatus
 } from "../store";
 
 function formatCompactPeriodLabel(periodLabel: string) {
@@ -103,12 +102,6 @@ function formatDateShortLabel(dateKey: string) {
   return month && day ? `${Number(month)}/${Number(day)}` : dateKey;
 }
 
-function formatDateMonthDayLabel(dateKey: string) {
-  const [, month = "", day = ""] = dateKey.split("-");
-
-  return month && day ? `${month}/${day}` : dateKey;
-}
-
 function formatDateTimeLabel(dateKey: string, hour = 10) {
   const [, month = "", day = ""] = dateKey.split("-");
   const time = `${String(hour).padStart(2, "0")}:00`;
@@ -149,66 +142,6 @@ function getTaskTechnicianId(task: DispatchFloatingTask) {
 }
 
 type ScheduleDetailStatusFilter = "all" | DispatchScheduleCellStatus;
-
-const scheduleDetailStatusFilters: Array<{ label: string; value: ScheduleDetailStatusFilter }> = [
-  { label: "全部", value: "all" },
-  { label: "可排班", value: "open" },
-  { label: "确认班次", value: "confirmed" },
-  { label: "有预约", value: "booked" },
-  { label: "冲突 / 待定", value: "conflict" },
-  { label: "其他行程", value: "other" }
-];
-
-function getCellSearchText(cell: DispatchScheduleCell) {
-  return [
-    cell.date,
-    cell.title,
-    cell.detail,
-    cell.status,
-    ...(cell.dayTimeline?.flatMap((slot) => [slot.title, slot.detail, slot.status]) ?? [])
-  ].join(" ");
-}
-
-function matchesScheduleStatusFilter(cell: DispatchScheduleCell, filter: ScheduleDetailStatusFilter) {
-  if (filter === "all") {
-    return true;
-  }
-
-  const statuses = [cell.status, ...(cell.dayTimeline?.map((slot) => slot.status) ?? [])];
-
-  if (filter === "conflict") {
-    return statuses.some((status) => status === "conflict" || status === "pending");
-  }
-
-  return statuses.includes(filter);
-}
-
-function filterScheduleGridData(
-  data: DispatchScheduleGridData,
-  query: string,
-  statusFilter: ScheduleDetailStatusFilter
-): DispatchScheduleGridData {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  if (!normalizedQuery && statusFilter === "all") {
-    return data;
-  }
-
-  const rows = data.rows.filter((row) => {
-    const rowText = [
-      row.technicianName,
-      row.technicianSubtitle,
-      row.technicianId,
-      ...row.cells.map(getCellSearchText)
-    ].join(" ").toLowerCase();
-    const matchesQuery = !normalizedQuery || rowText.includes(normalizedQuery);
-    const matchesStatus = statusFilter === "all" || row.cells.some((cell) => matchesScheduleStatusFilter(cell, statusFilter));
-
-    return matchesQuery && matchesStatus;
-  });
-
-  return rows.length === data.rows.length ? data : { ...data, rows };
-}
 
 type MobileContactStatusItem = {
   affectedBookings?: MobileContactAffectedBooking[];
@@ -810,7 +743,6 @@ function ContactStatusDetailContent({
 
 export function DispatchOverviewWorkspace({
   operatorId,
-  scheduleStickyTop,
   staffLabel = "技师",
   storeId,
   surface
@@ -824,11 +756,9 @@ export function DispatchOverviewWorkspace({
   const { language } = useI18n();
   const [view, setView] = useState<ScheduleViewSegmentedValue>("day");
   const [dateKey, setDateKey] = useState("2026-04-20");
-  const [collapsedTechnicians, setCollapsedTechnicians] = useState(false);
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false);
-  const [scheduleLegendFilter, setScheduleLegendFilter] = useState<ScheduleLegendFilter | null>(null);
-  const [scheduleSearchQuery, setScheduleSearchQuery] = useState("");
-  const [scheduleStatusFilter, setScheduleStatusFilter] = useState<ScheduleDetailStatusFilter>("all");
+  const scheduleSearchQuery = "";
+  const scheduleStatusFilter: ScheduleDetailStatusFilter = "all";
   const [contactReplacementFlows, setContactReplacementFlows] = useState<Record<string, ContactReplacementFlow>>({});
   const [contactStatusExtraTimeline, setContactStatusExtraTimeline] = useState<Record<string, MobileContactStatusTimelineEvent[]>>({});
   const [contactStatusFilter, setContactStatusFilter] = useState<MobileContactStatusFilter>("active");
@@ -844,15 +774,6 @@ export function DispatchOverviewWorkspace({
   const rangeSummary = useMemo(
     () => getDispatchOverviewRangeSummary(storeId, view, dateKey, summary.activeCycle?.id ?? null),
     [dateKey, dispatchSnapshot.revision, storeId, summary.activeCycle?.id, view]
-  );
-  const shouldRenderScheduleGrid = !isMobileSurface || scheduleDetailOpen;
-  const scheduleGrid = useMemo(
-    () => shouldRenderScheduleGrid ? getDispatchScheduleGrid(storeId, view, dateKey, summary.activeCycle?.id ?? null) : null,
-    [dateKey, dispatchSnapshot.revision, shouldRenderScheduleGrid, storeId, summary.activeCycle?.id, view]
-  );
-  const detailScheduleGrid = useMemo(
-    () => scheduleGrid ? filterScheduleGridData(scheduleGrid, scheduleSearchQuery, scheduleStatusFilter) : null,
-    [scheduleGrid, scheduleSearchQuery, scheduleStatusFilter]
   );
   const floatingTasks = useMemo(() => getFloatingTasks(storeId), [dispatchSnapshot.revision, storeId]);
   const activeTechnicians = useMemo(() => {
@@ -877,7 +798,6 @@ export function DispatchOverviewWorkspace({
     : "merchant-dispatch-surface";
   const cardClass = isMobileSurface ? "border-line bg-white/80" : "merchant-dispatch-card";
   const labelTextClass = isMobileSurface ? "text-ink/45" : "text-ink/45";
-  const fieldClass = isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-field";
   const staffScheduleLabel = staffLabel === "员工" ? "排班员工" : "排班技师";
   const scheduleOverviewInfo = isMobileSurface
     ? "概要页只保留关键状态，完整周期排班表进入详细页查看。"
@@ -1713,22 +1633,7 @@ export function DispatchOverviewWorkspace({
           </div>
           {isMobileSurface ? (
             <ScheduleViewSegmentedTabs className="shrink-0" onChange={setView} value={view} />
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <label className={cn("relative grid min-h-10 min-w-[104px] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-full border px-4 py-2 text-sm font-semibold text-ink", fieldClass)}>
-                <span>{formatDateMonthDayLabel(dateKey)}</span>
-                <AppIcon className="h-4 w-4 text-ink/55" name="calendar" />
-                <input
-                  aria-label="选择日期"
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                  onChange={(event) => setDateKey(event.target.value)}
-                  type="date"
-                  value={dateKey}
-                />
-              </label>
-              <ScheduleViewSegmentedTabs onChange={setView} value={view} />
-            </div>
-          )}
+          ) : null}
         </div>
 
         {isMobileSurface ? (
@@ -1757,21 +1662,25 @@ export function DispatchOverviewWorkspace({
               查看详细排班表
             </Button>
           </div>
-        ) : scheduleGrid ? (
+        ) : (
           <div className="mt-4">
-	            <ScheduleGrid
-	              collapsedTechnicians={collapsedTechnicians}
-	              data={scheduleGrid}
-	              legendFilter={scheduleLegendFilter}
-	              onLegendFilterChange={setScheduleLegendFilter}
-	              onSelectDate={openDateSchedule}
-	              onSelectCell={openCellDetail}
-	              onToggleCollapsed={() => setCollapsedTechnicians((current) => !current)}
-	              stickyTop={scheduleStickyTop}
-              surface={surface}
+            <ScheduleCycleCalendarBoard
+              cycleId={summary.activeCycle?.id ?? null}
+              dateKey={dateKey}
+              onDateChange={(nextDateKey) => {
+                setDateKey(nextDateKey);
+                setSelectedCell(null);
+              }}
+              onOpenCell={openCellDetail}
+              onViewChange={setView}
+              searchQuery={scheduleSearchQuery}
+              statusFilter={scheduleStatusFilter}
+              storeId={storeId}
+              subtitle={`${summary.activePeriodLabel} · 当前周期`}
+              view={view}
             />
           </div>
-        ) : null}
+        )}
       </section>
 
       {isMobileSurface ? (
@@ -1814,115 +1723,23 @@ export function DispatchOverviewWorkspace({
               subtitle={summary.activePeriodLabel}
               title="周期排班表"
             />
-            <div className="client-mobile-schedule-detail__toolbar grid gap-2 px-4 pb-3 pt-2">
-              <div className="client-mobile-schedule-detail__date-row grid grid-cols-[minmax(132px,0.58fr)_minmax(0,1fr)] gap-2">
-                <label className={cn("relative grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden rounded-full border px-3 text-[13px] font-black text-ink", fieldClass)}>
-                  <span className="truncate">{formatDateMonthDayLabel(dateKey)}</span>
-                  <AppIcon className="h-4 w-4 text-ink/55" name="calendar" />
-                  <input
-                    aria-label="选择日期"
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                    onChange={(event) => setDateKey(event.target.value)}
-                    type="date"
-                    value={dateKey}
-                  />
-                </label>
-                <ScheduleViewSegmentedTabs className="w-full [&_.client-segmented-tab]:flex-1" onChange={setView} value={view} />
-              </div>
-              <div className="client-mobile-schedule-detail__search-row grid grid-cols-[minmax(0,1fr)_112px] gap-2">
-                <label className={cn("grid h-11 grid-cols-[auto,minmax(0,1fr)] items-center gap-2 rounded-full border px-3", fieldClass)}>
-                  <AppIcon className="h-4 w-4 text-ink/45" name="search" />
-                  <input
-                    aria-label="搜索排班"
-                    className="min-w-0 bg-transparent text-[13px] font-bold text-ink outline-none placeholder:text-ink/35"
-                    onChange={(event) => setScheduleSearchQuery(event.target.value)}
-                    placeholder="搜索技师 / 预约"
-                    type="search"
-                    value={scheduleSearchQuery}
-                  />
-                </label>
-                <select
-                  aria-label="筛选排班状态"
-                  className={cn("h-11 rounded-full border px-3 text-[13px] font-black text-ink outline-none", fieldClass)}
-                  onChange={(event) => setScheduleStatusFilter(event.target.value as ScheduleDetailStatusFilter)}
-                  value={scheduleStatusFilter}
-                >
-                  {scheduleDetailStatusFilters.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="client-mobile-schedule-detail__legend-row flex flex-wrap gap-1.5">
-                {scheduleLegendItems.map((item) => {
-                  const active = scheduleLegendFilter === item.value;
-
-                  return (
-                    <button
-                      aria-label={active ? translateText(`取消${item.label}筛选`, language) : translateText(`仅显示${item.label}`, language)}
-                      aria-pressed={active}
-                      className={cn(
-                        "focus-ring rounded-md transition",
-                        active && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_70%,transparent)] ring-offset-2 ring-offset-transparent",
-                        scheduleLegendFilter && !active && "opacity-45"
-                      )}
-                      key={item.value}
-                      onClick={() => setScheduleLegendFilter((current) => current === item.value ? null : item.value)}
-                      type="button"
-                    >
-                      <Badge className={item.className} tone={item.tone}>{translateText(item.label, language)}</Badge>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
           </div>
-          <div className="client-mobile-schedule-detail__body scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-0">
-            {detailScheduleGrid ? (
-              <>
-                <div className="client-mobile-schedule-detail__grid-legend">
-                  {scheduleLegendItems.map((item) => {
-                    const active = scheduleLegendFilter === item.value;
-
-                    return (
-                      <button
-                        aria-label={active ? translateText(`取消${item.label}筛选`, language) : translateText(`仅显示${item.label}`, language)}
-                        aria-pressed={active}
-                        className={cn(
-                          "focus-ring shrink-0 rounded-md transition",
-                          active && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_70%,transparent)] ring-offset-2 ring-offset-transparent",
-                          scheduleLegendFilter && !active && "opacity-45"
-                        )}
-                        key={item.value}
-                        onClick={() => setScheduleLegendFilter((current) => current === item.value ? null : item.value)}
-                        type="button"
-                      >
-                        <Badge className={item.className} tone={item.tone}>{translateText(item.label, language)}</Badge>
-                      </button>
-                    );
-                  })}
-                </div>
-		                <ScheduleGrid
-		                  className="client-mobile-schedule-detail__schedule-grid"
-		                  collapsedTechnicians={collapsedTechnicians}
-		                  compactHeader
-		                  data={detailScheduleGrid}
-		                  legendFilter={scheduleLegendFilter}
-		                  onLegendFilterChange={setScheduleLegendFilter}
-		                  onSelectDate={openDateSchedule}
-		                  onSelectCell={openCellDetail}
-	                  onToggleCollapsed={() => setCollapsedTechnicians((current) => !current)}
-	                  stickyTop="var(--client-mobile-schedule-detail-grid-header-top, 0px)"
-                  surface={surface}
-                />
-                {detailScheduleGrid.rows.length === 0 ? (
-                  <div className={cn("mt-3 rounded-[18px] border px-4 py-6 text-center text-sm font-bold text-ink/45", cardClass)}>
-                    没有符合搜索或筛选条件的排班记录。
-                  </div>
-                ) : null}
-              </>
-            ) : null}
+          <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
+            <ScheduleCycleCalendarBoard
+              cycleId={summary.activeCycle?.id ?? null}
+              dateKey={dateKey}
+              onDateChange={(nextDateKey) => {
+                setDateKey(nextDateKey);
+                setSelectedCell(null);
+              }}
+              onOpenCell={openCellDetail}
+              onViewChange={setView}
+              searchQuery={scheduleSearchQuery}
+              statusFilter={scheduleStatusFilter}
+              storeId={storeId}
+              subtitle={`${summary.activePeriodLabel} · 当前周期`}
+              view={view}
+            />
           </div>
         </MobileFullscreenPage>
       ) : null}

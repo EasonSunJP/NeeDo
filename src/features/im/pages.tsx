@@ -16,7 +16,7 @@ import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
-import { ScheduleDraftRangeBlock } from "../../components/scheduling/ScheduleDraftRangeBlock";
+import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import type { MyQrCodePurpose } from "../../components/mobile/MyQrCodeButton";
 import { UnifiedScanSimulator } from "../../components/mobile/UnifiedScanSimulator";
@@ -649,7 +649,7 @@ function normalizeScheduleInviteDragRange(startMinute: number, endCandidate: num
 
 function scheduleInviteRangeStyle(range: ScheduleInviteMinuteRange, bounds: ScheduleInviteMinuteRange) {
   const top = ((range.startMinute - bounds.startMinute) / 60) * SCHEDULE_INVITE_ROW_HEIGHT;
-  const height = Math.max(58, ((range.endMinute - range.startMinute) / 60) * SCHEDULE_INVITE_ROW_HEIGHT);
+  const height = Math.max(scheduleDraftRangeVisualMinHeight, ((range.endMinute - range.startMinute) / 60) * SCHEDULE_INVITE_ROW_HEIGHT);
 
   return {
     height,

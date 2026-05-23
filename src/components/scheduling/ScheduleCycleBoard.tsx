@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AppIcon, ScheduleViewSegmentedTabs } from "../client-ui/AppScaffold";
+import { AppIcon } from "../client-ui/AppScaffold";
 import { Button } from "../ui/Button";
 import { Drawer } from "../ui/Drawer";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -12,23 +12,20 @@ import { useEntityStore } from "../../state/entityStore";
 import {
   adjustDispatchFinalShift,
   getDispatchCycleList,
-  getDispatchScheduleGrid,
   useDispatchCenterStore,
   type DispatchScheduleCell
 } from "../../features/dispatch-center/store";
 import {
-  addDays,
   dispatchReferenceDateKey,
-  parseDateKey,
   type DispatchCycle
 } from "../../features/dispatch-center/domain";
-import { ScheduleGrid } from "../../features/dispatch-center/components/ScheduleGrid";
 import {
   isSchedulingLiveCycle,
   resolveSchedulingCurrentCycle,
   resolveSchedulingCycleSlots
 } from "./SchedulingCycleTabs";
 import { ScheduleContactInfoPanel } from "./ScheduleContactInfoPanel";
+import { ScheduleCycleCalendarBoard } from "./ScheduleCycleCalendarBoard";
 
 type ScheduleCycleBoardSurface = "desktop" | "mobile";
 type ScheduleCycleBoardView = "day" | "week" | "month";
@@ -41,12 +38,6 @@ function getDefaultDateForCycle(cycle: DispatchCycle) {
   return cycle.periodStart;
 }
 
-function formatScheduleDateLabel(dateKey: string) {
-  const date = parseDateKey(dateKey);
-
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
 export function ScheduleCycleBoard({
   cycle,
   drawerTitle,
@@ -54,7 +45,6 @@ export function ScheduleCycleBoard({
   headerContent,
   onMessage,
   operatorId,
-  scheduleStickyTop,
   selectable = true,
   storeId,
   surface,
@@ -75,7 +65,6 @@ export function ScheduleCycleBoard({
   const [view, setView] = useState<ScheduleCycleBoardView>("day");
   const [dateKey, setDateKey] = useState(getDefaultDateForCycle(cycle));
   const [editing, setEditing] = useState(!editingToggle);
-  const [collapsedTechnicians, setCollapsedTechnicians] = useState(false);
   const [selectedCell, setSelectedCell] = useState<DispatchScheduleCell | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,7 +73,6 @@ export function ScheduleCycleBoard({
   const dispatchSnapshot = useDispatchCenterStore();
   const isMobileSurface = surface === "mobile";
   const currentStore = useMemo(() => stores.find((store) => store.id === storeId) ?? stores[0], [storeId, stores]);
-  const fieldClass = isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-field";
   const secondaryButtonClass = isMobileSurface ? "bg-white/80" : undefined;
   const cycleClusterClass = isMobileSurface ? "border-line bg-white/80" : "merchant-dispatch-cycle-cluster";
   const editIconButtonClass = cn(
@@ -97,7 +85,6 @@ export function ScheduleCycleBoard({
         ? "border-[color:var(--admin-accent)] bg-[color:var(--admin-accent)] text-[color:var(--merchant-dispatch-on-accent,#fff)] shadow-[0_12px_26px_color-mix(in_srgb,var(--admin-accent)_26%,transparent)]"
         : "merchant-dispatch-toggle"
   );
-  const grid = useMemo(() => getDispatchScheduleGrid(storeId, view, dateKey, cycle.id), [cycle.id, dateKey, storeId, view]);
   const schedulingCycles = useMemo(
     () => getDispatchCycleList(storeId).filter(isSchedulingLiveCycle).sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
     [dispatchSnapshot.revision, storeId]
@@ -105,7 +92,6 @@ export function ScheduleCycleBoard({
   const schedulingCurrentCycle = useMemo(() => resolveSchedulingCurrentCycle(schedulingCycles), [schedulingCycles]);
   const schedulingCycleSlots = useMemo(() => resolveSchedulingCycleSlots(schedulingCycles, schedulingCurrentCycle), [schedulingCurrentCycle, schedulingCycles]);
   const contactScope = cycle.id === schedulingCurrentCycle?.id ? "current" : cycle.id === schedulingCycleSlots.nextCycle?.id ? "next" : "builder";
-  const showActualWorkStatus = contactScope === "current" && cycle.periodStart <= dispatchReferenceDateKey;
   const contactExcludedRanges = useMemo(
     () => [schedulingCurrentCycle, schedulingCycleSlots.nextCycle]
       .filter((item): item is DispatchCycle => Boolean(item))
@@ -114,14 +100,6 @@ export function ScheduleCycleBoard({
   );
   const canSelectCells = selectable && (!editingToggle || editing);
   const t = (text: string) => translateText(text, language);
-  const dateNavigatorControlClass = cn(
-    "focus-ring h-12 rounded-full border px-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-45 sm:px-4",
-    fieldClass
-  );
-  const dateNavigatorIconButtonClass =
-    "focus-ring grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-sm font-black text-[color:var(--client-text)] transition disabled:cursor-not-allowed disabled:opacity-45";
-  const canGoPreviousDay = dateKey > cycle.periodStart;
-  const canGoNextDay = dateKey < cycle.periodEnd;
 
   useEffect(() => {
     setDateKey(getDefaultDateForCycle(cycle));
@@ -144,10 +122,6 @@ export function ScheduleCycleBoard({
   const changeScheduleDate = (nextDateKey: string) => {
     setDateKey(clampDateToCycle(nextDateKey || getDefaultDateForCycle(cycle)));
     setSelectedCell(null);
-  };
-
-  const shiftScheduleDate = (amount: number) => {
-    changeScheduleDate(addDays(dateKey, amount));
   };
 
   const openDateSchedule = (nextDateKey: string) => {
@@ -220,82 +194,21 @@ export function ScheduleCycleBoard({
                   <AppIcon className="h-4 w-4" name="edit" />
                 </button>
               ) : null}
-              <ScheduleViewSegmentedTabs onChange={(nextView) => setView(nextView as ScheduleCycleBoardView)} value={view} />
+              {toolbarActions}
             </div>
           </div>
-          {isMobileSurface ? (
-            <div className="client-sticky-control-panel mt-3">
-              <div className="grid grid-cols-[auto,1fr,auto] items-center gap-2">
-                <button
-                  aria-label={t("前一天")}
-                  className={dateNavigatorIconButtonClass}
-                  disabled={!canGoPreviousDay}
-                  onClick={() => shiftScheduleDate(-1)}
-                  type="button"
-                >
-                  ‹
-                </button>
-                <div className="min-w-0 text-center">
-                  <strong className="block truncate text-sm font-black text-[color:var(--client-text)]" data-no-i18n>
-                    {formatScheduleDateLabel(dateKey)}
-                  </strong>
-                  <span className="mt-0.5 block truncate text-[11px] font-bold text-[color:var(--client-muted)]">
-                    {currentStore?.name ?? storeId} · {t("排班")}
-                  </span>
-                </div>
-                <button
-                  aria-label={t("后一天")}
-                  className={dateNavigatorIconButtonClass}
-                  disabled={!canGoNextDay}
-                  onClick={() => shiftScheduleDate(1)}
-                  type="button"
-                >
-                  ›
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
-              <button
-                className={dateNavigatorControlClass}
-                disabled={!canGoPreviousDay}
-                onClick={() => shiftScheduleDate(-1)}
-                type="button"
-              >
-                {t("前一天")}
-              </button>
-              <input
-                aria-label={t("日期")}
-                className={cn(dateNavigatorControlClass, "min-w-0 px-4 text-center text-base outline-none")}
-                max={cycle.periodEnd}
-                min={cycle.periodStart}
-                onChange={(event) => changeScheduleDate(event.target.value)}
-                type="date"
-                value={dateKey}
-              />
-              <button
-                className={dateNavigatorControlClass}
-                disabled={!canGoNextDay}
-                onClick={() => shiftScheduleDate(1)}
-                type="button"
-              >
-                {t("后一天")}
-              </button>
-            </div>
-          )}
         </div>
 
-        <ScheduleGrid
+        <ScheduleCycleCalendarBoard
           className="rounded-t-none rounded-b-[28px]"
-          collapsedTechnicians={collapsedTechnicians}
-          data={grid}
-          legendActions={toolbarActions}
-          onSelectDate={openDateSchedule}
-          onSelectCell={canSelectCells ? selectScheduleCell : undefined}
-          onToggleCollapsed={() => setCollapsedTechnicians((current) => !current)}
-          showActualWorkStatus={showActualWorkStatus}
-          stickyTop={scheduleStickyTop}
-          surface={surface}
+          cycleId={cycle.id}
+          dateKey={dateKey}
+          onDateChange={changeScheduleDate}
+          onOpenCell={canSelectCells ? selectScheduleCell : (cell) => openDateSchedule(cell.date)}
+          onViewChange={setView}
+          storeId={storeId}
+          subtitle={`${currentStore?.name ?? storeId} · ${t("排班")}`}
+          view={view}
         />
       </div>
 

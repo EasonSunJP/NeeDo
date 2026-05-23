@@ -669,15 +669,18 @@ export function TechnicianShiftPlanningPanel({
 
   const updateDraftSlotMatrix = (nextMatrix: SlotMatrix) => {
     setTemplateRestDayIndexes((current) => {
-      const next = new Set(current);
+      let next: Set<number> | null = null;
 
       nextMatrix.forEach((row, dayIndex) => {
-        if (row.some(Boolean)) {
+        if (current.has(dayIndex) && row.some(Boolean)) {
+          if (!next) {
+            next = new Set(current);
+          }
           next.delete(dayIndex);
         }
       });
 
-      return next;
+      return next ?? current;
     });
     setDraft((current) => (current ? { ...current, slotMatrix: nextMatrix } : current));
   };

@@ -19,6 +19,8 @@ type ScheduleDraftRangeBlockProps = {
   title: string;
 };
 
+export const scheduleDraftRangeVisualMinHeight = 34;
+
 export function ScheduleDraftRangeBlock({
   action,
   className,
@@ -37,13 +39,13 @@ export function ScheduleDraftRangeBlock({
   title
 }: ScheduleDraftRangeBlockProps) {
   const handleClassName =
-    "pointer-events-auto absolute left-1/2 z-30 grid h-8 w-32 -translate-x-1/2 touch-none place-items-center rounded-full text-[color:var(--client-primary)]";
-  const handleBarClassName = "h-2 w-24 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_84%,white_16%)] bg-[color:var(--client-primary)] shadow-[0_0_14px_color-mix(in_srgb,var(--client-primary)_36%,transparent)]";
+    "pointer-events-auto absolute left-1/2 z-30 grid h-7 w-28 -translate-x-1/2 touch-none place-items-center rounded-full text-[color:var(--client-primary)]";
+  const handleBarClassName = "h-1.5 w-20 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_70%,white_30%)] bg-[color:var(--client-primary)] shadow-[0_0_10px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]";
 
   return (
     <div
       className={cn(
-        "absolute z-20 overflow-visible rounded-[20px] border-2 border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,var(--client-surface)_82%)] px-4 py-2.5 text-[color:var(--client-primary-strong)] shadow-[0_0_0_4px_color-mix(in_srgb,var(--client-primary)_14%,transparent)]",
+        "absolute z-20 overflow-visible rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-primary)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,var(--client-surface)_86%)] px-3 py-1 text-[color:var(--client-primary-strong)] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
         onBlockPointerDown && "touch-none cursor-grab active:cursor-grabbing",
         className
       )}
@@ -80,8 +82,8 @@ export function ScheduleDraftRangeBlock({
       </button>
 
       <div className={cn("pointer-events-none flex min-h-full min-w-0 flex-col justify-center", action ? "pr-24" : "")}>
-        <strong className="block truncate text-[14px] font-black leading-5">{title}</strong>
-        <span className="mt-0.5 block truncate text-[13px] font-black leading-4">{timeRange}</span>
+        <strong className="block truncate text-[12px] font-black leading-[14px]">{title}</strong>
+        <span className="block truncate text-[10px] font-bold leading-[11px] opacity-80">{timeRange}</span>
         {subtitle ? <span className="sr-only">{subtitle}</span> : null}
       </div>
       {action ? <div className="pointer-events-auto absolute right-3 top-1/2 z-30 -translate-y-1/2">{action}</div> : null}

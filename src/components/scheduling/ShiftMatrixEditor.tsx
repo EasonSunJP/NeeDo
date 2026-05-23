@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
@@ -105,7 +106,7 @@ function getCellClassName(_accent: ShiftMatrixEditorProps["accent"], active: boo
 }
 
 function updateCell(matrix: SlotMatrix, dayIndex: number, hour: number, nextValue: boolean) {
-  const next = cloneSlotMatrix(matrix);
+  const next = matrix.map((row, index) => (index === dayIndex ? [...row] : row));
   next[dayIndex][hour] = nextValue;
   return next;
 }
@@ -120,6 +121,7 @@ export function ShiftMatrixEditor({
   onChange,
   getCellDisabled,
   getCellHint,
+  activeLabel,
   inactiveLabel,
   disabledLabel,
   stickyAxis = true,
@@ -254,6 +256,65 @@ export function ShiftMatrixEditor({
       title: dayLabels[dayIndex] ?? ""
     };
   });
+  const dayActionDialog = dayActionIndex != null ? (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/78 px-4 py-[max(1.25rem,env(safe-area-inset-top))] pb-[max(7.5rem,env(safe-area-inset-bottom))] backdrop-blur-md" onClick={() => setDayActionIndex(null)}>
+      <section
+        className="w-full max-w-[360px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--matrix-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--matrix-elevated)_96%,var(--matrix-primary)_4%),color-mix(in_srgb,var(--matrix-surface)_88%,var(--matrix-bg,var(--matrix-elevated))_12%))] p-4 text-[color:var(--matrix-text)] shadow-[0_24px_60px_color-mix(in_srgb,var(--client-shadow,#000000)_42%,transparent)]"
+        onClick={(event) => event.stopPropagation()}
+        style={matrixThemeStyle}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-black text-[color:var(--matrix-muted)]">模板日设置</p>
+            <h4 className="mt-1 text-lg font-black text-[color:var(--matrix-text)]">{dayLabels[dayActionIndex]}</h4>
+          </div>
+          <MobileFullscreenCloseButton
+            className="h-10 w-10 text-[color:var(--matrix-primary-strong)]"
+            label="关闭模板日设置"
+            onClose={() => setDayActionIndex(null)}
+          />
+        </div>
+        <div className="mt-4 grid gap-2">
+          {dayActionMode === "leave" ? (
+            <Button
+              className="w-full justify-center bg-[color:var(--matrix-primary)] text-[color:var(--matrix-on-accent)]"
+              disabled={!onRequestDayLeave}
+              onClick={() => {
+                onRequestDayLeave?.(dayActionIndex);
+                setDayActionIndex(null);
+              }}
+            >
+              请假申请
+            </Button>
+          ) : (
+            <>
+              <Button
+                className="w-full justify-center bg-[color:var(--matrix-primary)] text-[color:var(--matrix-on-accent)]"
+                disabled={!onToggleDayRest}
+                onClick={() => {
+                  onToggleDayRest?.(dayActionIndex);
+                  setDayActionIndex(null);
+                }}
+              >
+                {selectedDayActionState?.rest ? "取消休息日" : "设为休息日"}
+              </Button>
+              <Button
+                className="w-full justify-center border border-[color:color-mix(in_srgb,var(--matrix-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--matrix-elevated)_86%,transparent)] text-[color:var(--matrix-text)]"
+                disabled={!onToggleDayOvertimeBlocked}
+                variant="secondary"
+                onClick={() => {
+                  onToggleDayOvertimeBlocked?.(dayActionIndex);
+                  setDayActionIndex(null);
+                }}
+              >
+                {selectedDayActionState?.overtimeBlocked ? "取消禁止加班日" : "设为禁止加班日"}
+              </Button>
+            </>
+          )}
+        </div>
+      </section>
+    </div>
+  ) : null;
 
   return (
     <section className={rootClassName} style={matrixThemeStyle}>
@@ -352,12 +413,12 @@ export function ShiftMatrixEditor({
       </div>
 
       <ScheduleMatrixGrid
-        activeCellLabel={accent === "technician" ? "OK" : undefined}
+        activeCellLabel={activeLabel}
         activeCellStatus={accent === "technician" ? "confirmed" : "open"}
         className={connectedLayout ? cn("-mx-4 rounded-none border-x-0 border-y bg-[color:var(--client-schedule-sticky-bg,var(--matrix-elevated))] shadow-none", connectedDividerClass) : undefined}
         headerBottomLabel="/ 小时"
         headerTopLabel="模板日"
-        onResizeActiveRange={accent === "technician" ? resizeActiveRange : undefined}
+        onResizeActiveRange={resizeActiveRange}
         rows={matrixRows}
         stickyAxis={stickyAxis}
       />
@@ -386,64 +447,7 @@ export function ShiftMatrixEditor({
         </div>
       )}
 
-      {dayActionIndex != null ? (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/78 px-4 pb-[calc(env(safe-area-inset-bottom)+96px)] pt-6 backdrop-blur-md" onClick={() => setDayActionIndex(null)}>
-          <section
-            className="w-full max-w-[360px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--matrix-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--matrix-elevated)_96%,var(--matrix-primary)_4%),color-mix(in_srgb,var(--matrix-surface)_88%,var(--matrix-bg,var(--matrix-elevated))_12%))] p-4 text-[color:var(--matrix-text)] shadow-[0_24px_60px_color-mix(in_srgb,var(--client-shadow,#000000)_42%,transparent)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-black text-[color:var(--matrix-muted)]">模板日设置</p>
-                <h4 className="mt-1 text-lg font-black text-[color:var(--matrix-text)]">{dayLabels[dayActionIndex]}</h4>
-              </div>
-              <MobileFullscreenCloseButton
-                className="h-10 w-10 text-[color:var(--matrix-primary-strong)]"
-                label="关闭模板日设置"
-                onClose={() => setDayActionIndex(null)}
-              />
-            </div>
-            <div className="mt-4 grid gap-2">
-              {dayActionMode === "leave" ? (
-                <Button
-                  className="w-full justify-center bg-[color:var(--matrix-primary)] text-[color:var(--matrix-on-accent)]"
-                  disabled={!onRequestDayLeave}
-                  onClick={() => {
-                    onRequestDayLeave?.(dayActionIndex);
-                    setDayActionIndex(null);
-                  }}
-                >
-                  请假申请
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    className="w-full justify-center bg-[color:var(--matrix-primary)] text-[color:var(--matrix-on-accent)]"
-                    disabled={!onToggleDayRest}
-                    onClick={() => {
-                      onToggleDayRest?.(dayActionIndex);
-                      setDayActionIndex(null);
-                    }}
-                  >
-                    {selectedDayActionState?.rest ? "取消休息日" : "设为休息日"}
-                  </Button>
-                  <Button
-                    className="w-full justify-center border border-[color:color-mix(in_srgb,var(--matrix-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--matrix-elevated)_86%,transparent)] text-[color:var(--matrix-text)]"
-                    disabled={!onToggleDayOvertimeBlocked}
-                    variant="secondary"
-                    onClick={() => {
-                      onToggleDayOvertimeBlocked?.(dayActionIndex);
-                      setDayActionIndex(null);
-                    }}
-                  >
-                    {selectedDayActionState?.overtimeBlocked ? "取消禁止加班日" : "设为禁止加班日"}
-                  </Button>
-                </>
-              )}
-            </div>
-          </section>
-        </div>
-      ) : null}
+      {dayActionDialog ? (typeof document === "undefined" ? dayActionDialog : createPortal(dayActionDialog, document.body)) : null}
     </section>
   );
 }

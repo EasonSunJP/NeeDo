@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
+import {
+  UnifiedCalendarDayTimeline,
+  type UnifiedCalendarEvent,
+  type UnifiedCalendarLane,
+  type UnifiedCalendarSourceId
+} from "../../../components/scheduling/UnifiedUserCalendar";
 import { cn } from "../../../lib/utils";
 import { useEntityStore } from "../../../state/entityStore";
 import type { DispatchCycle } from "../../dispatch-center/domain";
@@ -9,26 +15,8 @@ import {
   getCycleFeedbackMatrix,
   getPlanningProgressForCycle,
   sendDispatchFeedbackReminder,
-  type DispatchScheduleCellStatus,
-  type DispatchScheduleGridData
+  type DispatchScheduleCell
 } from "../../dispatch-center/store";
-import { ScheduleGrid } from "../../dispatch-center/components/ScheduleGrid";
-
-function getFeedbackCellScheduleStatus(status: "available" | "unavailable" | "none" | "updated"): DispatchScheduleCellStatus {
-  if (status === "available") {
-    return "open";
-  }
-
-  if (status === "updated") {
-    return "pending";
-  }
-
-  if (status === "unavailable") {
-    return "conflict";
-  }
-
-  return "closed";
-}
 
 function getFeedbackCellTitle(status: "available" | "unavailable" | "none" | "updated") {
   if (status === "available") {
@@ -44,6 +32,22 @@ function getFeedbackCellTitle(status: "available" | "unavailable" | "none" | "up
   }
 
   return "未反馈";
+}
+
+function getFeedbackCellSource(status: "available" | "unavailable" | "none" | "updated"): UnifiedCalendarSourceId {
+  if (status === "available" || status === "updated") {
+    return "technician";
+  }
+
+  if (status === "unavailable") {
+    return "merchant";
+  }
+
+  return "todo";
+}
+
+function formatFeedbackHour(hour: number) {
+  return `${String(Math.min(hour, 24)).padStart(2, "0")}:00`;
 }
 
 export function StepFeedbackCollection({
@@ -90,40 +94,83 @@ export function StepFeedbackCollection({
   }, [allRows, filter]);
   const exceptionCount = allRows.filter((row) => row.unavailableHours > 0 || row.note.trim().length > 0).length;
   const technicianAvatarMap = useMemo(() => new Map(technicians.map((technician) => [technician.id, technician.avatar])), [technicians]);
-  const feedbackGrid = useMemo<DispatchScheduleGridData>(() => ({
-    cycle,
-    dates: [dateKey],
-    headers: Array.from({ length: 24 }, (_, hour) => ({
-      key: `${dateKey}-${hour}`,
-      label: `${String(hour).padStart(2, "0")}:00`,
-      sublabel: "1h"
-    })),
-    nowHour: 0,
-    rows: rows.map((row) => ({
-      technicianId: row.technicianId,
-      technicianName: row.technicianName,
-      technicianSubtitle: `${row.submittedHours} 格可上班 · ${row.unavailableHours} 格不可上班`,
-      technicianAvatar: technicianAvatarMap.get(row.technicianId) ?? "",
-      scheduledHours: row.submittedHours,
-      cells: row.cells.map((cell) => {
-        const title = getFeedbackCellTitle(cell.status);
+  const feedbackCalendar = useMemo(() => {
+    const cellByEventId = new Map<string, DispatchScheduleCell>();
+    const lanes: UnifiedCalendarLane[] = rows.map((row, index) => ({
+      accent: [
+        "var(--client-primary)",
+        "var(--client-warm)",
+        "var(--client-accent)",
+        "var(--client-warning)"
+      ][index % 4] ?? "var(--client-primary)",
+      avatar: technicianAvatarMap.get(row.technicianId) ?? "",
+      caption: `${row.submittedHours} 可上班 · ${row.unavailableHours} 不可上班`,
+      id: `feedback:${row.technicianId}`,
+      label: row.technicianName
+    }));
+    const events = rows.flatMap((row) => {
+      const ranges: Array<{
+        cells: typeof row.cells;
+        endHour: number;
+        startHour: number;
+        status: "available" | "unavailable" | "none" | "updated";
+      }> = [];
 
-        return {
-          id: `feedback-${row.technicianId}-${cell.date}-${cell.hour}`,
-          date: cell.date,
-          detail: row.note || cell.label,
+      row.cells.forEach((cell) => {
+        if (cell.status === "none") {
+          return;
+        }
+
+        const previous = ranges[ranges.length - 1];
+        if (previous && previous.status === cell.status && previous.endHour === cell.hour) {
+          previous.cells.push(cell);
+          previous.endHour = cell.hour + 1;
+          return;
+        }
+
+        ranges.push({
+          cells: [cell],
+          endHour: cell.hour + 1,
+          startHour: cell.hour,
+          status: cell.status
+        });
+      });
+
+      return ranges.map((range): UnifiedCalendarEvent => {
+        const representative = range.cells[0];
+        const title = getFeedbackCellTitle(range.status);
+        const eventId = `feedback-${row.technicianId}-${representative?.date ?? dateKey}-${range.startHour}-${range.endHour}-${range.status}`;
+        cellByEventId.set(eventId, {
+          date: representative?.date ?? dateKey,
           darkened: false,
-          hour: cell.hour,
+          detail: row.note || representative?.label || title,
+          hour: range.startHour,
+          id: eventId,
           isCurrent: false,
-          status: getFeedbackCellScheduleStatus(cell.status),
-          technicianAvatar: technicianAvatarMap.get(row.technicianId) ?? "",
+          status: range.status === "available" ? "open" : range.status === "updated" ? "pending" : "conflict",
           technicianId: row.technicianId,
           technicianName: row.technicianName,
           title
+        });
+
+        return {
+          badge: title,
+          calendarId: `feedback:${row.technicianId}`,
+          calendarLabel: row.technicianName,
+          date: representative?.date ?? dateKey,
+          endTime: formatFeedbackHour(range.endHour),
+          id: eventId,
+          readOnly: true,
+          sourceId: getFeedbackCellSource(range.status),
+          startTime: formatFeedbackHour(range.startHour),
+          subtitle: row.note || `${row.technicianName} · ${range.cells.length} 小时`,
+          title
         };
-      })
-    }))
-  }), [cycle, dateKey, rows, technicianAvatarMap]);
+      });
+    });
+
+    return { cellByEventId, events, lanes };
+  }, [dateKey, rows, technicianAvatarMap]);
   const sectionClass = isMobileSurface
     ? "border-line bg-white/90 shadow-panel backdrop-blur-xl"
     : "merchant-dispatch-surface";
@@ -207,13 +254,14 @@ export function StepFeedbackCollection({
         </div>
 
         <div className="mt-4">
-          <ScheduleGrid
-            compactHeader
-            data={feedbackGrid}
-            onSelectCell={(cell) => onMessage(`${cell.technicianName ?? "技师"} ${cell.date} ${String(cell.hour ?? 0).padStart(2, "0")}:00：${cell.title}`)}
-            showActualWorkStatus={false}
-            stickyTop={surface === "mobile" ? "var(--client-schedule-substicky-top, 0px)" : undefined}
-            surface={surface}
+          <UnifiedCalendarDayTimeline
+            calendarLanes={feedbackCalendar.lanes}
+            date={dateKey}
+            events={feedbackCalendar.events}
+            onOpen={(event) => {
+              const cell = feedbackCalendar.cellByEventId.get(event.id);
+              onMessage(`${cell?.technicianName ?? event.calendarLabel ?? "技师"} ${event.date} ${event.startTime}：${event.title}`);
+            }}
           />
         </div>
       </section>

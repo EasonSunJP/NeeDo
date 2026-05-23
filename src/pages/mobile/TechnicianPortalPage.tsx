@@ -34,6 +34,7 @@ import {
   type TechnicianScheduleSetupConfig,
   type TechnicianScheduleSetupType
 } from "../../components/scheduling/TechnicianScheduleSetupModal";
+import { ScheduleSearchField } from "../../components/scheduling/ScheduleSearchField";
 import { TechnicianShiftPlanningPanel, type TechnicianPlanningStep } from "../../components/scheduling/TechnicianShiftPlanningPanel";
 import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
@@ -233,30 +234,30 @@ const scheduleRequirementNotificationTypes = new Set<NotificationType>([
   "shift_confirmed",
   "shift_waitlisted"
 ]);
-const statusButtonMeta: Record<WorkStatus, { icon: string; caption: string; className: string }> = {
-  出勤: { icon: "●", caption: "开始接收门店派单", className: "bg-[color:color-mix(in_srgb,var(--client-primary)_18%,white_82%)] text-[color:var(--client-primary)]" },
-  移动中: { icon: "↗", caption: "同步路线和预计到达", className: "bg-[color:color-mix(in_srgb,var(--client-warm)_18%,white_82%)] text-[color:var(--client-warm)]" },
-  服务中: { icon: "▶", caption: "需输入客人验证码", className: "bg-[color:color-mix(in_srgb,var(--client-accent)_16%,white_84%)] text-[color:var(--client-accent)]" },
-  休息: { icon: "☾", caption: "暂停接单并同步休息中", className: "bg-[color:color-mix(in_srgb,var(--client-warning)_22%,white_78%)] text-[color:var(--client-warning-ink)]" },
-  退勤: { icon: "■", caption: "下班后无法收到订单", className: "bg-[color:color-mix(in_srgb,var(--client-muted)_14%,white_86%)] text-[color:var(--client-muted)]" }
+const statusButtonMeta: Record<WorkStatus, { icon: string; caption: string; toneClassName: string }> = {
+  出勤: { icon: "●", caption: "开始接收门店派单", toneClassName: "technician-work-status--duty" },
+  移动中: { icon: "↗", caption: "同步路线和预计到达", toneClassName: "technician-work-status--travel" },
+  服务中: { icon: "▶", caption: "需输入客人验证码", toneClassName: "technician-work-status--service" },
+  休息: { icon: "☾", caption: "暂停接单并同步休息中", toneClassName: "technician-work-status--rest" },
+  退勤: { icon: "■", caption: "下班后无法收到订单", toneClassName: "technician-work-status--off" }
 };
 
 function getCompactStatusLabelClass(label: string) {
   const length = Array.from(label.replace(/\s/g, "")).length;
 
   if (length <= 3) {
-    return "inline-block max-w-full whitespace-nowrap";
+    return "inline-block max-w-full whitespace-nowrap text-[12px]";
   }
 
   if (length <= 5) {
-    return "inline-block w-[122%] max-w-[122%] -mx-[11%] whitespace-nowrap [transform:scaleX(0.82)] [transform-origin:center]";
+    return "inline-block max-w-full whitespace-nowrap text-[10px]";
   }
 
   if (length <= 8) {
-    return "inline-block w-[136%] max-w-[136%] -mx-[18%] whitespace-nowrap [transform:scaleX(0.72)] [transform-origin:center]";
+    return "inline-block max-w-full whitespace-nowrap text-[9px]";
   }
 
-  return "line-clamp-2 max-w-full whitespace-normal break-words leading-[1.08]";
+  return "line-clamp-2 max-w-full whitespace-normal break-words text-[9px] leading-[1.08]";
 }
 
 function ScheduleNewBadge({ className }: { className?: string }) {
@@ -2546,6 +2547,7 @@ export function TechnicianPortalPage() {
   const [statusTimelineRecords, setStatusTimelineRecords] = useState<TechnicianStatusTimelineRecord[]>([]);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
   const [schedulePrimaryTab, setSchedulePrimaryTab] = useState<"mySchedule" | "planning">("mySchedule");
+  const [scheduleSearchQuery, setScheduleSearchQuery] = useState("");
   const [schedulePlanningStep, setSchedulePlanningStep] = useState<TechnicianPlanningStep>("mode");
   const [schedulePlanningMethod, setSchedulePlanningMethod] = useState<Extract<TechnicianPlanningStep, "oneClick" | "manual">>("oneClick");
   const [scheduleDisplayMode, setScheduleDisplayMode] = useState<ScheduleDisplayMode>("day");
@@ -4300,20 +4302,7 @@ export function TechnicianPortalPage() {
         variant="header"
       />
       {schedulePrimaryTab === "mySchedule" ? (
-        <Link
-          className="focus-ring flex h-12 items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] px-3 shadow-[0_12px_30px_rgba(0,0,0,0.07)]"
-          to="/technician/schedule"
-        >
-          <span
-            className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              isNight ? "bg-white/12 text-[color:var(--client-primary)]" : "bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
-            )}
-          >
-            <AppIcon className="h-4 w-4" name="search" />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[14px] font-black text-[color:var(--client-text)]">行程搜索</span>
-        </Link>
+        <ScheduleSearchField onChange={setScheduleSearchQuery} value={scheduleSearchQuery} />
       ) : null}
     </FloatingHomeHeader>
   );
@@ -4381,7 +4370,9 @@ export function TechnicianPortalPage() {
   return (
     <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"}>
       {activeView === "tasks" ? (
-        <FloatingHomeHeader panelClassName="rounded-none border-transparent bg-transparent px-0 pb-0 shadow-none backdrop-blur-none">
+        <FloatingHomeHeader
+          panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+        >
           <SharedHomeHeader
             avatarAlt={techProfile.nickname}
             avatarLabel="打开我的页面"
@@ -4512,18 +4503,17 @@ export function TechnicianPortalPage() {
                   return (
                     <button
                       className={cn(
-                        "focus-ring flex min-h-[88px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1.5 py-3 text-center transition",
-                        active
-                          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)] shadow-[0_12px_24px_color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
-                          : "border-line bg-paper text-[color:var(--client-text)]"
+                        "technician-work-status-button focus-ring flex min-h-[88px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-1.5 py-3 text-center transition",
+                        meta.toneClassName,
+                        active ? "technician-work-status-button--active" : "technician-work-status-button--idle"
                       )}
                       key={item}
                       onClick={() => handleStatusSync(item)}
                       type="button"
                     >
-                      <span className={cn("inline-flex h-9 w-9 items-center justify-center rounded-[14px] text-base font-black", meta.className)}>{meta.icon}</span>
+                      <span className="technician-work-status-icon inline-flex h-9 w-9 items-center justify-center rounded-[14px] text-base font-black">{meta.icon}</span>
                       <span className="mt-2 flex min-h-[28px] w-full items-center justify-center overflow-hidden">
-                        <span className={cn("w-full text-[12px] font-black leading-[14px] tracking-[-0.02em]", getCompactStatusLabelClass(label))}>
+                        <span className={cn("w-full font-black leading-[14px] tracking-normal", getCompactStatusLabelClass(label))}>
                           {label}
                         </span>
                       </span>
@@ -4874,21 +4864,25 @@ export function TechnicianPortalPage() {
             {scheduleTopControls}
 
             <div className={cn(scheduleThemeRootClass, "w-full min-w-0 max-w-full overflow-x-hidden [overflow-x:clip]")}>
-              <div className={cn("space-y-4", schedulePrimaryTab !== "mySchedule" && "hidden")}>
-                <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" />
-              </div>
+              {schedulePrimaryTab === "mySchedule" ? (
+                <div className="space-y-4">
+                  <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" searchQuery={scheduleSearchQuery} />
+                </div>
+              ) : null}
 
-              <div className={cn("w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]", schedulePrimaryTab !== "planning" && "hidden")}>
-                {schedulePlanningProgressCard}
-                <TechnicianShiftPlanningPanel
-                  activeStep={effectiveSchedulePlanningStep}
-                  onPlanningMethodChange={updateSchedulePlanningMethod}
-                  onStepChange={updateSchedulePlanningStep}
-                  selectedPlanningMethod={schedulePlanningMethod}
-                  storeId={store.id}
-                  technicianId={baseTech.id}
-                />
-              </div>
+              {schedulePrimaryTab === "planning" ? (
+                <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]">
+                  {schedulePlanningProgressCard}
+                  <TechnicianShiftPlanningPanel
+                    activeStep={effectiveSchedulePlanningStep}
+                    onPlanningMethodChange={updateSchedulePlanningMethod}
+                    onStepChange={updateSchedulePlanningStep}
+                    selectedPlanningMethod={schedulePlanningMethod}
+                    storeId={store.id}
+                    technicianId={baseTech.id}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {renderTechnicianStatusTimeline("mt-4 mb-[calc(220px+env(safe-area-inset-bottom))]")}

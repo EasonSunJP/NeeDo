@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { ScheduleDraftRangeBlock } from "../../components/scheduling/ScheduleDraftRangeBlock";
+import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
 import { useAuth } from "../../auth/AuthProvider";
 import { orders as demoOrders, services } from "../../data/mock";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
@@ -1624,7 +1624,7 @@ function DayTimeline({
               onStartHandlePointerDown={(event) => handleDraftResizePointerDown("resize-start", event)}
               style={{
                 top: (draftRange.start / 60) * rowHeight + 6,
-                height: Math.max((Math.max(draftRange.end - draftRange.start, scheduleDraftMinDurationMinutes) / 60) * rowHeight - 12, 58)
+                height: Math.max((Math.max(draftRange.end - draftRange.start, scheduleDraftMinDurationMinutes) / 60) * rowHeight - 12, scheduleDraftRangeVisualMinHeight)
               }}
               subtitle="拖动上下手柄调整时间"
               timeRange={`${minutesToTime(draftRange.start)} - ${minutesToTime(draftRange.end)}`}

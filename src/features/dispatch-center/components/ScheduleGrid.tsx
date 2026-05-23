@@ -100,6 +100,8 @@ type ScheduleGridDayPrimaryRangeResize = {
   startIndex: number;
 };
 
+type ScheduleGridResizePreview = ScheduleGridDayPrimaryRangeResize;
+
 type ScheduleGridRowHeaderContext = {
   collapsedTechnicians: boolean;
   isMobileSurface: boolean;
@@ -873,7 +875,17 @@ export function ScheduleGrid({
     columnWidthPx: dataColumnWidthPx,
     scrollLeft: 0
   });
+  const [resizePreview, setResizePreview] = useState<ScheduleGridResizePreview | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const shouldTrackTimelineLabelScroll = isDayGrid && (
+    showActualWorkStatus ||
+    data.rows.some((row) =>
+      row.cells.some((cell) =>
+        dayAppointmentBarStatuses.has(cell.status) ||
+        (dayScheduledBaseStatuses.has(cell.status) && cell.title !== "OK")
+      )
+    )
+  );
   const getRenderedDataColumnWidth = useCallback((element?: HTMLDivElement | null) => {
     if (!element || data.headers.length === 0) {
       return dataColumnWidthPx;
@@ -890,14 +902,16 @@ export function ScheduleGrid({
     const nextOffset = `${-scrollLeft}px`;
     const columnWidthPx = isDayGrid ? getRenderedDataColumnWidth(element) : dataColumnWidthPx;
 
-    setScheduleScrollMetrics((previous) =>
-      Math.abs(previous.scrollLeft - scrollLeft) < 0.5 && Math.abs(previous.columnWidthPx - columnWidthPx) < 0.5
-        ? previous
-        : { columnWidthPx, scrollLeft }
-    );
+    if (shouldTrackTimelineLabelScroll) {
+      setScheduleScrollMetrics((previous) =>
+        Math.abs(previous.scrollLeft - scrollLeft) < 0.5 && Math.abs(previous.columnWidthPx - columnWidthPx) < 0.5
+          ? previous
+          : { columnWidthPx, scrollLeft }
+      );
+    }
     wrapperRef.current?.style.setProperty("--schedule-grid-scroll-left", nextLeft);
     wrapperRef.current?.style.setProperty("--schedule-grid-scroll-offset", nextOffset);
-  }, [dataColumnWidthPx, getRenderedDataColumnWidth, isDayGrid]);
+  }, [dataColumnWidthPx, getRenderedDataColumnWidth, isDayGrid, shouldTrackTimelineLabelScroll]);
   const handleScheduleScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
     syncHeaderScrollLeft(event.currentTarget.scrollLeft, event.currentTarget);
   }, [syncHeaderScrollLeft]);
@@ -1004,10 +1018,13 @@ export function ScheduleGrid({
     if (!onResizeDayPrimaryRange) {
       return;
     }
+    const resizeHandler = onResizeDayPrimaryRange;
 
     event.preventDefault();
     event.stopPropagation();
-    const rowElement = event.currentTarget.closest("[data-schedule-day-row]");
+    const handleElement = event.currentTarget;
+    const pointerId = event.pointerId;
+    const rowElement = handleElement.closest("[data-schedule-day-row]");
     if (!(rowElement instanceof HTMLElement)) {
       return;
     }
@@ -1016,6 +1033,27 @@ export function ScheduleGrid({
     let nextStartIndex = range.startIndex;
     let nextEndIndex = range.endIndex;
     const clampIndex = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+    const updateResizePreview = () => {
+      setResizePreview((previous) => {
+        if (
+          previous?.rowIndex === rowIndex &&
+          previous.startIndex === range.startIndex &&
+          previous.endIndex === range.endIndex &&
+          previous.nextStartIndex === nextStartIndex &&
+          previous.nextEndIndex === nextEndIndex
+        ) {
+          return previous;
+        }
+
+        return {
+          endIndex: range.endIndex,
+          nextEndIndex,
+          nextStartIndex,
+          rowIndex,
+          startIndex: range.startIndex
+        };
+      });
+    };
     const updateFromClientX = (clientX: number) => {
       const rect = rowElement.getBoundingClientRect();
       const columnWidthPx = rect.width / columnCount;
@@ -1026,30 +1064,51 @@ export function ScheduleGrid({
       } else {
         nextEndIndex = clampIndex(rawIndex + 1, range.startIndex + 1, columnCount);
       }
+      updateResizePreview();
     };
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      updateFromClientX(moveEvent.clientX);
-    };
-    const handlePointerUp = (upEvent: PointerEvent) => {
-      updateFromClientX(upEvent.clientX);
+    function cleanupResizeListeners() {
       window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", cancelResize);
+      try {
+        handleElement.releasePointerCapture(pointerId);
+      } catch {
+        // no-op
+      }
+      setResizePreview(null);
+    }
+    function handlePointerMove(moveEvent: PointerEvent) {
+      updateFromClientX(moveEvent.clientX);
+    }
+    function finishResize(upEvent: PointerEvent) {
+      updateFromClientX(upEvent.clientX);
+      cleanupResizeListeners();
 
       if (nextStartIndex === range.startIndex && nextEndIndex === range.endIndex) {
         return;
       }
 
-      onResizeDayPrimaryRange({
+      resizeHandler({
         endIndex: range.endIndex,
         nextEndIndex,
         nextStartIndex,
         rowIndex,
         startIndex: range.startIndex
       });
-    };
+    }
+    function cancelResize() {
+      cleanupResizeListeners();
+    }
 
+    try {
+      handleElement.setPointerCapture(pointerId);
+    } catch {
+      // no-op
+    }
+    updateFromClientX(event.clientX);
     window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointerup", finishResize, { once: true });
+    window.addEventListener("pointercancel", cancelResize, { once: true });
   }, [data.headers.length, onResizeDayPrimaryRange]);
 
   const renderDayTimelineRow = (row: DispatchScheduleGridData["rows"][number], rowIndex: number) => {
@@ -1110,6 +1169,16 @@ export function ScheduleGrid({
           {primaryRanges.map((range) => {
             const label = getPrimaryRangeLabel(range, language);
             const showResizeHandles = label === "OK";
+            const displayedRange =
+              resizePreview?.rowIndex === rowIndex &&
+              resizePreview.startIndex === range.startIndex &&
+              resizePreview.endIndex === range.endIndex
+                ? {
+                    ...range,
+                    endIndex: resizePreview.nextEndIndex,
+                    startIndex: resizePreview.nextStartIndex
+                  }
+                : range;
 
             return (
               <button
@@ -1123,7 +1192,7 @@ export function ScheduleGrid({
                 onClick={() => onSelectCell?.(range.representativeCell)}
                 style={{
                   ...getScheduleToneStyle("scheduled"),
-                  gridColumn: `${range.startIndex + 1} / ${range.endIndex + 1}`,
+                  gridColumn: `${displayedRange.startIndex + 1} / ${displayedRange.endIndex + 1}`,
                   marginInline: "3px"
                 }}
                 title={label}
@@ -1140,7 +1209,7 @@ export function ScheduleGrid({
                     "pointer-events-none absolute inset-y-0 flex items-center whitespace-nowrap transition-opacity",
                     showResizeHandles && "left-6 right-6 justify-center"
                   )}
-                  style={showResizeHandles ? { opacity: 1 } : getDayTimelineLabelStyle(range)}
+                  style={showResizeHandles ? { opacity: 1 } : getDayTimelineLabelStyle(displayedRange)}
                 >
                   {label}
                 </span>
@@ -1322,26 +1391,40 @@ export function ScheduleGrid({
               if (label !== "OK") {
                 return null;
               }
+              const displayedRange =
+                resizePreview?.rowIndex === rowIndex &&
+                resizePreview.startIndex === range.startIndex &&
+                resizePreview.endIndex === range.endIndex
+                  ? {
+                      ...range,
+                      endIndex: resizePreview.nextEndIndex,
+                      startIndex: resizePreview.nextStartIndex
+                    }
+                  : range;
 
               return (
                 <span
                   className="pointer-events-none relative h-full min-w-0"
                   key={`${row.technicianId}-resize-${range.startIndex}-${range.endIndex}`}
                   style={{
-                    gridColumn: `${range.startIndex + 1} / ${range.endIndex + 1}`,
+                    gridColumn: `${displayedRange.startIndex + 1} / ${displayedRange.endIndex + 1}`,
                     marginInline: "3px"
                   }}
                 >
                   <button
                     aria-label="调整开始时间"
                     className="pointer-events-auto absolute left-0 top-1/2 h-8 w-5 -translate-y-1/2 cursor-ew-resize rounded-full"
+                    data-scroll-drag-ignore="true"
                     onPointerDown={(event) => startDayPrimaryRangeResize(event, rowIndex, range, "start")}
+                    style={{ touchAction: "none" }}
                     type="button"
                   />
                   <button
                     aria-label="调整结束时间"
                     className="pointer-events-auto absolute right-0 top-1/2 h-8 w-5 -translate-y-1/2 cursor-ew-resize rounded-full"
+                    data-scroll-drag-ignore="true"
                     onPointerDown={(event) => startDayPrimaryRangeResize(event, rowIndex, range, "end")}
+                    style={{ touchAction: "none" }}
                     type="button"
                   />
                 </span>

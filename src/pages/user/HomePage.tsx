@@ -878,7 +878,10 @@ export function HomePage() {
 
   return (
     <MobileShell>
-      <FloatingHomeHeader panelClassName="rounded-none border-transparent bg-transparent px-0 pb-0 shadow-none backdrop-blur-none" stacked>
+      <FloatingHomeHeader
+        panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+        stacked
+      >
         <SharedHomeHeader
           avatarAlt={currentCustomer.name}
           avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}

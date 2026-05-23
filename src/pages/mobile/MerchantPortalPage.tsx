@@ -1741,7 +1741,9 @@ export function MerchantPortalPage() {
       showTopEdgeMask={activeView !== "orders"}
     >
       {activeView === "dashboard" ? (
-        <FloatingHomeHeader panelClassName="rounded-none border-transparent bg-transparent px-0 pb-0 shadow-none backdrop-blur-none">
+        <FloatingHomeHeader
+          panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+        >
           <SharedHomeHeader
             avatarAlt={store.name}
             avatarLabel="打开经营数据中心"

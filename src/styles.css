@@ -1974,6 +1974,21 @@ body:has(.merchant-analytics-clean-shell),
   backdrop-filter: blur(24px) saturate(1.45);
 }
 
+.client-shell .client-floating-header-glass-frame {
+  border-color: transparent !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-top-chrome-bg) 78%, transparent),
+      color-mix(in srgb, var(--client-bg) 58%, transparent)
+    ) !important;
+  box-shadow:
+    inset 0 -1px 0 color-mix(in srgb, var(--client-line) 28%, transparent),
+    0 18px 36px color-mix(in srgb, var(--client-bg) 24%, transparent) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(1.28) !important;
+  backdrop-filter: blur(34px) saturate(1.28) !important;
+}
+
 .client-shell .client-portal-tab-header {
   z-index: var(--client-sticky-tab-layer) !important;
   border-bottom: 0 !important;
@@ -2338,6 +2353,168 @@ body:has(.merchant-analytics-clean-shell),
 
 .sos-danger-action :where(span, svg, path) {
   color: #ffffff !important;
+}
+
+.client-shell {
+  --technician-status-duty: var(--client-primary);
+  --technician-status-duty-strong: var(--client-primary);
+  --technician-status-travel: var(--client-warm);
+  --technician-status-travel-strong: var(--client-warm);
+  --technician-status-service: var(--client-accent);
+  --technician-status-service-strong: var(--client-accent);
+  --technician-status-rest: var(--client-warning);
+  --technician-status-rest-strong: var(--client-warning-ink);
+  --technician-status-off: var(--client-muted);
+  --technician-status-off-strong: var(--client-muted);
+  --technician-status-icon-surface: var(--client-elevated);
+}
+
+.client-theme-light-green,
+.client-theme-jade-light {
+  --technician-status-duty: #367a71;
+  --technician-status-duty-strong: #367a71;
+  --technician-status-travel: #2f9f83;
+  --technician-status-travel-strong: #22755f;
+  --technician-status-service: #df5b52;
+  --technician-status-service-strong: #b63e38;
+  --technician-status-rest: #d19a24;
+  --technician-status-rest-strong: #805a00;
+  --technician-status-off: rgba(22, 54, 48, 0.56);
+  --technician-status-off-strong: rgba(22, 54, 48, 0.7);
+  --technician-status-icon-surface: #ffffff;
+}
+
+.client-theme-dark-green {
+  --technician-status-duty: #baff43;
+  --technician-status-duty-strong: #baff43;
+  --technician-status-travel: #5ef28a;
+  --technician-status-travel-strong: #72ff8b;
+  --technician-status-service: #ff7568;
+  --technician-status-service-strong: #ff9a90;
+  --technician-status-rest: #f8bd4b;
+  --technician-status-rest-strong: #ffdc7a;
+  --technician-status-off: rgba(238, 245, 232, 0.66);
+  --technician-status-off-strong: rgba(238, 245, 232, 0.82);
+  --technician-status-icon-surface: #0a1214;
+}
+
+.client-theme-black-gold,
+.client-theme-noir-gold {
+  --technician-status-duty: #fedfa0;
+  --technician-status-duty-strong: #fedfa0;
+  --technician-status-travel: #67d8c5;
+  --technician-status-travel-strong: #91efdf;
+  --technician-status-service: #ff806f;
+  --technician-status-service-strong: #ffb1a6;
+  --technician-status-rest: #d2a64c;
+  --technician-status-rest-strong: #ffe0a1;
+  --technician-status-off: rgba(226, 222, 210, 0.62);
+  --technician-status-off-strong: rgba(244, 238, 222, 0.82);
+  --technician-status-icon-surface: #15110b;
+}
+
+.client-theme-vital-mono {
+  --technician-status-duty: #202124;
+  --technician-status-duty-strong: #202124;
+  --technician-status-travel: #087bb8;
+  --technician-status-travel-strong: #087bb8;
+  --technician-status-service: #14b8ff;
+  --technician-status-service-strong: #087bb8;
+  --technician-status-rest: #d99a00;
+  --technician-status-rest-strong: #735000;
+  --technician-status-off: rgba(32, 33, 36, 0.5);
+  --technician-status-off-strong: rgba(32, 33, 36, 0.68);
+  --technician-status-icon-surface: #ffffff;
+}
+
+.client-theme-cool-black-gray {
+  --technician-status-duty: #18d2f0;
+  --technician-status-duty-strong: #18d2f0;
+  --technician-status-travel: #79f0ff;
+  --technician-status-travel-strong: #9cf6ff;
+  --technician-status-service: #ff735f;
+  --technician-status-service-strong: #ffa296;
+  --technician-status-rest: #ffcb61;
+  --technician-status-rest-strong: #ffe09b;
+  --technician-status-off: rgba(222, 233, 238, 0.64);
+  --technician-status-off-strong: rgba(238, 246, 249, 0.82);
+  --technician-status-icon-surface: #071014;
+}
+
+.client-theme-neon-pink,
+.client-theme-lovely-neon {
+  --technician-status-duty: #8a75ff;
+  --technician-status-duty-strong: #8a75ff;
+  --technician-status-travel: #6ddcff;
+  --technician-status-travel-strong: #6ddcff;
+  --technician-status-service: #ff6fae;
+  --technician-status-service-strong: #ff6fae;
+  --technician-status-rest: #ffca6f;
+  --technician-status-rest-strong: #ffe0ad;
+  --technician-status-off: rgba(235, 229, 255, 0.58);
+  --technician-status-off-strong: rgba(244, 240, 255, 0.8);
+  --technician-status-icon-surface: #080a1a;
+}
+
+.client-shell .technician-work-status-button {
+  --technician-work-status-tone: var(--technician-status-duty);
+  --technician-work-status-strong: var(--technician-status-duty-strong);
+  border-color: color-mix(in srgb, var(--technician-work-status-tone) 28%, var(--client-line) 72%) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--technician-work-status-tone) 11%, var(--client-surface) 89%),
+      color-mix(in srgb, var(--technician-work-status-tone) 5%, var(--client-bg-soft) 95%)
+    ) !important;
+  color: var(--client-text) !important;
+  box-shadow: none !important;
+}
+
+.client-shell .technician-work-status-button--active {
+  border-color: color-mix(in srgb, var(--technician-work-status-tone) 84%, var(--client-line) 16%) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--technician-work-status-tone) 24%, var(--client-surface) 76%),
+      color-mix(in srgb, var(--technician-work-status-tone) 12%, var(--client-bg-soft) 88%)
+    ) !important;
+  color: var(--technician-work-status-strong) !important;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--technician-work-status-tone) 22%, transparent) !important;
+}
+
+.client-shell .technician-work-status-icon {
+  background: color-mix(in srgb, var(--technician-work-status-tone) 24%, var(--technician-status-icon-surface) 76%) !important;
+  color: var(--technician-work-status-strong) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.client-shell .technician-work-status-button--active .technician-work-status-icon {
+  background: color-mix(in srgb, var(--technician-work-status-tone) 34%, var(--technician-status-icon-surface) 66%) !important;
+}
+
+.client-shell .technician-work-status--duty {
+  --technician-work-status-tone: var(--technician-status-duty);
+  --technician-work-status-strong: var(--technician-status-duty-strong);
+}
+
+.client-shell .technician-work-status--travel {
+  --technician-work-status-tone: var(--technician-status-travel);
+  --technician-work-status-strong: var(--technician-status-travel-strong);
+}
+
+.client-shell .technician-work-status--service {
+  --technician-work-status-tone: var(--technician-status-service);
+  --technician-work-status-strong: var(--technician-status-service-strong);
+}
+
+.client-shell .technician-work-status--rest {
+  --technician-work-status-tone: var(--technician-status-rest);
+  --technician-work-status-strong: var(--technician-status-rest-strong);
+}
+
+.client-shell .technician-work-status--off {
+  --technician-work-status-tone: var(--technician-status-off);
+  --technician-work-status-strong: var(--technician-status-off-strong);
 }
 
 .client-shell .bg-moss {
