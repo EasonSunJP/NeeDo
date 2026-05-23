@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
-const floatingHeaderFrameGapPx = 12;
+const floatingHeaderFrameGapPx = 16;
 
 export function FloatingHomeHeader({
   children,

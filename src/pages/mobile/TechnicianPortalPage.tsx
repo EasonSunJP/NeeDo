@@ -4315,69 +4315,67 @@ export function TechnicianPortalPage() {
           <span className="min-w-0 flex-1 truncate text-[14px] font-black text-[color:var(--client-text)]">行程搜索</span>
         </Link>
       ) : null}
-
-      {schedulePrimaryTab === "planning" ? (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3 rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3.5 py-2.5 text-sm font-semibold text-[color:var(--client-muted)]">
-            <span className="min-w-0 truncate">{getScheduleContextLabel(activeScheduleContext.context)}</span>
-            <span className="min-w-0 truncate text-right">{activeScheduleContext.uiHints.primaryAction}</span>
-          </div>
-          <ol
-            className="isolate grid overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-2 py-3"
-            style={{ gridTemplateColumns: `repeat(${schedulePlanningProgressSteps.length}, minmax(0, 1fr))` }}
-          >
-            {schedulePlanningProgressSteps.map((item, index) => {
-              const active = index === activeSchedulePlanningStepIndex;
-              const completed = index < activeSchedulePlanningStepIndex;
-
-              return (
-                <li className="relative min-w-0" key={`${item.step}-${item.value}`}>
-                  {index < schedulePlanningProgressSteps.length - 1 ? (
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "pointer-events-none absolute left-[calc(50%+18px)] right-[calc(-50%+18px)] top-[18px] h-0.5",
-                        completed ? "bg-[color:var(--client-primary)]" : "bg-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)]"
-                      )}
-                    />
-                  ) : null}
-                  <button
-                    aria-current={active ? "step" : undefined}
-                    aria-label={`切换到步骤 ${item.step}：${item.label}`}
-                    className={cn(
-                      "relative z-[1] flex w-full min-w-0 flex-col items-center rounded-[14px] px-1 py-1 text-center transition hover:bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)]"
-                    )}
-                    onClick={() => updateSchedulePlanningStep(item.value)}
-                    type="button"
-                  >
-                    <span
-                      className={cn(
-                        "grid h-9 w-9 place-items-center rounded-full border text-sm font-black transition",
-                        active
-                          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
-                          : completed
-                            ? "border-[color:color-mix(in_srgb,var(--client-primary)_44%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
-                            : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-muted)]"
-                      )}
-                    >
-                      {item.step}
-                    </span>
-                    <strong
-                      className={cn(
-                        "mt-2 block w-full min-w-0 px-1 text-[11px] font-black leading-4",
-                        active ? "text-[color:var(--client-text)]" : "text-[color:var(--client-muted)]"
-                      )}
-                    >
-                      {item.label}
-                    </strong>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      ) : null}
     </FloatingHomeHeader>
+  );
+
+  const schedulePlanningProgressCard = (
+    <section className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+      <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] px-3.5 py-3 text-sm font-semibold text-[color:var(--client-muted)]">
+        <span className="min-w-0 truncate">{getScheduleContextLabel(activeScheduleContext.context)}</span>
+        <span className="min-w-0 truncate text-right">{activeScheduleContext.uiHints.primaryAction}</span>
+      </div>
+      <ol
+        className="mt-3 isolate grid overflow-hidden rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-2 py-3"
+        style={{ gridTemplateColumns: `repeat(${schedulePlanningProgressSteps.length}, minmax(0, 1fr))` }}
+      >
+        {schedulePlanningProgressSteps.map((item, index) => {
+          const active = index === activeSchedulePlanningStepIndex;
+          const completed = index < activeSchedulePlanningStepIndex;
+
+          return (
+            <li className="relative min-w-0" key={`${item.step}-${item.value}`}>
+              {index < schedulePlanningProgressSteps.length - 1 ? (
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute left-[calc(50%+18px)] right-[calc(-50%+18px)] top-[18px] h-0.5",
+                    completed ? "bg-[color:var(--client-primary)]" : "bg-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)]"
+                  )}
+                />
+              ) : null}
+              <button
+                aria-current={active ? "step" : undefined}
+                aria-label={`切换到步骤 ${item.step}：${item.label}`}
+                className="relative z-[1] flex w-full min-w-0 flex-col items-center rounded-[14px] px-1 py-1 text-center transition hover:bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)]"
+                onClick={() => updateSchedulePlanningStep(item.value)}
+                type="button"
+              >
+                <span
+                  className={cn(
+                    "grid h-9 w-9 place-items-center rounded-full border text-sm font-black transition",
+                    active
+                      ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
+                      : completed
+                        ? "border-[color:color-mix(in_srgb,var(--client-primary)_44%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
+                        : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-muted)]"
+                  )}
+                >
+                  {item.step}
+                </span>
+                <strong
+                  className={cn(
+                    "mt-2 block w-full min-w-0 px-1 text-[11px] font-black leading-4",
+                    active ? "text-[color:var(--client-text)]" : "text-[color:var(--client-muted)]"
+                  )}
+                >
+                  {item.label}
+                </strong>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 
   return (
@@ -4869,12 +4867,13 @@ export function TechnicianPortalPage() {
           <>
             {scheduleTopControls}
 
-            <div className={cn(scheduleThemeRootClass, "w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]")}>
+            <div className={cn(scheduleThemeRootClass, "w-full min-w-0 max-w-full overflow-x-hidden [overflow-x:clip]")}>
               <div className={cn("space-y-4", schedulePrimaryTab !== "mySchedule" && "hidden")}>
                 <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" />
               </div>
 
               <div className={cn("w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]", schedulePrimaryTab !== "planning" && "hidden")}>
+                {schedulePlanningProgressCard}
                 <TechnicianShiftPlanningPanel
                   activeStep={effectiveSchedulePlanningStep}
                   onPlanningMethodChange={updateSchedulePlanningMethod}
