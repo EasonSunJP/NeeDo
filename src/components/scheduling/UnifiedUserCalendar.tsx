@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { AppIcon } from "../client-ui/AppScaffold";
+import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
 import { ScheduleDraftRangeBlock } from "./ScheduleDraftRangeBlock";
 import { orders } from "../../data/mock";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
@@ -238,7 +239,7 @@ const schedulePanelClass =
 const scheduleInsetClass =
   "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)]";
 const inputClass =
-  "focus-ring h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3.5 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
+  "focus-ring h-11 min-w-0 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3.5 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
 
 function addMinutesToTime(time: string, minutes: number) {
   return minutesToTime(timeToMinutes(time) + minutes);
@@ -2001,12 +2002,10 @@ function BottomSheet({
   return (
     <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/38 px-3 pb-3" role="dialog" aria-modal="true">
       <div className="w-full max-w-[480px] overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,var(--client-bg)_4%)] shadow-[var(--client-shadow)] backdrop-blur-xl">
-        <div className="flex items-center justify-between border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-3">
-          <button className="focus-ring grid h-10 w-10 place-items-center rounded-full text-[color:var(--client-muted)]" onClick={onClose} type="button">
-            <AppIcon name="close" />
-          </button>
-          <strong className="text-sm font-black text-[color:var(--client-text)]">{title}</strong>
-          <span className="h-10 w-10" />
+        <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-3">
+          <span aria-hidden="true" className="h-11 w-11" />
+          <strong className="min-w-0 truncate text-center text-sm font-black text-[color:var(--client-text)]">{title}</strong>
+          <MobileFullscreenCloseButton label={`关闭${title}`} onClose={onClose} />
         </div>
         <div className="max-h-[72vh] overflow-y-auto px-4 py-4">{children}</div>
       </div>
@@ -2172,12 +2171,12 @@ function EditorSheet({
           placeholder="新增標題"
           value={draft.title}
         />
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-[11px] font-black text-[color:var(--client-muted)]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             日期
             <input className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, date: event.target.value })} type="date" value={draft.date} />
           </label>
-          <label className="text-[11px] font-black text-[color:var(--client-muted)]">
+          <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             提醒
             <select className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, reminder: event.target.value })} value={draft.reminder}>
               <option value="10 分鐘前">10 分鐘前</option>
@@ -2187,12 +2186,12 @@ function EditorSheet({
             </select>
           </label>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <label className="text-[11px] font-black text-[color:var(--client-muted)]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             開始
             <input className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, startTime: event.target.value })} type="time" value={draft.startTime} />
           </label>
-          <label className="text-[11px] font-black text-[color:var(--client-muted)]">
+          <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             結束
             <input className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, endTime: event.target.value })} type="time" value={draft.endTime} />
           </label>
@@ -2240,14 +2239,14 @@ function EditorSheet({
             <span className="text-[12px] font-black text-[color:var(--client-text)]">选择同步联系人</span>
             <span className="text-[10px] font-black text-[color:var(--client-muted)]">{draft.syncContactIds.length} 个</span>
           </div>
-          <div className="grid grid-cols-3 gap-1 rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_40%,transparent)] p-1">
+          <div className="grid grid-cols-3 gap-1 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_40%,transparent)] p-1">
             {syncFilterOptions.map((option) => {
               const active = syncContactFilterMode === option.value;
               return (
                 <button
                   aria-pressed={active}
                   className={cn(
-                    "focus-ring min-h-9 rounded-[12px] px-2 text-[12px] font-black transition",
+                    "focus-ring min-h-9 rounded-full px-2 text-[12px] font-black transition",
                     active
                       ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
                       : "text-[color:var(--client-muted)]"
