@@ -1788,7 +1788,9 @@ export function MerchantPortalPage() {
             ? "space-y-4 pt-0"
             : activeView === "schedule" || activeView === "staff"
               ? "px-4 pb-4 pt-0"
-              : "space-y-4 px-4 py-4"
+              : activeView === "dashboard"
+                ? "space-y-4 px-4 pb-4 pt-2"
+                : "space-y-4 px-4 py-4"
         )}
       >
         {activeView === "dashboard" ? (

@@ -4439,7 +4439,13 @@ export function TechnicianPortalPage() {
 
       <div
         className={cn(
-          activeView === "me" ? "space-y-0 pt-0" : activeView === "schedule" ? "w-full min-w-0 max-w-full overflow-x-hidden px-4 pb-4 pt-0 [overflow-x:clip]" : "space-y-5 px-4 py-4",
+          activeView === "me"
+            ? "space-y-0 pt-0"
+            : activeView === "schedule"
+              ? "w-full min-w-0 max-w-full overflow-x-hidden px-4 pb-4 pt-0 [overflow-x:clip]"
+              : activeView === "tasks"
+                ? "space-y-5 px-4 pb-4 pt-2"
+                : "space-y-5 px-4 py-4",
           activeView === "schedule" &&
             (schedulePrimaryTab === "planning" && (schedulePlanningStep === "oneClick" || schedulePlanningStep === "manual")
               ? "pb-[calc(332px+env(safe-area-inset-bottom))]"

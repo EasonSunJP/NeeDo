@@ -908,7 +908,7 @@ export function HomePage() {
         </Link>
       </FloatingHomeHeader>
 
-      <div className="space-y-5 px-4 pb-28 pt-2.5">
+      <div className="space-y-5 px-4 pb-28 pt-2">
         {activeReminder ? <div aria-hidden="true" className="h-[152px]" /> : null}
 
         {activeReminder ? (

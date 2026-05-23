@@ -20,6 +20,14 @@ import {
 } from "../../components/client-ui/SettingsDirectory";
 import { useI18n } from "../../i18n/I18nProvider";
 import { languages, translateText, type Language } from "../../i18n/translations";
+import {
+  fetchGoogleCalendarApi,
+  getGoogleCalendarActorId,
+  googleCalendarIconSrc,
+  type GoogleCalendarAuthUrlResponse,
+  type GoogleCalendarConnectionStatus,
+  type GoogleCalendarScope
+} from "../../lib/googleCalendarApi";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import {
   detectPwaInstallPlatform,

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { AppIcon } from "../client-ui/AppScaffold";
+import { AppIcon, floatingHeaderControlButtonClassName } from "../client-ui/AppScaffold";
+import { FloatingActionButton } from "../mobile/FloatingActionButton";
 import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
 import { ScheduleDraftRangeBlock } from "./ScheduleDraftRangeBlock";
+import { AvatarImage } from "../ui/AvatarImage";
 import { orders } from "../../data/mock";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
@@ -10,6 +12,15 @@ import { isContactVisibleForRole } from "../../features/im/role-config";
 import { useImStore } from "../../features/im/store";
 import { cn } from "../../lib/utils";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
+import {
+  fetchGoogleCalendarApi,
+  getGoogleCalendarActorId,
+  googleCalendarIconSrc,
+  type GoogleCalendarApiExportResponse,
+  type GoogleCalendarApiImportResponse,
+  type GoogleCalendarConnectionStatus,
+  type GoogleCalendarSyncActionResult
+} from "../../lib/googleCalendarApi";
 import { useEntityStore } from "../../state/entityStore";
 import { useScheduleStore } from "../../state/scheduleStore";
 import { useTechnicianScheduleStore } from "../../state/technicianScheduleStore";
@@ -46,6 +57,7 @@ type SyncContactOption = {
   id: string;
   label: string;
   description: string;
+  avatar?: string;
   count?: number;
   kind?: SyncContactFilterMode;
 };
@@ -95,9 +107,16 @@ type LocalCalendarEvent = {
   reminder: string;
   syncContactIds: string[];
   visibility: string;
+  googleEventId?: string;
+  googleCalendarId?: string;
   createdAt: string;
   updatedAt: string;
 };
+
+type GoogleCalendarApiEventPayload = Pick<
+  UnifiedCalendarEvent,
+  "id" | "sourceId" | "calendarId" | "calendarLabel" | "date" | "startTime" | "endTime" | "title" | "subtitle" | "location" | "note"
+>;
 
 type CalendarEditorDraft = Omit<LocalCalendarEvent, "createdAt" | "updatedAt">;
 
@@ -243,6 +262,34 @@ const inputClass =
 
 function addMinutesToTime(time: string, minutes: number) {
   return minutesToTime(timeToMinutes(time) + minutes);
+}
+
+function getGoogleCalendarSettingsPath(scope: UnifiedCalendarScope) {
+  if (scope === "merchant") {
+    return "/merchant/settings/account?section=google-calendar";
+  }
+
+  if (scope === "technician") {
+    return "/technician/settings/account?section=google-calendar";
+  }
+
+  return "/me/settings/account?section=google-calendar";
+}
+
+function toGoogleCalendarApiPayload(event: UnifiedCalendarEvent): GoogleCalendarApiEventPayload {
+  return {
+    id: event.id,
+    sourceId: event.sourceId,
+    calendarId: event.calendarId,
+    calendarLabel: event.calendarLabel,
+    date: event.date,
+    startTime: event.startTime,
+    endTime: event.endTime,
+    title: event.title,
+    subtitle: event.subtitle,
+    location: event.location,
+    note: event.note
+  };
 }
 
 function normalizeDateTimeFromOrder(order: Order) {
@@ -808,6 +855,7 @@ function getCommonSyncContactOptions(
             id: `im:${contact.targetUserId}`,
             label: getDisplayName(user, contact),
             description: [contact.isStarred ? "常用" : "最近联系", getCalendarContactTags(contact, user).slice(0, 2).join(" / ")].filter(Boolean).join(" · "),
+            avatar: user.avatar,
             kind: "common" as const
           }
         }
@@ -839,6 +887,7 @@ function getGroupSyncContactOptions(conversations: Conversation[]): SyncContactO
       id: `group:${conversation.id}`,
       label: conversation.title || "未命名群组",
       description: `群组 · ${conversation.memberIds.length} 人`,
+      avatar: conversation.avatar,
       count: conversation.memberIds.length,
       kind: "groups" as const
     }));
@@ -931,11 +980,13 @@ function getUserSyncContactOptions(
 
   return dedupeSyncContactOptions([
     ...Array.from(relevantTechnicianIds).map((technicianId): SyncContactOption => ({
+      avatar: technicians.find((technician) => technician.id === technicianId)?.avatar,
       id: `technician:${technicianId}`,
       label: getTechnicianName(technicians, technicianId),
       description: "技师端"
     })),
     ...Array.from(storeIds).map((storeId): SyncContactOption => ({
+      avatar: stores.find((store) => store.id === storeId)?.cover,
       id: `merchant:${storeId}`,
       label: getStoreName(stores, storeId),
       description: "商户端"
@@ -957,6 +1008,7 @@ function getTechnicianSyncContactOptions(
     .filter((technician) => technician.id !== currentTechnician.id && storeIds.has(technician.storeId))
     .slice(0, 4)
     .map((technician): SyncContactOption => ({
+      avatar: technician.avatar,
       id: `technician:${technician.id}`,
       label: technician.nickname?.trim() || technician.name,
       description: "技师端"
@@ -964,6 +1016,7 @@ function getTechnicianSyncContactOptions(
 
   return dedupeSyncContactOptions([
     ...Array.from(storeIds).map((storeId): SyncContactOption => ({
+      avatar: stores.find((store) => store.id === storeId)?.cover,
       id: `merchant:${storeId}`,
       label: getStoreName(stores, storeId),
       description: "商户端"
@@ -978,6 +1031,7 @@ function getMerchantSyncContactOptions(currentStore: Store | undefined, technici
   }
 
   return getStoreTechnicians(currentStore, technicians).map((technician): SyncContactOption => ({
+    avatar: technician.avatar,
     id: getTechnicianCalendarLaneId(technician.id),
     label: technician.nickname?.trim() || technician.name,
     description: "技师端"
@@ -1432,9 +1486,15 @@ function CalendarSourceDrawer({
   birthdayExpanded,
   birthdayFilters,
   birthdayTagOptions,
+  googleConnectionStatus,
+  googleSyncEventCount,
   open,
   sourceCounts,
   sourceVisibility,
+  onGoogleConnect,
+  onGoogleExport,
+  onGoogleImport,
+  onGoogleStatusRefresh,
   onBirthdayExpandToggle,
   onBirthdayContactQueryChange,
   onBirthdayContactToggle,
@@ -1448,9 +1508,15 @@ function CalendarSourceDrawer({
   birthdayExpanded: boolean;
   birthdayFilters: BirthdaySourceFilters;
   birthdayTagOptions: CalendarContactTagOption[];
+  googleConnectionStatus: GoogleCalendarConnectionStatus | null;
+  googleSyncEventCount: number;
   open: boolean;
   sourceCounts: Record<UnifiedCalendarSourceId, number>;
   sourceVisibility: Record<UnifiedCalendarSourceId, boolean>;
+  onGoogleConnect: () => Promise<GoogleCalendarSyncActionResult>;
+  onGoogleExport: () => Promise<GoogleCalendarSyncActionResult>;
+  onGoogleImport: () => Promise<GoogleCalendarSyncActionResult>;
+  onGoogleStatusRefresh: () => Promise<GoogleCalendarConnectionStatus>;
   onBirthdayExpandToggle: () => void;
   onBirthdayContactQueryChange: (query: string) => void;
   onBirthdayContactToggle: (contactId: string) => void;
@@ -1459,21 +1525,140 @@ function CalendarSourceDrawer({
   onClose: () => void;
   onToggle: (sourceId: UnifiedCalendarSourceId) => void;
 }) {
+  const [googleSyncExpanded, setGoogleSyncExpanded] = useState(false);
+  const [googleSyncMessage, setGoogleSyncMessage] = useState("");
+  const [googleSyncBusy, setGoogleSyncBusy] = useState<"status" | "connect" | "export" | "import" | null>(null);
+
+  useEffect(() => {
+    if (!open || !googleSyncExpanded) {
+      return;
+    }
+
+    let cancelled = false;
+    setGoogleSyncBusy("status");
+    onGoogleStatusRefresh()
+      .then((status) => {
+        if (!cancelled) {
+          setGoogleSyncMessage(status.message);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setGoogleSyncMessage(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setGoogleSyncBusy(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [googleSyncExpanded, open]);
+
   if (!open) {
     return null;
   }
 
+  const runGoogleAction = async (busyKey: "connect" | "export" | "import", action: () => Promise<GoogleCalendarSyncActionResult>) => {
+    if (googleSyncBusy) {
+      return;
+    }
+
+    setGoogleSyncBusy(busyKey);
+    try {
+      const result = await action();
+      setGoogleSyncMessage(result.message);
+    } catch (error) {
+      setGoogleSyncMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setGoogleSyncBusy(null);
+    }
+  };
+  const googleConnected = Boolean(googleConnectionStatus?.connected);
+
   return (
-    <aside className="absolute left-3 top-[58px] z-[150] w-[min(340px,calc(100vw-56px))] overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,transparent)] shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl" role="menu">
+    <>
+      <button
+        aria-label="关闭日历来源遮罩"
+        className="fixed inset-0 z-[145] bg-[color:color-mix(in_srgb,var(--client-bg)_40%,transparent)] backdrop-blur-md"
+        onClick={onClose}
+        type="button"
+      />
+      <aside className="absolute left-3 top-[58px] z-[150] w-[min(340px,calc(100vw-56px))] overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,transparent)] shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl" role="menu">
         <div className="flex items-center justify-between border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-3.5 py-3">
           <div>
             <strong className="block text-sm font-black text-[color:var(--client-text)]">日历来源</strong>
             <span className="mt-1 block text-[10px] font-black text-[color:var(--client-muted)]">选择显示在当前视图里的行程</span>
           </div>
-          <button aria-label="关闭日历来源" className="focus-ring grid h-8 w-8 place-items-center rounded-full text-[color:var(--client-muted)]" onClick={onClose} type="button">
-            <AppIcon name="close" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              aria-expanded={googleSyncExpanded}
+              aria-label="同步 Google 日历"
+              className={cn(floatingHeaderControlButtonClassName, "h-11 w-11 p-2")}
+              onClick={() => setGoogleSyncExpanded((current) => !current)}
+              type="button"
+            >
+              <img alt="" className="h-6 w-6 object-contain" src={googleCalendarIconSrc} />
+            </button>
+            <MobileFullscreenCloseButton label="关闭日历来源" onClose={onClose} />
+          </div>
         </div>
+
+        {googleSyncExpanded ? (
+          <section className="border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-3.5 py-3">
+            <div className="grid gap-2">
+              {googleConnected ? (
+                <>
+                  <button
+                    className="focus-ring flex min-h-[58px] items-center gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-3 text-left disabled:opacity-55"
+                    disabled={Boolean(googleSyncBusy)}
+                    onClick={() => runGoogleAction("export", onGoogleExport)}
+                    type="button"
+                  >
+                    <img alt="" className="h-8 w-8 shrink-0 object-contain" src={googleCalendarIconSrc} />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-[12px] font-black text-[color:var(--client-text)]">NeeDo → Google 日历</strong>
+                      <span className="mt-0.5 block text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">通过接口同步当前视图 {googleSyncEventCount} 件行程</span>
+                    </span>
+                  </button>
+                  <button
+                    className="focus-ring flex min-h-[58px] items-center gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-3 text-left disabled:opacity-55"
+                    disabled={Boolean(googleSyncBusy)}
+                    onClick={() => runGoogleAction("import", onGoogleImport)}
+                    type="button"
+                  >
+                    <img alt="" className="h-8 w-8 shrink-0 object-contain" src={googleCalendarIconSrc} />
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-[12px] font-black text-[color:var(--client-text)]">Google 日历 → NeeDo</strong>
+                      <span className="mt-0.5 block text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">通过接口拉取当前日期范围的行程</span>
+                    </span>
+                  </button>
+                  {googleSyncMessage ? (
+                    <p className="rounded-[14px] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] px-3 py-2 text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">
+                      {googleSyncBusy ? "处理中：" : ""}{googleSyncMessage}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <button
+                  className="focus-ring flex min-h-[58px] items-center gap-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 text-left disabled:opacity-55"
+                  disabled={Boolean(googleSyncBusy)}
+                  onClick={() => runGoogleAction("connect", onGoogleConnect)}
+                  type="button"
+                >
+                  <img alt="" className="h-8 w-8 shrink-0 object-contain" src={googleCalendarIconSrc} />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block text-[12px] font-black text-[color:var(--client-text)]">连接 Google 账号</strong>
+                    <span className="mt-0.5 block text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">前往设置页面加入 Google 账号绑定</span>
+                  </span>
+                </button>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         <div className="max-h-[62vh] space-y-4 overflow-y-auto px-3.5 py-3">
           <section className="space-y-2">
@@ -1521,7 +1706,8 @@ function CalendarSourceDrawer({
             ))}
           </section>
         </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
@@ -2000,7 +2186,7 @@ function BottomSheet({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/38 px-3 pb-3" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[170] flex items-end justify-center bg-black/42 px-3 pb-3 backdrop-blur-[5px] backdrop-saturate-75" role="dialog" aria-modal="true">
       <div className="w-full max-w-[480px] overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,var(--client-bg)_4%)] shadow-[var(--client-shadow)] backdrop-blur-xl">
         <div className="grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-3">
           <span aria-hidden="true" className="h-11 w-11" />
@@ -2010,6 +2196,35 @@ function BottomSheet({
         <div className="max-h-[72vh] overflow-y-auto px-4 py-4">{children}</div>
       </div>
     </div>
+  );
+}
+
+function SyncContactOptionAvatar({ option, active }: { option: SyncContactOption; active: boolean }) {
+  if (option.avatar) {
+    return (
+      <AvatarImage
+        alt={option.label}
+        className={cn(
+          "h-10 w-10 shrink-0 border",
+          active ? "border-[color:color-mix(in_srgb,var(--client-primary)_54%,white_46%)]" : "border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)]"
+        )}
+        src={option.avatar}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border text-[13px] font-black",
+        active
+          ? "border-[color:color-mix(in_srgb,var(--client-primary)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_20%,transparent)] text-[color:var(--client-primary-strong)]"
+          : "border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] text-[color:var(--client-muted)]"
+      )}
+    >
+      {option.label.trim().slice(0, 1) || "同"}
+    </span>
   );
 }
 
@@ -2269,7 +2484,7 @@ function EditorSheet({
                   <button
                     aria-pressed={active}
                     className={cn(
-                      "focus-ring flex min-h-11 items-center gap-2 rounded-[15px] border px-3 text-left transition",
+                      "focus-ring flex min-h-[58px] items-center gap-3 rounded-[15px] border px-3 py-2 text-left transition",
                       active
                         ? "border-[color:color-mix(in_srgb,var(--client-primary)_48%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
                         : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-text)]"
@@ -2286,6 +2501,7 @@ function EditorSheet({
                     >
                       {active ? "✓" : ""}
                     </span>
+                    <SyncContactOptionAvatar active={active} option={option} />
                     <span className="min-w-0 flex-1">
                       <strong className="block truncate text-[12px] font-black">{option.label}</strong>
                       <span className="block truncate text-[10px] font-black opacity-65">{option.description}</span>
@@ -2454,8 +2670,10 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
   const [localEvents, setLocalEvents] = useState<LocalCalendarEvent[]>(loadLocalCalendarEvents);
   const [editorDraft, setEditorDraft] = useState<CalendarEditorDraft | null>(null);
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
+  const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const themeRootClassName = cn(isNight ? "client-theme-night" : "client-theme-day", getClientThemeClassName(theme));
   const period = getCalendarPeriod(view, anchorDate);
+  const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
 
   useEffect(() => {
     writeBrowserStorage(localCalendarStorageKey, JSON.stringify(localEvents), { silent: true });
@@ -2745,6 +2963,101 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
     setActiveEvent(null);
   };
 
+  const refreshGoogleCalendarStatus = async () => {
+    const status = await fetchGoogleCalendarApi<GoogleCalendarConnectionStatus>(
+      `/api/google-calendar/status?actorId=${encodeURIComponent(googleCalendarActorId)}`
+    );
+    setGoogleConnectionStatus(status);
+    return status;
+  };
+
+  const connectGoogleCalendar = async () => {
+    if (typeof window !== "undefined") {
+      window.location.hash = getGoogleCalendarSettingsPath(activeScope);
+    }
+
+    return {
+      count: 0,
+      message: "已前往设置页面绑定 Google 账号。"
+    };
+  };
+
+  const exportGoogleCalendarEvents = async () => {
+    const exportableEvents = visiblePeriodEvents.filter((event) => event.date && event.startTime && event.endTime);
+    if (exportableEvents.length === 0) {
+      return {
+        count: 0,
+        message: "当前视图没有可同步到 Google 日历的行程。"
+      };
+    }
+
+    const response = await fetchGoogleCalendarApi<GoogleCalendarApiExportResponse>("/api/google-calendar/export", {
+      method: "POST",
+      body: JSON.stringify({
+        actorId: googleCalendarActorId,
+        calendarId: "primary",
+        events: exportableEvents.map(toGoogleCalendarApiPayload)
+      })
+    });
+    await refreshGoogleCalendarStatus().catch(() => null);
+
+    return {
+      count: response.count,
+      message: response.message ?? `已通过接口同步 ${response.count} 件 NeeDo 行程到 Google 日历。`
+    };
+  };
+
+  const importGoogleCalendarEvents = async () => {
+    const timeMaxDate = addDays(period.endDate, 1);
+    const response = await fetchGoogleCalendarApi<GoogleCalendarApiImportResponse<LocalCalendarEvent>>("/api/google-calendar/import", {
+      method: "POST",
+      body: JSON.stringify({
+        actorId: googleCalendarActorId,
+        calendarId: "primary",
+        timeMin: `${period.startDate}T00:00:00+09:00`,
+        timeMax: `${timeMaxDate}T00:00:00+09:00`,
+        maxResults: 120
+      })
+    });
+    const importedEvents = response.events ?? [];
+
+    if (importedEvents.length > 0) {
+      setLocalEvents((current) => {
+        const next = [...current];
+        importedEvents.forEach((event) => {
+          const existingIndex = next.findIndex((item) => item.id === event.id || (event.googleEventId && item.googleEventId === event.googleEventId));
+          if (existingIndex >= 0) {
+            next[existingIndex] = {
+              ...next[existingIndex],
+              ...event,
+              createdAt: next[existingIndex].createdAt,
+              updatedAt: new Date().toISOString()
+            };
+            return;
+          }
+          next.push(event);
+        });
+        return next;
+      });
+      const firstEvent = importedEvents[0];
+      if (firstEvent) {
+        setSelectedDate(firstEvent.date);
+        setAnchorDate(firstEvent.date);
+        setView("day");
+      }
+    }
+    await refreshGoogleCalendarStatus().catch(() => null);
+
+    return {
+      count: importedEvents.length,
+      message:
+        response.message ??
+        (importedEvents.length > 0
+          ? `已通过接口从 Google 日历导入 ${importedEvents.length} 件行程。`
+          : "Google 日历在当前日期范围内没有可导入行程。")
+    };
+  };
+
   const renderSelectedDateList = () => {
     if (selectedDateEvents.length === 0) {
       return <EmptyCalendarState date={selectedDate} onCreate={() => openCreate(selectedDate)} />;
@@ -2781,14 +3094,6 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
             type="button"
           >
             今天
-          </button>
-          <button
-            aria-label="新增行程"
-            className="focus-ring grid h-10 w-10 place-items-center rounded-full bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-            onClick={() => openCreate(selectedDate)}
-            type="button"
-          >
-            <AppIcon name="plus" />
           </button>
         </div>
       </div>
@@ -2913,6 +3218,12 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
         birthdayExpanded={birthdayExpanded}
         birthdayFilters={birthdayFilters}
         birthdayTagOptions={calendarContactTagOptions}
+        googleConnectionStatus={googleConnectionStatus}
+        googleSyncEventCount={visiblePeriodEvents.length}
+        onGoogleConnect={connectGoogleCalendar}
+        onGoogleExport={exportGoogleCalendarEvents}
+        onGoogleImport={importGoogleCalendarEvents}
+        onGoogleStatusRefresh={refreshGoogleCalendarStatus}
         onBirthdayContactQueryChange={setBirthdayContactQuery}
         onBirthdayContactToggle={toggleBirthdayContact}
         onBirthdayExpandToggle={() => setBirthdayExpanded((current) => !current)}
@@ -2924,6 +3235,14 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
         sourceCounts={sourceCounts}
         sourceVisibility={sourceVisibility}
       />
+      <FloatingActionButton
+        ariaLabel="新增行程"
+        onClick={() => openCreate(selectedDate)}
+        storageKey={`needo.fab.schedule-create.${activeScope}`}
+        title="新增行程"
+      >
+        <AppIcon name="plus" />
+      </FloatingActionButton>
     </section>
   );
 }

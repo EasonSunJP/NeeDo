@@ -80,7 +80,7 @@ export function UserSchedulePage() {
         </Link>
       </FloatingHomeHeader>
 
-      <div className="space-y-3 px-4 pb-28 pt-2.5">
+      <div className="space-y-3 px-4 pb-28 pt-2">
         <UnifiedUserCalendar currentCustomer={currentCustomer} />
 
         <details className="group rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-3 py-2 shadow-[0_12px_30px_rgba(0,0,0,0.05)]">
