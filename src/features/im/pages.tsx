@@ -25,6 +25,7 @@ import { chatBgUrl } from "../../assets/runtime/images";
 import { customers, imageBank, orders, services } from "../../data/mock";
 import { parseBrowserStorageJson } from "../../lib/browserStorage";
 import { clampMessageText } from "../../lib/messageTextLimits";
+import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getStorePresentationConfig } from "../../lib/storePresentation";
 import { useDocumentScrollLock, useIosScrollContainer } from "../../lib/useIosScrollContainer";
 import {
@@ -463,7 +464,7 @@ function buildScheduleInviteOptions(scope: ImRoleType, currentUser: ImUser | und
         endTime: time.endTime,
         id: `order-${order.id}`,
         scheduleId: order.id,
-        title: order.itemName,
+        title: getNeedoAppBookingTitle(order.id, order.itemName) ?? order.itemName,
         date: time.date,
         timeRange: time.timeRange,
         location: order.storeName ?? `${order.city} / ${order.area}`,
@@ -484,7 +485,7 @@ function buildScheduleInviteOptions(scope: ImRoleType, currentUser: ImUser | und
         endTime: booking.endTime,
         id: `booking-${booking.id}`,
         scheduleId: booking.id,
-        title: booking.title,
+        title: getNeedoAppBookingTitle(booking.orderId, booking.title) ?? booking.title,
         date: booking.date,
         timeRange: `${booking.startTime} - ${booking.endTime}`,
         location: booking.customerName,

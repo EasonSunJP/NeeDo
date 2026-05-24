@@ -3580,6 +3580,7 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .client-shell .schedule-wizard-action-dock {
+  align-items: center;
   border: 1px solid color-mix(in srgb, var(--client-line) 78%, transparent);
   background: color-mix(in srgb, var(--client-bg) 94%, var(--client-surface) 6%);
   box-shadow:
@@ -3587,6 +3588,19 @@ body:has(.merchant-analytics-clean-shell),
     inset 0 1px 0 color-mix(in srgb, var(--client-text) 6%, transparent);
   -webkit-backdrop-filter: blur(18px) saturate(1.24);
   backdrop-filter: blur(18px) saturate(1.24);
+}
+
+.client-shell .schedule-wizard-action-dock > button,
+.client-shell .schedule-wizard-action-dock > a {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 1 !important;
+  text-align: center;
 }
 
 .client-shell .schedule-wizard-action-shell,

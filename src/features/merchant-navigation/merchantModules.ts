@@ -15,10 +15,10 @@ export type MerchantPrimaryModule = {
 export const merchantPrimaryModules: MerchantPrimaryModule[] = [
   {
     key: "orders",
-    labelZh: "订单",
-    labelJa: "注文",
-    caption: "预约与平台订单",
-    route: "/merchant/orders",
+    labelZh: "预约一览",
+    labelJa: "予約一覧",
+    caption: "已排与未排预约",
+    route: "/merchant/schedule?tab=appointments",
     icon: "sparkles"
   },
   {

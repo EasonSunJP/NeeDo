@@ -47,6 +47,7 @@ const matrixInputClass =
   "h-9 rounded-full border border-[color:color-mix(in_srgb,var(--matrix-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--matrix-surface)_78%,transparent)] px-3 text-xs font-black text-[color:var(--matrix-text)] outline-none";
 
 const matrixThemeStyle = {
+  "--matrix-bg-solid": "var(--admin-bg, var(--client-bg, #ffffff))",
   "--matrix-surface": "var(--admin-surface, var(--client-surface))",
   "--matrix-elevated": "var(--admin-muted-surface, var(--client-elevated))",
   "--matrix-line": "var(--admin-line, var(--client-line))",
@@ -58,6 +59,11 @@ const matrixThemeStyle = {
   "--matrix-success": "var(--admin-success, var(--client-primary))",
   "--matrix-warning": "var(--admin-warning, var(--client-warm))",
   "--matrix-danger": "var(--admin-danger, var(--client-accent))",
+  "--matrix-dialog-surface-base": "var(--client-schedule-sticky-bg, var(--client-top-chrome-bg, var(--matrix-bg-solid)))",
+  "--matrix-dialog-surface-solid": "color-mix(in srgb, var(--matrix-dialog-surface-base) 92%, var(--matrix-text) 8%)",
+  "--matrix-dialog-primary-bg": "var(--matrix-primary)",
+  "--matrix-dialog-primary-text": "var(--merchant-dispatch-on-accent, var(--client-primary-contrast, var(--matrix-bg-solid)))",
+  "--matrix-dialog-secondary-bg": "color-mix(in srgb, var(--matrix-dialog-surface-base) 56%, var(--matrix-bg-solid) 44%)",
   "--matrix-on-accent": "#f7fbff"
 } as CSSProperties;
 
@@ -134,7 +140,6 @@ export function ShiftMatrixEditor({
 }: ShiftMatrixEditorProps) {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [dayActionIndex, setDayActionIndex] = useState<number | null>(null);
-  const [paintValue, setPaintValue] = useState<boolean | null>(null);
   const [fillStartHour, setFillStartHour] = useState(10);
   const [fillEndHour, setFillEndHour] = useState(17);
   const normalizedMatrix = useMemo(() => normalizeSlotMatrix(templateType, matrix), [matrix, templateType]);
@@ -160,12 +165,6 @@ export function ShiftMatrixEditor({
       </span>
     )
   );
-
-  useEffect(() => {
-    const stopPainting = () => setPaintValue(null);
-    window.addEventListener("mouseup", stopPainting);
-    return () => window.removeEventListener("mouseup", stopPainting);
-  }, []);
 
   useEffect(() => {
     setSelectedDayIndex((current) => Math.min(current, Math.max(dayLabels.length - 1, 0)));
@@ -205,6 +204,31 @@ export function ShiftMatrixEditor({
     0
   );
   const selectedDayActionState = dayActionIndex == null ? null : getDayActionState?.(dayActionIndex) ?? { rest: false, overtimeBlocked: false };
+  const dayActionPortalTarget =
+    typeof document === "undefined"
+      ? null
+      : document.querySelector<HTMLElement>(".client-shell, .admin-shell") ?? document.body;
+  const dayActionDialogPanelStyle = {
+    ...matrixThemeStyle,
+    backgroundColor: "var(--matrix-dialog-surface-solid)",
+    borderColor: "color-mix(in srgb, var(--matrix-line) 72%, transparent)",
+    boxShadow: "0 24px 60px color-mix(in srgb, var(--matrix-bg-solid) 56%, transparent)",
+    color: "var(--matrix-text)"
+  } as CSSProperties;
+  const dayActionDialogPrimaryButtonStyle = {
+    backgroundColor: "var(--matrix-dialog-primary-bg)",
+    borderColor: "color-mix(in srgb, var(--matrix-primary) 38%, var(--matrix-line) 62%)",
+    color: "var(--matrix-dialog-primary-text)"
+  } as CSSProperties;
+  const dayActionDialogSecondaryButtonStyle = {
+    backgroundColor: "var(--matrix-dialog-secondary-bg)",
+    borderColor: "color-mix(in srgb, var(--matrix-line) 78%, transparent)",
+    color: "var(--matrix-text)"
+  } as CSSProperties;
+  const dayActionDialogCloseButtonStyle = {
+    ...dayActionDialogSecondaryButtonStyle,
+    color: "var(--matrix-primary-strong)"
+  } as CSSProperties;
   const matrixRows: ScheduleMatrixGridRow[] = normalizedMatrix.map((row, dayIndex) => {
     const actionState = getDayActionState?.(dayIndex);
 
@@ -222,23 +246,13 @@ export function ShiftMatrixEditor({
           disabled,
           hint,
           key: `${dayIndex}-${hour}`,
-          onMouseDown: () => {
+          onPaint: (nextValue) => {
             if (disabled) {
               return;
             }
 
-            const nextValue = !active;
-            setPaintValue(nextValue);
             applyCell(dayIndex, hour, nextValue);
           },
-          onMouseEnter: () => {
-            if (disabled || paintValue == null) {
-              return;
-            }
-
-            applyCell(dayIndex, hour, paintValue);
-          },
-          onMouseUp: () => setPaintValue(null),
           selected: selectedDayIndex === dayIndex && !disabled
         };
       }),
@@ -259,9 +273,9 @@ export function ShiftMatrixEditor({
   const dayActionDialog = dayActionIndex != null ? (
     <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/78 px-4 py-[max(1.25rem,env(safe-area-inset-top))] pb-[max(7.5rem,env(safe-area-inset-bottom))] backdrop-blur-md" onClick={() => setDayActionIndex(null)}>
       <section
-        className="w-full max-w-[360px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--matrix-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--matrix-elevated)_96%,var(--matrix-primary)_4%),color-mix(in_srgb,var(--matrix-surface)_88%,var(--matrix-bg,var(--matrix-elevated))_12%))] p-4 text-[color:var(--matrix-text)] shadow-[0_24px_60px_color-mix(in_srgb,var(--client-shadow,#000000)_42%,transparent)]"
+        className="w-full max-w-[360px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--matrix-line)_72%,transparent)] bg-[color:var(--matrix-dialog-surface-solid)] p-4 text-[color:var(--matrix-text)] shadow-[0_24px_60px_color-mix(in_srgb,var(--matrix-bg-solid)_56%,transparent)]"
         onClick={(event) => event.stopPropagation()}
-        style={matrixThemeStyle}
+        style={dayActionDialogPanelStyle}
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -269,43 +283,47 @@ export function ShiftMatrixEditor({
             <h4 className="mt-1 text-lg font-black text-[color:var(--matrix-text)]">{dayLabels[dayActionIndex]}</h4>
           </div>
           <MobileFullscreenCloseButton
-            className="h-10 w-10 text-[color:var(--matrix-primary-strong)]"
+            className="h-10 w-10 !border-[color:color-mix(in_srgb,var(--matrix-line)_78%,transparent)] !bg-[color:var(--matrix-dialog-secondary-bg)] text-[color:var(--matrix-primary-strong)]"
             label="关闭模板日设置"
             onClose={() => setDayActionIndex(null)}
+            style={dayActionDialogCloseButtonStyle}
           />
         </div>
         <div className="mt-4 grid gap-2">
           {dayActionMode === "leave" ? (
             <Button
-              className="w-full justify-center bg-[color:var(--matrix-primary)] text-[color:var(--matrix-on-accent)]"
+              className="w-full justify-center !bg-[color:var(--matrix-dialog-primary-bg)] !text-[color:var(--matrix-dialog-primary-text)]"
               disabled={!onRequestDayLeave}
               onClick={() => {
                 onRequestDayLeave?.(dayActionIndex);
                 setDayActionIndex(null);
               }}
+              style={dayActionDialogPrimaryButtonStyle}
             >
               请假申请
             </Button>
           ) : (
             <>
               <Button
-                className="w-full justify-center bg-[color:var(--matrix-primary)] text-[color:var(--matrix-on-accent)]"
+                className="w-full justify-center !bg-[color:var(--matrix-dialog-primary-bg)] !text-[color:var(--matrix-dialog-primary-text)]"
                 disabled={!onToggleDayRest}
                 onClick={() => {
                   onToggleDayRest?.(dayActionIndex);
                   setDayActionIndex(null);
                 }}
+                style={dayActionDialogPrimaryButtonStyle}
               >
                 {selectedDayActionState?.rest ? "取消休息日" : "设为休息日"}
               </Button>
               <Button
-                className="w-full justify-center border border-[color:color-mix(in_srgb,var(--matrix-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--matrix-elevated)_86%,transparent)] text-[color:var(--matrix-text)]"
+                className="w-full justify-center border border-[color:color-mix(in_srgb,var(--matrix-line)_78%,transparent)] !bg-[color:var(--matrix-dialog-secondary-bg)] !text-[color:var(--matrix-text)]"
                 disabled={!onToggleDayOvertimeBlocked}
-                variant="secondary"
+                variant="ghost"
                 onClick={() => {
                   onToggleDayOvertimeBlocked?.(dayActionIndex);
                   setDayActionIndex(null);
                 }}
+                style={dayActionDialogSecondaryButtonStyle}
               >
                 {selectedDayActionState?.overtimeBlocked ? "取消禁止加班日" : "设为禁止加班日"}
               </Button>
@@ -447,7 +465,7 @@ export function ShiftMatrixEditor({
         </div>
       )}
 
-      {dayActionDialog ? (typeof document === "undefined" ? dayActionDialog : createPortal(dayActionDialog, document.body)) : null}
+      {dayActionDialog ? (dayActionPortalTarget ? createPortal(dayActionDialog, dayActionPortalTarget) : dayActionDialog) : null}
     </section>
   );
 }

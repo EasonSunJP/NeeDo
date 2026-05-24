@@ -73,6 +73,7 @@ import {
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { cn, percent, yen } from "../../lib/utils";
 import { useI18n } from "../../i18n/I18nProvider";
+import { translateText, type Language } from "../../i18n/translations";
 
 type PartnerModule = "home" | "plan" | "data" | "organization" | "me";
 type PlanTab = "settings" | "links" | "materials";
@@ -217,12 +218,14 @@ function MiniMetricChart({
   points,
   tone = "green",
   unit = "",
-  markerLabel = "今日"
+  markerLabel = "今日",
+  language = "zh"
 }: {
   points: number[];
   tone?: "green" | "red" | "orange" | "default";
   unit?: string;
   markerLabel?: string;
+  language?: Language;
 }) {
   const width = 240;
   const height = 108;
@@ -239,8 +242,13 @@ function MiniMetricChart({
   const firstPoint = points[0] ?? lastPoint;
   const delta = firstPoint === 0 ? 0 : ((lastPoint - firstPoint) / firstPoint) * 100;
   const ticks = [max, min + range / 2, min];
+  const t = (text: string) => translateText(text, language);
   const formatTick = (value: number) => {
     if (unit === "¥") {
+      if (language === "en" || language === "ko") {
+        if (value >= 1000) return `${Math.round(value / 1000)}k`;
+      }
+
       if (value >= 10000) return `${Math.round(value / 10000)}万`;
       if (value >= 1000) return `${Math.round(value / 1000)}k`;
     }
@@ -285,11 +293,11 @@ function MiniMetricChart({
         <polygon fill="currentColor" opacity="0.12" points={areaPoints} />
         <polyline fill="none" points={linePoints} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" vectorEffect="non-scaling-stroke" />
         <circle cx={lastX} cy={lastY} fill="currentColor" r="4" vectorEffect="non-scaling-stroke" />
-        <text className="business-cps-chart-marker" textAnchor="end" x={Math.min(width - 8, lastX)} y={Math.max(12, lastY - 8)}>{markerLabel}</text>
+        <text className="business-cps-chart-marker" textAnchor="end" x={Math.min(width - 8, lastX)} y={Math.max(12, lastY - 8)}>{t(markerLabel)}</text>
         <text className="business-cps-chart-scale" textAnchor="start" x={chart.left} y={height - 5}>D-6</text>
-        <text className="business-cps-chart-scale" textAnchor="end" x={width - chart.right} y={height - 5}>今日</text>
+        <text className="business-cps-chart-scale" textAnchor="end" x={width - chart.right} y={height - 5}>{t("今日")}</text>
       </svg>
-      <span className="business-cps-chart-caption">7日 {delta >= 0 ? "+" : ""}{delta.toFixed(1)}%</span>
+      <span className="business-cps-chart-caption">{t("7日")} {delta >= 0 ? "+" : ""}{delta.toFixed(1)}%</span>
     </div>
   );
 }
@@ -299,13 +307,15 @@ function PartnerMetric({
   value,
   tone = "green",
   series,
-  unit
+  unit,
+  language = "zh"
 }: {
   label: string;
   value: string;
   tone?: "green" | "red" | "orange" | "default";
   series?: number[];
   unit?: string;
+  language?: Language;
 }) {
   const toneClassName = {
     green: "business-cps-accent",
@@ -316,9 +326,9 @@ function PartnerMetric({
 
   return (
     <article className="business-cps-metric rounded-[18px] px-2.5 py-3 md:px-4 md:py-4">
-      <p className="business-cps-muted text-[11px] font-black md:text-sm">{label}</p>
+      <p className="business-cps-muted text-[11px] font-black md:text-sm">{translateText(label, language)}</p>
       <strong className={cn("mt-1 block truncate text-[clamp(1.05rem,3.8vw,1.65rem)] font-black leading-tight", toneClassName)}>{value}</strong>
-      {series ? <MiniMetricChart points={series} tone={tone} unit={unit} /> : null}
+      {series ? <MiniMetricChart language={language} points={series} tone={tone} unit={unit} /> : null}
     </article>
   );
 }
@@ -852,6 +862,8 @@ function MoreNavigationModal({
 }
 
 function HomePage() {
+  const { language } = useI18n();
+  const t = (text: string) => translateText(text, language);
   const defaultLink = businessCpsPromotionLinks[0];
   const metrics = [
     { label: "点击", value: "1,248", series: [320, 460, 520, 710, 690, 880, 1248] },
@@ -872,29 +884,29 @@ function HomePage() {
     <div className="space-y-5">
       <section className="grid grid-cols-2 gap-3 md:gap-4">
         {metrics.map((metric) => (
-          <PartnerMetric key={metric.label} label={metric.label} series={metric.series} unit={metric.unit} value={metric.value} />
+          <PartnerMetric key={metric.label} label={metric.label} language={language} series={metric.series} unit={metric.unit} value={metric.value} />
         ))}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <PartnerPanel>
-          <h3 className="text-xl font-black text-[#172234]">默认推广链接</h3>
+          <h3 className="text-xl font-black text-[#172234]">{t("默认推广链接")}</h3>
           <div className="mt-4 flex flex-col gap-3 md:flex-row">
             <div className="flex min-h-12 flex-1 items-center rounded-[8px] border border-[#a8f0c2] bg-[#f1fff6] px-4 text-base font-semibold text-[#172234]">
               {defaultLink?.shortUrl.replace("AyM500", "eason2026") ?? "https://needo.jp/r/eason2026"}
             </div>
-          <GreenButton>复制</GreenButton>
+            <GreenButton>{t("复制")}</GreenButton>
           </div>
           <p className="mt-4 text-sm font-semibold leading-6 text-[#4b5a6f]">
-            推广码：EASON2026　QR码：下载 / 复制 / 打印海报
+            {t("推广码：EASON2026　QR码：下载 / 复制 / 打印海报")}
           </p>
         </PartnerPanel>
 
         <PartnerPanel>
-          <h3 className="text-xl font-black text-[#172234]">待办提醒</h3>
+          <h3 className="text-xl font-black text-[#172234]">{t("待办提醒")}</h3>
           <ul className="mt-4 space-y-2 text-sm font-semibold leading-6 text-[#3f4f66]">
             {reminders.map((item) => (
-              <li key={item}>• {item}</li>
+              <li key={item}>• {t(item)}</li>
             ))}
           </ul>
         </PartnerPanel>

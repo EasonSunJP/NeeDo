@@ -906,9 +906,9 @@ export default function App() {
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />
               <Route path="/checkout/:serviceId" element={protect("user", <CheckoutPage />)} />
               <Route path="/schedule" element={protect("user", <UserSchedulePage />)} />
-              <Route path="/schedule/new" element={protect("user", <TechnicianScheduleEditorRoutePage />)} />
-              <Route path="/schedule/events/:eventId/edit" element={protect("user", <TechnicianScheduleEditorRoutePage />)} />
-              <Route path="/schedule/events/:eventId" element={protect("user", <TechnicianScheduleDetailRoutePage />)} />
+              <Route path="/schedule/new" element={protect("user", <Navigate replace to="/schedule" />)} />
+              <Route path="/schedule/events/:eventId/edit" element={protect("user", <Navigate replace to="/schedule" />)} />
+              <Route path="/schedule/events/:eventId" element={protect("user", <Navigate replace to="/schedule" />)} />
               <Route path="/scan" element={protect("user", <DineInScanPage />)} />
               <Route path="/q/:token" element={protect("user", <DineInQrRedirectPage />)} />
               <Route path="/dine/:sessionId/menu" element={protect("user", <DineInCustomerMenuPage />)} />
@@ -1028,6 +1028,7 @@ export default function App() {
               <Route path="/merchant/schedule/auto-dispatch" element={protect("merchant", <MerchantAutoDispatchRoutePage />)} />
               <Route path="/merchant/schedule/arrangements/:orderId" element={protect("merchant", <MerchantScheduleArrangementRoutePage />)} />
               <Route path="/merchant/schedule/cells/:date/:slot/:technicianId" element={protect("merchant", <MerchantScheduleCellRoutePage />)} />
+              <Route path="/merchant/orders" element={protect("merchant", <Navigate replace to="/merchant/schedule?tab=appointments" />)} />
               <Route path="/merchant/orders/:orderId/change" element={protect("merchant", <MerchantOrderChangeRoutePage />)} />
               <Route path="/merchant/orders/:orderId/dispatch" element={protect("merchant", <MerchantOrderDispatchRoutePage />)} />
               <Route path="/merchant/orders/:orderId" element={protect("merchant", <MerchantOrderDetailRoutePage />)} />

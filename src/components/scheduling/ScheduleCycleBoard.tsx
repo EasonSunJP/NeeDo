@@ -25,10 +25,9 @@ import {
   resolveSchedulingCycleSlots
 } from "./SchedulingCycleTabs";
 import { ScheduleContactInfoPanel } from "./ScheduleContactInfoPanel";
-import { ScheduleCycleCalendarBoard } from "./ScheduleCycleCalendarBoard";
+import { ScheduleCycleCalendarBoard, type ScheduleCycleCalendarBoardView } from "./ScheduleCycleCalendarBoard";
 
 type ScheduleCycleBoardSurface = "desktop" | "mobile";
-type ScheduleCycleBoardView = "day" | "week" | "month";
 
 function getDefaultDateForCycle(cycle: DispatchCycle) {
   if (cycle.periodStart <= dispatchReferenceDateKey && cycle.periodEnd >= dispatchReferenceDateKey) {
@@ -62,7 +61,7 @@ export function ScheduleCycleBoard({
   surface: ScheduleCycleBoardSurface;
   toolbarActions?: ReactNode;
 }) {
-  const [view, setView] = useState<ScheduleCycleBoardView>("day");
+  const [view, setView] = useState<ScheduleCycleCalendarBoardView>("day");
   const [dateKey, setDateKey] = useState(getDefaultDateForCycle(cycle));
   const [editing, setEditing] = useState(!editingToggle);
   const [selectedCell, setSelectedCell] = useState<DispatchScheduleCell | null>(null);
@@ -203,6 +202,7 @@ export function ScheduleCycleBoard({
           className="rounded-t-none rounded-b-[28px]"
           cycleId={cycle.id}
           dateKey={dateKey}
+          getTechnicianDetailPath={(technicianId) => `/merchant/staff/${encodeURIComponent(technicianId)}`}
           onDateChange={changeScheduleDate}
           onOpenCell={canSelectCells ? selectScheduleCell : (cell) => openDateSchedule(cell.date)}
           onViewChange={setView}

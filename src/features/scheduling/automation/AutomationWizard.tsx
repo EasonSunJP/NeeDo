@@ -194,7 +194,7 @@ export function AutomationWizard({
   surface: "desktop" | "mobile";
 }) {
   const [message, setMessage] = useState<string | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<CycleSlot>("current");
+  const [selectedSlot, setSelectedSlot] = useState<CycleSlot>("next");
   const dispatchSnapshot = useDispatchCenterStore();
   const cycles = useMemo(
     () => getDispatchCycleList(storeId).filter(isSchedulingLiveCycle).sort((left, right) => left.periodStart.localeCompare(right.periodStart)),
@@ -205,15 +205,10 @@ export function AutomationWizard({
   const limitSummary = getDispatchCycleLimitSummary(storeId);
   const isMobileSurface = surface === "mobile";
   const alertClass = isMobileSurface ? "bg-lemon/25 text-[#795b00]" : "merchant-dispatch-alert";
-  const activeCycle =
-    selectedSlot === "current"
-      ? currentCycle
-      : selectedSlot === "next"
-        ? nextCycle
-        : builderCycle;
+  const activeCycle = selectedSlot === "next" ? nextCycle : builderCycle;
   const activeCycleUsesBoard = activeCycle ? isScheduleBoardCycle(activeCycle) : false;
   const shouldShowNextCycleBoard = selectedSlot === "next" && Boolean(activeCycle) && !activeCycleUsesBoard;
-  const activeContactScope = selectedSlot === "current" ? "current" : selectedSlot === "next" ? "next" : "builder";
+  const activeContactScope = selectedSlot === "next" ? "next" : "builder";
   const contactExcludedRanges = useMemo(
     () => [currentCycle, nextCycle]
       .filter((item): item is DispatchCycle => Boolean(item))
@@ -241,13 +236,6 @@ export function AutomationWizard({
     <SchedulingCycleTabs
       activeSlot={selectedSlot}
       slots={[
-        {
-          key: "current",
-          cycle: currentCycle,
-          label: "当前周期",
-          onClick: () => setSelectedSlot("current"),
-          tone: resolveSchedulingCycleTone(currentCycle)
-        },
         {
           key: "next",
           cycle: nextCycle,
@@ -367,7 +355,7 @@ export function AutomationWizard({
             isMobileSurface={isMobileSurface}
             onCreate={createCycle}
             slotHeader={slotHeader}
-            title={selectedSlot === "next" ? "下一周期尚未确定" : selectedSlot === "current" ? "暂无当前周期" : "尚未新建周期"}
+            title={selectedSlot === "next" ? "下一周期尚未确定" : "尚未新建周期"}
           />
         )}
       </div>

@@ -305,7 +305,6 @@ export function TechnicianShiftPlanningPanel({
   const [autoSummary, setAutoSummary] = useState<TechnicianAutoGenerateSummary | null>(null);
   const [draft, setDraft] = useState<TechnicianPlanningDraft | null>(null);
   const [templateRestDayIndexes, setTemplateRestDayIndexes] = useState<Set<number>>(() => new Set());
-  const [dayOverridePaintStatus, setDayOverridePaintStatus] = useState<DayOverrideDraft["status"] | null>(null);
 
   useEffect(() => {
     if (!policy || !storeTemplate) {
@@ -387,12 +386,6 @@ export function TechnicianShiftPlanningPanel({
       return policy.startDate;
     });
   }, [policy]);
-
-  useEffect(() => {
-    const stopPainting = () => setDayOverridePaintStatus(null);
-    window.addEventListener("mouseup", stopPainting);
-    return () => window.removeEventListener("mouseup", stopPainting);
-  }, []);
 
   const isStoreDirectAssignContext = scheduleContext.context === "STORE_DIRECT_ASSIGN";
   const canEdit = isStoreDirectAssignContext
@@ -824,8 +817,6 @@ export function TechnicianShiftPlanningPanel({
         const hint = disabled
           ? `${scheduleContext.requiresStoreConfirmation ? "商户未开放" : "店铺关闭"}：${formatHourLabel(hour)}`
           : `${active ? (scheduleContext.requiresStoreConfirmation ? "可接受排班" : "可发布上班") : "不可排班"} · ${formatHourLabel(hour)}`;
-        const nextStatus: DayOverrideDraft["status"] = active ? "unavailable" : "available";
-
         return {
           active,
           className: cn(
@@ -835,22 +826,13 @@ export function TechnicianShiftPlanningPanel({
           disabled,
           hint,
           key: `${selectedOverrideDate}-${hour}`,
-          onMouseDown: () => {
+          onPaint: (nextActive) => {
             if (disabled) {
               return;
             }
 
-            setDayOverridePaintStatus(nextStatus);
-            applyOverrideStatus(hour, nextStatus);
+            applyOverrideStatus(hour, nextActive ? "available" : "unavailable");
           },
-          onMouseEnter: () => {
-            if (disabled || dayOverridePaintStatus == null) {
-              return;
-            }
-
-            applyOverrideStatus(hour, dayOverridePaintStatus);
-          },
-          onMouseUp: () => setDayOverridePaintStatus(null),
           selected: active && !disabled
         };
       }),

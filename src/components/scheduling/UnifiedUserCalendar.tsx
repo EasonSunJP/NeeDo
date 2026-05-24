@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName } from "../client-ui/AppScaffold";
 import { FloatingActionButton } from "../mobile/FloatingActionButton";
 import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
+import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./ScheduleDraftRangeBlock";
 import { AvatarImage } from "../ui/AvatarImage";
 import { orders } from "../../data/mock";
@@ -14,6 +15,8 @@ import { useImStore } from "../../features/im/store";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn } from "../../lib/utils";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
+import { japaneseHolidaySeeds } from "../../lib/japaneseHolidays";
+import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import {
   fetchGoogleCalendarApi,
@@ -48,6 +51,7 @@ import {
 export type UnifiedCalendarView = "day" | "week" | "month" | "agenda";
 type UnifiedCalendarScope = "user" | "technician" | "merchant";
 type UnifiedCalendarDisplayMode = "personal" | "parallel";
+type MerchantCalendarLaneMode = "technician" | "appointmentStatus";
 export type UnifiedCalendarSourceId = "user" | "technician" | "merchant" | "todo" | "birthday" | "holiday";
 
 type CalendarAttachment = {
@@ -126,6 +130,7 @@ type GoogleCalendarApiEventPayload = Pick<
 type CalendarEditorDraft = Omit<LocalCalendarEvent, "createdAt" | "updatedAt">;
 
 type SyncContactFilterMode = "common" | "tags" | "groups";
+type MerchantAppointmentStatusFilter = "all" | "assigned" | "unassigned";
 
 type BirthdaySourceFilters = {
   self: boolean;
@@ -139,6 +144,7 @@ type UnifiedUserCalendarProps = {
   currentTechnician?: Technician;
   currentStore?: Store;
   displayMode?: UnifiedCalendarDisplayMode;
+  merchantLaneMode?: MerchantCalendarLaneMode;
   searchQuery?: string;
   scope?: UnifiedCalendarScope;
 };
@@ -179,6 +185,7 @@ const dayEndHour = 24;
 const hourRowHeight = 58;
 const timelineTimeColumnWidth = 58;
 const timelineLaneMinWidth = 136;
+const timelineOverflowLaneWidth = 148;
 const scheduleDraftMinDurationMinutes = 30;
 const scheduleDraftSnapMinutes = 15;
 const agendaInitialPastDays = 90;
@@ -268,6 +275,15 @@ const viewOptions: Array<{ value: UnifiedCalendarView; label: string }> = [
   { value: "month", label: "月" },
   { value: "agenda", label: "仅行程" }
 ];
+
+const merchantAppointmentStatusFilterOptions: Array<{ value: MerchantAppointmentStatusFilter; label: string }> = [
+  { value: "all", label: "全预约" },
+  { value: "assigned", label: "已排预约" },
+  { value: "unassigned", label: "未排预约" }
+];
+
+const merchantAssignedAppointmentLaneId = "merchant:assigned-appointments";
+const merchantUnassignedAppointmentLaneId = "merchant:unassigned-appointments";
 
 const schedulePanelClass =
   "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[var(--client-shadow)]";
@@ -380,7 +396,7 @@ function getOrderEvents(currentCustomer: Customer): UnifiedCalendarEvent[] {
         date: schedule.date,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
-        title: order.itemName,
+        title: getCalendarBookingTitle(order.id, order.itemName),
         subtitle: getOrderSubtitle(order),
         badge: order.status === "inService" ? "服务中" : "我的行程",
         readOnly: true,
@@ -429,6 +445,10 @@ function getBookingBadge(eventType?: string) {
   return "服务";
 }
 
+function getCalendarBookingTitle(orderId: string | undefined, fallbackTitle: string) {
+  return getNeedoAppBookingTitle(orderId, fallbackTitle) ?? fallbackTitle;
+}
+
 function getTechnicianEvents(
   currentCustomer: Customer,
   relevantTechnicianIds: Set<string>,
@@ -463,7 +483,7 @@ function getTechnicianEvents(
       date: booking.date,
       startTime: booking.startTime,
       endTime: booking.endTime,
-      title: booking.title,
+      title: getCalendarBookingTitle(booking.orderId, booking.title),
       subtitle: `${getTechnicianName(technicians, booking.technicianId)} · ${getStoreName(stores, booking.storeId)}`,
       badge: getBookingBadge(booking.eventType),
       readOnly: true,
@@ -524,7 +544,7 @@ function getTechnicianEventsForTechnician(
       date: booking.date,
       startTime: booking.startTime,
       endTime: booking.endTime,
-      title: booking.title,
+      title: getCalendarBookingTitle(booking.orderId, booking.title),
       subtitle: `${booking.customerName} · ${getStoreName(stores, booking.storeId)}`,
       badge: getBookingBadge(booking.eventType),
       readOnly: true,
@@ -583,7 +603,7 @@ function getMerchantEvents(
       date: arrangement.date,
       startTime: arrangement.startTime,
       endTime: arrangement.endTime,
-      title: arrangement.serviceName,
+      title: getCalendarBookingTitle(arrangement.orderId, arrangement.serviceName),
       subtitle: `${arrangement.technicianLabel ?? "待定技师"} · ${arrangement.roomLabel}`,
       badge: arrangement.status === "inService" ? "服务中" : arrangement.status === "pending" ? "待确认" : "商户安排",
       readOnly: true,
@@ -603,7 +623,7 @@ function getMerchantEvents(
         date: schedule.date,
         startTime: schedule.startTime,
         endTime: schedule.endTime,
-        title: `${technician?.nickname?.trim() || technician?.name || "技师"} ${getMerchantScheduleBadge(schedule)}`,
+        title: getCalendarBookingTitle(schedule.orderId, `${technician?.nickname?.trim() || technician?.name || "技师"} ${getMerchantScheduleBadge(schedule)}`),
         subtitle: technician ? getStoreName(stores, technician.storeId) : "商户排班",
         badge: getMerchantScheduleBadge(schedule),
         readOnly: true,
@@ -622,7 +642,7 @@ function getMerchantEvents(
       date: booking.date,
       startTime: booking.startTime,
       endTime: booking.endTime,
-      title: booking.title,
+      title: getCalendarBookingTitle(booking.orderId, booking.title),
       subtitle: `${getStoreName(stores, booking.storeId)} · ${getTechnicianName(technicians, booking.technicianId)}`,
       badge: booking.eventType === "extension" ? "商户加钟" : booking.eventType === "reschedule" ? "商户改期" : "商户确认",
       readOnly: true,
@@ -663,7 +683,7 @@ function getMerchantEventsForTechnician(
       date: arrangement.date,
       startTime: arrangement.startTime,
       endTime: arrangement.endTime,
-      title: arrangement.serviceName,
+      title: getCalendarBookingTitle(arrangement.orderId, arrangement.serviceName),
       subtitle: `${arrangement.customerName} · ${arrangement.roomLabel}`,
       badge: getArrangementStatusBadge(arrangement.status),
       readOnly: true,
@@ -681,7 +701,7 @@ function getMerchantEventsForTechnician(
       date: schedule.date,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
-      title: `${getTechnicianName(technicians, schedule.staffId)} ${getMerchantScheduleBadge(schedule)}`,
+      title: getCalendarBookingTitle(schedule.orderId, `${getTechnicianName(technicians, schedule.staffId)} ${getMerchantScheduleBadge(schedule)}`),
       subtitle: technician ? getStoreName(stores, technician.storeId) : "商户排班",
       badge: getMerchantScheduleBadge(schedule),
       readOnly: true,
@@ -699,29 +719,58 @@ function getStoreTechnicians(currentStore: Store | undefined, technicians: Techn
   return technicians.filter((technician) => technician.storeId === currentStore.id || technician.relatedStoreIds?.includes(currentStore.id));
 }
 
+function getMerchantAppointmentStatusLaneId(technicianId?: string | null) {
+  return technicianId ? merchantAssignedAppointmentLaneId : merchantUnassignedAppointmentLaneId;
+}
+
+function getMerchantAppointmentStatusLaneLabel(technicianId?: string | null) {
+  return technicianId ? "已排预约" : "未排预约";
+}
+
+function matchesMerchantAppointmentStatusFilter(event: UnifiedCalendarEvent, filter: MerchantAppointmentStatusFilter) {
+  if (filter === "assigned") {
+    return event.calendarId === merchantAssignedAppointmentLaneId;
+  }
+
+  if (filter === "unassigned") {
+    return event.calendarId === merchantUnassignedAppointmentLaneId;
+  }
+
+  return true;
+}
+
 function getMerchantEventsForStore(
   currentStore: Store,
   arrangements: DispatchArrangement[],
   technicianSnapshot: ReturnType<typeof useTechnicianScheduleStore>,
   scheduleSnapshot: ReturnType<typeof useScheduleStore>,
   stores: ReturnType<typeof useEntityStore>["stores"],
-  technicians: Technician[]
+  technicians: Technician[],
+  laneMode: MerchantCalendarLaneMode = "technician"
 ) {
   const storeTechnicians = getStoreTechnicians(currentStore, technicians);
   const storeTechnicianIds = new Set(storeTechnicians.map((technician) => technician.id));
-  const technicianEvents = storeTechnicians.flatMap((technician) => getTechnicianEventsForTechnician(technician.id, technicianSnapshot, stores, technicians));
+  const technicianEvents = laneMode === "technician"
+    ? storeTechnicians.flatMap((technician) => getTechnicianEventsForTechnician(technician.id, technicianSnapshot, stores, technicians))
+    : [];
   const arrangementEvents = arrangements
     .filter((arrangement) => arrangement.storeId === currentStore.id && arrangement.status !== "cancelled")
     .map((arrangement): UnifiedCalendarEvent => ({
       id: `merchant-arrangement-${arrangement.id}`,
       sourceId: "merchant",
-      calendarId: arrangement.technicianId ? getTechnicianCalendarLaneId(arrangement.technicianId) : "merchant:unassigned",
-      calendarLabel: arrangement.technicianLabel ?? "待定技师",
+      calendarId: laneMode === "appointmentStatus"
+        ? getMerchantAppointmentStatusLaneId(arrangement.technicianId)
+        : arrangement.technicianId ? getTechnicianCalendarLaneId(arrangement.technicianId) : "merchant:unassigned",
+      calendarLabel: laneMode === "appointmentStatus"
+        ? getMerchantAppointmentStatusLaneLabel(arrangement.technicianId)
+        : arrangement.technicianLabel ?? "待定技师",
       date: arrangement.date,
       startTime: arrangement.startTime,
       endTime: arrangement.endTime,
-      title: arrangement.serviceName,
-      subtitle: `${arrangement.customerName} · ${arrangement.roomLabel}`,
+      title: getCalendarBookingTitle(arrangement.orderId, arrangement.serviceName),
+      subtitle: laneMode === "appointmentStatus"
+        ? `${arrangement.customerName} · ${arrangement.technicianLabel ?? "未安排担当"}`
+        : `${arrangement.customerName} · ${arrangement.roomLabel}`,
       badge: getArrangementStatusBadge(arrangement.status),
       readOnly: true,
       orderId: arrangement.orderId,
@@ -729,26 +778,72 @@ function getMerchantEventsForStore(
     }));
   const scheduleEvents = scheduleSnapshot.schedules
     .filter((schedule) => storeTechnicianIds.has(schedule.staffId))
+    .filter((schedule) => laneMode === "technician" || schedule.status === "booked" || Boolean(schedule.orderId))
     .map((schedule): UnifiedCalendarEvent => ({
       id: `merchant-schedule-${schedule.id}`,
       sourceId: "merchant",
-      calendarId: getTechnicianCalendarLaneId(schedule.staffId),
-      calendarLabel: getTechnicianName(technicians, schedule.staffId),
+      calendarId: laneMode === "appointmentStatus" ? merchantAssignedAppointmentLaneId : getTechnicianCalendarLaneId(schedule.staffId),
+      calendarLabel: laneMode === "appointmentStatus" ? "已排预约" : getTechnicianName(technicians, schedule.staffId),
       date: schedule.date,
       startTime: schedule.startTime,
       endTime: schedule.endTime,
-      title: `${getTechnicianName(technicians, schedule.staffId)} ${getMerchantScheduleBadge(schedule)}`,
-      subtitle: `${currentStore.name} · 商户排班`,
+      title: getCalendarBookingTitle(schedule.orderId, `${getTechnicianName(technicians, schedule.staffId)} ${getMerchantScheduleBadge(schedule)}`),
+      subtitle: laneMode === "appointmentStatus" ? `${getTechnicianName(technicians, schedule.staffId)} · ${currentStore.name}` : `${currentStore.name} · 商户排班`,
       badge: getMerchantScheduleBadge(schedule),
       readOnly: true,
       orderId: schedule.orderId
     }));
 
-  return [...technicianEvents, ...arrangementEvents, ...scheduleEvents];
+  const arrangementEventKeys = new Set(arrangementEvents.map((event) => `${event.orderId ?? event.id}:${event.date}`));
+  const scheduleEventKeys = new Set(scheduleEvents.map((event) => `${event.orderId ?? event.id}:${event.date}`));
+  const bookingBackfillEvents = laneMode === "appointmentStatus"
+    ? technicianSnapshot.bookings
+        .filter((booking) => booking.storeId === currentStore.id)
+        .filter((booking) => !arrangementEventKeys.has(`${booking.orderId ?? booking.id}:${booking.date}`))
+        .filter((booking) => !scheduleEventKeys.has(`${booking.orderId ?? booking.id}:${booking.date}`))
+        .map((booking): UnifiedCalendarEvent => ({
+          id: `merchant-booking-sync-${booking.id}`,
+          sourceId: "merchant",
+          calendarId: merchantAssignedAppointmentLaneId,
+          calendarLabel: "已排预约",
+          date: booking.date,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          title: getCalendarBookingTitle(booking.orderId, booking.title),
+          subtitle: `${booking.customerName} · ${getTechnicianName(technicians, booking.technicianId)}`,
+          badge: booking.eventType === "extension" ? "加钟" : booking.eventType === "reschedule" ? "改期" : "已排预约",
+          readOnly: true,
+          orderId: booking.orderId
+        }))
+    : [];
+
+  return [...technicianEvents, ...arrangementEvents, ...scheduleEvents, ...bookingBackfillEvents];
 }
 
-function getParallelCalendarLanes(currentStore: Store | undefined, currentTechnician: Technician | undefined, technicians: Technician[]): UnifiedCalendarLane[] {
+function getParallelCalendarLanes(
+  currentStore: Store | undefined,
+  currentTechnician: Technician | undefined,
+  technicians: Technician[],
+  merchantLaneMode: MerchantCalendarLaneMode = "technician"
+): UnifiedCalendarLane[] {
   if (currentStore) {
+    if (merchantLaneMode === "appointmentStatus") {
+      return [
+        {
+          id: merchantAssignedAppointmentLaneId,
+          label: "已排预约",
+          caption: "已安排担当技师",
+          accent: "var(--client-primary)"
+        },
+        {
+          id: merchantUnassignedAppointmentLaneId,
+          label: "未排预约",
+          caption: "待安排担当技师",
+          accent: "var(--client-warning)"
+        }
+      ];
+    }
+
     const storeTechnicians = getStoreTechnicians(currentStore, technicians);
     return [
       ...storeTechnicians.map((technician, index): UnifiedCalendarLane => ({
@@ -1057,44 +1152,6 @@ function getMerchantSyncContactOptions(currentStore: Store | undefined, technici
     description: "技师端"
   }));
 }
-
-const japaneseHolidaySeeds: Array<{ date: string; title: string }> = [
-  { date: "2026-01-01", title: "元日" },
-  { date: "2026-01-12", title: "成人の日" },
-  { date: "2026-02-11", title: "建国記念の日" },
-  { date: "2026-02-23", title: "天皇誕生日" },
-  { date: "2026-03-20", title: "春分の日" },
-  { date: "2026-04-29", title: "昭和の日" },
-  { date: "2026-05-03", title: "憲法記念日" },
-  { date: "2026-05-04", title: "みどりの日" },
-  { date: "2026-05-05", title: "こどもの日" },
-  { date: "2026-05-06", title: "休日" },
-  { date: "2026-07-20", title: "海の日" },
-  { date: "2026-08-11", title: "山の日" },
-  { date: "2026-09-21", title: "敬老の日" },
-  { date: "2026-09-22", title: "休日" },
-  { date: "2026-09-23", title: "秋分の日" },
-  { date: "2026-10-12", title: "スポーツの日" },
-  { date: "2026-11-03", title: "文化の日" },
-  { date: "2026-11-23", title: "勤労感謝の日" },
-  { date: "2027-01-01", title: "元日" },
-  { date: "2027-01-11", title: "成人の日" },
-  { date: "2027-02-11", title: "建国記念の日" },
-  { date: "2027-02-23", title: "天皇誕生日" },
-  { date: "2027-03-21", title: "春分の日" },
-  { date: "2027-03-22", title: "休日" },
-  { date: "2027-04-29", title: "昭和の日" },
-  { date: "2027-05-03", title: "憲法記念日" },
-  { date: "2027-05-04", title: "みどりの日" },
-  { date: "2027-05-05", title: "こどもの日" },
-  { date: "2027-07-19", title: "海の日" },
-  { date: "2027-08-11", title: "山の日" },
-  { date: "2027-09-20", title: "敬老の日" },
-  { date: "2027-09-23", title: "秋分の日" },
-  { date: "2027-10-11", title: "スポーツの日" },
-  { date: "2027-11-03", title: "文化の日" },
-  { date: "2027-11-23", title: "勤労感謝の日" }
-];
 
 function getReferenceCalendarEvents(): UnifiedCalendarEvent[] {
   return japaneseHolidaySeeds.map((holiday) => ({
@@ -1673,7 +1730,7 @@ function CalendarSourceDrawer({
         onClick={onClose}
         type="button"
       />
-      <aside className="absolute left-3 top-[58px] z-[150] w-[min(340px,calc(100vw-56px))] overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,transparent)] shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl" role="menu">
+      <aside className="client-nav-aligned-panel fixed left-1/2 top-1/2 z-[150] max-h-[calc(100dvh-64px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,transparent)] shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-xl" role="menu">
         <div className="flex items-center justify-between border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-3.5 py-3">
           <div>
             <strong className="block text-sm font-black text-[color:var(--client-text)]">日历来源</strong>
@@ -1746,7 +1803,7 @@ function CalendarSourceDrawer({
           </section>
         ) : null}
 
-        <div className="max-h-[62vh] space-y-4 overflow-y-auto px-3.5 py-3">
+        <div className="max-h-[calc(100dvh-220px)] space-y-4 overflow-y-auto px-3.5 py-3">
           <section className="space-y-2">
             <h3 className="px-1 text-[11px] font-black text-[color:var(--client-muted)]">NeeDo 同步</h3>
             {neeDoSourceIds.map((sourceId) => (
@@ -1893,7 +1950,8 @@ function getLayoutEvents(events: UnifiedCalendarEvent[]) {
   });
 
   return {
-    laneCount: Math.max(1, Math.min(3, lanes.length)),
+    cappedLaneCount: Math.max(1, Math.min(3, lanes.length)),
+    laneCount: Math.max(1, lanes.length),
     events: laidOut
   };
 }
@@ -1953,11 +2011,15 @@ function DayTimeline({
   const [draftRange, setDraftRange] = useState<DraftRange | null>(null);
   const [draftCalendarId, setDraftCalendarId] = useState(activeCalendarLanes?.[0]?.id ?? "user:me");
   const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
+  const [timelineViewportWidth, setTimelineViewportWidth] = useState(0);
   const [floatingLaneFrame, setFloatingLaneFrame] = useState({ left: 0, top: 0, width: 0, visible: false });
+  const draftRangeRef = useRef<DraftRange | null>(null);
   const dragModeRef = useRef<DraftDragMode | null>(null);
   const dragBaseRangeRef = useRef<DraftRange | null>(null);
   const dragPointerStartRef = useRef<number | null>(null);
   const pointerDownMinuteRef = useRef<number | null>(null);
+  const suppressNextCanvasClickRef = useRef(false);
+  const suppressNextOutsideClickRef = useRef(false);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const showNow = date === today && nowMinutes >= dayStartHour * 60 && nowMinutes <= dayEndHour * 60;
   const layout = getLayoutEvents(events);
@@ -1972,12 +2034,123 @@ function DayTimeline({
           ...item,
           calendar,
           calendarIndex,
-          calendarLaneCount: calendarLayout.laneCount
+          calendarLaneCount: calendarLayout.cappedLaneCount
         }));
       })
     : [];
   const totalHeight = (dayEndHour - dayStartHour) * hourRowHeight;
   const parallelMinWidth = activeCalendarLanes ? Math.max(320, activeCalendarLanes.length * timelineLaneMinWidth) : 0;
+  const hasOverflowLayout = !hasParallelCalendars && layout.laneCount > layout.cappedLaneCount;
+  const hasHorizontalTimeline = hasParallelCalendars || hasOverflowLayout;
+  const overflowContentMinWidth = hasOverflowLayout ? Math.max(320, layout.laneCount * timelineOverflowLaneWidth + 16) : 0;
+  const timelineMinWidth = hasParallelCalendars
+    ? parallelMinWidth + timelineTimeColumnWidth
+    : hasOverflowLayout
+      ? overflowContentMinWidth + timelineTimeColumnWidth
+      : undefined;
+  const overflowDraftViewportWidth = timelineViewportWidth || (typeof window === "undefined" ? 390 : Math.max(0, window.innerWidth - 32));
+  const visibleOverflowDraftWidth = hasOverflowLayout
+    ? Math.max(
+        176,
+        Math.min(
+          overflowContentMinWidth - 16,
+          overflowDraftViewportWidth - timelineTimeColumnWidth - 16
+        )
+      )
+    : undefined;
+
+  useEffect(() => {
+    draftRangeRef.current = draftRange;
+  }, [draftRange]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    const isDraftInteractionTarget = (target: EventTarget | null) => {
+      const element =
+        target instanceof HTMLElement
+          ? target
+          : target instanceof Node
+            ? target.parentElement
+            : null;
+      return Boolean(element?.closest("[data-schedule-draft-range-block],[data-schedule-range-handle],[data-schedule-create-action]"));
+    };
+
+    const resetDraftInteraction = () => {
+      dragModeRef.current = null;
+      dragPointerStartRef.current = null;
+      dragBaseRangeRef.current = null;
+      pointerDownMinuteRef.current = null;
+    };
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      if (!draftRangeRef.current || isDraftInteractionTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextCanvasClickRef.current = true;
+      suppressNextOutsideClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextCanvasClickRef.current = false;
+        suppressNextOutsideClickRef.current = false;
+      }, 180);
+      resetDraftInteraction();
+      setDraftRange(null);
+    };
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!suppressNextOutsideClickRef.current) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextCanvasClickRef.current = false;
+      suppressNextOutsideClickRef.current = false;
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown, true);
+    document.addEventListener("click", handleOutsideClick, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+      document.removeEventListener("click", handleOutsideClick, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasOverflowLayout) {
+      setTimelineViewportWidth((current) => (current === 0 ? current : 0));
+      return undefined;
+    }
+
+    const root = timelineRootRef.current;
+    if (!root) {
+      return undefined;
+    }
+
+    const updateTimelineViewportWidth = () => {
+      setTimelineViewportWidth((current) => {
+        const next = root.clientWidth;
+        return Math.abs(current - next) < 0.5 ? current : next;
+      });
+    };
+
+    updateTimelineViewportWidth();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const resizeObserver = new ResizeObserver(updateTimelineViewportWidth);
+      resizeObserver.observe(root);
+      return () => resizeObserver.disconnect();
+    }
+
+    window.addEventListener("resize", updateTimelineViewportWidth);
+    return () => window.removeEventListener("resize", updateTimelineViewportWidth);
+  }, [hasOverflowLayout]);
 
   useEffect(() => {
     if (!hasParallelCalendars) {
@@ -2097,6 +2270,12 @@ function DayTimeline({
 
   const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!onCreate) {
+      pointerDownMinuteRef.current = null;
+      return;
+    }
+
+    if (suppressNextCanvasClickRef.current) {
+      suppressNextCanvasClickRef.current = false;
       pointerDownMinuteRef.current = null;
       return;
     }
@@ -2297,12 +2476,12 @@ function DayTimeline({
         </div>
       ) : null}
       <div
-        className={cn(hasParallelCalendars && "scrollbar-none cursor-grab overflow-x-auto overscroll-x-contain active:cursor-grabbing")}
-        ref={hasParallelCalendars ? scrollRef : undefined}
-        style={hasParallelCalendars ? { touchAction: "pan-y" } : undefined}
-        {...(hasParallelCalendars ? dragScrollProps : {})}
+        className={cn(hasHorizontalTimeline && "scrollbar-none cursor-grab overflow-x-auto overscroll-x-contain active:cursor-grabbing")}
+        ref={hasHorizontalTimeline ? scrollRef : undefined}
+        style={hasHorizontalTimeline ? { touchAction: "pan-y" } : undefined}
+        {...(hasHorizontalTimeline ? dragScrollProps : {})}
       >
-        <div style={hasParallelCalendars ? { minWidth: parallelMinWidth + timelineTimeColumnWidth } : undefined}>
+        <div style={timelineMinWidth ? { minWidth: timelineMinWidth } : undefined}>
           {hasParallelCalendars && activeCalendarLanes ? (
             <div
               className="grid border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]"
@@ -2420,9 +2599,14 @@ function DayTimeline({
                     );
                   })
                 : layout.events.map(({ event, start, end, lane }) => {
-                    const laneCount = layout.laneCount;
-                    const width = laneCount > 1 ? `calc((100% - 18px) / ${laneCount})` : "calc(100% - 16px)";
-                    const left = laneCount > 1 ? `calc(8px + ${Math.min(lane, laneCount - 1)} * ((100% - 18px) / ${laneCount}))` : "8px";
+                    const laneCount = hasOverflowLayout ? layout.laneCount : layout.cappedLaneCount;
+                    const displayLane = hasOverflowLayout ? lane : Math.min(lane, laneCount - 1);
+                    const width = hasOverflowLayout
+                      ? timelineOverflowLaneWidth - 12
+                      : laneCount > 1 ? `calc((100% - 18px) / ${laneCount})` : "calc(100% - 16px)";
+                    const left = hasOverflowLayout
+                      ? 8 + displayLane * timelineOverflowLaneWidth
+                      : laneCount > 1 ? `calc(8px + ${displayLane} * ((100% - 18px) / ${laneCount}))` : "8px";
                     const clampedStart = Math.max(start, dayStartHour * 60);
                     const clampedEnd = Math.min(end, dayEndHour * 60);
                     return (
@@ -2457,7 +2641,7 @@ function DayTimeline({
                       下一步
                     </button>
                   )}
-                  className={hasParallelCalendars ? "" : "left-2 right-2"}
+                  className={hasParallelCalendars || hasOverflowLayout ? "" : "left-2 right-2"}
                   onBlockPointerCancel={handleDraftPointerCancel}
                   onBlockPointerDown={handleDraftBlockPointerDown}
                   onBlockPointerMove={handleDraftPointerMove}
@@ -2475,6 +2659,11 @@ function DayTimeline({
                           left: `calc(${draftCalendarIndex * parallelColumnWidth}% + 8px)`,
                           width: `calc(${parallelColumnWidth}% - 16px)`
                         }
+                      : hasOverflowLayout
+                        ? {
+                            left: timelineScrollLeft + 8,
+                            width: visibleOverflowDraftWidth
+                          }
                       : {})
                   }}
                   subtitle="拖动整块调整开始时间，拖动上下手柄调整时长"
@@ -2494,7 +2683,7 @@ export function UnifiedCalendarDayTimeline(props: DayTimelineProps) {
   return <DayTimeline {...props} />;
 }
 
-function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onCreate: () => void; searchQuery?: string }) {
+function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onCreate?: () => void; searchQuery?: string }) {
   const hasSearch = Boolean(searchQuery?.trim());
   return (
     <div className="rounded-[20px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-4 py-5 text-center">
@@ -2503,7 +2692,7 @@ function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onC
       </strong>
       {hasSearch ? (
         <p className="mt-2 text-[11px] font-bold text-[color:var(--client-muted)]">换个关键词，或清空搜索后查看全部行程。</p>
-      ) : (
+      ) : onCreate ? (
         <button
           className="focus-ring mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary-contrast)]"
           onClick={onCreate}
@@ -2512,6 +2701,8 @@ function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onC
           <AppIcon className="h-4 w-4" name="plus" />
           新增
         </button>
+      ) : (
+        <p className="mt-2 text-[11px] font-bold text-[color:var(--client-muted)]">当前日期没有预约。</p>
       )}
     </div>
   );
@@ -2976,7 +3167,7 @@ function AgendaEventRow({ event, onOpen }: { event: UnifiedCalendarEvent; onOpen
   );
 }
 
-function AgendaView({
+export function UnifiedCalendarAgendaView({
   dates,
   events,
   onCreate,
@@ -2989,7 +3180,7 @@ function AgendaView({
 }: {
   dates: string[];
   events: UnifiedCalendarEvent[];
-  onCreate: (date: string) => void;
+  onCreate?: (date: string) => void;
   onExtendFuture: () => void;
   onExtendPast: () => void;
   onOpen: (event: UnifiedCalendarEvent) => void;
@@ -3134,14 +3325,22 @@ function AgendaView({
     >
       {renderedEventCount > 0 ? rows : (
         <div className="px-3 py-3">
-          <EmptyCalendarState date={getTodayDateKey()} onCreate={() => onCreate(getTodayDateKey())} searchQuery={searchQuery} />
+          <EmptyCalendarState date={getTodayDateKey()} onCreate={onCreate ? () => onCreate(getTodayDateKey()) : undefined} searchQuery={searchQuery} />
         </div>
       )}
     </div>
   );
 }
 
-export function UnifiedUserCalendar({ currentCustomer, currentTechnician, currentStore, displayMode, searchQuery = "", scope = "user" }: UnifiedUserCalendarProps) {
+export function UnifiedUserCalendar({
+  currentCustomer,
+  currentTechnician,
+  currentStore,
+  displayMode,
+  merchantLaneMode = "technician",
+  searchQuery = "",
+  scope = "user"
+}: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
   const { theme, isNight } = useClientTheme();
   const { stores, technicians } = useEntityStore();
@@ -3152,6 +3351,8 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
   const imScope: ImRoleType = activeScope;
   const imStore = useImStore(imScope);
   const resolvedDisplayMode: UnifiedCalendarDisplayMode = displayMode ?? (activeScope === "merchant" ? "parallel" : "personal");
+  const effectiveMerchantLaneMode: MerchantCalendarLaneMode = activeScope === "merchant" ? merchantLaneMode : "technician";
+  const isMerchantAppointmentStatusMode = activeScope === "merchant" && effectiveMerchantLaneMode === "appointmentStatus";
   const [view, setView] = useState<UnifiedCalendarView>("day");
   const [anchorDate, setAnchorDate] = useState(getTodayDateKey());
   const [selectedDate, setSelectedDate] = useState(getTodayDateKey());
@@ -3166,9 +3367,12 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
   const [editorDraft, setEditorDraft] = useState<CalendarEditorDraft | null>(null);
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
+  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
   const themeRootClassName = cn(isNight ? "client-theme-night" : "client-theme-day", getClientThemeClassName(theme));
   const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
   const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
+  const appointmentStatusFilterLabel =
+    merchantAppointmentStatusFilterOptions.find((option) => option.value === appointmentStatusFilter)?.label ?? "全预约";
 
   useEffect(() => {
     writeBrowserStorage(localCalendarStorageKey, JSON.stringify(localEvents), { silent: true });
@@ -3236,18 +3440,16 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
   ]);
 
   const parallelCalendarLanes = useMemo(
-    () => (resolvedDisplayMode === "parallel" ? getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians) : undefined),
-    [activeScope, currentStore, currentTechnician, resolvedDisplayMode, technicians]
+    () => (resolvedDisplayMode === "parallel" && !isMerchantAppointmentStatusMode ? getParallelCalendarLanes(activeScope === "merchant" ? currentStore : undefined, currentTechnician, technicians, effectiveMerchantLaneMode) : undefined),
+    [activeScope, currentStore, currentTechnician, effectiveMerchantLaneMode, isMerchantAppointmentStatusMode, resolvedDisplayMode, technicians]
   );
 
   const allEvents = useMemo(() => {
     const birthdayEvents = getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
-
-    return [
-      ...getLocalCalendarEvents(localEvents, syncContactOptions),
+    const neeDoEvents = [
       ...(activeScope === "user" && currentCustomer ? getOrderEvents(currentCustomer) : []),
       ...(activeScope === "merchant" && currentStore
-        ? getMerchantEventsForStore(currentStore, dispatchSnapshot.arrangements, technicianSnapshot, scheduleSnapshot, stores, technicians)
+        ? getMerchantEventsForStore(currentStore, dispatchSnapshot.arrangements, technicianSnapshot, scheduleSnapshot, stores, technicians, effectiveMerchantLaneMode)
         : activeScope === "technician" && currentTechnician
         ? getTechnicianEventsForTechnician(currentTechnician.id, technicianSnapshot, stores, technicians)
         : currentCustomer
@@ -3259,7 +3461,16 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
         ? getMerchantEventsForTechnician(currentTechnician.id, dispatchSnapshot.arrangements, scheduleSnapshot, stores, technicians)
         : currentCustomer
           ? getMerchantEvents(currentCustomer, relevantTechnicianIds, dispatchSnapshot.arrangements, technicianSnapshot, scheduleSnapshot, stores, technicians)
-          : []),
+          : [])
+    ];
+
+    if (isMerchantAppointmentStatusMode) {
+      return neeDoEvents.sort(sortEvents);
+    }
+
+    return [
+      ...getLocalCalendarEvents(localEvents, syncContactOptions),
+      ...neeDoEvents,
       ...birthdayEvents,
       ...getReferenceCalendarEvents()
     ].sort(sortEvents);
@@ -3270,6 +3481,8 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
     currentStore,
     currentTechnician,
     dispatchSnapshot.arrangements,
+    effectiveMerchantLaneMode,
+    isMerchantAppointmentStatusMode,
     localEvents,
     period,
     relevantTechnicianIds,
@@ -3310,9 +3523,15 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
     }
     return true;
   }), [birthdayFilters, periodEvents, sourceVisibility]);
+  const filteredVisiblePeriodEvents = useMemo(
+    () => isMerchantAppointmentStatusMode
+      ? visiblePeriodEvents.filter((event) => matchesMerchantAppointmentStatusFilter(event, appointmentStatusFilter))
+      : visiblePeriodEvents,
+    [appointmentStatusFilter, isMerchantAppointmentStatusMode, visiblePeriodEvents]
+  );
   const searchedVisiblePeriodEvents = useMemo(
-    () => visiblePeriodEvents.filter((event) => matchesCalendarSearch(event, normalizedSearchQuery, searchFilterView)),
-    [normalizedSearchQuery, searchFilterView, visiblePeriodEvents]
+    () => filteredVisiblePeriodEvents.filter((event) => matchesCalendarSearch(event, normalizedSearchQuery, searchFilterView)),
+    [filteredVisiblePeriodEvents, normalizedSearchQuery, searchFilterView]
   );
   const groupedVisibleEvents = groupEventsByDate(searchedVisiblePeriodEvents);
   const selectedDateEvents = (groupedVisibleEvents[selectedDate] ?? []).sort(sortEvents);
@@ -3617,7 +3836,7 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
 
   const renderSelectedDateList = () => {
     if (selectedDateEvents.length === 0) {
-      return <EmptyCalendarState date={selectedDate} onCreate={() => openCreate(selectedDate)} searchQuery={searchQuery} />;
+      return <EmptyCalendarState date={selectedDate} onCreate={isMerchantAppointmentStatusMode ? undefined : () => openCreate(selectedDate)} searchQuery={searchQuery} />;
     }
 
     return <EventList events={selectedDateEvents} onOpen={openCalendarEvent} />;
@@ -3637,7 +3856,11 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
           </button>
           <div className="min-w-0">
             <strong className="block truncate text-lg font-black text-[color:var(--client-text)]">{period.label}</strong>
-            <span className="mt-0.5 block text-[11px] font-black text-[color:var(--client-muted)]">{activeScope === "merchant" ? "多技师并行日程" : activeScope === "technician" ? "我的排班" : "我的同步日程"}</span>
+            <span className="mt-0.5 block text-[11px] font-black text-[color:var(--client-muted)]">
+              {activeScope === "merchant"
+                ? isMerchantAppointmentStatusMode ? appointmentStatusFilterLabel : "多技师并行日程"
+                : activeScope === "technician" ? "我的排班" : "我的同步日程"}
+            </span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -3691,6 +3914,26 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
         </div>
       ) : null}
 
+      {isMerchantAppointmentStatusMode ? (
+        <div className="mt-3 grid grid-cols-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1">
+          {merchantAppointmentStatusFilterOptions.map((option) => (
+            <button
+              className={cn(
+                "focus-ring h-9 min-w-0 rounded-full px-1 text-[12px] font-black transition",
+                appointmentStatusFilter === option.value
+                  ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]"
+                  : "text-[color:var(--client-muted)]"
+              )}
+              key={option.value}
+              onClick={() => setAppointmentStatusFilter(option.value)}
+              type="button"
+            >
+              <span className="block truncate">{option.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {view === "day" ? (
         <div className="mt-3">
           <DayTimeline
@@ -3698,7 +3941,7 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
             date={selectedDate}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={selectedDateEvents}
-            onCreate={openCreate}
+            onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}
             onOpen={openCalendarEvent}
           />
         </div>
@@ -3711,7 +3954,7 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
               return (
                 <button
                   className={cn(
-                    "focus-ring min-h-[64px] rounded-[16px] border px-1.5 py-2 text-center transition",
+                    "focus-ring relative min-h-[64px] rounded-[16px] border px-1.5 py-2 text-center transition",
                     selected
                       ? "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:var(--client-primary-soft)]"
                       : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)]"
@@ -3720,6 +3963,7 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
                   onClick={() => setSelectedDate(date)}
                   type="button"
                 >
+                  <HolidayCornerBadge date={date} />
                   <span className="block text-[10px] font-black text-[color:var(--client-muted)]">{getWeekdayLabel(date).replace("周", "")}</span>
                   <strong className="mt-1 block text-[13px] font-black text-[color:var(--client-text)]">{Number(date.slice(-2))}</strong>
                   {count > 0 ? <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-[color:var(--client-primary)]" /> : null}
@@ -3744,7 +3988,7 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
               return (
                 <button
                   className={cn(
-                    "focus-ring min-h-[66px] rounded-[13px] border px-1.5 py-1.5 text-left transition",
+                    "focus-ring relative min-h-[66px] rounded-[13px] border px-1.5 py-1.5 text-left transition",
                     selected
                       ? "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:var(--client-primary-soft)]"
                       : "border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)]",
@@ -3754,6 +3998,7 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
                   onClick={() => setSelectedDate(date)}
                   type="button"
                 >
+                  <HolidayCornerBadge date={date} />
                   <strong className="block text-[12px] font-black text-[color:var(--client-text)]">{Number(date.slice(-2))}</strong>
                   <span className="mt-2 flex flex-col gap-1">
                     {events.slice(0, 3).map((event) => (
@@ -3771,10 +4016,10 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
           {renderSelectedDateList()}
         </div>
       ) : (
-        <AgendaView
+        <UnifiedCalendarAgendaView
           dates={period.dates}
           events={searchedVisiblePeriodEvents}
-          onCreate={(date) => openCreate(date)}
+          onCreate={isMerchantAppointmentStatusMode ? undefined : (date) => openCreate(date)}
           onExtendFuture={() => extendAgendaDateWindow(1)}
           onExtendPast={() => extendAgendaDateWindow(-1)}
           onOpen={openCalendarEvent}
@@ -3811,14 +4056,16 @@ export function UnifiedUserCalendar({ currentCustomer, currentTechnician, curren
         sourceCounts={sourceCounts}
         sourceVisibility={sourceVisibility}
       />
-      <FloatingActionButton
-        ariaLabel="新增行程"
-        onClick={() => openCreate(selectedDate)}
-        storageKey={`needo.fab.schedule-create.${activeScope}`}
-        title="新增行程"
-      >
-        <AppIcon name="plus" />
-      </FloatingActionButton>
+      {!isMerchantAppointmentStatusMode ? (
+        <FloatingActionButton
+          ariaLabel="新增行程"
+          onClick={() => openCreate(selectedDate)}
+          storageKey={`needo.fab.schedule-create.${activeScope}`}
+          title="新增行程"
+        >
+          <AppIcon name="plus" />
+        </FloatingActionButton>
+      ) : null}
     </section>
   );
 }

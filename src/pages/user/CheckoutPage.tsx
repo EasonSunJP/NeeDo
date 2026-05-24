@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import {
@@ -63,6 +63,20 @@ const homeAddressOptions = [
 ] as const;
 const travelEstimateMinutes = 28;
 const travelEstimateFee = 800;
+
+function CheckoutInlineTag({
+  children,
+  className
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={cn("inline-block max-w-full whitespace-normal break-words text-left leading-tight [overflow-wrap:anywhere]", className)}>
+      {children}
+    </span>
+  );
+}
 
 type CheckoutDialogState =
   | {
@@ -433,7 +447,9 @@ function CheckoutProgressArrow({
         )}
       >
         <CheckoutProgressGlyph icon={icon} />
-        <span className="text-[10px] font-black leading-none tracking-[0.02em]">{label}</span>
+        <span className="line-clamp-2 max-w-[calc(100%-10px)] text-center text-[9px] font-black leading-[1.05] tracking-normal [overflow-wrap:anywhere]">
+          {label}
+        </span>
       </div>
     </button>
   );
@@ -1120,12 +1136,12 @@ export function CheckoutPage() {
             </span>
             <div className="mt-3 flex flex-wrap gap-2">
               {service.tags.slice(0, 2).map((tag) => (
-                <span
+                <CheckoutInlineTag
                   className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-muted)]"
                   key={tag}
                 >
                   {tag}
-                </span>
+                </CheckoutInlineTag>
               ))}
             </div>
             <div className="mt-3 flex items-start justify-between gap-3">
@@ -1143,12 +1159,12 @@ export function CheckoutPage() {
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {selectedPackage.includes.slice(0, 4).map((item) => (
-                <span
+                <CheckoutInlineTag
                   className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]"
                   key={item}
                 >
                   {item}
-                </span>
+                </CheckoutInlineTag>
               ))}
             </div>
             <div className="mt-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] pt-3">
@@ -1175,17 +1191,17 @@ export function CheckoutPage() {
                     type="button"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-black text-[color:var(--client-text)]">{pkg.name}</p>
                         <p className="mt-1 text-xs text-[color:var(--client-muted)]">{pkg.durationMinutes} 分钟 · {pkg.description}</p>
                         <div className="mt-2 flex flex-wrap gap-1">
                           {pkg.includes.slice(0, 4).map((item) => (
-                            <span
+                            <CheckoutInlineTag
                               className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]"
                               key={item}
                             >
                               {item}
-                            </span>
+                            </CheckoutInlineTag>
                           ))}
                         </div>
                       </div>
@@ -1239,12 +1255,12 @@ export function CheckoutPage() {
                     <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{selectedSeat?.detail}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {(selectedSeat?.tags ?? []).map((tag) => (
-                        <span
+                        <CheckoutInlineTag
                           className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1 text-[11px] font-black text-[color:var(--client-primary)]"
                           key={tag}
                         >
                           {tag}
-                        </span>
+                        </CheckoutInlineTag>
                       ))}
                     </div>
                   </div>
@@ -1300,12 +1316,12 @@ export function CheckoutPage() {
                           <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{seat.detail}</p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {seat.tags.map((tag) => (
-                              <span
+                              <CheckoutInlineTag
                                 className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-primary)]"
                                 key={tag}
                               >
                                 {tag}
-                              </span>
+                              </CheckoutInlineTag>
                             ))}
                           </div>
                         </div>
@@ -1497,7 +1513,7 @@ export function CheckoutPage() {
                         return (
                           <button
                             className={cn(
-                              "rounded-full px-3 py-1.5 text-[11px] font-black transition",
+                              "max-w-full whitespace-normal break-words rounded-full px-3 py-1.5 text-left text-[11px] font-black leading-tight transition [overflow-wrap:anywhere]",
                               active
                                 ? "bg-[color:var(--client-primary)] text-[#090806]"
                                 : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-muted)]"
@@ -1557,15 +1573,15 @@ export function CheckoutPage() {
                 <p className="mt-2 line-clamp-1 text-sm leading-6 text-[color:var(--client-muted)]">
                   {selectedTechnician.skills.slice(0, 3).join(" / ")}
                 </p>
-                <div className="mt-4 flex items-end justify-between gap-3">
-                  <div className="flex flex-wrap gap-2">
+                <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+                  <div className="min-w-0 flex flex-wrap gap-2">
                     {selectedTechnician.skills.slice(0, 2).map((tag) => (
-                      <span
+                      <CheckoutInlineTag
                         className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
                         key={tag}
                       >
                         {tag}
-                      </span>
+                      </CheckoutInlineTag>
                     ))}
                   </div>
                   <div className="shrink-0 text-right">
@@ -1618,15 +1634,15 @@ export function CheckoutPage() {
                         </p>
                         <p className="mt-3 text-[13px] font-black text-[color:var(--client-text)]">★ {tech.rating.toFixed(1)} · {tech.reviewCount} 评价</p>
                         <p className="mt-2 line-clamp-1 text-sm leading-6 text-[color:var(--client-muted)]">{tech.skills.slice(0, 3).join(" / ")}</p>
-                        <div className="mt-4 flex items-end justify-between gap-3">
-                          <div className="flex flex-wrap gap-2">
+                        <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
+                          <div className="min-w-0 flex flex-wrap gap-2">
                             {tech.skills.slice(0, 2).map((tag) => (
-                              <span
+                              <CheckoutInlineTag
                                 className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
                                 key={tag}
                               >
                                 {tag}
-                              </span>
+                              </CheckoutInlineTag>
                             ))}
                           </div>
                           <div className="shrink-0 text-right">
@@ -1668,7 +1684,7 @@ export function CheckoutPage() {
             <div className="flex flex-wrap gap-2">
               {remarkSuggestions.map((item) => (
                 <button
-                  className="rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]"
+                  className="max-w-full whitespace-normal break-words rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-3 py-1.5 text-left text-[11px] font-black leading-tight text-[color:var(--client-primary)] [overflow-wrap:anywhere]"
                   key={item}
                   onClick={() => appendRemarkSuggestion(item)}
                   type="button"
@@ -1742,19 +1758,19 @@ export function CheckoutPage() {
       />
       <footer className="safe-nav-bottom pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-14">
         <div className="pointer-events-auto space-y-3">
-          <div className="grid grid-cols-[minmax(0,1fr),auto] items-end gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
             <div className="min-w-0">
               <p className="text-xs font-black text-[color:color-mix(in_srgb,var(--client-text)_72%,var(--client-muted)_28%)]">应付金额</p>
               <strong className="mt-1 block text-[26px] font-black leading-none text-[color:var(--client-primary)]">{yen(totalPrice)}</strong>
             </div>
             <div className="flex max-w-[54vw] flex-wrap justify-end gap-2">
               {paymentTags.map((tag) => (
-                <span
+                <CheckoutInlineTag
                   className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-text)] backdrop-blur"
                   key={tag}
                 >
                   {tag}
-                </span>
+                </CheckoutInlineTag>
               ))}
             </div>
           </div>

@@ -18,7 +18,7 @@ import { Badge, type BadgeTone } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { Drawer } from "../../../components/ui/Drawer";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
-import { ScheduleCycleCalendarBoard } from "../../../components/scheduling/ScheduleCycleCalendarBoard";
+import { ScheduleCycleCalendarBoard, type ScheduleCycleCalendarBoardView } from "../../../components/scheduling/ScheduleCycleCalendarBoard";
 import { orders } from "../../../data/mock";
 import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
 import { shareContent } from "../../../lib/share";
@@ -29,7 +29,6 @@ import type { Customer, Order } from "../../../types/domain";
 import { FloatingActionWindow } from "./FloatingActionWindow";
 import { ScheduleCellDetailContent } from "./ScheduleCellDetailContent";
 import { SpecialTaskPool } from "./SpecialTaskPool";
-import { TodayArrangementTable } from "./TodayArrangementTable";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { translateText } from "../../../i18n/translations";
 import { resolveScheduleEventDetailTarget } from "../../../lib/scheduleDetailTarget";
@@ -65,6 +64,10 @@ function formatCompactPeriodLabel(periodLabel: string) {
   }
 
   return `${startYear.slice(2)}.${startMonth}.${startDay} - ${endYear.slice(2)}.${endMonth}.${endDay}`;
+}
+
+function getMerchantStaffDetailPath(technicianId: string) {
+  return `/merchant/staff/${encodeURIComponent(technicianId)}`;
 }
 
 function ComputerAvatarIcon() {
@@ -754,7 +757,7 @@ export function DispatchOverviewWorkspace({
   surface: "desktop" | "mobile";
 }) {
   const { language } = useI18n();
-  const [view, setView] = useState<ScheduleViewSegmentedValue>("day");
+  const [view, setView] = useState<ScheduleCycleCalendarBoardView>("day");
   const [dateKey, setDateKey] = useState("2026-04-20");
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false);
   const scheduleSearchQuery = "";
@@ -771,9 +774,10 @@ export function DispatchOverviewWorkspace({
   const entitySnapshot = useEntityStore();
   const summary = useMemo(() => getDispatchOverviewSummary(storeId), [dispatchSnapshot.revision, storeId]);
   const isMobileSurface = surface === "mobile";
+  const overviewRangeView: ScheduleViewSegmentedValue = view === "agenda" ? "day" : view;
   const rangeSummary = useMemo(
-    () => getDispatchOverviewRangeSummary(storeId, view, dateKey, summary.activeCycle?.id ?? null),
-    [dateKey, dispatchSnapshot.revision, storeId, summary.activeCycle?.id, view]
+    () => getDispatchOverviewRangeSummary(storeId, overviewRangeView, dateKey, summary.activeCycle?.id ?? null),
+    [dateKey, dispatchSnapshot.revision, overviewRangeView, storeId, summary.activeCycle?.id]
   );
   const floatingTasks = useMemo(() => getFloatingTasks(storeId), [dispatchSnapshot.revision, storeId]);
   const activeTechnicians = useMemo(() => {
@@ -801,7 +805,7 @@ export function DispatchOverviewWorkspace({
   const staffScheduleLabel = staffLabel === "员工" ? "排班员工" : "排班技师";
   const scheduleOverviewInfo = isMobileSurface
     ? "概要页只保留关键状态，完整周期排班表进入详细页查看。"
-    : "先看状态摘要，再处理 24 小时排班表、今日预约安排和特派任务池。后台与商户端都走同一套排班数据。";
+    : "先看状态摘要，再处理 24 小时排班表和特派任务池。预约记录统一在预约一览中查看。后台与商户端都走同一套排班数据。";
 
   const openDateSchedule = (nextDateKey: string) => {
     setDateKey(nextDateKey);
@@ -1632,7 +1636,7 @@ export function DispatchOverviewWorkspace({
             />
           </div>
           {isMobileSurface ? (
-            <ScheduleViewSegmentedTabs className="shrink-0" onChange={setView} value={view} />
+            <ScheduleViewSegmentedTabs className="shrink-0" onChange={(nextView) => setView(nextView)} value={overviewRangeView} />
           ) : null}
         </div>
 
@@ -1667,6 +1671,7 @@ export function DispatchOverviewWorkspace({
             <ScheduleCycleCalendarBoard
               cycleId={summary.activeCycle?.id ?? null}
               dateKey={dateKey}
+              getTechnicianDetailPath={getMerchantStaffDetailPath}
               onDateChange={(nextDateKey) => {
                 setDateKey(nextDateKey);
                 setSelectedCell(null);
@@ -1697,8 +1702,7 @@ export function DispatchOverviewWorkspace({
       ) : null}
 
       {!isMobileSurface ? (
-        <div className="mt-5 grid gap-5 xl:grid-cols-[1.15fr,0.85fr]">
-          <TodayArrangementTable operatorId={operatorId} storeId={storeId} surface={surface} />
+        <div className="mt-5">
           <SpecialTaskPool operatorId={operatorId} storeId={storeId} surface={surface} />
         </div>
       ) : null}
@@ -1728,6 +1732,7 @@ export function DispatchOverviewWorkspace({
             <ScheduleCycleCalendarBoard
               cycleId={summary.activeCycle?.id ?? null}
               dateKey={dateKey}
+              getTechnicianDetailPath={getMerchantStaffDetailPath}
               onDateChange={(nextDateKey) => {
                 setDateKey(nextDateKey);
                 setSelectedCell(null);

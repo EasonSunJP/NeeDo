@@ -1,7 +1,6 @@
-import { Badge, type BadgeTone } from "../ui/Badge";
+import type { BadgeTone } from "../ui/Badge";
 import {
   dispatchReferenceDateKey,
-  getCycleStatusLabel,
   type DispatchCycle
 } from "../../features/dispatch-center/domain";
 import { cn } from "../../lib/utils";
@@ -83,8 +82,7 @@ function SchedulingCycleTabButton({
   disabled,
   label,
   onClick,
-  surface,
-  tone
+  surface
 }: Omit<SchedulingCycleTab, "key"> & {
   active: boolean;
   surface: SchedulingCycleSurface;
@@ -107,12 +105,7 @@ function SchedulingCycleTabButton({
       onClick={onClick}
       type="button"
     >
-      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-        <strong className="truncate text-sm font-black sm:text-base">{label}</strong>
-        <Badge className={cn("max-w-full truncate px-1.5 text-[10px] sm:px-2 sm:text-xs", active && "schedule-highlight-badge")} tone={tone ?? resolveSchedulingCycleTone(cycle)}>
-          {cycle ? getCycleStatusLabel(cycle.status) : "未创建"}
-        </Badge>
-      </div>
+      <strong className="block truncate text-sm font-black sm:text-base">{label}</strong>
       <p className="mt-2 truncate text-xs font-semibold opacity-75 sm:text-sm">{getSlotPeriod(cycle)}</p>
     </button>
   );
@@ -130,7 +123,10 @@ export function SchedulingCycleTabs({
   surface: SchedulingCycleSurface;
 }) {
   return (
-    <div className={cn("grid grid-cols-3 gap-2 sm:gap-3", className)}>
+    <div
+      className={cn("grid gap-2 sm:gap-3", className)}
+      style={{ gridTemplateColumns: `repeat(${Math.max(slots.length, 1)}, minmax(0, 1fr))` }}
+    >
       {slots.map((slot) => (
         <SchedulingCycleTabButton
           active={activeSlot === slot.key}
@@ -140,7 +136,6 @@ export function SchedulingCycleTabs({
           label={slot.label}
           onClick={slot.onClick}
           surface={surface}
-          tone={slot.tone ?? resolveSchedulingCycleTone(slot.cycle)}
         />
       ))}
     </div>

@@ -19,6 +19,7 @@ import type {
   Technician
 } from "../types/domain";
 import { demoAuthAccount } from "../auth/demoAccount";
+import { buildDemoAppointmentTestOrders } from "./demoAppointmentSeeds";
 import { formatSystemId } from "../lib/systemIds";
 
 export type TechnicianMomentComment = {
@@ -1374,6 +1375,8 @@ orders.push(
     })
   )
 );
+
+orders.push(...buildDemoAppointmentTestOrders({ customers, store: stores[0], technicians }));
 
 export const fieldJobs: FieldJob[] = [
   {

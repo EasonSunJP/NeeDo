@@ -340,7 +340,9 @@ function getOrderDate(order: Order) {
 }
 
 function getLatestOrderDate(orders: Order[]) {
-  return orders.map(getOrderDate).sort().at(-1) ?? "2026-04-12";
+  const completedOrderDate = orders.filter((order) => order.status === "completed").map(getOrderDate).sort().at(-1);
+
+  return completedOrderDate ?? orders.map(getOrderDate).sort().at(-1) ?? "2026-04-12";
 }
 
 export function createDefaultShopAnalyticsFilter(orders: Order[] = []): AnalyticsFilterState {

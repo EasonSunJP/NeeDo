@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { AppIcon, floatingHeaderControlButtonClassName } from "../client-ui/AppScaffold";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
@@ -13,12 +13,14 @@ export function MobileFullscreenCloseButton({
   onClose,
   dark = false,
   label = "关闭",
-  className
+  className,
+  style
 }: {
   onClose: () => void;
   dark?: boolean;
   label?: string;
   className?: string;
+  style?: CSSProperties;
 }) {
   return (
     <button
@@ -31,6 +33,7 @@ export function MobileFullscreenCloseButton({
         className
       )}
       onClick={onClose}
+      style={style}
       type="button"
     >
       <AppIcon className="h-5 w-5" name="close" />

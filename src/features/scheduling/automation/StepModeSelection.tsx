@@ -162,7 +162,7 @@ export function StepModeSelection({
         </div>
       </section>
 
-      <div className={cn("flex flex-wrap justify-center gap-3 pt-1", isMobileSurface && "schedule-wizard-action-dock rounded-[28px] p-2")}>
+      <div className={cn("flex flex-wrap items-center justify-center gap-3", isMobileSurface && "schedule-wizard-action-dock rounded-[28px] p-2")}>
         <Button
           className={cn(secondaryButtonClass, "min-w-[132px]")}
           variant="secondary"

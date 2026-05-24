@@ -63,6 +63,7 @@ import {
   getTechnicianSupportConversationId
 } from "../../lib/messageCenter";
 import { getOneClickTargetDates } from "../../lib/oneClickSchedule";
+import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getServiceStartCode } from "../../lib/serviceStartCode";
 import { shareContent } from "../../lib/share";
 import { getActivePolicyForStore, getPolicyStatusLabel, getResponseStatusLabel, getScheduleContextLabel, resolveScheduleContext } from "../../lib/shiftPlanning";
@@ -2766,7 +2767,7 @@ export function TechnicianPortalPage() {
       return {
         ...schedule,
         workMode: "store",
-        title: planMeta?.title ?? (schedule.status === "free" ? "门店可接单空档" : order.itemName),
+        title: planMeta?.title ?? (schedule.status === "free" ? "门店可接单空档" : getNeedoAppBookingTitle(schedule.orderId, order.itemName) ?? order.itemName),
         place: store.name,
         customer: schedule.status === "free" ? "待分配" : order.customerName,
         amount: schedule.status === "booked" ? order.amount : 0,
@@ -2791,7 +2792,7 @@ export function TechnicianPortalPage() {
         status: "booked",
         orderId: order.id,
         workMode: "store",
-        title: order.itemName,
+        title: getNeedoAppBookingTitle(order.id, order.itemName) ?? order.itemName,
         place: getTechnicianOrderAddress(order),
         customer: order.customerName,
         amount: order.amount,

@@ -34,7 +34,7 @@ export function ManualSchedulingWorkspace({
   surface: ManualSchedulingSurface;
 }) {
   const dispatchSnapshot = useDispatchCenterStore();
-  const [selectedSlot, setSelectedSlot] = useState<CycleSlot>("current");
+  const [selectedSlot, setSelectedSlot] = useState<CycleSlot>("next");
   const [message, setMessage] = useState<string | null>(null);
   const isMobileSurface = surface === "mobile";
   const sectionClass = isMobileSurface
@@ -47,12 +47,7 @@ export function ManualSchedulingWorkspace({
   );
   const currentCycle = useMemo(() => resolveSchedulingCurrentCycle(cycles), [cycles]);
   const { nextCycle, builderCycle } = useMemo(() => resolveSchedulingCycleSlots(cycles, currentCycle), [currentCycle, cycles]);
-  const activeCycle =
-    selectedSlot === "current"
-      ? currentCycle
-      : selectedSlot === "next"
-        ? nextCycle
-        : builderCycle;
+  const activeCycle = selectedSlot === "next" ? nextCycle : builderCycle;
   const limitSummary = getDispatchCycleLimitSummary(storeId);
 
   const createCycle = () => {
@@ -69,13 +64,6 @@ export function ManualSchedulingWorkspace({
     <SchedulingCycleTabs
       activeSlot={selectedSlot}
       slots={[
-        {
-          key: "current",
-          cycle: currentCycle,
-          label: "当前周期",
-          onClick: () => setSelectedSlot("current"),
-          tone: resolveSchedulingCycleTone(currentCycle)
-        },
         {
           key: "next",
           cycle: nextCycle,

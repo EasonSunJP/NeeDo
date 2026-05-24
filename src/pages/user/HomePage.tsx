@@ -430,6 +430,46 @@ function ReminderBanner({
 }) {
   const store = reminder.store;
   const service = reminder.service;
+  const { language } = useI18n();
+  const t = (text: string) => translateText(text, language);
+  const reminderTitle = (() => {
+    if (language === "en") {
+      return `Your next appointment starts in ${reminder.minutesUntil} minutes`;
+    }
+
+    if (language === "ja") {
+      return `次の予約は${reminder.minutesUntil}分後に始まります`;
+    }
+
+    if (language === "ko") {
+      return `다음 예약이 ${reminder.minutesUntil}분 후 시작됩니다`;
+    }
+
+    if (language === "zh-Hant") {
+      return `您的下次行程會在 ${reminder.minutesUntil} 分鐘後開始`;
+    }
+
+    return `您的下次行程会在 ${reminder.minutesUntil} 分钟后开始`;
+  })();
+  const reminderMeta = (() => {
+    if (language === "en") {
+      return `${reminder.startsAt} start · View appointment details`;
+    }
+
+    if (language === "ja") {
+      return `${reminder.startsAt}開始 · 予約詳細を見る`;
+    }
+
+    if (language === "ko") {
+      return `${reminder.startsAt} 시작 · 예약 상세 보기`;
+    }
+
+    if (language === "zh-Hant") {
+      return `${reminder.startsAt} 開始 · 點擊查看預約詳情`;
+    }
+
+    return `${reminder.startsAt} 开始 · 点击查看预约详情`;
+  })();
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+152px)] z-40 px-4">
@@ -447,13 +487,13 @@ function ReminderBanner({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="inline-flex rounded-full bg-white/14 px-3 py-1 text-[11px] font-black tracking-[0.1em] text-white/86">
-                即将开始的预约提醒
+                {t("即将开始的预约提醒")}
               </div>
-              <p className="mt-3 text-[18px] font-black leading-6">您的下次行程会在 {reminder.minutesUntil} 分钟后开始</p>
-              <p className="mt-1 text-[12px] text-white/76">{reminder.startsAt} 开始 · 点击查看预约详情</p>
+              <p className="mt-3 text-[18px] font-black leading-6">{reminderTitle}</p>
+              <p className="mt-1 text-[12px] text-white/76">{reminderMeta}</p>
             </div>
             <button
-              aria-label="关闭提醒"
+              aria-label={t("关闭提醒")}
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/86"
               onClick={(event) => {
                 event.preventDefault();
@@ -470,7 +510,7 @@ function ReminderBanner({
             {store ? (
               <ReminderMiniCard
                 cover={store.cover}
-                label="店铺"
+                label={t("店铺")}
                 meta={`${store.area} · ${reminder.startsAt}`}
                 title={store.name}
               />
@@ -478,8 +518,8 @@ function ReminderBanner({
             {service ? (
               <ReminderMiniCard
                 cover={service.cover}
-                label="服务"
-                meta={`${serviceCategories.find((item) => item.id === service.categoryId)?.name ?? "服务"} · ${reminder.startsAt}`}
+                label={t("服务")}
+                meta={`${t(serviceCategories.find((item) => item.id === service.categoryId)?.name ?? "服务")} · ${reminder.startsAt}`}
                 title={service.name}
               />
             ) : null}

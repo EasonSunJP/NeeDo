@@ -123,23 +123,7 @@ function MemberCenterHeaderTabs({
       className="relative z-10"
       panelClassName="relative overflow-hidden border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_92%,transparent),color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_12%))] shadow-[0_18px_40px_rgba(0,0,0,0.1)]"
     >
-      <div className="grid h-12 grid-cols-5 items-center gap-1.5">
-        {sectionTabs.map((tab) => (
-          <button
-            aria-pressed={value === tab.value}
-            className={cn(
-              "h-10 rounded-full px-1 text-[15px] font-black text-[color:var(--client-muted)] transition",
-              value === tab.value &&
-                "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
-            )}
-            key={tab.value}
-            onClick={() => onChange(tab.value)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <FeatureSegmentedTabs items={sectionTabs} onChange={onChange} value={value} variant="header" />
     </FloatingHomeHeader>
   );
 }

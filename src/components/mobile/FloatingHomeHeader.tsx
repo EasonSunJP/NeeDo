@@ -53,7 +53,14 @@ export function FloatingHomeHeader({
     <>
       <div aria-hidden="true" className={spacerClassName ?? fallbackSpacerClassName} style={spacerStyle} />
       <div className="pointer-events-none fixed inset-x-0 top-0 z-[35]">
-        <div className="pointer-events-auto mx-auto w-full max-w-[1600px] px-4">
+        <div
+          className="pointer-events-auto mx-auto w-full"
+          style={{
+            maxWidth: "var(--client-bottom-nav-max-width, 880px)",
+            paddingLeft: "var(--client-bottom-nav-inline-gap, 12px)",
+            paddingRight: "var(--client-bottom-nav-inline-gap, 12px)"
+          }}
+        >
           <div
             ref={panelRef}
             className={cn(

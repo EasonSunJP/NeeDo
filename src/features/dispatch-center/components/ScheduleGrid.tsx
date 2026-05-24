@@ -5,6 +5,7 @@ import { useI18n } from "../../../i18n/I18nProvider";
 import { translateText, type Language, type LocalizedText } from "../../../i18n/translations";
 import { useHorizontalDragScroll } from "../../../lib/useHorizontalDragScroll";
 import { cn } from "../../../lib/utils";
+import { HolidayCornerBadge } from "../../../components/scheduling/HolidayCornerBadge";
 import { getScheduleClosedCellStyle } from "../../../components/scheduling/scheduleGridVisuals";
 import type { DispatchScheduleCell, DispatchScheduleCellStatus, DispatchScheduleGridData } from "../store";
 import { TechnicianAvatarBadge, TechnicianColumnToggleIcon } from "./TechnicianListUi";
@@ -1706,6 +1707,12 @@ export function ScheduleGrid({
                     }}
                     type="button"
                   >
+                    {isPeriodGrid ? (
+                      <HolidayCornerBadge
+                        className={bookedAppointmentCount > 0 ? "left-1 right-auto" : undefined}
+                        date={cell.date}
+                      />
+                    ) : null}
                     <p
                       className={cn(
                         hasPeriodTimeline

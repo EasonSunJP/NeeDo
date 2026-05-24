@@ -122,7 +122,8 @@ async function loadCurrentTranslations() {
 async function loadIndexedTranslations() {
   const source = execFileSync("git", ["show", ":src/i18n/translations.ts"], {
     cwd: workspaceRoot,
-    encoding: "utf8"
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024
   });
   return loadTranslationsFromSource(source);
 }

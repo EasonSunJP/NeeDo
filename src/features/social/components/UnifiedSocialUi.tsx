@@ -2478,7 +2478,6 @@ export function SearchTabs({
   return (
     <div>
       <FeatureSegmentedTabs
-        className="client-feature-segmented-tabs--single-frame !min-h-10 !border-0 !bg-transparent !p-0 !shadow-none !backdrop-blur-none"
         items={items}
         onChange={onChange}
         value={value}

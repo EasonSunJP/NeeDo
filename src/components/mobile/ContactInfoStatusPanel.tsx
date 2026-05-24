@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ContactEventTimelinePanel } from "./ContactEventTimeline";
 import { MobileFullscreenHeader } from "./MobileFullscreenHeader";
 import { MobileFullscreenPage } from "./MobileFullscreenPage";
+import { FeatureSegmentedTabs } from "../client-ui/AppScaffold";
 import { ClientActionDialog } from "../ui/ClientActionDialog";
 import { cn } from "../../lib/utils";
 
@@ -774,32 +775,17 @@ export function ContactInfoStatusPanel<TItem extends ContactInfoStatusItem>({
           className
         )}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-          <span className="text-[17px] font-black leading-none text-[color:var(--client-text)]">{title}</span>
-          <div className="flex max-w-full shrink-0 items-center gap-1 overflow-x-auto rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] p-1">
-            {contactInfoStatusFilterOptions.map((option) => {
-              const active = filter === option.value;
-
-              return (
-                <button
-                  aria-pressed={active}
-                  className={cn(
-                    "focus-ring h-9 shrink-0 rounded-full px-3 text-[12px] font-black transition",
-                    active
-                      ? option.value === "expired"
-                        ? "bg-[#ef4444] text-white"
-                        : "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]"
-                      : "text-[color:var(--client-muted)]"
-                  )}
-                  key={option.value}
-                  onClick={() => onFilterChange(option.value)}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex items-center gap-3 text-sm">
+          <span className="shrink-0 text-[17px] font-black leading-none text-[color:var(--client-text)]">{title}</span>
+          <FeatureSegmentedTabs
+            className="min-w-0 flex-1"
+            items={contactInfoStatusFilterOptions.map((option) => ({
+              label: option.label,
+              value: option.value
+            }))}
+            onChange={onFilterChange}
+            value={filter}
+          />
         </div>
         <div className="mt-4 grid gap-3">
           {visibleItems.length > 0 ? (

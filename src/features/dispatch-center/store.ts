@@ -1,5 +1,9 @@
 import { useSyncExternalStore } from "react";
 import { fieldJobs, orders } from "../../data/mock";
+import {
+  buildDemoAppointmentDispatchArrangements,
+  demoAppointmentSeedStoreId
+} from "../../data/demoAppointmentSeeds";
 import { getEntityStoreSnapshot } from "../../state/entityStore";
 import { addSharedSchedules, getScheduleStoreSnapshot, removeSharedSchedule } from "../../state/scheduleStore";
 import { syncDispatchProjectionForStore } from "../../state/shiftPlanningStore";
@@ -7,6 +11,7 @@ import { buildCapacityForSlot } from "../../lib/scheduling/capacityEngine";
 import { promoteDispatchCycles, summarizeCycleLimits } from "../../lib/scheduling/cyclePromotion";
 import { rankDispatchCandidates } from "../../lib/scheduling/priorityEngine";
 import { SmartScheduleEngine } from "../../lib/scheduling/smartScheduleEngine";
+import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import {
   addDays,
   addMinutes,
@@ -522,7 +527,7 @@ function buildSeedArrangements(storeId: string) {
     addDays(dispatchReferenceDateKey, 4)
   ];
 
-  return orders.slice(0, 8).map((order, index) => {
+  const baselineArrangements = orders.slice(0, 8).map((order, index) => {
     const schedule = parseBookedAt(order.bookedAt, order.mode === "home" ? 120 : 90);
     const assignedTechnicianId = ["tech-1", "tech-4", "tech-8", "tech-12"][index % 4];
     const assignedTechnicianName = getEntityStoreSnapshot().technicians.find((technician) => technician.id === assignedTechnicianId)?.name ?? "待定";
@@ -550,6 +555,23 @@ function buildSeedArrangements(storeId: string) {
       amount: order.amount,
       source: "order"
     } satisfies DispatchArrangement;
+  });
+
+  return [...baselineArrangements, ...buildDemoDispatchArrangementsForStore(storeId)];
+}
+
+function buildDemoDispatchArrangementsForStore(storeId: string) {
+  if (storeId !== demoAppointmentSeedStoreId) {
+    return [];
+  }
+
+  const snapshot = getEntityStoreSnapshot();
+  const store = snapshot.stores.find((item) => item.id === storeId) ?? null;
+
+  return buildDemoAppointmentDispatchArrangements({
+    customers: snapshot.customers,
+    store,
+    technicians: snapshot.technicians
   });
 }
 
@@ -924,6 +946,20 @@ function ensureOverviewRangeDemoData() {
   return changed;
 }
 
+function ensureDemoAppointmentSeedData() {
+  const existingIds = new Set(state.arrangements.map((arrangement) => arrangement.id));
+  const missingArrangements = buildDemoDispatchArrangementsForStore(demoAppointmentSeedStoreId).filter(
+    (arrangement) => !existingIds.has(arrangement.id)
+  );
+
+  if (missingArrangements.length === 0) {
+    return false;
+  }
+
+  state.arrangements.push(...missingArrangements);
+  return true;
+}
+
 function ensureSmartSchedulingData() {
   state.smartAutomationPolicies = state.smartAutomationPolicies.map(withSmartPolicyDefaults);
   const storeIds = Array.from(new Set(state.cycles.map((cycle) => cycle.storeId)));
@@ -1069,9 +1105,10 @@ function hydrate() {
   state.cycles = state.cycles.map((cycle) => ensureCycleDisplayTechnicians(normalizeCycleStep(cycle)));
   ensureCycleDisplayData();
   const overviewRangeDataChanged = ensureOverviewRangeDemoData();
+  const demoAppointmentSeedChanged = ensureDemoAppointmentSeedData();
   ensureSmartSchedulingData();
   rebuildDerivedState();
-  if (overviewRangeDataChanged) {
+  if (overviewRangeDataChanged || demoAppointmentSeedChanged) {
     persist();
   }
 }
@@ -1868,7 +1905,9 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
         const linkedSchedule = liveSchedules.find((schedule) => schedule.orderId) ?? liveSchedules[0];
         const orderId = linkedSchedule?.orderId;
         const linkedArrangement = orderId ? arrangementByOrderId.get(orderId) : undefined;
-        const linkedOrderStatus = orderId ? orderById.get(orderId)?.status : undefined;
+        const linkedOrder = orderId ? orderById.get(orderId) : undefined;
+        const linkedOrderStatus = linkedOrder?.status;
+        const appBookingTitle = getNeedoAppBookingTitle(orderId, linkedArrangement?.serviceName ?? linkedOrder?.itemName);
         const serviceStatus: DispatchScheduleServiceStatus | undefined =
           linkedArrangement?.status === "inService" || linkedOrderStatus === "inService" || linkedSchedule?.eventType === "attendance"
             ? "inService"
@@ -1889,7 +1928,7 @@ function buildDayGrid(storeId: string, cycle: DispatchCycle | null, dateKey: str
           detail = "当前时段存在重叠预约或任务。";
         } else if (liveSchedules.some((schedule) => schedule.status === "booked")) {
           status = "booked";
-          title = "有预约";
+          title = appBookingTitle ?? "有预约";
           detail = liveSchedules[0]?.orderId ? `订单 ${liveSchedules[0].orderId}` : "已绑定预约";
         } else if (liveSchedules.some((schedule) => schedule.status === "blocked")) {
           status = "other";

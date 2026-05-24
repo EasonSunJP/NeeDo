@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { FileBlob, SpreadsheetFile } from "@oai/artifact-tool";
+import { approvedI18nTranslationOverrides } from "./i18n-approved-overrides.mjs";
 import { workbookFeatureSheets, workbookLanguageHeaders } from "./i18n-workbook-config.mjs";
 
 const workspaceRoot = "/Users/eason/Documents/New project";
@@ -58,7 +59,8 @@ const approvedTranslationOverrides = new Map([
   ["信用度", { "zh-Hant": "信用值", ja: "信用度", en: "Credit level", ko: "신용도" }],
   ["集中查看店铺工作的趋势、结算和下一单安排。", { en: "View store-work trends, settlement, and the next assignment in one place." }],
   ["仅展示店铺工作的统计卡片，便于核对门店收入、排班和履约表现。", { ja: "店舗業務の統計カードのみを表示し、店舗収入、シフト、履行状況を確認しやすくします。" }],
-  ["最近的店铺工作会归档在这里，方便核对排班和收入记录。", { ko: "최근 매장 업무는 여기에 보관되어 근무표와 수입 기록을 쉽게 확인할 수 있습니다." }]
+  ["最近的店铺工作会归档在这里，方便核对排班和收入记录。", { ko: "최근 매장 업무는 여기에 보관되어 근무표와 수입 기록을 쉽게 확인할 수 있습니다." }],
+  ...approvedI18nTranslationOverrides
 ]);
 
 function normalizeCell(value) {

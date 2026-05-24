@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { orders, stores, technicians } from "../data/mock";
+import { customers, orders, stores, technicians } from "../data/mock";
+import { buildDemoTechnicianScheduleSeeds, demoAppointmentSeedStoreId } from "../data/demoAppointmentSeeds";
 import type {
   TechnicianDutyShift,
   TechnicianScheduleBooking,
@@ -338,6 +339,15 @@ function buildSeedState(): TechnicianScheduleStoreState {
     });
   }
 
+  const demoSeeds = buildDemoTechnicianScheduleSeeds({
+    customers,
+    store: homeStore,
+    technicians
+  });
+  dutyShifts.push(...demoSeeds.dutyShifts);
+  bookings.push(...demoSeeds.bookings);
+  customEvents.push(...demoSeeds.customEvents);
+
   const transferRequests: TechnicianScheduleTransferRequest[] = [];
   const transferInvitations: TechnicianScheduleTransferInvitation[] = [];
 
@@ -383,6 +393,32 @@ function buildSeedState(): TechnicianScheduleStoreState {
     transferRequests,
     transferInvitations
   };
+}
+
+function appendMissingSeedRows<T extends { id: string }>(target: T[], seedRows: T[]) {
+  const existingIds = new Set(target.map((item) => item.id));
+  const missingRows = seedRows.filter((item) => !existingIds.has(item.id));
+
+  if (missingRows.length === 0) {
+    return false;
+  }
+
+  target.push(...missingRows);
+  return true;
+}
+
+function ensureDemoTechnicianScheduleSeedData() {
+  const seedStore = stores.find((store) => store.id === demoAppointmentSeedStoreId) ?? stores[0] ?? null;
+  const demoSeeds = buildDemoTechnicianScheduleSeeds({
+    customers,
+    store: seedStore,
+    technicians
+  });
+  const dutyChanged = appendMissingSeedRows(state.dutyShifts, demoSeeds.dutyShifts);
+  const bookingChanged = appendMissingSeedRows(state.bookings, demoSeeds.bookings);
+  const eventChanged = appendMissingSeedRows(state.customEvents, demoSeeds.customEvents);
+
+  return dutyChanged || bookingChanged || eventChanged;
 }
 
 function cloneState(nextState: TechnicianScheduleStoreState) {
@@ -451,6 +487,9 @@ function hydrate() {
     }
 
     Object.assign(state, cloneState(parsed as TechnicianScheduleStoreState));
+    if (ensureDemoTechnicianScheduleSeedData()) {
+      persist();
+    }
   } catch {
     persist();
   }
