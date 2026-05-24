@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getTranslationLookupCandidates, languages, translateText, translations } from "./translations";
+import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
   it("keeps the shared language selector order aligned with product rules", () => {
@@ -57,17 +57,31 @@ describe("translations", () => {
     expect(translated).not.toContain("\"&\"");
   });
 
-  it("uses business management naming for the merchant admin surface", () => {
-    expect(translateText("商户后台", "ja")).toBe("事業者管理画面");
+  it("uses store naming for the merchant admin surface", () => {
+    expect(translateText("商户后台", "ja")).toBe("店舗管理画面");
     expect(translateText("商户后台", "en")).toBe("Business Management");
     expect(translateText("商户后台", "ko")).toBe("사업자 관리 화면");
-    expect(translateText("商家后台", "ja")).toBe("事業者管理画面");
+    expect(translateText("商家后台", "ja")).toBe("店舗管理画面");
     expect(translateText("商家后台", "en")).toBe("Business Management");
     expect(translateText("商家后台", "ko")).toBe("사업자 관리 화면");
 
-    expect(translateText("商户后台导航", "ja")).toBe("事業者管理画面ナビゲーション");
+    expect(translateText("商户后台导航", "ja")).toBe("店舗管理画面ナビゲーション");
     expect(translateText("商户后台导航", "en")).toBe("Business management navigation");
     expect(translateText("商户后台导航", "ko")).toBe("사업자 관리 화면 내비게이션");
+  });
+
+  it("keeps manually locked Japanese terminology for merchants, group chat, and schedule contexts", () => {
+    expect(translateText("商户", "ja")).toBe("店舗");
+    expect(translateText("商家", "ja")).toBe("店舗");
+    expect(translateText("群", "ja")).toBe("グループ");
+    expect(translateText("私密群消息已隐藏", "ja")).toBe("プライベートグループのメッセージは非表示");
+
+    expect(translateTextForContext("行程", "ja", { portal: "user" })).toBe("スケジュール");
+    expect(translateTextForContext("日程", "ja", { portal: "user" })).toBe("スケジュール");
+    expect(translateTextForContext("行程", "ja", { portal: "technician" })).toBe("シフト");
+    expect(translateTextForContext("日程", "ja", { portal: "technician" })).toBe("シフト");
+    expect(translateTextForContext("行程", "ja", { portal: "merchant" })).toBe("シフト");
+    expect(translateTextForContext("日程", "ja", { portal: "merchant" })).toBe("シフト");
   });
 
   it("uses management center naming for the merchant scheduling surface", () => {
@@ -149,7 +163,7 @@ describe("translations", () => {
     expect(translateText("空调清洗", "ja")).toBe("エアコン掃除");
     expect(translateText("热门可约", "ja")).toBe("超人気、予約可能");
     expect(translateText("深夜可约", "ja")).toBe("深夜予約可");
-    expect(translateText("多商户可选", "ja")).toBe("複数事業者選択可");
+    expect(translateText("多商户可选", "ja")).toBe("複数店舗選択可");
     expect(translateText("可固定阿姨", "ja")).toBe("長期契約可");
     expect(translateText("修水管", "zh")).toBe("修水管");
     expect(translateText("修水管", "ja")).toBe("水回り");

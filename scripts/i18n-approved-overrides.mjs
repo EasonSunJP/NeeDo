@@ -1,4 +1,50 @@
 export const approvedI18nTranslationOverrides = [
+  // Manual terminology lock: the product UI uses 店舗 for 商户 / 商家 in Japanese.
+  // Keep these overrides so workbook imports cannot revert this wording to 事業者,
+  // 販売業者, マーチャント, or 商人.
+  [
+    "商户",
+    { ja: "店舗" }
+  ],
+  [
+    "商家",
+    { ja: "店舗" }
+  ],
+  [
+    "商户端",
+    { ja: "店舗側" }
+  ],
+  [
+    "商户后台",
+    { ja: "店舗管理画面" }
+  ],
+  [
+    "商家后台",
+    { ja: "店舗管理画面" }
+  ],
+  [
+    "商户后台导航",
+    { ja: "店舗管理画面ナビゲーション" }
+  ],
+  // Manual terminology lock: default/user-facing schedule labels use スケジュール.
+  // Technician and merchant surfaces are context-locked to シフト in translations.ts.
+  [
+    "行程",
+    { ja: "スケジュール" }
+  ],
+  [
+    "日程",
+    { ja: "スケジュール" }
+  ],
+  // Manual terminology lock: chat/privacy group wording uses グループ in Japanese.
+  [
+    "群",
+    { ja: "グループ" }
+  ],
+  [
+    "私密群消息已隐藏",
+    { "zh-Hant": "私密群訊息已隱藏", ja: "プライベートグループのメッセージは非表示", en: "Private group messages are hidden", ko: "비공개 그룹 메시지가 숨겨졌습니다" }
+  ],
   [
     "已支付",
     { "zh-Hant": "已支付", ja: "支払い済み", en: "Paid", ko: "결제 완료" }

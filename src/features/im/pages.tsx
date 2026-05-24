@@ -14,6 +14,7 @@ import {
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
+import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
@@ -209,6 +210,7 @@ const groupPrivacyStartModeOptions: Array<{ value: ConversationDisappearingStart
   { value: "sent", label: "按发送时间" },
   { value: "read_by_all", label: "全员看过后" }
 ];
+const minimumGroupMemberCount = 2;
 
 function parseCountdownInput(input: GroupPrivacyCountdownInput): ConversationDisappearingCountdown {
   return {
@@ -6748,6 +6750,7 @@ export function ImNewConversationPage() {
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(defaultGroupPrivacyCountdownInput);
   const [privacyStartMode, setPrivacyStartMode] = useState<ConversationDisappearingStartMode>("sent");
+  const [groupSelectionWarningOpen, setGroupSelectionWarningOpen] = useState(false);
   const [selectedCollectUserId, setSelectedCollectUserId] = useState<string | null>(null);
   const [collectAmount, setCollectAmount] = useState("");
   const [collectNote, setCollectNote] = useState("");
@@ -6816,7 +6819,8 @@ export function ImNewConversationPage() {
   const canSubmitCollection = Boolean(selectedCollectUserId && Number.isFinite(collectAmountValue) && collectAmountValue > 0);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
-  const canCreateGroup = selectedIds.length > 0 && (!privacyModeEnabled || hasPrivacyCountdown);
+  const hasEnoughGroupMembers = selectedIds.length >= minimumGroupMemberCount;
+  const canCreateGroup = hasEnoughGroupMembers && (!privacyModeEnabled || hasPrivacyCountdown);
   const privacyCountdownSummary = formatConversationDisappearingCountdown(privacyCountdown);
   const privacyModeInfo = "开启后需设置对话消失倒计时";
   const visibleIndexLetters = useMemo(() => getVisibleIndexLetters(groupedContacts, { includeSymbolFallback: true }), [groupedContacts]);
@@ -6870,6 +6874,12 @@ export function ImNewConversationPage() {
     groupSourceSelectionRef.current = groupSourceConversationId;
     setSelectedIds((current) => Array.from(new Set([...nextSelectedIds, ...current])));
   }, [groupSourceConversationId, isGroupMode, selectableGroupContactUserIds, store.conversations, store.currentUserId]);
+
+  useEffect(() => {
+    if (hasEnoughGroupMembers) {
+      setGroupSelectionWarningOpen(false);
+    }
+  }, [hasEnoughGroupMembers]);
 
   const clearIndexHighlight = () => {
     if (indexClearTimerRef.current !== null) {
@@ -7015,6 +7025,11 @@ export function ImNewConversationPage() {
   };
 
   const createGroup = async () => {
+    if (!hasEnoughGroupMembers) {
+      setGroupSelectionWarningOpen(true);
+      return;
+    }
+
     if (!canCreateGroup) {
       return;
     }
@@ -7401,8 +7416,13 @@ export function ImNewConversationPage() {
               ) : null}
             </section>
             <button
-              className="focus-ring inline-flex min-h-14 w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:var(--client-primary)] px-7 text-[15px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_34%,transparent)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] disabled:bg-[color:color-mix(in_srgb,var(--client-line)_62%,var(--client-surface))] disabled:text-[color:var(--client-muted)] disabled:shadow-none"
-              disabled={!canCreateGroup}
+              className={cn(
+                "focus-ring inline-flex min-h-14 w-full items-center justify-center rounded-full border px-7 text-[15px] font-black transition",
+                canCreateGroup
+                  ? "border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_34%,transparent)] hover:-translate-y-0.5"
+                  : "cursor-pointer border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-line)_62%,var(--client-surface))] text-[color:var(--client-muted)] shadow-none"
+              )}
+              data-create-ready={canCreateGroup ? "true" : "false"}
               onClick={() => void createGroup()}
               onPointerDown={stabilizeImMobileViewport}
               type="button"
@@ -7410,6 +7430,18 @@ export function ImNewConversationPage() {
               {privacyModeEnabled && !hasPrivacyCountdown ? "请设置消失倒计时" : "创建群聊"}
             </button>
           </div>
+          <ClientActionDialog
+            className="pointer-events-auto"
+            description="请从联系人列表中选择至少 2 名成员后再创建群聊。"
+            onClose={() => setGroupSelectionWarningOpen(false)}
+            open={groupSelectionWarningOpen}
+            title="至少选择 2 名群成员"
+            actions={
+              <Button className="w-full" onClick={() => setGroupSelectionWarningOpen(false)}>
+                我知道了
+              </Button>
+            }
+          />
         </div>
       ) : null}
     </ImStandaloneShell>

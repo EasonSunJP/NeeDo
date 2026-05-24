@@ -2,6 +2,10 @@ export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
 export type TranslationEntry = Partial<Record<TargetLanguage, string>>;
 export type LocalizedText = Record<Language, string>;
+export type TranslationPortalContext = "user" | "technician" | "merchant" | "business" | "admin";
+export type TranslationContext = {
+  portal?: TranslationPortalContext;
+};
 
 export const languages: Array<{ code: Language; label: string; shortLabel: string; htmlLang: string }> = [
   { code: "ja", label: "日本語", shortLabel: "日", htmlLang: "ja" },
@@ -1746,6 +1750,7 @@ export const translations: TranslationMap = {
   "创建链接": { "zh-Hant": "建立連結", ja: "リンク作成", en: "Create link", ko: "링크 만들기" },
   "创建排班草稿": { "zh-Hant": "建立排班草稿", ja: "スケジュール案の作成", en: "Creating a schedule draft", ko: "일정 초안 작성" },
   "创建群聊": { "zh-Hant": "建立群聊", ja: "グループチャット作成", en: "Create a group chat", ko: "그룹 채팅 만들기" },
+  "请从联系人列表中选择至少 2 名成员后再创建群聊。": { "zh-Hant": "請先從聯絡人列表中選擇至少 2 名成員，再建立群聊。", ja: "連絡先リストからメンバーを2名以上選択してから、グループチャットを作成してください。", en: "Select at least 2 members from the contact list before creating a group chat.", ko: "연락처 목록에서 구성원을 2명 이상 선택한 후 그룹 채팅을 만들어 주세요." },
   "创建失败。": { "zh-Hant": "創建失敗。", ja: "作成に失敗しました。", en: "Creation failed.", ko: "생성에 실패했습니다." },
   "创建时间": { "zh-Hant": "創建時間", ja: "作成時間", en: "Creation time", ko: "창조 시간" },
   "创建特派任务": { "zh-Hant": "創建特派任務", ja: "特別なミッションを作成する", en: "Create a special mission", ko: "특별 임무를 만들어 보세요" },
@@ -7399,6 +7404,7 @@ export const translations: TranslationMap = {
   "群公告": { ja: "グループからのお知らせ", en: "Group Announcement", ko: "그룹 공지" },
   "群公告编辑权限": { "zh-Hant": "群公告編輯權限", ja: "グループ公告の編集権限", en: "Announcement edit permission", ko: "공지 편집 권한" },
   "群里主要同步门店、技师和近期优惠信息。": { "zh-Hant": "群組主要同步門市、技師和近期優惠資訊。", ja: "このグループは主に、店舗、スタッフ、最新のプロモーションの情報を共有しています。", en: "The group mainly shares information about stores, technicians, and recent promotions.", ko: "이 그룹은 주로 매장, 기사 및 최근 프로모션에 대한 정보를 공유합니다." },
+  "群": { ja: "グループ", en: "Group", ko: "그룹" },
   "群聊": { ja: "グループチャット", en: "Group chat", ko: "그룹 채팅" },
   "群聊里互动过，想单独加你。": { "zh-Hant": "群組聊天裡互動過，想單獨加你。", ja: "グループチャットでやり取りをしたことがあるのですが、個人的にあなたをグループに追加したいと思います。", en: "We've interacted in the group chat, and I'd like to add you privately.", ko: "그룹 채팅에서 대화를 나눴는데, 개인 채팅으로 추가하고 싶습니다." },
   "群聊添加": { ja: "グループチャットに追加", en: "Add to group chat", ko: "그룹 채팅에 추가" },
@@ -7653,7 +7659,7 @@ export const translations: TranslationMap = {
   "擅长内容": { "zh-Hant": "擅長內容", ja: "専門知識コンテンツ", en: "Expertise Content", ko: "전문 콘텐츠" },
   "商戶儲存後的正式班表才會進入用戶端可預約容量。": {  },
   "商戶後台": {  },
-  "商户": { "zh-Hant": "商家", ja: "商人", en: "Merchants", ko: "상인들" },
+  "商户": { "zh-Hant": "商家", ja: "店舗", en: "Merchants", ko: "상인들" },
   "商户 / 技师抢单": {  },
   "商户 Afirieito 协作账号。": {  },
   "商户 BI 看板补充了 60 天订单演示数据，收入、漏斗、NDP、时段、服务分类、用户来源和财务趋势等图表在今日、周、月和近 30 天筛选下都有可见内容。": {  },
@@ -7663,7 +7669,7 @@ export const translations: TranslationMap = {
   "商户、技师或平台活动参与中时，可能追加获得。": {  },
   "商户：": { ja: "店舗:", en: "Merchant:", ko: "매장:" },
   "商户安排": { ja: "店舗安排", en: "Merchant安排", ko: "매장安排" },
-  "商户保存后的正式班表才会进入用户端可预约容量。": { "zh-Hant": "商戶儲存後的正式班表才會進入用戶端可預約容量。", ja: "事業者が保存した正式シフト表のみがユーザー側の予約可能枠に反映されます。", en: "Only the official schedule saved by the business will count toward user-side bookable capacity.", ko: "사업자가 저장한 공식 근무표만 사용자 앱의 예약 가능 용량에 반영됩니다." },
+  "商户保存后的正式班表才会进入用户端可预约容量。": { "zh-Hant": "商戶儲存後的正式班表才會進入用戶端可預約容量。", ja: "店舗が保存した正式シフト表のみがユーザー側の予約可能枠に反映されます。", en: "Only the official schedule saved by the business will count toward user-side bookable capacity.", ko: "사업자가 저장한 공식 근무표만 사용자 앱의 예약 가능 용량에 반영됩니다." },
   "商户保存后即成为正式排班；你可以确认已读，或通过申请更改进入商户处理。": { ja: "店舗が保存すると正式シフトになります。既読確認、または変更申請で店舗対応へ進めます。", en: "Once the merchant saves, it becomes official. You can mark as read or request a change.", ko: "매장이 저장하면 정식 근무표가 됩니다. 읽음 확인 또는 변경 신청을 할 수 있습니다." },
   "商户保存即正式排班": { ja: "店舗保存で正式化", en: "Store save finalizes the shift", ko: "매장 저장 시 확정 근무표" },
   "商户备注": {  },
@@ -7686,9 +7692,9 @@ export const translations: TranslationMap = {
   "商户更新周期": { "zh-Hant": "商家更新周期", ja: "店舗更新周期", en: "Merchant update cycle", ko: "매장 업데이트 주기" },
   "商户管理员只能访问所属门店；产运后台可按授权查看全量。": {  },
   "商户规则": { ja: "店舗ルール", en: "Merchant rules", ko: "매장 규칙" },
-  "商户后台": { "zh-Hant": "商家管理畫面", ja: "事業者管理画面", en: "Business Management", ko: "사업자 관리 화면" },
+  "商户后台": { "zh-Hant": "商家管理畫面", ja: "店舗管理画面", en: "Business Management", ko: "사업자 관리 화면" },
   "商户后台导出": {  },
-  "商户后台导航": { "zh-Hant": "商家管理畫面導覽", ja: "事業者管理画面ナビゲーション", en: "Business management navigation", ko: "사업자 관리 화면 내비게이션" },
+  "商户后台导航": { "zh-Hant": "商家管理畫面導覽", ja: "店舗管理画面ナビゲーション", en: "Business management navigation", ko: "사업자 관리 화면 내비게이션" },
   "商户后台登录码": { "zh-Hant": "商戶後台登入碼", ja: "店舗管理画面ログインQR", en: "Merchant admin login QR", ko: "가맹점 관리자 로그인 QR" },
   "商户或技师提交的新情报，等待平台审核后进入情报流。": {  },
   "商户加钟": {  },
@@ -7747,13 +7753,13 @@ export const translations: TranslationMap = {
   "商户自助推广活动、达人佣金和优惠成本": {  },
   "商户最终确认": { ja: "店舗最終確認", en: "Merchantfinalconfirm", ko: "매장최종확인" },
   "商户最终确认后的排班": { "zh-Hant": "商家最終確認後的排班", ja: "販売業者のスケジュールの最終確認", en: "Final confirmation of the merchant's schedule", ko: "매장의 일정 최종 확정" },
-  "商家": { ja: "商人", en: "Merchants", ko: "상인들" },
+  "商家": { ja: "店舗", en: "Merchants", ko: "상인들" },
   "商家 / 门店详情": { "zh-Hant": "商家 / 門市詳情", ja: "販売店/店舗の詳細", en: "Merchant/Store Details", ko: "매장/매장 정보" },
   "商家 BD 转介绍": {  },
   "商家成功 / 名古屋": {  },
   "商家分账": { "zh-Hant": "商家分帳", ja: "店舗収益分配", en: "Merchant revenue sharing", ko: "가맹점 수익 공유" },
   "商家管理员": { "zh-Hant": "商家管理員", ja: "店舗管理者", en: "Merchant Administrator", ko: "매장 관리자" },
-  "商家后台": { "zh-Hant": "商家管理畫面", ja: "事業者管理画面", en: "Business Management", ko: "사업자 관리 화면" },
+  "商家后台": { "zh-Hant": "商家管理畫面", ja: "店舗管理画面", en: "Business Management", ko: "사업자 관리 화면" },
   "商家后台邀请": {  },
   "商家后台邀请 -> 资料提交 -> 门店审核 -> 上架营业": {  },
   "商家健康度": { ja: "商人の健康", en: "Merchant health", ko: "상인 건강" },
@@ -8527,7 +8533,7 @@ export const translations: TranslationMap = {
   "司机": {  },
   "私密": { ja: "プライベート", en: "Private", ko: "사적인" },
   "私密测试：下次预约前要确认付款方式、担当语言、到达时间和取消规则。这个只在我的动态里可见。": {  },
-  "私密群消息已隐藏": {  },
+  "私密群消息已隐藏": { "zh-Hant": "私密群訊息已隱藏", ja: "プライベートグループのメッセージは非表示", en: "Private group messages are hidden", ko: "비공개 그룹 메시지가 숨겨졌습니다" },
   "私密资料": { "zh-Hant": "私密資料", ja: "個人情報", en: "Private Information", ko: "개인 정보" },
   "私人": {  },
   "私域社群、好友转发、邀请码口播": {  },
@@ -9958,7 +9964,7 @@ export const translations: TranslationMap = {
   "行，时间这条线我能接。你再补一个具体日期或时段，我就能回得更自然。": { "zh-Hant": "行，時間這條線我能接。你再補一個具體日期或時段，我就能回得更自然。", ja: "はい、タイムラインを繋げられます。具体的な日付や期間を追加していただければ、より自然な形で回答可能。", en: "Okay, I can connect the timeline. If you add a specific date or time period, I can respond more naturally.", ko: "네, 타임라인을 연결해 드릴게요. 특정 날짜나 기간을 추가해 주시면 더 자연스럽게 답변드릴 수 있습니다." },
   "行，我接住了。你下一句继续发，我会保持这个语气往下回。": { "zh-Hant": "行，我接住了。你下一句繼續發，我會保持這個語氣往下回。", ja: "はい、わかりました。次のメッセージを送って。返信もこのトーンで続けます。", en: "Okay, I've got it. You can send your next message, and I'll keep this tone in my replies.", ko: "알겠습니다. 다음 메시지를 보내셔도 괜찮습니다. 저는 답장에서도 이 어조를 유지하겠습니다." },
   "行，这条线我接得住。你告诉我是取消、改天，还是先暂停一下，我就继续往下聊。": { "zh-Hant": "行，這條線我接得住。你告訴我要取消、改天，還是先暫停一下，我就繼續往下聊。", ja: "はい、この通話は私が対応します。キャンセル、日程変更、または一時停止をご希望の場合はお知らせ。その後、会話を続けます。", en: "Okay, I can handle this call. Just tell me if you want to cancel, reschedule, or pause for now, and I'll continue the conversation.", ko: "네, 통화 가능합니다. 취소, 일정 변경 또는 일시 중단을 원하시면 말씀해 주세요. 그러면 통화를 계속 진행하겠습니다." },
-  "行程": { ja: "旅", en: "Journey", ko: "여행" },
+  "行程": { ja: "スケジュール", en: "Journey", ko: "여행" },
   "行程沟通": { "zh-Hant": "行程溝通", ja: "旅程に関する連絡", en: "Itinerary communication", ko: "여행 일정 안내" },
   "行程管理": {  },
   "行程规划": { "zh-Hant": "行程規劃", ja: "旅行プランニング", en: "Itinerary planning", ko: "여행 일정 계획" },
@@ -11763,6 +11769,7 @@ export const translations: TranslationMap = {
   "指派技师": { "zh-Hant": "擔當/員工交代", ja: "担当/スタッフ交代", en: "Change assignee/staff", ko: "담당/스태프 교체" },
   "指示器": { ja: "インジケータ", en: "Indicator", ko: "지시자" },
   "至少保留一个完整的接口方法、路径和用途。": {  },
+  "至少选择 2 名群成员": { "zh-Hant": "至少選擇 2 名群組成員", ja: "グループメンバーを2名以上選択してください", en: "Select at least 2 group members", ko: "그룹 구성원을 2명 이상 선택하세요" },
   "至少人数": { "zh-Hant": "至少人數", ja: "少なくとも人数は", en: "At least the number o…", ko: "적어도 사람들…" },
   "至少填写一个关键字段。": {  },
   "制作区": {  },
@@ -13647,12 +13654,67 @@ const runtimeTranslationCleanup: Partial<Record<TargetLanguage, Array<[string | 
   ]
 };
 
+// Manual correction locks, intentionally kept at the end of the i18n pipeline.
+// These are product-owner terminology decisions and should survive workbook re-imports
+// or automated translation cleanup passes.
+const manualI18nCorrectionLocks: Partial<Record<TargetLanguage, Array<[string | RegExp, string]>>> = {
+  ja: [
+    ["事業者", "店舗"],
+    ["販売業者", "店舗"],
+    ["マーチャント", "店舗"],
+    ["商人", "店舗"]
+  ]
+};
+
+type ManualI18nContextCorrection = {
+  sources: string[];
+  portals?: TranslationPortalContext[];
+  replacement: string;
+  note: string;
+};
+
+const manualI18nContextCorrectionLocks: Partial<Record<TargetLanguage, ManualI18nContextCorrection[]>> = {
+  ja: [
+    {
+      sources: ["行程", "日程"],
+      portals: ["user"],
+      replacement: "スケジュール",
+      note: "Manual correction: user-facing schedule labels use スケジュール."
+    },
+    {
+      sources: ["行程", "日程"],
+      portals: ["technician", "merchant"],
+      replacement: "シフト",
+      note: "Manual correction: technician and merchant schedule labels use シフト."
+    }
+  ]
+};
+
 function cleanupRuntimeTranslation(value: string, language: Language) {
   if (language === "zh") {
     return value;
   }
 
-  return (runtimeTranslationCleanup[language] ?? []).reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+  const runtimeCleaned = (runtimeTranslationCleanup[language] ?? []).reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+
+  return (manualI18nCorrectionLocks[language] ?? []).reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), runtimeCleaned);
+}
+
+function applyManualContextCorrection(source: string, translated: string, language: Language, context: TranslationContext = {}) {
+  if (language === "zh") {
+    return translated;
+  }
+
+  const core = source.trim();
+  const portal = context.portal ?? "user";
+  const lock = (manualI18nContextCorrectionLocks[language] ?? []).find((item) => {
+    const sourceMatches = item.sources.includes(core);
+    const portalMatches = !item.portals || item.portals.includes(portal);
+
+    return sourceMatches && portalMatches;
+  });
+
+  return lock?.replacement ?? translated;
 }
 
 export function translateText(source: string, language: Language): string {
@@ -13714,4 +13776,8 @@ export function translateText(source: string, language: Language): string {
     }, core);
 
   return `${leading}${cleanupRuntimeTranslation(translated, language)}${trailing}`;
+}
+
+export function translateTextForContext(source: string, language: Language, context: TranslationContext = {}): string {
+  return applyManualContextCorrection(source, translateText(source, language), language, context);
 }

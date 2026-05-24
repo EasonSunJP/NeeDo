@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
-import { useI18n } from "../../i18n/I18nProvider";
 import { cn } from "../../lib/utils";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Conversation, ImRoleType } from "./model";
@@ -162,6 +161,24 @@ export function UnifiedPinnedConversationDivider({ onClick }: { onClick: () => v
   );
 }
 
+function GroupAvatarMarker() {
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[var(--avatar-radius)] bg-[color:color-mix(in_srgb,var(--client-bg)_18%,transparent)] text-[color:var(--client-primary)]"
+    >
+      <svg className="h-9 w-9" fill="none" viewBox="0 0 32 32">
+        <circle cx="16" cy="9.2" r="4.9" stroke="currentColor" strokeWidth="2.8" />
+        <circle cx="7.7" cy="11.5" r="3.6" stroke="currentColor" strokeWidth="2.6" />
+        <circle cx="24.3" cy="11.5" r="3.6" stroke="currentColor" strokeWidth="2.6" />
+        <path d="M6.8 26c.5-5.6 3.7-9.2 9.2-9.2s8.7 3.6 9.2 9.2" stroke="currentColor" strokeLinecap="round" strokeWidth="2.8" />
+        <path d="M1.8 23.8c.4-4.1 2.4-6.5 5.9-6.5 1.5 0 2.7.4 3.8 1.3" stroke="currentColor" strokeLinecap="round" strokeWidth="2.6" />
+        <path d="M20.5 18.6c1.1-.9 2.3-1.3 3.8-1.3 3.5 0 5.5 2.4 5.9 6.5" stroke="currentColor" strokeLinecap="round" strokeWidth="2.6" />
+      </svg>
+    </span>
+  );
+}
+
 export function UnifiedConversationItem({
   avatar,
   title,
@@ -197,9 +214,6 @@ export function UnifiedConversationItem({
   onClick?: () => void;
   avatarTo?: string;
 }) {
-  const { language } = useI18n();
-  const groupBadgeLabel = language === "zh" || language === "zh-Hant" ? "群" : "Group";
-  const compactGroupBadge = groupBadgeLabel !== "群";
   const summary = (
     <div className={cn("relative min-w-0 flex-1", pinned ? "pr-[112px]" : "pr-[74px]", unreadCount > 0 ? "pb-1.5" : "")}>
       <div className="min-w-0">
@@ -252,26 +266,7 @@ export function UnifiedConversationItem({
               stopPropagation
               to={avatarTo}
             />
-            {group ? (
-              <span
-                className={cn(
-                  "absolute -bottom-0.5 -right-0.5 inline-flex h-[18px] items-center justify-center rounded-full border border-[color:var(--client-bg)] bg-[color:color-mix(in_srgb,var(--client-primary)_88%,white_12%)] text-[color:var(--client-needo-text)]",
-                  compactGroupBadge ? "w-[34px] px-0" : "px-1.5"
-                )}
-              >
-                <span
-                  className={cn(
-                    "block font-black leading-none",
-                    compactGroupBadge
-                      ? "origin-center scale-x-[0.9] text-[8.5px] tracking-[-0.08em]"
-                      : "text-[9px] tracking-normal"
-                  )}
-                  data-no-i18n
-                >
-                  {groupBadgeLabel}
-                </span>
-              </span>
-            ) : null}
+            {group ? <GroupAvatarMarker /> : null}
           </div>
 
           {body}
