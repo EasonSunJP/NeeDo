@@ -30,7 +30,9 @@ import { OperationTimelinePage } from "./pages/admin/OperationTimelinePage";
 import { OrdersAdminPage } from "./pages/admin/OrdersAdminPage";
 import { ReviewsPage } from "./pages/admin/ReviewsPage";
 import { RolesPage } from "./pages/admin/RolesPage";
+import { PermissionsPage } from "./pages/admin/PermissionsPage";
 import { TechniciansPage } from "./pages/admin/TechniciansPage";
+import { UsersPage } from "./pages/admin/UsersPage";
 import { MerchantPortalPage, MerchantStaffDetailRoutePage } from "./pages/mobile/MerchantPortalPage";
 import { BusinessCpsPage } from "./pages/mobile/BusinessCpsPage";
 import { MerchantAutoDispatchRoutePage } from "./pages/mobile/MerchantAutoDispatchRoutePage";
@@ -772,7 +774,7 @@ function RequirePortalAuth({
   portal: PortalScope;
   children: ReactElement;
 }) {
-  const { isAuthenticated, canAccess, session, switchPortal } = useAuth();
+  const { isAuthenticated, isRestoring, canAccess, session, switchPortal } = useAuth();
   const location = useLocation();
   const hasAccess = canAccess(portal);
   const needsPortalSync = isAuthenticated && hasAccess && session?.portal !== portal;
@@ -785,6 +787,10 @@ function RequirePortalAuth({
     // Keep the active session portal aligned with the matched route.
     switchPortal(portal);
   }, [needsPortalSync, portal, switchPortal]);
+
+  if (isRestoring) {
+    return null;
+  }
 
   if (!isAuthenticated || !hasAccess) {
     const redirect = `${location.pathname}${location.search}${location.hash}`;
@@ -845,12 +851,51 @@ function RequireFeaturePermission({
   return children;
 }
 
+function ForbiddenScreen() {
+  return (
+    <main className="grid min-h-screen place-items-center bg-paper px-6 text-center text-ink">
+      <section className="max-w-md rounded-lg border border-line bg-white p-6 shadow-panel">
+        <p className="text-xs font-black uppercase tracking-[0.14em] text-ink/45">403</p>
+        <h1 className="mt-3 text-2xl font-black">没有访问权限</h1>
+        <p className="mt-3 text-sm font-semibold leading-6 text-ink/55">当前账号没有访问此后台功能所需的权限，请联系管理员调整角色。</p>
+      </section>
+    </main>
+  );
+}
+
+function RequirePermission({
+  permission,
+  children
+}: {
+  permission: string;
+  children: ReactElement;
+}) {
+  const { hasPermission, isRestoring } = useAuth();
+
+  if (isRestoring) {
+    return null;
+  }
+
+  if (!hasPermission(permission)) {
+    return <ForbiddenScreen />;
+  }
+
+  return children;
+}
+
 export default function App() {
   const location = useLocation();
   const currentPortal = getSplashPortal(location.pathname);
   const [splashPortal, setSplashPortal] = useState<SplashPortal | null>(currentPortal);
   const [lastPortal, setLastPortal] = useState<SplashPortal | null>(null);
   const protect = (portal: PortalScope, element: ReactElement) => <RequirePortalAuth portal={portal}>{element}</RequirePortalAuth>;
+  const protectPermission = (portal: PortalScope, permission: string, element: ReactElement) =>
+    protect(
+      portal,
+      <RequirePermission permission={permission}>
+        {element}
+      </RequirePermission>
+    );
   const protectFeature = (portal: PortalScope, permission: FeaturePermission, element: ReactElement, fallbackTo?: string) =>
     protect(
       portal,
@@ -1170,7 +1215,7 @@ export default function App() {
               <Route path="/technician/settings/delete-account" element={protect("technician", <UnifiedSettingsDeleteAccountPage portal="technician" />)} />
               <Route path="/technician/:view" element={protect("technician", <TechnicianPortalPage />)} />
 
-              <Route path="/admin" element={protect("admin", <DashboardPage />)} />
+              <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
               <Route path="/admin/analytics" element={protect("admin", <AnalyticsPage />)} />
               <Route path="/admin/carousel" element={protect("admin", <CarouselPage />)} />
@@ -1190,6 +1235,7 @@ export default function App() {
               <Route path="/admin/dispatch" element={protect("admin", <Navigate replace to="/merchant-admin/dispatch-center/current" />)} />
               <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
               <Route path="/admin/crm" element={protect("admin", <CRMPage />)} />
+              <Route path="/admin/users" element={protectPermission("admin", "page:user-management", <UsersPage />)} />
               <Route path="/admin/afirieito" element={protect("admin", <CpsPage />)} />
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
@@ -1198,7 +1244,8 @@ export default function App() {
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
               <Route path="/admin/inventory" element={protect("admin", <Navigate replace to="/merchant-admin/inventory" />)} />
               <Route path="/admin/floorplan" element={protect("admin", <Navigate replace to="/merchant-admin/stage-layout" />)} />
-              <Route path="/admin/roles" element={protect("admin", <RolesPage />)} />
+              <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
+              <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
               <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
 
                   <Route path="*" element={<Navigate replace to="/" />} />

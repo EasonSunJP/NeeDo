@@ -1,231 +1,253 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
-import { getAdminLoginPortalScope, parseAdminLoginQrToken } from "./adminLogin";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { authApi } from "../api/auth";
+import { clearAuthTokens, getStoredRefreshToken, setAuthExpiredHandler } from "../api/httpClient";
+import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { demoAuthAccount, type PortalScope } from "./demoAccount";
 import type { FeaturePermission } from "./featurePermissions";
 import { hasPortalFeaturePermission } from "./featurePermissions";
+import {
+  buildAuthSessionFromMe,
+  canAccessMenuFromSession,
+  canAccessPortalFromSession,
+  hasAnyPermissionInSession,
+  hasPermissionInSession,
+  type AuthSession,
+  type LoginMethod
+} from "./rbac";
 
 export type { PortalScope } from "./demoAccount";
 export { demoAuthAccount } from "./demoAccount";
+export type { AuthSession } from "./rbac";
 
-type AuthSession = {
-  authVersion: number;
-  username: string;
-  email: string;
-  portal: PortalScope;
-  allowedPortals: PortalScope[];
-  loginMethod: "password" | "verification-code" | "gmail" | "qr";
-  loggedInAt: string;
-  linkedCustomerId: string;
-  linkedTechnicianId: string;
-  linkedStoreId: string;
-};
+export type AuthActionResult =
+  | { ok: true; session: AuthSession }
+  | { message: string; ok: false };
 
 type AuthContextValue = {
   session: AuthSession | null;
   isAuthenticated: boolean;
-  login: (portal: PortalScope, username: string, password: string) => boolean;
-  loginWithVerificationCode: (portal: PortalScope, email: string, code: string) => boolean;
-  loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => boolean;
-  loginWithQr: (portal: PortalScope, token: string) => boolean;
-  logout: () => void;
+  isRestoring: boolean;
+  login: (portal: PortalScope, email: string, password: string) => Promise<AuthActionResult>;
+  sendVerificationCode: (email: string) => Promise<{ message?: string; ok: boolean }>;
+  loginWithVerificationCode: (portal: PortalScope, email: string, code: string) => Promise<AuthActionResult>;
+  loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => Promise<AuthActionResult>;
+  loginWithQr: (portal: PortalScope, token: string) => Promise<AuthActionResult>;
+  logout: () => Promise<void>;
   switchPortal: (portal: PortalScope) => void;
   canAccess: (portal: PortalScope) => boolean;
-  canAccessFeature: (portal: PortalScope, permission: FeaturePermission) => boolean;
+  canAccessFeature: (portal: PortalScope, permission: FeaturePermission | string) => boolean;
+  hasPermission: (permission: string) => boolean;
+  hasAnyPermission: (permissions: string[]) => boolean;
+  canAccessMenu: (permission: string) => boolean;
 };
 
-const storageKey = "needo.auth.session";
-const currentAuthVersion = 2;
+const portalStorageKey = "needo.auth.portal";
+const legacySessionStorageKey = "needo.auth.session";
 const allPortals: PortalScope[] = ["user", "merchant", "technician", "business", "admin"];
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function getDefaultEmailForPortal(portal: PortalScope) {
-  if (portal === "merchant") {
-    return demoAuthAccount.merchantAdminEmail;
-  }
-
-  if (portal === "business") {
-    return demoAuthAccount.businessCpsEmail;
-  }
-
-  return demoAuthAccount.adminEmail;
+function normalizeStoredPortal(value: string | null | undefined): PortalScope {
+  return allPortals.includes(value as PortalScope) ? (value as PortalScope) : "user";
 }
 
-function normalizeIdentifier(value: string) {
-  return value.trim().toLowerCase();
+function readStoredPortal() {
+  return normalizeStoredPortal(readBrowserStorage(portalStorageKey, { silent: true }));
 }
 
-function isAllowedDemoIdentifier(portal: PortalScope, value: string) {
-  const normalized = normalizeIdentifier(value);
-  const allowedIdentifiers = new Set<string>([
-    demoAuthAccount.username,
-    demoAuthAccount.adminEmail,
-    demoAuthAccount.merchantAdminEmail,
-    demoAuthAccount.businessCpsEmail,
-    getDefaultEmailForPortal(portal)
-  ]);
-
-  return allowedIdentifiers.has(normalized);
-}
-
-function createDemoSession(
-  portal: PortalScope = "user",
-  options?: {
-    email?: string;
-    loginMethod?: AuthSession["loginMethod"];
-    username?: string;
-  }
-): AuthSession {
-  const email = normalizeIdentifier(options?.email ?? getDefaultEmailForPortal(portal));
-
-  return {
-    authVersion: currentAuthVersion,
-    username: normalizeIdentifier(options?.username ?? (email || demoAuthAccount.username)),
-    email,
-    portal,
-    allowedPortals: allPortals,
-    loginMethod: options?.loginMethod ?? "password",
-    loggedInAt: new Date().toISOString(),
-    linkedCustomerId: demoAuthAccount.linkedCustomerId,
-    linkedTechnicianId: demoAuthAccount.linkedTechnicianId,
-    linkedStoreId: demoAuthAccount.linkedStoreId
-  };
-}
-
-function getStoredSession(): AuthSession | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const parsed = parseBrowserStorageJson<AuthSession | null>(storageKey, null, {
-    removeOnError: true,
-    silent: true
-  });
-
-  if (!parsed?.username || !parsed?.portal || !Array.isArray(parsed?.allowedPortals)) {
-    return null;
-  }
-
-  if (parsed.authVersion !== currentAuthVersion) {
-    return null;
-  }
-
-  return {
-    ...parsed,
-    allowedPortals: Array.from(new Set([...parsed.allowedPortals, ...allPortals])),
-    email: parsed.email || getDefaultEmailForPortal(parsed.portal),
-    loginMethod: parsed.loginMethod || "password"
-  };
+function normalizeApiError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(getStoredSession);
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [isRestoring, setIsRestoring] = useState(() => Boolean(getStoredRefreshToken()));
+
+  const clearSession = useCallback(() => {
+    clearAuthTokens();
+    setSession(null);
+    removeBrowserStorage(portalStorageKey, { silent: true });
+    removeBrowserStorage(legacySessionStorageKey, { silent: true });
+  }, []);
+
+  const completeAuthenticatedSession = useCallback(
+    async (requestedPortal: PortalScope, loginMethod: LoginMethod): Promise<AuthActionResult> => {
+      try {
+        const me = await authApi.me();
+        const nextSession = buildAuthSessionFromMe(me, requestedPortal, loginMethod);
+        setSession(nextSession);
+        writeBrowserStorage(portalStorageKey, nextSession.portal, { silent: true });
+        removeBrowserStorage(legacySessionStorageKey, { silent: true });
+
+        return { ok: true, session: nextSession };
+      } catch (error) {
+        clearSession();
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [clearSession]
+  );
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
+    setAuthExpiredHandler(clearSession);
 
-    if (session) {
-      writeBrowserStorage(storageKey, JSON.stringify(session), {
-        silent: true
-      });
-      return;
-    }
+    return () => setAuthExpiredHandler(null);
+  }, [clearSession]);
 
-    removeBrowserStorage(storageKey, {
-      silent: true
+  useEffect(() => {
+    let active = true;
+
+    const restoreSession = async () => {
+      if (!getStoredRefreshToken()) {
+        setIsRestoring(false);
+        removeBrowserStorage(legacySessionStorageKey, { silent: true });
+        return;
+      }
+
+      try {
+        await authApi.refresh();
+        const restored = await completeAuthenticatedSession(readStoredPortal(), "password");
+        if (!active || !restored.ok) {
+          return;
+        }
+      } catch {
+        if (active) {
+          clearSession();
+        }
+      } finally {
+        if (active) {
+          setIsRestoring(false);
+        }
+      }
+    };
+
+    restoreSession();
+
+    return () => {
+      active = false;
+    };
+  }, [clearSession, completeAuthenticatedSession]);
+
+  const login = useCallback(
+    async (portal: PortalScope, email: string, password: string): Promise<AuthActionResult> => {
+      try {
+        await authApi.login(email, password);
+
+        return completeAuthenticatedSession(portal, "password");
+      } catch (error) {
+        clearAuthTokens();
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [completeAuthenticatedSession]
+  );
+
+  const sendVerificationCode = useCallback(async (email: string) => {
+    try {
+      await authApi.sendOtp(email);
+
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: normalizeApiError(error) };
+    }
+  }, []);
+
+  const loginWithVerificationCode = useCallback(
+    async (portal: PortalScope, email: string, code: string): Promise<AuthActionResult> => {
+      try {
+        await authApi.verifyOtp(email, code);
+
+        return completeAuthenticatedSession(portal, "verification-code");
+      } catch (error) {
+        clearAuthTokens();
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [completeAuthenticatedSession]
+  );
+
+  const loginWithProvider = useCallback(async (): Promise<AuthActionResult> => ({
+    ok: false,
+    message: "error.auth.provider_unavailable"
+  }), []);
+
+  const loginWithQr = useCallback(async (): Promise<AuthActionResult> => ({
+    ok: false,
+    message: "error.auth.qr_unavailable"
+  }), []);
+
+  const logout = useCallback(async () => {
+    await authApi.logout().catch(() => undefined);
+    clearSession();
+  }, [clearSession]);
+
+  const switchPortal = useCallback((portal: PortalScope) => {
+    setSession((current) => {
+      if (!current || !canAccessPortalFromSession(current, portal)) {
+        return current;
+      }
+
+      const nextSession = {
+        ...current,
+        portal
+      };
+      writeBrowserStorage(portalStorageKey, portal, { silent: true });
+
+      return nextSession;
     });
-  }, [session]);
+  }, []);
+
+  const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);
+  const hasAnyPermission = useCallback((permissions: string[]) => hasAnyPermissionInSession(session, permissions), [session]);
+  const canAccess = useCallback((portal: PortalScope) => canAccessPortalFromSession(session, portal), [session]);
+  const canAccessMenu = useCallback((permission: string) => canAccessMenuFromSession(session, permission), [session]);
+  const canAccessFeature = useCallback(
+    (portal: PortalScope, permission: FeaturePermission | string) =>
+      Boolean(
+        canAccessPortalFromSession(session, portal) &&
+          (hasPermissionInSession(session, permission) ||
+            (portal === "merchant" && hasPortalFeaturePermission(portal, permission as FeaturePermission)))
+      ),
+    [session]
+  );
 
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
       isAuthenticated: Boolean(session),
-      login: (portal, username, password) => {
-        if (!isAllowedDemoIdentifier(portal, username) || password !== demoAuthAccount.password) {
-          return false;
-        }
-
-        const normalizedUsername = normalizeIdentifier(username);
-        const isEmail = normalizedUsername.includes("@");
-        setSession(createDemoSession(portal, {
-          email: isEmail ? normalizedUsername : getDefaultEmailForPortal(portal),
-          loginMethod: "password",
-          username: normalizedUsername
-        }));
-
-        return true;
-      },
-      loginWithVerificationCode: (portal, email, code) => {
-        const normalizedEmail = normalizeIdentifier(email);
-        const normalizedCode = code.trim();
-
-        if (!isAllowedDemoIdentifier(portal, normalizedEmail) || normalizedCode !== demoAuthAccount.verificationCode) {
-          return false;
-        }
-
-        setSession(createDemoSession(portal, {
-          email: normalizedEmail,
-          loginMethod: "verification-code",
-          username: normalizedEmail
-        }));
-
-        return true;
-      },
-      loginWithProvider: (portal, provider, email) => {
-        if (provider !== "gmail") {
-          return false;
-        }
-
-        const normalizedEmail = normalizeIdentifier(email ?? getDefaultEmailForPortal(portal));
-        setSession(createDemoSession(portal, {
-          email: normalizedEmail,
-          loginMethod: "gmail",
-          username: normalizedEmail
-        }));
-
-        return true;
-      },
-      loginWithQr: (portal, token) => {
-        const adminLoginPortal = parseAdminLoginQrToken(token);
-
-        if (!adminLoginPortal || getAdminLoginPortalScope(adminLoginPortal) !== portal) {
-          return false;
-        }
-
-        setSession(createDemoSession(portal, {
-          email: getDefaultEmailForPortal(portal),
-          loginMethod: "qr"
-        }));
-
-        return true;
-      },
-      logout: () => {
-        setSession(null);
-      },
-      switchPortal: (portal) => {
-        setSession((current) => {
-          if (!current) {
-            return createDemoSession(portal);
-          }
-
-          if (!current.allowedPortals.includes(portal)) {
-            return current;
-          }
-
-          return {
-            ...current,
-            portal,
-            loggedInAt: current.loggedInAt || new Date().toISOString()
-          };
-        });
-      },
-      canAccess: (portal) => Boolean(session?.allowedPortals.includes(portal)),
-      canAccessFeature: (portal, permission) => Boolean(session?.allowedPortals.includes(portal) && hasPortalFeaturePermission(portal, permission))
+      isRestoring,
+      login,
+      sendVerificationCode,
+      loginWithVerificationCode,
+      loginWithProvider,
+      loginWithQr,
+      logout,
+      switchPortal,
+      canAccess,
+      canAccessFeature,
+      hasPermission,
+      hasAnyPermission,
+      canAccessMenu
     }),
-    [session]
+    [
+      canAccess,
+      canAccessFeature,
+      canAccessMenu,
+      hasAnyPermission,
+      hasPermission,
+      isRestoring,
+      login,
+      loginWithProvider,
+      loginWithQr,
+      loginWithVerificationCode,
+      logout,
+      sendVerificationCode,
+      session,
+      switchPortal
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthProvider";
 import { AppIcon, PrimaryButton, SecondaryButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
@@ -7,6 +8,7 @@ import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { services } from "../../data/mock";
+import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { cn, statusLabel } from "../../lib/utils";
 import { ServiceReviewPrompt, type ServiceReviewSubmission, type ServiceReviewTag } from "../../shared/order-detail/ServiceSessionUi";
 import { SocialProfileMiniCard } from "../../shared/profile-card";
@@ -250,12 +252,15 @@ function OrderDeleteIcon({ className }: { className?: string }) {
 
 export function UserOrdersPage() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const { stores, technicians } = useEntityStore();
   const [deletedOrderIds, setDeletedOrderIds] = useState<string[]>(() => readDeletedOrderIds());
   const [deletingOrderIds, setDeletingOrderIds] = useState<string[]>([]);
   const [renderedOrderLimit, setRenderedOrderLimit] = useState(initialOrderRenderCount);
   const [reviewingOrderId, setReviewingOrderId] = useState<string | null>(null);
-  const orders = useUserOrders();
+  const localOrders = useUserOrders();
+  const [apiOrders, setApiOrders] = useState<Order[] | null>(null);
+  const orders = apiOrders ?? localOrders;
   const scrollRootRef = useRef<HTMLElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const deletingOrderIdSetRef = useRef<Set<string>>(new Set());
@@ -269,6 +274,32 @@ export function UserOrdersPage() {
   const loadMoreOrders = useCallback(() => {
     setRenderedOrderLimit((current) => Math.min(current + orderRenderBatchSize, visibleOrders.length));
   }, [visibleOrders.length]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setApiOrders(null);
+      return;
+    }
+
+    let active = true;
+
+    bookingApi
+      .listOrders({ page: 1, pageSize: 50 })
+      .then((data) => {
+        if (active) {
+          setApiOrders(data.list.map(mapBookingOrderToDomainOrder));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setApiOrders(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     setRenderedOrderLimit((current) => Math.min(Math.max(current, initialOrderRenderCount), Math.max(visibleOrders.length, initialOrderRenderCount)));

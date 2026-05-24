@@ -180,6 +180,14 @@ export const SYSTEM_PERMISSIONS = [
     "显示删除权限操作"
   ),
 
+  createPermission("booking:create", "创建预约", "api", "booking", "创建 Booking 免费预约订单"),
+  createPermission("order:list", "订单列表", "api", "order", "分页查看订单列表"),
+  createPermission("order:read", "订单详情", "api", "order", "查看订单详情与状态历史"),
+  createPermission("order:confirm", "确认接单", "api", "order", "服务方确认接单"),
+  createPermission("order:cancel", "取消订单", "api", "order", "取消 Booking 订单"),
+  createPermission("order:start", "开始服务", "api", "order", "将订单切换为服务中"),
+  createPermission("order:complete", "完成服务", "api", "order", "将订单切换为已完成"),
+
   createPermission("menu:dashboard", "仪表盘菜单", "menu", "menu", "显示仪表盘菜单"),
   createPermission("page:dashboard", "仪表盘页面", "page", "dashboard", "访问仪表盘页面"),
   createPermission("menu:user-management", "用户管理菜单", "menu", "menu", "显示用户管理菜单"),
@@ -221,6 +229,24 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   "permission:list"
 ] as const satisfies readonly SystemPermissionCode[];
 
+const CUSTOMER_BOOKING_PERMISSION_CODES = [
+  ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "booking:create",
+  "order:list",
+  "order:read",
+  "order:cancel"
+] as const satisfies readonly SystemPermissionCode[];
+
+const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
+  ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "order:list",
+  "order:read",
+  "order:confirm",
+  "order:cancel",
+  "order:start",
+  "order:complete"
+] as const satisfies readonly SystemPermissionCode[];
+
 export const buildRolePermissionAssignments = (): Record<
   SystemRoleCode,
   SystemPermissionCode[]
@@ -249,10 +275,10 @@ export const buildRolePermissionAssignments = (): Record<
     "user:identity:list",
     "button:user:update"
   ],
-  merchant_owner: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
-  merchant_staff: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
-  technician: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
-  customer: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
+  merchant_owner: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES],
+  merchant_staff: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES],
+  technician: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES],
+  customer: [...CUSTOMER_BOOKING_PERMISSION_CODES],
   broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
   scout: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
   viewer: [...READ_ONLY_BACKOFFICE_PERMISSION_CODES]

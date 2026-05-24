@@ -11,11 +11,11 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
-import { reviews, services } from "../../data/mock";
+import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn, yen } from "../../lib/utils";
-import { useEntityStore } from "../../state/entityStore";
-import type { Customer, ServiceItem, Technician } from "../../types/domain";
+import type { ServiceItem, Technician } from "../../types/domain";
 
 const servicePriceHighlightClassName = "text-[color:var(--client-primary)]";
 
@@ -86,24 +86,44 @@ function ServiceDetailHero({
   );
 }
 
-function resolveServiceTechnicians(service: ServiceItem, technicians: Technician[]) {
-  const matched = technicians.filter((technician) =>
-    technician.skills.some((skill) => service.tags.includes(skill) || service.name.includes(skill) || service.summary.includes(skill))
+function ServiceDetailStatus({
+  description,
+  title
+}: {
+  description: string;
+  title: string;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <MobileFullscreenPage>
+      <div className="pointer-events-none absolute inset-x-0 safe-floating-top z-[90] px-4">
+        <MobileFullscreenBackButton className="pointer-events-auto" onBack={() => navigate(-1)} />
+      </div>
+      <main className="flex min-h-0 flex-1 items-center justify-center px-5 py-16">
+        <section className={cn(mobileDetailCardClassName, "w-full max-w-[420px] text-center")}>
+          <Badge tone="blue">服务详情</Badge>
+          <h1 className="mt-4 text-[20px] font-black text-ink">{title}</h1>
+          <p className="mt-2 text-sm leading-6 text-ink/58">{description}</p>
+        </section>
+      </main>
+    </MobileFullscreenPage>
   );
-
-  return (matched.length > 0 ? matched : technicians).slice(0, 3);
-}
-
-function getReviewAvatar(customerName: string, customers: Customer[], index: number) {
-  return customers.find((customer) => customer.name === customerName)?.avatar ?? customers[index % customers.length]?.avatar;
 }
 
 function ServiceDetailContent() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { customers, technicians, revision: entityRevision } = useEntityStore();
-  const service = services.find((item) => item.id === id) ?? services[0];
-  const [selectedPackageId, setSelectedPackageId] = useState(service.packages[0]?.id ?? "");
+  const apiId = coreReadIdFromRoute(id);
+  const serviceQuery = useCoreReadQuery(
+    () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
+    [apiId]
+  );
+  const service = useMemo(
+    () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null),
+    [serviceQuery.data]
+  );
+  const [selectedPackageId, setSelectedPackageId] = useState("");
   const [liked, setLiked] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [translated, setTranslated] = useState(false);
@@ -111,16 +131,35 @@ function ServiceDetailContent() {
   const [heroPreviewOpen, setHeroPreviewOpen] = useState(false);
 
   useEffect(() => {
-    setSelectedPackageId(service.packages[0]?.id ?? "");
+    setSelectedPackageId(service?.packages[0]?.id ?? "");
     setHeroPreviewOpen(false);
-  }, [service.id, service.packages]);
+  }, [service?.id, service?.packages]);
 
   const selectedPackage = useMemo(
-    () => service.packages.find((item) => item.id === selectedPackageId) ?? service.packages[0],
-    [selectedPackageId, service.packages]
+    () => service?.packages.find((item) => item.id === selectedPackageId) ?? service?.packages[0],
+    [selectedPackageId, service?.packages]
   );
-  const selectedTechnicians = useMemo(() => resolveServiceTechnicians(service, technicians), [entityRevision, service, technicians]);
-  const checkoutHref = selectedPackage ? `/checkout/${service.id}?package=${selectedPackage.id}` : `/checkout/${service.id}`;
+  const selectedTechnicians = useMemo(
+    () => (serviceQuery.data?.technician ? [mapCoreTechnicianToTechnician(serviceQuery.data.technician)] : []),
+    [serviceQuery.data?.technician]
+  );
+  const checkoutHref = service && selectedPackage ? `/checkout/${service.id}?package=${selectedPackage.id}` : service ? `/checkout/${service.id}` : "/categories";
+
+  if (!apiId) {
+    return <ServiceDetailStatus description="这个服务链接还停留在旧 demo ID，第一批去 Mock 后请从首页或分类页重新进入真实 API 服务。" title="服务链接不可用" />;
+  }
+
+  if (serviceQuery.loading) {
+    return <ServiceDetailStatus description="正在从 /api/v1/services 读取服务资料。" title="正在载入服务" />;
+  }
+
+  if (serviceQuery.error) {
+    return <ServiceDetailStatus description={serviceQuery.error} title="服务读取失败" />;
+  }
+
+  if (!service) {
+    return <ServiceDetailStatus description="当前服务暂时没有公开资料。" title="暂无服务资料" />;
+  }
 
   return (
     <MobileFullscreenPage>
@@ -238,41 +277,32 @@ function ServiceDetailContent() {
             <Badge tone="blue">{service.technicianCount} 人</Badge>
           </div>
           <div className="mt-3 space-y-2">
-            {selectedTechnicians.map((technician) => (
-              <Link className={cn(mobileDetailInnerCardClassName, "flex items-center gap-3")} key={technician.id} to={`/profiles/technician/${technician.id}`}>
-                <AvatarImage alt={technician.name} className="h-12 w-12" src={technician.avatar} />
-                <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-sm">{technician.nickname?.trim() || technician.name}</strong>
-                  <span className="mt-1 block truncate text-xs text-ink/50">
-                    ★ {technician.rating.toFixed(1)} · {technician.serviceAreas.slice(0, 2).join(" / ")}
+            {selectedTechnicians.length > 0 ? (
+              selectedTechnicians.map((technician) => (
+                <Link className={cn(mobileDetailInnerCardClassName, "flex items-center gap-3")} key={technician.id} to={`/profiles/technician/${technician.id}`}>
+                  <AvatarImage alt={technician.name} className="h-12 w-12" src={technician.avatar} />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-sm">{technician.nickname?.trim() || technician.name}</strong>
+                    <span className="mt-1 block truncate text-xs text-ink/50">
+                      ★ {technician.rating.toFixed(1)} · {technician.serviceAreas.slice(0, 2).join(" / ")}
+                    </span>
                   </span>
-                </span>
-                <span className="text-lg font-black text-ink/30">›</span>
-              </Link>
-            ))}
+                  <span className="text-lg font-black text-ink/30">›</span>
+                </Link>
+              ))
+            ) : (
+              <p className="rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55">当前服务暂未公开可指定技师。</p>
+            )}
           </div>
         </section>
 
         <section className={mobileDetailCardClassName}>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-black">评论</h2>
-            <Badge tone="green">{reviews.length} 条</Badge>
+            <h2 className="font-black">评价摘要</h2>
+            <Badge tone="green">{service.sales} 条</Badge>
           </div>
-          <div className="mt-3 space-y-3">
-            {reviews.slice(0, 3).map((review, index) => (
-              <article className={mobileDetailInnerCardClassName} key={review.id}>
-                <div className="flex gap-3">
-                  <AvatarImage alt={review.customerName} className="h-10 w-10" src={getReviewAvatar(review.customerName, customers, index)} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <strong className="truncate text-sm">{review.customerName}</strong>
-                      <span className="shrink-0 text-xs text-ink/45">{review.createdAt.split(" ")[0]}</span>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-ink/60">{review.content}</p>
-                  </div>
-                </div>
-              </article>
-            ))}
+          <div className="mt-3 rounded-[18px] bg-paper p-3 text-xs leading-5 text-ink/55">
+            {service.tags.length > 0 ? service.tags.join(" / ") : "暂无公开评价摘要。"}
           </div>
         </section>
       </main>

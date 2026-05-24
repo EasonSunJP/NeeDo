@@ -86,3 +86,55 @@ Codex 完成本步后，必须输出：
 6. 未完成项与原因。
 
 若某项没有完成，必须明确说明，不得假装完成。
+
+---
+
+## 9. 2026-05-25 执行记录
+
+本次 Step 07 已按当前仓库实际技术栈执行：前端保持 React 19 / TypeScript / Vite / React Router 7，不迁移框架，不重构三端 UI，不替换 Booking / NDP / IM / Social mock。
+
+### 已接入内容
+
+- 新增统一前端 API 层：
+  - `src/api/httpClient.ts`
+  - `src/api/auth.ts`
+  - `src/api/userManagement.ts`
+- Auth 接入真实接口：
+  - `POST /api/v1/auth/login`
+  - `POST /api/v1/auth/otp/send`
+  - `POST /api/v1/auth/otp/verify`
+  - `POST /api/v1/auth/refresh`
+  - `POST /api/v1/auth/logout`
+  - `GET /api/v1/auth/me`
+- User / Role / Permission 后台页面接入真实接口：
+  - `GET /api/v1/users`
+  - `POST /api/v1/users`
+  - `POST /api/v1/users/:id/enable`
+  - `POST /api/v1/users/:id/disable`
+  - `DELETE /api/v1/users/:id`
+  - `PUT /api/v1/users/:id/roles`
+  - `GET /api/v1/roles`
+  - `POST /api/v1/roles`
+  - `DELETE /api/v1/roles/:id`
+  - `PUT /api/v1/roles/:id/permissions`
+  - `GET /api/v1/permissions`
+  - `GET /api/v1/permissions/tree`
+  - `POST /api/v1/permissions`
+  - `DELETE /api/v1/permissions/:id`
+
+### 前端安全与权限实现
+
+- Access Token 仅保存在前端模块内存中，不写入 localStorage。
+- Refresh Token 按当前后端响应形态持久化到 `needo.auth.refresh-token`，用于刷新页面后恢复登录态。
+- 统一 httpClient 在受保护请求 401 时调用 `/auth/refresh`，刷新成功后重试原请求；刷新失败会清理本地登录态。
+- `/auth/me` 是前端用户、身份、角色、权限、菜单的单一来源。
+- 路由守卫会等待 refresh 恢复完成后再判断跳转。
+- 后台菜单按 `menu:*` 权限隐藏；User / Role / Permission 页面按 `page:*` 权限守卫；创建、删除、启停、分配按钮按 `button:*` 权限显示。
+- 旧测试账号登录入口已从正式登录页移除；Google / QR 登录不再创建 fake session，后续需等正式后端接口。
+
+### 验证
+
+- `npm test` 通过：38 个测试文件，228 个测试。
+- `npm run lint` 通过。
+- `npm run build` 通过。
+- Browser smoke 通过：`http://localhost:5181/pf-admin.html#/login/admin` 可渲染后台登录页，验证码 tab 可切换；未登录访问 `#/admin/users` 会跳转到 `#/login/admin?redirect=%2Fadmin%2Fusers`，控制台无相关 error / warning。

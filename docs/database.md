@@ -18,6 +18,13 @@ system role and permission seed.
 This step does not create Auth APIs, OTP flows, frontend login pages, Booking,
 NDP, IM, Social, or any business workflow tables.
 
+## Step 05 Scope
+
+Step 05 adds Auth, OTP, JWT, Refresh Token, Logout, and `/auth/me` behavior
+against the Step 04 User Management tables. It writes `login_logs` for login
+attempts and `audit_logs` for logout, but it does not add or modify database
+tables and does not create a new Prisma migration.
+
 ## User Management Tables
 
 Step 04 migration:

@@ -11,6 +11,7 @@ import {
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { services } from "../../data/mock";
+import { bookingApi, isBookingApiId, mapBookingOrderToDomainOrder, type BookingScheduleSlot } from "../../features/booking/api";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { getMessagePath, getUserConversationId } from "../../lib/messageCenter";
 import { cn, yen } from "../../lib/utils";
@@ -97,6 +98,36 @@ function formatDateKey(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function getApiSlotDateKey(slot: BookingScheduleSlot) {
+  return formatDateKey(new Date(slot.startsAt));
+}
+
+function getApiSlotTime(slot: BookingScheduleSlot) {
+  const date = new Date(slot.startsAt);
+
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function getApiSlotTimesForDate(slots: BookingScheduleSlot[], date: Date) {
+  const dateKey = formatDateKey(date);
+
+  return Array.from(
+    new Set(
+      slots
+        .filter((slot) => slot.status === "available" && getApiSlotDateKey(slot) === dateKey)
+        .map(getApiSlotTime)
+    )
+  ).sort((left, right) => left.localeCompare(right));
+}
+
+function findApiSlotForSelection(slots: BookingScheduleSlot[], date: Date, time: string) {
+  const dateKey = formatDateKey(date);
+
+  return slots.find(
+    (slot) => slot.status === "available" && getApiSlotDateKey(slot) === dateKey && getApiSlotTime(slot) === time
+  );
 }
 
 function formatSlotTime(hour: number) {
@@ -686,6 +717,7 @@ export function CheckoutPage() {
   const { customers, stores, technicians } = useEntityStore();
   const shiftPlanning = useShiftPlanningStore();
   const service = services.find((item) => item.id === serviceId) ?? services[0];
+  const apiServiceId = isBookingApiId(serviceId) ? Number(serviceId) : null;
   const initialSlot = searchParams.get("time") ?? "今日 21:00";
   const routeMode = searchParams.get("mode");
   const initialActiveTech = searchParams.get("technician") ?? technicians[0]?.id ?? "";
@@ -726,6 +758,9 @@ export function CheckoutPage() {
   const [bookingRemark, setBookingRemark] = useState(searchParams.get("remark") ?? "");
   const [selectedPeople, setSelectedPeople] = useState(searchParams.get("people") ?? peopleOptions[0]);
   const [checkoutDialog, setCheckoutDialog] = useState<CheckoutDialogState | null>(null);
+  const [apiAvailabilitySlots, setApiAvailabilitySlots] = useState<BookingScheduleSlot[]>([]);
+  const [apiAvailabilityFailed, setApiAvailabilityFailed] = useState(false);
+  const [creatingApiBooking, setCreatingApiBooking] = useState(false);
   const [locationFeedback, setLocationFeedback] = useState<string | null>(null);
   const needoPostId = searchParams.get("needoPostId");
   const [manualAddressTitle, setManualAddressTitle] = useState("上门地址");
@@ -810,7 +845,9 @@ export function CheckoutPage() {
   const remarkSuggestions = fulfillmentMode === "store" ? ["忌口提醒", "靠窗座位", "安静区域", "提前联系"] : ["门禁说明", "停车位置", "语言偏好", "提前联系"];
   const noticeItems = useMemo(() => getModeNoticeItems(fulfillmentMode, service.notice), [fulfillmentMode, service.notice]);
   const getCheckoutAvailableTimes = (date: Date) =>
-    selectedStoreAlwaysBookable
+    apiServiceId
+      ? getApiSlotTimesForDate(apiAvailabilitySlots, date)
+      : selectedStoreAlwaysBookable
       ? alwaysBookableSlotTimes
       : getConfirmedSlotTimesForDate(shiftPlanning.finalBookableSlots, date, {
           fulfillmentMode,
@@ -821,8 +858,12 @@ export function CheckoutPage() {
     () => getCheckoutAvailableTimes(selectedBookingDate),
     [activeTech, fulfillmentMode, selectedBookingDate, selectedStoreAlwaysBookable, selectedStoreId, shiftPlanning.finalBookableSlots]
   );
-  const hasBookableSlot = selectedStoreAlwaysBookable ? isClockTimeValue(activeSlot) : availableTimesForSelectedDate.includes(activeSlot);
-  const timeHelperLabel = selectedStoreAlwaysBookable ? "测试店铺随时可约" : hasBookableSlot ? countdownLabel : "仅显示 confirmed slots";
+  const hasBookableSlot = apiServiceId
+    ? availableTimesForSelectedDate.includes(activeSlot)
+    : selectedStoreAlwaysBookable
+      ? isClockTimeValue(activeSlot)
+      : availableTimesForSelectedDate.includes(activeSlot);
+  const timeHelperLabel = selectedStoreAlwaysBookable && !apiServiceId ? "测试店铺随时可约" : hasBookableSlot ? countdownLabel : "仅显示 confirmed slots";
 
   useEffect(() => {
     if (selectedStoreAlwaysBookable && isClockTimeValue(activeSlot)) {
@@ -845,6 +886,21 @@ export function CheckoutPage() {
       setSelectedBookingDate(firstConfirmedBookingDate);
     }
   }, [availableTimesForSelectedDate.length, firstConfirmedBookingDate, selectedBookingDate, selectedStoreAlwaysBookable]);
+
+  useEffect(() => {
+    if (!apiServiceId || availableTimesForSelectedDate.length > 0) {
+      return;
+    }
+
+    const firstSlot = apiAvailabilitySlots.find((slot) => slot.status === "available");
+
+    if (!firstSlot) {
+      return;
+    }
+
+    setSelectedBookingDate(new Date(firstSlot.startsAt));
+    setActiveSlot(getApiSlotTime(firstSlot));
+  }, [apiAvailabilitySlots, apiServiceId, availableTimesForSelectedDate.length]);
 
   useEffect(() => {
     const updateProgressByScroll = () => {
@@ -887,6 +943,49 @@ export function CheckoutPage() {
       setSelectedSeatId(seatOptions[0]?.id ?? "");
     }
   }, [seatOptions, selectedSeatId]);
+
+  useEffect(() => {
+    if (!apiServiceId) {
+      setApiAvailabilitySlots([]);
+      setApiAvailabilityFailed(false);
+      return;
+    }
+
+    let active = true;
+    const from = normalizeDate(new Date());
+    const to = new Date(from);
+    to.setDate(to.getDate() + 21);
+
+    bookingApi
+      .listAvailability({
+        serviceId: apiServiceId,
+        shopId: isBookingApiId(selectedStoreId) ? Number(selectedStoreId) : undefined,
+        technicianId: isBookingApiId(activeTech) ? Number(activeTech) : undefined,
+        from: from.toISOString(),
+        to: to.toISOString(),
+        pageSize: 100
+      })
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+
+        setApiAvailabilitySlots(data.list);
+        setApiAvailabilityFailed(false);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setApiAvailabilitySlots([]);
+        setApiAvailabilityFailed(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTech, apiServiceId, selectedStoreId]);
 
   const jumpToSection = (index: number) => {
     const section = sectionRefs.current[index];
@@ -1023,6 +1122,48 @@ export function CheckoutPage() {
     return addUserOrder(order);
   };
 
+  const createApiBackedOrder = async () => {
+    if (!apiServiceId) {
+      return false;
+    }
+
+    const selectedApiSlot = findApiSlotForSelection(apiAvailabilitySlots, selectedBookingDate, activeSlot);
+
+    if (!selectedApiSlot) {
+      setExpandedSection("time");
+      setActiveTimeEditor("time");
+      setCheckoutDialog({
+        kind: "failure",
+        message: apiAvailabilityFailed
+          ? "预约失败：可用时段接口暂不可用，请稍后重试。"
+          : "预约失败：当前时间已不可预约，请重新选择可预约时间。"
+      });
+      return true;
+    }
+
+    setCreatingApiBooking(true);
+    try {
+      const apiOrder = await bookingApi.createBooking({
+        serviceId: apiServiceId,
+        scheduleSlotId: selectedApiSlot.id,
+        fulfillmentMode,
+        note: [bookingRemark.trim(), fulfillmentMode === "store" ? selectedSeat?.name : manualAddressDetail, selectedPeople]
+          .filter(Boolean)
+          .join(" / ")
+      });
+      const order = addUserOrder(mapBookingOrderToDomainOrder(apiOrder));
+      openCreatedOrder(order, "预约成功，已进入订单详情。");
+    } catch {
+      setExpandedSection("time");
+      setActiveTimeEditor("time");
+      setCheckoutDialog({ kind: "failure", message: "预约失败：当前时间已被预约，请重新选择。" });
+    } finally {
+      setCreatingApiBooking(false);
+    }
+
+    return true;
+  };
+
   const openCreatedOrder = (order: Order, notice: string) => {
     if (needoPostId) {
       confirmNeedoReverseBooking("user", needoPostId);
@@ -1040,7 +1181,11 @@ export function CheckoutPage() {
     openCreatedOrder(order, "预约成功，已使用钱包点数完成本次预付。");
   };
 
-  const handleConfirmBooking = () => {
+  const handleConfirmBooking = async () => {
+    if (creatingApiBooking) {
+      return;
+    }
+
     if (fulfillmentMode === "home" && !manualAddressDetail.trim()) {
       setExpandedSection("location");
       setCheckoutDialog({ kind: "failure", message: "请先填写完整上门地址，再提交预约。" });
@@ -1061,6 +1206,10 @@ export function CheckoutPage() {
 
     if (fulfillmentMode === "store" && selectedStore?.openStatus === "closed") {
       setCheckoutDialog({ kind: "failure", message: "预约失败：当前门店暂停接收预约，请重新选择时间或联系商户。" });
+      return;
+    }
+
+    if (await createApiBackedOrder()) {
       return;
     }
 

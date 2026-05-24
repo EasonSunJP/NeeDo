@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../../auth/AuthProvider";
 import {
   AppIcon,
   AppTopBar,
@@ -12,6 +13,7 @@ import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventT
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { services } from "../../data/mock";
+import { bookingApi, isBookingApiId, mapBookingOrderToDomainOrder } from "../../features/booking/api";
 import { getMessagePath, getUserConversationId } from "../../lib/messageCenter";
 import { canShowServiceStartCode, getServiceStartCode } from "../../lib/serviceStartCode";
 import { cn, statusLabel, yen } from "../../lib/utils";
@@ -351,9 +353,11 @@ export function UserOrderDetailPage() {
   const { orderId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const { customers, stores, technicians } = useEntityStore();
   const userOrders = useUserOrders();
-  const order = userOrders.find((item) => item.id === orderId) ?? userOrders[0];
+  const [apiOrder, setApiOrder] = useState<Order | null>(null);
+  const order = apiOrder ?? userOrders.find((item) => item.id === orderId) ?? userOrders[0];
   const routeState = location.state as { notice?: string } | null;
   const service = findServiceForOrder(order);
   const selectedPackage = findPackageForOrder(order, service);
@@ -399,6 +403,33 @@ export function UserOrderDetailPage() {
   const closeDetail = () => {
     navigate("/orders", { replace: true });
   };
+
+  useEffect(() => {
+    if (!isAuthenticated || !isBookingApiId(orderId)) {
+      setApiOrder(null);
+      return;
+    }
+
+    let active = true;
+
+    bookingApi
+      .getOrder(Number(orderId))
+      .then((data) => {
+        if (active) {
+          setApiOrder(mapBookingOrderToDomainOrder(data));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setApiOrder(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, orderId]);
+
   const serviceCardData = buildUserOrderServiceCardData(displayOrder, service, store);
   const paymentSummaryItems = [
     ["金额", yen(order.amount)],

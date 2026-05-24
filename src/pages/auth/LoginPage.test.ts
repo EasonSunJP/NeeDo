@@ -34,9 +34,9 @@ describe("LoginPage feedback localization", () => {
 });
 
 describe("LoginPage test account shortcut", () => {
-  it("renders a test account login action wired to the demo account", () => {
-    expect(loginPageSource).toContain("testAccountLogin");
-    expect(loginPageSource).toContain("handleTestAccountLogin");
-    expect(loginPageSource).toContain("login(activePortal, demoAuthAccount.username, demoAuthAccount.password)");
+  it("does not render a fake test-account login action in the formal auth flow", () => {
+    expect(loginPageSource).not.toContain("testAccountLogin");
+    expect(loginPageSource).not.toContain("handleTestAccountLogin");
+    expect(loginPageSource).not.toContain("demoAuthAccount.password");
   });
 });

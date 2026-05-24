@@ -34,6 +34,14 @@ const commaSeparatedListSchema = z
   )
   .refine((items) => items.length > 0, "At least one value is required");
 
+const optionalUrlSchema = z.preprocess((value) => {
+  if (typeof value === "string" && value.trim().length === 0) {
+    return undefined;
+  }
+
+  return value;
+}, z.string().url().optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]),
   SERVICE_NAME: z.string().min(1),
@@ -46,7 +54,18 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]),
   OPENAPI_ENABLED: booleanSchema,
   DATABASE_URL: z.string().url(),
-  REDIS_URL: z.string().url()
+  REDIS_URL: z.string().url(),
+  AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
+  AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
+  AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
+  AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),
+  AUTH_LOGIN_FAILURE_LIMIT: z.coerce.number().int().positive(),
+  AUTH_LOGIN_FAILURE_WINDOW_SECONDS: z.coerce.number().int().positive(),
+  AUTH_LOGIN_LOCK_SECONDS: z.coerce.number().int().positive(),
+  AUTH_OTP_TTL_SECONDS: z.coerce.number().int().positive().max(600),
+  AUTH_OTP_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
+  AUTH_OTP_EMAIL_WEBHOOK_URL: optionalUrlSchema,
+  AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

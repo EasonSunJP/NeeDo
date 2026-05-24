@@ -6,13 +6,13 @@ import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { services } from "../../data/mock";
+import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { getCategoryHeroImage, orderedServiceCategories, type HomeCategoryId } from "../../lib/homeCategories";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn, yen } from "../../lib/utils";
 import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
-import { useEntityStore } from "../../state/entityStore";
 import type { ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
 
 const categoryDescriptionMap: Record<HomeCategoryId, string> = {
@@ -335,6 +335,21 @@ function rankTechnicianForCategory(technician: Technician, category: ServiceCate
   return semanticScore * 10 + modeScore + getDeterministicRank(`${category.id}:${technician.id}`);
 }
 
+function CoreReadInlineState({
+  description,
+  title
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <section className={cn(featureCarouselFrameClassName, "rounded-[28px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-5 py-10 text-center")}>
+      <p className="text-[16px] font-black text-[color:var(--client-text)]">{title}</p>
+      <p className="mt-2 text-[13px] leading-6 text-[color:var(--client-muted)]">{description}</p>
+    </section>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -390,7 +405,6 @@ function ServicePreviewCard({ service }: { service: ServiceItem }) {
 export function CategoryPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { stores, technicians, revision: entityRevision } = useEntityStore();
   const initialCategoryId = searchParams.get("category");
   const entityFilter = normalizeEntityFilter(searchParams.get("type"));
   const initialTagIds = getTagIdsFromSearchParams(searchParams);
@@ -404,6 +418,47 @@ export function CategoryPage() {
   const [appliedCustomLabels, setAppliedCustomLabels] = useState<string[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const { scrollRef: tagRailRef, dragScrollProps: tagRailDragProps } = useHorizontalDragScroll({});
+  const categoryQuery = useCoreReadQuery(() => coreReadApi.listCategories({ pageSize: 100 }), []);
+  const apiCategoryId = useMemo(
+    () =>
+      categoryQuery.data?.list.find((category) => mapCoreCategoryToServiceCategory(category).id === activeCategoryId)?.id,
+    [activeCategoryId, categoryQuery.data]
+  );
+  const searchKeyword = useMemo(() => buildDisplayLabels(appliedTagIds, appliedCustomLabels).join(" "), [appliedCustomLabels, appliedTagIds]);
+  const searchQuery = useCoreReadQuery(
+    () =>
+      coreReadApi.search({
+        categoryId: apiCategoryId,
+        keyword: searchKeyword || undefined,
+        pageSize: 20,
+        sort: "rating_desc"
+      }),
+    [apiCategoryId, searchKeyword]
+  );
+  const apiServices = useMemo(
+    () => searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? [],
+    [searchQuery.data]
+  );
+  const apiStores = useMemo(
+    () =>
+      Array.from(new Map((searchQuery.data?.list ?? []).map((service) => {
+        const store = mapCoreShopToStore(service.shop);
+        return [store.id, store] as const;
+      })).values()),
+    [searchQuery.data]
+  );
+  const apiTechnicians = useMemo(
+    () =>
+      Array.from(new Map((searchQuery.data?.list ?? []).flatMap((service) => {
+        if (!service.technician) {
+          return [];
+        }
+
+        const technician = mapCoreTechnicianToTechnician(service.technician);
+        return [[technician.id, technician] as const];
+      })).values()),
+    [searchQuery.data]
+  );
 
   useEffect(() => {
     const requestedCategoryId = searchParams.get("category");
@@ -457,9 +512,10 @@ export function CategoryPage() {
   );
   const relatedServices = useMemo(
     () => {
-      const categoryScope = scopedCategoryIds.length > 0 ? scopedCategoryIds : appliedSearchKeywords.length > 0 ? [] : [activeCategory.id];
+      const hasActiveCategoryResult = apiServices.some((service) => service.categoryId === activeCategory.id);
+      const categoryScope = scopedCategoryIds.length > 0 ? scopedCategoryIds : appliedSearchKeywords.length > 0 || !hasActiveCategoryResult ? [] : [activeCategory.id];
 
-      return services
+      return apiServices
         .filter((service) => categoryScope.length === 0 || categoryScope.includes(service.categoryId))
         .filter((service) => {
           const category = orderedServiceCategories.find((item) => item.id === service.categoryId);
@@ -468,7 +524,7 @@ export function CategoryPage() {
         .sort((left, right) => right.sales - left.sales || right.rating - left.rating)
         .slice(0, 4);
     },
-    [activeCategory.id, appliedSearchKeywords, scopedCategoryIds]
+    [activeCategory.id, apiServices, appliedSearchKeywords, scopedCategoryIds]
   );
   const categoryTokens = useMemo(
     () => uniqueStrings([...buildCategoryTokens(activeCategory, relatedServices), ...appliedSearchKeywords]),
@@ -477,9 +533,9 @@ export function CategoryPage() {
 
   const relatedStores = useMemo(
     () =>
-      stores
+      apiStores
         .map((store) => {
-          const linkedTechnicians = technicians.filter((technician) => technician.storeId === store.id);
+          const linkedTechnicians = apiTechnicians.filter((technician) => technician.storeId === store.id);
 
           return {
             store,
@@ -490,12 +546,12 @@ export function CategoryPage() {
         .filter((item) => matchesAllSearchKeywords(buildStoreSearchFragments(item.store, item.technicians), appliedSearchKeywords))
         .sort((left, right) => right.score - left.score)
         .slice(0, entityFilter === "store" ? 10 : 3),
-    [activeCategory, appliedSearchKeywords, categoryTokens, entityFilter, entityRevision, stores, technicians]
+    [activeCategory, apiStores, apiTechnicians, appliedSearchKeywords, categoryTokens, entityFilter]
   );
 
   const relatedTechnicians = useMemo(
     () =>
-      technicians
+      apiTechnicians
         .map((technician) => ({
           technician,
           score: rankTechnicianForCategory(technician, activeCategory, categoryTokens)
@@ -503,7 +559,7 @@ export function CategoryPage() {
         .filter((item) => matchesAllSearchKeywords(buildTechnicianSearchFragments(item.technician), appliedSearchKeywords))
         .sort((left, right) => right.score - left.score)
         .slice(0, entityFilter === "technician" ? 12 : 4),
-    [activeCategory, appliedSearchKeywords, categoryTokens, entityFilter, entityRevision, technicians]
+    [activeCategory, apiTechnicians, appliedSearchKeywords, categoryTokens, entityFilter]
   );
 
   const bookableProfiles = useMemo(
@@ -695,6 +751,8 @@ export function CategoryPage() {
   const showServiceSection = entityFilter === "all" || entityFilter === "service";
   const hasVisibleResults = (showServiceSection && relatedServices.length > 0) || bookableProfiles.length > 0;
   const showEmptyState = filteredCategories.length === 0 || (hasAppliedSearch && !hasVisibleResults);
+  const isCoreReadLoading = categoryQuery.loading || searchQuery.loading;
+  const coreReadError = categoryQuery.error ?? searchQuery.error;
 
   return (
     <MobileShell>
@@ -849,7 +907,11 @@ export function CategoryPage() {
             </div>
           </section>
 
-          {showEmptyState ? (
+          {isCoreReadLoading ? (
+            <CoreReadInlineState description="正在从 /api/v1/search 与 /api/v1/categories 读取分类和搜索结果。" title="正在载入真实数据" />
+          ) : coreReadError ? (
+            <CoreReadInlineState description={coreReadError} title="搜索数据读取失败" />
+          ) : showEmptyState ? (
             <section className={cn(featureCarouselFrameClassName, "rounded-[28px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-5 py-10 text-center")}>
               <p className="text-[16px] font-black text-[color:var(--client-text)]">{emptySearchLabels.length > 0 ? "没有找到匹配结果" : "没有找到匹配的标签或分类"}</p>
               {emptySearchLabels.length > 0 ? (

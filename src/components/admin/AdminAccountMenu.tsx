@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { demoAuthAccount, type PortalScope, useAuth } from "../../auth/AuthProvider";
+import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 
 type AdminAccountMenuProps = {
   accountName: string;
@@ -31,7 +31,7 @@ function GearIcon() {
   );
 }
 
-export function AdminAccountMenu({ accountName, fallbackEmail = demoAuthAccount.adminEmail, loginPath, portal, roleLabel }: AdminAccountMenuProps) {
+export function AdminAccountMenu({ accountName, fallbackEmail = "admin@example.com", loginPath, portal, roleLabel }: AdminAccountMenuProps) {
   const { logout, session } = useAuth();
   const navigate = useNavigate();
   const rootRef = useRef<HTMLDivElement>(null);

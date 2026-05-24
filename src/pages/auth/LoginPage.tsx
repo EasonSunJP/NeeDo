@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { demoAuthAccount, type PortalScope, useAuth } from "../../auth/AuthProvider";
+import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
-import {
-  fetchGoogleAccountApi,
-  googleAccountIconSrc,
-  type GoogleAccountAuthUrlResponse
-} from "../../lib/googleAccountApi";
+import { googleAccountIconSrc } from "../../lib/googleAccountApi";
 import { cn } from "../../lib/utils";
 import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 
@@ -21,7 +17,6 @@ type FrontendLoginCopy = {
   gmailLogin: string;
   accountLogin: string;
   createAccount: string;
-  testAccountLogin: string;
   createNotice: string;
   useAccountTitle: string;
   useAccountSubtitle: string;
@@ -96,14 +91,13 @@ const loginCopy = {
     welcomeTitle: "欢迎使用 NeeDo",
     welcomeSubtitle: "用一个账号连接消息、预约和工作协作。",
     gmailLogin: "使用 Google 登录",
-    accountLogin: "使用邮箱 / ID 登录",
+    accountLogin: "使用邮箱登录",
     createAccount: "新建账号",
-    testAccountLogin: "测试账号登录",
-    createNotice: "新建账号流程正在准备中，请先使用 Google 或邮箱 / ID 登录。",
+    createNotice: "新建账号流程正在准备中，请先使用已发行邮箱登录。",
     useAccountTitle: "账号登录",
     useAccountSubtitle: "请输入已发行账号信息。",
-    accountLabel: "邮箱或账号 ID",
-    accountPlaceholder: "请输入邮箱或账号 ID",
+    accountLabel: "邮箱",
+    accountPlaceholder: "请输入邮箱",
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
     loginButton: "登录",
@@ -154,14 +148,13 @@ const loginCopy = {
     welcomeTitle: "歡迎使用 NeeDo",
     welcomeSubtitle: "用一個帳號連接訊息、預約和工作協作。",
     gmailLogin: "使用 Google 登入",
-    accountLogin: "使用信箱 / ID 登入",
+    accountLogin: "使用信箱登入",
     createAccount: "建立帳號",
-    testAccountLogin: "測試帳號登入",
-    createNotice: "建立帳號流程正在準備中，請先使用 Google 或信箱 / ID 登入。",
+    createNotice: "建立帳號流程正在準備中，請先使用已發行信箱登入。",
     useAccountTitle: "帳號登入",
     useAccountSubtitle: "請輸入已發行帳號資訊。",
-    accountLabel: "信箱或帳號 ID",
-    accountPlaceholder: "請輸入信箱或帳號 ID",
+    accountLabel: "信箱",
+    accountPlaceholder: "請輸入信箱",
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
     loginButton: "登入",
@@ -212,14 +205,13 @@ const loginCopy = {
     welcomeTitle: "NeeDoへようこそ",
     welcomeSubtitle: "メッセージ、予約、仕事の連絡をひとつのアカウントで。",
     gmailLogin: "Googleでログイン",
-    accountLogin: "メール / IDでログイン",
+    accountLogin: "メールでログイン",
     createAccount: "新規登録",
-    testAccountLogin: "テストアカウントでログイン",
-    createNotice: "新規登録フローは準備中です。Googleまたはメール / IDでログインしてください。",
+    createNotice: "新規登録フローは準備中です。発行済みメールでログインしてください。",
     useAccountTitle: "アカウントログイン",
     useAccountSubtitle: "発行済みアカウント情報を入力してください。",
-    accountLabel: "メールまたはアカウントID",
-    accountPlaceholder: "メールまたはアカウントIDを入力",
+    accountLabel: "メール",
+    accountPlaceholder: "メールを入力",
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
     loginButton: "ログイン",
@@ -270,14 +262,13 @@ const loginCopy = {
     welcomeTitle: "Welcome to NeeDo",
     welcomeSubtitle: "Messages, bookings, and work updates in one account.",
     gmailLogin: "Continue with Google",
-    accountLogin: "Log in with email / ID",
+    accountLogin: "Log in with email",
     createAccount: "Create account",
-    testAccountLogin: "Log in with test account",
-    createNotice: "Account creation is being prepared. Use Google or email / ID login for now.",
+    createNotice: "Account creation is being prepared. Use an issued email for now.",
     useAccountTitle: "Account login",
     useAccountSubtitle: "Enter your issued account details.",
-    accountLabel: "Email or account ID",
-    accountPlaceholder: "Enter email or account ID",
+    accountLabel: "Email",
+    accountPlaceholder: "Enter email",
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
     loginButton: "Log in",
@@ -328,14 +319,13 @@ const loginCopy = {
     welcomeTitle: "NeeDo에 오신 것을 환영합니다",
     welcomeSubtitle: "메시지, 예약, 업무 연락을 하나의 계정으로 연결합니다.",
     gmailLogin: "Google로 로그인",
-    accountLogin: "이메일 / ID로 로그인",
+    accountLogin: "이메일로 로그인",
     createAccount: "새 계정 만들기",
-    testAccountLogin: "테스트 계정으로 로그인",
-    createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 Google 또는 이메일 / ID로 로그인하세요.",
+    createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 발급된 이메일로 로그인하세요.",
     useAccountTitle: "계정 로그인",
     useAccountSubtitle: "발급된 계정 정보를 입력하세요.",
-    accountLabel: "이메일 또는 계정 ID",
-    accountPlaceholder: "이메일 또는 계정 ID 입력",
+    accountLabel: "이메일",
+    accountPlaceholder: "이메일 입력",
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
     loginButton: "로그인",
@@ -457,12 +447,14 @@ export function LoginPage() {
     const googlePortal = normalizePortal(searchParams.get("portal") ?? activePortal);
     const googleEmail = searchParams.get("googleEmail") || portalGmailEmail[googlePortal];
 
-    if (!loginWithProvider(googlePortal, "gmail", googleEmail)) {
-      setFeedback({ key: "accountError", tone: "error", type: "localized" });
-      return;
-    }
+    loginWithProvider(googlePortal, "gmail", googleEmail).then((result) => {
+      if (!result.ok) {
+        setFeedback({ message: result.message, tone: "error", type: "custom" });
+        return;
+      }
 
-    openPortalEntry(googlePortal, getPostLoginRoute(googlePortal, redirectPath));
+      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+    });
   }, [activePortal, loginWithProvider, redirectPath, searchParams]);
 
   const clearFeedback = () => {
@@ -479,26 +471,17 @@ export function LoginPage() {
 
   const continueWithGmail = async () => {
     clearFeedback();
+    const result = await loginWithProvider(activePortal, "gmail", portalGmailEmail[activePortal]);
 
-    try {
-      const response = await fetchGoogleAccountApi<GoogleAccountAuthUrlResponse>(
-        `/api/google-account/auth-url?mode=login&portal=${encodeURIComponent(activePortal)}&actorId=${encodeURIComponent(
-          `needo:login:${activePortal}`
-        )}&returnTo=${encodeURIComponent(window.location.href)}`
-      );
-
-      window.location.assign(response.authUrl);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setFeedback(
-        message.includes("GOOGLE_ACCOUNT") || message.includes("尚未配置")
-          ? { key: "googleLoginUnavailable", tone: "error", type: "localized" }
-          : { message, tone: "error", type: "custom" }
-      );
+    if (!result.ok) {
+      setFeedback({ key: "googleLoginUnavailable", tone: "error", type: "localized" });
+      return;
     }
+
+    openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
   };
 
-  const handleAccountLogin = (event: FormEvent<HTMLFormElement>) => {
+  const handleAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     clearFeedback();
 
@@ -507,23 +490,13 @@ export function LoginPage() {
       return;
     }
 
-    if (!login(activePortal, username, password)) {
-      setFeedback({ key: "accountError", tone: "error", type: "localized" });
+    const result = await login(activePortal, username, password);
+    if (!result.ok) {
+      setFeedback({ message: result.message || copy.accountError, tone: "error", type: "custom" });
       return;
     }
 
-    openPortalEntry(activePortal, nextPath);
-  };
-
-  const handleTestAccountLogin = () => {
-    clearFeedback();
-
-    if (!login(activePortal, demoAuthAccount.username, demoAuthAccount.password)) {
-      setFeedback({ key: "accountError", tone: "error", type: "localized" });
-      return;
-    }
-
-    openPortalEntry(activePortal, nextPath);
+    openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
   };
 
   return (
@@ -612,13 +585,6 @@ export function LoginPage() {
                   type="button"
                 >
                   {copy.createAccount}
-                </button>
-                <button
-                  className="mt-6 h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_36%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] px-5 text-base font-black text-[color:var(--client-primary)] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_10%,transparent)] transition hover:border-[color:var(--client-primary)]"
-                  onClick={handleTestAccountLogin}
-                  type="button"
-                >
-                  {copy.testAccountLogin}
                 </button>
               </div>
             ) : (

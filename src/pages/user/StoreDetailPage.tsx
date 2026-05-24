@@ -22,6 +22,8 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { customers, reviews, services } from "../../data/mock";
+import { coreReadApi, coreReadIdFromRoute, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
@@ -53,6 +55,7 @@ type StoreDetailExperienceProps = {
   onEditFocus?: (focus: StoreDisplayEditorMode) => void;
   scope?: "user" | "merchant";
   store: Store;
+  techniciansOverride?: Technician[];
 };
 
 type SeatCard = {
@@ -1591,10 +1594,11 @@ function TopMetricAction({
   );
 }
 
-export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "user", store }: StoreDetailExperienceProps) {
+export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const { session } = useAuth();
   const { customers, technicians } = useEntityStore();
+  const displayedTechnicians = techniciansOverride ?? technicians;
   const { getActorForScope, getProfilePosts } = useSocial();
   const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
   const industry = detectStoreIndustry(store);
@@ -1616,8 +1620,8 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const packageCardUi = useMemo(() => getStoreCardDecorationConfig(store, "package"), [store.id, store.uiDecoration]);
 
   const storeTechnicians = useMemo(
-    () => technicians.filter((item) => item.storeId === store.id).slice(0, 4),
-    [store.id, technicians]
+    () => displayedTechnicians.filter((item) => item.storeId === store.id).slice(0, 4),
+    [displayedTechnicians, store.id]
   );
   const config = useMemo(() => buildStoreProfileConfig(store, industry), [industry, store, store.presentation]);
   const seatCards = useMemo(() => buildSeatCards(store, industry), [industry, store]);
@@ -2632,10 +2636,59 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   );
 }
 
+function StoreDetailStatus({
+  description,
+  scope,
+  title
+}: {
+  description: string;
+  scope: "user" | "merchant";
+  title: string;
+}) {
+  return (
+    <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
+      <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
+      <EmptyStatePanel caption={description} title={title} />
+    </PageScaffold>
+  );
+}
+
 export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" } = {}) {
   const { id } = useParams();
   const { stores } = useEntityStore();
-  const store = stores.find((item) => item.id === id) ?? stores[0];
+  const apiId = coreReadIdFromRoute(id);
+  const shopQuery = useCoreReadQuery(
+    () => (apiId ? coreReadApi.getShopDetail(apiId) : null),
+    [apiId]
+  );
+  const apiStore = useMemo(() => (shopQuery.data ? mapCoreShopToStore(shopQuery.data) : null), [shopQuery.data]);
+  const apiTechnicians = useMemo(
+    () => shopQuery.data?.technicians.map((technician) => mapCoreTechnicianToTechnician({
+      ...technician,
+      bio: null,
+      serviceArea: shopQuery.data?.city ?? technician.city,
+      yearsExperience: 0,
+      mediaAssets: [],
+      services: shopQuery.data?.services ?? [],
+      createdAt: shopQuery.data?.createdAt ?? "",
+      updatedAt: shopQuery.data?.updatedAt ?? ""
+    })) ?? [],
+    [shopQuery.data]
+  );
+  const legacyStore = stores.find((item) => item.id === id) ?? stores[0];
+  const store = apiId ? apiStore : legacyStore;
 
-  return <StoreDetailExperience scope={scope} store={store} />;
+  if (apiId && shopQuery.loading) {
+    return <StoreDetailStatus description="正在从 /api/v1/shops 读取店铺资料。" scope={scope} title="正在载入店铺" />;
+  }
+
+  if (apiId && shopQuery.error) {
+    return <StoreDetailStatus description={shopQuery.error} scope={scope} title="店铺读取失败" />;
+  }
+
+  if (!store) {
+    return <StoreDetailStatus description="当前店铺暂时没有公开资料。" scope={scope} title="暂无店铺资料" />;
+  }
+
+  return <StoreDetailExperience scope={scope} store={store} techniciansOverride={apiId ? apiTechnicians : undefined} />;
 }

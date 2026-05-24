@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthProvider";
 import { cn } from "../../lib/utils";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, type AdminTheme } from "../../theme/AdminTheme";
 import { AdminAccountMenu } from "./AdminAccountMenu";
@@ -22,6 +23,7 @@ type AdminNavItem = {
   label: string;
   to: string;
   icon: string;
+  permission?: string;
   children?: string[];
 };
 
@@ -42,7 +44,7 @@ const navSections: AdminNavSection[] = [
     key: "platform",
     title: "平台运营",
     items: [
-      { label: "数据大盘", to: "/admin", icon: "◆" },
+      { label: "数据大盘", to: "/admin", icon: "◆", permission: "menu:dashboard" },
       { label: "运营时间线", to: "/admin/operation-timeline", icon: "线", children: ["搜索筛选", "城市跟进", "异常观察"] },
       { label: "分析中心", to: "/admin/analytics", icon: "◔" },
       { label: "数据中心", to: "/admin/data", icon: "▥" },
@@ -117,7 +119,8 @@ const navSections: AdminNavSection[] = [
     key: "users",
     title: "用户管理",
     items: [
-      { label: "用户管理", to: "/admin/crm", icon: "用", children: ["用户列表", "会员种类", "标签系统", "流失预警"] },
+      { label: "账号管理", to: "/admin/users", icon: "账", permission: "menu:user-management", children: ["真实账号", "状态", "角色分配"] },
+      { label: "客户 CRM", to: "/admin/crm", icon: "用", children: ["用户列表", "会员种类", "标签系统", "流失预警"] },
       { label: "用户数据", to: "/admin/data?module=users", icon: "用", children: ["订单次数", "LTV", "最近消费", "下次预约"] }
     ]
   },
@@ -147,9 +150,10 @@ const navSections: AdminNavSection[] = [
     key: "settings",
     title: "设置",
     items: [
-      { label: "系统设置", to: "/admin/roles?module=system", icon: "系", children: ["储存设置", "支付设置"] },
+      { label: "系统设置", to: "/admin/roles?module=system", icon: "系", permission: "menu:admin-settings", children: ["储存设置", "支付设置"] },
       { label: "城市设置", to: "/admin/cities", icon: "城", children: ["城市管理", "城市投票"] },
-      { label: "权限管理", to: "/admin/roles", icon: "权", children: ["角色管理", "管理员列表"] },
+      { label: "角色管理", to: "/admin/roles", icon: "角", permission: "menu:role-management", children: ["角色列表", "分配权限"] },
+      { label: "权限管理", to: "/admin/permissions", icon: "权", permission: "menu:permission-management", children: ["权限列表", "权限树"] },
       { label: "出行设置", to: "/admin/travel-settings", icon: "行", children: ["打车设置", "电车设置", "公交价格", "城市车费"] }
     ]
   },
@@ -266,10 +270,21 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const [{ theme, preferenceMode }, setThemeState] = useState<AdminThemeState>(getInitialAdminThemeState);
   const location = useLocation();
   const navigate = useNavigate();
+  const { canAccessMenu } = useAuth();
+  const visibleNavSections = useMemo(
+    () =>
+      navSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => !item.permission || canAccessMenu(item.permission))
+        }))
+        .filter((section) => section.items.length > 0),
+    [canAccessMenu]
+  );
   const routeSectionKey = getSectionForRoute(location.pathname, location.search);
   const [activeSectionKey, setActiveSectionKey] = useState(routeSectionKey);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const activeSection = navSections.find((section) => section.key === activeSectionKey) ?? navSections[0];
+  const activeSection = visibleNavSections.find((section) => section.key === activeSectionKey) ?? visibleNavSections[0] ?? navSections[0];
 
   const setTheme = (nextTheme: AdminTheme) => {
     setThemeState({
@@ -279,7 +294,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   };
 
   const openSection = (sectionKey: string) => {
-    const section = navSections.find((item) => item.key === sectionKey) ?? navSections[0];
+    const section = visibleNavSections.find((item) => item.key === sectionKey) ?? visibleNavSections[0] ?? navSections[0];
     setActiveSectionKey(section.key);
     navigate(section.items[0]?.to ?? "/admin");
     setMobileNavOpen(false);
@@ -395,7 +410,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <CloseIconButton label="关闭运营后台导航" onClick={() => setMobileNavOpen(false)} />
             </div>
             <div className="mt-4 space-y-4">
-              {navSections.map((section) => (
+              {visibleNavSections.map((section) => (
                 <section className="rounded-lg border border-line bg-paper p-3" key={section.key}>
                   <button
                     className={cn("w-full rounded-lg px-3 py-3 text-left text-sm font-black", activeSectionKey === section.key ? "bg-ink text-white" : "bg-white text-ink")}
@@ -441,7 +456,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   </NavLink>
                 </div>
                 <div className="admin-section-tabs scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-paper p-1">
-                  {navSections.map((section) => (
+                  {visibleNavSections.map((section) => (
                     <button
                       className={cn(
                         "admin-section-tab focus-ring h-8 shrink-0 rounded-md px-3 text-xs font-black transition",

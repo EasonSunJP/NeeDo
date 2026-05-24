@@ -27,6 +27,20 @@ GET /api/v1/openapi.json
 GET /api/v1/docs
 ```
 
+Step 05 Auth runtime variables:
+
+- `AUTH_ACCESS_TOKEN_SECRET`: HMAC secret for JWT access tokens, minimum 32 characters.
+- `AUTH_REFRESH_TOKEN_SECRET`: HMAC secret for JWT refresh tokens, minimum 32 characters.
+- `AUTH_ACCESS_TOKEN_TTL_SECONDS`: access-token lifetime, capped at 900 seconds.
+- `AUTH_REFRESH_TOKEN_TTL_SECONDS`: refresh-token lifetime, capped at 604800 seconds.
+- `AUTH_LOGIN_FAILURE_LIMIT`: failed password-login attempts before lockout.
+- `AUTH_LOGIN_FAILURE_WINDOW_SECONDS`: Redis TTL for failed-login counters.
+- `AUTH_LOGIN_LOCK_SECONDS`: Redis TTL for account lockout.
+- `AUTH_OTP_TTL_SECONDS`: email OTP lifetime, capped at 600 seconds.
+- `AUTH_OTP_COOLDOWN_SECONDS`: Redis cooldown TTL between OTP sends.
+- `AUTH_OTP_EMAIL_WEBHOOK_URL`: HTTPS/HTTP endpoint that receives `{ email, otp }`.
+- `AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS`: OTP delivery request timeout.
+
 Docker dev setup from the repository root:
 
 ```bash

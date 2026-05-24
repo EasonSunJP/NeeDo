@@ -1,4 +1,5 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vitest/config";
+import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 type PortalDevRequest = {
@@ -106,5 +107,8 @@ export default defineConfig({
   },
   preview: {
     port: 5180
+  },
+  test: {
+    exclude: ["backend/**", "dist/**", "node_modules/**", "**/node_modules/**", ".codex-*/**"]
   }
 });

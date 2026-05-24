@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
-import { demoAuthAccount, useAuth } from "../../auth/AuthProvider";
+import { useAuth } from "../../auth/AuthProvider";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
@@ -73,8 +73,8 @@ const adminLoginCopy = {
       code: "验证码登录",
       qr: "扫码登录"
     },
-    accountLabel: "邮箱或测试账号",
-    accountPlaceholder: "admin / admin@needo.jp",
+    accountLabel: "邮箱",
+    accountPlaceholder: "admin@example.com",
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
     codeEmailLabel: "登录邮箱",
@@ -82,7 +82,7 @@ const adminLoginCopy = {
     codeLabel: "验证码",
     codePlaceholder: "6 位验证码",
     sendCode: "获取验证码",
-    codeSent: "验证码已发送，演示验证码为 260417。",
+    codeSent: "验证码已发送，请查看对应邮箱或开发环境 OTP 交付日志。",
     gmailLogin: "使用 Gmail 登录",
     login: "登录",
     continue: "进入后台",
@@ -94,9 +94,9 @@ const adminLoginCopy = {
     qrTokenLabel: "登录码",
     qrApprove: "模拟扫码确认",
     qrApproved: "扫码已确认，正在进入后台。",
-    accountError: "账号或密码不正确，请使用测试账号 admin / Admin.2026。",
-    codeError: "验证码不正确，请使用演示验证码 260417。",
-    qrError: "二维码登录码已失效，请刷新后重试。",
+    accountError: "账号或密码不正确，请确认后再试。",
+    codeError: "验证码不正确或已过期，请确认后再试。",
+    qrError: "二维码登录暂未接入真实接口，请使用邮箱或验证码登录。",
     requiredError: "请先填写登录信息。",
     copyright: adminLoginCopyrightText
   },
@@ -117,8 +117,8 @@ const adminLoginCopy = {
       code: "驗證碼登入",
       qr: "掃碼登入"
     },
-    accountLabel: "信箱或測試帳號",
-    accountPlaceholder: "admin / admin@needo.jp",
+    accountLabel: "信箱",
+    accountPlaceholder: "admin@example.com",
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
     codeEmailLabel: "登入信箱",
@@ -126,7 +126,7 @@ const adminLoginCopy = {
     codeLabel: "驗證碼",
     codePlaceholder: "6 位驗證碼",
     sendCode: "取得驗證碼",
-    codeSent: "驗證碼已發送，演示驗證碼為 260417。",
+    codeSent: "驗證碼已發送，請查看對應信箱或開發環境 OTP 交付日誌。",
     gmailLogin: "使用 Gmail 登入",
     login: "登入",
     continue: "進入後台",
@@ -138,9 +138,9 @@ const adminLoginCopy = {
     qrTokenLabel: "登入碼",
     qrApprove: "模擬掃碼確認",
     qrApproved: "掃碼已確認，正在進入後台。",
-    accountError: "帳號或密碼不正確，請使用測試帳號 admin / Admin.2026。",
-    codeError: "驗證碼不正確，請使用演示驗證碼 260417。",
-    qrError: "QR 登入碼已失效，請刷新後重試。",
+    accountError: "帳號或密碼不正確，請確認後再試。",
+    codeError: "驗證碼不正確或已過期，請確認後再試。",
+    qrError: "QR 登入尚未接入真實接口，請使用信箱或驗證碼登入。",
     requiredError: "請先填寫登入資訊。",
     copyright: adminLoginCopyrightText
   },
@@ -161,8 +161,8 @@ const adminLoginCopy = {
       code: "認証コードログイン",
       qr: "QRログイン"
     },
-    accountLabel: "メールまたはテストアカウント",
-    accountPlaceholder: "admin / admin@needo.jp",
+    accountLabel: "メール",
+    accountPlaceholder: "admin@example.com",
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
     codeEmailLabel: "ログインメール",
@@ -170,7 +170,7 @@ const adminLoginCopy = {
     codeLabel: "認証コード",
     codePlaceholder: "6桁のコード",
     sendCode: "コードを取得",
-    codeSent: "認証コードを送信しました。デモコードは 260417 です。",
+    codeSent: "認証コードを送信しました。メールまたは開発環境の OTP 配信ログを確認してください。",
     gmailLogin: "Gmail でログイン",
     login: "ログイン",
     continue: "管理画面へ",
@@ -182,9 +182,9 @@ const adminLoginCopy = {
     qrTokenLabel: "ログインコード",
     qrApprove: "スキャン確認を再現",
     qrApproved: "スキャンを確認しました。管理画面へ移動します。",
-    accountError: "アカウントまたはパスワードが違います。テストアカウント admin / Admin.2026 を使用してください。",
-    codeError: "認証コードが違います。デモコード 260417 を使用してください。",
-    qrError: "QRログインコードの有効期限が切れました。更新して再試行してください。",
+    accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
+    codeError: "認証コードが違うか期限切れです。内容を確認してください。",
+    qrError: "QRログインはまだ正式 API に接続されていません。メールまたは認証コードでログインしてください。",
     requiredError: "ログイン情報を入力してください。",
     copyright: adminLoginCopyrightText
   },
@@ -205,8 +205,8 @@ const adminLoginCopy = {
       code: "Code Login",
       qr: "QR Login"
     },
-    accountLabel: "Email or test account",
-    accountPlaceholder: "admin / admin@needo.jp",
+    accountLabel: "Email",
+    accountPlaceholder: "admin@example.com",
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
     codeEmailLabel: "Login email",
@@ -214,7 +214,7 @@ const adminLoginCopy = {
     codeLabel: "Verification code",
     codePlaceholder: "6-digit code",
     sendCode: "Send code",
-    codeSent: "Code sent. Demo code: 260417.",
+    codeSent: "Code sent. Check the mailbox or development OTP delivery logs.",
     gmailLogin: "Continue with Gmail",
     login: "Log in",
     continue: "Enter Admin",
@@ -226,9 +226,9 @@ const adminLoginCopy = {
     qrTokenLabel: "Login code",
     qrApprove: "Simulate scan approval",
     qrApproved: "Scan confirmed. Entering admin.",
-    accountError: "Incorrect account or password. Use the test account admin / Admin.2026.",
-    codeError: "Incorrect code. Use the demo code 260417.",
-    qrError: "The QR login code has expired. Refresh and try again.",
+    accountError: "The account or password is incorrect. Please check and try again.",
+    codeError: "The code is incorrect or expired. Please check and try again.",
+    qrError: "QR login is not connected to the real API yet. Use email or code login.",
     requiredError: "Fill in the login information first.",
     copyright: adminLoginCopyrightText
   },
@@ -249,8 +249,8 @@ const adminLoginCopy = {
       code: "인증코드 로그인",
       qr: "QR 로그인"
     },
-    accountLabel: "이메일 또는 테스트 계정",
-    accountPlaceholder: "admin / admin@needo.jp",
+    accountLabel: "이메일",
+    accountPlaceholder: "admin@example.com",
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
     codeEmailLabel: "로그인 이메일",
@@ -258,7 +258,7 @@ const adminLoginCopy = {
     codeLabel: "인증코드",
     codePlaceholder: "6자리 코드",
     sendCode: "코드 받기",
-    codeSent: "인증코드를 보냈습니다. 데모 코드는 260417입니다.",
+    codeSent: "인증코드를 보냈습니다. 메일함 또는 개발 환경 OTP 전달 로그를 확인하세요.",
     gmailLogin: "Gmail로 로그인",
     login: "로그인",
     continue: "관리자로 이동",
@@ -270,9 +270,9 @@ const adminLoginCopy = {
     qrTokenLabel: "로그인 코드",
     qrApprove: "스캔 확인 시뮬레이션",
     qrApproved: "스캔이 확인되었습니다. 관리자 화면으로 이동합니다.",
-    accountError: "계정 또는 비밀번호가 올바르지 않습니다. 테스트 계정 admin / Admin.2026을 사용하세요.",
-    codeError: "인증코드가 올바르지 않습니다. 데모 코드 260417을 사용하세요.",
-    qrError: "QR 로그인 코드가 만료되었습니다. 새로고침 후 다시 시도하세요.",
+    accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
+    codeError: "인증코드가 올바르지 않거나 만료되었습니다. 확인 후 다시 시도하세요.",
+    qrError: "QR 로그인은 아직 실제 API에 연결되지 않았습니다. 이메일 또는 인증코드로 로그인하세요.",
     requiredError: "먼저 로그인 정보를 입력하세요.",
     copyright: adminLoginCopyrightText
   }
@@ -281,7 +281,7 @@ const adminLoginCopy = {
 const backendLoginConfig = {
   admin: {
     authPortal: getAdminLoginPortalScope("admin"),
-    defaultEmail: demoAuthAccount.adminEmail,
+    defaultEmail: "admin@example.com",
     gmailEmail: "needo.ops@gmail.com",
     entryPath: "/admin",
     background: backendManagementSystemBgUrl,
@@ -295,7 +295,7 @@ const backendLoginConfig = {
   },
   "merchant-admin": {
     authPortal: getAdminLoginPortalScope("merchant-admin"),
-    defaultEmail: demoAuthAccount.merchantAdminEmail,
+    defaultEmail: "merchant-owner@example.com",
     gmailEmail: "needo.store@gmail.com",
     entryPath: "/merchant-admin",
     background: backendManagementSystemBgUrl,
@@ -359,7 +359,7 @@ function QrLoginGraphic({ mark }: { mark: string }) {
 export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { canAccess, isAuthenticated, login, loginWithProvider, loginWithQr, loginWithVerificationCode, logout, session } = useAuth();
+  const { canAccess, isAuthenticated, login, loginWithProvider, loginWithQr, loginWithVerificationCode, logout, sendVerificationCode, session } = useAuth();
   const { language } = useI18n();
   const copy = adminLoginCopy[language];
   const config = backendLoginConfig[portal];
@@ -368,8 +368,8 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const scanStatus = searchParams.get("scan");
   const qrParam = searchParams.get("qr");
   const [mode, setMode] = useState<LoginMode>(requestedMode);
-  const [account, setAccount] = useState<string>(portal === "admin" ? demoAuthAccount.username : config.defaultEmail);
-  const [password, setPassword] = useState<string>(demoAuthAccount.password);
+  const [account, setAccount] = useState<string>(config.defaultEmail);
+  const [password, setPassword] = useState<string>("");
   const [codeEmail, setCodeEmail] = useState<string>(config.defaultEmail);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -389,13 +389,15 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    if (!loginWithQr(config.authPortal, qrParam ?? qrToken)) {
-      setError(copy.qrError);
-      return;
-    }
+    loginWithQr(config.authPortal, qrParam ?? qrToken).then((result) => {
+      if (!result.ok) {
+        setError(copy.qrError);
+        return;
+      }
 
-    setNotice(copy.qrApproved);
-    navigate(nextPath, { replace: true });
+      setNotice(copy.qrApproved);
+      navigate(nextPath, { replace: true });
+    });
   }, [config.authPortal, copy.qrApproved, copy.qrError, loginWithQr, navigate, nextPath, qrParam, qrToken, scanStatus]);
 
   const modeButtons = useMemo<Array<{ mode: LoginMode; label: string }>>(
@@ -407,7 +409,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     [copy.tabs.account, copy.tabs.code, copy.tabs.qr]
   );
 
-  const submitAccountLogin = (event: FormEvent<HTMLFormElement>) => {
+  const submitAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
 
@@ -416,15 +418,16 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    if (!login(config.authPortal, account, password)) {
-      setError(copy.accountError);
+    const result = await login(config.authPortal, account, password);
+    if (!result.ok) {
+      setError(result.message || copy.accountError);
       return;
     }
 
-    navigate(nextPath, { replace: true });
+    navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
   };
 
-  const submitCodeLogin = (event: FormEvent<HTMLFormElement>) => {
+  const submitCodeLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
 
@@ -433,19 +436,21 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    if (!loginWithVerificationCode(config.authPortal, codeEmail, code)) {
-      setError(copy.codeError);
+    const result = await loginWithVerificationCode(config.authPortal, codeEmail, code);
+    if (!result.ok) {
+      setError(result.message || copy.codeError);
       return;
     }
 
-    navigate(nextPath, { replace: true });
+    navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
   };
 
-  const approveQrLogin = () => {
+  const approveQrLogin = async () => {
     setError("");
 
-    if (!loginWithQr(config.authPortal, qrToken)) {
-      setError(copy.qrError);
+    const result = await loginWithQr(config.authPortal, qrToken);
+    if (!result.ok) {
+      setError(result.message || copy.qrError);
       return;
     }
 
@@ -453,15 +458,28 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     navigate(nextPath, { replace: true });
   };
 
-  const continueWithGmail = () => {
+  const continueWithGmail = async () => {
     setError("");
 
-    if (!loginWithProvider(config.authPortal, "gmail", config.gmailEmail)) {
-      setError(copy.accountError);
+    const result = await loginWithProvider(config.authPortal, "gmail", config.gmailEmail);
+    if (!result.ok) {
+      setError(result.message || copy.accountError);
       return;
     }
 
     navigate(nextPath, { replace: true });
+  };
+
+  const requestCode = async () => {
+    setError("");
+    const result = await sendVerificationCode(codeEmail);
+
+    if (!result.ok) {
+      setError(result.message || copy.codeError);
+      return;
+    }
+
+    setCodeSent(true);
   };
 
   return (
@@ -585,7 +603,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                             value={code}
                           />
                         </div>
-                        <button className="admin-login-secondary px-4 text-sm" onClick={() => setCodeSent(true)} type="button">
+                        <button className="admin-login-secondary px-4 text-sm" onClick={requestCode} type="button">
                           {copy.sendCode}
                         </button>
                       </div>

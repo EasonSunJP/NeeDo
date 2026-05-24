@@ -9,7 +9,9 @@ import { roleBasedTabConfig } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useAuth } from "../../auth/AuthProvider";
-import { serviceCategories, services } from "../../data/mock";
+import { serviceCategories, services as legacyServices } from "../../data/mock";
+import { coreReadApi, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
@@ -587,6 +589,21 @@ function CurrentAppointmentFloatingButton({ count, latestOrder }: { count: numbe
   );
 }
 
+function HomeCoreReadState({
+  description,
+  title
+}: {
+  description: string;
+  title: string;
+}) {
+  return (
+    <div className="rounded-[22px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-6 text-center">
+      <p className="text-[15px] font-black text-[color:var(--client-text)]">{title}</p>
+      <p className="mt-2 text-[12px] leading-5 text-[color:var(--client-muted)]">{description}</p>
+    </div>
+  );
+}
+
 function loadDismissedReminder() {
   if (typeof window === "undefined") {
     return null;
@@ -630,7 +647,7 @@ function resolveStoreForOrder(order: Order, storeList: Store[], technicianList: 
 function resolveServiceForOrder(order: Order) {
   const orderText = normalizeText(order.itemName);
 
-  const scored = services
+  const scored = legacyServices
     .map((service) => {
       const categoryName = serviceCategories.find((item) => item.id === service.categoryId)?.name ?? "";
       const serviceTokens = [
@@ -670,10 +687,23 @@ export function HomePage() {
   const { config } = useHomeLayoutStore();
   const petSettings = useNeedoPetSettings();
   const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
-  const { customers, stores, technicians, revision: entityRevision } = useEntityStore();
+  const { customers, stores: legacyStores, technicians: legacyTechnicians, revision: entityRevision } = useEntityStore();
   const userOrders = useUserOrders();
   const currentCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
+  const homeRecommendationsQuery = useCoreReadQuery(() => coreReadApi.getHomeRecommendations({ limit: 12 }), []);
+  const apiServices = useMemo(
+    () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? [],
+    [homeRecommendationsQuery.data]
+  );
+  const apiStores = useMemo(
+    () => homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? [],
+    [homeRecommendationsQuery.data]
+  );
+  const apiTechnicians = useMemo(
+    () => homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? [],
+    [homeRecommendationsQuery.data]
+  );
   const [locationSheetOpen, setLocationSheetOpen] = useState(false);
   const [recommendationTab, setRecommendationTab] = useState<HomeRecommendationTabKey>(config.recommendation.defaultTab);
   const [now, setNow] = useState(() => new Date());
@@ -698,7 +728,7 @@ export function HomePage() {
   }, [dismissedReminder]);
 
   const nearbyTechnicians = useMemo(() => {
-    return [...technicians]
+    return [...apiTechnicians]
       .sort((left, right) => {
         const rightLocation = getLocationScore([...right.serviceAreas, ...right.skills, right.bio ?? ""], selectedLocation);
         const leftLocation = getLocationScore([...left.serviceAreas, ...left.skills, left.bio ?? ""], selectedLocation);
@@ -718,11 +748,11 @@ export function HomePage() {
         return right.reviewCount - left.reviewCount;
       })
       .slice(0, config.nearbyTechnician.limit);
-  }, [config.nearbyTechnician.limit, config.nearbyTechnician.sortBy, entityRevision, selectedLocation, technicians]);
+  }, [apiTechnicians, config.nearbyTechnician.limit, config.nearbyTechnician.sortBy, selectedLocation]);
 
   const recommendationStores = useMemo(
     () =>
-      [...stores].sort((left, right) => {
+      [...apiStores].sort((left, right) => {
         const rightLocation = getLocationScore([right.area, right.address, ...right.tags, right.description], selectedLocation);
         const leftLocation = getLocationScore([left.area, left.address, ...left.tags, left.description], selectedLocation);
 
@@ -736,12 +766,12 @@ export function HomePage() {
 
         return right.rating - left.rating;
       }),
-    [config.recommendation.tabs.stores.sortBy, entityRevision, selectedLocation, stores]
+    [apiStores, config.recommendation.tabs.stores.sortBy, selectedLocation]
   );
 
   const recommendationTechnicians = useMemo(
     () =>
-      [...technicians].sort((left, right) => {
+      [...apiTechnicians].sort((left, right) => {
         const rightLocation = getLocationScore([...right.serviceAreas, ...right.skills, right.bio ?? ""], selectedLocation);
         const leftLocation = getLocationScore([...left.serviceAreas, ...left.skills, left.bio ?? ""], selectedLocation);
 
@@ -755,12 +785,12 @@ export function HomePage() {
 
         return right.reviewCount - left.reviewCount;
       }),
-    [config.recommendation.tabs.technicians.sortBy, entityRevision, selectedLocation, technicians]
+    [apiTechnicians, config.recommendation.tabs.technicians.sortBy, selectedLocation]
   );
 
   const recommendationServices = useMemo(
     () =>
-      [...services].sort((left, right) => {
+      [...apiServices].sort((left, right) => {
         const rightLocation = getLocationScore([...right.serviceAreas, right.name, ...right.tags, right.summary], selectedLocation);
         const leftLocation = getLocationScore([...left.serviceAreas, left.name, ...left.tags, left.summary], selectedLocation);
 
@@ -774,7 +804,7 @@ export function HomePage() {
 
         return right.sales - left.sales;
       }),
-    [config.recommendation.tabs.services.sortBy, selectedLocation]
+    [apiServices, config.recommendation.tabs.services.sortBy, selectedLocation]
   );
 
   const serviceModuleItems = useMemo(
@@ -783,8 +813,9 @@ export function HomePage() {
         .filter((item) => item.enabled)
         .slice(0, 2)
         .map((moduleConfig) => {
+          const scopedServices = apiServices.filter((service) => moduleConfig.categoryIds.includes(service.categoryId));
           const matched = sortByLocation(
-            services.filter((service) => moduleConfig.categoryIds.includes(service.categoryId)),
+            scopedServices.length > 0 ? scopedServices : apiServices,
             (item) => [...item.serviceAreas, item.name, ...item.tags, item.summary],
             selectedLocation
           ).slice(0, moduleConfig.maxItems);
@@ -794,7 +825,7 @@ export function HomePage() {
             items: matched
           };
         }),
-    [config.serviceModules, selectedLocation]
+    [apiServices, config.serviceModules, selectedLocation]
   );
 
   const recommendationCards = useMemo<Record<HomeRecommendationTabKey, RecommendationCardData[]>>(
@@ -816,10 +847,10 @@ export function HomePage() {
         id: service.id,
         to: `/services/${service.id}`,
         service,
-        provider: resolveServiceProvider(service, stores, technicians, selectedLocation)
+        provider: resolveServiceProvider(service, apiStores, apiTechnicians, selectedLocation)
       }))
     }),
-    [entityRevision, recommendationServices, recommendationStores, recommendationTechnicians, selectedLocation, stores, technicians]
+    [apiStores, apiTechnicians, recommendationServices, recommendationStores, recommendationTechnicians, selectedLocation]
   );
 
   const currentRecommendationList = recommendationCards[recommendationTab];
@@ -897,10 +928,10 @@ export function HomePage() {
       order: closest.order,
       minutesUntil: closest.minutesUntil,
       startsAt: formatDateTimeLabel(closest.start),
-      store: resolveStoreForOrder(closest.order, stores, technicians),
+      store: resolveStoreForOrder(closest.order, legacyStores, legacyTechnicians),
       service: resolveServiceForOrder(closest.order)
     };
-  }, [config.reminder.enabled, config.reminder.triggerWindowMinutes, currentCustomer.id, entityRevision, now, stores, technicians, userOrders]);
+  }, [config.reminder.enabled, config.reminder.triggerWindowMinutes, currentCustomer.id, entityRevision, legacyStores, legacyTechnicians, now, userOrders]);
 
   useEffect(() => {
     if (!reminderState) {
@@ -940,6 +971,8 @@ export function HomePage() {
   );
 
   const performanceMetrics = config.platformMetrics.filter((item) => item.enabled);
+  const homeCoreLoading = homeRecommendationsQuery.loading;
+  const homeCoreError = homeRecommendationsQuery.error;
 
   return (
     <MobileShell>
@@ -1032,13 +1065,21 @@ export function HomePage() {
             value={recommendationTab}
           />
 
-          <div className="space-y-3">
-            {visibleRecommendationList.map((card) => (
-              <RecommendationCard data={card} key={`${recommendationTab}-${card.id}`} />
-            ))}
-          </div>
+          {homeCoreLoading ? (
+            <HomeCoreReadState description="正在从 /api/v1/home/recommendations 读取首页推荐。" title="正在载入真实推荐" />
+          ) : homeCoreError ? (
+            <HomeCoreReadState description={homeCoreError} title="推荐读取失败" />
+          ) : visibleRecommendationList.length > 0 ? (
+            <div className="space-y-3">
+              {visibleRecommendationList.map((card) => (
+                <RecommendationCard data={card} key={`${recommendationTab}-${card.id}`} />
+              ))}
+            </div>
+          ) : (
+            <HomeCoreReadState description="当前 API 暂无可展示的店铺、技师或服务推荐。" title="暂无推荐内容" />
+          )}
 
-          {shouldShowMore ? (
+          {!homeCoreLoading && !homeCoreError && shouldShowMore ? (
             <Link
               className="flex items-center justify-center gap-1 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] px-4 py-3 text-[14px] font-black text-[color:var(--client-text)]"
               to={config.recommendation.moreLinks[recommendationTab].to}
@@ -1056,16 +1097,26 @@ export function HomePage() {
             caption="根据当前定位优先排序，展示附近可预约或高评价技师。"
             title={config.nearbyTechnician.title}
           />
-          <div className="scrollbar-none flex gap-3 overflow-x-auto pb-1">
-            {nearbyTechnicians.map((technician) => (
-              <NearbyTechnicianCard key={technician.id} technician={technician} />
-            ))}
-          </div>
+          {homeCoreLoading ? (
+            <HomeCoreReadState description="正在读取真实技师列表。" title="正在载入附近技师" />
+          ) : homeCoreError ? (
+            <HomeCoreReadState description={homeCoreError} title="技师读取失败" />
+          ) : nearbyTechnicians.length > 0 ? (
+            <div className="scrollbar-none flex gap-3 overflow-x-auto pb-1">
+              {nearbyTechnicians.map((technician) => (
+                <NearbyTechnicianCard key={technician.id} technician={technician} />
+              ))}
+            </div>
+          ) : (
+            <HomeCoreReadState description="当前 API 暂无公开技师资料。" title="暂无技师" />
+          )}
         </section>
 
-        {serviceModuleItems.map(({ moduleConfig, items }) => (
-          <ServiceModule items={items} key={moduleConfig.id} location={selectedLocation} moduleConfig={moduleConfig} />
-        ))}
+        {!homeCoreLoading && !homeCoreError
+          ? serviceModuleItems.map(({ moduleConfig, items }) => (
+              items.length > 0 ? <ServiceModule items={items} key={moduleConfig.id} location={selectedLocation} moduleConfig={moduleConfig} /> : null
+            ))
+          : null}
 
         {config.platformMetricsVisible && performanceMetrics.length > 0 ? (
           <section className="py-1">
