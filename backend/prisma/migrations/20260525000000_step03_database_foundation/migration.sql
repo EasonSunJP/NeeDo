@@ -1,0 +1,2 @@
+-- Step 03 database foundation migration.
+-- No business tables are created in this step.

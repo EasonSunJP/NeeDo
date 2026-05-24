@@ -33,11 +33,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     message: { type: "string", enum: ["success"] },
                     data: {
                       type: "object",
-                      required: ["status", "service", "timestamp"],
+                      required: ["status", "service", "timestamp", "dependencies"],
                       properties: {
-                        status: { type: "string", enum: ["ok"] },
+                        status: { type: "string", enum: ["ok", "degraded"] },
                         service: { type: "string" },
-                        timestamp: { type: "string", format: "date-time" }
+                        timestamp: { type: "string", format: "date-time" },
+                        dependencies: {
+                          type: "object",
+                          required: ["redis"],
+                          properties: {
+                            redis: {
+                              type: "object",
+                              required: ["status"],
+                              properties: {
+                                status: { type: "string", enum: ["ok", "error"] },
+                                latencyMs: { type: "number" },
+                                message: { type: "string" }
+                              }
+                            }
+                          }
+                        }
                       }
                     }
                   }
