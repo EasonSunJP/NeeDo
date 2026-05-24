@@ -11,7 +11,7 @@ import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useAuth } from "../../auth/AuthProvider";
 import { serviceCategories, services } from "../../data/mock";
 import { useI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
@@ -163,6 +163,31 @@ function getQuickActionTitleClassName(title: string) {
   }
 
   return "line-clamp-2";
+}
+
+function getQuickActionTitle(id: string, sourceTitle: string, language: Language) {
+  const quickActionTitles: Record<string, Partial<Record<Language, string>>> = {
+    "nearby-technicians": {
+      "zh-Hant": "附近技師",
+      ja: "スタッフ探し",
+      en: "Find staff",
+      ko: "주변 기사 찾기"
+    },
+    "find-service": {
+      "zh-Hant": "查找服務",
+      ja: "サービス探し",
+      en: "Find services",
+      ko: "서비스 찾기"
+    },
+    "my-schedule": {
+      "zh-Hant": "我的行程",
+      ja: "スケジュール",
+      en: "My schedule",
+      ko: "내 일정"
+    }
+  };
+
+  return quickActionTitles[id]?.[language] ?? translateText(sourceTitle, language);
 }
 
 function ChevronIcon({ className }: { className?: string }) {
@@ -969,7 +994,7 @@ export function HomePage() {
         <section className="py-0.5">
           <div className="grid grid-cols-4 gap-2">
             {quickActionItems.map((item) => {
-              const title = translateText(item.title, language);
+              const title = getQuickActionTitle(item.id, item.title, language);
 
               return (
                 <Link
@@ -985,7 +1010,7 @@ export function HomePage() {
                   >
                     <AppIcon className="h-[18px] w-[18px]" name={item.icon} />
                   </span>
-                  <span className="flex min-h-[28px] w-full items-center justify-center overflow-hidden">
+                  <span className="flex min-h-[28px] w-full items-center justify-center overflow-hidden" data-no-i18n>
                     <span className={cn("w-full text-[12px] font-black leading-[14px] text-[color:var(--client-text)]", getQuickActionTitleClassName(title))}>
                       {title}
                     </span>

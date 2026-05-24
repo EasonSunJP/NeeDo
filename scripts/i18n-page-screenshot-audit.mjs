@@ -410,7 +410,7 @@ async function captureRoute(client, options) {
   await seedAuthForRoute(client, options.route);
   await client.send("Emulation.setDeviceMetricsOverride", viewportConfig);
   await navigate(client, `${options.baseUrl}/?i18n=${options.language}-${Date.now()}#${options.route}`);
-  await new Promise((resolve) => setTimeout(resolve, surface === "desktop" ? 1100 : 800));
+  await new Promise((resolve) => setTimeout(resolve, surface === "desktop" ? 1600 : 2200));
   const inspection = await inspectPage(client, options.language);
   const redirectedToLogin = !options.route.startsWith("/login") && inspection.hash.startsWith("#/login");
   const screenshot = await client.send("Page.captureScreenshot", { format: "png", fromSurface: true });

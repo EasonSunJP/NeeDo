@@ -15,6 +15,7 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-r
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { Button } from "../../components/ui/Button";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
+import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -204,9 +205,9 @@ const groupPrivacyCountdownLabels: Array<{ field: GroupPrivacyCountdownField; la
   { field: "minutes", label: "分钟", suffix: "分钟" }
 ];
 
-const groupPrivacyStartModeOptions: Array<{ value: ConversationDisappearingStartMode; label: string; caption: string }> = [
-  { value: "sent", label: "按发送时间", caption: "发出后立即倒计时" },
-  { value: "read_by_all", label: "全员看过后", caption: "所有成员已读后倒计时" }
+const groupPrivacyStartModeOptions: Array<{ value: ConversationDisappearingStartMode; label: string }> = [
+  { value: "sent", label: "按发送时间" },
+  { value: "read_by_all", label: "全员看过后" }
 ];
 
 function parseCountdownInput(input: GroupPrivacyCountdownInput): ConversationDisappearingCountdown {
@@ -6486,7 +6487,6 @@ export function ImConversationInfoPage() {
                           type="button"
                         >
                           <span className="block text-xs font-black">{option.label}</span>
-                          <span className="mt-0.5 block text-[10px] font-semibold opacity-75">{option.caption}</span>
                         </button>
                       );
                     })}
@@ -6818,6 +6818,7 @@ export function ImNewConversationPage() {
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
   const canCreateGroup = selectedIds.length > 0 && (!privacyModeEnabled || hasPrivacyCountdown);
   const privacyCountdownSummary = formatConversationDisappearingCountdown(privacyCountdown);
+  const privacyModeInfo = "开启后需设置对话消失倒计时";
   const visibleIndexLetters = useMemo(() => getVisibleIndexLetters(groupedContacts, { includeSymbolFallback: true }), [groupedContacts]);
   const sectionRefs = useRef<Partial<Record<ContactIndexLetter, HTMLDivElement | null>>>({});
   const indexBarRef = useRef<HTMLDivElement | null>(null);
@@ -7341,14 +7342,15 @@ export function ImNewConversationPage() {
           />
           <div className="pointer-events-auto relative mx-auto w-full min-w-0 max-w-[880px] space-y-3 overflow-x-hidden [overflow-x:clip]">
             <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 py-3 backdrop-blur-xl">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
                   <p className="text-[15px] font-black text-[color:var(--client-text)]">隐私模式</p>
-                  <p className="mt-1 truncate text-xs font-semibold text-[color:var(--client-muted)]">
-                    {privacyModeEnabled
-                      ? privacyCountdownSummary || "开启后需设置对话消失倒计时"
-                      : "关闭时群聊内容按普通聊天保留"}
-                  </p>
+                  <InfoTooltipTrigger
+                    content={privacyModeInfo}
+                    label="查看隐私模式说明"
+                    panelMode="tooltip"
+                    variant="client"
+                  />
                 </div>
                 <ToggleSwitch ariaLabel="是否开启隐私模式" checked={privacyModeEnabled} onChange={setPrivacyModeEnabled} size="md" />
               </div>
@@ -7391,7 +7393,6 @@ export function ImNewConversationPage() {
                           type="button"
                         >
                           <span className="block text-xs font-black">{option.label}</span>
-                          <span className="mt-0.5 block text-[10px] font-semibold opacity-75">{option.caption}</span>
                         </button>
                       );
                     })}
