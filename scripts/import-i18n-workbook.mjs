@@ -346,6 +346,23 @@ async function main() {
     throw new Error(`不同插页之间存在重复的简体中文主键：${crossSheetDuplicates.slice(0, 10).join(" / ")}`);
   }
 
+  for (const [zh, override] of approvedTranslationOverrides.entries()) {
+    if (globalSeen.has(zh)) {
+      continue;
+    }
+
+    workbook.entries.push({
+      sheetName: "approved-overrides",
+      zh,
+      "zh-Hant": "",
+      ja: "",
+      en: "",
+      ko: "",
+      ...override
+    });
+    globalSeen.add(zh);
+  }
+
   const block = buildTranslationBlock(workbook.entries);
   const source = await fs.readFile(sourceFile, "utf8");
   const updated = source.replace(

@@ -15,6 +15,7 @@
     "i18n:quality": "node scripts/i18n-quality-audit.mjs",
     "i18n:export": "node scripts/export-i18n-workbook.mjs",
     "i18n:import": "node scripts/import-i18n-workbook.mjs exports/i18n/needo-localization-workbook.xlsx",
+    "i18n:screenshots": "node scripts/i18n-page-screenshot-audit.mjs",
     "test": "vitest run"
   },
   "dependencies": {

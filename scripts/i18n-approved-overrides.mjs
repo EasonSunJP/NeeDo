@@ -354,7 +354,7 @@ export const approvedI18nTranslationOverrides = [
   ],
   [
     "经典蓝黑",
-    { "zh-Hant": "經典藍黑", ja: "クラシックブルーブラック", en: "Classic blue-black", ko: "클래식 블루 블랙" }
+    { "zh-Hant": "經典藍黑", ja: "ブルーブラック", en: "Blue-black", ko: "블루 블랙" }
   ],
   [
     "仍未安排技师",
@@ -926,5 +926,875 @@ export const approvedI18nTranslationOverrides = [
       en: "PC Smart Console notes",
       ko: "PC 스마트 콘솔 설명"
     }
+  ],
+  [
+    "NeeDo 用户端",
+    { "zh-Hant": "NeeDo 用戶端", ja: "NeeDo", en: "NeeDo", ko: "NeeDo" }
+  ],
+  [
+    "搜索服务、联系店铺、查看订单与继续聊天。",
+    {
+      "zh-Hant": "搜尋服務、聯絡店鋪、查看訂單並繼續聊天。",
+      ja: "サービス検索、店舗連絡、注文確認、チャットをまとめて行えます。",
+      en: "Search services, contact shops, check orders, and keep chatting.",
+      ko: "서비스 검색, 매장 문의, 주문 확인, 채팅을 한곳에서 진행합니다."
+    }
+  ],
+  [
+    "同步订单、排班、门店通讯录与经营动态。",
+    {
+      "zh-Hant": "同步訂單、排班、門店通訊錄與經營動態。",
+      ja: "注文、シフト、店舗連絡先、運営状況を同期します。",
+      en: "Sync orders, schedules, store contacts, and operations.",
+      ko: "주문, 근무표, 매장 연락처, 운영 현황을 동기화합니다."
+    }
+  ],
+  [
+    "正在进入",
+    { "zh-Hant": "正在進入", ja: "読み込み中", en: "Loading", ko: "불러오는 중" }
+  ],
+  [
+    "正在载入界面",
+    { "zh-Hant": "正在載入介面", ja: "画面を読み込み中", en: "Loading", ko: "화면을 불러오는 중" }
+  ],
+  [
+    "正在进入当前端口。",
+    { "zh-Hant": "正在進入目前入口。", ja: "画面を準備しています。", en: "Preparing this view.", ko: "화면을 준비하고 있습니다." }
+  ],
+  [
+    "启动页加载中",
+    { "zh-Hant": "啟動頁載入中", ja: "読み込み中", en: "Loading", ko: "불러오는 중" }
+  ],
+  [
+    "厨房、浴室、地面、除尘一站式整理，适合公寓日常维护。",
+    {
+      "zh-Hant": "廚房、浴室、地面與除塵一次整理，適合公寓日常維護。",
+      ja: "キッチン、浴室、床、ほこりをまとめて整える日常清掃です。",
+      en: "Kitchen, bathroom, floors, and dusting in one everyday apartment clean.",
+      ko: "주방, 욕실, 바닥, 먼지 제거를 한 번에 정리하는 일상 청소입니다."
+    }
+  ],
+  [
+    "覆盖日常保洁、修水管、退房清扫和固定周期维护，适合长期居住家庭。",
+    {
+      "zh-Hant": "涵蓋日常清潔、水管維修、退房清掃與定期維護，適合長住家庭。",
+      ja: "日常清掃、水回り修理、退去清掃、定期メンテまで対応。長期滞在のご家庭に。",
+      en: "Routine cleaning, plumbing fixes, move-out cleaning, and recurring maintenance for long-term homes.",
+      ko: "일상 청소, 배관 수리, 퇴실 청소, 정기 관리를 장기 거주 가정에 맞게 제공합니다."
+    }
+  ],
+  [
+    "覆盖修水管重点污渍与收纳归位。",
+    {
+      "zh-Hant": "涵蓋水管周邊重點污漬與收納復位。",
+      ja: "水回りの重点汚れと収納の片付けまで対応。",
+      en: "Covers key plumbing-area stains and putting storage back in order.",
+      ko: "배관 주변 주요 오염과 수납 정리까지 처리합니다."
+    }
+  ],
+  [
+    "覆盖肩颈、腰背、腿部。",
+    {
+      "zh-Hant": "涵蓋肩頸、腰背與腿部。",
+      ja: "肩首・腰背中・脚まで対応。",
+      en: "Covers shoulders, neck, lower back, and legs.",
+      ko: "어깨, 목, 허리, 등, 다리까지 케어합니다."
+    }
+  ],
+  [
+    "肩颈背部放松，适合久坐疲劳。",
+    {
+      "zh-Hant": "放鬆肩頸與背部，適合久坐疲勞。",
+      ja: "肩首と背中をほぐします。長時間座る方におすすめです。",
+      en: "Relieves the neck, shoulders, and back. Good for desk fatigue.",
+      ko: "어깨, 목, 등을 풀어 장시간 앉아 생긴 피로에 좋습니다."
+    }
+  ],
+  [
+    "以肩颈调理、睡眠放松和轻芳疗为主。预约前会先确认压力点、力度偏好、语言和付款方式，让到店或指定上门服务都能保持稳定节奏。",
+    {
+      "zh-Hant": "以肩頸調理、睡眠放鬆和輕芳療為主。預約前會先確認壓力點、力度偏好、語言和付款方式，讓到店或指定上門服務都能保持穩定節奏。",
+      ja: "肩首ケア、睡眠リラックス、軽いアロマが中心。予約前に気になる部位、力加減、言語、支払い方法を確認します。",
+      en: "Focused on neck and shoulder care, sleep relaxation, and light aromatherapy. Pressure points, preferred strength, language, and payment are confirmed before booking.",
+      ko: "어깨·목 케어, 수면 릴랙스, 가벼운 아로마가 중심입니다. 예약 전 압점, 강도, 언어, 결제 방법을 확인합니다."
+    }
+  ],
+  [
+    "我的同步日程",
+    { "zh-Hant": "我的同步行程", ja: "スケジュール", en: "Schedule", ko: "내 일정" }
+  ],
+  [
+    "评价入口未生成",
+    { "zh-Hant": "尚未產生評價入口", ja: "レビュー入口がありません", en: "Review link unavailable", ko: "리뷰 입구가 아직 없습니다" }
+  ],
+  [
+    "请先完成支付确认，再从账单页进入评价。",
+    {
+      "zh-Hant": "請先完成付款確認，再從帳單頁進入評價。",
+      ja: "支払い確認後、会計ページからレビューしてください。",
+      en: "Confirm payment first, then open the review from the bill page.",
+      ko: "결제 확인 후 청구서 페이지에서 리뷰를 작성하세요."
+    }
+  ],
+  [
+    "无法打开二维码",
+    { "zh-Hant": "無法開啟 QR 碼", ja: "QRコードを開けません", en: "Unable to open QR code", ko: "QR 코드를 열 수 없습니다" }
+  ],
+  [
+    "二维码已失效或不存在。",
+    { "zh-Hant": "QR 碼已失效或不存在。", ja: "QRコードが無効、または見つかりません。", en: "This QR code is inactive or unknown.", ko: "QR 코드가 만료되었거나 없습니다." }
+  ],
+  [
+    "会话不存在",
+    { "zh-Hant": "會話不存在", ja: "セッションが見つかりません", en: "Session not found", ko: "세션을 찾을 수 없습니다" }
+  ],
+  [
+    "请重新扫码进入店内点单。",
+    { "zh-Hant": "請重新掃碼進入店內點單。", ja: "もう一度スキャンして店内注文を開いてください。", en: "Scan again to open in-store ordering.", ko: "다시 스캔해 매장 주문을 열어 주세요." }
+  ],
+  [
+    "账单",
+    { "zh-Hant": "帳單", ja: "会計", en: "Bill", ko: "청구서" }
+  ],
+  [
+    "点单进度",
+    { "zh-Hant": "點單進度", ja: "注文状況", en: "Order status", ko: "주문 진행 상황" }
+  ],
+  [
+    "商品不存在",
+    { "zh-Hant": "商品不存在", ja: "商品が見つかりません", en: "Item not found", ko: "상품을 찾을 수 없습니다" }
+  ],
+  [
+    "最大 9 张图片，或 1 个视频。",
+    {
+      "zh-Hant": "最多 9 張圖片，或 1 支影片。",
+      ja: "画像は最大9枚、動画は1本まで。",
+      en: "Up to 9 images or 1 video.",
+      ko: "이미지는 최대 9장, 동영상은 1개까지 가능합니다."
+    }
+  ],
+  [
+    "谁可以看",
+    { "zh-Hant": "誰可以看", ja: "公開範囲", en: "Who can see this", ko: "공개 범위" }
+  ],
+  [
+    "谁可以评论",
+    { "zh-Hant": "誰可以評論", ja: "コメントできる人", en: "Who can comment", ko: "댓글 허용 범위" }
+  ],
+  [
+    "任何人",
+    { "zh-Hant": "任何人", ja: "誰でも", en: "Anyone", ko: "누구나" }
+  ],
+  [
+    "公共",
+    { "zh-Hant": "公開", ja: "公開", en: "Public", ko: "공개" }
+  ],
+  [
+    "暂无搜索结果",
+    { "zh-Hant": "暫無搜尋結果", ja: "検索結果はありません", en: "No search results", ko: "검색 결과 없음" }
+  ],
+  [
+    "当前范围暂时没有动态。可以切换到最新、关注或好友。",
+    {
+      "zh-Hant": "目前範圍暫無動態。可切換到最新、關注或好友。",
+      ja: "現在の範囲には投稿がありません。最新、フォロー、友達に切り替えられます。",
+      en: "No posts in this area yet. Try Latest, Following, or Friends.",
+      ko: "현재 범위에 게시물이 없습니다. 최신, 팔로잉, 친구로 바꿔 보세요."
+    }
+  ],
+  [
+    "当前范围内还没有命中动态。可以换更短的关键词，或切到最新、关注、好友范围再试。",
+    {
+      "zh-Hant": "目前範圍內沒有命中的動態。可換更短的關鍵字，或切到最新、關注、好友再試。",
+      ja: "該当する投稿はありません。短いキーワードにするか、最新・フォロー・友達で再検索してください。",
+      en: "No matching posts. Try a shorter keyword or switch to Latest, Following, or Friends.",
+      ko: "일치하는 게시물이 없습니다. 더 짧은 키워드나 최신, 팔로잉, 친구 범위로 다시 시도하세요."
+    }
+  ],
+  [
+    "关联商户",
+    { "zh-Hant": "關聯商戶", ja: "関連店舗", en: "Linked shop", ko: "연결된 매장" }
+  ],
+  [
+    "生日",
+    { "zh-Hant": "生日", ja: "誕生日", en: "Birthday", ko: "생일" }
+  ],
+  [
+    "加入日",
+    { "zh-Hant": "加入日", ja: "登録日", en: "Joined", ko: "가입일" }
+  ],
+  [
+    "提现审核",
+    { "zh-Hant": "提現審核", ja: "出金審査", en: "Withdrawal review", ko: "출금 심사" }
+  ],
+  [
+    "结算记录",
+    { "zh-Hant": "結算記錄", ja: "精算履歴", en: "Settlement history", ko: "정산 내역" }
+  ],
+  [
+    "管理和服务",
+    { "zh-Hant": "管理與服務", ja: "管理・サービス", en: "Management & service", ko: "관리 및 서비스" }
+  ],
+  [
+    "操作文档",
+    { "zh-Hant": "操作文件", ja: "運用ドキュメント", en: "Operations docs", ko: "운영 문서" }
+  ],
+  [
+    "推广计划管理",
+    { "zh-Hant": "推廣計畫管理", ja: "紹介プラン", en: "Plans", ko: "프로모션 플랜" }
+  ],
+  [
+    "客户服务支持",
+    { "zh-Hant": "客服支援", ja: "サポート", en: "Support", ko: "고객 지원" }
+  ],
+  [
+    "平台与商户总控",
+    { "zh-Hant": "平台與商戶總控", ja: "プラットフォーム・店舗管理", en: "Platform and merchant control", ko: "플랫폼 및 매장 관리" }
+  ],
+  [
+    "我的二维码",
+    { "zh-Hant": "我的 QR 碼", ja: "自分のQRコード", en: "My QR code", ko: "내 QR 코드" }
+  ],
+  [
+    "对方扫码后可以添加好友并开始聊天。",
+    {
+      "zh-Hant": "對方掃碼後可新增好友並開始聊天。",
+      ja: "相手がスキャンすると、友だち追加とチャット開始ができます。",
+      en: "The other person can scan this to add you and start chatting.",
+      ko: "상대가 스캔하면 친구 추가 후 채팅을 시작할 수 있습니다."
+    }
+  ],
+  [
+    "对方扫码后可以向我付款或发起收款确认。",
+    {
+      "zh-Hant": "對方掃碼後可向我付款或發起收款確認。",
+      ja: "相手がスキャンすると、支払いまたは支払い確認を開始できます。",
+      en: "The other person can scan this to pay me or confirm a payment.",
+      ko: "상대가 스캔하면 나에게 결제하거나 결제 확인을 시작할 수 있습니다."
+    }
+  ],
+  [
+    "付款用",
+    { "zh-Hant": "付款用", ja: "支払い", en: "Payment", ko: "결제용" }
+  ],
+  [
+    "去扫码",
+    { "zh-Hant": "去掃碼", ja: "再スキャン", en: "Scan again", ko: "다시 스캔" }
+  ],
+  [
+    "重新扫码",
+    { "zh-Hant": "重新掃碼", ja: "再スキャン", en: "Scan again", ko: "다시 스캔" }
+  ],
+  [
+    "最多 9 张图片，或 1 个视频。",
+    {
+      "zh-Hant": "最多 9 張圖片，或 1 支影片。",
+      ja: "画像は最大9枚、動画は1本まで。",
+      en: "Up to 9 images or 1 video.",
+      ko: "이미지는 최대 9장, 동영상은 1개까지 가능합니다."
+    }
+  ],
+  [
+    "点单 / オーダー",
+    { "zh-Hant": "點餐", ja: "注文", en: "Orders", ko: "주문" }
+  ],
+  [
+    "菜单 / メニュー",
+    { "zh-Hant": "菜單", ja: "メニュー", en: "Menu", ko: "메뉴" }
+  ],
+  [
+    "菜单数",
+    { "zh-Hant": "菜單數", ja: "メニュー数", en: "Menus", ko: "메뉴 수" }
+  ],
+  [
+    "单品",
+    { "zh-Hant": "單品", ja: "商品", en: "Items", ko: "단품" }
+  ],
+  [
+    "可售",
+    { "zh-Hant": "可售", ja: "販売中", en: "Available", ko: "판매 중" }
+  ],
+  [
+    "售罄",
+    { "zh-Hant": "售罄", ja: "売り切れ", en: "Sold out", ko: "품절" }
+  ],
+  [
+    "饭菜分类",
+    { "zh-Hant": "餐點分類", ja: "料理カテゴリ", en: "Food categories", ko: "음식 카테고리" }
+  ],
+  [
+    "分类可修改、增减；单品会按当前插页和分类展示。",
+    {
+      "zh-Hant": "分類可修改、增減；單品會依目前分頁與分類顯示。",
+      ja: "カテゴリは編集・追加できます。商品は現在のタブとカテゴリで表示されます。",
+      en: "Edit or add categories. Items appear under the current tab and category.",
+      ko: "카테고리를 수정하거나 추가할 수 있으며, 단품은 현재 탭과 카테고리에 따라 표시됩니다."
+    }
+  ],
+  [
+    "选择一个分类后，可以单独修改该分类名并追加新的单品。",
+    {
+      "zh-Hant": "選擇分類後，可單獨修改分類名稱並新增單品。",
+      ja: "カテゴリを選ぶと、名称編集と商品の追加ができます。",
+      en: "Select a category to rename it or add items.",
+      ko: "카테고리를 선택하면 이름을 수정하거나 단품을 추가할 수 있습니다."
+    }
+  ],
+  [
+    "酒单",
+    { "zh-Hant": "酒水單", ja: "ドリンク", en: "Drinks", ko: "음료" }
+  ],
+  [
+    "服务单",
+    { "zh-Hant": "服務單", ja: "サービス", en: "Services", ko: "서비스" }
+  ],
+  [
+    "扫码核销",
+    { "zh-Hant": "掃碼核銷", ja: "QR消込", en: "Scan to redeem", ko: "스캔 정산" }
+  ],
+  [
+    "核销",
+    { "zh-Hant": "核銷", ja: "消込", en: "Redeem", ko: "사용 처리" }
+  ],
+  [
+    "会员中心",
+    { "zh-Hant": "會員中心", ja: "会員センター", en: "Member center", ko: "회원 센터" }
+  ],
+  [
+    "会员中心说明",
+    { "zh-Hant": "會員中心說明", ja: "会員センターについて", en: "About member center", ko: "회원 센터 안내" }
+  ],
+  [
+    "有效会员",
+    { "zh-Hant": "有效會員", ja: "有効会員", en: "Active members", ko: "유효 회원" }
+  ],
+  [
+    "今日新增",
+    { "zh-Hant": "今日新增", ja: "本日の新規", en: "New today", ko: "오늘 신규" }
+  ],
+  [
+    "今日核销",
+    { "zh-Hant": "今日核銷", ja: "本日の消込", en: "Redeemed today", ko: "오늘 사용 처리" }
+  ],
+  [
+    "即将到期",
+    { "zh-Hant": "即將到期", ja: "期限間近", en: "Expiring soon", ko: "곧 만료" }
+  ],
+  [
+    "今日开卡",
+    { "zh-Hant": "今日開卡", ja: "本日の発行", en: "Cards opened today", ko: "오늘 카드 개설" }
+  ],
+  [
+    "今日充值",
+    { "zh-Hant": "今日儲值", ja: "本日のチャージ", en: "Top-ups today", ko: "오늘 충전" }
+  ],
+  [
+    "快捷动作",
+    { "zh-Hant": "快捷操作", ja: "クイック操作", en: "Quick actions", ko: "빠른 작업" }
+  ],
+  [
+    "开通会员",
+    { "zh-Hant": "開通會員", ja: "会員登録", en: "Open membership", ko: "회원 개설" }
+  ],
+  [
+    "会员充值",
+    { "zh-Hant": "會員儲值", ja: "会員チャージ", en: "Member top-up", ko: "회원 충전" }
+  ],
+  [
+    "3 张会员卡将在 7 天内到期",
+    {
+      "zh-Hant": "3 張會員卡將在 7 天內到期",
+      ja: "7日以内に期限切れになる会員カードが3件あります",
+      en: "3 membership cards expire within 7 days",
+      ko: "회원 카드 3장이 7일 이내 만료됩니다"
+    }
+  ],
+  [
+    "建议先通知高价值会员，并确认是否需要续卡或保留本金。",
+    {
+      "zh-Hant": "建議先通知高價值會員，並確認是否需要續卡或保留本金。",
+      ja: "まず優良会員へ通知し、更新または残高維持が必要か確認してください。",
+      en: "Notify high-value members first and confirm renewal or balance handling.",
+      ko: "우선 고가치 회원에게 알리고 갱신 또는 원금 보관 여부를 확인하세요."
+    }
+  ],
+  [
+    "推广链接",
+    { "zh-Hant": "推廣連結", ja: "紹介リンク", en: "Promotion links", ko: "홍보 링크" }
+  ],
+  [
+    "推广链接列表",
+    { "zh-Hant": "推廣連結列表", ja: "紹介リンク一覧", en: "Promotion links", ko: "홍보 링크 목록" }
+  ],
+  [
+    "短链",
+    { "zh-Hant": "短連結", ja: "短縮リンク", en: "Short link", ko: "단축 링크" }
+  ],
+  [
+    "落地页",
+    { "zh-Hant": "落地頁", ja: "LP", en: "Landing page", ko: "랜딩 페이지" }
+  ],
+  [
+    "渠道",
+    { "zh-Hant": "渠道", ja: "チャネル", en: "Channel", ko: "채널" }
+  ],
+  [
+    "首单",
+    { "zh-Hant": "首單", ja: "初回注文", en: "First order", ko: "첫 주문" }
+  ],
+  [
+    "操作",
+    { "zh-Hant": "操作", ja: "操作", en: "Actions", ko: "작업" }
+  ],
+  [
+    "启用",
+    { "zh-Hant": "啟用", ja: "有効化", en: "Enable", ko: "사용" }
+  ],
+  [
+    "创建链接",
+    { "zh-Hant": "建立連結", ja: "リンク作成", en: "Create link", ko: "링크 만들기" }
+  ],
+  [
+    "创建邀请码",
+    { "zh-Hant": "建立邀請碼", ja: "招待コード作成", en: "Create invite code", ko: "초대 코드 만들기" }
+  ],
+  [
+    "添加下级",
+    { "zh-Hant": "新增下級", ja: "下位追加", en: "Add downline", ko: "하위 추가" }
+  ],
+  [
+    "查看组织",
+    { "zh-Hant": "查看組織", ja: "組織を見る", en: "View organization", ko: "조직 보기" }
+  ],
+  [
+    "查看佣金",
+    { "zh-Hant": "查看佣金", ja: "手数料を見る", en: "View commissions", ko: "수수료 보기" }
+  ],
+  [
+    "上传素材",
+    { "zh-Hant": "上傳素材", ja: "素材アップロード", en: "Upload creatives", ko: "소재 업로드" }
+  ],
+  [
+    "语言切换",
+    { "zh-Hant": "語言切換", ja: "言語切替", en: "Language", ko: "언어 전환" }
+  ],
+  [
+    "UI切换",
+    { "zh-Hant": "UI 切換", ja: "UI切替", en: "UI theme", ko: "UI 전환" }
+  ],
+  [
+    "平台与商户综合",
+    { "zh-Hant": "平台與商戶綜合", ja: "プラットフォーム・店舗合算", en: "Platform + merchants", ko: "플랫폼 + 매장" }
+  ],
+  [
+    "佣金成本",
+    { "zh-Hant": "佣金成本", ja: "手数料コスト", en: "Commission cost", ko: "수수료 비용" }
+  ],
+  [
+    "归因 GMV",
+    { "zh-Hant": "歸因 GMV", ja: "帰属GMV", en: "Attributed GMV", ko: "귀속 GMV" }
+  ],
+  [
+    "风险冻结金额",
+    { "zh-Hant": "風險凍結金額", ja: "リスク凍結額", en: "Risk-frozen amount", ko: "리스크 동결 금액" }
+  ],
+  [
+    "今日点击",
+    { "zh-Hant": "今日點擊", ja: "本日のクリック", en: "Clicks today", ko: "오늘 클릭" }
+  ],
+  [
+    "今日扫码",
+    { "zh-Hant": "今日掃碼", ja: "本日のスキャン", en: "Scans today", ko: "오늘 스캔" }
+  ],
+  [
+    "今日注册",
+    { "zh-Hant": "今日註冊", ja: "本日の登録", en: "Registrations today", ko: "오늘 가입" }
+  ],
+  [
+    "有效注册",
+    { "zh-Hant": "有效註冊", ja: "有効登録", en: "Valid registrations", ko: "유효 가입" }
+  ],
+  [
+    "今日首单",
+    { "zh-Hant": "今日首單", ja: "本日の初回注文", en: "First orders today", ko: "오늘 첫 주문" }
+  ],
+  [
+    "平台收入",
+    { "zh-Hant": "平台收入", ja: "プラットフォーム収益", en: "Platform revenue", ko: "플랫폼 수익" }
+  ],
+  [
+    "新增用户",
+    { "zh-Hant": "新增用戶", ja: "新規ユーザー", en: "New users", ko: "신규 사용자" }
+  ],
+  [
+    "新增商户",
+    { "zh-Hant": "新增商戶", ja: "新規店舗", en: "New merchants", ko: "신규 매장" }
+  ],
+  [
+    "新增技师",
+    { "zh-Hant": "新增技師", ja: "新規スタッフ", en: "New staff", ko: "신규 기사" }
+  ],
+  [
+    "佣金支出",
+    { "zh-Hant": "佣金支出", ja: "手数料支出", en: "Commission spend", ko: "수수료 지출" }
+  ],
+  [
+    "预估返佣",
+    { "zh-Hant": "預估返佣", ja: "見込み手数料", en: "Estimated commission", ko: "예상 수수료" }
+  ],
+  [
+    "可结算返佣",
+    { "zh-Hant": "可結算返佣", ja: "精算可能手数料", en: "Payable commission", ko: "정산 가능 수수료" }
+  ],
+  [
+    "已结算返佣",
+    { "zh-Hant": "已結算返佣", ja: "精算済み手数料", en: "Settled commission", ko: "정산 완료 수수료" }
+  ],
+  [
+    "预算消耗率",
+    { "zh-Hant": "預算消耗率", ja: "予算消化率", en: "Budget used", ko: "예산 사용률" }
+  ],
+  [
+    "目标完成率",
+    { "zh-Hant": "目標完成率", ja: "目標達成率", en: "Target completion", ko: "목표 달성률" }
+  ],
+  [
+    "异常推广者",
+    { "zh-Hant": "異常推廣者", ja: "異常な紹介者", en: "Flagged promoters", ko: "이상 홍보자" }
+  ],
+  [
+    "异常订单",
+    { "zh-Hant": "異常訂單", ja: "異常注文", en: "Flagged orders", ko: "이상 주문" }
+  ],
+  [
+    "链接码QR",
+    { "zh-Hant": "連結碼 QR", ja: "リンク・コード・QR", en: "Links, codes & QR", ko: "링크/코드/QR" }
+  ],
+  [
+    "归因结算",
+    { "zh-Hant": "歸因結算", ja: "帰属・精算", en: "Attribution & settlement", ko: "귀속/정산" }
+  ],
+  [
+    "NDP 钱包",
+    { "zh-Hant": "NDP 錢包", ja: "NDPウォレット", en: "NDP wallet", ko: "NDP 지갑" }
+  ],
+  [
+    "产运后台",
+    { "zh-Hant": "產運後台", ja: "運用管理", en: "Ops admin", ko: "운영 관리" }
+  ],
+  [
+    "今晚有空档，可随时预约",
+    { "zh-Hant": "今晚有空檔，可隨時預約", ja: "今夜空きあり・すぐ予約可", en: "Open tonight; book anytime", ko: "오늘 밤 예약 가능" }
+  ],
+  [
+    "临时预约",
+    { "zh-Hant": "臨時預約", ja: "臨時予約", en: "short-notice booking", ko: "임시 예약" }
+  ],
+  [
+    "双人按摩",
+    { "zh-Hant": "雙人按摩", ja: "ペアマッサージ", en: "couples massage", ko: "2인 마사지" }
+  ],
+  [
+    "深度保洁",
+    { "zh-Hant": "深度清潔", ja: "大掃除", en: "Deep cleaning", ko: "심층 청소" }
+  ],
+  [
+    "周边活动较多",
+    { "zh-Hant": "周邊活動較多", ja: "周辺での利用が多く", en: "is my main area", ko: "주변 이용이 많고" }
+  ],
+  [
+    "下单前会先看动态里的现场图和用户反馈",
+    {
+      "zh-Hant": "下單前會先看動態裡的現場圖和用戶回饋",
+      ja: "予約前に投稿の写真とユーザーの声を確認します",
+      en: "I check feed photos and user feedback before booking",
+      ko: "예약 전 피드 사진과 사용자 후기를 먼저 확인합니다"
+    }
+  ],
+  [
+    "偏好在平台内保留完整记录。",
+    {
+      "zh-Hant": "偏好在平台內保留完整記錄。",
+      ja: "やり取りはアプリ内に残したいです。",
+      en: "I prefer to keep the full record in the app.",
+      ko: "전체 기록은 앱 안에 남기는 것을 선호합니다."
+    }
+  ],
+  [
+    "退出登录",
+    { "zh-Hant": "登出", ja: "ログアウト", en: "Log out", ko: "로그아웃" }
+  ],
+  [
+    "注销账号",
+    { "zh-Hant": "註銷帳號", ja: "退会", en: "Delete account", ko: "계정 삭제" }
+  ],
+  [
+    "退会",
+    { "zh-Hant": "退會", ja: "退会", en: "Close account", ko: "탈퇴" }
+  ],
+  [
+    "登录账号",
+    { "zh-Hant": "登入帳號", ja: "ログインアカウント", en: "Login account", ko: "로그인 계정" }
+  ],
+  [
+    "演示账号",
+    { "zh-Hant": "演示帳號", ja: "デモアカウント", en: "Demo account", ko: "데모 계정" }
+  ],
+  [
+    "选择一个分类后，可以单独修改该分类名称并追加新的单品。",
+    {
+      "zh-Hant": "選擇分類後，可單獨修改分類名稱並新增單品。",
+      ja: "カテゴリを選ぶと、名称編集と商品の追加ができます。",
+      en: "Select a category to rename it or add items.",
+      ko: "카테고리를 선택하면 이름을 수정하거나 단품을 추가할 수 있습니다."
+    }
+  ],
+  [
+    "类",
+    { "zh-Hant": "類", ja: "カテゴリ", en: "categories", ko: "카테고리" }
+  ],
+  [
+    "项",
+    { "zh-Hant": "項", ja: "件", en: "items", ko: "개" }
+  ],
+  [
+    "一个",
+    { "zh-Hant": "一個", ja: "1つの", en: "a", ko: "하나" }
+  ],
+  [
+    "可以",
+    { "zh-Hant": "可以", ja: "できます", en: "can", ko: "가능" }
+  ],
+  [
+    "炸鸡拼盘",
+    { "zh-Hant": "炸雞拼盤", ja: "唐揚げ盛り合わせ", en: "Fried chicken plate", ko: "가라아게 플레이트" }
+  ],
+  [
+    "适合 2-3 人共享，可描述酱汁。",
+    {
+      "zh-Hant": "適合 2-3 人共享，可描述醬汁。",
+      ja: "2〜3人でのシェア向け。ソースの説明を追加できます。",
+      en: "Serves 2-3. Add sauce notes if needed.",
+      ko: "2~3인이 나눠 먹기 좋으며 소스 설명을 추가할 수 있습니다."
+    }
+  ],
+  [
+    "限量",
+    { "zh-Hant": "限量", ja: "数量限定", en: "Limited", ko: "한정" }
+  ],
+  [
+    "最多 4 人",
+    { "zh-Hant": "最多 4 人", ja: "最大4名", en: "Up to 4 people", ko: "최대 4명" }
+  ],
+  [
+    "厨房",
+    { "zh-Hant": "廚房", ja: "キッチン", en: "Kitchen", ko: "주방" }
+  ],
+  [
+    "和牛汉堡",
+    { "zh-Hant": "和牛漢堡", ja: "和牛バーガー", en: "Wagyu burger", ko: "와규 버거" }
+  ],
+  [
+    "招牌汉堡，可加芝士和薯条。",
+    {
+      "zh-Hant": "招牌漢堡，可加起司和薯條。",
+      ja: "看板バーガー。チーズやポテトを追加できます。",
+      en: "Signature burger with optional cheese and fries.",
+      ko: "대표 버거이며 치즈와 감자튀김을 추가할 수 있습니다."
+    }
+  ],
+  [
+    "限时特价",
+    { "zh-Hant": "限時特價", ja: "期間限定価格", en: "Limited-time offer", ko: "기간 한정 특가" }
+  ],
+  [
+    "新增单品",
+    { "zh-Hant": "新增單品", ja: "商品を追加", en: "Add item", ko: "단품 추가" }
+  ],
+  [
+    "编辑单品",
+    { "zh-Hant": "編輯單品", ja: "商品を編集", en: "Edit item", ko: "단품 편집" }
+  ],
+  [
+    "保存单品",
+    { "zh-Hant": "儲存單品", ja: "商品を保存", en: "Save item", ko: "단품 저장" }
+  ],
+  [
+    "查看到期卡",
+    { "zh-Hant": "查看到期卡", ja: "期限切れ間近のカード", en: "View expiring cards", ko: "만료 예정 카드 보기" }
+  ],
+  [
+    "可按标签筛选沉默客，一键发送唤醒券。",
+    {
+      "zh-Hant": "可依標籤篩選沉默客，一鍵發送喚醒券。",
+      ja: "タグで休眠顧客を絞り込み、再来店クーポンを一括送信できます。",
+      en: "Filter inactive customers by tag and send win-back coupons in one tap.",
+      ko: "태그로 휴면 고객을 필터링하고 재방문 쿠폰을 한 번에 보낼 수 있습니다."
+    }
+  ],
+  [
+    "筛选老客",
+    { "zh-Hant": "篩選老客", ja: "既存客を絞り込む", en: "Filter returning customers", ko: "기존 고객 필터" }
+  ],
+  [
+    "2 笔退款申请",
+    { "zh-Hant": "2 筆退款申請", ja: "返金申請2件", en: "2 refund requests", ko: "환불 요청 2건" }
+  ],
+  [
+    "生成链接",
+    { "zh-Hant": "生成連結", ja: "リンク作成", en: "Create link", ko: "링크 생성" }
+  ],
+  [
+    "生成 QR",
+    { "zh-Hant": "生成 QR", ja: "QR作成", en: "Generate QR", ko: "QR 생성" }
+  ],
+  [
+    "素材中心",
+    { "zh-Hant": "素材中心", ja: "素材センター", en: "Creatives", ko: "소재 센터" }
+  ],
+  [
+    "对象：用户/技师/商户",
+    { "zh-Hant": "對象：用戶/技師/商戶", ja: "対象：ユーザー/スタッフ/店舗", en: "Audience: users/staff/merchants", ko: "대상: 사용자/기사/매장" }
+  ],
+  [
+    "渠道：LINE/X/TikTok/线下",
+    { "zh-Hant": "渠道：LINE/X/TikTok/線下", ja: "チャネル：LINE/X/TikTok/オフライン", en: "Channels: LINE/X/TikTok/offline", ko: "채널: LINE/X/TikTok/오프라인" }
+  ],
+  [
+    "语言：日/中/英/韩",
+    { "zh-Hant": "語言：日/中/英/韓", ja: "言語：日本語/中国語/英語/韓国語", en: "Language: JA/ZH/EN/KO", ko: "언어: 일본어/중국어/영어/한국어" }
+  ],
+  [
+    "状态：启用/暂停",
+    { "zh-Hant": "狀態：啟用/暫停", ja: "ステータス：有効/一時停止", en: "Status: active/paused", ko: "상태: 사용/일시 중지" }
+  ],
+  [
+    "风险：正常/观察",
+    { "zh-Hant": "風險：正常/觀察", ja: "リスク：通常/監視", en: "Risk: normal/watch", ko: "리스크: 정상/관찰" }
+  ],
+  [
+    "港区新客 500 NDP 海报",
+    { "zh-Hant": "港區新客 500 NDP 海報", ja: "港区新規向け500 NDPポスター", en: "Minato new-customer 500 NDP poster", ko: "미나토구 신규 고객 500 NDP 포스터" }
+  ],
+  [
+    "用途：店铺新客活动、达人探店",
+    {
+      "zh-Hant": "用途：店鋪新客活動、達人探店",
+      ja: "用途：店舗の新規集客、クリエイター来店紹介",
+      en: "Use: new-customer campaign and creator shop visits",
+      ko: "용도: 신규 고객 캠페인, 크리에이터 매장 방문"
+    }
+  ],
+  [
+    "规则命中明细",
+    { "zh-Hant": "規則命中明細", ja: "ルール検出詳細", en: "Rule hits", ko: "규칙 적중 상세" }
+  ],
+  [
+    "Afirieito 同步总览",
+    { "zh-Hant": "Afirieito 同步總覽", ja: "Afirieito同期概要", en: "Afirieito sync overview", ko: "Afirieito 동기화 개요" }
+  ],
+  [
+    "同步概要",
+    { "zh-Hant": "同步概要", ja: "同期概要", en: "Sync overview", ko: "동기화 개요" }
+  ],
+  [
+    "计划数据",
+    { "zh-Hant": "計畫資料", ja: "プランデータ", en: "Plan data", ko: "플랜 데이터" }
+  ],
+  [
+    "NDA管理后台",
+    { "zh-Hant": "NDA 管理後台", ja: "NDA管理画面", en: "NDA admin", ko: "NDA 관리자" }
+  ],
+  [
+    "商户自营",
+    { "zh-Hant": "商戶自營", ja: "店舗運用", en: "Merchant-owned", ko: "매장 자체 운영" }
+  ],
+  [
+    "状态同步",
+    { "zh-Hant": "狀態同步", ja: "ステータス同期", en: "Status sync", ko: "상태 동기화" }
+  ],
+  [
+    "配置镜像",
+    { "zh-Hant": "配置鏡像", ja: "設定ミラー", en: "Config mirror", ko: "설정 미러" }
+  ],
+  [
+    "计划规则",
+    { "zh-Hant": "計畫規則", ja: "プランルール", en: "Plan rules", ko: "플랜 규칙" }
+  ],
+  [
+    "佣金快照",
+    { "zh-Hant": "佣金快照", ja: "手数料スナップショット", en: "Commission snapshot", ko: "수수료 스냅샷" }
+  ],
+  [
+    "发布版本",
+    { "zh-Hant": "發布版本", ja: "公開バージョン", en: "Release version", ko: "배포 버전" }
+  ],
+  [
+    "组织层级",
+    { "zh-Hant": "組織層級", ja: "組織階層", en: "Org levels", ko: "조직 단계" }
+  ],
+  [
+    "权限",
+    { "zh-Hant": "權限", ja: "権限", en: "Permissions", ko: "권한" }
+  ],
+  [
+    "目标拆分",
+    { "zh-Hant": "目標拆分", ja: "目標配分", en: "Target split", ko: "목표 배분" }
+  ],
+  [
+    "素材渠道",
+    { "zh-Hant": "素材渠道", ja: "素材・チャネル", en: "Creatives & channels", ko: "소재/채널" }
+  ],
+  [
+    "素材库",
+    { "zh-Hant": "素材庫", ja: "素材ライブラリ", en: "Creative library", ko: "소재 라이브러리" }
+  ],
+  [
+    "线索",
+    { "zh-Hant": "線索", ja: "リード", en: "Leads", ko: "리드" }
+  ],
+  [
+    "入驻",
+    { "zh-Hant": "入駐", ja: "加盟", en: "Onboarding", ko: "입점" }
+  ],
+  [
+    "追踪记录",
+    { "zh-Hant": "追蹤記錄", ja: "追跡ログ", en: "Tracking log", ko: "추적 기록" }
+  ],
+  [
+    "曝光",
+    { "zh-Hant": "曝光", ja: "表示", en: "Impressions", ko: "노출" }
+  ],
+  [
+    "财务对账",
+    { "zh-Hant": "財務對帳", ja: "財務照合", en: "Finance reconciliation", ko: "재무 대사" }
+  ],
+  [
+    "结算批次",
+    { "zh-Hant": "結算批次", ja: "精算バッチ", en: "Settlement batches", ko: "정산 배치" }
+  ],
+  [
+    "冲正",
+    { "zh-Hant": "沖正", ja: "取消訂正", en: "Reversals", ko: "정정" }
+  ],
+  [
+    "钱包账本",
+    { "zh-Hant": "錢包帳本", ja: "ウォレット台帳", en: "Wallet ledger", ko: "지갑 원장" }
+  ],
+  [
+    "推广者收益",
+    { "zh-Hant": "推廣者收益", ja: "紹介者収益", en: "Promoter earnings", ko: "홍보자 수익" }
+  ],
+  [
+    "风控审计",
+    { "zh-Hant": "風控審計", ja: "リスク監査", en: "Risk audit", ko: "리스크 감사" }
+  ],
+  [
+    "风险事件",
+    { "zh-Hant": "風險事件", ja: "リスクイベント", en: "Risk events", ko: "리스크 이벤트" }
+  ],
+  [
+    "审计日志",
+    { "zh-Hant": "審計日誌", ja: "監査ログ", en: "Audit log", ko: "감사 로그" }
   ]
 ];

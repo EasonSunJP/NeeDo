@@ -358,7 +358,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   key={item.to}
                   to={item.to}
                 >
-                  <span className="admin-nav-icon mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[11px]">{item.icon}</span>
+                  <span aria-hidden="true" className="admin-nav-icon mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md text-[11px]" data-no-i18n>
+                    {item.icon}
+                  </span>
                   <span className="min-w-0">
                     <span className="block">{item.label}</span>
                     {item.children && (

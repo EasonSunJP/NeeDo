@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
 import { demoAuthAccount, useAuth } from "../../auth/AuthProvider";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
-import { resolveSystemLanguage } from "../../i18n/I18nProvider";
+import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import {
@@ -312,30 +312,6 @@ const qrCells = new Set([
   46, 48, 50, 52, 54, 55, 56, 58, 60, 62, 64, 66, 68, 69, 70, 72, 74, 76, 77, 78, 80
 ]);
 
-function getSystemLanguage(): Language {
-  if (typeof window === "undefined") {
-    return "zh";
-  }
-
-  return resolveSystemLanguage(window.navigator);
-}
-
-function useSystemLanguage() {
-  const [language, setLanguage] = useState<Language>(getSystemLanguage);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const syncLanguage = () => setLanguage(getSystemLanguage());
-    window.addEventListener("languagechange", syncLanguage);
-    return () => window.removeEventListener("languagechange", syncLanguage);
-  }, []);
-
-  return language;
-}
-
 function normalizeMode(value: string | null): LoginMode {
   if (value === "code" || value === "qr") {
     return value;
@@ -382,7 +358,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { canAccess, isAuthenticated, login, loginWithProvider, loginWithQr, loginWithVerificationCode, logout, session } = useAuth();
-  const language = useSystemLanguage();
+  const { language } = useI18n();
   const copy = adminLoginCopy[language];
   const config = backendLoginConfig[portal];
   const theme = useMemo(() => getInitialBackendLoginTheme(portal), [portal]);
