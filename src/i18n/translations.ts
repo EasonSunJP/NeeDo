@@ -816,7 +816,7 @@ export const translations: TranslationMap = {
   "保存视图": { "zh-Hant": "儲存視圖", ja: "保存ビュー", en: "Save View", ko: "저장 보기" },
   "保存头图": { "zh-Hant": "保存頭圖", ja: "ヘッダー画像を…", en: "Save header image", ko: "헤더 이미지 저장" },
   "保存为预设": { "zh-Hant": "保存為預設", ja: "プリセットとして保存", en: "Save as preset", ko: "프리셋으로 저장" },
-  "保存隐私设置": { "zh-Hant": "儲存隱私設定", ja: "プライバシー設定を保存", en: "Save privacy settings", ko: "개인정보 설정 저장" },
+  "保存隐私设置": { "zh-Hant": "儲存隱私設定", ja: "設定を保存", en: "Save privacy settings", ko: "개인정보 설정 저장" },
   "保存账号": {  },
   "保存职务名": {  },
   "保存自动化排班草稿": { "zh-Hant": "儲存自動化排班草稿", ja: "自動スケジュール設定の下書きを保存します", en: "Save the automated scheduling draft", ko: "자동 일정 예약 초안을 저장하세요" },
@@ -1504,7 +1504,8 @@ export const translations: TranslationMap = {
   "查找服务": { "zh-Hant": "查找服務", ja: "サービス探し", en: "Find services", ko: "서비스 찾기" },
   "查找服務": {  },
   "查找可用技师": {  },
-  "查找聊天内容": { "zh-Hant": "尋找聊天內容", ja: "チャットコンテンツを検索", en: "Search chat content", ko: "채팅 내용 검색" },
+  "查找聊天内容": { "zh-Hant": "尋找聊天內容", ja: "トークを検索", en: "Search chat content", ko: "채팅 내용 검색" },
+  "聊天快速搜索": { "zh-Hant": "聊天快速搜尋", ja: "トークをクイック検索", en: "Quick chat search", ko: "채팅 빠른 검색" },
   "茶点休息": { "zh-Hant": "茶點休息", ja: "ティーブレイク", en: "Tea break", ko: "티타임" },
   "差评": { "zh-Hant": "差評", ja: "否定的なレビュー", en: "Negative review", ko: "부정적인 리뷰" },
   "差评预警": { "zh-Hant": "差評預警", ja: "否定的なレビューに関する警告", en: "Negative review warning", ko: "부정적인 리뷰 경고" },
@@ -3894,7 +3895,7 @@ export const translations: TranslationMap = {
   "更新记录：技师工作清单已升级为可查看日周月经营面板": { "zh-Hant": "更新記錄：技師工作清單已升級為可查看日週月經營面板", ja: "更新ログ：スタッフ作業リストが、日次、週次、月次のパフォーマンスパネルにアップグレードされました。", en: "Update Log: The technician's work list has been upgraded to a daily, weekly, and monthly performance panel.", ko: "업데이트 로그: 기사의 작업 목록이 일별, 주별, 월별 성과 패널로 업그레이드되었습니다." },
   "更新记录：技师下一单用户卡已修复，并统一前台聊天命名": { "zh-Hant": "更新記錄：技師下一單用戶卡已修復，並統一前台聊天命名", ja: "更新履歴：スタッフ次回の注文のユーザーカードが修正され、フロントエンドのチャットの命名規則が標準化されました。", en: "Update Log: The technician's next order user card has been fixed, and the front-end chat naming has been standardized.", ko: "업데이트 로그: 기사의 다음 주문 사용자 카드 오류가 수정되었으며, 프런트엔드 채팅 명칭이 표준화되었습니다." },
   "更新记录：技师支付方式已改为多选": { "zh-Hant": "更新記錄：技師支付方式已改為多選", ja: "更新履歴：スタッフへの支払い方法が複数選択式に変更されました。", en: "Update Log: The payment method for technicians has been changed to multiple selections.", ko: "업데이트 내역: 기사 결제 방식이 복수 선택 방식으로 변경되었습니다." },
-  "更新记录：技师资料卡上的公开切换已移除，隐私模式统一改到编辑页里三选一设置": { "zh-Hant": "更新記錄：技師資料卡上的公開切換已移除，隱私模式統一改到編輯頁里三選一設置", ja: "更新履歴：スタッフプロフィールカードの公開設定が削除されましたプライバシーモードは、編集ページで3つのオプションのいず…", en: "Update Log: The public toggle on technician profile cards has been removed; privacy mode is now uniformly set as one of three options in the edit page.", ko: "업데이트 로그: 기사 프로필 카드에서 공개 설정 토글이 제거되었습니다 이제 개인 정보 보호 모드는 편집 페이지에서 세 가지 옵션 …" },
+  "更新记录：技师资料卡上的公开切换已移除，隐私模式统一改到编辑页里三选一设置": { "zh-Hant": "更新記錄：技師資料卡上的公開切換已移除，隱私模式統一改到編輯頁里三選一設置", ja: "更新履歴：スタッフプロフィールカードの公開設定が削除されましたプライベートモードは、編集ページで3つのオプションのいず…", en: "Update Log: The public toggle on technician profile cards has been removed; privacy mode is now uniformly set as one of three options in the edit page.", ko: "업데이트 로그: 기사 프로필 카드에서 공개 설정 토글이 제거되었습니다 이제 개인 정보 보호 모드는 편집 페이지에서 세 가지 옵션 …" },
   "更新记录：进入页版本号已升级为年月日时分格式，并更新到 ver：2604152110": { "zh-Hant": "更新記錄：進入頁版本號已升級為年月日時分格式，並更新至 ver：2604152110", ja: "更新履歴：ホームページのバージョン番号が年-月-日-時-分形式に変更され、バージョン番号が2604152110に更新されました。", en: "Update Log: The version number on the homepage has been upgraded to a year-month-day-hour-minute format and updated to ver: 2604152110", ko: "업데이트 로그: 홈페이지의 버전 번호가 연-월-일-시-분 형식으로 변경되어 ver: 2604152110으로 업데이트되었습니다." },
   "更新记录：进入页右上角已加入版本号显示": { "zh-Hant": "更新記錄：進入頁右上角已加入版本號顯示", ja: "更新履歴：ペー​​ジ右上隅にバージョン番号の表示機能を追加しました。", en: "Update Log: Version number display has been added to the upper right corner of the page.", ko: "업데이트 로그: 페이지 오른쪽 상단에 버전 번호 표시 기능이 추가되었습니다." },
   "更新记录：聊天窗口的顶部工具导航和输入区加号已删除，聊天主路径继续简化": { "zh-Hant": "更新記錄：聊天視窗的頂部工具導覽和輸入區加號已刪除，聊天主路徑繼續簡化", ja: "更新履歴：チャットウィンドウの入力エリアにあった上部のツールナビゲーションとプラス記号を削除しましたメインチャットの経…", en: "Update Log: The top tool navigation and plus sign in the input area of ​​the chat window have been removed; the main chat path has been further simplified.", ko: "업데이트 로그: 채팅창 입력 영역의 상단 도구 탐색 메뉴와 더하기 기호가 제거되었습니다. 메인 채팅 경로가 더욱 간소화되었습니다." },
@@ -5333,7 +5334,7 @@ export const translations: TranslationMap = {
   "仅你手动选择的对象可见，不向其关联联系人扩散。": { "zh-Hant": "僅你手動選擇的物件可見，不向其關聯聯絡人擴散。", ja: "これは、手動で選択したオブジェクトにのみ表示され、関連付けられた連絡先には反映されません。", en: "It is only visible to the objects you manually select, and does not spread to their associated contacts.", ko: "이 기능은 사용자가 직접 선택한 개체에만 표시되며, 해당 개체와 연결된 연락처에는 적용되지 않습니다." },
   "仅排这一天": { "zh-Hant": "僅排這一天", ja: "この日だけ", en: "Only this day", ko: "오직 오늘" },
   "仅群主可保存隐私设置": { "zh-Hant": "僅群主可儲存隱私設定", ja: "グループオーナーのみ保存可", en: "Only the owner can save privacy settings", ko: "그룹장만 개인정보 설정을 저장할 수 있습니다" },
-  "仅群主可编辑": { "zh-Hant": "僅群主可編輯", ja: "グループオーナーのみ編集可", en: "Owner only", ko: "그룹장만 편집 가능" },
+  "仅群主可编辑": { "zh-Hant": "僅群主可編輯", ja: "オーナーのみ編集可", en: "Owner only", ko: "그룹장만 편집 가능" },
   "仅上门": { "zh-Hant": "僅上門", ja: "ドアツードアサービスのみ", en: "Door-to-door service only", ko: "방문 배송 서비스만 제공합니다." },
   "仅首单": {  },
   "仅双方互相关注的好友可见。": { "zh-Hant": "僅雙方互相關注的好友可見。", ja: "相互フォローの友だちのみ表示されます。", en: "Visible only to mutual follows.", ko: "맞팔 친구만 볼 수 있습니다." },
@@ -7399,10 +7400,22 @@ export const translations: TranslationMap = {
   "確認": { ja: "確認する", en: "Confirm", ko: "확인하다" },
   "確認收到 / 申請更改": {  },
   "群成员": { "zh-Hant": "群組成員", ja: "グループメンバー", en: "Group members", ko: "그룹 구성원" },
+  "图片和视频": { "zh-Hant": "圖片和影片", ja: "画像および動画", en: "Images and videos", ko: "이미지 및 동영상" },
+  "音乐和音频": { "zh-Hant": "音樂和音訊", ja: "音楽とオーディオ", en: "Music and audio", ko: "음악 및 오디오" },
+  "交易": { "zh-Hant": "交易", ja: "取引", en: "Transactions", ko: "거래" },
+  "小程序": { "zh-Hant": "小程式", ja: "ミニプログラム", en: "Mini program", ko: "미니 프로그램" },
+  "频道": { "zh-Hant": "頻道", ja: "チャンネル", en: "Channel", ko: "채널" },
+  "从联系人卡片添加": { "zh-Hant": "從聯絡人卡片新增", ja: "連絡先カードから追加しました", en: "Added from contact card", ko: "연락처 카드에서 추가됨" },
+  "笔记": { "zh-Hant": "筆記", ja: "ノート", en: "Notes", ko: "노트" },
+  "商品和店铺": { "zh-Hant": "商品和店鋪", ja: "製品&ストア", en: "Products and stores", ko: "상품 및 매장" },
+  "礼物": { "zh-Hant": "禮物", ja: "ギフト", en: "Gift", ko: "선물" },
+  "贴纸": { "zh-Hant": "貼紙", ja: "ステッカー", en: "Sticker", ko: "스티커" },
   "群发": {  },
   "群发给这些标签": {  },
   "群公告": { ja: "グループからのお知らせ", en: "Group Announcement", ko: "그룹 공지" },
   "群公告编辑权限": { "zh-Hant": "群公告編輯權限", ja: "グループ公告の編集権限", en: "Announcement edit permission", ko: "공지 편집 권한" },
+  "群信息": { "zh-Hant": "群組資訊", ja: "グループ情報", en: "Group info", ko: "그룹 정보" },
+  "群情報": { ja: "グループ情報", en: "Group info", ko: "그룹 정보" },
   "群里主要同步门店、技师和近期优惠信息。": { "zh-Hant": "群組主要同步門市、技師和近期優惠資訊。", ja: "このグループは主に、店舗、スタッフ、最新のプロモーションの情報を共有しています。", en: "The group mainly shares information about stores, technicians, and recent promotions.", ko: "이 그룹은 주로 매장, 기사 및 최근 프로모션에 대한 정보를 공유합니다." },
   "群": { ja: "グループ", en: "Group", ko: "그룹" },
   "群聊": { ja: "グループチャット", en: "Group chat", ko: "그룹 채팅" },
@@ -7414,7 +7427,7 @@ export const translations: TranslationMap = {
   "群名和公告先让 Amy 控制，你可以只改自己的群昵称。": {  },
   "群内只同步当日排班、加钟和缺口响应。": { "zh-Hant": "群內只同步當日排班、加鐘和缺口響應。", ja: "このグループは、日々の勤務シフト、残業、および欠勤時の対応のみを同期します。", en: "The group only synchronizes the daily shift schedule, overtime, and gap response.", ko: "해당 그룹은 일일 근무 일정, 초과 근무 및 공백 대응만 동기화합니다." },
   "群体发送": {  },
-  "群主": { ja: "グループオーナー", en: "Group owner", ko: "그룹장" },
+  "群主": { ja: "オーナー", en: "Group owner", ko: "그룹장" },
   "群主未开放编辑": { "zh-Hant": "群主未開放編輯", ja: "グループオーナーが編集を許可していません", en: "The group owner has not allowed editing", ko: "그룹장이 편집을 허용하지 않았습니다" },
   "群资料设置已保存": { "zh-Hant": "群組資料設定已儲存", ja: "グループ情報設定を保存しました", en: "Group info settings saved", ko: "그룹 정보 설정이 저장되었습니다" },
   "群组": { "zh-Hant": "群組", ja: "グループ", en: "Group", ko: "그룹" },
@@ -8532,6 +8545,7 @@ export const translations: TranslationMap = {
   "説明": {  },
   "司机": {  },
   "私密": { ja: "プライベート", en: "Private", ko: "사적인" },
+  "プライベート 群情報隠れた": { ja: "プライベートグループのメッセージは非表示", en: "Private group messages are hidden", ko: "비공개 그룹 메시지가 숨겨졌습니다" },
   "私密测试：下次预约前要确认付款方式、担当语言、到达时间和取消规则。这个只在我的动态里可见。": {  },
   "私密群消息已隐藏": { "zh-Hant": "私密群訊息已隱藏", ja: "プライベートグループのメッセージは非表示", en: "Private group messages are hidden", ko: "비공개 그룹 메시지가 숨겨졌습니다" },
   "私密资料": { "zh-Hant": "私密資料", ja: "個人情報", en: "Private Information", ko: "개인 정보" },
@@ -9130,7 +9144,7 @@ export const translations: TranslationMap = {
   "退出并重新登录": { "zh-Hant": "登出並重新登入", ja: "ログアウトして再度ログ…", en: "Log out and log back in", ko: "로그아웃 후 다시 로그인…" },
   "退出登录": { "zh-Hant": "登出", ja: "ログアウト", en: "Log out", ko: "로그아웃" },
   "退出发帖页后自动保存到本地": { "zh-Hant": "退出發文頁後自動儲存到本地", ja: "投稿ページを終了した後、ローカルドライブに自動的に保存する", en: "Automatically save to local drive after exiting the posting page", ko: "게시글 작성 페이지를 종료한 후 자동으로 로컬 드라이브에 저장합니다." },
-  "退出群聊": { ja: "グループチャッ…", en: "Leave the group chat", ko: "그룹 채팅에서 …" },
+  "退出群聊": { ja: "グループ解散／退会", en: "Leave the group chat", ko: "그룹 채팅에서 나가기" },
   "退出账号": {  },
   "退会": { "zh-Hant": "退會", ja: "退会", en: "Close account", ko: "탈퇴" },
   "退会后将停止使用 NeeDoAfirieito 前端，并按法规要求保留必要记录。": {  },
@@ -9219,7 +9233,7 @@ export const translations: TranslationMap = {
   "完工拍照": { ja: "完成した写真", en: "Completed photo", ko: "완성된 사진" },
   "完工拍照验收": { "zh-Hant": "完工拍照驗收", ja: "プロジェクト完了、検査用の写真撮影", en: "Completed project, photos taken for inspection", ko: "프로젝트 완료 후, 검사를 위해 사진 촬영을 마쳤습니다." },
   "完工确认": { "zh-Hant": "完工確認", ja: "完了確認", en: "Completion Confirmation", ko: "완료 확인" },
-  "完全隐私模式": { "zh-Hant": "完全隱私模式", ja: "完全プライバシーモード", en: "Full privacy mode", ko: "완전 개인 정보 보호 모드" },
+  "完全隐私模式": { "zh-Hant": "完全隱私模式", ja: "完全プライベートモード", en: "Full privacy mode", ko: "완전 개인 정보 보호 모드" },
   "完整日程": { ja: "全スケジュール", en: "Full schedule", ko: "전체 일정" },
   "玩得很开心。心情恢复了。": {  },
   "晚班": { ja: "夜勤", en: "Night shift", ko: "야간 근무" },
@@ -9391,7 +9405,7 @@ export const translations: TranslationMap = {
   "文档要求先导入或复用历史模板，再继续设置时间、容量和通知；没有合适模板时再新建空白周期。": { ja: "履歴テンプレートを取り込むか再利用してから、時間・定員・通知を設定します。適切なテンプレートがない場合は空白周期を作成します。", en: "Import or reuse a history template first, then set times, capacity, and notifications. If none fits, create a blank cycle.", ko: "이전 템플릿을 가져오거나 재사용한 뒤 시간·정원·알림을 설정합니다. 적합한 템플릿이 없으면 빈 주기를 만듭니다." },
   "文档中心": {  },
   "文化日": {  },
-  "文件": { ja: "書類", en: "Document", ko: "문서" },
+  "文件": { ja: "ファイル", en: "File", ko: "파일" },
   "文件上传失败，请换一个文件再试。": {  },
   "文件我收到了，我先按这个内容继续往下处理。": { "zh-Hant": "文件我收到了，我先按這個內容繼續往下處理。", ja: "ファイルを受け取りました。内容に基づいて処理を進めます。", en: "I have received the file. I will continue processing it according to its contents.", ko: "파일을 받았습니다. 내용에 따라 처리를 진행하겠습니다." },
   "文件我收到了，这种场景我也能继续接。你想让我偏客服式、门店式，还是更像朋友一点的回法？": { "zh-Hant": "文件我收到了，這種場景我也能繼續接下去。你想讓我偏客服式、門店式，還是更像朋友一點的回法？", ja: "書類を受け取りましたこのような状況には引き続き対応可能より顧客サービス重視の、店舗での対応スタイルと、よりフレンドリーな対応スタイルのどちらをご希望でしょうか？", en: "I received the document, and I can continue to handle this kind of situation. Would you prefer me to respond in a more customer service-oriented, in-store style, or a more friendly way?", ko: "문서를 받았고, 이러한 상황은 제가 계속 처리할 수 있습니다 매장에서처럼 고객 서비스 중심의 응대 방식을 선호하시나요, 아니면 좀 더 친근한 방식으로 응대하는 것을 선호하…" },
@@ -9749,7 +9763,7 @@ export const translations: TranslationMap = {
   "消息 12": { "zh-Hant": "訊息 12", ja: "メッセージ12", en: "Message 12", ko: "메시지 12" },
   "消息、系统、预约与营销提醒统一集中在这里逐项控制。": { "zh-Hant": "訊息、系統、預約與行銷提醒統一集中在這裡逐項控制。", ja: "メッセージ、システム、予約、マーケティングリマインダーなどはすべてここで一元管理されます。", en: "Messages, systems, appointments, and marketing reminders are all centrally managed here.", ko: "메시지, 시스템, 약속 및 마케팅 알림은 모두 여기에서 중앙 집중식으로 관리됩니다." },
   "消息操作": { "zh-Hant": "訊息操作", ja: "メッセージ操作", en: "Message Operations", ko: "메시지 작업" },
-  "消息免打扰": { "zh-Hant": "訊息免打擾", ja: "邪魔しないでください", en: "Do Not Disturb", ko: "방해하지 마세요" },
+  "消息免打扰": { "zh-Hant": "訊息免打擾", ja: "通知をミュートする", en: "Mute notifications", ko: "알림 음소거" },
   "消息通讯": { "zh-Hant": "訊息通訊", ja: "メッセージ通信", en: "Message Communication", ko: "메시지 전달" },
   "消息通知": { "zh-Hant": "訊息通知", ja: "メッセージ通知", en: "Message notification", ko: "메시지 알림" },
   "消息与提醒": { "zh-Hant": "訊息與提醒", ja: "メッセージとアラート", en: "Messages and Alerts", ko: "메시지 및 알림" },
@@ -10626,6 +10640,8 @@ export const translations: TranslationMap = {
   "饮料": {  },
   "饮品建议": { "zh-Hant": "飲品建議", ja: "おすすめの飲み物", en: "Beverage Recommendations", ko: "음료 추천" },
   "隐藏": { "zh-Hant": "隱藏", ja: "隠れる", en: "Hide", ko: "숨다" },
+  "隐藏名称和资料": { "zh-Hant": "隱藏名稱和資料", ja: "名前とプロフィールを隠す", en: "Hide name and profile", ko: "이름과 프로필 숨기기" },
+  "查看隐藏名称和资料说明": { "zh-Hant": "查看隱藏名稱和資料說明", ja: "名前とプロフィール非表示の説明を見る", en: "View hide name and profile explanation", ko: "이름과 프로필 숨기기 설명 보기" },
   "隐藏技师昵称栏": { "zh-Hant": "隱藏技師暱稱欄", ja: "隠しスタッフニックネー…", en: "Hidden Independent technician Nic…", ko: "숨겨진 기사 별명 섹션" },
   "隐藏模块": { ja: "隐藏模块", en: "隐藏模块", ko: "隐藏模块" },
   "隐藏这个区块": { "zh-Hant": "隱藏這個區塊", ja: "このブロックを非表示にする", en: "Hide this block", ko: "이 블록을 숨기세요" },
@@ -10633,10 +10649,12 @@ export const translations: TranslationMap = {
   "隐私": { "zh-Hant": "隱私", ja: "プライバシー", en: "Privacy", ko: "은둔" },
   "隐私感更强，适合长时间护理或深度放松。": { "zh-Hant": "隱私感更強，適合長時間護理或深度放鬆。", ja: "より高いプライバシーが確保でき、長期療養や深いリラクゼーションに適しています。", en: "It offers greater privacy and is suitable for extended care or deep relaxation.", ko: "이곳은 더 큰 프라이버시를 제공하며 장기적인 간호나 깊은 휴식에 적합합니다." },
   "隐私模式": { "zh-Hant": "隱私模式", ja: "プライベートモード", en: "Privacy mode", ko: "개인정보 보호 모드" },
-  "隐私模式设置已保存": { "zh-Hant": "隱私模式設定已儲存", ja: "プライバシーモード設定を保存しました", en: "Privacy mode settings saved", ko: "개인정보 모드 설정이 저장되었습니다" },
-  "隐私模式以外发送的信息不会被加入消失倒计时。": { "zh-Hant": "隱私模式以外傳送的訊息不會被加入消失倒數。", ja: "プライバシーモード以外で送信したメッセージは消失カウントダウンに入りません。", en: "Messages sent outside privacy mode are not added to the disappearing countdown.", ko: "개인정보 모드 밖에서 보낸 메시지는 사라짐 카운트다운에 포함되지 않습니다." },
+  "隐私模式设置已保存": { "zh-Hant": "隱私模式設定已儲存", ja: "プライベートモード設定を保存しました", en: "Privacy mode settings saved", ko: "개인정보 모드 설정이 저장되었습니다" },
+  "隐私模式以外发送的信息不会被加入消失倒计时。": { "zh-Hant": "隱私模式以外傳送的訊息不會被加入消失倒數。", ja: "プライベートモード以外で送信したメッセージは消失カウントダウンに入りません。", en: "Messages sent outside privacy mode are not added to the disappearing countdown.", ko: "개인정보 모드 밖에서 보낸 메시지는 사라짐 카운트다운에 포함되지 않습니다." },
   "隐私与安全": { "zh-Hant": "隱私與安全", ja: "プライバシーとセキュリティ", en: "Privacy and security", ko: "개인정보 보호 및 보안" },
   "隐私政策": { "zh-Hant": "隱私政策", ja: "個人情報保護方針", en: "Privacy Policy", ko: "개인정보 처리방침" },
+  "名字会变为用户，个人资料将不再显示。": { "zh-Hant": "名字會變為使用者，個人資料將不再顯示。", ja: "名前はユーザーに変更され、プロフィールが表示されなくなります。", en: "Names become users, and profiles will no longer be shown.", ko: "이름이 사용자로 바뀌고 프로필이 더 이상 표시되지 않습니다." },
+  "是否隐藏成员名称和资料": { "zh-Hant": "是否隱藏成員名稱和資料", ja: "名前とプロフィールを隠すか", en: "Hide member names and profiles", ko: "멤버 이름과 프로필을 숨길지 여부" },
   "应付金额": { "zh-Hant": "應付金額", ja: "支払金額", en: "Amount Payable", ko: "지불금액" },
   "应结": { "zh-Hant": "應結", ja: "結論は", en: "The conclusion should be", ko: "결론은 다음과 같아야 합니다." },
   "应结算": { "zh-Hant": "應結算", ja: "決済", en: "Settlement", ko: "합의" },
@@ -11738,7 +11756,7 @@ export const translations: TranslationMap = {
   "只有命中所选标签的人群可以看到。": {  },
   "只有你自己可以修改自己的群昵称。": { "zh-Hant": "只有你自己可以修改自己的群暱稱。", ja: "自分のグループニックネームは自分だけが変更できます。", en: "Only you can change your own group nickname.", ko: "자신의 그룹 별명은 본인만 변경할 수 있습니다." },
   "只有启用中的会员卡可以冻结": {  },
-  "只有群主可以开启或关闭隐私模式": { "zh-Hant": "只有群主可以開啟或關閉隱私模式", ja: "グループオーナーのみプライバシーモードをオン/オフできます", en: "Only the group owner can turn privacy mode on or off", ko: "그룹장만 개인정보 모드를 켜거나 끌 수 있습니다" },
+  "只有群主可以开启或关闭隐私模式": { "zh-Hant": "只有群主可以開啟或關閉隱私模式", ja: "グループオーナーのみプライベートモードをオン/オフできます", en: "Only the group owner can turn privacy mode on or off", ko: "그룹장만 개인정보 모드를 켜거나 끌 수 있습니다" },
   "只有双方互相关注的好友可以评论。": {  },
   "只允许指定用户、技师或店铺账号查看。": {  },
   "只展示已有事件，列表更紧凑。": { "zh-Hant": "只展示已有事件，清單更緊湊。", ja: "既存のイベントのみが表示されるため、リストがよりコンパクトになります。", en: "Only existing events are displayed, making the list more compact.", ko: "현재 진행 중인 이벤트만 표시되어 목록이 더욱 간결해집니다." },
@@ -11810,7 +11828,7 @@ export const translations: TranslationMap = {
   "置顶到主页": { "zh-Hant": "置頂到首頁", ja: "ホームページにピン留め…", en: "Pin to homepage", ko: "홈페이지에 고정" },
   "置顶动态": { "zh-Hant": "置頂動態", ja: "固定投稿", en: "Pinned Post", ko: "고정 게시물" },
   "置顶后会优先固定在会话列表顶部。": { "zh-Hant": "置頂後會優先固定在會話清單頂部。", ja: "一度ピン留めされると、優先順位が高くなり、会話リストの最上位に固定されます。", en: "Once pinned, it will be prioritized and fixed at the top of the conversation list.", ko: "일단 고정되면 해당 대화는 우선 순위가 부여되어 대화 목록의 맨 위에 고정됩니다." },
-  "置顶聊天": { "zh-Hant": "置頂聊天", ja: "ピン留めされたチャット", en: "Pinned Chat", ko: "고정된 채팅" },
+  "置顶聊天": { "zh-Hant": "置頂聊天", ja: "一番上に表示する", en: "Show at the top", ko: "맨 위에 표시" },
   "置顶信息": { "zh-Hant": "置頂訊息", ja: "ピン留めされたメッセージ", en: "Pinned message", ko: "고정 메시지" },
   "置信": { ja: "置信", en: "置信", ko: "置信" },
   "中班": { ja: "中流階級", en: "Middle Class", ko: "중급" },
@@ -13071,6 +13089,33 @@ function translateDynamicReviewCount(core: string, language: Language): string |
   return null;
 }
 
+function translateDisappearingCountdownDuration(duration: string, language: Language) {
+  if (language !== "ja") {
+    return translateText(duration, language);
+  }
+
+  return duration
+    .replace(/(\d[\d,]*)\s*分钟/gu, "$1分")
+    .replace(/(\d[\d,]*)\s*小时/gu, "$1時間")
+    .replace(/(\d[\d,]*)\s*日/gu, "$1日")
+    .replace(/(\d[\d,]*)\s*月/gu, "$1か月");
+}
+
+function translateGroupPrivacyCountdownStatus(core: string, language: Language): string | null {
+  const match = core.match(/^(.+)后对话消失 · (按发送时间开始倒计时|全员看过后开始倒计时)$/u);
+
+  if (!match || language !== "ja") {
+    return null;
+  }
+
+  const [, durationSource, startModeSource] = match;
+  const duration = translateDisappearingCountdownDuration(durationSource, language);
+
+  return startModeSource === "全员看过后开始倒计时"
+    ? `全員既読後の${duration}後に会話が消えます`
+    : `送信後の${duration}後に会話が消えます`;
+}
+
 const englishMonthNames = [
   "January",
   "February",
@@ -13662,7 +13707,8 @@ const manualI18nCorrectionLocks: Partial<Record<TargetLanguage, Array<[string | 
     ["事業者", "店舗"],
     ["販売業者", "店舗"],
     ["マーチャント", "店舗"],
-    ["商人", "店舗"]
+    ["商人", "店舗"],
+    [new RegExp("\\u30d7\\u30e9\\u30a4\\u30d0\\u30b7\\u30fc\\u30e2\\u30fc\\u30c9", "gu"), "プライベートモード"]
   ]
 };
 
@@ -13764,6 +13810,12 @@ export function translateText(source: string, language: Language): string {
 
   if (dynamicReviewCount) {
     return `${leading}${cleanupRuntimeTranslation(dynamicReviewCount, language)}${trailing}`;
+  }
+
+  const dynamicGroupPrivacyCountdownStatus: string | null = translateGroupPrivacyCountdownStatus(core, language);
+
+  if (dynamicGroupPrivacyCountdownStatus) {
+    return `${leading}${cleanupRuntimeTranslation(dynamicGroupPrivacyCountdownStatus, language)}${trailing}`;
   }
 
   const translated = Object.entries(translations)

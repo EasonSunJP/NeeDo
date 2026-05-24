@@ -161,11 +161,12 @@ export function UnifiedPinnedConversationDivider({ onClick }: { onClick: () => v
   );
 }
 
-function GroupAvatarMarker() {
+function GroupConversationAvatar({ title }: { title: string }) {
   return (
     <span
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[var(--avatar-radius)] bg-[color:color-mix(in_srgb,var(--client-bg)_18%,transparent)] text-[color:var(--client-primary)]"
+      aria-label={`${title} グループ`}
+      className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-[var(--avatar-radius)] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,var(--client-surface))] text-[color:var(--client-primary)]"
+      role="img"
     >
       <svg className="h-9 w-9" fill="none" viewBox="0 0 32 32">
         <circle cx="16" cy="9.2" r="4.9" stroke="currentColor" strokeWidth="2.8" />
@@ -259,14 +260,17 @@ export function UnifiedConversationItem({
       <div className="py-3.5">
         <div className="flex items-start gap-3">
           <div className="relative shrink-0">
-            <InteractiveAvatar
-              alt={title}
-              className="h-14 w-14 border border-[color:color-mix(in_srgb,var(--client-line)_40%,transparent)]"
-              src={avatar}
-              stopPropagation
-              to={avatarTo}
-            />
-            {group ? <GroupAvatarMarker /> : null}
+            {group ? (
+              <GroupConversationAvatar title={title} />
+            ) : (
+              <InteractiveAvatar
+                alt={title}
+                className="h-14 w-14 border border-[color:color-mix(in_srgb,var(--client-line)_40%,transparent)]"
+                src={avatar}
+                stopPropagation
+                to={avatarTo}
+              />
+            )}
           </div>
 
           {body}

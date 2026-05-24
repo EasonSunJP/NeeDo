@@ -99,6 +99,7 @@ import {
   buildMediaBuckets,
   buildTimeSeparatedMessages,
   formatConversationTime,
+  getAnonymousGroupMemberIdentity,
   getConversationById,
   getConversationMember,
   getDisplayName,
@@ -146,6 +147,21 @@ import type { ServiceItem, Store, Technician } from "../../types/domain";
 
 function buildContactCaption(user?: ImUser, _contact?: ContactRelation) {
   return getImContactSignatureCaption(user);
+}
+
+function escapeSvgText(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildAnonymousGroupAvatarDataUrl(code: string) {
+  const safeCode = escapeSvgText(code);
+  const fontSize = safeCode.length > 1 ? 32 : 42;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="30" fill="#20313a"/><rect x="5" y="5" width="86" height="86" rx="27" fill="#a9ff2f" opacity="0.14"/><text x="48" y="57" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="${fontSize}" font-weight="900" fill="#a9ff2f">${safeCode}</text></svg>`;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
 function getAddStaffMode(value?: string | null): "fullTime" | "partTime" {
@@ -211,6 +227,29 @@ const groupPrivacyStartModeOptions: Array<{ value: ConversationDisappearingStart
   { value: "read_by_all", label: "全员看过后" }
 ];
 const minimumGroupMemberCount = 2;
+
+export const imConversationQuickSearchItems: Array<{
+  key: string;
+  label: string;
+  query: string;
+  icon: Parameters<typeof ImIcon>[0]["name"];
+}> = [
+  { key: "members", label: "群成员", query: "群成员", icon: "group" },
+  { key: "date", label: "日", query: "日期", icon: "calendar" },
+  { key: "media", label: "图片和视频", query: "图片 视频", icon: "photo" },
+  { key: "file", label: "文件", query: "文件", icon: "file" },
+  { key: "url", label: "URL", query: "URL", icon: "link" },
+  { key: "audio", label: "音乐和音频", query: "音乐 音频 语音", icon: "mic" },
+  { key: "transaction", label: "交易", query: "交易 收款 付款", icon: "payment" },
+  { key: "mini-program", label: "小程序", query: "小程序", icon: "service" },
+  { key: "channel", label: "频道", query: "频道", icon: "video" },
+  { key: "contact-card", label: "从联系人卡片添加", query: "名片 联系人卡片", icon: "card" },
+  { key: "location", label: "地点", query: "位置 地点", icon: "location" },
+  { key: "note", label: "笔记", query: "笔记 备注", icon: "edit" },
+  { key: "product-store", label: "商品和店铺", query: "商品 店铺", icon: "tag" },
+  { key: "gift", label: "礼物", query: "礼物", icon: "emoji" },
+  { key: "sticker", label: "贴纸", query: "贴纸 表情", icon: "emoji" }
+];
 
 function parseCountdownInput(input: GroupPrivacyCountdownInput): ConversationDisappearingCountdown {
   return {
@@ -1291,8 +1330,6 @@ const contactSectionScrollMargin = "calc(env(safe-area-inset-top) + 5rem)";
 const contactIndexBottomGutter = "calc(6rem + env(safe-area-inset-bottom))";
 const contactIndexFixedRight = "max(0.5rem, calc((100vw - min(100vw, 880px)) / 2 + 0.5rem))";
 const contactIndexFixedBottom = "calc(7.5rem + env(safe-area-inset-bottom))";
-const groupIndexBottomGutter = "calc(8rem + env(safe-area-inset-bottom))";
-const groupIndexFixedBottom = "calc(8.75rem + env(safe-area-inset-bottom))";
 const contactIndexBarClassName =
   "pointer-events-auto max-h-full touch-none select-none overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] px-1 py-2 shadow-[0_8px_18px_color-mix(in_srgb,var(--client-text)_10%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] backdrop-blur-xl";
 
@@ -3451,59 +3488,61 @@ export function ImSearchPage() {
     };
   }, [conversationId, deferredQuery, scope, store.search, store.usersById]);
 
+  const startQuickSearch = (queryValue: string) => {
+    setQuery(queryValue);
+    store.rememberSearchTerm(queryValue);
+  };
+
   return (
     <ImStandaloneShell>
-      <div className="safe-header-top fixed inset-x-0 top-0 z-40 border-b border-black/5 bg-[#f6f6f6]/95 backdrop-blur">
-        <div className="mx-auto w-full max-w-[880px] px-4 pb-3">
-          <FloatingBackButton onClick={() => navigate(-1)} />
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1 pl-[56px] sm:pl-[60px]">
+      <div className="min-h-dvh bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
+        <div className="safe-header-top fixed inset-x-0 top-0 z-40 bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] backdrop-blur-xl">
+          <div className="mx-auto flex w-full max-w-[880px] items-center gap-3 px-4 pb-3">
+            <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-[6px] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg))] px-3 text-[color:var(--client-muted)]">
+              <ImIcon className="h-4 w-4 shrink-0" name="search" />
               <input
-                className="h-10 w-full rounded-xl bg-[#efefef] px-4 text-[15px] outline-none"
+                className="h-full min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:color-mix(in_srgb,var(--client-muted)_74%,transparent)]"
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     store.rememberSearchTerm(query);
                   }
                 }}
-                placeholder={conversationId ? "搜索当前聊天内容" : "搜索联系人、群聊、消息"}
+                placeholder="搜索"
                 value={query}
               />
-            </div>
+            </label>
+            <button className="shrink-0 px-1 text-sm font-black text-[color:color-mix(in_srgb,var(--client-primary)_82%,var(--client-text))]" onClick={() => navigate(-1)} type="button">
+              取消
+            </button>
           </div>
         </div>
-      </div>
-      <div aria-hidden="true" className="h-[calc(env(safe-area-inset-top)+5rem)]" />
+        <div aria-hidden="true" className="h-[calc(env(safe-area-inset-top)+5rem)]" />
 
-      {!searching ? (
-        <div className="space-y-4 px-4 py-4">
-          <section className="rounded-[24px] bg-white p-4 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium text-ink/65">最近搜索</h3>
-              {store.ui.searchHistory.length > 0 ? <button className="text-xs text-ink/35" onClick={() => store.clearSearchHistory()} type="button">清空</button> : null}
+        {!searching ? (
+          <div className="mx-auto w-full max-w-[880px] px-7 pt-16">
+            <p className="text-center text-sm font-black text-[color:color-mix(in_srgb,var(--client-text)_76%,var(--client-muted))]">聊天快速搜索</p>
+            <div className="mt-9 grid grid-cols-3 gap-y-8">
+              {imConversationQuickSearchItems.map((item, index) => (
+                <button
+                  className={cn(
+                    "flex min-h-[78px] flex-col items-center justify-center gap-2 px-3 text-center text-[13px] font-black leading-5 text-[color:color-mix(in_srgb,var(--client-primary)_52%,var(--client-muted))] transition hover:text-[color:var(--client-primary)]",
+                    index % 3 === 2 ? "" : "border-r border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)]"
+                  )}
+                  key={item.key}
+                  onClick={() => startQuickSearch(item.query)}
+                  type="button"
+                >
+                  <ImIcon className="h-5 w-5" name={item.icon} />
+                  <span className="max-w-[7.5em] break-words">{item.label}</span>
+                </button>
+              ))}
             </div>
-            {store.ui.searchHistory.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {store.ui.searchHistory.map((item) => (
-                  <button
-                    className="rounded-full bg-[#f2f5f3] px-3 py-2 text-sm text-[#31584b]"
-                    key={item}
-                    onClick={() => setQuery(item)}
-                    type="button"
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-ink/42">还没有搜索历史，输入关键词后会保留最近 8 条。</p>
-            )}
-          </section>
-        </div>
-      ) : (
-        <div className="space-y-4 px-4 py-4">
+          </div>
+        ) : (
+          <div className="mx-auto w-full max-w-[880px] space-y-4 px-4 py-4">
           {result.contacts.length > 0 ? (
-            <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+            <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>联系人</SectionTag>
               {result.contacts.map((contact) => {
                 const user = store.usersById[contact.targetUserId];
@@ -3514,7 +3553,7 @@ export function ImSearchPage() {
           ) : null}
 
           {result.conversations.length > 0 ? (
-            <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+            <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>会话</SectionTag>
               {result.conversations.map((conversation) => (
                 <ConversationRow
@@ -3534,17 +3573,17 @@ export function ImSearchPage() {
           ) : null}
 
           {result.messages.length > 0 ? (
-            <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
+            <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
               <SectionTag>聊天记录</SectionTag>
               {result.messages.map((message) => (
                 <Link
-                  className="block border-b border-black/5 px-4 py-3 last:border-b-0"
+                  className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-4 py-3 last:border-b-0"
                   key={message.id}
                   onClick={() => store.rememberSearchTerm(query)}
                   to={appendQuery(config.routes.conversation(message.conversationId), { highlight: message.id })}
                 >
-                  <p className="text-sm font-medium">{message.content || "已撤回消息"}</p>
-                  <p className="mt-1 text-xs text-ink/42">{buildSearchMessageSubtitle(store, message)}</p>
+                  <p className="text-sm font-semibold text-[color:var(--client-text)]">{message.content || "已撤回消息"}</p>
+                  <p className="mt-1 text-xs text-[color:var(--client-muted)]">{buildSearchMessageSubtitle(store, message)}</p>
                 </Link>
               ))}
             </section>
@@ -3553,8 +3592,9 @@ export function ImSearchPage() {
           {result.contacts.length === 0 && result.conversations.length === 0 && result.messages.length === 0 ? (
             <ImEmptyState caption="换个名字、备注、群名或消息关键词试试。" title="没有找到结果" />
           ) : null}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </ImStandaloneShell>
   );
 }
@@ -4364,14 +4404,36 @@ export function ImConversationRoomPage({
       ),
     [store.contacts]
   );
+  const hiddenMemberProfilesActive = conversation?.type === "group" && Boolean(conversation.hideMemberProfiles);
+  const anonymousMemberIdentityByUserId = useMemo(() => {
+    if (!conversation || !hiddenMemberProfilesActive) {
+      return new Map<string, { code: string; displayName: string }>();
+    }
+
+    return new Map(conversation.memberIds.map((userId) => [userId, getAnonymousGroupMemberIdentity(conversation, userId)]));
+  }, [conversation?.id, conversation?.memberIds, hiddenMemberProfilesActive]);
+  const getAnonymousMemberIdentity = (userId?: string) => userId ? anonymousMemberIdentityByUserId.get(userId) : undefined;
+  const getConversationMemberDisplayName = (user?: ImUser) => {
+    const anonymousIdentity = getAnonymousMemberIdentity(user?.id);
+
+    return anonymousIdentity?.displayName ?? (user ? getDisplayName(user, activeContactByUserId.get(user.id)) : undefined);
+  };
+  const getConversationMemberAvatar = (user?: ImUser) => {
+    const anonymousIdentity = getAnonymousMemberIdentity(user?.id);
+
+    return anonymousIdentity ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code) : user?.avatar;
+  };
+  const getConversationMemberProfilePath = (user?: ImUser) => hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user);
   const currentSocialActor = social.profiles[social.getActorForScope(scope as SocialPortalScope)];
   const currentReactionPerson = useMemo<ImReactionPerson>(() => {
+    const currentAnonymousIdentity = getAnonymousMemberIdentity(currentUser?.id);
+
     return {
       id: store.currentUserId ?? "me",
-      name: currentSocialActor?.displayName ?? (currentUser ? getDisplayName(currentUser, activeContactByUserId.get(currentUser.id)) : "我"),
-      avatar: currentSocialActor?.avatar ?? currentUser?.avatar
+      name: currentAnonymousIdentity?.displayName ?? currentSocialActor?.displayName ?? (currentUser ? getDisplayName(currentUser, activeContactByUserId.get(currentUser.id)) : "我"),
+      avatar: currentAnonymousIdentity ? buildAnonymousGroupAvatarDataUrl(currentAnonymousIdentity.code) : currentSocialActor?.avatar ?? currentUser?.avatar
     };
-  }, [activeContactByUserId, currentSocialActor?.avatar, currentSocialActor?.displayName, currentUser, store.currentUserId]);
+  }, [activeContactByUserId, anonymousMemberIdentityByUserId, currentSocialActor?.avatar, currentSocialActor?.displayName, currentUser, store.currentUserId]);
   const scheduleInviteAttendeeLabel = partner ? getDisplayName(partner, contact) : conversation?.title ?? "当前会话";
   const shareableCardUsers = useMemo(() => {
     return buildShareableCardUsers({
@@ -5168,7 +5230,20 @@ export function ImConversationRoomPage({
   const getMessageReactionSummaries = (messageId: string): ImMessageReactionSummary[] =>
     Object.entries(messageReactions[messageId] ?? {}).map(([emoji, people]) => ({
       emoji,
-      people: people.map((person) => (person.id === currentReactionPerson.id ? currentReactionPerson : person)),
+      people: people.map((person) => {
+        if (person.id === currentReactionPerson.id) {
+          return currentReactionPerson;
+        }
+
+        const anonymousIdentity = getAnonymousMemberIdentity(person.id);
+        return anonymousIdentity
+          ? {
+              ...person,
+              name: anonymousIdentity.displayName,
+              avatar: buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code)
+            }
+          : person;
+      }),
       reactedByMe: people.some((person) => person.id === currentReactionPerson.id)
     }));
 
@@ -5408,7 +5483,7 @@ export function ImConversationRoomPage({
               <div className="space-y-1.5">
                 {pinnedMessages.map((message) => {
                   const sender = store.usersById[message.senderId];
-                  const senderName = sender ? getDisplayName(sender, activeContactByUserId.get(sender.id)) : "消息";
+                  const senderName = getConversationMemberDisplayName(sender) ?? "消息";
                   const preview = buildMessagePreview(message, store.currentUserId ?? "", store.usersById);
 
                   return (
@@ -5482,11 +5557,15 @@ export function ImConversationRoomPage({
 
               const message = row.message;
               const sender = store.usersById[message.senderId];
-              const senderProfilePath = sender ? resolveImProfilePath(scope, sender) : undefined;
+              const senderProfilePath = getConversationMemberProfilePath(sender);
+              const senderName = getConversationMemberDisplayName(sender);
+              const senderAvatar = getConversationMemberAvatar(sender);
               const isMine = message.senderId === store.currentUserId;
               const showSender = conversation.type === "group" && !isMine;
               const quoted = getQuotedMessage(store, conversationId, message.quotedMessageId);
               const quotedSender = quoted ? store.usersById[quoted.senderId] : undefined;
+              const quotedSenderName = getConversationMemberDisplayName(quotedSender);
+              const quotedSenderAvatar = getConversationMemberAvatar(quotedSender);
 
               return (
                 <div
@@ -5499,12 +5578,16 @@ export function ImConversationRoomPage({
                 >
                   <MessagePressable onOpenMenu={() => openMessageMenu(message)}>
                     <MessageBubble
-                      avatar={sender?.avatar}
+                      avatar={senderAvatar}
                       avatarTo={senderProfilePath}
                       disappearingNow={hasRunningDisappearingCountdown ? disappearingNow : undefined}
                       isMine={isMine}
                       message={message}
                       onOpenContact={(userId) => {
+                        if (hiddenMemberProfilesActive) {
+                          return;
+                        }
+
                         const targetContact = store.contacts.find((item) => item.targetUserId === userId);
                         const targetUser = store.usersById[userId];
                         const targetProfilePath = resolveImProfilePath(scope, targetUser);
@@ -5519,13 +5602,13 @@ export function ImConversationRoomPage({
                       }}
                       onPreviewMedia={setMediaPreview}
                       quotedMessage={quoted}
-                      quotedSenderAvatar={quotedSender?.avatar}
-                      quotedSenderName={quotedSender ? getDisplayName(quotedSender, activeContactByUserId.get(quotedSender.id)) : undefined}
+                      quotedSenderAvatar={quotedSenderAvatar}
+                      quotedSenderName={quotedSenderName}
                       onToggleReaction={(reaction) => toggleMessageReaction(message, reaction, false)}
                       reactions={getMessageReactionSummaries(message.id)}
                       renderContactCard={renderContactCard}
                       renderContactCardAction={renderContactCardAction}
-                      senderName={sender?.nickname}
+                      senderName={senderName}
                       showSender={showSender}
                     />
                   </MessagePressable>
@@ -5973,6 +6056,7 @@ export function ImConversationInfoPage() {
   const contact = conversation?.contactUserId ? store.contacts.find((item) => item.targetUserId === conversation.contactUserId) : undefined;
   const user = conversation?.contactUserId ? store.usersById[conversation.contactUserId] : undefined;
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
+  const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
   const [privacyStartMode, setPrivacyStartMode] = useState<ConversationDisappearingStartMode>(conversation?.disappearingStartMode ?? "sent");
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
@@ -6016,6 +6100,14 @@ export function ImConversationInfoPage() {
       .filter(([tag]) => !conversationTagUiState.hiddenTags.includes(tag) || selectedSet.has(tag))
       .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "zh-Hans-CN"));
   }, [conversationTagUiState, infoRoleTagSet, selectedInfoTags, store.conversations, visibleInfoContacts]);
+  const hiddenMemberProfilesActive = conversation?.type === "group" && hideMemberProfilesEnabled;
+  const anonymousMemberIdentityByUserId = useMemo(() => {
+    if (!conversation || !hiddenMemberProfilesActive) {
+      return new Map<string, { code: string; displayName: string }>();
+    }
+
+    return new Map(conversation.memberIds.map((userId) => [userId, getAnonymousGroupMemberIdentity(conversation, userId)]));
+  }, [conversation?.id, conversation?.memberIds, hiddenMemberProfilesActive]);
 
   const showInfoToast = (message: string) => {
     toastIdRef.current += 1;
@@ -6041,6 +6133,7 @@ export function ImConversationInfoPage() {
     }
 
     setPrivacyModeEnabled(Boolean(conversation.privacyModeEnabled));
+    setHideMemberProfilesEnabled(Boolean(conversation.hideMemberProfiles));
     setPrivacyCountdownInput(createCountdownInput(conversation.disappearingCountdown));
     setPrivacyStartMode(conversation.disappearingStartMode ?? "sent");
   }, [conversation?.id]);
@@ -6104,11 +6197,13 @@ export function ImConversationInfoPage() {
       privacyModeEnabled
         ? {
             privacyModeEnabled: true,
+            hideMemberProfiles: hideMemberProfilesEnabled,
             disappearingCountdown: privacyCountdown,
             disappearingStartMode: privacyStartMode
           }
         : {
-            privacyModeEnabled: false
+            privacyModeEnabled: false,
+            hideMemberProfiles: hideMemberProfilesEnabled
           }
     );
     showInfoToast("隐私模式设置已保存");
@@ -6193,8 +6288,10 @@ export function ImConversationInfoPage() {
     .map((member) => ({ member, user: store.usersById[member.userId] }))
     .filter((item): item is { member: typeof item.member; user: ImUser } => Boolean(item.user));
   const groupOwner = members.find(({ member }) => member.role === "owner");
-  const groupOwnerDisplayName = groupOwner ? groupOwner.member.nicknameInGroup ?? groupOwner.user.nickname : "";
-  const groupOwnerProfilePath = groupOwner ? resolveImProfilePath(scope, groupOwner.user) : undefined;
+  const groupOwnerAnonymousIdentity = groupOwner ? anonymousMemberIdentityByUserId.get(groupOwner.member.userId) : undefined;
+  const groupOwnerDisplayName = groupOwner ? groupOwnerAnonymousIdentity?.displayName ?? groupOwner.member.nicknameInGroup ?? groupOwner.user.nickname : "";
+  const groupOwnerAvatar = groupOwner ? (groupOwnerAnonymousIdentity ? buildAnonymousGroupAvatarDataUrl(groupOwnerAnonymousIdentity.code) : groupOwner.user.avatar) : undefined;
+  const groupOwnerProfilePath = groupOwner && !hiddenMemberProfilesActive ? resolveImProfilePath(scope, groupOwner.user) : undefined;
   const infoCardProfileRef = user ? resolveContactCardProfileRef(buildContactCardPayload(user), user) : undefined;
   const infoCardDetailTo = user
     ? resolveImProfilePath(scope, user) ?? (infoCardProfileRef ? getScopedProfileDetailPath(scope, infoCardProfileRef.entityType, infoCardProfileRef.id) : undefined)
@@ -6289,7 +6386,7 @@ export function ImConversationInfoPage() {
                       <InteractiveAvatar
                         alt={groupOwnerDisplayName}
                         className="h-8 w-8"
-                        src={groupOwner.user.avatar}
+                        src={groupOwnerAvatar}
                         to={groupOwnerProfilePath}
                       />
                       {groupOwnerProfilePath ? (
@@ -6448,6 +6545,25 @@ export function ImConversationInfoPage() {
                 />
               </div>
 
+              <div className="mt-4 flex min-w-0 items-center justify-between gap-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-bg)_42%,transparent)] px-3 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="min-w-0 truncate text-sm font-black text-[color:var(--client-text)]">隐藏名称和资料</p>
+                  <InfoTooltipTrigger
+                    content="名字会变为用户，个人资料将不再显示。"
+                    label="查看隐藏名称和资料说明"
+                    panelMode="tooltip"
+                    variant="client"
+                  />
+                </div>
+                <ToggleSwitch
+                  ariaLabel="是否隐藏成员名称和资料"
+                  checked={hideMemberProfilesEnabled}
+                  disabled={!canManageGroupPrivacy}
+                  onChange={setHideMemberProfilesEnabled}
+                  size="sm"
+                />
+              </div>
+
               {privacyModeEnabled ? (
                 <>
                   <div className="mt-4 grid grid-cols-4 gap-2">
@@ -6512,28 +6628,34 @@ export function ImConversationInfoPage() {
             <div className="pt-3">
               <p className="mb-3 text-sm text-[color:var(--client-muted)]">群成员</p>
               <div className="grid grid-cols-5 gap-3">
-                {members.map(({ member, user }) => (
-                  <div className="text-center" key={member.id}>
-                    <InteractiveAvatar alt={member.nicknameInGroup ?? user.nickname} className="mx-auto h-12 w-12" src={user.avatar} to={resolveImProfilePath(scope, user)} />
-                    <p className="mt-2 truncate text-[11px] text-[color:var(--client-muted)]">{member.nicknameInGroup ?? user.nickname}</p>
-                    {member.role === "owner" ? (
-                      <p className="mx-auto mt-1 w-fit rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]">
-                        群主
-                      </p>
-                    ) : null}
-                  </div>
-                ))}
+                {members.map(({ member, user }) => {
+                  const anonymousIdentity = anonymousMemberIdentityByUserId.get(member.userId);
+                  const displayName = anonymousIdentity?.displayName ?? member.nicknameInGroup ?? user.nickname;
+                  const avatar = anonymousIdentity ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code) : user.avatar;
+                  const profilePath = hiddenMemberProfilesActive ? undefined : resolveImProfilePath(scope, user);
+
+                  return (
+                    <div className="text-center" key={member.id}>
+                      <InteractiveAvatar alt={displayName} className="mx-auto h-12 w-12" src={avatar} to={profilePath} />
+                      <p className="mt-2 truncate text-[11px] text-[color:var(--client-muted)]">{displayName}</p>
+                      {member.role === "owner" ? (
+                        <p className="mx-auto mt-1 w-fit rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-primary)]">
+                          群主
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </section>
         ) : null}
 
-        <ToggleRow caption="关闭后会话仍会更新，但不再弹出打扰提醒。" checked={conversation.isMuted} onChange={(next) => void store.muteConversation(conversation.id, next)} title="消息免打扰" />
-        <ToggleRow caption="置顶后会优先固定在会话列表顶部。" checked={conversation.isPinned} onChange={(next) => void store.pinConversation(conversation.id, next)} title="置顶聊天" />
+        <ToggleRow checked={conversation.isMuted} onChange={(next) => void store.muteConversation(conversation.id, next)} title="消息免打扰" />
+        <ToggleRow checked={conversation.isPinned} onChange={(next) => void store.pinConversation(conversation.id, next)} title="置顶聊天" />
 
         <section className="overflow-hidden rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
           <Link className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-[15px] text-[color:var(--client-text)]" to={appendQuery(config.routes.search, { conversationId: conversation.id })}>查找聊天内容</Link>
-          <Link className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-[15px] text-[color:var(--client-text)]" to={config.routes.conversationMedia(conversation.id)}>媒体、文件、链接</Link>
           <button className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[color:var(--client-text)]" onClick={() => void store.clearConversation(conversation.id)} type="button">清空聊天记录</button>
           {conversation.type === "group" ? (
             <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f]" onClick={() => void store.removeConversationMember(conversation.id, store.currentUserId ?? "")} type="button">
@@ -6748,6 +6870,7 @@ export function ImNewConversationPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [groupTitle, setGroupTitle] = useState("");
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
+  const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(false);
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(defaultGroupPrivacyCountdownInput);
   const [privacyStartMode, setPrivacyStartMode] = useState<ConversationDisappearingStartMode>("sent");
   const [groupSelectionWarningOpen, setGroupSelectionWarningOpen] = useState(false);
@@ -6823,6 +6946,7 @@ export function ImNewConversationPage() {
   const canCreateGroup = hasEnoughGroupMembers && (!privacyModeEnabled || hasPrivacyCountdown);
   const privacyCountdownSummary = formatConversationDisappearingCountdown(privacyCountdown);
   const privacyModeInfo = "开启后需设置对话消失倒计时";
+  const hideMemberProfilesInfo = "名字会变为用户，个人资料将不再显示。";
   const visibleIndexLetters = useMemo(() => getVisibleIndexLetters(groupedContacts, { includeSymbolFallback: true }), [groupedContacts]);
   const sectionRefs = useRef<Partial<Record<ContactIndexLetter, HTMLDivElement | null>>>({});
   const indexBarRef = useRef<HTMLDivElement | null>(null);
@@ -7039,11 +7163,16 @@ export function ImNewConversationPage() {
     const conversation = await store.createGroupConversation(
       selectedIds,
       groupTitle.trim() || undefined,
-      privacyModeEnabled
+      privacyModeEnabled || hideMemberProfilesEnabled
         ? {
-            privacyModeEnabled: true,
-            disappearingCountdown: privacyCountdown,
-            disappearingStartMode: privacyStartMode
+            privacyModeEnabled,
+            hideMemberProfiles: hideMemberProfilesEnabled,
+            ...(privacyModeEnabled
+              ? {
+                  disappearingCountdown: privacyCountdown,
+                  disappearingStartMode: privacyStartMode
+                }
+              : {})
           }
         : undefined
     );
@@ -7052,10 +7181,10 @@ export function ImNewConversationPage() {
   };
 
   const groupContentBottomPaddingClassName = privacyModeEnabled
-    ? "pb-[calc(380px+env(safe-area-inset-bottom))]"
-    : "pb-[calc(184px+env(safe-area-inset-bottom))]";
-  const groupIndexBottom = privacyModeEnabled ? "calc(22.75rem + env(safe-area-inset-bottom))" : groupIndexFixedBottom;
-  const groupIndexGutter = privacyModeEnabled ? "calc(22rem + env(safe-area-inset-bottom))" : groupIndexBottomGutter;
+    ? "pb-[calc(444px+env(safe-area-inset-bottom))]"
+    : "pb-[calc(248px+env(safe-area-inset-bottom))]";
+  const groupIndexBottom = privacyModeEnabled ? "calc(26.75rem + env(safe-area-inset-bottom))" : "calc(15.25rem + env(safe-area-inset-bottom))";
+  const groupIndexGutter = privacyModeEnabled ? "calc(26rem + env(safe-area-inset-bottom))" : "calc(14.5rem + env(safe-area-inset-bottom))";
 
   return (
     <ImStandaloneShell>
@@ -7352,7 +7481,7 @@ export function ImNewConversationPage() {
             aria-hidden="true"
             className={cn(
               "absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_86%,transparent)_38%,var(--client-bg)_100%)]",
-              privacyModeEnabled ? "h-[372px]" : "h-[188px]"
+              privacyModeEnabled ? "h-[436px]" : "h-[252px]"
             )}
           />
           <div className="pointer-events-auto relative mx-auto w-full min-w-0 max-w-[880px] space-y-3 overflow-x-hidden [overflow-x:clip]">
@@ -7368,6 +7497,19 @@ export function ImNewConversationPage() {
                   />
                 </div>
                 <ToggleSwitch ariaLabel="是否开启隐私模式" checked={privacyModeEnabled} onChange={setPrivacyModeEnabled} size="md" />
+              </div>
+
+              <div className="mt-3 flex min-w-0 items-center justify-between gap-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-bg)_46%,transparent)] px-3 py-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="min-w-0 truncate text-[14px] font-black text-[color:var(--client-text)]">隐藏名称和资料</p>
+                  <InfoTooltipTrigger
+                    content={hideMemberProfilesInfo}
+                    label="查看隐藏名称和资料说明"
+                    panelMode="tooltip"
+                    variant="client"
+                  />
+                </div>
+                <ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="sm" />
               </div>
 
               {privacyModeEnabled ? (

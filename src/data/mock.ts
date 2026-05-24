@@ -1941,6 +1941,7 @@ export const serviceGuarantees = [
 export const userStories = [
   {
     name: "林 小雨",
+    avatar: pickCustomerAvatar(0, "林 小雨"),
     city: "东京 · 新宿",
     content: "固定保洁已经用了 5 个月，客服会提前提醒节假日排班，换人也能看到评分记录。",
     service: "家庭保洁",
@@ -1948,6 +1949,7 @@ export const userStories = [
   },
   {
     name: "佐藤 健",
+    avatar: pickCustomerAvatar(1, "佐藤 健"),
     city: "东京 · 惠比寿",
     content: "餐饮预约和到店美容都在一个账号里，临时改期比以前打电话方便很多。",
     service: "到店预约",
@@ -1955,6 +1957,7 @@ export const userStories = [
   },
   {
     name: "Mia Chen",
+    avatar: pickCustomerAvatar(2, "Mia Chen"),
     city: "品川 · 目黑",
     content: "空调清洗前后照片会留档，企业报销需要发票也能直接从订单里下载。",
     service: "家电清洗",

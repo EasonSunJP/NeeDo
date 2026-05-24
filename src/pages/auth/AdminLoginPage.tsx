@@ -53,6 +53,8 @@ type BackendLoginCopy = {
   copyright: string;
 };
 
+const adminLoginCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
+
 const adminLoginCopy = {
   zh: {
     pageEyebrow: "NeeDo 后台",
@@ -96,7 +98,7 @@ const adminLoginCopy = {
     codeError: "验证码不正确，请使用演示验证码 260417。",
     qrError: "二维码登录码已失效，请刷新后重试。",
     requiredError: "请先填写登录信息。",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved."
+    copyright: adminLoginCopyrightText
   },
   "zh-Hant": {
     pageEyebrow: "NeeDo 後台",
@@ -140,7 +142,7 @@ const adminLoginCopy = {
     codeError: "驗證碼不正確，請使用演示驗證碼 260417。",
     qrError: "QR 登入碼已失效，請刷新後重試。",
     requiredError: "請先填寫登入資訊。",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved."
+    copyright: adminLoginCopyrightText
   },
   ja: {
     pageEyebrow: "NeeDo 管理",
@@ -184,7 +186,7 @@ const adminLoginCopy = {
     codeError: "認証コードが違います。デモコード 260417 を使用してください。",
     qrError: "QRログインコードの有効期限が切れました。更新して再試行してください。",
     requiredError: "ログイン情報を入力してください。",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved."
+    copyright: adminLoginCopyrightText
   },
   en: {
     pageEyebrow: "NeeDo Admin",
@@ -228,7 +230,7 @@ const adminLoginCopy = {
     codeError: "Incorrect code. Use the demo code 260417.",
     qrError: "The QR login code has expired. Refresh and try again.",
     requiredError: "Fill in the login information first.",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved."
+    copyright: adminLoginCopyrightText
   },
   ko: {
     pageEyebrow: "NeeDo 관리자",
@@ -272,7 +274,7 @@ const adminLoginCopy = {
     codeError: "인증코드가 올바르지 않습니다. 데모 코드 260417을 사용하세요.",
     qrError: "QR 로그인 코드가 만료되었습니다. 새로고침 후 다시 시도하세요.",
     requiredError: "먼저 로그인 정보를 입력하세요.",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved."
+    copyright: adminLoginCopyrightText
   }
 } satisfies Record<Language, BackendLoginCopy>;
 

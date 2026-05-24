@@ -75,6 +75,22 @@ describe("translations", () => {
     expect(translateText("商家", "ja")).toBe("店舗");
     expect(translateText("群", "ja")).toBe("グループ");
     expect(translateText("私密群消息已隐藏", "ja")).toBe("プライベートグループのメッセージは非表示");
+    expect(translateText("プライベート 群情報隠れた", "ja")).toBe("プライベートグループのメッセージは非表示");
+    expect(translateText("群情報", "ja")).toBe("グループ情報");
+    expect(translateText("仅群主可编辑", "ja")).toBe("オーナーのみ編集可");
+    expect(translateText("保存隐私设置", "ja")).toBe("設定を保存");
+    expect(translateText("群主", "ja")).toBe("オーナー");
+    expect(translateText("1分钟后对话消失 · 按发送时间开始倒计时", "ja")).toBe("送信後の1分後に会話が消えます");
+    expect(translateText("消息免打扰", "ja")).toBe("通知をミュートする");
+    expect(translateText("置顶聊天", "ja")).toBe("一番上に表示する");
+    expect(translateText("查找聊天内容", "ja")).toBe("トークを検索");
+    expect(translateText("退出群聊", "ja")).toBe("グループ解散／退会");
+    expect(translateText("完全隐私模式", "ja")).toBe("完全プライベートモード");
+    expect(translateText("隐私模式设置已保存", "ja")).toBe("プライベートモード設定を保存しました");
+    expect(translateText("隐私模式以外发送的信息不会被加入消失倒计时。", "ja")).toBe("プライベートモード以外で送信したメッセージは消失カウントダウンに入りません。");
+    expect(translateText("只有群主可以开启或关闭隐私模式", "ja")).toBe("グループオーナーのみプライベートモードをオン/オフできます");
+    expect(translateText("隐藏名称和资料", "ja")).toBe("名前とプロフィールを隠す");
+    expect(translateText("名字会变为用户，个人资料将不再显示。", "ja")).toBe("名前はユーザーに変更され、プロフィールが表示されなくなります。");
 
     expect(translateTextForContext("行程", "ja", { portal: "user" })).toBe("スケジュール");
     expect(translateTextForContext("日程", "ja", { portal: "user" })).toBe("スケジュール");

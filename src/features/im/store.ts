@@ -6,6 +6,7 @@ import {
   buildMessagePreview,
   canRecallMessage,
   getConversationById,
+  getAnonymousGroupConversationTitle,
   getDisplayName,
   type ContactRelation,
   type Conversation,
@@ -929,6 +930,10 @@ export function getContactForConversation(snapshotData: ImSnapshot, conversation
 }
 
 export function getConversationDisplayName(snapshotData: ImSnapshot, conversation: Conversation) {
+  if (conversation.type === "group" && conversation.hideMemberProfiles) {
+    return getAnonymousGroupConversationTitle(conversation);
+  }
+
   if (!conversation.contactUserId) {
     return conversation.title;
   }

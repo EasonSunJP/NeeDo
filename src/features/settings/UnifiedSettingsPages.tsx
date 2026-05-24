@@ -21,13 +21,13 @@ import {
 import { useI18n } from "../../i18n/I18nProvider";
 import { languages, translateText, type Language } from "../../i18n/translations";
 import {
-  fetchGoogleCalendarApi,
-  getGoogleCalendarActorId,
-  googleCalendarIconSrc,
-  type GoogleCalendarAuthUrlResponse,
-  type GoogleCalendarConnectionStatus,
-  type GoogleCalendarScope
-} from "../../lib/googleCalendarApi";
+  fetchGoogleAccountApi,
+  getGoogleAccountActorId,
+  googleAccountIconSrc,
+  type GoogleAccountAuthUrlResponse,
+  type GoogleAccountConnectionStatus,
+  type GoogleAccountScope
+} from "../../lib/googleAccountApi";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import {
   detectPwaInstallPlatform,
@@ -168,13 +168,92 @@ function getSettingsPath(portal: UnifiedSettingsPortal, segment?: string) {
   return segment ? `${basePath}/${segment}` : basePath;
 }
 
-function getGoogleCalendarScopeForPortal(portal: UnifiedSettingsPortal): GoogleCalendarScope | null {
-  if (portal === "business") {
-    return null;
-  }
-
+function getGoogleAccountScopeForPortal(portal: UnifiedSettingsPortal): GoogleAccountScope {
   return portal;
 }
+
+const googleAccountBindingCopy: Record<
+  Language,
+  {
+    accountTitle: string;
+    checking: string;
+    connect: string;
+    connected: string;
+    connectedFallback: string;
+    connecting: string;
+    disconnected: string;
+    disconnectedSubtitle: string;
+    reconnect: string;
+    sectionInfo: string;
+    sectionTitle: string;
+  }
+> = {
+  zh: {
+    accountTitle: "Google 账号",
+    checking: "检查中",
+    connect: "绑定 Google 账号",
+    connected: "已绑定",
+    connectedFallback: "当前账号已授权 Google 身份",
+    connecting: "正在打开 Google 账号授权",
+    disconnected: "未绑定",
+    disconnectedSubtitle: "用于账号绑定、登录和后续 Google 服务连接",
+    reconnect: "重新授权 Google 账号",
+    sectionInfo: "绑定后可以用于 Google 登录，并作为日历等 Google 服务授权的账号基础。",
+    sectionTitle: "Google 账号绑定"
+  },
+  "zh-Hant": {
+    accountTitle: "Google 帳號",
+    checking: "檢查中",
+    connect: "綁定 Google 帳號",
+    connected: "已綁定",
+    connectedFallback: "目前帳號已授權 Google 身分",
+    connecting: "正在開啟 Google 帳號授權",
+    disconnected: "未綁定",
+    disconnectedSubtitle: "用於帳號綁定、登入與後續 Google 服務連接",
+    reconnect: "重新授權 Google 帳號",
+    sectionInfo: "綁定後可用於 Google 登入，並作為日曆等 Google 服務授權的帳號基礎。",
+    sectionTitle: "Google 帳號綁定"
+  },
+  ja: {
+    accountTitle: "Googleアカウント",
+    checking: "確認中",
+    connect: "Googleアカウントの連携",
+    connected: "連携済み",
+    connectedFallback: "Googleアカウントを連携済み",
+    connecting: "Googleアカウント連携を開いています",
+    disconnected: "連携されてない",
+    disconnectedSubtitle: "Googleログインとサービス連携に使用",
+    reconnect: "Googleアカウントを再連携",
+    sectionInfo: "連携後は Google ログインと Google サービス連携に使用できます。",
+    sectionTitle: "Googleアカウントの連携"
+  },
+  en: {
+    accountTitle: "Google Account",
+    checking: "Checking",
+    connect: "Link Google Account",
+    connected: "Linked",
+    connectedFallback: "Google identity authorized",
+    connecting: "Opening Google authorization",
+    disconnected: "Not linked",
+    disconnectedSubtitle: "Used for Google login and service connections",
+    reconnect: "Reauthorize Google Account",
+    sectionInfo: "After linking, this account can be used for Google login and Google service authorization.",
+    sectionTitle: "Google Account Linking"
+  },
+  ko: {
+    accountTitle: "Google 계정",
+    checking: "확인 중",
+    connect: "Google 계정 연결",
+    connected: "연결됨",
+    connectedFallback: "Google 계정 인증 완료",
+    connecting: "Google 계정 인증을 여는 중",
+    disconnected: "연결되지 않음",
+    disconnectedSubtitle: "Google 로그인 및 서비스 연결에 사용",
+    reconnect: "Google 계정 다시 인증",
+    sectionInfo: "연결 후 Google 로그인과 Google 서비스 인증에 사용할 수 있습니다.",
+    sectionTitle: "Google 계정 연결"
+  }
+};
 
 function getSettingsNavItems(portal: UnifiedSettingsPortal) {
   return portal === "business" ? businessNavItems : undefined;
@@ -623,11 +702,12 @@ function GoogleCalendarAccountBinding({
   store?: Store;
   technician?: Technician;
 }) {
+  const { language } = useI18n();
+  const copy = googleAccountBindingCopy[language] ?? googleAccountBindingCopy.zh;
   const sectionRef = useRef<HTMLDivElement | null>(null);
-  const googleScope = getGoogleCalendarScopeForPortal(portal);
-  const googleActorId = googleScope ? getGoogleCalendarActorId(googleScope, customer, technician, store) : "";
-  const [googleStatus, setGoogleStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
-  const [googleStatusMessage, setGoogleStatusMessage] = useState("");
+  const googleScope = getGoogleAccountScopeForPortal(portal);
+  const googleActorId = getGoogleAccountActorId(googleScope, customer, technician, store);
+  const [googleStatus, setGoogleStatus] = useState<GoogleAccountConnectionStatus | null>(null);
   const [googleBusy, setGoogleBusy] = useState<"status" | "connect" | null>(null);
 
   useEffect(() => {
@@ -641,30 +721,17 @@ function GoogleCalendarAccountBinding({
   }, [autoFocus]);
 
   useEffect(() => {
-    if (!googleScope) {
-      return;
-    }
-
     let cancelled = false;
     setGoogleBusy("status");
-    fetchGoogleCalendarApi<GoogleCalendarConnectionStatus>(`/api/google-calendar/status?actorId=${encodeURIComponent(googleActorId)}`)
+    fetchGoogleAccountApi<GoogleAccountConnectionStatus>(`/api/google-account/status?actorId=${encodeURIComponent(googleActorId)}`)
       .then((status) => {
         if (cancelled) {
           return;
         }
 
         setGoogleStatus(status);
-        setGoogleStatusMessage(
-          status.connected
-            ? "Google 账号已绑定，可以在日历来源里使用双向同步。"
-            : "尚未绑定 Google 账号，请点击下方按钮进行授权。"
-        );
       })
-      .catch((error) => {
-        if (!cancelled) {
-          setGoogleStatusMessage(error instanceof Error ? error.message : String(error));
-        }
-      })
+      .catch(() => null)
       .finally(() => {
         if (!cancelled) {
           setGoogleBusy(null);
@@ -676,10 +743,6 @@ function GoogleCalendarAccountBinding({
     };
   }, [googleActorId, googleScope]);
 
-  if (!googleScope) {
-    return null;
-  }
-
   const handleGoogleConnect = async () => {
     if (googleBusy) {
       return;
@@ -687,57 +750,50 @@ function GoogleCalendarAccountBinding({
 
     setGoogleBusy("connect");
     try {
-      const response = await fetchGoogleCalendarApi<GoogleCalendarAuthUrlResponse>(
-        `/api/google-calendar/auth-url?actorId=${encodeURIComponent(googleActorId)}&returnTo=${encodeURIComponent(
+      const response = await fetchGoogleAccountApi<GoogleAccountAuthUrlResponse>(
+        `/api/google-account/auth-url?mode=bind&actorId=${encodeURIComponent(googleActorId)}&returnTo=${encodeURIComponent(
           typeof window === "undefined" ? "" : window.location.href
         )}`
       );
       setGoogleStatus(response);
-      setGoogleStatusMessage("正在前往 Google 授权页面。");
       if (response.authUrl && typeof window !== "undefined") {
         window.location.assign(response.authUrl);
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setGoogleStatusMessage(message.includes("GOOGLE_CALENDAR") || message.includes("尚未配置") ? "当前环境暂时无法发起 Google 授权，请在正式环境配置后重试。" : message);
+    } catch {
+      setGoogleStatus(null);
     } finally {
       setGoogleBusy(null);
     }
   };
-  const statusLabel = googleBusy === "status" ? "检查中" : googleStatus?.connected ? "已绑定" : "未绑定";
+  const statusLabel = googleBusy === "status" ? copy.checking : googleStatus?.connected ? copy.connected : copy.disconnected;
 
   return (
     <div ref={sectionRef}>
       <SettingsSection
-        description="绑定后可以在日历来源里通过接口同步 NeeDo 与 Google 日历。"
+        description={copy.sectionInfo}
         panelClassName="space-y-3 p-4"
-        title="Google 账号绑定"
+        title={copy.sectionTitle}
       >
         <div className="flex items-center gap-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] p-3">
-          <img alt="" className="h-10 w-10 shrink-0 object-contain" src={googleCalendarIconSrc} />
+          <img alt="" className="h-10 w-10 shrink-0 object-contain" src={googleAccountIconSrc} />
           <div className="min-w-0 flex-1">
-            <strong className="block text-[15px] font-black text-[color:var(--client-text)]">Google Calendar</strong>
+            <strong className="block text-[15px] font-black text-[color:var(--client-text)]">{copy.accountTitle}</strong>
             <span className="mt-0.5 block text-[12px] font-bold leading-5 text-[color:var(--client-muted)]">
-              {googleStatus?.connected ? "当前账号已授权 Calendar API" : "用于行程导入、导出和双向同步"}
+              {googleStatus?.connected ? googleStatus.profile?.email ?? copy.connectedFallback : copy.disconnectedSubtitle}
             </span>
           </div>
           <span className="shrink-0 rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
             {statusLabel}
           </span>
         </div>
-        {googleStatusMessage ? (
-          <p className="rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] px-3.5 py-3 text-[12px] font-bold leading-5 text-[color:var(--client-muted)]">
-            {googleStatusMessage}
-          </p>
-        ) : null}
         <button
           className="focus-ring inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] disabled:opacity-55"
           disabled={Boolean(googleBusy)}
           onClick={handleGoogleConnect}
           type="button"
         >
-          <img alt="" className="h-6 w-6 object-contain" src={googleCalendarIconSrc} />
-          {googleBusy === "connect" ? "正在打开 Google 授权" : googleStatus?.connected ? "重新授权 Google 账号" : "绑定 Google 账号"}
+          <img alt="" className="h-6 w-6 object-contain" src={googleAccountIconSrc} />
+          {googleBusy === "connect" ? copy.connecting : googleStatus?.connected ? copy.reconnect : copy.connect}
         </button>
       </SettingsSection>
     </div>
@@ -2945,7 +3001,7 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
           )}
         </SettingsSection>
         <GoogleCalendarAccountBinding
-          autoFocus={searchParams.get("section") === "google-calendar"}
+          autoFocus={searchParams.get("section") === "google-account" || searchParams.get("section") === "google-calendar"}
           customer={customer}
           portal={portal}
           store={store}

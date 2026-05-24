@@ -120,12 +120,14 @@ export type ConversationDisappearingCountdown = {
 export type CreateConversationPrivacyOptions = {
   forceGroup?: boolean;
   privacyModeEnabled?: boolean;
+  hideMemberProfiles?: boolean;
   disappearingCountdown?: Partial<ConversationDisappearingCountdown>;
   disappearingStartMode?: ConversationDisappearingStartMode;
 };
 
 export type UpdateConversationPrivacyOptions = {
   privacyModeEnabled: boolean;
+  hideMemberProfiles?: boolean;
   disappearingCountdown?: Partial<ConversationDisappearingCountdown>;
   disappearingStartMode?: ConversationDisappearingStartMode;
 };
@@ -166,6 +168,7 @@ export type Conversation = {
   savedToContacts?: boolean;
   tags?: string[];
   privacyModeEnabled?: boolean;
+  hideMemberProfiles?: boolean;
   disappearingCountdown?: ConversationDisappearingCountdown;
   disappearingStartMode?: ConversationDisappearingStartMode;
   titleEditPolicy?: GroupInfoEditPolicy;
@@ -632,6 +635,39 @@ export function getConversationMember(database: Pick<ImDatabase, "members">, con
 
 export function getDisplayName(user: ImUser, contact?: ContactRelation) {
   return contact?.remarkName?.trim() || user.remarkName?.trim() || user.nickname;
+}
+
+function getAnonymousGroupMemberCode(index: number) {
+  let remaining = Math.max(0, Math.floor(index));
+  let code = "";
+
+  do {
+    code = String.fromCharCode(65 + (remaining % 26)) + code;
+    remaining = Math.floor(remaining / 26) - 1;
+  } while (remaining >= 0);
+
+  return code;
+}
+
+export function getAnonymousGroupMemberIdentity(
+  conversation: Pick<Conversation, "memberIds">,
+  userId: string
+) {
+  const memberIndex = conversation.memberIds.indexOf(userId);
+  const code = getAnonymousGroupMemberCode(memberIndex >= 0 ? memberIndex : 0);
+
+  return {
+    code,
+    displayName: `ユーザー${code}`
+  };
+}
+
+export function getAnonymousGroupConversationTitle(conversation: Pick<Conversation, "memberIds">) {
+  const visibleNames = conversation.memberIds
+    .slice(0, 3)
+    .map((userId) => getAnonymousGroupMemberIdentity(conversation, userId).displayName);
+
+  return conversation.memberIds.length > 3 ? `${visibleNames.join("、")}、...` : visibleNames.join("、");
 }
 
 export function getConversationTitle(database: Pick<ImDatabase, "users" | "contacts">, conversation: Conversation) {
@@ -1329,6 +1365,7 @@ export function createConversationMutation(database: ImDatabase, memberIds: stri
     nicknameInGroup: isGroupConversation ? "NeeDo 用户" : undefined,
     savedToContacts: isGroupConversation,
     privacyModeEnabled: Boolean(disappearingCountdown),
+    hideMemberProfiles: isGroupConversation ? Boolean(privacyOptions?.hideMemberProfiles) : undefined,
     disappearingCountdown,
     disappearingStartMode: disappearingCountdown ? getDisappearingStartMode(privacyOptions?.disappearingStartMode) : undefined,
     titleEditPolicy: isGroupConversation ? "owner" : undefined,
@@ -1463,6 +1500,10 @@ export function updateConversationPrivacyMutation(database: ImDatabase, conversa
 
   if (currentMember?.role !== "owner") {
     return undefined;
+  }
+
+  if (typeof options.hideMemberProfiles === "boolean") {
+    conversation.hideMemberProfiles = options.hideMemberProfiles;
   }
 
   if (!options.privacyModeEnabled) {

@@ -2569,6 +2569,20 @@ export function MobileMessageCenter({ context = "user" }: { context?: MessageCen
                     >
                       <ConversationListItem
                         avatar={conversation.avatar}
+                        avatarNode={conversation.isGroupChat ? (
+                          <span
+                            aria-label={`${conversation.name} グループ`}
+                            className={cn(
+                              "grid h-12 w-12 place-items-center rounded-[var(--avatar-radius)] border",
+                              isNight
+                                ? "border-[#f3cf78]/28 bg-[#1d160d] text-[#f3cf78]"
+                                : "border-moss/20 bg-moss/12 text-moss"
+                            )}
+                            role="img"
+                          >
+                            <ContactGroupIcon className="h-7 w-7" id="group" label={conversation.name} />
+                          </span>
+                        ) : undefined}
                         meta={`${pinnedConversationMeta[conversation.id] ? "置顶 · " : ""}${followUpIds.includes(conversation.id) ? "待跟进 · " : ""}${mutedIds.includes(conversation.id) ? "免打扰 · " : ""}${conversation.role} · ${conversation.order.itemName}`}
                         metaClassName={cn("truncate text-xs", conversationMetaClass)}
                         preview={lastMessage?.content ?? "暂无信息"}

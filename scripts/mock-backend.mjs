@@ -7,6 +7,8 @@ const host = process.env.MOCK_BACKEND_HOST || "0.0.0.0";
 const maxPortRetries = 12;
 let activePort = requestedPort;
 const supportedLanguages = ["zh", "zh-Hant", "ja", "en", "ko"];
+const googleAccountTokenStorePath = process.env.GOOGLE_ACCOUNT_TOKEN_STORE || "/private/tmp/needo-google-account-tokens.json";
+const googleAccountScopes = ["openid", "email", "profile"];
 const googleCalendarTokenStorePath = process.env.GOOGLE_CALENDAR_TOKEN_STORE || "/private/tmp/needo-google-calendar-tokens.json";
 const googleCalendarScopes = [
   "https://www.googleapis.com/auth/calendar.events",
@@ -139,6 +141,22 @@ function readJsonBody(request) {
   });
 }
 
+function getGoogleAccountConfig(request) {
+  const clientId = process.env.GOOGLE_ACCOUNT_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CALENDAR_CLIENT_ID || "";
+  const clientSecret = process.env.GOOGLE_ACCOUNT_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CALENDAR_CLIENT_SECRET || "";
+  const redirectUri =
+    process.env.GOOGLE_ACCOUNT_REDIRECT_URI ||
+    process.env.GOOGLE_REDIRECT_URI ||
+    `http://${request.headers.host ?? `127.0.0.1:${activePort}`}/api/google-account/oauth/callback`;
+
+  return {
+    clientId,
+    clientSecret,
+    redirectUri,
+    configured: Boolean(clientId && clientSecret && redirectUri)
+  };
+}
+
 function getGoogleCalendarConfig(request) {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "";
@@ -173,6 +191,29 @@ function decodeGoogleOAuthState(value) {
   }
 }
 
+function appendParamsToReturnUrl(rawReturnTo, params, request) {
+  const returnUrl = new URL(String(rawReturnTo), `http://${request.headers.host ?? `127.0.0.1:${activePort}`}`);
+
+  if (returnUrl.hash.startsWith("#/")) {
+    const hashUrl = new URL(returnUrl.hash.slice(1), "http://needo.local");
+    params.forEach(([key, value]) => {
+      if (value) {
+        hashUrl.searchParams.set(key, String(value));
+      }
+    });
+    returnUrl.hash = `${hashUrl.pathname}${hashUrl.search}${hashUrl.hash}`;
+    return returnUrl;
+  }
+
+  params.forEach(([key, value]) => {
+    if (value) {
+      returnUrl.searchParams.set(key, String(value));
+    }
+  });
+
+  return returnUrl;
+}
+
 async function readGoogleTokenStore() {
   try {
     const raw = await readFile(googleCalendarTokenStorePath, "utf8");
@@ -186,6 +227,48 @@ async function readGoogleTokenStore() {
 
 async function writeGoogleTokenStore(store) {
   await writeFile(googleCalendarTokenStorePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+}
+
+async function readGoogleAccountTokenStore() {
+  try {
+    const raw = await readFile(googleAccountTokenStorePath, "utf8");
+    const parsed = JSON.parse(raw);
+
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeGoogleAccountTokenStore(store) {
+  await writeFile(googleAccountTokenStorePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+}
+
+async function getGoogleAccountTokenRecord(actorId) {
+  const store = await readGoogleAccountTokenStore();
+  const record = store[actorId];
+
+  return record && typeof record === "object" ? record : null;
+}
+
+async function saveGoogleAccountTokenRecord(actorId, tokenPayload, profile, mode) {
+  const store = await readGoogleAccountTokenStore();
+  const previous = store[actorId] && typeof store[actorId] === "object" ? store[actorId] : {};
+  const expiresIn = Number(tokenPayload.expires_in || previous.expires_in || 3600);
+  const next = {
+    ...previous,
+    ...tokenPayload,
+    refresh_token: tokenPayload.refresh_token || previous.refresh_token,
+    expires_at: Date.now() + Math.max(60, expiresIn - 60) * 1000,
+    mode,
+    profile,
+    updated_at: new Date().toISOString()
+  };
+
+  store[actorId] = next;
+  await writeGoogleAccountTokenStore(store);
+
+  return next;
 }
 
 async function getGoogleTokenRecord(actorId) {
@@ -211,6 +294,28 @@ async function saveGoogleTokenRecord(actorId, tokenPayload) {
   await writeGoogleTokenStore(store);
 
   return next;
+}
+
+async function exchangeGoogleAccountCodeForToken(request, code) {
+  const config = getGoogleAccountConfig(request);
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      redirect_uri: config.redirectUri,
+      grant_type: "authorization_code"
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error_description || payload.error || `Google OAuth returned ${response.status}`);
+  }
+
+  return payload;
 }
 
 async function exchangeGoogleCodeForToken(request, code) {
@@ -291,6 +396,26 @@ async function fetchGoogleCalendarJson(request, actorId, path, init = {}) {
   }
 
   return payload;
+}
+
+async function fetchGoogleAccountProfile(accessToken) {
+  const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error_description || payload.error || `Google userinfo returned ${response.status}`);
+  }
+
+  return {
+    sub: payload.sub || "",
+    email: payload.email || "",
+    name: payload.name || "",
+    picture: payload.picture || ""
+  };
 }
 
 function toGoogleDateTime(date, time) {
@@ -531,6 +656,120 @@ const server = createServer(async (request, response) => {
       apiMode: "browser-mock",
       note: t(backendText.statusNote, language)
     });
+    return;
+  }
+
+  if (url.pathname === "/api/google-account/status" && request.method === "GET") {
+    const actorId = normalizeGoogleActorId(url.searchParams.get("actorId"));
+    const config = getGoogleAccountConfig(request);
+    const tokenRecord = await getGoogleAccountTokenRecord(actorId);
+
+    json(response, 200, {
+      ok: true,
+      provider: "google-account",
+      mode: "oauth",
+      actorId,
+      configured: config.configured,
+      connected: Boolean(tokenRecord?.access_token || tokenRecord?.refresh_token),
+      profile: tokenRecord?.profile ?? null,
+      scopes: googleAccountScopes,
+      redirectUri: config.redirectUri,
+      message: config.configured
+        ? tokenRecord
+          ? "Google 账号已绑定"
+          : "Google 账号 API 已配置，等待用户授权"
+        : "请先配置 GOOGLE_ACCOUNT_CLIENT_ID 和 GOOGLE_ACCOUNT_CLIENT_SECRET"
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/google-account/auth-url" && request.method === "GET") {
+    const actorId = normalizeGoogleActorId(url.searchParams.get("actorId"));
+    const returnTo = url.searchParams.get("returnTo") || "";
+    const mode = url.searchParams.get("mode") === "login" ? "login" : "bind";
+    const portal = url.searchParams.get("portal") || "";
+    const config = getGoogleAccountConfig(request);
+
+    if (!config.configured) {
+      json(response, 503, {
+        ok: false,
+        provider: "google-account",
+        configured: false,
+        message: "Google 账号 API 尚未配置。请设置 GOOGLE_ACCOUNT_CLIENT_ID / GOOGLE_ACCOUNT_CLIENT_SECRET / GOOGLE_ACCOUNT_REDIRECT_URI。"
+      });
+      return;
+    }
+
+    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    authUrl.searchParams.set("client_id", config.clientId);
+    authUrl.searchParams.set("redirect_uri", config.redirectUri);
+    authUrl.searchParams.set("response_type", "code");
+    authUrl.searchParams.set("scope", googleAccountScopes.join(" "));
+    authUrl.searchParams.set("access_type", mode === "bind" ? "offline" : "online");
+    authUrl.searchParams.set("prompt", "consent");
+    authUrl.searchParams.set("include_granted_scopes", "true");
+    authUrl.searchParams.set("state", encodeGoogleOAuthState({ actorId, mode, portal, returnTo, createdAt: Date.now() }));
+
+    json(response, 200, {
+      ok: true,
+      provider: "google-account",
+      configured: true,
+      connected: Boolean(await getGoogleAccountTokenRecord(actorId)),
+      actorId,
+      authUrl: authUrl.toString(),
+      redirectUri: config.redirectUri,
+      scopes: googleAccountScopes,
+      message: mode === "login" ? "Google 登录 API 已配置，正在打开授权页面" : "Google 账号 API 已配置，正在打开授权页面"
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/google-account/oauth/callback" && request.method === "GET") {
+    const code = url.searchParams.get("code");
+    const state = decodeGoogleOAuthState(url.searchParams.get("state"));
+    const actorId = normalizeGoogleActorId(state.actorId);
+    const mode = state.mode === "login" ? "login" : "bind";
+    const config = getGoogleAccountConfig(request);
+
+    if (!config.configured || !code) {
+      html(response, 400, "<!doctype html><meta charset=\"utf-8\"><title>NeeDo Google Account</title><p>Google 账号授权失败：缺少配置或授权码。</p>");
+      return;
+    }
+
+    try {
+      const tokenPayload = await exchangeGoogleAccountCodeForToken(request, code);
+      const profile = await fetchGoogleAccountProfile(tokenPayload.access_token);
+      await saveGoogleAccountTokenRecord(actorId, tokenPayload, profile, mode);
+
+      if (state.returnTo) {
+        const returnUrl = appendParamsToReturnUrl(
+          state.returnTo,
+          [
+            ["googleAccount", "connected"],
+            ["googleAccountMode", mode],
+            ["portal", state.portal],
+            ["googleEmail", profile.email],
+            ["googleName", profile.name]
+          ],
+          request
+        );
+        response.writeHead(302, { Location: returnUrl.toString() });
+        response.end();
+        return;
+      }
+
+      html(
+        response,
+        200,
+        "<!doctype html><meta charset=\"utf-8\"><title>NeeDo Google Account</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;background:#071116;color:#fff}</style><h1>Google 账号已连接</h1><p>可以回到 NeeDo 继续操作。</p><script>setTimeout(()=>window.close(),900)</script>"
+      );
+    } catch (error) {
+      html(
+        response,
+        502,
+        `<!doctype html><meta charset="utf-8"><title>NeeDo Google Account</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:32px;background:#071116;color:#fff}</style><h1>Google 账号授权失败</h1><p>${error instanceof Error ? error.message : String(error)}</p>`
+      );
+    }
     return;
   }
 

@@ -1343,6 +1343,7 @@ async function handleConversationRequest(scope: ImRoleType, url: URL, method: st
     const conversation = createConversationMutation(database, memberIds, title, {
       forceGroup: body.forceGroup === true,
       privacyModeEnabled: body.privacyModeEnabled === true,
+      hideMemberProfiles: body.hideMemberProfiles === true,
       disappearingCountdown,
       disappearingStartMode
     });
@@ -1406,6 +1407,7 @@ async function handleConversationRequest(scope: ImRoleType, url: URL, method: st
       ? body.disappearingCountdown as Partial<ConversationDisappearingCountdown>
       : undefined;
     const disappearingStartMode = body.disappearingStartMode === "read_by_all" ? "read_by_all" as ConversationDisappearingStartMode : "sent";
+    const hideMemberProfiles = typeof body.hideMemberProfiles === "boolean" ? body.hideMemberProfiles : undefined;
 
     if (privacyModeEnabled && !normalizeDisappearingCountdown(disappearingCountdown)) {
       return badRequest("Missing disappearing countdown");
@@ -1413,6 +1415,7 @@ async function handleConversationRequest(scope: ImRoleType, url: URL, method: st
 
     const conversation = updateConversationPrivacyMutation(database, conversationId, {
       privacyModeEnabled,
+      hideMemberProfiles,
       disappearingCountdown,
       disappearingStartMode
     });

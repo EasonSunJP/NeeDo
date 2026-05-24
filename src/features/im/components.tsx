@@ -1266,6 +1266,24 @@ export function ConversationRow({
   avatarTo?: string;
   onAvatarClick?: () => void;
 }) {
+  const avatarNode = group ? (
+    <span
+      aria-label={`${title} グループ`}
+      className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--avatar-radius)] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,var(--client-surface))] text-[color:var(--client-primary)]"
+      role="img"
+    >
+      <ImIcon className="h-6 w-6" name="group" />
+    </span>
+  ) : (
+    <InteractiveAvatar
+      alt={title}
+      className="h-12 w-12"
+      onClick={onAvatarClick}
+      src={avatar}
+      stopPropagation
+      to={avatarTo}
+    />
+  );
   const summary = (
     <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
       <div className="min-w-0 flex-1">
@@ -1310,15 +1328,7 @@ export function ConversationRow({
     >
       <div className="flex items-start gap-3">
         <div className="relative shrink-0">
-          <InteractiveAvatar
-            alt={title}
-            className="h-12 w-12"
-            onClick={onAvatarClick}
-            src={avatar}
-            stopPropagation
-            to={avatarTo}
-          />
-          {group ? <span className="absolute -bottom-1 -right-1 rounded-full bg-[color:var(--client-primary)] px-1 py-0.5 text-[9px] font-bold text-[color:var(--client-primary-contrast)]">群</span> : null}
+          {avatarNode}
         </div>
         {body}
       </div>

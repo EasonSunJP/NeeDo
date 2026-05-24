@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { type PortalScope, useAuth } from "../../auth/AuthProvider";
+import { demoAuthAccount, type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
+import {
+  fetchGoogleAccountApi,
+  googleAccountIconSrc,
+  type GoogleAccountAuthUrlResponse
+} from "../../lib/googleAccountApi";
 import { cn } from "../../lib/utils";
 import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 
@@ -16,6 +21,7 @@ type FrontendLoginCopy = {
   gmailLogin: string;
   accountLogin: string;
   createAccount: string;
+  testAccountLogin: string;
   createNotice: string;
   useAccountTitle: string;
   useAccountSubtitle: string;
@@ -27,6 +33,7 @@ type FrontendLoginCopy = {
   back: string;
   requiredError: string;
   accountError: string;
+  googleLoginUnavailable: string;
   continueTitle: string;
   signedInAs: string;
   continueButton: string;
@@ -34,6 +41,26 @@ type FrontendLoginCopy = {
   copyright: string;
   portals: Record<PortalScope, { label: string; shortLabel: string; title: string; subtitle: string }>;
 };
+
+export type LoginFeedbackCopy = Pick<FrontendLoginCopy, "accountError" | "createNotice" | "googleLoginUnavailable" | "requiredError">;
+type LoginFeedbackTone = "error" | "notice";
+type LoginFeedbackKey = keyof LoginFeedbackCopy;
+
+export type LoginFeedbackState =
+  | { key: LoginFeedbackKey; tone: LoginFeedbackTone; type: "localized" }
+  | { message: string; tone: LoginFeedbackTone; type: "custom" };
+
+export function resolveLoginFeedbackMessage(feedback: LoginFeedbackState | null, copy: LoginFeedbackCopy) {
+  if (!feedback) {
+    return "";
+  }
+
+  if (feedback.type === "custom") {
+    return feedback.message;
+  }
+
+  return copy[feedback.key];
+}
 
 const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
 
@@ -61,15 +88,18 @@ const portalGmailEmail: Record<PortalScope, string> = {
   admin: "needo.ops@gmail.com"
 };
 
+const loginCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
+
 const loginCopy = {
   zh: {
     brand: "NeeDo",
     welcomeTitle: "欢迎使用 NeeDo",
     welcomeSubtitle: "用一个账号连接消息、预约和工作协作。",
-    gmailLogin: "使用 Gmail 登录",
+    gmailLogin: "使用 Google 登录",
     accountLogin: "使用邮箱 / ID 登录",
     createAccount: "新建账号",
-    createNotice: "新建账号流程正在准备中，请先使用 Gmail 或邮箱 / ID 登录。",
+    testAccountLogin: "测试账号登录",
+    createNotice: "新建账号流程正在准备中，请先使用 Google 或邮箱 / ID 登录。",
     useAccountTitle: "账号登录",
     useAccountSubtitle: "请输入已发行账号信息。",
     accountLabel: "邮箱或账号 ID",
@@ -80,11 +110,12 @@ const loginCopy = {
     back: "返回",
     requiredError: "请先填写登录信息。",
     accountError: "账号或密码不正确，请确认后再试。",
+    googleLoginUnavailable: "当前环境暂时无法发起 Google 登录，请在正式环境配置 Google 账号 API 后重试。",
     continueTitle: "已登录",
     signedInAs: "当前账号",
     continueButton: "继续进入",
     logout: "退出登录",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved.",
+    copyright: loginCopyrightText,
     portals: {
       user: {
         label: "用户端",
@@ -122,10 +153,11 @@ const loginCopy = {
     brand: "NeeDo",
     welcomeTitle: "歡迎使用 NeeDo",
     welcomeSubtitle: "用一個帳號連接訊息、預約和工作協作。",
-    gmailLogin: "使用 Gmail 登入",
+    gmailLogin: "使用 Google 登入",
     accountLogin: "使用信箱 / ID 登入",
     createAccount: "建立帳號",
-    createNotice: "建立帳號流程正在準備中，請先使用 Gmail 或信箱 / ID 登入。",
+    testAccountLogin: "測試帳號登入",
+    createNotice: "建立帳號流程正在準備中，請先使用 Google 或信箱 / ID 登入。",
     useAccountTitle: "帳號登入",
     useAccountSubtitle: "請輸入已發行帳號資訊。",
     accountLabel: "信箱或帳號 ID",
@@ -136,11 +168,12 @@ const loginCopy = {
     back: "返回",
     requiredError: "請先填寫登入資訊。",
     accountError: "帳號或密碼不正確，請確認後再試。",
+    googleLoginUnavailable: "目前環境暫時無法發起 Google 登入，請在正式環境配置 Google 帳號 API 後重試。",
     continueTitle: "已登入",
     signedInAs: "目前帳號",
     continueButton: "繼續進入",
     logout: "登出",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved.",
+    copyright: loginCopyrightText,
     portals: {
       user: {
         label: "用戶端",
@@ -178,10 +211,11 @@ const loginCopy = {
     brand: "NeeDo",
     welcomeTitle: "NeeDoへようこそ",
     welcomeSubtitle: "メッセージ、予約、仕事の連絡をひとつのアカウントで。",
-    gmailLogin: "Gmailでログイン",
+    gmailLogin: "Googleでログイン",
     accountLogin: "メール / IDでログイン",
     createAccount: "新規登録",
-    createNotice: "新規登録フローは準備中です。Gmailまたはメール / IDでログインしてください。",
+    testAccountLogin: "テストアカウントでログイン",
+    createNotice: "新規登録フローは準備中です。Googleまたはメール / IDでログインしてください。",
     useAccountTitle: "アカウントログイン",
     useAccountSubtitle: "発行済みアカウント情報を入力してください。",
     accountLabel: "メールまたはアカウントID",
@@ -192,11 +226,12 @@ const loginCopy = {
     back: "戻る",
     requiredError: "ログイン情報を入力してください。",
     accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
+    googleLoginUnavailable: "現在の環境では Google ログインを開始できません。正式環境で Google アカウント API を設定してから再試行してください。",
     continueTitle: "ログイン済み",
     signedInAs: "現在のアカウント",
     continueButton: "続けて開く",
     logout: "ログアウト",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved.",
+    copyright: loginCopyrightText,
     portals: {
       user: {
         label: "ユーザー端末",
@@ -234,10 +269,11 @@ const loginCopy = {
     brand: "NeeDo",
     welcomeTitle: "Welcome to NeeDo",
     welcomeSubtitle: "Messages, bookings, and work updates in one account.",
-    gmailLogin: "Continue with Gmail",
+    gmailLogin: "Continue with Google",
     accountLogin: "Log in with email / ID",
     createAccount: "Create account",
-    createNotice: "Account creation is being prepared. Use Gmail or email / ID login for now.",
+    testAccountLogin: "Log in with test account",
+    createNotice: "Account creation is being prepared. Use Google or email / ID login for now.",
     useAccountTitle: "Account login",
     useAccountSubtitle: "Enter your issued account details.",
     accountLabel: "Email or account ID",
@@ -248,11 +284,12 @@ const loginCopy = {
     back: "Back",
     requiredError: "Fill in the login information first.",
     accountError: "The account or password is incorrect. Please check and try again.",
+    googleLoginUnavailable: "Google login cannot be started in this environment. Configure the Google Account API in the production environment and try again.",
     continueTitle: "Signed in",
     signedInAs: "Current account",
     continueButton: "Continue to",
     logout: "Log out",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved.",
+    copyright: loginCopyrightText,
     portals: {
       user: {
         label: "User",
@@ -290,10 +327,11 @@ const loginCopy = {
     brand: "NeeDo",
     welcomeTitle: "NeeDo에 오신 것을 환영합니다",
     welcomeSubtitle: "메시지, 예약, 업무 연락을 하나의 계정으로 연결합니다.",
-    gmailLogin: "Gmail로 로그인",
+    gmailLogin: "Google로 로그인",
     accountLogin: "이메일 / ID로 로그인",
     createAccount: "새 계정 만들기",
-    createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 Gmail 또는 이메일 / ID로 로그인하세요.",
+    testAccountLogin: "테스트 계정으로 로그인",
+    createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 Google 또는 이메일 / ID로 로그인하세요.",
     useAccountTitle: "계정 로그인",
     useAccountSubtitle: "발급된 계정 정보를 입력하세요.",
     accountLabel: "이메일 또는 계정 ID",
@@ -304,11 +342,12 @@ const loginCopy = {
     back: "뒤로",
     requiredError: "먼저 로그인 정보를 입력하세요.",
     accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
+    googleLoginUnavailable: "현재 환경에서는 Google 로그인을 시작할 수 없습니다. 정식 환경에서 Google 계정 API를 설정한 후 다시 시도하세요.",
     continueTitle: "로그인됨",
     signedInAs: "현재 계정",
     continueButton: "계속 이동",
     logout: "로그아웃",
-    copyright: "© 2026 NeeDo Co., Ltd. All rights reserved.",
+    copyright: loginCopyrightText,
     portals: {
       user: {
         label: "사용자",
@@ -366,9 +405,7 @@ function AppMark() {
 
 function GmailMark() {
   return (
-    <span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-md bg-white text-base font-black shadow-[inset_0_0_0_1px_rgba(20,21,23,0.08)]">
-      <span className="bg-[linear-gradient(90deg,#4285f4,#34a853,#fbbc05,#ea4335)] bg-clip-text text-transparent">G</span>
-    </span>
+    <img alt="" aria-hidden="true" className="h-7 w-7 object-contain" draggable="false" src={googleAccountIconSrc} />
   );
 }
 
@@ -398,8 +435,7 @@ export function LoginPage() {
   const [panelMode, setPanelMode] = useState<LoginPanelMode>("welcome");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [feedback, setFeedback] = useState<LoginFeedbackState | null>(null);
 
   useEffect(() => {
     setActivePortal(requestedPortal);
@@ -409,10 +445,28 @@ export function LoginPage() {
   const activePortalCopy = copy.portals[activePortal];
   const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
   const hasActiveAccess = isAuthenticated && canAccess(activePortal);
+  const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
+  const error = feedback?.tone === "error" ? feedbackMessage : "";
+  const notice = feedback?.tone === "notice" ? feedbackMessage : "";
+
+  useEffect(() => {
+    if (searchParams.get("googleAccount") !== "connected" || searchParams.get("googleAccountMode") !== "login") {
+      return;
+    }
+
+    const googlePortal = normalizePortal(searchParams.get("portal") ?? activePortal);
+    const googleEmail = searchParams.get("googleEmail") || portalGmailEmail[googlePortal];
+
+    if (!loginWithProvider(googlePortal, "gmail", googleEmail)) {
+      setFeedback({ key: "accountError", tone: "error", type: "localized" });
+      return;
+    }
+
+    openPortalEntry(googlePortal, getPostLoginRoute(googlePortal, redirectPath));
+  }, [activePortal, loginWithProvider, redirectPath, searchParams]);
 
   const clearFeedback = () => {
-    setError("");
-    setNotice("");
+    setFeedback(null);
   };
 
   const enterPortal = () => {
@@ -423,15 +477,25 @@ export function LoginPage() {
     openPortalEntry(activePortal, nextPath);
   };
 
-  const continueWithGmail = () => {
+  const continueWithGmail = async () => {
     clearFeedback();
 
-    if (!loginWithProvider(activePortal, "gmail", portalGmailEmail[activePortal])) {
-      setError(copy.accountError);
-      return;
-    }
+    try {
+      const response = await fetchGoogleAccountApi<GoogleAccountAuthUrlResponse>(
+        `/api/google-account/auth-url?mode=login&portal=${encodeURIComponent(activePortal)}&actorId=${encodeURIComponent(
+          `needo:login:${activePortal}`
+        )}&returnTo=${encodeURIComponent(window.location.href)}`
+      );
 
-    openPortalEntry(activePortal, nextPath);
+      window.location.assign(response.authUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFeedback(
+        message.includes("GOOGLE_ACCOUNT") || message.includes("尚未配置")
+          ? { key: "googleLoginUnavailable", tone: "error", type: "localized" }
+          : { message, tone: "error", type: "custom" }
+      );
+    }
   };
 
   const handleAccountLogin = (event: FormEvent<HTMLFormElement>) => {
@@ -439,12 +503,23 @@ export function LoginPage() {
     clearFeedback();
 
     if (!username.trim() || !password.trim()) {
-      setError(copy.requiredError);
+      setFeedback({ key: "requiredError", tone: "error", type: "localized" });
       return;
     }
 
     if (!login(activePortal, username, password)) {
-      setError(copy.accountError);
+      setFeedback({ key: "accountError", tone: "error", type: "localized" });
+      return;
+    }
+
+    openPortalEntry(activePortal, nextPath);
+  };
+
+  const handleTestAccountLogin = () => {
+    clearFeedback();
+
+    if (!login(activePortal, demoAuthAccount.username, demoAuthAccount.password)) {
+      setFeedback({ key: "accountError", tone: "error", type: "localized" });
       return;
     }
 
@@ -512,7 +587,7 @@ export function LoginPage() {
             ) : panelMode === "welcome" ? (
               <div className="space-y-4">
                 <button
-                  className="flex h-14 w-full items-center justify-center gap-3 rounded-[6px] bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90"
+                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90"
                   onClick={continueWithGmail}
                   type="button"
                 >
@@ -520,7 +595,7 @@ export function LoginPage() {
                   {copy.gmailLogin}
                 </button>
                 <button
-                  className="h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)]"
+                  className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)]"
                   onClick={() => {
                     setPanelMode("account");
                     clearFeedback();
@@ -532,12 +607,18 @@ export function LoginPage() {
                 <button
                   className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
                   onClick={() => {
-                    setNotice(copy.createNotice);
-                    setError("");
+                    setFeedback({ key: "createNotice", tone: "notice", type: "localized" });
                   }}
                   type="button"
                 >
                   {copy.createAccount}
+                </button>
+                <button
+                  className="mt-6 h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_36%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] px-5 text-base font-black text-[color:var(--client-primary)] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_10%,transparent)] transition hover:border-[color:var(--client-primary)]"
+                  onClick={handleTestAccountLogin}
+                  type="button"
+                >
+                  {copy.testAccountLogin}
                 </button>
               </div>
             ) : (
@@ -568,13 +649,13 @@ export function LoginPage() {
                   />
                 </label>
                 <button
-                  className="h-14 w-full rounded-[6px] bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90"
+                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90"
                   type="submit"
                 >
                   {copy.loginButton}
                 </button>
                 <button
-                  className="flex h-12 w-full items-center justify-center gap-3 rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-sm font-black text-[color:var(--client-text)]"
+                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)]"
                   onClick={continueWithGmail}
                   type="button"
                 >

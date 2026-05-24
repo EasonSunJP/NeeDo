@@ -11,6 +11,7 @@ type ConversationListItemProps = {
   sideText?: ReactNode;
   unreadCount?: number;
   avatarBadge?: ReactNode;
+  avatarNode?: ReactNode;
   titleAccessory?: ReactNode;
   className?: string;
   avatarClassName?: string;
@@ -35,6 +36,7 @@ export function ConversationListItem({
   sideText,
   unreadCount = 0,
   avatarBadge,
+  avatarNode,
   titleAccessory,
   className,
   avatarClassName,
@@ -51,7 +53,7 @@ export function ConversationListItem({
   return (
     <div className={cn("grid items-start gap-3", hasSideColumn ? "grid-cols-[auto,minmax(0,1fr)_auto]" : "grid-cols-[auto,minmax(0,1fr)]", className)}>
       <div className={cn("relative shrink-0", avatarWrapClassName)}>
-        <AvatarImage alt={title} className={cn("h-12 w-12", avatarClassName)} src={avatar} />
+        {avatarNode ?? <AvatarImage alt={title} className={cn("h-12 w-12", avatarClassName)} src={avatar} />}
         {unreadCount > 0 ? <NotificationBadge className="absolute -right-1 -top-1" count={unreadCount} size="sm" /> : null}
         {avatarBadge}
       </div>

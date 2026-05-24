@@ -1,0 +1,63 @@
+name: needo-dev
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../backend/.env.dev
+    environment:
+      NODE_ENV: development
+      PORT: ${BACKEND_CONTAINER_PORT}
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:${MYSQL_CONTAINER_PORT}/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:${REDIS_CONTAINER_PORT}
+    ports:
+      - "${BACKEND_HOST_PORT}:${BACKEND_CONTAINER_PORT}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_TCP_PORT: ${MYSQL_CONTAINER_PORT}
+    ports:
+      - "${MYSQL_HOST_PORT}:${MYSQL_CONTAINER_PORT}"
+    volumes:
+      - needo_mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -P $${MYSQL_TCP_PORT} -u root -p$${MYSQL_ROOT_PASSWORD}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.2-alpine
+    command: ["redis-server", "--appendonly", "yes", "--port", "${REDIS_CONTAINER_PORT}"]
+    ports:
+      - "${REDIS_HOST_PORT}:${REDIS_CONTAINER_PORT}"
+    volumes:
+      - needo_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${REDIS_CONTAINER_PORT}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  needo_mysql_data:
+  needo_redis_data:

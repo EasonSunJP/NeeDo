@@ -545,7 +545,7 @@ const splashImages: Record<SplashPortal, string> = {
 };
 
 const splashVersionLabel = "ver：2604170914";
-const splashCopyrightText = `© ${new Date().getFullYear()} NeeDo. All rights reserved.`;
+const splashCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
 
 const splashAdminThemeConfig = {
   admin: {

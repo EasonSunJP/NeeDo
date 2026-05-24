@@ -6,12 +6,11 @@ import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPa
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { AvatarImage } from "../../components/ui/AvatarImage";
-import { Badge } from "../../components/ui/Badge";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { reviews, serviceGuarantees, stores, userStories } from "../../data/mock";
+import { reviews, stores, userStories } from "../../data/mock";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
-import { cn, yen } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getCustomerLevelLabel, resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
 import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
@@ -921,35 +920,22 @@ export function UserCenterPage() {
             </section>
 
             <section>
-              <SectionTitle caption="迟到、售后、资质和保险都可以在这里追踪" title="服务保障" />
-              <div className="space-y-3">
-                {serviceGuarantees.map((item) => (
-                  <article className={pagePanelClassName} key={item.title}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-black">{item.title}</h3>
-                        <p className="mt-2 text-sm leading-6 text-ink/60">{item.caption}</p>
-                      </div>
-                      <Badge tone="green">{item.metric}</Badge>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section>
               <SectionTitle caption="来自保洁、门店预约与宠物服务的真实使用场景" title="近期用户反馈" />
               <div className="space-y-3">
                 {userStories.map((story) => (
                   <article className={pagePanelClassName} key={story.name}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
+                    <div className="flex items-start gap-3">
+                      <AvatarImage
+                        alt={`${story.name}头像`}
+                        className="h-12 w-12 shrink-0 border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] shadow-[0_12px_24px_rgba(0,0,0,0.16)]"
+                        src={story.avatar}
+                      />
+                      <div className="min-w-0">
                         <h3 className="font-black">{story.name}</h3>
                         <p className="mt-1 text-xs text-ink/50">
                           {story.city} · {story.service}
                         </p>
                       </div>
-                      <Badge tone="yellow">已省 {yen(story.saved)}</Badge>
                     </div>
                     <p className="mt-3 text-sm leading-6 text-ink/65">{story.content}</p>
                   </article>

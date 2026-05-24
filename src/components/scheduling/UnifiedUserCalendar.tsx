@@ -27,6 +27,7 @@ import {
   type GoogleCalendarConnectionStatus,
   type GoogleCalendarSyncActionResult
 } from "../../lib/googleCalendarApi";
+import { googleAccountIconSrc } from "../../lib/googleAccountApi";
 import { useEntityStore } from "../../state/entityStore";
 import { useScheduleStore } from "../../state/scheduleStore";
 import { useTechnicianScheduleStore } from "../../state/technicianScheduleStore";
@@ -298,14 +299,14 @@ function addMinutesToTime(time: string, minutes: number) {
 
 function getGoogleCalendarSettingsPath(scope: UnifiedCalendarScope) {
   if (scope === "merchant") {
-    return "/merchant/settings/account?section=google-calendar";
+    return "/merchant/settings/account?section=google-account";
   }
 
   if (scope === "technician") {
-    return "/technician/settings/account?section=google-calendar";
+    return "/technician/settings/account?section=google-account";
   }
 
-  return "/me/settings/account?section=google-calendar";
+  return "/me/settings/account?section=google-account";
 }
 
 function toGoogleCalendarApiPayload(event: UnifiedCalendarEvent): GoogleCalendarApiEventPayload {
@@ -1792,7 +1793,7 @@ function CalendarSourceDrawer({
                   onClick={() => runGoogleAction("connect", onGoogleConnect)}
                   type="button"
                 >
-                  <img alt="" className="h-8 w-8 shrink-0 object-contain" src={googleCalendarIconSrc} />
+                  <img alt="" className="h-8 w-8 shrink-0 object-contain" src={googleAccountIconSrc} />
                   <span className="min-w-0 flex-1">
                     <strong className="block text-[12px] font-black text-[color:var(--client-text)]">连接 Google 账号</strong>
                     <span className="mt-0.5 block text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">前往设置页面加入 Google 账号绑定</span>

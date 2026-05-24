@@ -1,0 +1,12 @@
+process.env.NODE_ENV = "test";
+process.env.SERVICE_NAME = "needo-backend";
+process.env.PORT = "3101";
+process.env.API_PREFIX = "/api/v1";
+process.env.CORS_ALLOWED_ORIGINS = "http://localhost:5180,http://127.0.0.1:5180";
+process.env.RATE_LIMIT_WINDOW_MS = "60000";
+process.env.RATE_LIMIT_MAX = "1000";
+process.env.REQUEST_BODY_LIMIT = "1mb";
+process.env.LOG_LEVEL = "silent";
+process.env.OPENAPI_ENABLED = "true";
+process.env.DATABASE_URL = "mysql://needo_test:needo_test_password@localhost:3307/needo_test";
+process.env.REDIS_URL = "redis://localhost:6379";

@@ -10,6 +10,8 @@ import {
   expireDisappearingMessagesMutation,
   getContactIndexLetter,
   getImContactSignatureCaption,
+  getAnonymousGroupConversationTitle,
+  getAnonymousGroupMemberIdentity,
   getVisibleIndexLetters,
   groupContactsByIndex,
   makeSeedImDatabase,
@@ -275,6 +277,46 @@ describe("im model", () => {
 
     expect(enabled?.privacyModeEnabled).toBe(true);
     expect(enabled?.disappearingCountdown?.minutes).toBe(3);
+  });
+
+  it("lets only group owners hide member names and profiles in privacy settings", () => {
+    const database = cloneImDatabase(makeSeedImDatabase());
+    const conversation = database.conversations.find((item) => item.id === "conversation-non-owner-test");
+    const ownerMember = database.members.find((member) => member.conversationId === conversation?.id && member.role === "owner");
+
+    expect(conversation?.type).toBe("group");
+
+    const blocked = updateConversationPrivacyMutation(database, conversation!.id, {
+      privacyModeEnabled: false,
+      hideMemberProfiles: true
+    });
+
+    expect(blocked).toBeUndefined();
+    expect(conversation?.hideMemberProfiles).not.toBe(true);
+
+    database.currentUserId = ownerMember!.userId;
+    const hidden = updateConversationPrivacyMutation(database, conversation!.id, {
+      privacyModeEnabled: false,
+      hideMemberProfiles: true
+    });
+
+    expect(hidden?.hideMemberProfiles).toBe(true);
+  });
+
+  it("labels hidden group members from user A through AA and AB", () => {
+    const memberIds = Array.from({ length: 28 }, (_, index) => `member-${index}`);
+    const conversation = { memberIds };
+
+    expect(getAnonymousGroupMemberIdentity(conversation, "member-0")).toEqual({ code: "A", displayName: "ユーザーA" });
+    expect(getAnonymousGroupMemberIdentity(conversation, "member-25")).toEqual({ code: "Z", displayName: "ユーザーZ" });
+    expect(getAnonymousGroupMemberIdentity(conversation, "member-26")).toEqual({ code: "AA", displayName: "ユーザーAA" });
+    expect(getAnonymousGroupMemberIdentity(conversation, "member-27")).toEqual({ code: "AB", displayName: "ユーザーAB" });
+  });
+
+  it("uses anonymous member labels for hidden group titles", () => {
+    const conversation = { memberIds: ["owner", "member-a", "member-b", "member-c"] };
+
+    expect(getAnonymousGroupConversationTitle(conversation)).toBe("ユーザーA、ユーザーB、ユーザーC、...");
   });
 
   it("lets group owners control group info edit permissions while members edit only their own nickname by default", () => {

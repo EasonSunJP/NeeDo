@@ -1,0 +1,32 @@
+import { createApp } from "./app";
+import { env } from "./config/env";
+import { logger } from "./config/logger";
+
+const app = createApp(env);
+
+const server = app.listen(env.PORT, () => {
+  logger.info(
+    {
+      port: env.PORT,
+      apiPrefix: env.API_PREFIX,
+      environment: env.NODE_ENV
+    },
+    "NeeDo backend started"
+  );
+});
+
+const shutdown = (signal: NodeJS.Signals): void => {
+  logger.info({ signal }, "NeeDo backend shutdown requested");
+  server.close((error) => {
+    if (error) {
+      logger.error({ error }, "NeeDo backend shutdown failed");
+      process.exit(1);
+    }
+
+    logger.info("NeeDo backend stopped");
+    process.exit(0);
+  });
+};
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
