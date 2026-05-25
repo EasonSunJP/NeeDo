@@ -7,6 +7,11 @@ import {
   SYSTEM_ROLES,
   buildRolePermissionAssignments
 } from "../src/constants/permissions.constants";
+import {
+  TEST_LOGIN_EMAIL,
+  TEST_LOGIN_PASSWORD,
+  TEST_LOGIN_USERNAME
+} from "../src/constants/test-login.constants";
 
 const BCRYPT_ROUNDS = 12;
 const DEFAULT_ADMIN_EMAIL = "admin@example.com";
@@ -42,6 +47,11 @@ interface SeedIdentityInput {
   scopeId: number | null;
   displayName: string;
   isDefault?: boolean;
+}
+
+interface SeedCoreReadOptions {
+  seedTestLogin: boolean;
+  testLoginPasswordHash: string;
 }
 
 export const getAdminSeedConfig = (env: NodeJS.ProcessEnv = process.env): AdminSeedConfig => {
@@ -152,10 +162,162 @@ const assignSeedRole = async (
   });
 };
 
+const isTruthyEnvValue = (value: string | undefined): boolean =>
+  ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
+
+export const shouldSeedTestLoginAccount = (env: NodeJS.ProcessEnv = process.env): boolean =>
+  env.NODE_ENV !== "production" && isTruthyEnvValue(env.AUTH_TEST_LOGIN_ENABLED);
+
+const getRequiredRole = (roleByCode: Map<string, { id: number }>, code: string): { id: number } => {
+  const role = roleByCode.get(code);
+
+  if (!role) {
+    throw new Error(`Test login seed failed: missing role ${code}.`);
+  }
+
+  return role;
+};
+
+const seedTestLoginAccount = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    passwordHash: string;
+    roleByCode: Map<string, { id: number }>;
+    shopId: number;
+  }
+): Promise<void> => {
+  const testUser = await upsertSeedUser(
+    tx,
+    {
+      email: TEST_LOGIN_EMAIL,
+      username: TEST_LOGIN_USERNAME,
+      phone: "+81300000999"
+    },
+    input.passwordHash
+  );
+  const testCustomer = await tx.customerProfile.upsert({
+    where: { userId: testUser.id },
+    create: {
+      userId: testUser.id,
+      displayName: "NeeDo Test Customer",
+      bio: "Dedicated non-production test profile for auth smoke checks.",
+      city: "Tokyo",
+      membershipLevel: "standard",
+      isPublic: false
+    },
+    update: {
+      displayName: "NeeDo Test Customer",
+      bio: "Dedicated non-production test profile for auth smoke checks.",
+      city: "Tokyo",
+      membershipLevel: "standard",
+      isPublic: false,
+      deletedAt: null
+    }
+  });
+  const testTechnician = await tx.technicianProfile.upsert({
+    where: { userId: testUser.id },
+    create: {
+      userId: testUser.id,
+      shopId: input.shopId,
+      displayName: "NeeDo Test Technician",
+      bio: "Dedicated non-production technician identity for auth smoke checks.",
+      city: "Tokyo",
+      serviceArea: "Tokyo",
+      yearsExperience: 1,
+      status: "draft",
+      isRecommended: false
+    },
+    update: {
+      shopId: input.shopId,
+      displayName: "NeeDo Test Technician",
+      bio: "Dedicated non-production technician identity for auth smoke checks.",
+      city: "Tokyo",
+      serviceArea: "Tokyo",
+      yearsExperience: 1,
+      status: "draft",
+      isRecommended: false,
+      deletedAt: null
+    }
+  });
+
+  await upsertSeedIdentity(tx, {
+    userId: testUser.id,
+    type: "platform",
+    scopeType: "global",
+    scopeId: null,
+    displayName: TEST_LOGIN_USERNAME,
+    isDefault: true
+  });
+  await upsertSeedIdentity(tx, {
+    userId: testUser.id,
+    type: "merchant_owner",
+    scopeType: "shop",
+    scopeId: input.shopId,
+    displayName: "NeeDo Test Store",
+    isDefault: false
+  });
+  await upsertSeedIdentity(tx, {
+    userId: testUser.id,
+    type: "customer",
+    scopeType: "customer_profile",
+    scopeId: testCustomer.id,
+    displayName: testCustomer.displayName,
+    isDefault: false
+  });
+  await upsertSeedIdentity(tx, {
+    userId: testUser.id,
+    type: "technician",
+    scopeType: "technician_profile",
+    scopeId: testTechnician.id,
+    displayName: testTechnician.displayName,
+    isDefault: false
+  });
+  await upsertSeedIdentity(tx, {
+    userId: testUser.id,
+    type: "broker",
+    scopeType: "global",
+    scopeId: null,
+    displayName: "NeeDo Test Broker",
+    isDefault: false
+  });
+
+  await assignSeedRole(tx, {
+    userId: testUser.id,
+    roleId: getRequiredRole(input.roleByCode, "admin").id,
+    scopeType: "global",
+    scopeId: null
+  });
+  await assignSeedRole(tx, {
+    userId: testUser.id,
+    roleId: getRequiredRole(input.roleByCode, "merchant_owner").id,
+    scopeType: "shop",
+    scopeId: input.shopId
+  });
+  await assignSeedRole(tx, {
+    userId: testUser.id,
+    roleId: getRequiredRole(input.roleByCode, "customer").id,
+    scopeType: "customer_profile",
+    scopeId: testCustomer.id
+  });
+  await assignSeedRole(tx, {
+    userId: testUser.id,
+    roleId: getRequiredRole(input.roleByCode, "technician").id,
+    scopeType: "technician_profile",
+    scopeId: testTechnician.id
+  });
+  await assignSeedRole(tx, {
+    userId: testUser.id,
+    roleId: getRequiredRole(input.roleByCode, "broker").id,
+    scopeType: "global",
+    scopeId: null
+  });
+};
+
 const seedCoreReadData = async (
   tx: Prisma.TransactionClient,
   passwordHash: string,
-  roleByCode: Map<string, { id: number }>
+  roleByCode: Map<string, { id: number }>,
+  options: SeedCoreReadOptions
 ): Promise<void> => {
   const wellnessCategory = await tx.category.upsert({
     where: { code: "wellness" },
@@ -357,6 +519,26 @@ const seedCoreReadData = async (
       scopeId: customer.id
     });
   }
+
+  if (options.seedTestLogin) {
+    await seedTestLoginAccount(tx, {
+      passwordHash: options.testLoginPasswordHash,
+      roleByCode,
+      shopId: shop.id
+    });
+  }
+
+  await upsertSeedWalletFunding(tx, {
+    ownerType: "SHOP",
+    ownerId: shop.id,
+    actorUserId: shopOwner.id,
+    amount: 5000,
+    idempotencyKey: `seed:wallet:shop:${shop.id}:initial-ndp`
+  });
+  await upsertSeedWallet(tx, {
+    ownerType: "USER",
+    ownerId: customerUser.id
+  });
 
   const shiatsuService = await upsertSeedService(tx, {
     name: "Shiatsu Recovery",
@@ -640,6 +822,115 @@ const upsertSeedScheduleSlot = async (
     : tx.scheduleSlot.create({ data });
 };
 
+const upsertSeedWallet = (
+  tx: Prisma.TransactionClient,
+  input: { ownerType: "USER" | "SHOP" | "PLATFORM"; ownerId: number }
+) =>
+  tx.wallet.upsert({
+    where: {
+      ownerType_ownerId_currency: {
+        ownerType: input.ownerType,
+        ownerId: input.ownerId,
+        currency: "NDP"
+      }
+    },
+    create: {
+      ownerType: input.ownerType,
+      ownerId: input.ownerId,
+      currency: "NDP"
+    },
+    update: {
+      deletedAt: null
+    }
+  });
+
+const upsertSeedWalletFunding = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    ownerType: "USER" | "SHOP" | "PLATFORM";
+    ownerId: number;
+    actorUserId: number;
+    amount: number;
+    idempotencyKey: string;
+  }
+): Promise<void> => {
+  const wallet = await upsertSeedWallet(tx, input);
+  const existing = await tx.ledgerTransaction.findUnique({
+    where: { idempotencyKey: input.idempotencyKey }
+  });
+
+  if (existing) {
+    return;
+  }
+
+  const transaction = await tx.ledgerTransaction.create({
+    data: {
+      transactionNo: createSeedLedgerTransactionNo(input),
+      idempotencyKey: input.idempotencyKey,
+      type: "SEED_CREDIT",
+      referenceType: "seed_wallet",
+      referenceId: wallet.id,
+      actorUserId: input.actorUserId,
+      amount: input.amount,
+      currency: "NDP",
+      metadata: {
+        ownerType: input.ownerType,
+        ownerId: input.ownerId
+      }
+    }
+  });
+  const updatedWallet = await tx.wallet.update({
+    where: { id: wallet.id },
+    data: {
+      availableBalance: { increment: input.amount }
+    }
+  });
+
+  await tx.walletLedger.create({
+    data: {
+      walletId: wallet.id,
+      transactionId: transaction.id,
+      direction: "AVAILABLE_CREDIT",
+      amount: input.amount,
+      availableDelta: input.amount,
+      frozenDelta: 0,
+      availableBalanceAfter: updatedWallet.availableBalance,
+      frozenBalanceAfter: updatedWallet.frozenBalance,
+      reason: "seed_wallet_initial_ndp"
+    }
+  });
+  await tx.financeReconciliation.create({
+    data: {
+      transactionId: transaction.id,
+      referenceType: "seed_wallet",
+      referenceId: wallet.id,
+      expectedAmount: input.amount,
+      actualAmount: input.amount,
+      differenceAmount: 0,
+      currency: "NDP"
+    }
+  });
+  await tx.auditLog.create({
+    data: {
+      actorId: input.actorUserId,
+      action: "ledger.seed_wallet.credit",
+      targetType: "ledger_transaction",
+      targetId: transaction.id,
+      metadata: {
+        walletId: wallet.id,
+        amount: input.amount,
+        currency: "NDP"
+      }
+    }
+  });
+};
+
+const createSeedLedgerTransactionNo = (input: {
+  ownerType: string;
+  ownerId: number;
+  amount: number;
+}): string => `LTSEED${input.ownerType}${input.ownerId}${input.amount}`;
+
 const upsertSeedMedia = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -748,6 +1039,7 @@ export const seedUserManagement = async (
 ): Promise<void> => {
   const adminConfig = getAdminSeedConfig();
   const adminPasswordHash = await hash(adminConfig.password, BCRYPT_ROUNDS);
+  const testLoginPasswordHash = await hash(TEST_LOGIN_PASSWORD, BCRYPT_ROUNDS);
   const rolePermissionAssignments = buildRolePermissionAssignments();
 
   await prisma.$transaction(async (tx) => {
@@ -915,7 +1207,10 @@ export const seedUserManagement = async (
       });
     }
 
-    await seedCoreReadData(tx, adminPasswordHash, roleByCode);
+    await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
+      seedTestLogin: shouldSeedTestLoginAccount(),
+      testLoginPasswordHash
+    });
   });
 };
 

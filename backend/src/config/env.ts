@@ -65,7 +65,8 @@ const envSchema = z.object({
   AUTH_OTP_TTL_SECONDS: z.coerce.number().int().positive().max(600),
   AUTH_OTP_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
   AUTH_OTP_EMAIL_WEBHOOK_URL: optionalUrlSchema,
-  AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
+  AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive(),
+  AUTH_TEST_LOGIN_ENABLED: booleanSchema.default(false)
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

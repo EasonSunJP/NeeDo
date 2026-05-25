@@ -1,4 +1,12 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  backofficeRealDataApi,
+  mapBackofficeMerchant,
+  mapBackofficeOrder,
+  mapBackofficeTechnician,
+  type BackofficeDashboardPayload
+} from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ChartPanel } from "../../components/admin/ChartPanel";
 import { DataTable } from "../../components/ui/DataTable";
@@ -7,16 +15,13 @@ import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import {
   cityOperatingStats,
-  dashboardMetrics,
   fieldJobs,
   merchantHealthScores,
-  merchants,
-  orders,
   riskTickets
 } from "../../data/mock";
 import { statusLabel, yen } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
-import type { FieldJob, Merchant, Order } from "../../types/domain";
+import type { FieldJob, Merchant, Metric, Order } from "../../types/domain";
 
 type CityOperatingStat = (typeof cityOperatingStats)[number];
 type RiskTicket = (typeof riskTickets)[number];
@@ -35,6 +40,23 @@ function DashboardTableHeader({ title, to }: { title: string; to: string }) {
 
 export function DashboardPage() {
   const { customers, technicians } = useEntityStore();
+  const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
+  const realOrders = useMemo<Order[]>(
+    () => dashboard?.orders.map(mapBackofficeOrder) ?? [],
+    [dashboard]
+  );
+  const realMerchants = useMemo<Merchant[]>(
+    () => dashboard?.shops.map(mapBackofficeMerchant) ?? [],
+    [dashboard]
+  );
+  const realMetrics = useMemo<Metric[]>(
+    () => dashboard?.metrics ?? [],
+    [dashboard]
+  );
+  const realTechnicians = useMemo(
+    () => dashboard?.technicians.map(mapBackofficeTechnician) ?? [],
+    [dashboard]
+  );
   const getCustomerDisplayName = (order: Order) => {
     const customer = customers.find((item) => item.id === order.customerId);
     return customer?.nickname ? `${customer.nickname} / ${customer.name}` : customer?.name ?? order.customerName;
@@ -47,6 +69,24 @@ export function DashboardPage() {
     const technician = technicians.find((item) => item.name === name || item.nickname === name);
     return technician?.nickname ? `${technician.nickname} / ${technician.name}` : technician?.name ?? name;
   };
+
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.dashboard("backoffice").then((payload) => {
+      if (activeRequest) {
+        setDashboard(payload);
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setDashboard(null);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
 
   return (
     <AdminLayout>
@@ -78,7 +118,7 @@ export function DashboardPage() {
         </div>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {dashboardMetrics.map((metric) => (
+          {realMetrics.map((metric) => (
             <MetricCard key={metric.label} metric={metric} dense />
           ))}
         </section>
@@ -93,10 +133,10 @@ export function DashboardPage() {
             <h2 className="font-bold">运营待办</h2>
             <div className="mt-4 space-y-3">
               {[
-                ["待审核商家", merchants.filter((merchant) => merchant.status === "pending").length, "/admin/merchants"],
+                ["待审核商家", realMerchants.filter((merchant) => merchant.status === "pending").length, "/admin/merchants"],
                 ["待派工工单", fieldJobs.filter((job) => job.status === "pendingDispatch").length, "/admin/field-jobs"],
-                ["退款中订单", orders.filter((order) => order.status === "refunding").length, "/admin/orders"],
-                ["门店待跟进", merchants.filter((merchant) => merchant.status === "pending").length, "/admin/merchants"]
+                ["退款中订单", realOrders.filter((order) => order.status === "refunding").length, "/admin/orders"],
+                ["门店待跟进", realMerchants.filter((merchant) => merchant.status === "pending").length, "/admin/merchants"]
               ].map(([label, count, to]) => (
                 <Link className="flex items-center justify-between rounded-lg bg-paper p-3" key={label} to={String(to)}>
                   <span className="text-sm font-bold">{label}</span>
@@ -140,7 +180,7 @@ export function DashboardPage() {
                 { key: "amount", title: "金额", render: (row) => yen(row.amount) }
               ]}
               footerPlacement="inline"
-              rows={orders.slice(0, 10)}
+              rows={realOrders.slice(0, 10)}
               pageSize={10}
             />
           </section>
@@ -209,8 +249,22 @@ export function DashboardPage() {
               { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "pending" ? "yellow" : "green"}>{row.status}</Badge> }
             ]}
             footerPlacement="inline"
-            rows={merchants.slice(0, 10)}
+            rows={realMerchants.slice(0, 10)}
             pageSize={10}
+          />
+        </section>
+        <section className="space-y-3">
+          <DashboardTableHeader title="真实技师档案" to="/admin/technicians" />
+          <DataTable
+            columns={[
+              { key: "name", title: "技师", render: (row) => row.name },
+              { key: "store", title: "门店", render: (row) => row.storeId || "未绑定" },
+              { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "available" ? "green" : "neutral"}>{row.status}</Badge> },
+              { key: "account", title: "账号", render: (row) => row.accountUsername ?? "未绑定" }
+            ]}
+            footerPlacement="inline"
+            rows={realTechnicians}
+            pageSize={6}
           />
         </section>
       </div>

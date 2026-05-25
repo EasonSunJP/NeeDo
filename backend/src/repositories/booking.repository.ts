@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import type { LedgerTransactionClient } from "../services/ledger.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -40,6 +41,15 @@ export interface OrderTransitionRepositoryInput {
   fromStatus: BookingOrderStatusPayload;
   toStatus: BookingOrderStatusPayload;
   reason?: string | null;
+}
+
+export interface OrderTransitionSettlementContext {
+  transactionClient: LedgerTransactionClient;
+  order: BookingOrderPayload;
+}
+
+export interface OrderTransitionRepositoryOptions {
+  settle?: (context: OrderTransitionSettlementContext) => Promise<void>;
 }
 
 export interface ScheduleSlotPayload {
@@ -104,7 +114,8 @@ export interface BookingRepositoryPort {
   listOrders: (input: OrderListInput) => Promise<PaginatedResponse<BookingOrderPayload>>;
   findOrderById: (id: number) => Promise<BookingOrderPayload | null>;
   transitionOrder: (
-    input: OrderTransitionRepositoryInput
+    input: OrderTransitionRepositoryInput,
+    options?: OrderTransitionRepositoryOptions
   ) => Promise<BookingOrderPayload | null>;
 }
 
@@ -315,7 +326,8 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   public async transitionOrder(
-    input: OrderTransitionRepositoryInput
+    input: OrderTransitionRepositoryInput,
+    options: OrderTransitionRepositoryOptions = {}
   ): Promise<BookingOrderPayload | null> {
     return this.client.$transaction(async (tx) => {
       const current = await tx.bookingOrder.findFirst({
@@ -368,6 +380,13 @@ export class BookingRepository implements BookingRepositoryPort {
           reason: input.reason?.trim() || null
         }
       });
+
+      if (options.settle) {
+        await options.settle({
+          transactionClient: tx,
+          order: this.mapOrder(current)
+        });
+      }
 
       const next = await tx.bookingOrder.findFirst({
         where: {

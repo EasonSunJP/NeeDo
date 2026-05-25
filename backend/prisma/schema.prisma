@@ -31,6 +31,86 @@ enum ScheduleSlotStatus {
   @@map("schedule_slot_status")
 }
 
+enum WalletOwnerType {
+  USER     @map("user")
+  SHOP     @map("shop")
+  PLATFORM @map("platform")
+
+  @@map("wallet_owner_type")
+}
+
+enum LedgerTransactionType {
+  BOOKING_ACCEPT_FREEZE                @map("booking_accept_freeze")
+  BOOKING_CANCEL_UNFREEZE              @map("booking_cancel_unfreeze")
+  BOOKING_COMPLETE_SETTLEMENT          @map("booking_complete_settlement")
+  BOOKING_MERCHANT_CANCEL_COMPENSATION @map("booking_merchant_cancel_compensation")
+  SEED_CREDIT                          @map("seed_credit")
+
+  @@map("ledger_transaction_type")
+}
+
+enum LedgerTransactionStatus {
+  APPLIED @map("applied")
+
+  @@map("ledger_transaction_status")
+}
+
+enum WalletLedgerDirection {
+  AVAILABLE_CREDIT @map("available_credit")
+  AVAILABLE_DEBIT  @map("available_debit")
+  FREEZE           @map("freeze")
+  UNFREEZE         @map("unfreeze")
+  FROZEN_DEBIT     @map("frozen_debit")
+
+  @@map("wallet_ledger_direction")
+}
+
+enum FinanceReconciliationStatus {
+  PENDING  @map("pending")
+  EXPORTED @map("exported")
+
+  @@map("finance_reconciliation_status")
+}
+
+enum ConversationType {
+  DIRECT @map("direct")
+  GROUP  @map("group")
+
+  @@map("conversation_type")
+}
+
+enum MessageType {
+  TEXT         @map("text")
+  SYSTEM       @map("system")
+  ORDER_STATUS @map("order_status")
+
+  @@map("message_type")
+}
+
+enum FriendRequestStatus {
+  PENDING  @map("pending")
+  ACCEPTED @map("accepted")
+  REJECTED @map("rejected")
+
+  @@map("friend_request_status")
+}
+
+enum SocialPostVisibility {
+  PUBLIC    @map("public")
+  FOLLOWERS @map("followers")
+
+  @@map("social_post_visibility")
+}
+
+enum NotificationType {
+  ORDER_STATUS   @map("order_status")
+  FRIEND_REQUEST @map("friend_request")
+  SYSTEM         @map("system")
+  SOCIAL         @map("social")
+
+  @@map("notification_type")
+}
+
 model User {
   id           Int       @id @default(autoincrement())
   email        String    @unique @db.VarChar(255)
@@ -44,15 +124,28 @@ model User {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  identities        UserIdentity[]
-  userRoles         UserRole[]
-  loginLogs         LoginLog[]           @relation("LoginLogUser")
-  auditLogs         AuditLog[]           @relation("AuditLogActor")
-  ownedShops        Shop[]               @relation("ShopOwner")
-  technicianProfile TechnicianProfile?
-  customerProfile   CustomerProfile?
-  bookingOrders     BookingOrder[]       @relation("BookingOrderCustomer")
-  orderHistories    OrderStatusHistory[] @relation("OrderStatusHistoryActor")
+  identities         UserIdentity[]
+  userRoles          UserRole[]
+  loginLogs          LoginLog[]           @relation("LoginLogUser")
+  auditLogs          AuditLog[]           @relation("AuditLogActor")
+  ledgerTransactions LedgerTransaction[]  @relation("LedgerTransactionActor")
+  ownedShops         Shop[]               @relation("ShopOwner")
+  technicianProfile  TechnicianProfile?
+  customerProfile    CustomerProfile?
+  bookingOrders      BookingOrder[]       @relation("BookingOrderCustomer")
+  orderHistories     OrderStatusHistory[] @relation("OrderStatusHistoryActor")
+  createdConversations Conversation[]       @relation("ConversationCreator")
+  conversationParticipants ConversationParticipant[]
+  sentMessages      Message[]             @relation("MessageSender")
+  ownedContacts     Contact[]             @relation("ContactOwner")
+  contactEntries    Contact[]             @relation("ContactUser")
+  sentFriendRequests FriendRequest[]       @relation("FriendRequestRequester")
+  receivedFriendRequests FriendRequest[]   @relation("FriendRequestTarget")
+  socialPosts       SocialPost[]          @relation("SocialPostAuthor")
+  following         Follow[]              @relation("FollowFollower")
+  followers         Follow[]              @relation("FollowFollowing")
+  receivedNotifications Notification[]     @relation("NotificationRecipient")
+  actedNotifications Notification[]        @relation("NotificationActor")
 
   @@index([email])
   @@index([phone])
@@ -400,6 +493,177 @@ model OrderStatusHistory {
   @@map("order_status_histories")
 }
 
+model Conversation {
+  id              Int              @id @default(autoincrement())
+  type            ConversationType @default(DIRECT)
+  title           String?          @db.VarChar(120)
+  createdByUserId Int?             @map("created_by_user_id")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deletedAt       DateTime?        @map("deleted_at")
+
+  createdBy    User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([type])
+  @@index([createdByUserId])
+  @@index([updatedAt])
+  @@index([deletedAt])
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id                Int       @id @default(autoincrement())
+  conversationId    Int       @map("conversation_id")
+  userId            Int       @map("user_id")
+  role              String    @default("member") @db.VarChar(50)
+  unreadCount       Int       @default(0) @map("unread_count")
+  lastReadMessageId Int?      @map("last_read_message_id")
+  lastReadAt        DateTime? @map("last_read_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  lastReadMessage Message?     @relation("ParticipantLastReadMessage", fields: [lastReadMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+  @@index([lastReadMessageId])
+  @@index([deletedAt])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             Int         @id @default(autoincrement())
+  conversationId Int         @map("conversation_id")
+  senderUserId   Int?        @map("sender_user_id")
+  type           MessageType @default(TEXT)
+  content        String?     @db.Text
+  metadata       Json?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  deletedAt      DateTime?   @map("deleted_at")
+
+  conversation Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  sender       User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  readMarkers  ConversationParticipant[] @relation("ParticipantLastReadMessage")
+
+  @@index([conversationId, id])
+  @@index([senderUserId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("messages")
+}
+
+model Contact {
+  id            Int       @id @default(autoincrement())
+  ownerUserId   Int       @map("owner_user_id")
+  contactUserId Int       @map("contact_user_id")
+  nickname      String?   @db.VarChar(120)
+  source        String    @default("manual") @db.VarChar(50)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  owner       User @relation("ContactOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  contactUser User @relation("ContactUser", fields: [contactUserId], references: [id], onDelete: Restrict)
+
+  @@unique([ownerUserId, contactUserId])
+  @@index([ownerUserId])
+  @@index([contactUserId])
+  @@index([deletedAt])
+  @@map("contacts")
+}
+
+model FriendRequest {
+  id              Int                 @id @default(autoincrement())
+  requesterUserId Int                 @map("requester_user_id")
+  targetUserId    Int                 @map("target_user_id")
+  status          FriendRequestStatus @default(PENDING)
+  message         String?             @db.VarChar(300)
+  respondedAt     DateTime?           @map("responded_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+  deletedAt       DateTime?           @map("deleted_at")
+
+  requester User @relation("FriendRequestRequester", fields: [requesterUserId], references: [id], onDelete: Restrict)
+  target    User @relation("FriendRequestTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+
+  @@index([requesterUserId])
+  @@index([targetUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("friend_requests")
+}
+
+model SocialPost {
+  id           Int                  @id @default(autoincrement())
+  authorUserId Int                  @map("author_user_id")
+  content      String               @db.Text
+  media        Json?
+  visibility   SocialPostVisibility @default(PUBLIC)
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  deletedAt    DateTime?            @map("deleted_at")
+
+  author User @relation("SocialPostAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@index([authorUserId])
+  @@index([visibility])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("social_posts")
+}
+
+model Follow {
+  id              Int       @id @default(autoincrement())
+  followerUserId  Int       @map("follower_user_id")
+  followingUserId Int       @map("following_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  follower  User @relation("FollowFollower", fields: [followerUserId], references: [id], onDelete: Restrict)
+  following User @relation("FollowFollowing", fields: [followingUserId], references: [id], onDelete: Restrict)
+
+  @@unique([followerUserId, followingUserId])
+  @@index([followerUserId])
+  @@index([followingUserId])
+  @@index([deletedAt])
+  @@map("follows")
+}
+
+model Notification {
+  id              Int              @id @default(autoincrement())
+  recipientUserId Int              @map("recipient_user_id")
+  actorUserId     Int?             @map("actor_user_id")
+  type            NotificationType
+  title           String           @db.VarChar(160)
+  body            String           @db.VarChar(500)
+  payload         Json?
+  readAt          DateTime?        @map("read_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deletedAt       DateTime?        @map("deleted_at")
+
+  recipient User  @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  actor     User? @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([recipientUserId])
+  @@index([actorUserId])
+  @@index([type])
+  @@index([readAt])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("notifications")
+}
+
 model UserIdentity {
   id          Int       @id @default(autoincrement())
   userId      Int       @map("user_id")
@@ -546,4 +810,103 @@ model AuditLog {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("audit_logs")
+}
+
+model Wallet {
+  id               Int             @id @default(autoincrement())
+  ownerType        WalletOwnerType @map("owner_type")
+  ownerId          Int             @map("owner_id")
+  currency         String          @default("NDP") @db.VarChar(10)
+  availableBalance Int             @default(0) @map("available_balance")
+  frozenBalance    Int             @default(0) @map("frozen_balance")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  deletedAt        DateTime?       @map("deleted_at")
+
+  ledgerEntries WalletLedger[]
+
+  @@unique([ownerType, ownerId, currency])
+  @@index([ownerType, ownerId])
+  @@index([currency])
+  @@index([deletedAt])
+  @@map("wallets")
+}
+
+model LedgerTransaction {
+  id             Int                     @id @default(autoincrement())
+  transactionNo  String                  @unique @map("transaction_no") @db.VarChar(40)
+  idempotencyKey String                  @unique @map("idempotency_key") @db.VarChar(160)
+  type           LedgerTransactionType
+  status         LedgerTransactionStatus @default(APPLIED)
+  referenceType  String                  @map("reference_type") @db.VarChar(80)
+  referenceId    Int                     @map("reference_id")
+  actorUserId    Int?                    @map("actor_user_id")
+  amount         Int
+  currency       String                  @default("NDP") @db.VarChar(10)
+  metadata       Json?
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+  deletedAt      DateTime?               @map("deleted_at")
+
+  actor          User?                  @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  entries        WalletLedger[]
+  reconciliation FinanceReconciliation?
+
+  @@index([type])
+  @@index([status])
+  @@index([referenceType, referenceId])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("ledger_transactions")
+}
+
+model WalletLedger {
+  id                    Int                   @id @default(autoincrement())
+  walletId              Int                   @map("wallet_id")
+  transactionId         Int                   @map("transaction_id")
+  direction             WalletLedgerDirection
+  amount                Int
+  availableDelta        Int                   @map("available_delta")
+  frozenDelta           Int                   @map("frozen_delta")
+  availableBalanceAfter Int                   @map("available_balance_after")
+  frozenBalanceAfter    Int                   @map("frozen_balance_after")
+  reason                String                @db.VarChar(160)
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  deletedAt             DateTime?             @map("deleted_at")
+
+  wallet      Wallet            @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@index([walletId])
+  @@index([transactionId])
+  @@index([direction])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("wallet_ledgers")
+}
+
+model FinanceReconciliation {
+  id               Int                         @id @default(autoincrement())
+  transactionId    Int                         @unique @map("transaction_id")
+  referenceType    String                      @map("reference_type") @db.VarChar(80)
+  referenceId      Int                         @map("reference_id")
+  status           FinanceReconciliationStatus @default(PENDING)
+  currency         String                      @default("NDP") @db.VarChar(10)
+  expectedAmount   Int                         @map("expected_amount")
+  actualAmount     Int                         @map("actual_amount")
+  differenceAmount Int                         @default(0) @map("difference_amount")
+  exportedAt       DateTime?                   @map("exported_at")
+  createdAt        DateTime                    @default(now()) @map("created_at")
+  updatedAt        DateTime                    @updatedAt @map("updated_at")
+  deletedAt        DateTime?                   @map("deleted_at")
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@index([referenceType, referenceId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("finance_reconciliations")
 }

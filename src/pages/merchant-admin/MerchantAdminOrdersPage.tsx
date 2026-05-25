@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { backofficeRealDataApi, mapBackofficeOrder } from "../../api/backofficeRealData";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { ModuleShell } from "../../components/admin/ModuleShell";
@@ -6,7 +7,6 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
-import { merchantAdminDemo } from "../../data/merchantAdmin";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { paymentStatusLabel, paymentStatusTone, statusLabel, yen } from "../../lib/utils";
@@ -18,10 +18,11 @@ export function MerchantAdminOrdersPage() {
   const { language } = useI18n();
   const [statusFilter, setStatusFilter] = useState<"all" | Order["status"]>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orderRows, setOrderRows] = useState<Order[]>([]);
   const getPaymentStatusLabel = (status: Order["paymentStatus"]) => translateText(paymentStatusLabel(status), language);
   const visibleOrders = useMemo(
-    () => merchantAdminDemo.orders.filter((order) => statusFilter === "all" || order.status === statusFilter),
-    [statusFilter]
+    () => orderRows.filter((order) => statusFilter === "all" || order.status === statusFilter),
+    [orderRows, statusFilter]
   );
   const getCustomerDisplayName = (order: Order) => {
     const customer = customers.find((item) => item.id === order.customerId);
@@ -35,6 +36,24 @@ export function MerchantAdminOrdersPage() {
     const technician = technicians.find((item) => item.name === name || item.nickname === name);
     return technician?.nickname ? `${technician.nickname} / ${technician.name}` : technician?.name ?? name;
   };
+
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.orders("merchant-admin").then((response) => {
+      if (activeRequest) {
+        setOrderRows(response.list.map(mapBackofficeOrder));
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setOrderRows([]);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
 
   return (
     <MerchantAdminLayout>
@@ -94,7 +113,7 @@ export function MerchantAdminOrdersPage() {
                 items={[
                   { label: "顾客", value: getCustomerDisplayName(selectedOrder) },
                   { label: "预约方式", value: selectedOrder.mode === "store" ? "到店服务" : "关联员工上门" },
-                  { label: "门店", value: selectedOrder.storeName ?? merchantAdminDemo.store.name },
+                  { label: "门店", value: selectedOrder.storeName ?? "当前门店" },
                   { label: "员工", value: getTechnicianDisplayName(selectedOrder.technicianName) },
                   { label: "支付状态", value: <Badge tone={paymentStatusTone(selectedOrder.paymentStatus)}>{getPaymentStatusLabel(selectedOrder.paymentStatus)}</Badge> },
                   { label: "订单金额", value: yen(selectedOrder.amount) },

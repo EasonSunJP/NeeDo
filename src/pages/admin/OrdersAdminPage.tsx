@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { backofficeRealDataApi, mapBackofficeOrder } from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { ModuleShell } from "../../components/admin/ModuleShell";
@@ -9,7 +10,6 @@ import { Drawer } from "../../components/ui/Drawer";
 import { FilterBar } from "../../components/ui/FilterBar";
 import { Tabs } from "../../components/ui/Tabs";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { orders } from "../../data/mock";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { paymentStatusLabel, paymentStatusTone, statusLabel, yen } from "../../lib/utils";
@@ -23,6 +23,7 @@ export function OrdersAdminPage() {
   const { language } = useI18n();
   const [active, setActive] = useState("全部订单");
   const [selected, setSelected] = useState<Order | null>(null);
+  const [orderRows, setOrderRows] = useState<Order[]>([]);
   const getPaymentStatusLabel = (status: Order["paymentStatus"]) => translateText(paymentStatusLabel(status), language);
   const getCustomerDisplayName = (order: Order) => {
     const customer = customers.find((item) => item.id === order.customerId);
@@ -40,6 +41,24 @@ export function OrdersAdminPage() {
     const technician = technicians.find((item) => item.name === order.technicianName || item.nickname === order.technicianName);
     return technician?.nickname ? `${technician.nickname} / ${technician.name}` : technician?.name ?? order.technicianName;
   };
+
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.orders("backoffice").then((response) => {
+      if (activeRequest) {
+        setOrderRows(response.list.map(mapBackofficeOrder));
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setOrderRows([]);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
 
   return (
     <AdminLayout>
@@ -77,7 +96,7 @@ export function OrdersAdminPage() {
               { key: "pay", title: "支付状态", render: (row) => <Badge tone={paymentStatusTone(row.paymentStatus)}>{getPaymentStatusLabel(row.paymentStatus)}</Badge> },
               { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "refunding" ? "red" : "yellow"}>{statusLabel(row.status)}</Badge> }
             ]}
-            rows={orders}
+            rows={orderRows}
             onView={setSelected}
           />
         </div>

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { backofficeRealDataApi, mapBackofficeTechnician } from "../../api/backofficeRealData";
 import { CustomerManagementModule } from "../../components/admin/CustomerManagementModule";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
@@ -30,6 +31,7 @@ export function MerchantAdminPeoplePage() {
   const [searchParams] = useSearchParams();
   const [selectedStaff, setSelectedStaff] = useState<Technician | null>(null);
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
+  const [realStaff, setRealStaff] = useState<Technician[]>([]);
   const module = normalizeModule(searchParams.get("module"));
   const getCustomerDisplayName = (name: string) => {
     const customer = customers.find((item) => item.name === name || item.nickname === name);
@@ -40,12 +42,30 @@ export function MerchantAdminPeoplePage() {
     return technician?.nickname ? `${technician.nickname} / ${technician.name}` : technician?.name ?? name;
   };
 
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.technicians("merchant-admin").then((response) => {
+      if (activeRequest) {
+        setRealStaff(response.list.map(mapBackofficeTechnician));
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setRealStaff([]);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
+
   const config = {
     staff: {
       title: "员工列表",
       description: "与平台运营后台共用同一套员工列表模块，商户侧只展示当前商户可管理的员工数据。",
       content: (
-        <TechnicianListModule context="merchant" onSelectTechnician={setSelectedStaff} stores={merchantAdminDemo.stores} technicians={merchantAdminDemo.technicians} />
+        <TechnicianListModule context="merchant" onSelectTechnician={setSelectedStaff} stores={merchantAdminDemo.stores} technicians={realStaff} />
       )
     },
     customers: {

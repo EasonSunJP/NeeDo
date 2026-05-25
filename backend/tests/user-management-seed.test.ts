@@ -3,7 +3,11 @@ import {
   SYSTEM_ROLE_CODES,
   buildRolePermissionAssignments
 } from "../src/constants/permissions.constants";
-import { getAdminSeedConfig } from "../prisma/seed";
+import {
+  TEST_LOGIN_EMAIL,
+  TEST_LOGIN_PASSWORD
+} from "../src/constants/test-login.constants";
+import { getAdminSeedConfig, shouldSeedTestLoginAccount } from "../prisma/seed";
 
 describe("user management seed contract", () => {
   it("defines the Step 04 system roles in the required order", () => {
@@ -44,5 +48,12 @@ describe("user management seed contract", () => {
       password: "S3cure-dev-password!",
       username: "NeeDo Super Admin"
     });
+  });
+
+  it("keeps the temporary test-login account explicit and out of production seeds", () => {
+    expect(TEST_LOGIN_EMAIL).toBe("admin@needo.life");
+    expect(TEST_LOGIN_PASSWORD).toBe("admin");
+    expect(shouldSeedTestLoginAccount({ NODE_ENV: "development", AUTH_TEST_LOGIN_ENABLED: "true" })).toBe(true);
+    expect(shouldSeedTestLoginAccount({ NODE_ENV: "production", AUTH_TEST_LOGIN_ENABLED: "true" })).toBe(false);
   });
 });

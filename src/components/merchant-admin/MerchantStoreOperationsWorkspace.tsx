@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { backofficeRealDataApi, mapBackofficeSettlement } from "../../api/backofficeRealData";
 import { DetailGrid } from "../admin/DetailGrid";
 import { Badge } from "../ui/Badge";
 import { DataTable } from "../ui/DataTable";
@@ -23,8 +24,31 @@ export function MerchantStoreOperationsWorkspace({
   module: MerchantStoreOperationsModule;
 }) {
   const [selectedInventory, setSelectedInventory] = useState<InventoryItem | null>(null);
-  const currentSettlement = merchantAdminDemo.settlements[0];
-  const financeRows = useMemo(() => (merchantAdminDemo.settlements.length ? merchantAdminDemo.settlements : []), []);
+  const [realFinanceRows, setRealFinanceRows] = useState<Settlement[]>([]);
+  const currentSettlement = realFinanceRows[0];
+  const financeRows = useMemo(() => realFinanceRows, [realFinanceRows]);
+
+  useEffect(() => {
+    if (module !== "finance") {
+      return undefined;
+    }
+
+    let activeRequest = true;
+
+    backofficeRealDataApi.financeSettlements("merchant-admin").then((response) => {
+      if (activeRequest) {
+        setRealFinanceRows(response.list.map(mapBackofficeSettlement));
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setRealFinanceRows([]);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, [module]);
 
   const config = {
     "stage-layout": {

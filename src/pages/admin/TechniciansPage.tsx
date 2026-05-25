@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { backofficeRealDataApi, mapBackofficeTechnician } from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { TechnicianEntitySyncEditor } from "../../components/admin/EntitySyncEditor";
 import { TechnicianListModule } from "../../components/admin/TechnicianListModule";
@@ -180,19 +181,37 @@ function TechnicianNameButton({ technician, onSelect }: { technician: Technician
 }
 
 export function TechniciansPage() {
-  const { stores: liveStores, technicians: liveTechnicians, revision: entityRevision } = useEntityStore();
+  const { stores: liveStores } = useEntityStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeModule = queryToModule[searchParams.get("module") ?? "list"] ?? "技师列表";
   const [activeRankingType, setActiveRankingType] = useState<TechnicianRankingType>("收入榜");
   const [virtualTechnicians, setVirtualTechnicians] = useState<VirtualTechnician[]>(virtualSeeds);
+  const [realTechnicians, setRealTechnicians] = useState<Technician[]>([]);
   const [selectedTechnician, setSelectedTechnician] = useState<Technician | VirtualTechnician | null>(null);
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.technicians("backoffice").then((response) => {
+      if (activeRequest) {
+        setRealTechnicians(response.list.map(mapBackofficeTechnician));
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setRealTechnicians([]);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
   const rankingRows = useMemo(
     () =>
-      liveTechnicians
+      realTechnicians
         .map((technician) => ({ ...technician, favoriteCount: getTechnicianFavoriteCount(technician) }))
         .sort((a, b) => getRankingValue(b, activeRankingType) - getRankingValue(a, activeRankingType) || getTechnicianScore(b) - getTechnicianScore(a))
         .map((technician, index) => ({ ...technician, rank: index + 1 })),
-    [activeRankingType, entityRevision, liveTechnicians]
+    [activeRankingType, realTechnicians]
   );
 
   const virtualColumns: Array<Column<VirtualTechnician>> = [
@@ -282,7 +301,7 @@ export function TechniciansPage() {
         )}
 
         {activeModule === "技师列表" ? (
-          <TechnicianListModule context="platform" onSelectTechnician={setSelectedTechnician} stores={liveStores} technicians={liveTechnicians} />
+          <TechnicianListModule context="platform" onSelectTechnician={setSelectedTechnician} stores={liveStores} technicians={realTechnicians} />
         ) : null}
 
         {activeModule === "虚拟技师" ? (

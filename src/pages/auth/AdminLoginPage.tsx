@@ -36,6 +36,7 @@ type BackendLoginCopy = {
   sendCode: string;
   codeSent: string;
   gmailLogin: string;
+  testLogin: string;
   login: string;
   continue: string;
   loggedIn: string;
@@ -84,6 +85,7 @@ const adminLoginCopy = {
     sendCode: "获取验证码",
     codeSent: "验证码已发送，请查看对应邮箱或开发环境 OTP 交付日志。",
     gmailLogin: "使用 Gmail 登录",
+    testLogin: "测试登录",
     login: "登录",
     continue: "进入后台",
     loggedIn: "当前已登录",
@@ -128,6 +130,7 @@ const adminLoginCopy = {
     sendCode: "取得驗證碼",
     codeSent: "驗證碼已發送，請查看對應信箱或開發環境 OTP 交付日誌。",
     gmailLogin: "使用 Gmail 登入",
+    testLogin: "測試登入",
     login: "登入",
     continue: "進入後台",
     loggedIn: "目前已登入",
@@ -172,6 +175,7 @@ const adminLoginCopy = {
     sendCode: "コードを取得",
     codeSent: "認証コードを送信しました。メールまたは開発環境の OTP 配信ログを確認してください。",
     gmailLogin: "Gmail でログイン",
+    testLogin: "テストログイン",
     login: "ログイン",
     continue: "管理画面へ",
     loggedIn: "ログイン済み",
@@ -216,6 +220,7 @@ const adminLoginCopy = {
     sendCode: "Send code",
     codeSent: "Code sent. Check the mailbox or development OTP delivery logs.",
     gmailLogin: "Continue with Gmail",
+    testLogin: "Test login",
     login: "Log in",
     continue: "Enter Admin",
     loggedIn: "Already signed in",
@@ -260,6 +265,7 @@ const adminLoginCopy = {
     sendCode: "코드 받기",
     codeSent: "인증코드를 보냈습니다. 메일함 또는 개발 환경 OTP 전달 로그를 확인하세요.",
     gmailLogin: "Gmail로 로그인",
+    testLogin: "테스트 로그인",
     login: "로그인",
     continue: "관리자로 이동",
     loggedIn: "이미 로그인됨",
@@ -359,7 +365,7 @@ function QrLoginGraphic({ mark }: { mark: string }) {
 export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { canAccess, isAuthenticated, login, loginWithProvider, loginWithQr, loginWithVerificationCode, logout, sendVerificationCode, session } = useAuth();
+  const { canAccess, isAuthenticated, login, loginWithProvider, loginWithQr, loginWithVerificationCode, logout, sendVerificationCode, session, testLogin } = useAuth();
   const { language } = useI18n();
   const copy = adminLoginCopy[language];
   const config = backendLoginConfig[portal];
@@ -470,6 +476,18 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     navigate(nextPath, { replace: true });
   };
 
+  const continueWithTestLogin = async () => {
+    setError("");
+
+    const result = await testLogin(config.authPortal);
+    if (!result.ok) {
+      setError(result.message || copy.accountError);
+      return;
+    }
+
+    navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
+  };
+
   const requestCode = async () => {
     setError("");
     const result = await sendVerificationCode(codeEmail);
@@ -572,6 +590,9 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                     <button className="admin-login-secondary flex w-full items-center justify-center gap-3 px-4 text-base" onClick={continueWithGmail} type="button">
                       <span className="grid h-8 w-8 place-items-center rounded-md bg-[color:color-mix(in_srgb,var(--admin-muted-surface)_86%,var(--admin-surface))] text-base font-black text-[color:var(--admin-danger)]">G</span>
                       {copy.gmailLogin}
+                    </button>
+                    <button className="admin-login-secondary w-full px-4 text-base" onClick={continueWithTestLogin} type="button">
+                      {copy.testLogin}
                     </button>
                   </form>
                 ) : null}

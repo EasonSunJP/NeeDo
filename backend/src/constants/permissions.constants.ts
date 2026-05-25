@@ -188,6 +188,154 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("order:start", "开始服务", "api", "order", "将订单切换为服务中"),
   createPermission("order:complete", "完成服务", "api", "order", "将订单切换为已完成"),
 
+  createPermission("conversation:list", "会话列表", "api", "im", "分页查看 IM 会话"),
+  createPermission("conversation:create", "创建会话", "api", "im", "创建 IM 单聊或群聊会话"),
+  createPermission("message:list", "消息历史", "api", "im", "分页查看会话消息历史"),
+  createPermission("message:create", "发送消息", "api", "im", "发送 IM 消息"),
+  createPermission("message:read", "已读消息", "api", "im", "标记会话消息已读"),
+  createPermission("contact:list", "联系人列表", "api", "im", "分页查看联系人"),
+  createPermission("friend-request:list", "好友申请列表", "api", "im", "分页查看好友申请"),
+  createPermission("friend-request:create", "创建好友申请", "api", "im", "发起好友申请"),
+  createPermission("friend-request:respond", "处理好友申请", "api", "im", "接受或拒绝好友申请"),
+  createPermission("social-post:list", "动态列表", "api", "social", "分页查看社交动态"),
+  createPermission("social-post:create", "发布动态", "api", "social", "发布基础社交动态"),
+  createPermission("follow:write", "关注操作", "api", "social", "关注或取消关注用户"),
+  createPermission("notification:list", "通知列表", "api", "notification", "分页查看通知"),
+  createPermission("notification:read", "通知已读", "api", "notification", "标记通知已读"),
+  createPermission(
+    "realtime:unread-counts",
+    "实时未读数",
+    "api",
+    "realtime",
+    "读取 IM、好友申请和通知未读数"
+  ),
+  createPermission("realtime:events", "实时事件流", "api", "realtime", "订阅 SSE 实时事件流"),
+
+  createPermission("wallet:read", "查看钱包", "api", "wallet", "查看 NDP 钱包余额"),
+  createPermission("wallet:ledger:list", "钱包流水", "api", "wallet", "分页查看 NDP 钱包流水"),
+  createPermission(
+    "finance:ledger:list",
+    "财务账本流水",
+    "api",
+    "finance",
+    "分页查看 NDP LedgerTransaction"
+  ),
+  createPermission(
+    "finance:reconciliation:list",
+    "财务对账列表",
+    "api",
+    "finance",
+    "分页查看 NDP 财务对账"
+  ),
+  createPermission(
+    "finance:reconciliation:export",
+    "财务对账导出",
+    "api",
+    "finance",
+    "导出 NDP 财务对账 CSV 内容"
+  ),
+  createPermission("menu:finance", "财务菜单", "menu", "menu", "显示财务与账本菜单"),
+  createPermission("page:finance", "财务页面", "page", "finance", "访问财务与账本页面"),
+
+  createPermission(
+    "backoffice:dashboard:read",
+    "运营后台 Dashboard",
+    "api",
+    "backoffice",
+    "读取运营后台真实指标"
+  ),
+  createPermission(
+    "backoffice:orders:list",
+    "运营后台订单列表",
+    "api",
+    "backoffice",
+    "分页读取运营后台真实订单"
+  ),
+  createPermission(
+    "backoffice:schedule:list",
+    "运营后台调度列表",
+    "api",
+    "backoffice",
+    "分页读取运营后台真实排班"
+  ),
+  createPermission(
+    "backoffice:finance:list",
+    "运营后台财务结算",
+    "api",
+    "backoffice",
+    "分页读取运营后台财务结算"
+  ),
+  createPermission(
+    "backoffice:finance:export",
+    "运营后台财务导出",
+    "api",
+    "backoffice",
+    "导出运营后台财务结算 CSV"
+  ),
+  createPermission(
+    "backoffice:technicians:list",
+    "运营后台技师列表",
+    "api",
+    "backoffice",
+    "分页读取运营后台技师"
+  ),
+  createPermission(
+    "backoffice:shops:list",
+    "运营后台店铺列表",
+    "api",
+    "backoffice",
+    "分页读取运营后台店铺"
+  ),
+  createPermission(
+    "merchant-admin:dashboard:read",
+    "商户后台 Dashboard",
+    "api",
+    "merchant-admin",
+    "读取商户后台真实指标"
+  ),
+  createPermission(
+    "merchant-admin:orders:list",
+    "商户后台订单列表",
+    "api",
+    "merchant-admin",
+    "分页读取本店真实订单"
+  ),
+  createPermission(
+    "merchant-admin:schedule:list",
+    "商户后台调度列表",
+    "api",
+    "merchant-admin",
+    "分页读取本店真实排班"
+  ),
+  createPermission(
+    "merchant-admin:finance:list",
+    "商户后台财务结算",
+    "api",
+    "merchant-admin",
+    "分页读取本店财务结算"
+  ),
+  createPermission(
+    "merchant-admin:finance:export",
+    "商户后台财务导出",
+    "api",
+    "merchant-admin",
+    "导出本店财务结算 CSV"
+  ),
+  createPermission(
+    "merchant-admin:technicians:list",
+    "商户后台技师列表",
+    "api",
+    "merchant-admin",
+    "分页读取本店技师"
+  ),
+  createPermission(
+    "merchant-admin:shop:read",
+    "商户后台店铺资料",
+    "api",
+    "merchant-admin",
+    "读取当前店铺资料"
+  ),
+
   createPermission("menu:dashboard", "仪表盘菜单", "menu", "menu", "显示仪表盘菜单"),
   createPermission("page:dashboard", "仪表盘页面", "page", "dashboard", "访问仪表盘页面"),
   createPermission("menu:user-management", "用户管理菜单", "menu", "menu", "显示用户管理菜单"),
@@ -234,7 +382,9 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "booking:create",
   "order:list",
   "order:read",
-  "order:cancel"
+  "order:cancel",
+  "wallet:read",
+  "wallet:ledger:list"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
@@ -244,7 +394,65 @@ const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
   "order:confirm",
   "order:cancel",
   "order:start",
-  "order:complete"
+  "order:complete",
+  "wallet:read",
+  "wallet:ledger:list"
+] as const satisfies readonly SystemPermissionCode[];
+
+const REALTIME_USER_PERMISSION_CODES = [
+  "conversation:list",
+  "conversation:create",
+  "message:list",
+  "message:create",
+  "message:read",
+  "contact:list",
+  "friend-request:list",
+  "friend-request:create",
+  "friend-request:respond",
+  "social-post:list",
+  "social-post:create",
+  "follow:write",
+  "notification:list",
+  "notification:read",
+  "realtime:unread-counts",
+  "realtime:events"
+] as const satisfies readonly SystemPermissionCode[];
+
+const FINANCE_PERMISSION_CODES = [
+  ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "wallet:read",
+  "wallet:ledger:list",
+  "finance:ledger:list",
+  "finance:reconciliation:list",
+  "finance:reconciliation:export",
+  "menu:finance",
+  "page:finance"
+] as const satisfies readonly SystemPermissionCode[];
+
+const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
+  ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "backoffice:dashboard:read",
+  "backoffice:orders:list",
+  "backoffice:schedule:list",
+  "backoffice:finance:list",
+  "backoffice:finance:export",
+  "backoffice:technicians:list",
+  "backoffice:shops:list",
+  "menu:finance",
+  "page:finance"
+] as const satisfies readonly SystemPermissionCode[];
+
+const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
+  ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "merchant-admin:dashboard:read",
+  "merchant-admin:orders:list",
+  "merchant-admin:schedule:list",
+  "merchant-admin:finance:list",
+  "merchant-admin:finance:export",
+  "merchant-admin:technicians:list",
+  "merchant-admin:shop:read",
+  "menu:finance",
+  "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
 
 export const buildRolePermissionAssignments = (): Record<
@@ -254,6 +462,7 @@ export const buildRolePermissionAssignments = (): Record<
   admin: [...SYSTEM_PERMISSION_CODES],
   operator: [
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
+    ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
     "user:create",
     "user:update",
     "user:status:update",
@@ -265,7 +474,13 @@ export const buildRolePermissionAssignments = (): Record<
     "menu:admin-settings",
     "page:admin-settings"
   ],
-  finance: [...AUTH_AND_DASHBOARD_PERMISSION_CODES, "menu:admin-settings", "page:admin-settings"],
+  finance: [
+    ...FINANCE_PERMISSION_CODES,
+    "backoffice:finance:list",
+    "backoffice:finance:export",
+    "menu:admin-settings",
+    "page:admin-settings"
+  ],
   support: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
     "menu:user-management",
@@ -275,10 +490,18 @@ export const buildRolePermissionAssignments = (): Record<
     "user:identity:list",
     "button:user:update"
   ],
-  merchant_owner: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES],
-  merchant_staff: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES],
-  technician: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES],
-  customer: [...CUSTOMER_BOOKING_PERMISSION_CODES],
+  merchant_owner: [
+    ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
+    ...REALTIME_USER_PERMISSION_CODES,
+    ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES
+  ],
+  merchant_staff: [
+    ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
+    ...REALTIME_USER_PERMISSION_CODES,
+    ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES
+  ],
+  technician: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES, ...REALTIME_USER_PERMISSION_CODES],
+  customer: [...CUSTOMER_BOOKING_PERMISSION_CODES, ...REALTIME_USER_PERMISSION_CODES],
   broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
   scout: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
   viewer: [...READ_ONLY_BACKOFFICE_PERMISSION_CODES]

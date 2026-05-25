@@ -104,8 +104,9 @@ export function resolveAllowedPortals(me: AuthMePayload): PortalScope[] {
   return uniquePortals([...identityPortals, ...rolePortals]);
 }
 
-function getScopedIdentityId(me: AuthMePayload, type: string) {
-  const identity = me.identities.find((item) => item.type === type);
+function getScopedIdentityId(me: AuthMePayload, type: string | string[]) {
+  const types = Array.isArray(type) ? type : [type];
+  const identity = me.identities.find((item) => types.includes(item.type));
 
   if (!identity) {
     return "";
@@ -130,7 +131,7 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     loggedInAt: new Date().toISOString(),
     linkedCustomerId: getScopedIdentityId(me, "customer"),
     linkedTechnicianId: getScopedIdentityId(me, "technician"),
-    linkedStoreId: getScopedIdentityId(me, "merchant"),
+    linkedStoreId: getScopedIdentityId(me, ["merchant", "merchant_owner", "merchant_staff"]),
     roles: me.roles,
     permissions: me.permissions,
     menus: me.menus,

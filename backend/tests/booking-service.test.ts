@@ -1,5 +1,10 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
-import type { BookingOrderPayload, BookingRepositoryPort } from "../src/repositories/booking.repository";
+import type {
+  BookingOrderPayload,
+  BookingRepositoryPort
+} from "../src/repositories/booking.repository";
+import type { BookingLedgerSettlementPort } from "../src/services/ledger.service";
+import type { OrderStatusNotificationPort } from "../src/services/realtime.service";
 import { BookingService } from "../src/services/booking.service";
 
 const now = new Date("2026-05-25T00:00:00.000Z");
@@ -47,26 +52,32 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
     createBooking: jest.fn(async () => order),
     listOrders: jest.fn(),
     findOrderById: jest.fn(async () => order),
-    transitionOrder: jest.fn(async (input) =>
-      order
-        ? {
-            ...order,
-            status: input.toStatus,
-            statusHistory: [
-              ...order.statusHistory,
-              {
-                id: 2,
-                orderId: order.id,
-                fromStatus: input.fromStatus,
-                toStatus: input.toStatus,
-                actorUserId: input.actorUserId,
-                reason: input.reason ?? null,
-                createdAt: now
-              }
-            ]
+    transitionOrder: jest.fn(async (input, options) => {
+      if (!order) {
+        return null;
+      }
+
+      const nextOrder = {
+        ...order,
+        status: input.toStatus,
+        statusHistory: [
+          ...order.statusHistory,
+          {
+            id: 2,
+            orderId: order.id,
+            fromStatus: input.fromStatus,
+            toStatus: input.toStatus,
+            actorUserId: input.actorUserId,
+            reason: input.reason ?? null,
+            createdAt: now
           }
-        : null
-    )
+        ]
+      };
+
+      await options?.settle?.({ transactionClient: {}, order: nextOrder });
+
+      return nextOrder;
+    })
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
@@ -97,13 +108,123 @@ describe("BookingService state machine", () => {
       expect.objectContaining({
         fromStatus: "confirmed",
         toStatus: "inService"
-      })
+      }),
+      {}
     );
 
     const completedService = new BookingService(createRepository(makeOrder("completed")));
-    await expect(completedService.transitionOrder(actor, 1, "cancel", "too late")).rejects.toMatchObject({
+    await expect(
+      completedService.transitionOrder(actor, 1, "cancel", "too late")
+    ).rejects.toMatchObject({
       code: ERROR_CODES.ORDER_INVALID_TRANSITION,
       message: "error.order.invalid_transition"
     });
+  });
+
+  it("settles ledger side effects when confirming, cancelling, and completing booking orders", async () => {
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(async (input, context) => {
+        void input;
+        void context;
+        return undefined;
+      }),
+      releaseBookingHold: jest.fn(async (input, context) => {
+        void input;
+        void context;
+        return undefined;
+      }),
+      settleBookingCompletion: jest.fn(async (input, context) => {
+        void input;
+        void context;
+        return undefined;
+      }),
+      compensateCustomerForMerchantCancellation: jest.fn(async (input, context) => {
+        void input;
+        void context;
+        return undefined;
+      })
+    };
+    const providerActor = { userId: 2, roles: ["merchant_owner"] };
+
+    await new BookingService(createRepository(makeOrder("pending")), ledgerService).transitionOrder(
+      providerActor,
+      1,
+      "confirm"
+    );
+    expect(ledgerService.freezeBookingAcceptance).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 1,
+        shopId: 1,
+        actorUserId: 2
+      }),
+      expect.anything()
+    );
+
+    await new BookingService(
+      createRepository(makeOrder("inService")),
+      ledgerService
+    ).transitionOrder(providerActor, 1, "complete");
+    expect(ledgerService.settleBookingCompletion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 1,
+        shopId: 1,
+        customerUserId: 1,
+        actorUserId: 2
+      }),
+      expect.anything()
+    );
+
+    await new BookingService(
+      createRepository(makeOrder("confirmed")),
+      ledgerService
+    ).transitionOrder(actor, 1, "cancel", "customer changed plan");
+    expect(ledgerService.releaseBookingHold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 1,
+        shopId: 1,
+        actorUserId: 1
+      }),
+      expect.anything()
+    );
+
+    await new BookingService(
+      createRepository(makeOrder("confirmed")),
+      ledgerService
+    ).transitionOrder(providerActor, 1, "cancel", "merchant force cancel");
+    expect(ledgerService.compensateCustomerForMerchantCancellation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 1,
+        shopId: 1,
+        customerUserId: 1,
+        actorUserId: 2
+      }),
+      expect.anything()
+    );
+  });
+
+  it("emits an order status notification after a successful transition", async () => {
+    const notificationService: jest.Mocked<OrderStatusNotificationPort> = {
+      notifyOrderStatusChanged: jest.fn(async (input) => {
+        void input;
+        return undefined;
+      })
+    };
+
+    await new BookingService(
+      createRepository(makeOrder("pending")),
+      undefined,
+      notificationService
+    ).transitionOrder({ userId: 2, roles: ["merchant_owner"] }, 1, "confirm");
+
+    expect(notificationService.notifyOrderStatusChanged).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 2,
+        orderId: 1,
+        orderNo: "ND202605260001",
+        fromStatus: "pending",
+        toStatus: "confirmed",
+        recipientUserIds: [1]
+      })
+    );
   });
 });

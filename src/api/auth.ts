@@ -30,6 +30,18 @@ export const authApi = {
     return tokens;
   },
 
+  async testLogin(portal: "user" | "merchant" | "technician" | "business" | "admin") {
+    const tokens = await httpClient.request<TokenPairPayload>("/auth/test-login", {
+      auth: false,
+      body: { portal },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+    setAuthTokens(tokens);
+
+    return tokens;
+  },
+
   async sendOtp(email: string) {
     return httpClient.request<OtpSendPayload>("/auth/otp/send", {
       auth: false,

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { backofficeRealDataApi, mapBackofficeSettlement } from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { ModuleShell } from "../../components/admin/ModuleShell";
@@ -7,29 +8,55 @@ import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { FilterBar } from "../../components/ui/FilterBar";
-import { settlements } from "../../data/mock";
 import { yen } from "../../lib/utils";
 import type { Settlement } from "../../types/domain";
 
 export function FinancePage() {
   const [selected, setSelected] = useState<Settlement | null>(null);
+  const [settlementRows, setSettlementRows] = useState<Settlement[]>([]);
+  const financeSummary = useMemo(() => {
+    const grossAmount = settlementRows.reduce((sum, row) => sum + row.grossAmount, 0);
+    const platformFee = settlementRows.reduce((sum, row) => sum + row.platformFee, 0);
+    const refundAmount = settlementRows.reduce((sum, row) => sum + row.refundAmount, 0);
+    const payableAmount = settlementRows.reduce((sum, row) => sum + row.payableAmount, 0);
+
+    return [
+      ["今日营收", grossAmount],
+      ["待结算金额", payableAmount],
+      ["退款金额", refundAmount],
+      ["渠道手续费", platformFee],
+      ["商家应结算", payableAmount],
+      ["技师应结算", 0]
+    ] as const;
+  }, [settlementRows]);
+
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.financeSettlements("backoffice").then((response) => {
+      if (activeRequest) {
+        setSettlementRows(response.list.map(mapBackofficeSettlement));
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setSettlementRows([]);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
 
   return (
     <AdminLayout>
       <ModuleShell
         title="财务结算中心"
         description="今日营收、待结算、退款、渠道手续费、商家分账、技师分账、退款审核、结算单导出和发票记录。"
-        actions={<Button>生成结算单</Button>}
+        actions={<Button onClick={() => backofficeRealDataApi.exportFinanceSettlements("backoffice").catch(() => undefined)}>导出结算 CSV</Button>}
       >
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          {[
-            ["今日营收", 8426000],
-            ["待结算金额", 12840000],
-            ["退款金额", 286000],
-            ["渠道手续费", 184000],
-            ["商家应结算", 10490000],
-            ["技师应结算", 2680000]
-          ].map(([label, value]) => (
+          {financeSummary.map(([label, value]) => (
             <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={label}>
               <p className="text-sm text-ink/55">{label}</p>
               <strong className="mt-2 block text-xl">{yen(Number(value))}</strong>
@@ -69,7 +96,7 @@ export function FinancePage() {
               { key: "payable", title: "应结算", render: (row) => yen(row.payableAmount) },
               { key: "status", title: "状态", render: (row) => <Badge tone="yellow">{row.status}</Badge> }
             ]}
-            rows={settlements}
+            rows={settlementRows}
             onView={setSelected}
           />
         </div>

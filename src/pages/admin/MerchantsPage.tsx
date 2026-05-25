@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { backofficeRealDataApi, mapBackofficeMerchant, mapBackofficeStore } from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { StoreEntitySyncEditor } from "../../components/admin/EntitySyncEditor";
@@ -11,9 +12,8 @@ import { Drawer } from "../../components/ui/Drawer";
 import { FilterBar } from "../../components/ui/FilterBar";
 import { HorizontalScrollArea } from "../../components/ui/HorizontalScrollArea";
 import { Tabs } from "../../components/ui/Tabs";
-import { merchants, serviceCategories, services } from "../../data/mock";
+import { serviceCategories, services } from "../../data/mock";
 import { yen } from "../../lib/utils";
-import { useEntityStore } from "../../state/entityStore";
 import type { Merchant, ServiceCategory, ServiceItem, Store } from "../../types/domain";
 
 const tabs = ["店铺列表", "店铺分类", "入驻审核", "服务项目", "营业配置", "图片标签"];
@@ -25,17 +25,38 @@ function isStoreRow(value: Merchant | Store | ServiceItem | ServiceCategory): va
 }
 
 export function MerchantsPage() {
-  const { stores: liveStores } = useEntityStore();
   const [searchParams] = useSearchParams();
   const [active, setActive] = useState(searchParams.get("module") === "categories" ? "店铺分类" : "店铺列表");
   const [selected, setSelected] = useState<Merchant | Store | ServiceItem | ServiceCategory | null>(null);
   const [categoryRows, setCategoryRows] = useState(serviceCategories);
+  const [realStores, setRealStores] = useState<Store[]>([]);
+  const [realMerchants, setRealMerchants] = useState<Merchant[]>([]);
 
   useEffect(() => {
     if (searchParams.get("module") === "categories") {
       setActive("店铺分类");
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.shops("backoffice").then((response) => {
+      if (activeRequest) {
+        setRealStores(response.list.map(mapBackofficeStore));
+        setRealMerchants(response.list.map(mapBackofficeMerchant));
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setRealStores([]);
+        setRealMerchants([]);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
 
   const addCategory = () => {
     setCategoryRows((current) => [
@@ -72,7 +93,7 @@ export function MerchantsPage() {
 
         {active === "店铺列表" && (
           <div className="mt-4 grid gap-4 xl:grid-cols-2">
-            {liveStores.map((store) => (
+            {realStores.map((store) => (
               <article className="overflow-hidden rounded-lg border border-line bg-white shadow-panel" key={store.id}>
                 <div className="grid gap-0 md:grid-cols-[220px,1fr]">
                   <img alt={store.name} className="h-full min-h-[230px] w-full object-cover" src={store.cover} />
@@ -199,7 +220,7 @@ export function MerchantsPage() {
                 { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "pending" ? "yellow" : "green"}>{row.status}</Badge> }
               ]}
               footerPlacement="inline"
-              rows={merchants}
+                rows={realMerchants}
               onView={setSelected}
             />
           </div>
@@ -240,7 +261,7 @@ export function MerchantsPage() {
 
         {active === "营业配置" && (
           <section className="mt-4 grid gap-3 md:grid-cols-3">
-            {liveStores.map((store) => (
+            {realStores.map((store) => (
               <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={store.id}>
                 <h2 className="font-bold">{store.name}</h2>
                 <p className="mt-2 text-sm text-ink/60">营业时间：{store.businessHours}</p>
@@ -257,7 +278,7 @@ export function MerchantsPage() {
 
         {active === "图片标签" && (
           <section className="mt-4 grid gap-4 md:grid-cols-2">
-            {liveStores.map((store) => (
+            {realStores.map((store) => (
               <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={store.id}>
                 <img alt={store.name} className="h-40 w-full rounded-lg object-cover" src={store.cover} />
                 <h2 className="mt-3 font-bold">{store.name}</h2>

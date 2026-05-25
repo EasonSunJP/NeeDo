@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import type { Plugin } from "vite";
+import { loadEnv, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 
 type PortalDevRequest = {
@@ -14,6 +15,36 @@ const portalRouteHtmlEntries = [
   { fileName: "/afirieito.html", prefixes: ["/afirieito", "/login/afirieito", "/business", "/cps", "/login/business", "/login/cps"] },
   { fileName: "/pf-admin.html", prefixes: ["/admin", "/login/admin"] }
 ] as const;
+
+type EnvMap = Record<string, string | undefined>;
+
+export const defaultNeedoApiProxyTarget = "http://127.0.0.1:3100";
+
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function stripApiPrefix(value: string) {
+  return trimTrailingSlash(value).replace(/\/api\/v[0-9]+$/, "");
+}
+
+export function resolveNeedoApiProxyTarget(env: EnvMap) {
+  const explicitTarget = env.NEEDO_API_PROXY_TARGET?.trim() || env.VITE_API_PROXY_TARGET?.trim();
+  const apiBaseUrl = env.VITE_API_BASE_URL?.trim();
+  const target = explicitTarget || apiBaseUrl || defaultNeedoApiProxyTarget;
+
+  return stripApiPrefix(target);
+}
+
+export function createNeedoApiProxyConfig(target: string): Record<string, ProxyOptions> {
+  return {
+    "/api/v1": {
+      changeOrigin: true,
+      secure: false,
+      target
+    }
+  };
+}
 
 function getRequestHeader(headers: PortalDevRequest["headers"], name: string) {
   const value = headers[name] ?? headers[name.toLowerCase()];
@@ -63,52 +94,58 @@ function needoPortalEntryFallbackPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
-  base: "./",
-  plugins: [needoPortalEntryFallbackPlugin(), react()],
-  build: {
-    chunkSizeWarningLimit: 3600,
-    rollupOptions: {
-      input: {
-        index: "index.html",
-        user: "user.html",
-        afirieito: "afirieito.html",
-        afirieitoAdmin: "afirieito-admin.html",
-        technician: "technician.html",
-        merchant: "merchant.html",
-        pfAdmin: "pf-admin.html",
-        storeAdmin: "store-admin.html"
-      },
-      output: {
-        manualChunks(id) {
-          const normalizedId = id.split("\\").join("/");
+export default defineConfig(({ mode }) => {
+  const apiProxy = createNeedoApiProxyConfig(resolveNeedoApiProxyTarget(loadEnv(mode, ".", "")));
 
-          if (normalizedId.includes("node_modules/react")) {
-            return "vendor-react";
-          }
+  return {
+    base: "./",
+    plugins: [needoPortalEntryFallbackPlugin(), react()],
+    build: {
+      chunkSizeWarningLimit: 3600,
+      rollupOptions: {
+        input: {
+          index: "index.html",
+          user: "user.html",
+          afirieito: "afirieito.html",
+          afirieitoAdmin: "afirieito-admin.html",
+          technician: "technician.html",
+          merchant: "merchant.html",
+          pfAdmin: "pf-admin.html",
+          storeAdmin: "store-admin.html"
+        },
+        output: {
+          manualChunks(id) {
+            const normalizedId = id.split("\\").join("/");
 
-          if (normalizedId.includes("node_modules/react-router")) {
-            return "vendor-router";
-          }
+            if (normalizedId.includes("node_modules/react")) {
+              return "vendor-react";
+            }
 
-          if (normalizedId.includes("node_modules")) {
-            return "vendor";
-          }
+            if (normalizedId.includes("node_modules/react-router")) {
+              return "vendor-router";
+            }
 
-          if (normalizedId.includes("/src/i18n/")) {
-            return "i18n";
+            if (normalizedId.includes("node_modules")) {
+              return "vendor";
+            }
+
+            if (normalizedId.includes("/src/i18n/")) {
+              return "i18n";
+            }
           }
         }
       }
+    },
+    server: {
+      port: 5180,
+      proxy: apiProxy
+    },
+    preview: {
+      port: 5180,
+      proxy: apiProxy
+    },
+    test: {
+      exclude: ["backend/**", "dist/**", "node_modules/**", "**/node_modules/**", ".codex-*/**"]
     }
-  },
-  server: {
-    port: 5180
-  },
-  preview: {
-    port: 5180
-  },
-  test: {
-    exclude: ["backend/**", "dist/**", "node_modules/**", "**/node_modules/**", ".codex-*/**"]
-  }
+  };
 });

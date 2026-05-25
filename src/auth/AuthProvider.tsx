@@ -28,6 +28,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isRestoring: boolean;
   login: (portal: PortalScope, email: string, password: string) => Promise<AuthActionResult>;
+  testLogin: (portal: PortalScope) => Promise<AuthActionResult>;
   sendVerificationCode: (email: string) => Promise<{ message?: string; ok: boolean }>;
   loginWithVerificationCode: (portal: PortalScope, email: string, code: string) => Promise<AuthActionResult>;
   loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => Promise<AuthActionResult>;
@@ -144,6 +145,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [completeAuthenticatedSession]
   );
 
+  const testLogin = useCallback(
+    async (portal: PortalScope): Promise<AuthActionResult> => {
+      try {
+        await authApi.testLogin(portal);
+
+        return completeAuthenticatedSession(portal, "password");
+      } catch (error) {
+        clearAuthTokens();
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [completeAuthenticatedSession]
+  );
+
   const sendVerificationCode = useCallback(async (email: string) => {
     try {
       await authApi.sendOtp(email);
@@ -220,6 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(session),
       isRestoring,
       login,
+      testLogin,
       sendVerificationCode,
       loginWithVerificationCode,
       loginWithProvider,
@@ -246,7 +263,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       sendVerificationCode,
       session,
-      switchPortal
+      switchPortal,
+      testLogin
     ]
   );
 

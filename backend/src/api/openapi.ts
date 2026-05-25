@@ -33,6 +33,154 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           data: { type: "null" }
         }
       },
+      RealtimeParticipant: {
+        type: "object",
+        required: ["userId", "username", "avatarUrl"],
+        properties: {
+          userId: { type: "integer" },
+          username: { type: "string" },
+          avatarUrl: { type: ["string", "null"] }
+        }
+      },
+      RealtimeMessage: {
+        type: "object",
+        required: [
+          "id",
+          "conversationId",
+          "senderUserId",
+          "type",
+          "content",
+          "metadata",
+          "createdAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          conversationId: { type: "integer" },
+          senderUserId: { type: ["integer", "null"] },
+          type: { type: "string", enum: ["text", "system", "orderStatus"] },
+          content: { type: ["string", "null"] },
+          metadata: {},
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      RealtimeConversation: {
+        type: "object",
+        required: [
+          "id",
+          "type",
+          "title",
+          "participants",
+          "lastMessage",
+          "unreadCount",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          type: { type: "string", enum: ["direct", "group"] },
+          title: { type: ["string", "null"] },
+          participants: {
+            type: "array",
+            items: { $ref: "#/components/schemas/RealtimeParticipant" }
+          },
+          lastMessage: {
+            anyOf: [{ $ref: "#/components/schemas/RealtimeMessage" }, { type: "null" }]
+          },
+          unreadCount: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      RealtimeContact: {
+        type: "object",
+        required: ["id", "ownerUserId", "contactUserId", "nickname", "source", "createdAt"],
+        properties: {
+          id: { type: "integer" },
+          ownerUserId: { type: "integer" },
+          contactUserId: { type: "integer" },
+          nickname: { type: ["string", "null"] },
+          source: { type: "string" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      FriendRequest: {
+        type: "object",
+        required: [
+          "id",
+          "requesterUserId",
+          "targetUserId",
+          "status",
+          "message",
+          "respondedAt",
+          "createdAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          requesterUserId: { type: "integer" },
+          targetUserId: { type: "integer" },
+          status: { type: "string", enum: ["pending", "accepted", "rejected"] },
+          message: { type: ["string", "null"] },
+          respondedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      SocialPost: {
+        type: "object",
+        required: ["id", "authorUserId", "content", "media", "visibility", "createdAt"],
+        properties: {
+          id: { type: "integer" },
+          authorUserId: { type: "integer" },
+          content: { type: "string" },
+          media: {},
+          visibility: { type: "string", enum: ["public", "followers"] },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      Follow: {
+        type: "object",
+        required: ["id", "followerUserId", "followingUserId", "createdAt"],
+        properties: {
+          id: { type: "integer" },
+          followerUserId: { type: "integer" },
+          followingUserId: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      Notification: {
+        type: "object",
+        required: [
+          "id",
+          "recipientUserId",
+          "actorUserId",
+          "type",
+          "title",
+          "body",
+          "payload",
+          "readAt",
+          "createdAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          recipientUserId: { type: "integer" },
+          actorUserId: { type: ["integer", "null"] },
+          type: { type: "string", enum: ["orderStatus", "friendRequest", "system", "social"] },
+          title: { type: "string" },
+          body: { type: "string" },
+          payload: {},
+          readAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      RealtimeUnreadCounts: {
+        type: "object",
+        required: ["conversations", "notifications", "friendRequests", "total"],
+        properties: {
+          conversations: { type: "integer" },
+          notifications: { type: "integer" },
+          friendRequests: { type: "integer" },
+          total: { type: "integer" }
+        }
+      },
       TokenPair: {
         type: "object",
         required: ["accessToken", "refreshToken", "expiresIn"],
@@ -482,15 +630,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       OrderStatusHistory: {
         type: "object",
-        required: [
-          "id",
-          "orderId",
-          "fromStatus",
-          "toStatus",
-          "actorUserId",
-          "reason",
-          "createdAt"
-        ],
+        required: ["id", "orderId", "fromStatus", "toStatus", "actorUserId", "reason", "createdAt"],
         properties: {
           id: { type: "integer" },
           orderId: { type: "integer" },
@@ -564,6 +704,147 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: { $ref: "#/components/schemas/OrderStatusHistory" }
           }
+        }
+      },
+      Wallet: {
+        type: "object",
+        required: [
+          "id",
+          "ownerType",
+          "ownerId",
+          "currency",
+          "availableBalance",
+          "frozenBalance",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          ownerType: { type: "string", enum: ["user", "shop", "platform"] },
+          ownerId: { type: "integer" },
+          currency: { type: "string", enum: ["NDP"] },
+          availableBalance: { type: "integer" },
+          frozenBalance: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      WalletLedger: {
+        type: "object",
+        required: [
+          "id",
+          "transactionId",
+          "walletId",
+          "direction",
+          "amount",
+          "availableDelta",
+          "frozenDelta",
+          "availableBalanceAfter",
+          "frozenBalanceAfter",
+          "reason",
+          "createdAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          transactionId: { type: "integer" },
+          walletId: { type: "integer" },
+          direction: {
+            type: "string",
+            enum: ["available_credit", "available_debit", "freeze", "unfreeze", "frozen_debit"]
+          },
+          amount: { type: "integer" },
+          availableDelta: { type: "integer" },
+          frozenDelta: { type: "integer" },
+          availableBalanceAfter: { type: "integer" },
+          frozenBalanceAfter: { type: "integer" },
+          reason: { type: "string" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      LedgerTransaction: {
+        type: "object",
+        required: [
+          "id",
+          "transactionNo",
+          "idempotencyKey",
+          "type",
+          "status",
+          "referenceType",
+          "referenceId",
+          "actorUserId",
+          "amount",
+          "currency",
+          "metadata",
+          "createdAt",
+          "updatedAt",
+          "entries"
+        ],
+        properties: {
+          id: { type: "integer" },
+          transactionNo: { type: "string" },
+          idempotencyKey: { type: "string" },
+          type: {
+            type: "string",
+            enum: [
+              "booking_accept_freeze",
+              "booking_cancel_unfreeze",
+              "booking_complete_settlement",
+              "booking_merchant_cancel_compensation",
+              "seed_credit"
+            ]
+          },
+          status: { type: "string", enum: ["applied"] },
+          referenceType: { type: "string" },
+          referenceId: { type: "integer" },
+          actorUserId: { type: ["integer", "null"] },
+          amount: { type: "integer" },
+          currency: { type: "string", enum: ["NDP"] },
+          metadata: {},
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+          entries: { type: "array", items: { $ref: "#/components/schemas/WalletLedger" } }
+        }
+      },
+      FinanceReconciliation: {
+        type: "object",
+        required: [
+          "id",
+          "transactionId",
+          "transactionNo",
+          "referenceType",
+          "referenceId",
+          "status",
+          "currency",
+          "expectedAmount",
+          "actualAmount",
+          "differenceAmount",
+          "exportedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          transactionId: { type: "integer" },
+          transactionNo: { type: "string" },
+          referenceType: { type: "string" },
+          referenceId: { type: "integer" },
+          status: { type: "string", enum: ["pending", "exported"] },
+          currency: { type: "string", enum: ["NDP"] },
+          expectedAmount: { type: "integer" },
+          actualAmount: { type: "integer" },
+          differenceAmount: { type: "integer" },
+          exportedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      FinanceReconciliationExport: {
+        type: "object",
+        required: ["filename", "contentType", "csv"],
+        properties: {
+          filename: { type: "string" },
+          contentType: { type: "string", enum: ["text/csv"] },
+          csv: { type: "string" }
         }
       }
     }
@@ -654,6 +935,48 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           "401": { description: "Invalid credentials" },
           "429": { description: "Account locked" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/test-login`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Temporary non-production test login",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["portal"],
+                properties: {
+                  portal: {
+                    type: "string",
+                    enum: ["user", "merchant", "technician", "business", "admin"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "JWT token pair issued for a real seeded account",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/TokenPair" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Test login disabled" }
         }
       }
     },
@@ -1412,11 +1735,26 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Paginated available schedule slots",
         parameters: [
-          { name: "serviceId", in: "query", required: true, schema: { type: "integer", minimum: 1 } },
+          {
+            name: "serviceId",
+            in: "query",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
           { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "technicianId", in: "query", schema: { type: "integer", minimum: 1 } },
-          { name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } },
-          { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } },
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
@@ -1435,7 +1773,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       type: "object",
                       required: ["list", "total", "page", "page_size"],
                       properties: {
-                        list: { type: "array", items: { $ref: "#/components/schemas/ScheduleSlot" } },
+                        list: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/ScheduleSlot" }
+                        },
                         total: { type: "integer" },
                         page: { type: "integer" },
                         page_size: { type: "integer" }
@@ -1525,7 +1866,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                       type: "object",
                       required: ["list", "total", "page", "page_size"],
                       properties: {
-                        list: { type: "array", items: { $ref: "#/components/schemas/BookingOrder" } },
+                        list: {
+                          type: "array",
+                          items: { $ref: "#/components/schemas/BookingOrder" }
+                        },
                         total: { type: "integer" },
                         page: { type: "integer" },
                         page_size: { type: "integer" }
@@ -1544,7 +1888,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Booking order detail with status history",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         responses: {
           "200": { description: "Booking order detail" },
           "404": { description: "Order not found" }
@@ -1556,7 +1902,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Confirm a pending Booking order",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         responses: {
           "200": { description: "Order confirmed" },
           "409": { description: "Invalid state transition" }
@@ -1568,7 +1916,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Cancel a pending or confirmed Booking order",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         requestBody: {
           required: false,
           content: {
@@ -1593,7 +1943,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Start service for a confirmed Booking order",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         responses: {
           "200": { description: "Order moved to inService" },
           "409": { description: "Invalid state transition" }
@@ -1605,10 +1957,605 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Booking"],
         summary: "Complete an inService Booking order",
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
         responses: {
           "200": { description: "Order completed" },
           "409": { description: "Invalid state transition" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/wallets/me`]: {
+      get: {
+        tags: ["Ledger"],
+        summary: "Current user's NDP wallet",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Wallet balance",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/Wallet" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/wallets/{id}/ledger`]: {
+      get: {
+        tags: ["Ledger"],
+        summary: "Paginated wallet ledger entries",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated wallet ledger entries" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/ledger/transactions`]: {
+      get: {
+        tags: ["Finance"],
+        summary: "Paginated NDP ledger transactions",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "type", in: "query", schema: { type: "string" } },
+          { name: "referenceType", in: "query", schema: { type: "string", maxLength: 80 } },
+          { name: "referenceId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "from", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated ledger transactions" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/dashboard`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Operations dashboard from real database aggregates",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Operations dashboard payload" },
+          "403": { description: "Missing backoffice dashboard permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/orders`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Paginated real booking orders for operations admin",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "status", in: "query", schema: { type: "string" } },
+          { name: "from", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated backoffice orders" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/schedule`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Paginated real schedule slots for operations admin",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated backoffice schedule slots" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/finance/settlements`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Paginated real finance reconciliation rows for operations admin",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated backoffice finance settlements" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/finance/settlements/export`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Export operations finance settlements as CSV content",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "CSV export payload" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/technicians`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Paginated real technician profiles for operations admin",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated backoffice technicians" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shops`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Paginated real shops for operations admin",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated backoffice shops" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/dashboard`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Merchant dashboard scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Merchant dashboard payload" },
+          "403": { description: "Missing merchant scope or permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/orders`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Paginated real booking orders scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated merchant orders" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Paginated real schedule slots scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated merchant schedule slots" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/finance/settlements`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Paginated real finance reconciliation rows scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated merchant finance settlements" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/finance/settlements/export`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Export merchant finance settlements as CSV content",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "CSV export payload" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/technicians`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Paginated real technician profiles scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated merchant technicians" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shop`]: {
+      get: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Current authenticated shop profile",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Current merchant shop payload" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Paginated IM conversations with unread counts",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated conversations" }
+        }
+      },
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Create a direct or group conversation",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["participantUserIds"],
+                properties: {
+                  type: { type: "string", enum: ["direct", "group"], default: "direct" },
+                  title: { type: "string", maxLength: 120 },
+                  participantUserIds: {
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 50,
+                    items: { type: "integer", minimum: 1 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Created conversation" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/messages`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Cursor-paginated IM message history",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          { name: "beforeId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Message history page with nextCursor" }
+        }
+      },
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Send an IM message",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["content"],
+                properties: {
+                  type: {
+                    type: "string",
+                    enum: ["text", "system", "orderStatus"],
+                    default: "text"
+                  },
+                  content: { type: "string", minLength: 1, maxLength: 4000 },
+                  metadata: { type: "object", additionalProperties: true }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Created message" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/read`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Mark a conversation as read for the current user",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Conversation read state" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/contacts`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Paginated contacts",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated contacts" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/friend-requests`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Paginated friend requests",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["pending", "accepted", "rejected"] }
+          },
+          {
+            name: "direction",
+            in: "query",
+            schema: { type: "string", enum: ["incoming", "outgoing", "all"] }
+          }
+        ],
+        responses: {
+          "200": { description: "Paginated friend requests" }
+        }
+      },
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Create a friend request",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["targetUserId"],
+                properties: {
+                  targetUserId: { type: "integer", minimum: 1 },
+                  message: { type: "string", maxLength: 300 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Created friend request" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/friend-requests/{id}/accept`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Accept a friend request and create reciprocal contacts",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Accepted friend request" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/friend-requests/{id}/reject`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Reject a friend request",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Rejected friend request" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Paginated social posts",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "authorUserId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated social posts" }
+        }
+      },
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Create a basic social post",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["content"],
+                properties: {
+                  content: { type: "string", minLength: 1, maxLength: 5000 },
+                  media: { type: "array", maxItems: 12, items: { type: "object" } },
+                  visibility: { type: "string", enum: ["public", "followers"], default: "public" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Created social post" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/follows`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Follow a user",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["targetUserId"],
+                properties: {
+                  targetUserId: { type: "integer", minimum: 1 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Created follow" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/follows/{targetUserId}`]: {
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Unfollow a user",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "targetUserId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Follow deletion result" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/notifications`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Paginated notifications",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "unreadOnly", in: "query", schema: { type: "boolean" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated notifications" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/notifications/{id}/read`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Mark one notification as read",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Read notification" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/notifications/read-all`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Mark all current-user notifications as read",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Read count" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/realtime/unread-counts`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Unread counts for IM, friend requests, and notifications",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Unread counts" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/realtime/events`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "SSE realtime event stream",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "text/event-stream with retry hints and heartbeat comments" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/reconciliation`]: {
+      get: {
+        tags: ["Finance"],
+        summary: "Paginated NDP finance reconciliation rows",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["pending", "exported"] }
+          },
+          { name: "referenceType", in: "query", schema: { type: "string", maxLength: 80 } },
+          { name: "referenceId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "from", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated finance reconciliation rows" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/reconciliation/export`]: {
+      get: {
+        tags: ["Finance"],
+        summary: "Export NDP finance reconciliation CSV content",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "CSV export payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/FinanceReconciliationExport" }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

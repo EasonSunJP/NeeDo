@@ -6,7 +6,9 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { BookingRepository } from "../repositories/booking.repository";
+import { LedgerRepository } from "../repositories/ledger.repository";
 import { BookingService } from "../services/booking.service";
+import { LedgerService } from "../services/ledger.service";
 import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
@@ -26,16 +28,19 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   complete: "order:complete"
 } as const;
 
-export const createBookingRoutes = (
-  config: AppConfig,
-  dependencies: AppDependencies
-): Router => {
+export const createBookingRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
   const router = Router();
   const authService = createAuthServiceForRoutes(config, dependencies);
   const authenticate = createAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
+  const ledgerService =
+    dependencies.ledgerRepository || !dependencies.bookingRepository
+      ? new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository())
+      : undefined;
   const bookingService = new BookingService(
-    dependencies.bookingRepository ?? new BookingRepository()
+    dependencies.bookingRepository ?? new BookingRepository(),
+    ledgerService,
+    dependencies.realtimeService
   );
   const controller = new BookingController(bookingService);
 

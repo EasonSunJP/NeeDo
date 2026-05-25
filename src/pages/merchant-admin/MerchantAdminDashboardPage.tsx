@@ -1,49 +1,74 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  backofficeRealDataApi,
+  mapBackofficeOrder,
+  mapBackofficeStore,
+  mapBackofficeTechnician,
+  type BackofficeDashboardPayload
+} from "../../api/backofficeRealData";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { DataTable } from "../../components/ui/DataTable";
 import { MetricCard } from "../../components/ui/MetricCard";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { getMerchantAdminDemo, getMerchantOrderAmount, getMerchantPendingOrders, getMerchantTodayOrders } from "../../data/merchantAdmin";
 import { statusLabel, yen } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import type { Metric, Order } from "../../types/domain";
 
 export function MerchantAdminDashboardPage() {
   const { customers } = useEntityStore();
-  const merchantAdminDemo = getMerchantAdminDemo();
-  const todayOrders = getMerchantTodayOrders().slice(0, 8);
+  const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
+  const todayOrders = useMemo(() => dashboard?.orders.map(mapBackofficeOrder).slice(0, 8) ?? [], [dashboard]);
+  const realTechnicians = useMemo(() => dashboard?.technicians.map(mapBackofficeTechnician) ?? [], [dashboard]);
+  const currentStore = useMemo(() => dashboard?.shops[0] ? mapBackofficeStore(dashboard.shops[0]) : null, [dashboard]);
   const getCustomerDisplayName = (order: Order) => {
     const customer = customers.find((item) => item.id === order.customerId);
     return customer?.nickname ? `${customer.nickname} / ${customer.name}` : customer?.name ?? order.customerName;
   };
   const dashboardMetrics: Metric[] = [
-    { label: "本月预约", value: `${merchantAdminDemo.orders.length}`, change: "店铺视角", tone: "good" },
-    { label: "待处理订单", value: `${getMerchantPendingOrders().length}`, change: "需跟进", tone: "warn" },
-    { label: "门店流水", value: yen(getMerchantOrderAmount()), change: "含到店与分配订单", tone: "good" },
-    { label: "复购顾客", value: `${merchantAdminDemo.customers.filter((customer) => customer.orderCount >= 3).length}`, change: "近期开单", tone: "neutral" }
+    ...(dashboard?.metrics ?? []),
+    { label: "门店流水", value: yen(dashboard?.finance.grossAmount ?? 0), change: "真实订单", tone: "good" }
   ];
   const technicianStatusSummary = [
     {
       label: "可派单",
-      value: merchantAdminDemo.technicians.filter((technician) => technician.status === "available").length
+      value: realTechnicians.filter((technician) => technician.status === "available").length
     },
     {
       label: "服务中",
-      value: merchantAdminDemo.technicians.filter((technician) => technician.status === "busy").length
+      value: realTechnicians.filter((technician) => technician.status === "busy").length
     },
     {
       label: "离线",
-      value: merchantAdminDemo.technicians.filter((technician) => technician.status === "off").length
+      value: realTechnicians.filter((technician) => technician.status === "off").length
     }
   ];
   const financeSummary = [
-    ["平台分账", yen(Math.round(getMerchantOrderAmount() * 0.16))],
-    ["待结算", yen(Math.round(getMerchantOrderAmount() * 0.34))],
-    ["退款影响", yen(12800)],
+    ["平台分账", yen(0)],
+    ["待结算", yen(dashboard?.finance.pendingSettlementAmount ?? 0)],
+    ["退款影响", yen(dashboard?.finance.refundAmount ?? 0)],
     ["导出状态", "可导出"]
   ] as const;
+
+  useEffect(() => {
+    let activeRequest = true;
+
+    backofficeRealDataApi.dashboard("merchant-admin").then((payload) => {
+      if (activeRequest) {
+        setDashboard(payload);
+      }
+    }).catch(() => {
+      if (activeRequest) {
+        setDashboard(null);
+      }
+    });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, []);
 
   return (
     <MerchantAdminLayout>
@@ -63,7 +88,7 @@ export function MerchantAdminDashboardPage() {
       >
         <section className="overflow-hidden rounded-lg border border-line bg-white shadow-panel">
           <div className="relative min-h-[248px]">
-            <img alt={merchantAdminDemo.store.name} className="absolute inset-0 h-full w-full object-cover" src={merchantAdminDemo.store.cover} />
+            <img alt={currentStore?.name ?? "当前门店"} className="absolute inset-0 h-full w-full object-cover" src={currentStore?.cover ?? "/images/generated/home-merchant-feature.jpg"} />
             <div className="absolute inset-0 bg-gradient-to-r from-black/78 via-black/50 to-black/12" />
             <div className="relative grid min-h-[248px] gap-6 p-5 text-white lg:grid-cols-[1.15fr_0.85fr]">
               <div className="flex min-h-full flex-col justify-between">
@@ -77,13 +102,13 @@ export function MerchantAdminDashboardPage() {
                     variant="dark"
                   />
                   <p className="mt-3 max-w-xl text-sm leading-6 text-white/72">
-                    {merchantAdminDemo.store.name} · {merchantAdminDemo.store.area} · {merchantAdminDemo.store.businessHours}
+                    {currentStore?.name ?? "当前门店"} · {currentStore?.area ?? ""} · {currentStore?.businessHours ?? ""}
                   </p>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Badge tone="yellow">{merchantAdminDemo.store.openStatus}</Badge>
-                  <Badge tone="green">评分 {merchantAdminDemo.store.rating.toFixed(1)}</Badge>
-                  <Badge tone="neutral">{merchantAdminDemo.store.reviewCount} 条评价</Badge>
+                  <Badge tone="yellow">{currentStore?.openStatus ?? "resting"}</Badge>
+                  <Badge tone="green">排班 {dashboard?.schedule.total ?? 0}</Badge>
+                  <Badge tone="neutral">技师 {realTechnicians.length}</Badge>
                 </div>
               </div>
 
@@ -163,7 +188,7 @@ export function MerchantAdminDashboardPage() {
                 ))}
               </div>
               <div className="mt-4 space-y-3">
-                {merchantAdminDemo.technicians.slice(0, 4).map((technician) => (
+                {realTechnicians.slice(0, 4).map((technician) => (
                   <div className="flex items-center justify-between gap-3 rounded-lg bg-paper px-3 py-3" key={technician.id}>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black text-ink">{technician.nickname ? `${technician.nickname} / ${technician.name}` : technician.name}</p>

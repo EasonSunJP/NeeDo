@@ -50,7 +50,9 @@ Auth behavior:
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
 
-Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix.
+Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix. Local Vite dev/preview proxies `/api/v1` to the formal backend at `http://127.0.0.1:3100` by default; override with `NEEDO_API_PROXY_TARGET` or `VITE_API_PROXY_TARGET` if needed.
+
+Temporary test login is available only for non-production environments with `AUTH_TEST_LOGIN_ENABLED=true`. The seeded test account is `admin@needo.life` with password `admin`; the password is stored as a bcrypt hash, and the UI shortcut signs in through the backend instead of creating a browser-only session.
 
 ## Current Scope
 
