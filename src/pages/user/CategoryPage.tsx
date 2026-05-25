@@ -382,7 +382,7 @@ function ServicePreviewCard({ service }: { service: ServiceItem }) {
             <h3 className="line-clamp-1 text-[15px] font-black text-[color:var(--client-text)]">{service.name}</h3>
             <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[color:var(--client-muted)]">{service.summary}</p>
           </div>
-          <Badge tone="green">{service.fastestArrival}</Badge>
+          <Badge className="shrink-0 whitespace-nowrap" tone="green">{service.fastestArrival}</Badge>
         </div>
         <div className="flex items-end justify-between gap-3">
           <div className="flex min-w-0 flex-wrap gap-2">

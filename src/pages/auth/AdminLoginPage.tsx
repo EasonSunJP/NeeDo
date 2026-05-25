@@ -40,6 +40,7 @@ type BackendLoginCopy = {
   codeSent: string;
   gmailLogin: string;
   login: string;
+  testCredentialLogin: string;
   continue: string;
   loggedIn: string;
   loggedInAs: string;
@@ -65,11 +66,13 @@ const adminLoginCopy = {
     pageSubtitle: "请使用后台账号登录",
     portalName: {
       admin: "运营后台",
-      "merchant-admin": "商户后台"
+      "merchant-admin": "商户后台",
+      "afirieito-admin": "NDA管理后台"
     },
     portalSubtitle: {
       admin: "平台运营、订单、用户、技师、店铺与财务管理入口",
-      "merchant-admin": "门店订单、排班、人员、财务与店铺设置入口"
+      "merchant-admin": "门店订单、排班、人员、财务与店铺设置入口",
+      "afirieito-admin": "推广计划、素材、归因、佣金与风控管理入口"
     },
     tabs: {
       account: "账号登录",
@@ -89,6 +92,7 @@ const adminLoginCopy = {
     codeSent: "验证码已发送，请查看对应邮箱或开发环境 OTP 交付日志。",
     gmailLogin: "使用 Gmail 登录",
     login: "登录",
+    testCredentialLogin: "测试账号登录",
     continue: "进入后台",
     loggedIn: "当前已登录",
     loggedInAs: "登录账号",
@@ -110,11 +114,13 @@ const adminLoginCopy = {
     pageSubtitle: "請使用後台帳號登入",
     portalName: {
       admin: "營運後台",
-      "merchant-admin": "商戶後台"
+      "merchant-admin": "商戶後台",
+      "afirieito-admin": "NDA管理後台"
     },
     portalSubtitle: {
       admin: "平台營運、訂單、用戶、技師、店鋪與財務管理入口",
-      "merchant-admin": "門店訂單、排班、人員、財務與店鋪設定入口"
+      "merchant-admin": "門店訂單、排班、人員、財務與店鋪設定入口",
+      "afirieito-admin": "推廣計劃、素材、歸因、佣金與風控管理入口"
     },
     tabs: {
       account: "帳號登入",
@@ -134,6 +140,7 @@ const adminLoginCopy = {
     codeSent: "驗證碼已發送，請查看對應信箱或開發環境 OTP 交付日誌。",
     gmailLogin: "使用 Gmail 登入",
     login: "登入",
+    testCredentialLogin: "測試帳號登入",
     continue: "進入後台",
     loggedIn: "目前已登入",
     loggedInAs: "登入帳號",
@@ -155,11 +162,13 @@ const adminLoginCopy = {
     pageSubtitle: "管理アカウントでログインしてください",
     portalName: {
       admin: "運営管理",
-      "merchant-admin": "店舗管理"
+      "merchant-admin": "店舗管理",
+      "afirieito-admin": "NDA管理"
     },
     portalSubtitle: {
       admin: "プラットフォーム運営、注文、ユーザー、スタッフ、店舗、財務の管理入口",
-      "merchant-admin": "店舗注文、シフト、人員、財務、店舗設定の管理入口"
+      "merchant-admin": "店舗注文、シフト、人員、財務、店舗設定の管理入口",
+      "afirieito-admin": "紹介プラン、素材、成果計測、報酬、リスク管理の入口"
     },
     tabs: {
       account: "アカウントログイン",
@@ -179,6 +188,7 @@ const adminLoginCopy = {
     codeSent: "認証コードを送信しました。メールまたは開発環境の OTP 配信ログを確認してください。",
     gmailLogin: "Gmail でログイン",
     login: "ログイン",
+    testCredentialLogin: "テストアカウントでログイン",
     continue: "管理画面へ",
     loggedIn: "ログイン済み",
     loggedInAs: "ログインアカウント",
@@ -200,11 +210,13 @@ const adminLoginCopy = {
     pageSubtitle: "Sign in with your admin account",
     portalName: {
       admin: "Operations Admin",
-      "merchant-admin": "Merchant Admin"
+      "merchant-admin": "Merchant Admin",
+      "afirieito-admin": "NDA Admin"
     },
     portalSubtitle: {
       admin: "Platform operations, orders, users, technicians, stores, and finance",
-      "merchant-admin": "Store orders, scheduling, staff, finance, and store settings"
+      "merchant-admin": "Store orders, scheduling, staff, finance, and store settings",
+      "afirieito-admin": "Campaigns, creatives, attribution, commissions, and risk control"
     },
     tabs: {
       account: "Account Login",
@@ -224,6 +236,7 @@ const adminLoginCopy = {
     codeSent: "Code sent. Check the mailbox or development OTP delivery logs.",
     gmailLogin: "Continue with Gmail",
     login: "Log in",
+    testCredentialLogin: "Test account login",
     continue: "Enter Admin",
     loggedIn: "Already signed in",
     loggedInAs: "Signed in as",
@@ -245,11 +258,13 @@ const adminLoginCopy = {
     pageSubtitle: "관리자 계정으로 로그인하세요",
     portalName: {
       admin: "운영 관리자",
-      "merchant-admin": "상점 관리자"
+      "merchant-admin": "상점 관리자",
+      "afirieito-admin": "NDA 관리자"
     },
     portalSubtitle: {
       admin: "플랫폼 운영, 주문, 사용자, 기사, 상점, 재무 관리 입구",
-      "merchant-admin": "상점 주문, 근무표, 직원, 재무, 상점 설정 입구"
+      "merchant-admin": "상점 주문, 근무표, 직원, 재무, 상점 설정 입구",
+      "afirieito-admin": "캠페인, 소재, 어트리뷰션, 커미션, 리스크 관리 입구"
     },
     tabs: {
       account: "계정 로그인",
@@ -269,6 +284,7 @@ const adminLoginCopy = {
     codeSent: "인증코드를 보냈습니다. 메일함 또는 개발 환경 OTP 전달 로그를 확인하세요.",
     gmailLogin: "Gmail로 로그인",
     login: "로그인",
+    testCredentialLogin: "테스트 계정 로그인",
     continue: "관리자로 이동",
     loggedIn: "이미 로그인됨",
     loggedInAs: "로그인 계정",
@@ -314,8 +330,59 @@ const backendLoginConfig = {
     dayTheme: defaultDayAdminTheme,
     nightTheme: defaultNightAdminTheme,
     legacyDarkTheme: defaultNightAdminTheme
+  },
+  "afirieito-admin": {
+    authPortal: getAdminLoginPortalScope("afirieito-admin"),
+    defaultEmail: "affiliate@example.com",
+    gmailEmail: "needo.afirieito@gmail.com",
+    entryPath: "/NDA-admin",
+    background: backendManagementSystemBgUrl,
+    mark: "A",
+    themeStorageKey: "needo.afirieito-admin.theme",
+    themePreferenceModeStorageKey: "needo.afirieito-admin.theme.mode",
+    themeOptions: sharedAdminThemeOptions,
+    dayTheme: defaultDayAdminTheme,
+    nightTheme: defaultNightAdminTheme,
+    legacyDarkTheme: defaultNightAdminTheme
   }
 } as const;
+
+type AdminTestCredentialEnv = {
+  VITE_TEST_LOGIN_EMAIL?: string;
+  VITE_TEST_LOGIN_PASSWORD?: string;
+  VITE_TEST_LOGIN_ADMIN_EMAIL?: string;
+  VITE_TEST_LOGIN_ADMIN_PASSWORD?: string;
+  VITE_TEST_LOGIN_MERCHANT_EMAIL?: string;
+  VITE_TEST_LOGIN_MERCHANT_PASSWORD?: string;
+  VITE_TEST_LOGIN_BUSINESS_EMAIL?: string;
+  VITE_TEST_LOGIN_BUSINESS_PASSWORD?: string;
+};
+
+export function resolveAdminTestLoginCredentials(env: AdminTestCredentialEnv, portal: AdminLoginPortal) {
+  const portalCredentials =
+    portal === "admin"
+      ? {
+          email: env.VITE_TEST_LOGIN_ADMIN_EMAIL,
+          password: env.VITE_TEST_LOGIN_ADMIN_PASSWORD
+        }
+      : portal === "merchant-admin"
+        ? {
+            email: env.VITE_TEST_LOGIN_MERCHANT_EMAIL,
+            password: env.VITE_TEST_LOGIN_MERCHANT_PASSWORD
+          }
+        : {
+            email: env.VITE_TEST_LOGIN_BUSINESS_EMAIL,
+            password: env.VITE_TEST_LOGIN_BUSINESS_PASSWORD
+          };
+  const email = portalCredentials.email?.trim() || (portal === "admin" ? env.VITE_TEST_LOGIN_EMAIL?.trim() : "");
+  const password = portalCredentials.password?.trim() || (portal === "admin" ? env.VITE_TEST_LOGIN_PASSWORD?.trim() : "");
+
+  if (!email || !password) {
+    return null;
+  }
+
+  return { email, password };
+}
 
 const qrCells = new Set([
   0, 1, 2, 3, 4, 5, 6, 8, 10, 14, 16, 18, 20, 21, 22, 24, 26, 28, 32, 34, 36, 37, 38, 39, 40, 42, 44,
@@ -393,6 +460,10 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const hasAccess = isAuthenticated && canAccess(config.authPortal);
   const qrToken = adminLoginQrTokens[portal];
   const rememberCredentialsScope = useMemo(() => getAdminRememberCredentialsScope(portal), [portal]);
+  const testCredentials = useMemo(
+    () => resolveAdminTestLoginCredentials(import.meta.env as AdminTestCredentialEnv, portal),
+    [portal]
+  );
 
   useEffect(() => {
     setMode(requestedMode);
@@ -448,6 +519,22 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     }
 
     const result = await login(config.authPortal, account, password);
+    if (!result.ok) {
+      setError(result.message || copy.accountError);
+      return;
+    }
+
+    navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
+  };
+
+  const continueWithTestCredentials = async () => {
+    if (!testCredentials) {
+      return;
+    }
+
+    setError("");
+    const result = await login(config.authPortal, testCredentials.email, testCredentials.password);
+
     if (!result.ok) {
       setError(result.message || copy.accountError);
       return;
@@ -523,7 +610,15 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   };
 
   return (
-    <div className={cn("admin-shell admin-login-shell", portal === "merchant-admin" && "merchant-admin-shell", `admin-theme-${theme}`)} data-no-i18n>
+    <div
+      className={cn(
+        "admin-shell admin-login-shell",
+        portal !== "admin" && "merchant-admin-shell",
+        portal === "afirieito-admin" && "cps-admin-shell",
+        `admin-theme-${theme}`
+      )}
+      data-no-i18n
+    >
       <main className="admin-login-layout">
         <section aria-hidden="true" className="admin-login-hero">
           <img alt="" className="admin-login-bg-image" src={config.background} />
@@ -632,6 +727,11 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                     <button className="admin-login-primary w-full text-base" type="submit">
                       {copy.login}
                     </button>
+                    {testCredentials ? (
+                      <button className="admin-login-secondary w-full px-4 text-base" onClick={continueWithTestCredentials} type="button">
+                        {copy.testCredentialLogin}
+                      </button>
+                    ) : null}
                     <button className="admin-login-secondary flex w-full items-center justify-center gap-3 px-4 text-base" onClick={continueWithGmail} type="button">
                       <span className="grid h-8 w-8 place-items-center rounded-md bg-[color:color-mix(in_srgb,var(--admin-muted-surface)_86%,var(--admin-surface))] text-base font-black text-[color:var(--admin-danger)]">G</span>
                       {copy.gmailLogin}

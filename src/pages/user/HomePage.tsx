@@ -7,6 +7,7 @@ import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
+import { CloseIconButton } from "../../components/ui/CloseIconButton";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useAuth } from "../../auth/AuthProvider";
 import { serviceCategories, services as legacyServices } from "../../data/mock";
@@ -499,15 +500,23 @@ function ReminderBanner({
   })();
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+152px)] z-40 px-4">
-      <div className="pointer-events-auto mx-auto w-full max-w-[1600px]">
+    <div
+      aria-modal="true"
+      className={cn(
+        "pointer-events-none fixed inset-0 z-40 flex items-center justify-center px-4 py-[max(1rem,env(safe-area-inset-top))] transition duration-300",
+        visible ? "opacity-100" : "opacity-0"
+      )}
+      role="dialog"
+    >
+      <div className="absolute inset-0 bg-black/42 backdrop-blur-[10px]" />
+      <div className="pointer-events-auto relative w-full max-w-[720px]">
         <Link
           className={cn(
-            "block rounded-[28px] border px-4 py-4 text-white shadow-[0_24px_52px_rgba(0,0,0,0.24)] transition duration-300",
+            "block max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[30px] border px-4 py-5 text-white shadow-[0_28px_80px_rgba(0,0,0,0.36)] transition duration-300 sm:px-5 sm:py-5",
             highPriority
               ? "border-[rgba(255,255,255,0.16)] bg-[linear-gradient(135deg,rgba(223,91,82,0.96),rgba(131,41,35,0.92))]"
               : "border-[rgba(255,255,255,0.12)] bg-[linear-gradient(135deg,rgba(16,23,22,0.95),rgba(33,45,41,0.92))]",
-            visible ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
+            visible ? "scale-100 translate-y-0" : "scale-[0.98] translate-y-3"
           )}
           to={jumpTo}
         >
@@ -519,21 +528,19 @@ function ReminderBanner({
               <p className="mt-3 text-[18px] font-black leading-6">{reminderTitle}</p>
               <p className="mt-1 text-[12px] text-white/76">{reminderMeta}</p>
             </div>
-            <button
-              aria-label={t("关闭提醒")}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/12 text-white/86"
+            <CloseIconButton
+              className="h-10 w-10 shrink-0 border-white/12 bg-white/12 text-white/86 hover:bg-white/18"
+              iconClassName="h-5 w-5"
+              label={t("关闭提醒")}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 onClose();
               }}
-              type="button"
-            >
-              <CloseIcon />
-            </button>
+            />
           </div>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
             {store ? (
               <ReminderMiniCard
                 cover={store.cover}
@@ -1010,8 +1017,6 @@ export function HomePage() {
       </FloatingHomeHeader>
 
       <div className="space-y-5 px-4 pb-28 pt-2">
-        {activeReminder ? <div aria-hidden="true" className="h-[152px]" /> : null}
-
         {activeReminder ? (
           <ReminderBanner
             highPriority={activeReminder.minutesUntil <= 10}

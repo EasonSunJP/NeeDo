@@ -767,6 +767,17 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
   );
 }
 
+function isBusinessAdminPath(pathname: string) {
+  return (
+    pathname.startsWith("/NDA-admin") ||
+    pathname.startsWith("/nda-admin") ||
+    pathname.startsWith("/afirieito-admin") ||
+    pathname.startsWith("/CPS-admin") ||
+    pathname.startsWith("/cps-admin") ||
+    pathname.startsWith("/business-admin")
+  );
+}
+
 function RequirePortalAuth({
   portal,
   children
@@ -796,6 +807,8 @@ function RequirePortalAuth({
     const redirect = `${location.pathname}${location.search}${location.hash}`;
     const loginPath = portal === "merchant" && location.pathname.startsWith("/merchant-admin")
       ? "/login/merchant-admin"
+      : portal === "business" && isBusinessAdminPath(location.pathname)
+        ? "/login/afirieito-admin"
       : portal === "business"
         ? "/login/afirieito"
         : `/login/${portal}`;
@@ -938,6 +951,12 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/login/admin" element={<AdminLoginPage portal="admin" />} />
               <Route path="/login/merchant-admin" element={<AdminLoginPage portal="merchant-admin" />} />
+              <Route path="/login/NDA-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
+              <Route path="/login/nda-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
+              <Route path="/login/afirieito-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
+              <Route path="/login/CPS-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
+              <Route path="/login/cps-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
+              <Route path="/login/business-admin" element={<AdminLoginPage portal="afirieito-admin" />} />
               <Route path="/login/:portal" element={<LoginPage />} />
 
               <Route path="/" element={protect("user", <HomePage />)} />

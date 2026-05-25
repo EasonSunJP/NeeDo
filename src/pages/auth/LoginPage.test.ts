@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveLoginErrorMessage, resolveLoginFeedbackMessage, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
+import appSource from "../../App.tsx?raw";
 import adminLoginPageSource from "./AdminLoginPage.tsx?raw";
 import loginPageSource from "./LoginPage.tsx?raw";
 import userManagementSource from "../admin/UserManagementWorkspace.tsx?raw";
@@ -86,5 +87,20 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).toContain("readRememberedCredentials");
     expect(adminLoginPageSource).toContain("rememberCredentials");
     expect(adminLoginPageSource).toContain("writeRememberedCredentials");
+  });
+
+  it("routes NDA backend login aliases through the shared backend login page", () => {
+    expect(appSource).toContain('<Route path="/login/afirieito-admin" element={<AdminLoginPage portal="afirieito-admin" />} />');
+    expect(appSource).toContain('<Route path="/login/NDA-admin" element={<AdminLoginPage portal="afirieito-admin" />} />');
+    expect(appSource).toContain('portal === "business"');
+    expect(appSource).toContain('"/login/afirieito-admin"');
+  });
+
+  it("offers real test-account login on backend login screens", () => {
+    expect(adminLoginPageSource).toContain("resolveAdminTestLoginCredentials");
+    expect(adminLoginPageSource).toContain("continueWithTestCredentials");
+    expect(adminLoginPageSource).toContain("testCredentialLogin");
+    expect(adminLoginPageSource).toContain("VITE_TEST_LOGIN_BUSINESS_EMAIL");
+    expect(adminLoginPageSource).toContain('"afirieito-admin"');
   });
 });

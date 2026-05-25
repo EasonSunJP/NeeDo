@@ -85,6 +85,7 @@ describe("user management seed contract", () => {
       "admin@example.com",
       "operator@example.com",
       "merchant@example.com",
+      "affiliate@example.com",
       "technician@example.com",
       "customer@example.com"
     ]);
@@ -92,6 +93,7 @@ describe("user management seed contract", () => {
       ["admin@example.com", "admin", "platform"],
       ["operator@example.com", "operator", "platform"],
       ["merchant@example.com", "merchant_owner", "merchant"],
+      ["affiliate@example.com", "broker", "broker"],
       ["technician@example.com", "technician", "technician"],
       ["customer@example.com", "customer", "customer"]
     ]);

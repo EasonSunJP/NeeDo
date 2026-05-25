@@ -1,14 +1,23 @@
 import type { PortalScope } from "./demoAccount";
 
-export type AdminLoginPortal = "admin" | "merchant-admin";
+export type AdminLoginPortal = "admin" | "merchant-admin" | "afirieito-admin";
 
 export const adminLoginQrTokens: Record<AdminLoginPortal, string> = {
   admin: "needo-admin-login:admin:demo",
-  "merchant-admin": "needo-admin-login:merchant-admin:demo"
+  "merchant-admin": "needo-admin-login:merchant-admin:demo",
+  "afirieito-admin": "needo-admin-login:afirieito-admin:demo"
 };
 
 export function getAdminLoginPortalScope(portal: AdminLoginPortal): PortalScope {
-  return portal === "merchant-admin" ? "merchant" : "admin";
+  if (portal === "merchant-admin") {
+    return "merchant";
+  }
+
+  if (portal === "afirieito-admin") {
+    return "business";
+  }
+
+  return "admin";
 }
 
 function safelyDecode(value: string) {
@@ -34,12 +43,30 @@ export function parseAdminLoginQrToken(input: string | null | undefined): AdminL
     return "merchant-admin";
   }
 
+  if (
+    normalized === adminLoginQrTokens["afirieito-admin"] ||
+    normalized.includes("needo://admin-login/afirieito-admin") ||
+    normalized.includes("needo://admin-login/nda-admin")
+  ) {
+    return "afirieito-admin";
+  }
+
   if (normalized.includes("/login/admin") && normalized.includes("scan=approved")) {
     return "admin";
   }
 
   if (normalized.includes("/login/merchant-admin") && normalized.includes("scan=approved")) {
     return "merchant-admin";
+  }
+
+  if (
+    (normalized.includes("/login/afirieito-admin") ||
+      normalized.includes("/login/nda-admin") ||
+      normalized.includes("/login/cps-admin") ||
+      normalized.includes("/login/business-admin")) &&
+    normalized.includes("scan=approved")
+  ) {
+    return "afirieito-admin";
   }
 
   return null;

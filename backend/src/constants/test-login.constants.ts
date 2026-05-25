@@ -1,12 +1,12 @@
 import type { SystemRoleCode } from "./permissions.constants";
 
-export type TestUserPortal = "admin" | "merchant" | "technician" | "customer";
+export type TestUserPortal = "admin" | "merchant" | "technician" | "customer" | "business";
 
 export interface TestUserAccountDefinition {
   email: string;
   username: string;
   roleCode: SystemRoleCode;
-  identityType: "platform" | "merchant" | "technician" | "customer";
+  identityType: "platform" | "merchant" | "technician" | "customer" | "broker";
   expectedPortal: TestUserPortal;
   purpose: string;
 }
@@ -35,6 +35,14 @@ export const TEST_USER_ACCOUNTS = [
     identityType: "merchant",
     expectedPortal: "merchant",
     purpose: "商户端、店铺后台、订单中心、排班、财务"
+  },
+  {
+    email: "affiliate@example.com",
+    username: "NeeDo Afirieito Partner",
+    roleCode: "broker",
+    identityType: "broker",
+    expectedPortal: "business",
+    purpose: "Afirieito、NDA管理后台、推广计划、素材、归因收益"
   },
   {
     email: "technician@example.com",

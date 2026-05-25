@@ -67,6 +67,7 @@ The frontend welcome screen can show a direct test-account login button when Vit
 For local development, `.env.development` may set portal-specific values such as
 `VITE_TEST_LOGIN_CUSTOMER_EMAIL`, `VITE_TEST_LOGIN_CUSTOMER_PASSWORD`,
 `VITE_TEST_LOGIN_MERCHANT_EMAIL`, `VITE_TEST_LOGIN_MERCHANT_PASSWORD`,
+`VITE_TEST_LOGIN_BUSINESS_EMAIL`, `VITE_TEST_LOGIN_BUSINESS_PASSWORD`,
 `VITE_TEST_LOGIN_TECHNICIAN_EMAIL`, `VITE_TEST_LOGIN_TECHNICIAN_PASSWORD`,
 `VITE_TEST_LOGIN_ADMIN_EMAIL`, and `VITE_TEST_LOGIN_ADMIN_PASSWORD`.
 The button still calls the real login API (`/auth/login` under the configured API base); it is not a mock login shortcut.
@@ -76,6 +77,7 @@ The button still calls the real login API (`/auth/login` under the configured AP
 | `admin@example.com` | `admin` | Operations admin / User Management |
 | `operator@example.com` | `operator` | Operations admin basic features |
 | `merchant@example.com` | `merchant_owner` | Merchant app / merchant admin |
+| `affiliate@example.com` | `broker` | Afirieito / NDA admin |
 | `technician@example.com` | `technician` | Technician app |
 | `customer@example.com` | `customer` | C-side user app |
 

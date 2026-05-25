@@ -109,6 +109,8 @@ type TestCredentialEnv = {
   VITE_TEST_LOGIN_CUSTOMER_PASSWORD?: string;
   VITE_TEST_LOGIN_MERCHANT_EMAIL?: string;
   VITE_TEST_LOGIN_MERCHANT_PASSWORD?: string;
+  VITE_TEST_LOGIN_BUSINESS_EMAIL?: string;
+  VITE_TEST_LOGIN_BUSINESS_PASSWORD?: string;
   VITE_TEST_LOGIN_TECHNICIAN_EMAIL?: string;
   VITE_TEST_LOGIN_TECHNICIAN_PASSWORD?: string;
 };
@@ -125,6 +127,13 @@ function getPortalTestLoginCredentials(env: TestCredentialEnv, portal: PortalSco
     return {
       email: env.VITE_TEST_LOGIN_MERCHANT_EMAIL,
       password: env.VITE_TEST_LOGIN_MERCHANT_PASSWORD
+    };
+  }
+
+  if (portal === "business") {
+    return {
+      email: env.VITE_TEST_LOGIN_BUSINESS_EMAIL,
+      password: env.VITE_TEST_LOGIN_BUSINESS_PASSWORD
     };
   }
 

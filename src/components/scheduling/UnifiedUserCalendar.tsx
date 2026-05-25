@@ -2712,11 +2712,13 @@ function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onC
 function BottomSheet({
   title,
   children,
-  onClose
+  onClose,
+  placement = "bottom"
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  placement?: "bottom" | "center";
 }) {
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -2754,10 +2756,16 @@ function BottomSheet({
     };
   }, []);
 
+  const isCentered = placement === "center";
   const sheet = (
     <div
       aria-modal="true"
-      className="fixed inset-0 z-[260] flex h-[100dvh] w-screen max-w-full touch-pan-y items-end justify-center overflow-hidden overscroll-none bg-black/42 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-[max(12px,env(safe-area-inset-top))] text-[color:var(--client-text)] backdrop-blur-[5px] backdrop-saturate-75"
+      className={cn(
+        "fixed inset-0 z-[260] flex h-[100dvh] w-screen max-w-full touch-pan-y justify-center overflow-hidden overscroll-none bg-black/42 text-[color:var(--client-text)] backdrop-blur-[5px] backdrop-saturate-75",
+        isCentered
+          ? "items-center px-5 pb-[max(18px,env(safe-area-inset-bottom))] pt-[max(18px,env(safe-area-inset-top))]"
+          : "items-end px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-[max(12px,env(safe-area-inset-top))]"
+      )}
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
       onClick={(event) => event.stopPropagation()}
@@ -2768,7 +2776,12 @@ function BottomSheet({
       onWheel={(event) => event.stopPropagation()}
       role="dialog"
     >
-      <div className="flex max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_24px)] w-full max-w-[min(480px,calc(100vw-24px))] min-w-0 flex-col overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,var(--client-bg)_4%)] shadow-[var(--client-shadow)] backdrop-blur-xl">
+      <div
+        className={cn(
+          "flex max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_24px)] w-full min-w-0 flex-col overflow-hidden border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,var(--client-bg)_4%)] shadow-[var(--client-shadow)] backdrop-blur-xl",
+          isCentered ? "max-w-[min(440px,calc(100vw-40px))] rounded-[26px]" : "max-w-[min(480px,calc(100vw-24px))] rounded-[28px]"
+        )}
+      >
         <div className="grid shrink-0 grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-3">
           <span aria-hidden="true" className="h-11 w-11" />
           <strong className="min-w-0 truncate text-center text-sm font-black text-[color:var(--client-text)]">{title}</strong>
@@ -2824,7 +2837,7 @@ function EventDetailSheet({
 }) {
   const source = sourceConfigs[event.sourceId];
   return (
-    <BottomSheet onClose={onClose} title="行程详情">
+    <BottomSheet onClose={onClose} placement="center" title="行程详情">
       <div className="space-y-3">
         <div className={cn(scheduleInsetClass, "px-4 py-3")} style={getEventStyle(event)}>
           <div className="flex items-center gap-2">
