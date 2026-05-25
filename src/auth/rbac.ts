@@ -45,6 +45,7 @@ export type AuthSession = {
 const adminRoles = new Set(["admin", "operator", "finance", "support", "viewer"]);
 const merchantRoles = new Set(["merchant_owner", "merchant_staff"]);
 const businessRoles = new Set(["broker", "scout"]);
+const userSessionClientPortals = new Set<PortalScope>(["merchant", "technician", "business"]);
 
 const identityPortalMap: Record<string, PortalScope> = {
   admin: "admin",
@@ -150,6 +151,10 @@ export function hasAnyPermissionInSession(session: AuthSession | null, permissio
 
 export function canAccessPortalFromSession(session: AuthSession | null, portal: PortalScope) {
   return Boolean(session?.allowedPortals.includes(portal));
+}
+
+export function canUseUserSessionForClientPortal(session: AuthSession | null, portal: PortalScope) {
+  return Boolean(session?.allowedPortals.includes("user") && userSessionClientPortals.has(portal));
 }
 
 export function canAccessMenuFromSession(session: AuthSession | null, menuPermission: string) {

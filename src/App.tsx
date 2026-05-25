@@ -785,10 +785,15 @@ function RequirePortalAuth({
   portal: PortalScope;
   children: ReactElement;
 }) {
-  const { isAuthenticated, isRestoring, canAccess, session, switchPortal } = useAuth();
+  const { isAuthenticated, isRestoring, canAccess, canEnterPortal, session, switchPortal } = useAuth();
   const location = useLocation();
-  const hasAccess = canAccess(portal);
-  const needsPortalSync = isAuthenticated && hasAccess && session?.portal !== portal;
+  const hasDirectAccess = canAccess(portal);
+  const isBackendPortalRoute =
+    portal === "admin" ||
+    (portal === "merchant" && location.pathname.startsWith("/merchant-admin")) ||
+    (portal === "business" && isBusinessAdminPath(location.pathname));
+  const hasAccess = hasDirectAccess || (!isBackendPortalRoute && canEnterPortal(portal));
+  const needsPortalSync = isAuthenticated && hasDirectAccess && session?.portal !== portal;
 
   useEffect(() => {
     if (!needsPortalSync) {

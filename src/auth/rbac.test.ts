@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAuthSessionFromMe,
+  canUseUserSessionForClientPortal,
   canAccessPortalFromSession,
   hasPermissionInSession,
   type AuthMePayload
@@ -59,6 +60,27 @@ describe("frontend RBAC session helpers", () => {
     expect(session.portal).toBe("user");
     expect(session.allowedPortals).toEqual(["admin", "user"]);
     expect(canAccessPortalFromSession(session, "user")).toBe(true);
+  });
+
+  it("lets a signed-in user bootstrap non-admin client portals without granting admin access", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        identities: [{ id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }],
+        roles: ["customer"],
+        permissions: ["page:client-app"],
+        menus: ["menu:client-app"]
+      },
+      "user",
+      "password"
+    );
+
+    expect(session.allowedPortals).toEqual(["user"]);
+    expect(canUseUserSessionForClientPortal(session, "merchant")).toBe(true);
+    expect(canUseUserSessionForClientPortal(session, "technician")).toBe(true);
+    expect(canUseUserSessionForClientPortal(session, "business")).toBe(true);
+    expect(canUseUserSessionForClientPortal(session, "admin")).toBe(false);
   });
 
   it("keeps the shared legacy test account on user by default while allowing merchant, technician, and Afirieito switches", () => {

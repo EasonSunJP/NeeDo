@@ -130,4 +130,10 @@ describe("LoginPage real-account login", () => {
     expect(getPublicTestLoginPortal("business")).toBe("business");
     expect(loginPageSource).toContain("login(getPublicTestLoginPortal(activePortal)");
   });
+
+  it("skips the account form when an existing user session can enter another frontend portal", () => {
+    expect(loginPageSource).toContain("canEnterPortal(activePortal)");
+    expect(loginPageSource).toContain("hasActiveAccess");
+    expect(loginPageSource).toContain("enterPortal();");
+  });
 });

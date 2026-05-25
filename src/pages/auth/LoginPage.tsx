@@ -641,7 +641,7 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
   const { theme, isNight } = useClientTheme();
-  const { canAccess, isAuthenticated, login, loginWithProvider, logout, session, switchPortal: switchSessionPortal } = useAuth();
+  const { canAccess, canEnterPortal, isAuthenticated, login, loginWithProvider, logout, session, switchPortal: switchSessionPortal } = useAuth();
   const requestedPortal = normalizePortal(portal);
   const redirectPath = searchParams.get("redirect");
   const [activePortal, setActivePortal] = useState<PortalScope>(requestedPortal);
@@ -667,7 +667,7 @@ export function LoginPage() {
     () => resolveTestLoginCredentials(import.meta.env as TestCredentialEnv, activePortal),
     [activePortal]
   );
-  const hasActiveAccess = isAuthenticated && canAccess(activePortal);
+  const hasActiveAccess = isAuthenticated && canEnterPortal(activePortal);
   const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
   const error = feedback?.tone === "error" ? feedbackMessage : "";
   const notice = feedback?.tone === "notice" ? feedbackMessage : "";
@@ -738,13 +738,21 @@ export function LoginPage() {
     void loadCaptcha();
   }, [hasActiveAccess, loadCaptcha, panelMode, testCredentials]);
 
-  const enterPortal = () => {
-    if (isAuthenticated) {
+  const enterPortal = useCallback(() => {
+    if (isAuthenticated && canAccess(activePortal)) {
       switchSessionPortal(activePortal);
     }
 
     openPortalEntry(activePortal, nextPath);
-  };
+  }, [activePortal, canAccess, isAuthenticated, nextPath, switchSessionPortal]);
+
+  useEffect(() => {
+    if (!hasActiveAccess || isLoginPending) {
+      return;
+    }
+
+    enterPortal();
+  }, [enterPortal, hasActiveAccess, isLoginPending]);
 
   const toggleRememberCredentials = (checked: boolean) => {
     setRememberCredentials(checked);

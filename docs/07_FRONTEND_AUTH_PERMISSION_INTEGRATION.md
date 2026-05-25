@@ -138,3 +138,9 @@ Codex 完成本步后，必须输出：
 - `npm run lint` 通过。
 - `npm run build` 通过。
 - Browser smoke 通过：`http://localhost:5181/pf-admin.html#/login/admin` 可渲染后台登录页，验证码 tab 可切换；未登录访问 `#/admin/users` 会跳转到 `#/login/admin?redirect=%2Fadmin%2Fusers`，控制台无相关 error / warning。
+
+## 10. 2026-05-26 登录态跨客户端门户执行记录
+
+- 默认入口继续保持用户端 `#/`。
+- 已登录用户端后，可直接进入商户端、技师端、Afirieito 这类非后台客户端门户的启动页和基础壳层，不再要求重新输入账号密码。
+- 运营后台、商户后台仍只接受真实 RBAC 门户身份，不把用户端登录态提升为后台权限。

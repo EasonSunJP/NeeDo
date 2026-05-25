@@ -9,6 +9,7 @@ import {
   buildAuthSessionFromMe,
   canAccessMenuFromSession,
   canAccessPortalFromSession,
+  canUseUserSessionForClientPortal,
   hasAnyPermissionInSession,
   hasPermissionInSession,
   type AuthMePayload,
@@ -36,6 +37,7 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   switchPortal: (portal: PortalScope) => void;
   canAccess: (portal: PortalScope) => boolean;
+  canEnterPortal: (portal: PortalScope) => boolean;
   canAccessFeature: (portal: PortalScope, permission: FeaturePermission | string) => boolean;
   hasPermission: (permission: string) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
@@ -243,6 +245,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);
   const hasAnyPermission = useCallback((permissions: string[]) => hasAnyPermissionInSession(session, permissions), [session]);
   const canAccess = useCallback((portal: PortalScope) => canAccessPortalFromSession(session, portal), [session]);
+  const canEnterPortal = useCallback(
+    (portal: PortalScope) => canAccessPortalFromSession(session, portal) || canUseUserSessionForClientPortal(session, portal),
+    [session]
+  );
   const canAccessMenu = useCallback((permission: string) => canAccessMenuFromSession(session, permission), [session]);
   const canAccessFeature = useCallback(
     (portal: PortalScope, permission: FeaturePermission | string) =>
@@ -267,6 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       switchPortal,
       canAccess,
+      canEnterPortal,
       canAccessFeature,
       hasPermission,
       hasAnyPermission,
@@ -274,6 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       canAccess,
+      canEnterPortal,
       canAccessFeature,
       canAccessMenu,
       hasAnyPermission,
