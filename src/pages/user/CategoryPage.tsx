@@ -8,6 +8,8 @@ import { Button } from "../../components/ui/Button";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { useI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { getCategoryHeroImage, orderedServiceCategories, type HomeCategoryId } from "../../lib/homeCategories";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
@@ -404,6 +406,8 @@ function ServicePreviewCard({ service }: { service: ServiceItem }) {
 
 export function CategoryPage() {
   const navigate = useNavigate();
+  const { language } = useI18n();
+  const t = (text: string) => translateText(text, language);
   const [searchParams, setSearchParams] = useSearchParams();
   const initialCategoryId = searchParams.get("category");
   const entityFilter = normalizeEntityFilter(searchParams.get("type"));
@@ -580,10 +584,10 @@ export function CategoryPage() {
   const categoryHeroSlides = useMemo<FeatureCarouselSlide[]>(() => {
     const serviceSlides = relatedServices.slice(0, 3).map((service) => ({
       id: `category-service-${service.id}`,
-      badge: "全部分类",
-      title: activeCategory.name,
-      caption: `${service.name} · ${service.summary}`,
-      cta: "查看服务",
+      badge: t("全部分类"),
+      title: t(activeCategory.name),
+      caption: `${t(service.name)} · ${t(service.summary)}`,
+      cta: t("查看服务"),
       image: service.cover,
       to: `/services/${service.id}`
     }));
@@ -596,14 +600,14 @@ export function CategoryPage() {
       .slice(0, 3)
       .map((category) => ({
         id: `category-fallback-${category.id}`,
-        badge: "全部分类",
-        title: category.name,
-        caption: categoryDescriptionMap[category.id as HomeCategoryId] ?? "从上方标签快速切换查看当前分类内容。",
-        cta: "进入分类",
+        badge: t("全部分类"),
+        title: t(category.name),
+        caption: t(categoryDescriptionMap[category.id as HomeCategoryId] ?? "从上方标签快速切换查看当前分类内容。"),
+        cta: t("进入分类"),
         image: getCategoryHeroImage(category.id as HomeCategoryId),
         to: `/categories?category=${category.id}`
       }));
-  }, [activeCategory, filteredCategories, relatedServices]);
+  }, [activeCategory, filteredCategories, language, relatedServices]);
   const appliedSearchChips = useMemo(() => {
     const chips: Array<
       | { kind: "entity"; key: string; label: string; value: CategoryEntityFilter }
