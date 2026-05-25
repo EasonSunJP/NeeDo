@@ -2388,6 +2388,47 @@ export const seedUserManagement = async (
       });
     }
 
+    const customerRole = roleByCode.get("customer");
+    if (!customerRole) {
+      throw new Error("Admin user seed failed: missing customer role.");
+    }
+
+    const adminCustomerProfile = await tx.customerProfile.upsert({
+      where: { userId: adminUser.id },
+      create: {
+        userId: adminUser.id,
+        displayName: adminConfig.username,
+        bio: "Default test customer identity for the shared local and staging test account.",
+        city: "Tokyo",
+        membershipLevel: "standard",
+        isPublic: false
+      },
+      update: {
+        displayName: adminConfig.username,
+        bio: "Default test customer identity for the shared local and staging test account.",
+        city: "Tokyo",
+        membershipLevel: "standard",
+        isPublic: false,
+        deletedAt: null
+      }
+    });
+
+    await upsertSeedIdentity(tx, {
+      userId: adminUser.id,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: adminCustomerProfile.id,
+      displayName: adminCustomerProfile.displayName,
+      isDefault: false
+    });
+
+    await assignSeedRole(tx, {
+      userId: adminUser.id,
+      roleId: customerRole.id,
+      scopeType: "customer_profile",
+      scopeId: adminCustomerProfile.id
+    });
+
     await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
       seedRequiredTestAccounts: seedTestAccounts,
       testUserPasswordHash

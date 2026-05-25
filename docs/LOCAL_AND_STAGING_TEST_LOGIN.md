@@ -62,7 +62,8 @@ npm run dev:frontend
 
 ## Test Accounts
 
-The password is read from `TEST_USER_DEFAULT_PASSWORD`. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`. The default local/staging admin test login is `admin` / `Admin.2026`.
+The password is read from `TEST_USER_DEFAULT_PASSWORD`. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`. The default local/staging shared test login is `admin` / `Admin.2026`.
+The public frontend test-account shortcut enters the user portal with this shared account. Backend admin login pages can use the same credentials for the operations console because seed gives the account both `platform` and `customer` identities.
 The frontend welcome screen can show a direct test-account login button when Vite env credentials are configured.
 For local development, `.env.development` may set portal-specific values such as
 `VITE_TEST_LOGIN_CUSTOMER_EMAIL`, `VITE_TEST_LOGIN_CUSTOMER_PASSWORD`,

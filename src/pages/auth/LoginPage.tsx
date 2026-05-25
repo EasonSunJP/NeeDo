@@ -580,12 +580,60 @@ function openPortalEntry(portal: PortalScope, route: string) {
   window.location.assign(target.href);
 }
 
-function getPostLoginRoute(portal: PortalScope, redirectPath: string | null) {
-  if (portal === "user") {
-    return portalEntryRoute.user;
+function normalizeRedirectRoute(redirectPath: string | null) {
+  const normalized = redirectPath?.trim();
+
+  if (!normalized || !normalized.startsWith("/") || normalized.startsWith("//") || normalized.startsWith("/login")) {
+    return null;
   }
 
-  return redirectPath || portalEntryRoute[portal];
+  return normalized;
+}
+
+function resolvePortalFromRoute(route: string): PortalScope {
+  const pathname = route.split(/[?#]/)[0] || "/";
+
+  if (pathname.startsWith("/merchant-admin") || pathname.startsWith("/merchant") || pathname.startsWith("/shop")) {
+    return "merchant";
+  }
+
+  if (pathname.startsWith("/technician")) {
+    return "technician";
+  }
+
+  if (
+    pathname.startsWith("/NDA-admin") ||
+    pathname.startsWith("/nda-admin") ||
+    pathname.startsWith("/afirieito-admin") ||
+    pathname.startsWith("/CPS-admin") ||
+    pathname.startsWith("/cps-admin") ||
+    pathname.startsWith("/business-admin") ||
+    pathname.startsWith("/afirieito") ||
+    pathname.startsWith("/business") ||
+    pathname.startsWith("/cps")
+  ) {
+    return "business";
+  }
+
+  if (pathname.startsWith("/admin")) {
+    return "admin";
+  }
+
+  return "user";
+}
+
+export function getPostLoginRoute(portal: PortalScope, redirectPath: string | null) {
+  const redirectRoute = normalizeRedirectRoute(redirectPath);
+
+  if (!redirectRoute || resolvePortalFromRoute(redirectRoute) !== portal) {
+    return portalEntryRoute[portal];
+  }
+
+  return redirectRoute;
+}
+
+export function getPublicTestLoginPortal(): PortalScope {
+  return "user";
 }
 
 export function LoginPage() {
@@ -757,7 +805,7 @@ export function LoginPage() {
     setIsLoginPending(true);
 
     try {
-      const result = await login(activePortal, testCredentials.email, testCredentials.password, normalizedCaptchaCode);
+      const result = await login(getPublicTestLoginPortal(), testCredentials.email, testCredentials.password, normalizedCaptchaCode);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
         void loadCaptcha();

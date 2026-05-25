@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveLoginErrorMessage, resolveLoginFeedbackMessage, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
+import { getPostLoginRoute, getPublicTestLoginPortal, resolveLoginErrorMessage, resolveLoginFeedbackMessage, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
 import appSource from "../../App.tsx?raw";
 import adminLoginPageSource from "./AdminLoginPage.tsx?raw";
 import loginPageSource from "./LoginPage.tsx?raw";
@@ -109,5 +109,17 @@ describe("LoginPage real-account login", () => {
     expect(adminLoginPageSource).toContain("testCredentialLogin");
     expect(adminLoginPageSource).toContain("VITE_TEST_LOGIN_BUSINESS_EMAIL");
     expect(adminLoginPageSource).toContain('"afirieito-admin"');
+  });
+
+  it("ignores redirects that belong to a different portal after login", () => {
+    expect(getPostLoginRoute("admin", "/merchant")).toBe("/admin");
+    expect(getPostLoginRoute("merchant", "/merchant/orders")).toBe("/merchant/orders");
+    expect(getPostLoginRoute("business", "/NDA-admin")).toBe("/NDA-admin");
+    expect(getPostLoginRoute("user", "/orders")).toBe("/orders");
+    expect(getPostLoginRoute("admin", "/login/merchant?redirect=%2Fmerchant")).toBe("/admin");
+  });
+
+  it("keeps the public test-account shortcut on the user portal", () => {
+    expect(getPublicTestLoginPortal()).toBe("user");
   });
 });

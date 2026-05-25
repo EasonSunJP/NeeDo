@@ -54,7 +54,7 @@ Set `VITE_API_BASE_URL` when the real backend is served from a different origin.
 
 The shared Apifox login/register/captcha endpoints are legacy pre-login routes, not formal `/api/v1/auth/*` routes. Local development keeps the formal backend on `/api/v1` and routes only legacy captcha traffic through `VITE_LEGACY_AUTH_BASE_URL=/legacy-auth`; Vite proxies that prefix to `VITE_LEGACY_AUTH_PROXY_TARGET`. Formal password login must use `POST /api/v1/auth/login` so the returned access token can pass `/api/v1/auth/me`. The Apifox public pre-login bearer belongs in `VITE_API_PUBLIC_AUTHORIZATION` when legacy Apifox traffic needs it; keep the real value in local or deployment env files, not source.
 
-Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in through `POST /api/v1/auth/login` with `username/email + password`; the local admin test username is `admin` and the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development.
+Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in through `POST /api/v1/auth/login` with `username/email + password`; the shared local/staging test username is `admin` and the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. The public frontend test-account shortcut enters the user portal, so the shared test account is seeded with both platform-admin and customer identities.
 
 ## Current Scope
 
