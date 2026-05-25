@@ -13736,6 +13736,90 @@ const manualI18nContextCorrectionLocks: Partial<Record<TargetLanguage, ManualI18
   ]
 };
 
+const coreReadApiSourceTranslationOverrides: Record<string, LocalizedText> = {
+  "AC": { zh: "空调", "zh-Hant": "冷氣", ja: "エアコン", en: "AC", ko: "에어컨" },
+  "AC Cleaning Diagnostics": { zh: "空调清洗诊断", "zh-Hant": "冷氣清潔診斷", ja: "エアコン清掃診断", en: "AC Cleaning Diagnostics", ko: "에어컨 청소 진단" },
+  "Aoyama Care Studio": { zh: "青山护理工作室", "zh-Hant": "青山護理工作室", ja: "青山ケアスタジオ", en: "Aoyama Care Studio", ko: "아오야마 케어 스튜디오" },
+  "Aoyama Deep Shoulder Care": { zh: "青山深层肩颈护理", "zh-Hant": "青山深層肩頸護理", ja: "青山ディープ肩首ケア", en: "Aoyama Deep Shoulder Care", ko: "아오야마 딥 숄더 케어" },
+  "Bridal Skin Prep": { zh: "婚礼肌肤准备护理", "zh-Hant": "婚禮肌膚準備護理", ja: "ブライダル肌準備ケア", en: "Bridal Skin Prep", ko: "브라이덜 스킨 준비 케어" },
+  "Cat Visit Care": { zh: "猫咪上门照护", "zh-Hant": "貓咪上門照護", ja: "猫の訪問ケア", en: "Cat Visit Care", ko: "고양이 방문 케어" },
+  "Corporate Cleaning Check": { zh: "企业清洁检查", "zh-Hant": "企業清潔檢查", ja: "法人清掃チェック", en: "Corporate Cleaning Check", ko: "기업 청소 점검" },
+  "Daikanyama Skin & Lash": { zh: "代官山肌肤与睫毛护理", "zh-Hant": "代官山肌膚與睫毛護理", ja: "代官山スキン＆ラッシュ", en: "Daikanyama Skin & Lash", ko: "다이칸야마 스킨 앤 래시" },
+  "Dog Walk & Wash": { zh: "遛狗与简洗", "zh-Hant": "遛狗與簡洗", ja: "犬の散歩＆簡易シャンプー", en: "Dog Walk & Wash", ko: "반려견 산책 및 간단 목욕" },
+  "Ebisu Private Dining": { zh: "惠比寿私密餐饮预约", "zh-Hant": "惠比壽私密餐飲預約", ja: "恵比寿プライベートダイニング", en: "Ebisu Private Dining", ko: "에비스 프라이빗 다이닝" },
+  "Family Errand Support": { zh: "家庭代办支持", "zh-Hant": "家庭代辦支援", ja: "家族向け用事サポート", en: "Family Errand Support", ko: "가족 심부름 지원" },
+  "Gel Nail Design": { zh: "凝胶美甲设计", "zh-Hant": "凝膐美甲設計", ja: "ジェルネイルデザイン", en: "Gel Nail Design", ko: "젤 네일 디자인" },
+  "Hydration Facial Care": { zh: "补水面部护理", "zh-Hant": "補水臉部護理", ja: "保湿フェイシャルケア", en: "Hydration Facial Care", ko: "수분 페이셜 케어" },
+  "Kichijoji Family Care": { zh: "吉祥寺家庭护理", "zh-Hant": "吉祥寺家庭護理", ja: "吉祥寺ファミリーケア", en: "Kichijoji Family Care", ko: "기치조지 패밀리 케어" },
+  "Kitchen Bath Reset": { zh: "厨卫深度焕新", "zh-Hant": "廚衛深度煥新", ja: "キッチン・浴室リセット清掃", en: "Kitchen Bath Reset", ko: "주방 욕실 리셋 청소" },
+  "Marunouchi Business Wellness": { zh: "丸之内企业健康服务", "zh-Hant": "丸之內企業健康服務", ja: "丸の内ビジネスウェルネス", en: "Marunouchi Business Wellness", ko: "마루노우치 비즈니스 웰니스" },
+  "Meguro Home Clean Base": { zh: "目黑家庭清洁基地", "zh-Hant": "目黑家庭清潔基地", ja: "目黒ホームクリーンベース", en: "Meguro Home Clean Base", ko: "메구로 홈 클린 베이스" },
+  "Move-out Deep Cleaning": { zh: "退房深度清洁", "zh-Hant": "退房深度清潔", ja: "退去時の徹底清掃", en: "Move-out Deep Cleaning", ko: "퇴거 대청소" },
+  "Multilingual Dining Support": { zh: "多语言餐饮预约支持", "zh-Hant": "多語餐飲預約支援", ja: "多言語ダイニングサポート", en: "Multilingual Dining Support", ko: "다국어 다이닝 지원" },
+  "Natural Lash Care": { zh: "自然睫毛护理", "zh-Hant": "自然睫毛護理", ja: "ナチュラルまつげケア", en: "Natural Lash Care", ko: "내추럴 속눈썹 케어" },
+  "Office Wellness Visit": { zh: "办公室健康到访服务", "zh-Hant": "辦公室健康到訪服務", ja: "オフィスウェルネス訪問", en: "Office Wellness Visit", ko: "오피스 웰니스 방문" },
+  "Pet Care": { zh: "宠物护理", "zh-Hant": "寵物護理", ja: "ペットケア", en: "Pet Care", ko: "펫 케어" },
+  "Plumbing Quick Fix": { zh: "水管快速维修", "zh-Hant": "水管快速維修", ja: "水回りクイック修理", en: "Plumbing Quick Fix", ko: "배관 빠른 수리" },
+  "Private Table Concierge": { zh: "包间餐桌预约管家", "zh-Hant": "包廂餐桌預約管家", ja: "個室テーブルコンシェルジュ", en: "Private Table Concierge", ko: "프라이빗 테이블 컨시어지" },
+  "Roppongi Recovery Lounge": { zh: "六本木恢复护理馆", "zh-Hant": "六本木恢復護理館", ja: "六本木リカバリーラウンジ", en: "Roppongi Recovery Lounge", ko: "롯폰기 리커버리 라운지" },
+  "Roppongi Sports Recovery 90": { zh: "六本木运动恢复 90 分钟", "zh-Hant": "六本木運動恢復 90 分鐘", ja: "六本木スポーツリカバリー90分", en: "Roppongi Sports Recovery 90", ko: "롯폰기 스포츠 회복 90분" },
+  "Senior Day Support": { zh: "长者日间支持", "zh-Hant": "長者日間支援", ja: "シニア日中サポート", en: "Senior Day Support", ko: "시니어 데이 지원" },
+  "Shiatsu Recovery": { zh: "指压恢复护理", "zh-Hant": "指壓恢復護理", ja: "指圧リカバリー", en: "Shiatsu Recovery", ko: "지압 회복 케어" },
+  "Shibuya Nail Atelier": { zh: "涩谷美甲工坊", "zh-Hant": "澀谷美甲工坊", ja: "渋谷ネイルアトリエ", en: "Shibuya Nail Atelier", ko: "시부야 네일 아틀리에" },
+  "Shinagawa Repair Works": { zh: "品川维修工坊", "zh-Hant": "品川維修工坊", ja: "品川リペアワークス", en: "Shinagawa Repair Works", ko: "시나가와 리페어 워크스" },
+  "Sleep Aroma Care": { zh: "睡眠芳疗护理", "zh-Hant": "睡眠芳療護理", ja: "睡眠アロマケア", en: "Sleep Aroma Care", ko: "수면 아로마 케어" },
+  "Tokyo": { zh: "东京", "zh-Hant": "東京", ja: "東京", en: "Tokyo", ko: "도쿄" },
+  "Toyosu Pet Care House": { zh: "丰洲宠物护理屋", "zh-Hant": "豐洲寵物護理屋", ja: "豊洲ペットケアハウス", en: "Toyosu Pet Care House", ko: "도요스 펫 케어 하우스" },
+  "1-18 Jinnan, Shibuya-ku": { zh: "东京都涩谷区神南 1-18", "zh-Hant": "東京都澀谷區神南 1-18", ja: "東京都渋谷区神南 1-18", en: "1-18 Jinnan, Shibuya-ku", ko: "도쿄도 시부야구 진난 1-18" },
+  "1-9 Kichijoji Honcho, Musashino-shi": { zh: "东京都武藏野市吉祥寺本町 1-9", "zh-Hant": "東京都武藏野市吉祥寺本町 1-9", ja: "東京都武蔵野市吉祥寺本町 1-9", en: "1-9 Kichijoji Honcho, Musashino-shi", ko: "도쿄도 무사시노시 기치조지혼초 1-9" },
+  "18-6 Daikanyamacho, Shibuya-ku": { zh: "东京都涩谷区代官山町 18-6", "zh-Hant": "東京都澀谷區代官山町 18-6", ja: "東京都渋谷区代官山町 18-6", en: "18-6 Daikanyamacho, Shibuya-ku", ko: "도쿄도 시부야구 다이칸야마초 18-6" },
+  "2-14 Shimomeguro, Meguro-ku": { zh: "东京都目黑区下目黑 2-14", "zh-Hant": "東京都目黑區下目黑 2-14", ja: "東京都目黒区下目黒 2-14", en: "2-14 Shimomeguro, Meguro-ku", ko: "도쿄도 메구로구 시모메구로 2-14" },
+  "2-4 Marunouchi, Chiyoda-ku": { zh: "东京都千代田区丸之内 2-4", "zh-Hant": "東京都千代田區丸之內 2-4", ja: "東京都千代田区丸の内 2-4", en: "2-4 Marunouchi, Chiyoda-ku", ko: "도쿄도 지요다구 마루노우치 2-4" },
+  "2-7 Ebisu Minami, Shibuya-ku": { zh: "东京都涩谷区惠比寿南 2-7", "zh-Hant": "東京都澀谷區惠比壽南 2-7", ja: "東京都渋谷区恵比寿南 2-7", en: "2-7 Ebisu Minami, Shibuya-ku", ko: "도쿄도 시부야구 에비스미나미 2-7" },
+  "3-1 Kita Aoyama, Minato-ku": { zh: "东京都港区北青山 3-1", "zh-Hant": "東京都港區北青山 3-1", ja: "東京都港区北青山 3-1", en: "3-1 Kita Aoyama, Minato-ku", ko: "도쿄도 미나토구 기타아오야마 3-1" },
+  "3-2 Toyosu, Koto-ku": { zh: "东京都江东区丰洲 3-2", "zh-Hant": "東京都江東區豐洲 3-2", ja: "東京都江東区豊洲 3-2", en: "3-2 Toyosu, Koto-ku", ko: "도쿄도 고토구 도요스 3-2" },
+  "4-5 Konan, Minato-ku": { zh: "东京都港区港南 4-5", "zh-Hant": "東京都港區港南 4-5", ja: "東京都港区港南 4-5", en: "4-5 Konan, Minato-ku", ko: "도쿄도 미나토구 고난 4-5" },
+  "6-8 Roppongi, Minato-ku": { zh: "东京都港区六本木 6-8", "zh-Hant": "東京都港區六本木 6-8", ja: "東京都港区六本木 6-8", en: "6-8 Roppongi, Minato-ku", ko: "도쿄도 미나토구 롯폰기 6-8" },
+  "Corporate wellness and office visit services for teams around Tokyo Station.": { zh: "面向东京站周边团队的企业健康与办公室到访服务。", "zh-Hant": "面向東京站周邊團隊的企業健康與辦公室到訪服務。", ja: "東京駅周辺のチーム向け法人ウェルネスとオフィス訪問サービス。", en: "Corporate wellness and office visit services for teams around Tokyo Station.", ko: "도쿄역 주변 팀을 위한 기업 웰니스와 사무실 방문 서비스입니다." },
+  "Design-led nail and lash atelier for commuters, visitors, and weekend bookings.": { zh: "面向通勤者、访客和周末预约的设计型美甲与睫毛工坊。", "zh-Hant": "面向通勤者、訪客和週末預約的設計型美甲與睫毛工坊。", ja: "通勤者・来訪者・週末予約向けのデザイン重視ネイル＆まつげアトリエ。", en: "Design-led nail and lash atelier for commuters, visitors, and weekend bookings.", ko: "통근자, 방문객, 주말 예약을 위한 디자인 중심 네일 및 속눈썹 아틀리에입니다." },
+  "Home and small-office cleaning team with photo reports and repeat plans.": { zh: "提供照片报告和复购方案的家庭与小型办公室清洁团队。", "zh-Hant": "提供照片報告和複購方案的家庭與小型辦公室清潔團隊。", ja: "写真レポートと継続プランに対応する家庭・小規模オフィス清掃チーム。", en: "Home and small-office cleaning team with photo reports and repeat plans.", ko: "사진 보고서와 반복 이용 플랜을 제공하는 가정 및 소규모 사무실 청소팀입니다." },
+  "Home repair and appliance cleaning dispatch base for Shinagawa and Minato.": { zh: "面向品川与港区的家庭维修和家电清洁派遣基地。", "zh-Hant": "面向品川與港區的家庭維修和家電清潔派遣基地。", ja: "品川・港区向けの住宅修理と家電清掃の派遣拠点。", en: "Home repair and appliance cleaning dispatch base for Shinagawa and Minato.", ko: "시나가와와 미나토 지역을 위한 주택 수리 및 가전 청소 파견 거점입니다." },
+  "Late-night recovery lounge with quiet rooms near Roppongi and Azabu.": { zh: "六本木和麻布附近带安静包间的深夜恢复护理馆。", "zh-Hant": "六本木和麻布附近帶安靜包廂的深夜恢復護理館。", ja: "六本木・麻布近くの静かな個室を備えた深夜リカバリーラウンジ。", en: "Late-night recovery lounge with quiet rooms near Roppongi and Azabu.", ko: "롯폰기와 아자부 근처의 조용한 룸을 갖춘 심야 회복 라운지입니다." },
+  "Move-out deep cleaning for kitchen, bath, flooring, and final photo report.": { zh: "覆盖厨房、浴室、地板的退房深度清洁，并提供最终照片报告。", "zh-Hant": "覆蓋廚房、浴室、地板的退房深度清潔，並提供最終照片報告。", ja: "キッチン・浴室・床まで徹底清掃し、完了写真レポートをお送りします。", en: "Move-out deep cleaning for kitchen, bath, flooring, and final photo report.", ko: "주방, 욕실, 바닥까지 퇴거 대청소를 진행하고 최종 사진 보고서를 제공합니다." },
+  "Pet visit, walking, wash, and short-stay support with owner photo reports.": { zh: "提供宠物上门、散步、清洗和短时照护，并向主人发送照片报告。", "zh-Hant": "提供寵物上門、散步、清洗和短時照護，並向主人發送照片報告。", ja: "訪問ケア・散歩・シャンプー・短時間預かりに対応し、飼い主向け写真レポートも送付。", en: "Pet visit, walking, wash, and short-stay support with owner photo reports.", ko: "방문 돌봄, 산책, 목욕, 단기 케어를 제공하고 보호자에게 사진 보고서를 보냅니다." },
+  "Private care studio for wellness and recovery services in Aoyama.": { zh: "青山的私密健康与恢复护理工作室。", "zh-Hant": "青山的私密健康與恢復護理工作室。", ja: "青山のウェルネスとリカバリーに特化したプライベートケアスタジオ。", en: "Private care studio for wellness and recovery services in Aoyama.", ko: "아오야마의 웰니스와 회복 서비스를 위한 프라이빗 케어 스튜디오입니다." },
+  "Private dining reservation support for small groups and business visitors.": { zh: "为小型聚会和商务访客提供包间餐饮预约支持。", "zh-Hant": "為小型聚會和商務訪客提供包廂餐飲預約支援。", ja: "少人数グループやビジネス来訪者向けの個室ダイニング予約サポート。", en: "Private dining reservation support for small groups and business visitors.", ko: "소규모 모임과 비즈니스 방문객을 위한 프라이빗 다이닝 예약 지원입니다." },
+  "Skin care and lash studio for pre-event beauty, hydration, and natural styling.": { zh: "面向活动前护理、补水和自然造型的肌肤与睫毛工作室。", "zh-Hant": "面向活動前護理、補水和自然造型的肌膚與睫毛工作室。", ja: "イベント前の美容・保湿・自然なスタイリングに対応するスキン＆まつげスタジオ。", en: "Skin care and lash studio for pre-event beauty, hydration, and natural styling.", ko: "행사 전 뷰티, 수분 관리, 자연스러운 스타일링을 위한 스킨 및 속눈썹 스튜디오입니다." },
+  "Wall-mounted AC cleaning with pre-check, protection, and test run.": { zh: "壁挂空调清洗，包含预检、防护和试运行。", "zh-Hant": "壁掛冷氣清潔，包含預檢、防護和試運行。", ja: "壁掛けエアコン清掃。事前確認・養生・試運転込み。", en: "Wall-mounted AC cleaning with pre-check, protection, and test run.", ko: "벽걸이 에어컨 청소로 사전 점검, 보호 작업, 시험 운전을 포함합니다." },
+  "aroma": { zh: "芳疗", "zh-Hant": "芳療", ja: "アロマ", en: "aroma", ko: "아로마" },
+  "bath": { zh: "浴室", "zh-Hant": "浴室", ja: "浴室", en: "bath", ko: "욕실" },
+  "bridal": { zh: "婚礼", "zh-Hant": "婚禮", ja: "ブライダル", en: "bridal", ko: "브라이덜" },
+  "business": { zh: "商务", "zh-Hant": "商務", ja: "法人向け", en: "business", ko: "비즈니스" },
+  "cat": { zh: "猫咪", "zh-Hant": "貓咪", ja: "猫", en: "cat", ko: "고양이" },
+  "clean": { zh: "清洁", "zh-Hant": "清潔", ja: "清潔", en: "clean", ko: "청결" },
+  "cleaning": { zh: "清洁", "zh-Hant": "清潔", ja: "清掃", en: "cleaning", ko: "청소" },
+  "corporate": { zh: "企业", "zh-Hant": "企業", ja: "法人", en: "corporate", ko: "기업" },
+  "deep-clean": { zh: "深度清洁", "zh-Hant": "深度清潔", ja: "徹底清掃", en: "deep-clean", ko: "대청소" },
+  "dining": { zh: "餐饮", "zh-Hant": "餐飲", ja: "飲食予約", en: "dining", ko: "다이닝" },
+  "dog": { zh: "狗狗", "zh-Hant": "狗狗", ja: "犬", en: "dog", ko: "반려견" },
+  "facial": { zh: "面部护理", "zh-Hant": "臉部護理", ja: "フェイシャル", en: "facial", ko: "페이셜" },
+  "family-care": { zh: "家庭护理", "zh-Hant": "家庭護理", ja: "家族ケア", en: "family-care", ko: "가족 케어" },
+  "friendly": { zh: "亲切", "zh-Hant": "親切", ja: "親切", en: "friendly", ko: "친절" },
+  "kind": { zh: "亲切", "zh-Hant": "親切", ja: "丁寧", en: "kind", ko: "친절" },
+  "lash": { zh: "睫毛", "zh-Hant": "睫毛", ja: "まつげ", en: "lash", ko: "속눈썹" },
+  "night": { zh: "夜间", "zh-Hant": "夜間", ja: "夜間", en: "night", ko: "야간" },
+  "pet": { zh: "宠物", "zh-Hant": "寵物", ja: "ペット", en: "pet", ko: "펫" },
+  "photo": { zh: "照片", "zh-Hant": "照片", ja: "写真", en: "photo", ko: "사진" },
+  "photo-report": { zh: "照片报告", "zh-Hant": "照片報告", ja: "写真レポート", en: "photo-report", ko: "사진 보고서" },
+  "private": { zh: "私密", "zh-Hant": "私密", ja: "プライベート", en: "private", ko: "프라이빗" },
+  "private-room": { zh: "包间", "zh-Hant": "包廂", ja: "個室", en: "private-room", ko: "개인실" },
+  "recovery": { zh: "恢复护理", "zh-Hant": "恢復護理", ja: "リカバリー", en: "recovery", ko: "회복" },
+  "repeat": { zh: "复购", "zh-Hant": "複購", ja: "継続利用", en: "repeat", ko: "반복 이용" },
+  "same-day": { zh: "当日可约", "zh-Hant": "當日可約", ja: "当日予約可", en: "same-day", ko: "당일 예약" },
+  "walk": { zh: "散步", "zh-Hant": "散步", ja: "散歩", en: "walk", ko: "산책" },
+  "wellness": { zh: "健康护理", "zh-Hant": "健康護理", ja: "ウェルネス", en: "wellness", ko: "웰니스" }
+};
+
 function cleanupRuntimeTranslation(value: string, language: Language) {
   if (language === "zh") {
     return value;
@@ -13764,15 +13848,21 @@ function applyManualContextCorrection(source: string, translated: string, langua
 }
 
 export function translateText(source: string, language: Language): string {
-  if (language === "zh") {
-    return source;
-  }
-
   const leading = source.match(/^\s*/)?.[0] ?? "";
   const trailing = source.match(/\s*$/)?.[0] ?? "";
   const core = source.trim();
 
   if (!core) {
+    return source;
+  }
+
+  const sourceOverride = coreReadApiSourceTranslationOverrides[core]?.[language];
+
+  if (sourceOverride) {
+    return `${leading}${cleanupRuntimeTranslation(sourceOverride, language)}${trailing}`;
+  }
+
+  if (language === "zh") {
     return source;
   }
 
