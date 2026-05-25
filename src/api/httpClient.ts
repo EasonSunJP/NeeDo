@@ -149,6 +149,18 @@ async function createRequestHeaders(options: HttpClientRequestOptions) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
 
+  if (options.auth === false && import.meta.env.VITE_API_PUBLIC_AUTHORIZATION && !headers.Authorization) {
+    headers.Authorization = import.meta.env.VITE_API_PUBLIC_AUTHORIZATION;
+  }
+
+  if (import.meta.env.VITE_ENABLE_DEVICE_TOKEN_HEADER === "true" && !headers.token) {
+    const deviceFingerprint = await getDeviceFingerprint();
+
+    if (deviceFingerprint) {
+      headers.token = deviceFingerprint;
+    }
+  }
+
   if (import.meta.env.VITE_ENABLE_DEVICE_FINGERPRINT_HEADER === "true" && !headers["X-Needo-Device-Fingerprint"]) {
     const deviceFingerprint = await getDeviceFingerprint();
 

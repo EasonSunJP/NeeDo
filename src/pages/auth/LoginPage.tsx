@@ -87,16 +87,6 @@ export function resolveLoginErrorMessage(message: string | undefined, copy: Logi
     return copy.resourceNotFoundError;
   }
 
-  if (
-    normalizedMessage === "token不能为空" ||
-    normalizedMessage === "圖形驗證碼不能為空" ||
-    normalizedMessage === "图形验证码不能为空" ||
-    normalizedMessage === "图形验证码不正确" ||
-    normalizedMessage?.toLowerCase().includes("wrong number of segments")
-  ) {
-    return copy.resourceNotFoundError;
-  }
-
   return message || copy.accountError;
 }
 

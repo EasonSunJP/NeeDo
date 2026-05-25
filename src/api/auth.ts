@@ -18,7 +18,8 @@ export type OtpSendPayload = {
 };
 
 export const authEndpointPaths = {
-  login: "/auth/login",
+  login: "/login",
+  register: "/reg",
   refresh: "/auth/refresh",
   logout: "/auth/logout",
   me: "/auth/me",
@@ -28,9 +29,14 @@ export const authEndpointPaths = {
 
 export const authApi = {
   async login(email: string, password: string) {
+    const body = new URLSearchParams({
+      username: email,
+      password,
+      type: "username"
+    });
     const tokens = await httpClient.request<TokenPairPayload>(authEndpointPaths.login, {
       auth: false,
-      body: { email, password },
+      body,
       method: "POST",
       retryOnUnauthorized: false
     });

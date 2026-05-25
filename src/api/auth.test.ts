@@ -17,7 +17,7 @@ describe("authApi endpoint paths", () => {
     vi.clearAllMocks();
   });
 
-  it("uses the formal NeeDo auth URI for email login", async () => {
+  it("uses the legacy deployed auth URI and form fields for email login", async () => {
     vi.mocked(httpClient.request).mockResolvedValueOnce({
       accessToken: "access-token",
       refreshToken: "refresh-token",
@@ -26,16 +26,17 @@ describe("authApi endpoint paths", () => {
 
     await authApi.login("admin@example.com", "secret");
 
-    expect(httpClient.request).toHaveBeenCalledWith(authEndpointPaths.login, {
+    expect(httpClient.request).toHaveBeenCalledWith(authEndpointPaths.login, expect.objectContaining({
       auth: false,
-      body: {
-        email: "admin@example.com",
-        password: "secret"
-      },
+      body: expect.any(URLSearchParams),
       method: "POST",
       retryOnUnauthorized: false
-    });
-    expect(authEndpointPaths.login).toBe("/auth/login");
+    }));
+    const [, options] = vi.mocked(httpClient.request).mock.calls[0] ?? [];
+    expect(options?.body).toBeInstanceOf(URLSearchParams);
+    expect((options?.body as URLSearchParams).toString()).toBe("username=admin%40example.com&password=secret&type=username");
+    expect(authEndpointPaths.login).toBe("/login");
+    expect(authEndpointPaths.register).toBe("/reg");
     expect(setAuthTokens).toHaveBeenCalledWith({
       accessToken: "access-token",
       refreshToken: "refresh-token",

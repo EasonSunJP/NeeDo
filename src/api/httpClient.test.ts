@@ -198,6 +198,29 @@ describe("httpClient auth tokens", () => {
     });
   });
 
+  it("attaches the configured public Authorization header for legacy auth requests", async () => {
+    vi.stubEnv("VITE_API_PUBLIC_AUTHORIZATION", "Bearer public-prelogin-token");
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
+
+    await httpClient.request("/login", {
+      auth: false,
+      body: new URLSearchParams({
+        username: "admin@example.com",
+        password: "secret",
+        type: "username"
+      })
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/login",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer public-prelogin-token"
+        })
+      })
+    );
+  });
+
   it("does not attach the device fingerprint header by default", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
 
@@ -218,6 +241,31 @@ describe("httpClient auth tokens", () => {
       })
     );
     expect(FingerprintJS.load).not.toHaveBeenCalled();
+  });
+
+  it("attaches the legacy token fingerprint header when the legacy auth API enables it", async () => {
+    vi.stubEnv("VITE_ENABLE_DEVICE_TOKEN_HEADER", "true");
+    const { agent } = createFingerprintAgent("legacy-device-token");
+    vi.mocked(FingerprintJS.load).mockResolvedValue(agent);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
+
+    await httpClient.request("/login", {
+      auth: false,
+      body: new URLSearchParams({
+        username: "admin@example.com",
+        password: "secret",
+        type: "username"
+      })
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/login",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          token: "legacy-device-token"
+        })
+      })
+    );
   });
 
   it("attaches the FingerprintJS visitorId only when the formal fingerprint header is enabled", async () => {
