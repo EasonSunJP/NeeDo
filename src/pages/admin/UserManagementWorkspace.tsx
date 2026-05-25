@@ -4,6 +4,7 @@ import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import {
@@ -237,28 +238,43 @@ const emptyRoles: PaginatedData<RolePayload> = { list: [], page: 1, page_size: 2
 const emptyPermissions: PaginatedData<PermissionPayload> = { list: [], page: 1, page_size: 20, total: 0 };
 
 function Field({
+  autoComplete,
   label,
   onChange,
   placeholder,
   type = "text",
   value
 }: {
+  autoComplete?: string;
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
   value: string;
 }) {
+  const inputClassName = "h-10 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none transition focus:border-moss";
+
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-black text-ink/55">{label}</span>
-      <input
-        className="h-10 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none transition focus:border-moss"
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        type={type}
-        value={value}
-      />
+      {type === "password" ? (
+        <PasswordInput
+          autoComplete={autoComplete ?? "new-password"}
+          inputClassName={`${inputClassName} pr-11`}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          toggleClassName="right-1 text-ink/45"
+          value={value}
+        />
+      ) : (
+        <input
+          className={inputClassName}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type={type}
+          value={value}
+        />
+      )}
     </label>
   );
 }
@@ -538,7 +554,7 @@ export function UserManagementWorkspace({ mode }: { mode: ManagementMode }) {
               <form className="grid gap-3 rounded-lg border border-line bg-white p-4 shadow-panel md:grid-cols-4" onSubmit={createUser}>
                 <Field label={copy.email} onChange={(value) => setUserForm((current) => ({ ...current, email: value }))} placeholder="name@example.com" type="email" value={userForm.email} />
                 <Field label={copy.username} onChange={(value) => setUserForm((current) => ({ ...current, username: value }))} value={userForm.username} />
-                <Field label={copy.password} onChange={(value) => setUserForm((current) => ({ ...current, password: value }))} type="password" value={userForm.password} />
+                <Field autoComplete="new-password" label={copy.password} onChange={(value) => setUserForm((current) => ({ ...current, password: value }))} type="password" value={userForm.password} />
                 <div className="flex items-end">
                   <Button className="w-full" type="submit">{copy.create}</Button>
                 </div>

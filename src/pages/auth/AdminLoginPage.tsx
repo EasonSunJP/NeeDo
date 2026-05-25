@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
 import { useAuth } from "../../auth/AuthProvider";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
+import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -554,16 +555,15 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                     </label>
                     <label className="block">
                       <span className="admin-login-label mb-2 block text-sm font-black">{copy.passwordLabel}</span>
-                      <div className="admin-login-field">
-                        <span className="admin-login-field-icon">#</span>
-                        <input
-                          autoComplete="current-password"
-                          onChange={(event) => setPassword(event.target.value)}
-                          placeholder={copy.passwordPlaceholder}
-                          type="password"
-                          value={password}
-                        />
-                      </div>
+                      <PasswordInput
+                        inputClassName="pr-10"
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder={copy.passwordPlaceholder}
+                        prefix={<span className="admin-login-field-icon">#</span>}
+                        toggleClassName="right-3 text-[color:var(--admin-muted)]"
+                        value={password}
+                        wrapperClassName="admin-login-field"
+                      />
                     </label>
                     {error ? <p className="admin-login-error px-4 py-3 text-sm font-bold">{error}</p> : null}
                     <button className="admin-login-primary w-full text-base" type="submit">

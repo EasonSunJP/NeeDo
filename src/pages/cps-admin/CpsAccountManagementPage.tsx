@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { PasswordInput } from "../../components/ui/PasswordInput";
 import { businessCpsPromoters } from "../../features/business-cps/model";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { cn, yen } from "../../lib/utils";
@@ -375,7 +376,9 @@ function FieldLabel({ children }: { children: string }) {
   return <label className="text-xs font-black text-ink/55">{children}</label>;
 }
 
-const fieldClassName = "mt-1 h-11 w-full rounded-lg border border-line bg-white px-3 text-sm font-semibold text-ink outline-none transition placeholder:text-ink/35 focus:border-moss";
+const fieldInputClassName = "h-11 w-full rounded-lg border border-line bg-white px-3 text-sm font-semibold text-ink outline-none transition placeholder:text-ink/35 focus:border-moss";
+const fieldClassName = cn("mt-1", fieldInputClassName);
+const passwordFieldInputClassName = cn(fieldInputClassName, "pr-11");
 const textareaClassName = "mt-1 min-h-[92px] w-full rounded-lg border border-line bg-white px-3 py-3 text-sm font-semibold leading-6 text-ink outline-none transition placeholder:text-ink/35 focus:border-moss";
 
 export function CpsAccountManagementPage() {
@@ -596,7 +599,14 @@ export function CpsAccountManagementPage() {
           </div>
           <div>
             <FieldLabel>初始密码</FieldLabel>
-            <input className={fieldClassName} onChange={(event) => updateDraft("password", event.target.value)} value={draft.password} />
+            <PasswordInput
+              autoComplete="new-password"
+              inputClassName={passwordFieldInputClassName}
+              onChange={(event) => updateDraft("password", event.target.value)}
+              toggleClassName="right-1 text-ink/45"
+              value={draft.password}
+              wrapperClassName="mt-1"
+            />
           </div>
           <div>
             <FieldLabel>邮箱</FieldLabel>
@@ -659,7 +669,14 @@ export function CpsAccountManagementPage() {
           </div>
           <div>
             <FieldLabel>统一初始密码</FieldLabel>
-            <input className={fieldClassName} onChange={(event) => setBatchPassword(event.target.value)} value={batchPassword} />
+            <PasswordInput
+              autoComplete="new-password"
+              inputClassName={passwordFieldInputClassName}
+              onChange={(event) => setBatchPassword(event.target.value)}
+              toggleClassName="right-1 text-ink/45"
+              value={batchPassword}
+              wrapperClassName="mt-1"
+            />
           </div>
           <div>
             <FieldLabel>登录端权限</FieldLabel>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
+import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { googleAccountIconSrc } from "../../lib/googleAccountApi";
@@ -16,6 +17,8 @@ type FrontendLoginCopy = {
   welcomeSubtitle: string;
   gmailLogin: string;
   accountLogin: string;
+  testCredentialFill: string;
+  testCredentialLogin: string;
   createAccount: string;
   createNotice: string;
   useAccountTitle: string;
@@ -25,9 +28,12 @@ type FrontendLoginCopy = {
   passwordLabel: string;
   passwordPlaceholder: string;
   loginButton: string;
+  loginPending: string;
   back: string;
   requiredError: string;
   accountError: string;
+  networkTimeoutError: string;
+  resourceNotFoundError: string;
   googleLoginUnavailable: string;
   continueTitle: string;
   signedInAs: string;
@@ -38,6 +44,7 @@ type FrontendLoginCopy = {
 };
 
 export type LoginFeedbackCopy = Pick<FrontendLoginCopy, "accountError" | "createNotice" | "googleLoginUnavailable" | "requiredError">;
+export type LoginErrorCopy = Pick<FrontendLoginCopy, "accountError" | "networkTimeoutError" | "resourceNotFoundError">;
 type LoginFeedbackTone = "error" | "notice";
 type LoginFeedbackKey = keyof LoginFeedbackCopy;
 
@@ -55,6 +62,78 @@ export function resolveLoginFeedbackMessage(feedback: LoginFeedbackState | null,
   }
 
   return copy[feedback.key];
+}
+
+export function resolveLoginErrorMessage(message: string | undefined, copy: LoginErrorCopy) {
+  if (message === "error.network.timeout") {
+    return copy.networkTimeoutError;
+  }
+
+  if (message === "error.resource_not_found" || message === "resource_not_found" || message === "Not Found") {
+    return copy.resourceNotFoundError;
+  }
+
+  return message || copy.accountError;
+}
+
+type TestCredentialEnv = {
+  VITE_TEST_LOGIN_EMAIL?: string;
+  VITE_TEST_LOGIN_PASSWORD?: string;
+  VITE_TEST_LOGIN_ADMIN_EMAIL?: string;
+  VITE_TEST_LOGIN_ADMIN_PASSWORD?: string;
+  VITE_TEST_LOGIN_CUSTOMER_EMAIL?: string;
+  VITE_TEST_LOGIN_CUSTOMER_PASSWORD?: string;
+  VITE_TEST_LOGIN_MERCHANT_EMAIL?: string;
+  VITE_TEST_LOGIN_MERCHANT_PASSWORD?: string;
+  VITE_TEST_LOGIN_TECHNICIAN_EMAIL?: string;
+  VITE_TEST_LOGIN_TECHNICIAN_PASSWORD?: string;
+};
+
+function getPortalTestLoginCredentials(env: TestCredentialEnv, portal: PortalScope) {
+  if (portal === "admin") {
+    return {
+      email: env.VITE_TEST_LOGIN_ADMIN_EMAIL,
+      password: env.VITE_TEST_LOGIN_ADMIN_PASSWORD
+    };
+  }
+
+  if (portal === "merchant") {
+    return {
+      email: env.VITE_TEST_LOGIN_MERCHANT_EMAIL,
+      password: env.VITE_TEST_LOGIN_MERCHANT_PASSWORD
+    };
+  }
+
+  if (portal === "technician") {
+    return {
+      email: env.VITE_TEST_LOGIN_TECHNICIAN_EMAIL,
+      password: env.VITE_TEST_LOGIN_TECHNICIAN_PASSWORD
+    };
+  }
+
+  if (portal === "user") {
+    return {
+      email: env.VITE_TEST_LOGIN_CUSTOMER_EMAIL,
+      password: env.VITE_TEST_LOGIN_CUSTOMER_PASSWORD
+    };
+  }
+
+  return {
+    email: undefined,
+    password: undefined
+  };
+}
+
+export function resolveTestLoginCredentials(env: TestCredentialEnv, portal: PortalScope) {
+  const portalCredentials = getPortalTestLoginCredentials(env, portal);
+  const email = portalCredentials.email?.trim() || env.VITE_TEST_LOGIN_EMAIL?.trim();
+  const password = portalCredentials.password?.trim() || env.VITE_TEST_LOGIN_PASSWORD?.trim();
+
+  if (!email || !password) {
+    return null;
+  }
+
+  return { email, password };
 }
 
 const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
@@ -92,6 +171,8 @@ const loginCopy = {
     welcomeSubtitle: "用一个账号连接消息、预约和工作协作。",
     gmailLogin: "使用 Google 登录",
     accountLogin: "使用邮箱登录",
+    testCredentialFill: "填入测试账号",
+    testCredentialLogin: "测试账号登录",
     createAccount: "新建账号",
     createNotice: "新建账号流程正在准备中，请先使用已发行邮箱登录。",
     useAccountTitle: "账号登录",
@@ -101,9 +182,12 @@ const loginCopy = {
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
     loginButton: "登录",
+    loginPending: "登录中...",
     back: "返回",
     requiredError: "请先填写登录信息。",
     accountError: "账号或密码不正确，请确认后再试。",
+    networkTimeoutError: "后端没有响应，请确认真实 backend、MySQL 和 Redis 已启动。",
+    resourceNotFoundError: "接口不存在，请确认前端 API 地址指向 NeeDo 真实 /api/v1 后端。",
     googleLoginUnavailable: "当前环境暂时无法发起 Google 登录，请在正式环境配置 Google 账号 API 后重试。",
     continueTitle: "已登录",
     signedInAs: "当前账号",
@@ -149,6 +233,8 @@ const loginCopy = {
     welcomeSubtitle: "用一個帳號連接訊息、預約和工作協作。",
     gmailLogin: "使用 Google 登入",
     accountLogin: "使用信箱登入",
+    testCredentialFill: "填入測試帳號",
+    testCredentialLogin: "測試帳號登入",
     createAccount: "建立帳號",
     createNotice: "建立帳號流程正在準備中，請先使用已發行信箱登入。",
     useAccountTitle: "帳號登入",
@@ -158,9 +244,12 @@ const loginCopy = {
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
     loginButton: "登入",
+    loginPending: "登入中...",
     back: "返回",
     requiredError: "請先填寫登入資訊。",
     accountError: "帳號或密碼不正確，請確認後再試。",
+    networkTimeoutError: "後端沒有回應，請確認真實 backend、MySQL 和 Redis 已啟動。",
+    resourceNotFoundError: "介面不存在，請確認前端 API 位址指向 NeeDo 真實 /api/v1 後端。",
     googleLoginUnavailable: "目前環境暫時無法發起 Google 登入，請在正式環境配置 Google 帳號 API 後重試。",
     continueTitle: "已登入",
     signedInAs: "目前帳號",
@@ -206,6 +295,8 @@ const loginCopy = {
     welcomeSubtitle: "メッセージ、予約、仕事の連絡をひとつのアカウントで。",
     gmailLogin: "Googleでログイン",
     accountLogin: "メールでログイン",
+    testCredentialFill: "テストアカウントを入力",
+    testCredentialLogin: "テストアカウントでログイン",
     createAccount: "新規登録",
     createNotice: "新規登録フローは準備中です。発行済みメールでログインしてください。",
     useAccountTitle: "アカウントログイン",
@@ -215,9 +306,12 @@ const loginCopy = {
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
     loginButton: "ログイン",
+    loginPending: "ログイン中...",
     back: "戻る",
     requiredError: "ログイン情報を入力してください。",
     accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
+    networkTimeoutError: "バックエンドが応答していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
+    resourceNotFoundError: "API が見つかりません。フロントエンドの API URL が NeeDo の実際の /api/v1 backend を向いているか確認してください。",
     googleLoginUnavailable: "現在の環境では Google ログインを開始できません。正式環境で Google アカウント API を設定してから再試行してください。",
     continueTitle: "ログイン済み",
     signedInAs: "現在のアカウント",
@@ -263,6 +357,8 @@ const loginCopy = {
     welcomeSubtitle: "Messages, bookings, and work updates in one account.",
     gmailLogin: "Continue with Google",
     accountLogin: "Log in with email",
+    testCredentialFill: "Fill test account",
+    testCredentialLogin: "Test account login",
     createAccount: "Create account",
     createNotice: "Account creation is being prepared. Use an issued email for now.",
     useAccountTitle: "Account login",
@@ -272,9 +368,12 @@ const loginCopy = {
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
     loginButton: "Log in",
+    loginPending: "Logging in...",
     back: "Back",
     requiredError: "Fill in the login information first.",
     accountError: "The account or password is incorrect. Please check and try again.",
+    networkTimeoutError: "The backend did not respond. Confirm the real backend, MySQL, and Redis are running.",
+    resourceNotFoundError: "The API route was not found. Confirm the frontend API URL points to the real NeeDo /api/v1 backend.",
     googleLoginUnavailable: "Google login cannot be started in this environment. Configure the Google Account API in the production environment and try again.",
     continueTitle: "Signed in",
     signedInAs: "Current account",
@@ -320,6 +419,8 @@ const loginCopy = {
     welcomeSubtitle: "메시지, 예약, 업무 연락을 하나의 계정으로 연결합니다.",
     gmailLogin: "Google로 로그인",
     accountLogin: "이메일로 로그인",
+    testCredentialFill: "테스트 계정 입력",
+    testCredentialLogin: "테스트 계정 로그인",
     createAccount: "새 계정 만들기",
     createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 발급된 이메일로 로그인하세요.",
     useAccountTitle: "계정 로그인",
@@ -329,9 +430,12 @@ const loginCopy = {
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
     loginButton: "로그인",
+    loginPending: "로그인 중...",
     back: "뒤로",
     requiredError: "먼저 로그인 정보를 입력하세요.",
     accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
+    networkTimeoutError: "백엔드가 응답하지 않습니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
+    resourceNotFoundError: "API 경로를 찾을 수 없습니다. 프런트엔드 API URL이 실제 NeeDo /api/v1 backend를 가리키는지 확인하세요.",
     googleLoginUnavailable: "현재 환경에서는 Google 로그인을 시작할 수 없습니다. 정식 환경에서 Google 계정 API를 설정한 후 다시 시도하세요.",
     continueTitle: "로그인됨",
     signedInAs: "현재 계정",
@@ -426,6 +530,7 @@ export function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState<LoginFeedbackState | null>(null);
+  const [isLoginPending, setIsLoginPending] = useState(false);
 
   useEffect(() => {
     setActivePortal(requestedPortal);
@@ -434,6 +539,10 @@ export function LoginPage() {
   const copy = loginCopy[language];
   const activePortalCopy = copy.portals[activePortal];
   const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
+  const testCredentials = useMemo(
+    () => resolveTestLoginCredentials(import.meta.env as TestCredentialEnv, activePortal),
+    [activePortal]
+  );
   const hasActiveAccess = isAuthenticated && canAccess(activePortal);
   const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
   const error = feedback?.tone === "error" ? feedbackMessage : "";
@@ -470,19 +579,64 @@ export function LoginPage() {
   };
 
   const continueWithGmail = async () => {
-    clearFeedback();
-    const result = await loginWithProvider(activePortal, "gmail", portalGmailEmail[activePortal]);
-
-    if (!result.ok) {
-      setFeedback({ key: "googleLoginUnavailable", tone: "error", type: "localized" });
+    if (isLoginPending) {
       return;
     }
 
-    openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+    clearFeedback();
+    setIsLoginPending(true);
+
+    try {
+      const result = await loginWithProvider(activePortal, "gmail", portalGmailEmail[activePortal]);
+
+      if (!result.ok) {
+        setFeedback({ key: "googleLoginUnavailable", tone: "error", type: "localized" });
+        return;
+      }
+
+      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+    } finally {
+      setIsLoginPending(false);
+    }
+  };
+
+  const fillTestCredentials = () => {
+    if (!testCredentials || isLoginPending) {
+      return;
+    }
+
+    setUsername(testCredentials.email);
+    setPassword(testCredentials.password);
+    clearFeedback();
+  };
+
+  const continueWithTestCredentials = async () => {
+    if (!testCredentials || isLoginPending) {
+      return;
+    }
+
+    clearFeedback();
+    setIsLoginPending(true);
+
+    try {
+      const result = await login(activePortal, testCredentials.email, testCredentials.password);
+      if (!result.ok) {
+        setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
+        return;
+      }
+
+      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+    } finally {
+      setIsLoginPending(false);
+    }
   };
 
   const handleAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isLoginPending) {
+      return;
+    }
+
     clearFeedback();
 
     if (!username.trim() || !password.trim()) {
@@ -490,13 +644,19 @@ export function LoginPage() {
       return;
     }
 
-    const result = await login(activePortal, username, password);
-    if (!result.ok) {
-      setFeedback({ message: result.message || copy.accountError, tone: "error", type: "custom" });
-      return;
-    }
+    setIsLoginPending(true);
 
-    openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+    try {
+      const result = await login(activePortal, username, password);
+      if (!result.ok) {
+        setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
+        return;
+      }
+
+      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+    } finally {
+      setIsLoginPending(false);
+    }
   };
 
   return (
@@ -560,15 +720,17 @@ export function LoginPage() {
             ) : panelMode === "welcome" ? (
               <div className="space-y-4">
                 <button
-                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90"
+                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
+                  disabled={isLoginPending}
                   onClick={continueWithGmail}
                   type="button"
                 >
                   <GmailMark />
-                  {copy.gmailLogin}
+                  {isLoginPending ? copy.loginPending : copy.gmailLogin}
                 </button>
                 <button
-                  className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)]"
+                  className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"
+                  disabled={isLoginPending}
                   onClick={() => {
                     setPanelMode("account");
                     clearFeedback();
@@ -577,6 +739,16 @@ export function LoginPage() {
                 >
                   {copy.accountLogin}
                 </button>
+                {testCredentials ? (
+                  <button
+                    className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"
+                    disabled={isLoginPending}
+                    onClick={continueWithTestCredentials}
+                    type="button"
+                  >
+                    {isLoginPending ? copy.loginPending : copy.testCredentialLogin}
+                  </button>
+                ) : null}
                 <button
                   className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
                   onClick={() => {
@@ -605,28 +777,42 @@ export function LoginPage() {
                 </label>
                 <label className="block">
                   <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.passwordLabel}</span>
-                  <input
+                  <PasswordInput
                     autoComplete="current-password"
-                    className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
+                    disabled={isLoginPending}
+                    inputClassName="h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 pr-14 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder={copy.passwordPlaceholder}
-                    type="password"
+                    toggleClassName="right-3 text-[color:var(--client-muted)]"
                     value={password}
+                    wrapperClassName="mt-2"
                   />
                 </label>
+                {testCredentials ? (
+                  <button
+                    className="h-11 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] px-4 text-sm font-black text-[color:var(--client-muted)] disabled:cursor-wait disabled:opacity-70"
+                    disabled={isLoginPending}
+                    onClick={fillTestCredentials}
+                    type="button"
+                  >
+                    {copy.testCredentialFill}
+                  </button>
+                ) : null}
                 <button
-                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90"
+                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
+                  disabled={isLoginPending}
                   type="submit"
                 >
-                  {copy.loginButton}
+                  {isLoginPending ? copy.loginPending : copy.loginButton}
                 </button>
                 <button
-                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)]"
+                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] disabled:cursor-wait disabled:opacity-70"
+                  disabled={isLoginPending}
                   onClick={continueWithGmail}
                   type="button"
                 >
                   <GmailMark />
-                  {copy.gmailLogin}
+                  {isLoginPending ? copy.loginPending : copy.gmailLogin}
                 </button>
               </form>
             )}

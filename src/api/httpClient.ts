@@ -38,6 +38,11 @@ export class ApiClientError extends Error {
 }
 
 const defaultApiPrefix = "/api/v1";
+const fallbackApiRequestTimeoutMs = 10_000;
+const configuredApiRequestTimeoutMs = Number.parseInt(import.meta.env.VITE_API_REQUEST_TIMEOUT_MS ?? "", 10);
+export const apiRequestTimeoutMs = Number.isFinite(configuredApiRequestTimeoutMs) && configuredApiRequestTimeoutMs > 0
+  ? configuredApiRequestTimeoutMs
+  : fallbackApiRequestTimeoutMs;
 const refreshTokenStorageKey = "needo.auth.refresh-token";
 const legacyAccessTokenStorageKey = "needo.auth.access-token";
 let accessToken: string | null = null;
@@ -134,6 +139,32 @@ function createRequestHeaders(options: HttpClientRequestOptions) {
   return headers;
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = globalThis.setTimeout(() => {
+    controller.abort();
+  }, apiRequestTimeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new ApiClientError("error.network.timeout", 408, 408);
+    }
+
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+  }
+}
+
 async function refreshAccessToken(): Promise<string> {
   if (refreshRequest) {
     return refreshRequest;
@@ -145,7 +176,7 @@ async function refreshAccessToken(): Promise<string> {
   }
 
   refreshRequest = (async () => {
-    const response = await fetch(buildApiUrl("/auth/refresh"), {
+    const response = await fetchWithTimeout(buildApiUrl("/auth/refresh"), {
       body: JSON.stringify({ refreshToken }),
       headers: {
         Accept: "application/json",
@@ -172,7 +203,7 @@ async function sendRequest<TData>(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<TData> {
-  const response = await fetch(buildApiUrl(path, options.query), {
+  const response = await fetchWithTimeout(buildApiUrl(path, options.query), {
     body: createRequestBody(options.body),
     headers: createRequestHeaders(options),
     method: options.method ?? (options.body === undefined ? "GET" : "POST")

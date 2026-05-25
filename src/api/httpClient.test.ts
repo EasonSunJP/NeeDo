@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  apiRequestTimeoutMs,
   clearAuthTokens,
   getAccessToken,
   getStoredRefreshToken,
@@ -43,6 +44,7 @@ describe("httpClient auth tokens", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     clearAuthTokens();
     vi.unstubAllGlobals();
   });
@@ -106,5 +108,35 @@ describe("httpClient auth tokens", () => {
       })
     );
     expect(getAccessToken()).toBe("fresh-access-token");
+  });
+
+  it("aborts hung API requests instead of leaving login actions stuck", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementationOnce((_url, init) => {
+      const signal = (init as RequestInit).signal;
+
+      return new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("Aborted", "AbortError"));
+        });
+      });
+    });
+
+    const request = httpClient.request("/auth/login", {
+      auth: false,
+      body: {
+        email: "admin@example.com",
+        password: "secret"
+      }
+    }).catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(apiRequestTimeoutMs);
+
+    await expect(request).resolves.toMatchObject({
+      code: 408,
+      message: "error.network.timeout",
+      status: 408
+    });
   });
 });

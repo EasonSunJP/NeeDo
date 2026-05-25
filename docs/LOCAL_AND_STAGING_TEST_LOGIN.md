@@ -63,6 +63,13 @@ npm run dev:frontend
 ## Test Accounts
 
 The password is read from `TEST_USER_DEFAULT_PASSWORD`. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`.
+The frontend welcome screen can show a direct test-account login button when Vite env credentials are configured.
+For local development, `.env.development` may set portal-specific values such as
+`VITE_TEST_LOGIN_CUSTOMER_EMAIL`, `VITE_TEST_LOGIN_CUSTOMER_PASSWORD`,
+`VITE_TEST_LOGIN_MERCHANT_EMAIL`, `VITE_TEST_LOGIN_MERCHANT_PASSWORD`,
+`VITE_TEST_LOGIN_TECHNICIAN_EMAIL`, `VITE_TEST_LOGIN_TECHNICIAN_PASSWORD`,
+`VITE_TEST_LOGIN_ADMIN_EMAIL`, and `VITE_TEST_LOGIN_ADMIN_PASSWORD`.
+The button still calls the real `/api/v1/auth/login`; it is not a mock login shortcut.
 
 | Email | Role | Entry |
 |---|---|---|
