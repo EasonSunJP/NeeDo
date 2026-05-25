@@ -18,7 +18,7 @@ const portalRouteHtmlEntries = [
 
 type EnvMap = Record<string, string | undefined>;
 
-export const defaultNeedoApiProxyTarget = "http://127.0.0.1:3100";
+export const defaultNeedoApiProxyTarget = "http://127.0.0.1:3000";
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");

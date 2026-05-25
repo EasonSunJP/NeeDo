@@ -2,11 +2,7 @@ import { randomInt, timingSafeEqual } from "crypto";
 import { compare } from "bcryptjs";
 import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
-import type {
-  AuthRepositoryPort,
-  AuthUserRecord,
-  TestLoginPortal
-} from "../repositories/auth.repository";
+import type { AuthRepositoryPort, AuthUserRecord } from "../repositories/auth.repository";
 import { AppError } from "../utils/app-error";
 import type { OtpDeliveryClient } from "./auth-otp-delivery.service";
 import type { AuthSessionStore } from "./auth-session.store";
@@ -110,47 +106,26 @@ export class AuthService {
       });
     }
 
+    if (user && !user.isActive) {
+      await this.repository.createLoginLog({
+        userId: user.id,
+        email,
+        ip: context.ip,
+        userAgent: context.userAgent,
+        status: "failed",
+        failReason: "account_disabled"
+      });
+      throw new AppError({
+        code: ERROR_CODES.ACCOUNT_DISABLED,
+        message: "error.auth.account_disabled",
+        statusCode: 403
+      });
+    }
+
     this.assertActiveUser(user);
     await this.sessionStore.clearFailedLogin(context.ip, email);
 
     return this.completeSuccessfulLogin(user, context);
-  }
-
-  public async testLogin(
-    portal: TestLoginPortal,
-    context: AuthRequestContext
-  ): Promise<TokenPairPayload> {
-    if (!this.config.AUTH_TEST_LOGIN_ENABLED || this.config.NODE_ENV === "production") {
-      throw new AppError({
-        code: ERROR_CODES.TEST_LOGIN_DISABLED,
-        message: "error.auth.test_login_disabled",
-        statusCode: 403
-      });
-    }
-
-    if (!this.repository.findTestLoginUserByPortal) {
-      throw new AppError({
-        code: ERROR_CODES.TEST_LOGIN_DISABLED,
-        message: "error.auth.test_login_disabled",
-        statusCode: 403
-      });
-    }
-
-    const user = await this.repository.findTestLoginUserByPortal(portal);
-    this.assertActiveUser(user);
-    const currentIdentityId = this.resolveTestLoginIdentityId(user, portal);
-    const tokens = await this.completeSuccessfulLogin(user, context, currentIdentityId);
-    await this.repository.createAuditLog({
-      actorId: user.id,
-      action: "auth.test_login",
-      targetType: "User",
-      targetId: user.id,
-      ip: context.ip,
-      userAgent: context.userAgent,
-      metadata: { portal }
-    });
-
-    return tokens;
   }
 
   public async sendOtp(emailInput: string): Promise<OtpSendPayload> {
@@ -480,32 +455,6 @@ export class AuthService {
       permissions: permissionCodes,
       menus: permissionCodes.filter((code) => permissions.get(code) === "menu")
     };
-  }
-
-  private resolveTestLoginIdentityId(user: AuthUserRecord, portal: TestLoginPortal): number {
-    const identityTypesByPortal: Record<TestLoginPortal, string[]> = {
-      admin: ["platform", "platform_admin", "admin"],
-      business: ["broker", "scout", "business"],
-      merchant: ["merchant", "merchant_owner", "merchant_staff"],
-      technician: ["technician"],
-      user: ["customer", "user"]
-    };
-    const identity = user.identities.find(
-      (item) =>
-        item.deletedAt === null &&
-        item.isActive &&
-        identityTypesByPortal[portal].includes(item.type)
-    );
-
-    if (!identity) {
-      throw new AppError({
-        code: ERROR_CODES.IDENTITY_NOT_FOUND,
-        message: "error.auth.identity_not_found",
-        statusCode: 404
-      });
-    }
-
-    return identity.id;
   }
 
   private assertActiveUser(user: AuthUserRecord | null): asserts user is AuthUserRecord {

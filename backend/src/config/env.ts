@@ -7,6 +7,19 @@ if (process.env.ENV_FILE) {
   loadDotenv();
 }
 
+const normalizedProcessEnv = { ...process.env };
+const applyEnvAlias = (target: string, source: string): void => {
+  if (!normalizedProcessEnv[target] && normalizedProcessEnv[source]) {
+    normalizedProcessEnv[target] = normalizedProcessEnv[source];
+  }
+};
+
+applyEnvAlias("CORS_ALLOWED_ORIGINS", "CORS_ORIGINS");
+applyEnvAlias("AUTH_ACCESS_TOKEN_SECRET", "JWT_ACCESS_SECRET");
+applyEnvAlias("AUTH_REFRESH_TOKEN_SECRET", "JWT_REFRESH_SECRET");
+applyEnvAlias("AUTH_ACCESS_TOKEN_TTL_SECONDS", "JWT_ACCESS_EXPIRES_IN");
+applyEnvAlias("AUTH_REFRESH_TOKEN_TTL_SECONDS", "JWT_REFRESH_EXPIRES_IN");
+
 const booleanSchema = z.preprocess((value) => {
   if (typeof value !== "string") {
     return value;
@@ -88,11 +101,10 @@ const envSchema = z.object({
   AUTH_OTP_TTL_SECONDS: z.coerce.number().int().positive().max(600),
   AUTH_OTP_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
   AUTH_OTP_EMAIL_WEBHOOK_URL: optionalUrlSchema,
-  AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive(),
-  AUTH_TEST_LOGIN_ENABLED: booleanSchema.default(false)
+  AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
 });
 
-const parsedEnv = envSchema.safeParse(process.env);
+const parsedEnv = envSchema.safeParse(normalizedProcessEnv);
 
 if (!parsedEnv.success) {
   const formatted = parsedEnv.error.issues

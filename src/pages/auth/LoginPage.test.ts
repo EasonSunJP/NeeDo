@@ -33,10 +33,11 @@ describe("LoginPage feedback localization", () => {
   });
 });
 
-describe("LoginPage test account shortcut", () => {
-  it("renders a temporary shortcut that uses the real test-login API instead of demo credentials", () => {
-    expect(loginPageSource).toContain("handleTestLogin");
-    expect(loginPageSource).toContain("testLogin");
+describe("LoginPage real-account login", () => {
+  it("does not expose a passwordless test-login shortcut", () => {
+    expect(loginPageSource).not.toContain("handleTestLogin");
+    expect(loginPageSource).not.toContain("testLogin");
+    expect(loginPageSource).not.toContain("/auth/test-login");
     expect(loginPageSource).not.toContain("demoAuthAccount.password");
   });
 });

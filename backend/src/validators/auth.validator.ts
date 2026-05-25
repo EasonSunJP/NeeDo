@@ -29,13 +29,8 @@ export const logoutBodySchema = z.object({
   refreshToken: z.string().min(1)
 });
 
-export const testLoginBodySchema = z.object({
-  portal: z.enum(["user", "merchant", "technician", "business", "admin"])
-});
-
 export type LoginBody = z.infer<typeof loginBodySchema>;
 export type OtpSendBody = z.infer<typeof otpSendBodySchema>;
 export type OtpVerifyBody = z.infer<typeof otpVerifyBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
 export type LogoutBody = z.infer<typeof logoutBodySchema>;
-export type TestLoginBody = z.infer<typeof testLoginBodySchema>;

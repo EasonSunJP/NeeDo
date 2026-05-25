@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { TEST_LOGIN_EMAIL } from "../constants/test-login.constants";
 import { prisma } from "../prisma/client";
 
 export interface AuthIdentityRecord {
@@ -72,13 +71,10 @@ export interface CreateAuditLogInput {
 export interface AuthRepositoryPort {
   findUserByEmail: (email: string) => Promise<AuthUserRecord | null>;
   findUserById: (id: number) => Promise<AuthUserRecord | null>;
-  findTestLoginUserByPortal?: (portal: TestLoginPortal) => Promise<AuthUserRecord | null>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
   createAuditLog: (input: CreateAuditLogInput) => Promise<void>;
 }
-
-export type TestLoginPortal = "user" | "merchant" | "technician" | "business" | "admin";
 
 const authUserInclude = {
   identities: {
@@ -128,35 +124,6 @@ export class AuthRepository implements AuthRepositoryPort {
         deletedAt: null
       },
       include: authUserInclude
-    });
-  }
-
-  public async findTestLoginUserByPortal(portal: TestLoginPortal): Promise<AuthUserRecord | null> {
-    const roleCodesByPortal: Record<TestLoginPortal, string[]> = {
-      admin: ["admin"],
-      business: ["merchant_owner", "broker", "scout"],
-      merchant: ["merchant_owner", "merchant_staff"],
-      technician: ["technician"],
-      user: ["customer"]
-    };
-
-    return this.client.user.findFirst({
-      where: {
-        email: TEST_LOGIN_EMAIL,
-        deletedAt: null,
-        isActive: true,
-        userRoles: {
-          some: {
-            deletedAt: null,
-            role: {
-              code: { in: roleCodesByPortal[portal] },
-              deletedAt: null
-            }
-          }
-        }
-      },
-      include: authUserInclude,
-      orderBy: [{ id: "asc" }]
     });
   }
 

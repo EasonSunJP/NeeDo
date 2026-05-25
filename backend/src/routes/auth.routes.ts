@@ -10,8 +10,7 @@ import {
   logoutBodySchema,
   otpSendBodySchema,
   otpVerifyBodySchema,
-  refreshBodySchema,
-  testLoginBodySchema
+  refreshBodySchema
 } from "../validators/auth.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -28,11 +27,6 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   const authorize = createAuthorizeMiddleware;
 
   router.post("/auth/login", validateRequest({ body: loginBodySchema }), controller.login);
-  router.post(
-    "/auth/test-login",
-    validateRequest({ body: testLoginBodySchema }),
-    controller.testLogin
-  );
   router.post("/auth/otp/send", validateRequest({ body: otpSendBodySchema }), controller.sendOtp);
   router.post(
     "/auth/otp/verify",

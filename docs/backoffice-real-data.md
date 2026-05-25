@@ -42,14 +42,13 @@
 - `GET /api/v1/merchant-admin/technicians`
 - `GET /api/v1/merchant-admin/shop`
 
-临时测试登录：
+真实测试账号登录：
 
-- `POST /api/v1/auth/test-login`
-- 仅在 `AUTH_TEST_LOGIN_ENABLED=true` 且非 production 环境可用。
-- 不使用随机真实用户。后端固定使用专用测试账号 `admin@needo.life`，默认密码为 `admin`，密码仍按 bcrypt rounds 12 入库。
-- 该测试账号仅在非 production 且 `AUTH_TEST_LOGIN_ENABLED=true` 时由 seed 创建；账号带有用户端、商户端、技师端、业务端、运营后台所需的测试身份。
-- 测试登录按钮无需输入账号密码，但后端会按当前 portal 选择该测试账号的对应身份签发正式 access / refresh token。
-- 本地 `vite dev` / `vite preview` 会把 `/api/v1` 代理到正式后端，默认目标为 `http://127.0.0.1:3100`；如后端地址不同，可通过 `NEEDO_API_PROXY_TARGET` 或 `VITE_API_PROXY_TARGET` 覆盖。
+- 不再提供 passwordless `POST /api/v1/auth/test-login`。
+- 测试账号必须使用 `POST /api/v1/auth/login` 的 `email + password` 链路。
+- seed 会创建 `admin@example.com`、`operator@example.com`、`merchant@example.com`、`technician@example.com`、`customer@example.com`。
+- 测试账号密码来自 `TEST_USER_DEFAULT_PASSWORD`；仅本地开发可 fallback 到 `ADMIN_DEFAULT_PASSWORD`。
+- 本地 `vite dev` / `vite preview` 会把 `/api/v1` 代理到正式后端，默认目标为 `http://127.0.0.1:3000`；如后端地址不同，可通过 `NEEDO_API_PROXY_TARGET` 或 `VITE_API_PROXY_TARGET` 覆盖。
 
 ## RBAC 与审计
 

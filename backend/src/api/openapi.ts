@@ -1018,48 +1018,6 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
-    [`${config.API_PREFIX}/auth/test-login`]: {
-      post: {
-        tags: ["Auth"],
-        summary: "Temporary non-production test login",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["portal"],
-                properties: {
-                  portal: {
-                    type: "string",
-                    enum: ["user", "merchant", "technician", "business", "admin"]
-                  }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          "200": {
-            description: "JWT token pair issued for a real seeded account",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/TokenPair" }
-                  }
-                }
-              }
-            }
-          },
-          "403": { description: "Test login disabled" }
-        }
-      }
-    },
     [`${config.API_PREFIX}/auth/otp/send`]: {
       post: {
         tags: ["Auth"],

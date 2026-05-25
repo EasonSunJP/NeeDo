@@ -37,4 +37,4 @@ process.env.AUTH_OTP_TTL_SECONDS = "600";
 process.env.AUTH_OTP_COOLDOWN_SECONDS = "60";
 process.env.AUTH_OTP_EMAIL_WEBHOOK_URL = "http://localhost:3999/test-otp";
 process.env.AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS = "3000";
-process.env.AUTH_TEST_LOGIN_ENABLED = "true";
+process.env.TEST_USER_DEFAULT_PASSWORD = "Abcd@1234";

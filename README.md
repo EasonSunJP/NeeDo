@@ -27,8 +27,8 @@ npm run dev:all
 
 说明：
 
-- 当前仓库没有接入独立真实后端。
-- 用户端接口目前主要由前端运行时 mock 层承接，例如 `src/features/im/api.ts`。
+- 当前仓库已包含正式 `backend/` 工程；登录、Auth、RBAC、User Management 必须走真实 `/api/v1` 后端。
+- 部分旧业务页面仍保留 legacy mock compatibility，例如 `src/features/im/api.ts`，不得继续扩张为新的正式实现。
 - `npm run dev:backend` 提供的是本地 mock backend 状态服务，便于联调和健康检查，不代表真实业务后端已接入。
 - 本项目默认前端端口已改为 `5180`，避免占用其他项目正在使用的 `5173`、`5175` 和 `5176`。
 - 如果 `5180` 已被占用，Vite 会自动切到下一个可用端口。
@@ -50,9 +50,9 @@ Auth behavior:
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
 
-Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix. Local Vite dev/preview proxies `/api/v1` to the formal backend at `http://127.0.0.1:3100` by default; override with `NEEDO_API_PROXY_TARGET` or `VITE_API_PROXY_TARGET` if needed.
+Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix. Local Vite dev/preview proxies `/api/v1` to the formal backend at `http://127.0.0.1:3000` by default; override with `NEEDO_API_PROXY_TARGET` or `VITE_API_PROXY_TARGET` if needed.
 
-Temporary test login is available only for non-production environments with `AUTH_TEST_LOGIN_ENABLED=true`. The seeded test account is `admin@needo.life` with password `admin`; the password is stored as a bcrypt hash, and the UI shortcut signs in through the backend instead of creating a browser-only session.
+Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in through `POST /api/v1/auth/login` with `email + password`; the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development.
 
 ## Current Scope
 

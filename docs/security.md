@@ -5,7 +5,8 @@ Step 14 hardens the production surface without changing business workflows.
 ## Runtime Controls
 
 - `helmet` is enabled and `x-powered-by` is disabled.
-- CORS is allow-list based through `CORS_ALLOWED_ORIGINS`.
+- CORS is allow-list based through `CORS_ORIGINS`; `CORS_ALLOWED_ORIGINS`
+  remains accepted as a legacy alias.
 - `TRUST_PROXY=true` is required behind a load balancer so IP-based rate limit
   and audit context use the forwarded client address.
 - JSON body size is capped by `REQUEST_BODY_LIMIT`.
@@ -18,7 +19,9 @@ Step 14 hardens the production surface without changing business workflows.
 - Refresh tokens remain capped at 604800 seconds and are stored/revoked through
   Redis.
 - OTPs remain capped at 600 seconds and must expire after use.
-- `AUTH_TEST_LOGIN_ENABLED=false` in staging and production.
+- Passwordless test-login endpoints and UI shortcuts are not part of staging or
+  production. Test accounts must use the same `email + password` login path as
+  normal users.
 - Real `.env` files, DB passwords, JWT secrets, metrics bearer tokens, and OTP
   webhook URLs must be managed outside git.
 

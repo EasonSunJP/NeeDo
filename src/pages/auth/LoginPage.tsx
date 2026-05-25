@@ -16,7 +16,6 @@ type FrontendLoginCopy = {
   welcomeSubtitle: string;
   gmailLogin: string;
   accountLogin: string;
-  testLogin: string;
   createAccount: string;
   createNotice: string;
   useAccountTitle: string;
@@ -93,7 +92,6 @@ const loginCopy = {
     welcomeSubtitle: "用一个账号连接消息、预约和工作协作。",
     gmailLogin: "使用 Google 登录",
     accountLogin: "使用邮箱登录",
-    testLogin: "测试登录",
     createAccount: "新建账号",
     createNotice: "新建账号流程正在准备中，请先使用已发行邮箱登录。",
     useAccountTitle: "账号登录",
@@ -151,7 +149,6 @@ const loginCopy = {
     welcomeSubtitle: "用一個帳號連接訊息、預約和工作協作。",
     gmailLogin: "使用 Google 登入",
     accountLogin: "使用信箱登入",
-    testLogin: "測試登入",
     createAccount: "建立帳號",
     createNotice: "建立帳號流程正在準備中，請先使用已發行信箱登入。",
     useAccountTitle: "帳號登入",
@@ -209,7 +206,6 @@ const loginCopy = {
     welcomeSubtitle: "メッセージ、予約、仕事の連絡をひとつのアカウントで。",
     gmailLogin: "Googleでログイン",
     accountLogin: "メールでログイン",
-    testLogin: "テストログイン",
     createAccount: "新規登録",
     createNotice: "新規登録フローは準備中です。発行済みメールでログインしてください。",
     useAccountTitle: "アカウントログイン",
@@ -267,7 +263,6 @@ const loginCopy = {
     welcomeSubtitle: "Messages, bookings, and work updates in one account.",
     gmailLogin: "Continue with Google",
     accountLogin: "Log in with email",
-    testLogin: "Test login",
     createAccount: "Create account",
     createNotice: "Account creation is being prepared. Use an issued email for now.",
     useAccountTitle: "Account login",
@@ -325,7 +320,6 @@ const loginCopy = {
     welcomeSubtitle: "메시지, 예약, 업무 연락을 하나의 계정으로 연결합니다.",
     gmailLogin: "Google로 로그인",
     accountLogin: "이메일로 로그인",
-    testLogin: "테스트 로그인",
     createAccount: "새 계정 만들기",
     createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 발급된 이메일로 로그인하세요.",
     useAccountTitle: "계정 로그인",
@@ -424,7 +418,7 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
   const { theme, isNight } = useClientTheme();
-  const { canAccess, isAuthenticated, login, loginWithProvider, logout, session, switchPortal: switchSessionPortal, testLogin } = useAuth();
+  const { canAccess, isAuthenticated, login, loginWithProvider, logout, session, switchPortal: switchSessionPortal } = useAuth();
   const requestedPortal = normalizePortal(portal);
   const redirectPath = searchParams.get("redirect");
   const [activePortal, setActivePortal] = useState<PortalScope>(requestedPortal);
@@ -481,18 +475,6 @@ export function LoginPage() {
 
     if (!result.ok) {
       setFeedback({ key: "googleLoginUnavailable", tone: "error", type: "localized" });
-      return;
-    }
-
-    openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
-  };
-
-  const handleTestLogin = async () => {
-    clearFeedback();
-    const result = await testLogin(activePortal);
-
-    if (!result.ok) {
-      setFeedback({ message: result.message || copy.accountError, tone: "error", type: "custom" });
       return;
     }
 
@@ -596,13 +578,6 @@ export function LoginPage() {
                   {copy.accountLogin}
                 </button>
                 <button
-                  className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_32%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))] px-5 text-sm font-black text-[color:var(--client-primary-strong)]"
-                  onClick={handleTestLogin}
-                  type="button"
-                >
-                  {copy.testLogin}
-                </button>
-                <button
                   className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
                   onClick={() => {
                     setFeedback({ key: "createNotice", tone: "notice", type: "localized" });
@@ -652,13 +627,6 @@ export function LoginPage() {
                 >
                   <GmailMark />
                   {copy.gmailLogin}
-                </button>
-                <button
-                  className="h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_32%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))] px-5 text-sm font-black text-[color:var(--client-primary-strong)]"
-                  onClick={handleTestLogin}
-                  type="button"
-                >
-                  {copy.testLogin}
                 </button>
               </form>
             )}

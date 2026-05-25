@@ -3,23 +3,23 @@ import { createNeedoApiProxyConfig, resolveNeedoApiProxyTarget } from "./vite.co
 
 describe("Needo API proxy config", () => {
   it("defaults local dev API traffic to the formal backend port", () => {
-    expect(resolveNeedoApiProxyTarget({})).toBe("http://127.0.0.1:3100");
+    expect(resolveNeedoApiProxyTarget({})).toBe("http://127.0.0.1:3000");
   });
 
   it("accepts the same API base URL used by the frontend and strips the API prefix for proxying", () => {
     expect(
       resolveNeedoApiProxyTarget({
-        VITE_API_BASE_URL: "http://127.0.0.1:3100/api/v1/"
+        VITE_API_BASE_URL: "http://127.0.0.1:3000/api/v1/"
       })
-    ).toBe("http://127.0.0.1:3100");
+    ).toBe("http://127.0.0.1:3000");
   });
 
   it("adds a dev and preview proxy for formal /api/v1 backend requests", () => {
-    expect(createNeedoApiProxyConfig("http://127.0.0.1:3100")).toEqual({
+    expect(createNeedoApiProxyConfig("http://127.0.0.1:3000")).toEqual({
       "/api/v1": {
         changeOrigin: true,
         secure: false,
-        target: "http://127.0.0.1:3100"
+        target: "http://127.0.0.1:3000"
       }
     });
   });

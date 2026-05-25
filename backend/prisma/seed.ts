@@ -8,9 +8,8 @@ import {
   buildRolePermissionAssignments
 } from "../src/constants/permissions.constants";
 import {
-  TEST_LOGIN_EMAIL,
-  TEST_LOGIN_PASSWORD,
-  TEST_LOGIN_USERNAME
+  TEST_USER_ACCOUNTS,
+  type TestUserAccountDefinition
 } from "../src/constants/test-login.constants";
 
 const BCRYPT_ROUNDS = 12;
@@ -50,23 +49,53 @@ interface SeedIdentityInput {
 }
 
 interface SeedCoreReadOptions {
-  seedTestLogin: boolean;
-  testLoginPasswordHash: string;
+  seedRequiredTestAccounts: boolean;
+  testUserPasswordHash: string | null;
 }
 
-export const getAdminSeedConfig = (env: NodeJS.ProcessEnv = process.env): AdminSeedConfig => {
-  const password = env.ADMIN_DEFAULT_PASSWORD;
+const isLocalLikeEnv = (env: NodeJS.ProcessEnv): boolean =>
+  env.NODE_ENV === "development" || env.NODE_ENV === "test" || env.DEPLOY_ENV === "local";
 
-  if (!password || password.trim().length === 0) {
+export const getTestUserSeedPassword = (env: NodeJS.ProcessEnv = process.env): string => {
+  const testUserPassword = env.TEST_USER_DEFAULT_PASSWORD?.trim();
+  if (testUserPassword) {
+    return testUserPassword;
+  }
+
+  const adminPassword = env.ADMIN_DEFAULT_PASSWORD?.trim();
+  if (adminPassword && isLocalLikeEnv(env)) {
+    return adminPassword;
+  }
+
+  if (!adminPassword) {
+    throw new Error(
+      "TEST_USER_DEFAULT_PASSWORD or ADMIN_DEFAULT_PASSWORD is required before running the User Management seed."
+    );
+  }
+
+  throw new Error("TEST_USER_DEFAULT_PASSWORD is required for non-local test account seeds.");
+};
+
+export const getAdminSeedConfig = (env: NodeJS.ProcessEnv = process.env): AdminSeedConfig => {
+  const adminEmail = env.ADMIN_DEFAULT_EMAIL?.trim() || DEFAULT_ADMIN_EMAIL;
+  const password =
+    shouldSeedRequiredTestAccounts(env) && adminEmail === DEFAULT_ADMIN_EMAIL
+      ? getTestUserSeedPassword(env)
+      : env.ADMIN_DEFAULT_PASSWORD?.trim();
+
+  if (!password) {
     throw new Error("ADMIN_DEFAULT_PASSWORD is required before running the User Management seed.");
   }
 
   return {
-    email: env.ADMIN_DEFAULT_EMAIL?.trim() || DEFAULT_ADMIN_EMAIL,
+    email: adminEmail,
     username: env.ADMIN_DEFAULT_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME,
     password
   };
 };
+
+export const shouldSeedRequiredTestAccounts = (env: NodeJS.ProcessEnv = process.env): boolean =>
+  env.DEPLOY_ENV !== "prod";
 
 const createSeedPrismaClient = (): PrismaClient =>
   new PrismaClient({
@@ -162,12 +191,6 @@ const assignSeedRole = async (
   });
 };
 
-const isTruthyEnvValue = (value: string | undefined): boolean =>
-  ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
-
-export const shouldSeedTestLoginAccount = (env: NodeJS.ProcessEnv = process.env): boolean =>
-  env.NODE_ENV !== "production" && isTruthyEnvValue(env.AUTH_TEST_LOGIN_ENABLED);
-
 const getRequiredRole = (roleByCode: Map<string, { id: number }>, code: string): { id: number } => {
   const role = roleByCode.get(code);
 
@@ -178,7 +201,98 @@ const getRequiredRole = (roleByCode: Map<string, { id: number }>, code: string):
   return role;
 };
 
-const seedTestLoginAccount = async (
+const upsertTestAccountProfile = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    account: TestUserAccountDefinition;
+    userId: number;
+    username: string;
+    shopId: number;
+  }
+): Promise<{ scopeType: string; scopeId: number | null; displayName: string }> => {
+  if (input.account.identityType === "merchant") {
+    await tx.shop.update({
+      where: { id: input.shopId },
+      data: { ownerUserId: input.userId }
+    });
+
+    return {
+      scopeType: "shop",
+      scopeId: input.shopId,
+      displayName: input.username
+    };
+  }
+
+  if (input.account.identityType === "technician") {
+    const technician = await tx.technicianProfile.upsert({
+      where: { userId: input.userId },
+      create: {
+        userId: input.userId,
+        shopId: input.shopId,
+        displayName: input.username,
+        bio: "Dedicated test technician identity for real login smoke checks.",
+        city: "Tokyo",
+        serviceArea: "Tokyo",
+        yearsExperience: 1,
+        status: "published",
+        isRecommended: false
+      },
+      update: {
+        shopId: input.shopId,
+        displayName: input.username,
+        bio: "Dedicated test technician identity for real login smoke checks.",
+        city: "Tokyo",
+        serviceArea: "Tokyo",
+        yearsExperience: 1,
+        status: "published",
+        isRecommended: false,
+        deletedAt: null
+      }
+    });
+
+    return {
+      scopeType: "technician_profile",
+      scopeId: technician.id,
+      displayName: technician.displayName
+    };
+  }
+
+  if (input.account.identityType === "customer") {
+    const customer = await tx.customerProfile.upsert({
+      where: { userId: input.userId },
+      create: {
+        userId: input.userId,
+        displayName: input.username,
+        bio: "Dedicated test customer identity for real login smoke checks.",
+        city: "Tokyo",
+        membershipLevel: "standard",
+        isPublic: false
+      },
+      update: {
+        displayName: input.username,
+        bio: "Dedicated test customer identity for real login smoke checks.",
+        city: "Tokyo",
+        membershipLevel: "standard",
+        isPublic: false,
+        deletedAt: null
+      }
+    });
+
+    return {
+      scopeType: "customer_profile",
+      scopeId: customer.id,
+      displayName: customer.displayName
+    };
+  }
+
+  return {
+    scopeType: "global",
+    scopeId: null,
+    displayName: input.username
+  };
+};
+
+const seedRequiredTestAccounts = async (
   tx: Prisma.TransactionClient,
   input: {
     passwordHash: string;
@@ -186,131 +300,37 @@ const seedTestLoginAccount = async (
     shopId: number;
   }
 ): Promise<void> => {
-  const testUser = await upsertSeedUser(
-    tx,
-    {
-      email: TEST_LOGIN_EMAIL,
-      username: TEST_LOGIN_USERNAME,
-      phone: "+81300000999"
-    },
-    input.passwordHash
-  );
-  const testCustomer = await tx.customerProfile.upsert({
-    where: { userId: testUser.id },
-    create: {
-      userId: testUser.id,
-      displayName: "NeeDo Test Customer",
-      bio: "Dedicated non-production test profile for auth smoke checks.",
-      city: "Tokyo",
-      membershipLevel: "standard",
-      isPublic: false
-    },
-    update: {
-      displayName: "NeeDo Test Customer",
-      bio: "Dedicated non-production test profile for auth smoke checks.",
-      city: "Tokyo",
-      membershipLevel: "standard",
-      isPublic: false,
-      deletedAt: null
-    }
-  });
-  const testTechnician = await tx.technicianProfile.upsert({
-    where: { userId: testUser.id },
-    create: {
-      userId: testUser.id,
-      shopId: input.shopId,
-      displayName: "NeeDo Test Technician",
-      bio: "Dedicated non-production technician identity for auth smoke checks.",
-      city: "Tokyo",
-      serviceArea: "Tokyo",
-      yearsExperience: 1,
-      status: "draft",
-      isRecommended: false
-    },
-    update: {
-      shopId: input.shopId,
-      displayName: "NeeDo Test Technician",
-      bio: "Dedicated non-production technician identity for auth smoke checks.",
-      city: "Tokyo",
-      serviceArea: "Tokyo",
-      yearsExperience: 1,
-      status: "draft",
-      isRecommended: false,
-      deletedAt: null
-    }
-  });
+  for (const account of TEST_USER_ACCOUNTS) {
+    const user = await upsertSeedUser(
+      tx,
+      {
+        email: account.email,
+        username: account.username
+      },
+      input.passwordHash
+    );
+    const identity = await upsertTestAccountProfile(tx, {
+      account,
+      userId: user.id,
+      username: account.username,
+      shopId: input.shopId
+    });
 
-  await upsertSeedIdentity(tx, {
-    userId: testUser.id,
-    type: "platform",
-    scopeType: "global",
-    scopeId: null,
-    displayName: TEST_LOGIN_USERNAME,
-    isDefault: true
-  });
-  await upsertSeedIdentity(tx, {
-    userId: testUser.id,
-    type: "merchant_owner",
-    scopeType: "shop",
-    scopeId: input.shopId,
-    displayName: "NeeDo Test Store",
-    isDefault: false
-  });
-  await upsertSeedIdentity(tx, {
-    userId: testUser.id,
-    type: "customer",
-    scopeType: "customer_profile",
-    scopeId: testCustomer.id,
-    displayName: testCustomer.displayName,
-    isDefault: false
-  });
-  await upsertSeedIdentity(tx, {
-    userId: testUser.id,
-    type: "technician",
-    scopeType: "technician_profile",
-    scopeId: testTechnician.id,
-    displayName: testTechnician.displayName,
-    isDefault: false
-  });
-  await upsertSeedIdentity(tx, {
-    userId: testUser.id,
-    type: "broker",
-    scopeType: "global",
-    scopeId: null,
-    displayName: "NeeDo Test Broker",
-    isDefault: false
-  });
-
-  await assignSeedRole(tx, {
-    userId: testUser.id,
-    roleId: getRequiredRole(input.roleByCode, "admin").id,
-    scopeType: "global",
-    scopeId: null
-  });
-  await assignSeedRole(tx, {
-    userId: testUser.id,
-    roleId: getRequiredRole(input.roleByCode, "merchant_owner").id,
-    scopeType: "shop",
-    scopeId: input.shopId
-  });
-  await assignSeedRole(tx, {
-    userId: testUser.id,
-    roleId: getRequiredRole(input.roleByCode, "customer").id,
-    scopeType: "customer_profile",
-    scopeId: testCustomer.id
-  });
-  await assignSeedRole(tx, {
-    userId: testUser.id,
-    roleId: getRequiredRole(input.roleByCode, "technician").id,
-    scopeType: "technician_profile",
-    scopeId: testTechnician.id
-  });
-  await assignSeedRole(tx, {
-    userId: testUser.id,
-    roleId: getRequiredRole(input.roleByCode, "broker").id,
-    scopeType: "global",
-    scopeId: null
-  });
+    await upsertSeedIdentity(tx, {
+      userId: user.id,
+      type: account.identityType,
+      scopeType: identity.scopeType,
+      scopeId: identity.scopeId,
+      displayName: identity.displayName,
+      isDefault: true
+    });
+    await assignSeedRole(tx, {
+      userId: user.id,
+      roleId: getRequiredRole(input.roleByCode, account.roleCode).id,
+      scopeType: identity.scopeType,
+      scopeId: identity.scopeId
+    });
+  }
 };
 
 const seedCoreReadData = async (
@@ -520,9 +540,13 @@ const seedCoreReadData = async (
     });
   }
 
-  if (options.seedTestLogin) {
-    await seedTestLoginAccount(tx, {
-      passwordHash: options.testLoginPasswordHash,
+  if (options.seedRequiredTestAccounts) {
+    if (!options.testUserPasswordHash) {
+      throw new Error("TEST_USER_DEFAULT_PASSWORD is required before seeding test accounts.");
+    }
+
+    await seedRequiredTestAccounts(tx, {
+      passwordHash: options.testUserPasswordHash,
       roleByCode,
       shopId: shop.id
     });
@@ -1039,7 +1063,10 @@ export const seedUserManagement = async (
 ): Promise<void> => {
   const adminConfig = getAdminSeedConfig();
   const adminPasswordHash = await hash(adminConfig.password, BCRYPT_ROUNDS);
-  const testLoginPasswordHash = await hash(TEST_LOGIN_PASSWORD, BCRYPT_ROUNDS);
+  const seedTestAccounts = shouldSeedRequiredTestAccounts();
+  const testUserPasswordHash = seedTestAccounts
+    ? await hash(getTestUserSeedPassword(), BCRYPT_ROUNDS)
+    : null;
   const rolePermissionAssignments = buildRolePermissionAssignments();
 
   await prisma.$transaction(async (tx) => {
@@ -1208,8 +1235,8 @@ export const seedUserManagement = async (
     }
 
     await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
-      seedTestLogin: shouldSeedTestLoginAccount(),
-      testLoginPasswordHash
+      seedRequiredTestAccounts: seedTestAccounts,
+      testUserPasswordHash
     });
   });
 };

@@ -338,6 +338,16 @@ export const SYSTEM_PERMISSIONS = [
 
   createPermission("menu:dashboard", "仪表盘菜单", "menu", "menu", "显示仪表盘菜单"),
   createPermission("page:dashboard", "仪表盘页面", "page", "dashboard", "访问仪表盘页面"),
+  createPermission("menu:client-app", "用户端菜单", "menu", "menu", "显示 C 端用户 App"),
+  createPermission("menu:merchant-app", "商户端菜单", "menu", "menu", "显示商户端 App"),
+  createPermission("menu:technician-app", "技师端菜单", "menu", "menu", "显示技师端 App"),
+  createPermission("menu:admin-console", "运营后台菜单", "menu", "menu", "显示运营后台入口"),
+  createPermission("menu:merchant-admin", "商户后台菜单", "menu", "menu", "显示商户后台入口"),
+  createPermission("menu:technician-schedule", "技师日程菜单", "menu", "menu", "显示技师日程入口"),
+  createPermission("menu:orders", "订单菜单", "menu", "menu", "显示订单入口"),
+  createPermission("menu:messages", "消息菜单", "menu", "menu", "显示消息入口"),
+  createPermission("menu:social", "Social 菜单", "menu", "menu", "显示 Social 入口"),
+  createPermission("menu:settings", "设置菜单", "menu", "menu", "显示设置入口"),
   createPermission("menu:user-management", "用户管理菜单", "menu", "menu", "显示用户管理菜单"),
   createPermission("menu:role-management", "角色管理菜单", "menu", "menu", "显示角色管理菜单"),
   createPermission(
@@ -363,6 +373,13 @@ const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
   "page:dashboard"
 ] as const satisfies readonly SystemPermissionCode[];
 
+const COMMON_PORTAL_MENU_PERMISSION_CODES = [
+  "menu:orders",
+  "menu:messages",
+  "menu:social",
+  "menu:settings"
+] as const satisfies readonly SystemPermissionCode[];
+
 const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:user-management",
@@ -379,6 +396,8 @@ const READ_ONLY_BACKOFFICE_PERMISSION_CODES = [
 
 const CUSTOMER_BOOKING_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "menu:client-app",
+  ...COMMON_PORTAL_MENU_PERMISSION_CODES,
   "booking:create",
   "order:list",
   "order:read",
@@ -389,6 +408,7 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
 
 const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  ...COMMON_PORTAL_MENU_PERMISSION_CODES,
   "order:list",
   "order:read",
   "order:confirm",
@@ -431,6 +451,7 @@ const FINANCE_PERMISSION_CODES = [
 
 const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "menu:admin-console",
   "backoffice:dashboard:read",
   "backoffice:orders:list",
   "backoffice:schedule:list",
@@ -444,6 +465,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
 
 const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+  "menu:merchant-app",
+  "menu:merchant-admin",
   "merchant-admin:dashboard:read",
   "merchant-admin:orders:list",
   "merchant-admin:schedule:list",
@@ -500,7 +523,12 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES
   ],
-  technician: [...SERVICE_PROVIDER_ORDER_PERMISSION_CODES, ...REALTIME_USER_PERMISSION_CODES],
+  technician: [
+    "menu:technician-app",
+    "menu:technician-schedule",
+    ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
+    ...REALTIME_USER_PERMISSION_CODES
+  ],
   customer: [...CUSTOMER_BOOKING_PERMISSION_CODES, ...REALTIME_USER_PERMISSION_CODES],
   broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
   scout: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],

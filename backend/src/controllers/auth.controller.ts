@@ -8,8 +8,7 @@ import type {
   LogoutBody,
   OtpSendBody,
   OtpVerifyBody,
-  RefreshBody,
-  TestLoginBody
+  RefreshBody
 } from "../validators/auth.validator";
 
 type BodyRequest<TBody> = Request<Record<string, string>, unknown, TBody>;
@@ -28,24 +27,6 @@ export class AuthController {
         .status(200)
         .json(
           successResponse(await this.authService.login(email, password, this.getContext(request)))
-        );
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  public testLogin = async (
-    request: BodyRequest<TestLoginBody>,
-    response: Response,
-    next: NextFunction
-  ): Promise<void> => {
-    try {
-      response
-        .status(200)
-        .json(
-          successResponse(
-            await this.authService.testLogin(request.body.portal, this.getContext(request))
-          )
         );
     } catch (error) {
       next(error);

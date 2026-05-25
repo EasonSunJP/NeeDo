@@ -29,10 +29,15 @@ GET /api/v1/docs
 
 Step 05 Auth runtime variables:
 
-- `AUTH_ACCESS_TOKEN_SECRET`: HMAC secret for JWT access tokens, minimum 32 characters.
-- `AUTH_REFRESH_TOKEN_SECRET`: HMAC secret for JWT refresh tokens, minimum 32 characters.
-- `AUTH_ACCESS_TOKEN_TTL_SECONDS`: access-token lifetime, capped at 900 seconds.
-- `AUTH_REFRESH_TOKEN_TTL_SECONDS`: refresh-token lifetime, capped at 604800 seconds.
+- `JWT_ACCESS_SECRET`: HMAC secret for JWT access tokens, minimum 32 characters.
+- `JWT_REFRESH_SECRET`: HMAC secret for JWT refresh tokens, minimum 32 characters.
+- `JWT_ACCESS_EXPIRES_IN`: access-token lifetime in seconds, capped at 900 seconds.
+- `JWT_REFRESH_EXPIRES_IN`: refresh-token lifetime in seconds, capped at 604800 seconds.
+- `AUTH_ACCESS_TOKEN_SECRET`, `AUTH_REFRESH_TOKEN_SECRET`,
+  `AUTH_ACCESS_TOKEN_TTL_SECONDS`, and `AUTH_REFRESH_TOKEN_TTL_SECONDS` remain
+  accepted as legacy aliases.
+- `TEST_USER_DEFAULT_PASSWORD`: bcrypt-seeded password for local/staging test
+  accounts. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`.
 - `AUTH_LOGIN_FAILURE_LIMIT`: failed password-login attempts before lockout.
 - `AUTH_LOGIN_FAILURE_WINDOW_SECONDS`: Redis TTL for failed-login counters.
 - `AUTH_LOGIN_LOCK_SECONDS`: Redis TTL for account lockout.

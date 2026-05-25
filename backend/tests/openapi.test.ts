@@ -10,7 +10,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/ready");
     expect(response.body.paths).toHaveProperty("/api/v1/metrics");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/login");
-    expect(response.body.paths).toHaveProperty("/api/v1/auth/test-login");
+    expect(response.body.paths).not.toHaveProperty("/api/v1/auth/test-login");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/send");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/verify");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/refresh");

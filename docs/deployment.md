@@ -26,7 +26,7 @@ Replace all placeholder secrets and hostnames before starting services.
 ```bash
 docker compose -f deploy/staging/docker-compose.yml up --build -d
 docker compose -f deploy/staging/docker-compose.yml ps
-curl -fsS http://127.0.0.1:3100/api/v1/ready
+curl -fsS http://127.0.0.1:3000/api/v1/ready
 ```
 
 The staging stack contains:
@@ -40,7 +40,7 @@ The staging stack contains:
 ```bash
 docker compose -f deploy/prod/docker-compose.yml up --build -d
 docker compose -f deploy/prod/docker-compose.yml ps
-curl -fsS http://127.0.0.1:3100/api/v1/ready
+curl -fsS http://127.0.0.1:3000/api/v1/ready
 ```
 
 For managed production infrastructure, keep the same env contract and replace

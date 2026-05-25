@@ -116,7 +116,6 @@ const createAuthFixture = async () => {
   const loginLogs: unknown[] = [];
   const auditLogs: unknown[] = [];
   const passwordHash = await hash("Abcd@1234", 12);
-  const testLoginPasswordHash = await hash("admin", 12);
 
   const passwordUser = {
     id: 1,
@@ -166,70 +165,25 @@ const createAuthFixture = async () => {
       }
     ]
   };
-  const testLoginUser = {
+  const customerUser = {
     ...passwordUser,
-    id: 99,
-    email: "admin@needo.life",
-    passwordHash: testLoginPasswordHash,
-    username: "NeeDo Test Admin",
+    id: 2,
+    email: "customer@example.com",
+    username: "NeeDo Customer",
     identities: [
       {
-        id: 90,
-        userId: 99,
-        type: "platform",
-        scopeType: "global",
-        scopeId: null,
-        displayName: "NeeDo Test Admin",
-        isDefault: true,
-        isActive: true,
-        deletedAt: null
-      },
-      {
-        id: 91,
-        userId: 99,
-        type: "merchant_owner",
-        scopeType: "shop",
-        scopeId: 1,
-        displayName: "NeeDo Test Store",
-        isDefault: false,
-        isActive: true,
-        deletedAt: null
-      },
-      {
-        id: 92,
-        userId: 99,
+        id: 20,
+        userId: 2,
         type: "customer",
         scopeType: "customer_profile",
         scopeId: 2,
-        displayName: "NeeDo Test Customer",
-        isDefault: false,
-        isActive: true,
-        deletedAt: null
-      },
-      {
-        id: 93,
-        userId: 99,
-        type: "technician",
-        scopeType: "technician_profile",
-        scopeId: 3,
-        displayName: "NeeDo Test Technician",
-        isDefault: false,
-        isActive: true,
-        deletedAt: null
-      },
-      {
-        id: 94,
-        userId: 99,
-        type: "broker",
-        scopeType: "global",
-        scopeId: null,
-        displayName: "NeeDo Test Broker",
-        isDefault: false,
+        displayName: "NeeDo Customer",
+        isDefault: true,
         isActive: true,
         deletedAt: null
       }
     ],
-    userRoles: ["admin", "merchant_owner", "technician", "customer", "broker"].map((roleCode) => ({
+    userRoles: ["customer"].map((roleCode) => ({
       role: {
         code: roleCode,
         deletedAt: null,
@@ -237,12 +191,13 @@ const createAuthFixture = async () => {
           "auth:me",
           "auth:refresh",
           "auth:logout",
-          "menu:dashboard",
-          "menu:user-management",
-          "user:list",
-          "merchant-admin:dashboard:read",
-          "merchant-admin:orders:list",
-          "merchant-admin:finance:list"
+          "menu:client-app",
+          "menu:orders",
+          "menu:messages",
+          "menu:social",
+          "booking:create",
+          "order:list",
+          "order:read"
         ].map((code) => ({
           deletedAt: null,
           permission: {
@@ -255,7 +210,43 @@ const createAuthFixture = async () => {
       deletedAt: null
     }))
   };
-  const users = [passwordUser, testLoginUser];
+  const disabledUser = {
+    ...passwordUser,
+    id: 3,
+    email: "disabled@example.com",
+    username: "Disabled User",
+    isActive: false
+  };
+  const noPermissionUser = {
+    ...passwordUser,
+    id: 4,
+    email: "noperms@example.com",
+    username: "No Permissions",
+    identities: [
+      {
+        id: 40,
+        userId: 4,
+        type: "platform",
+        scopeType: "global",
+        scopeId: null,
+        displayName: "No Permissions",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      }
+    ],
+    userRoles: [
+      {
+        role: {
+          code: "viewer",
+          deletedAt: null,
+          rolePermissions: []
+        },
+        deletedAt: null
+      }
+    ]
+  };
+  const users = [passwordUser, customerUser, disabledUser, noPermissionUser];
 
   const repository = {
     findUserByEmail: jest.fn(async (email: string) =>
@@ -263,12 +254,6 @@ const createAuthFixture = async () => {
     ),
     findUserById: jest.fn(async (id: number) =>
       users.find((item) => item.id === id && !item.deletedAt) ?? null
-    ),
-    findTestLoginUserByPortal: jest.fn(async (portal: string) =>
-      ["admin", "merchant", "technician", "business", "user"].includes(portal) &&
-      !testLoginUser.deletedAt
-        ? testLoginUser
-        : null
     ),
     updateLastLoginAt: jest.fn(async (id: number, loggedInAt: Date) => {
       const user = users.find((item) => item.id === id);
@@ -305,67 +290,30 @@ const createAuthFixture = async () => {
     loginLogs,
     auditLogs,
     user: passwordUser,
-    testLoginUser
+    customerUser,
+    disabledUser,
+    noPermissionUser
   };
 };
 
 describe("Step 05 Auth / OTP / Token / Session", () => {
-  it("allows temporary test login without a password through real token issuance and audit logging", async () => {
+  it("does not expose a passwordless test-login endpoint", async () => {
     const fixture = await createAuthFixture();
 
-    const response = await request(fixture.app)
+    await request(fixture.app)
       .post("/api/v1/auth/test-login")
       .send({ portal: "admin" })
-      .expect(200);
+      .expect(404);
 
-    expect(response.body).toEqual({
-      code: 0,
-      message: "success",
-      data: {
-        accessToken: expect.any(String),
-        refreshToken: expect.any(String),
-        expiresIn: 900
-      }
-    });
-    expect(fixture.repository.findTestLoginUserByPortal).toHaveBeenCalledWith("admin");
-    expect(fixture.sessionStore.refreshTokens.size).toBe(1);
-    expect(fixture.loginLogs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          userId: 99,
-          email: "admin@needo.life",
-          status: "success"
-        })
-      ])
-    );
-    expect(fixture.auditLogs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          actorId: 99,
-          action: "auth.test_login",
-          targetType: "User",
-          targetId: 99,
-          metadata: { portal: "admin" }
-        })
-      ])
-    );
-
-    await request(fixture.app)
-      .get("/api/v1/auth/me")
-      .set("Authorization", `Bearer ${response.body.data.accessToken}`)
-      .expect(200)
-      .expect((meResponse) => {
-        expect(meResponse.body.data.email).toBe("admin@needo.life");
-        expect(JSON.stringify(meResponse.body)).not.toContain("passwordHash");
-      });
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
   });
 
-  it("uses the test account identity that matches the requested test-login portal", async () => {
+  it("logs in admin@example.com with email and password", async () => {
     const fixture = await createAuthFixture();
 
     const response = await request(fixture.app)
-      .post("/api/v1/auth/test-login")
-      .send({ portal: "merchant" })
+      .post("/api/v1/auth/login")
+      .send({ email: "admin@example.com", password: "Abcd@1234" })
       .expect(200);
 
     await request(fixture.app)
@@ -373,22 +321,29 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       .set("Authorization", `Bearer ${response.body.data.accessToken}`)
       .expect(200)
       .expect((meResponse) => {
-        expect(meResponse.body.data.email).toBe("admin@needo.life");
-        expect(meResponse.body.data.currentIdentity).toMatchObject({
-          type: "merchant_owner",
-          scopeType: "shop",
-          scopeId: 1
-        });
+        expect(meResponse.body.data.email).toBe("admin@example.com");
+        expect(meResponse.body.data.roles).toEqual(["admin"]);
+        expect(meResponse.body.data.permissions).toEqual(expect.arrayContaining(["auth:me", "user:list"]));
       });
   });
 
-  it("allows the fixed test account to log in with the documented admin password", async () => {
+  it("logs in customer@example.com with email and password", async () => {
     const fixture = await createAuthFixture();
 
-    await request(fixture.app)
+    const response = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@needo.life", password: "admin" })
+      .send({ email: "customer@example.com", password: "Abcd@1234" })
       .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${response.body.data.accessToken}`)
+      .expect(200)
+      .expect((meResponse) => {
+        expect(meResponse.body.data.email).toBe("customer@example.com");
+        expect(meResponse.body.data.roles).toEqual(["customer"]);
+        expect(meResponse.body.data.permissions).toEqual(expect.arrayContaining(["menu:client-app", "order:list"]));
+      });
   });
 
   it("logs in with email and password, stores the refresh token, and hides sensitive fields", async () => {
@@ -456,6 +411,30 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       expect.arrayContaining([
         expect.objectContaining({ status: "failed", failReason: "invalid_credentials" }),
         expect.objectContaining({ status: "locked", failReason: "too_many_attempts" })
+      ])
+    );
+  });
+
+  it("rejects disabled users before issuing tokens", async () => {
+    const fixture = await createAuthFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ email: "disabled@example.com", password: "Abcd@1234" })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.ACCOUNT_DISABLED);
+        expect(response.body.message).toBe("error.auth.account_disabled");
+      });
+
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+    expect(fixture.loginLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          email: "disabled@example.com",
+          failReason: "account_disabled",
+          status: "failed"
+        })
       ])
     );
   });
@@ -588,6 +567,22 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       .expect(401)
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.TOKEN_BLACKLISTED);
+      });
+  });
+
+  it("does not allow a user with empty permissions through protected endpoints", async () => {
+    const fixture = await createAuthFixture();
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ email: "noperms@example.com", password: "Abcd@1234" })
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .expect(403)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN);
       });
   });
 });
