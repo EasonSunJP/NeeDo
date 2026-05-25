@@ -4,7 +4,6 @@ import { IconButton, floatingHeaderControlButtonClassName } from "../../componen
 import { featureCarouselFrameClassName, FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
@@ -14,7 +13,7 @@ import { getCategoryHeroImage, orderedServiceCategories, type HomeCategoryId } f
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn, yen } from "../../lib/utils";
-import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
+import { TechnicianShowcaseCard, getTechnicianDynamicPath, UnifiedSimpleProfileCard } from "../../shared/profile-card";
 import type { ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
 
 const categoryDescriptionMap: Record<HomeCategoryId, string> = {
@@ -88,6 +87,7 @@ const entityFilterTags: Array<{ value: CategoryEntityFilter; label: string }> = 
   { value: "technician", label: "技师" },
   { value: "service", label: "服务" }
 ];
+const entityFilterMenuTags = entityFilterTags.filter((tag) => tag.value !== "all");
 const activeSearchChipClassName =
   "rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface))] px-3 py-1.5 text-[12px] font-black text-[color:var(--client-primary)]";
 
@@ -429,15 +429,17 @@ export function CategoryPage() {
     [activeCategoryId, categoryQuery.data]
   );
   const searchKeyword = useMemo(() => buildDisplayLabels(appliedTagIds, appliedCustomLabels).join(" "), [appliedCustomLabels, appliedTagIds]);
+  const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0 || appliedCustomLabels.length > 0;
+  const searchCategoryId = entityFilter === "technician" && !hasExplicitCategoryScope ? undefined : apiCategoryId;
   const searchQuery = useCoreReadQuery(
     () =>
       coreReadApi.search({
-        categoryId: apiCategoryId,
+        categoryId: searchCategoryId,
         keyword: searchKeyword || undefined,
-        pageSize: 20,
+        pageSize: 40,
         sort: "rating_desc"
       }),
-    [apiCategoryId, searchKeyword]
+    [searchCategoryId, searchKeyword]
   );
   const apiServices = useMemo(
     () => searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? [],
@@ -461,6 +463,16 @@ export function CategoryPage() {
         const technician = mapCoreTechnicianToTechnician(service.technician);
         return [[technician.id, technician] as const];
       })).values()),
+    [searchQuery.data]
+  );
+  const serviceByTechnicianId = useMemo(
+    () => {
+      const entries = (searchQuery.data?.list ?? [])
+        .filter((service) => Boolean(service.technician))
+        .map((service) => [String(service.technician?.id), mapCoreServiceToServiceItem(service)] as const);
+
+      return new Map(entries);
+    },
     [searchQuery.data]
   );
 
@@ -562,7 +574,7 @@ export function CategoryPage() {
         }))
         .filter((item) => matchesAllSearchKeywords(buildTechnicianSearchFragments(item.technician), appliedSearchKeywords))
         .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "technician" ? 12 : 4),
+        .slice(0, entityFilter === "technician" ? 20 : 4),
     [activeCategory, apiTechnicians, appliedSearchKeywords, categoryTokens, entityFilter]
   );
 
@@ -577,8 +589,16 @@ export function CategoryPage() {
           : [])
       ]
         .sort((left, right) => right.score - left.score)
-        .slice(0, entityFilter === "store" || entityFilter === "technician" ? 12 : 6),
+        .slice(0, entityFilter === "technician" ? 20 : entityFilter === "store" ? 12 : 6),
     [entityFilter, relatedStores, relatedTechnicians]
+  );
+  const bookableStoreProfiles = useMemo(
+    () => bookableProfiles.filter((item): item is Extract<(typeof bookableProfiles)[number], { type: "shop" }> => item.type === "shop"),
+    [bookableProfiles]
+  );
+  const bookableTechnicianProfiles = useMemo(
+    () => bookableProfiles.filter((item): item is Extract<(typeof bookableProfiles)[number], { type: "technician" }> => item.type === "technician"),
+    [bookableProfiles]
   );
 
   const categoryHeroSlides = useMemo<FeatureCarouselSlide[]>(() => {
@@ -743,14 +763,6 @@ export function CategoryPage() {
     handleCustomLabelRemove(chip.label);
   };
 
-  const viewMoreTo =
-    entityFilter === "store"
-      ? "/categories?type=store"
-      : entityFilter === "technician"
-        ? "/categories?type=technician"
-        : activeCategory.mode === "store"
-          ? "/categories?type=store"
-          : `/categories?type=service&category=${activeCategory.id}`;
   const entityFilterLabel = entityFilterTags.find((tag) => tag.value === entityFilter)?.label ?? "全部";
   const showServiceSection = entityFilter === "all" || entityFilter === "service";
   const hasVisibleResults = (showServiceSection && relatedServices.length > 0) || bookableProfiles.length > 0;
@@ -761,6 +773,15 @@ export function CategoryPage() {
   return (
     <MobileShell>
       <div className="relative">
+        {tagMenuOpen ? (
+          <button
+            aria-label="关闭筛选菜单"
+            className="fixed inset-0 z-30 cursor-default bg-black/28 backdrop-blur-[3px]"
+            onClick={() => setTagMenuOpen(false)}
+            type="button"
+          />
+        ) : null}
+
         <div className="pointer-events-none fixed inset-x-0 top-0 z-40 mx-auto w-full max-w-[880px]">
           <div className="pointer-events-auto safe-header-top relative border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] shadow-[0_18px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl">
             <div className="px-4 pb-2">
@@ -846,8 +867,8 @@ export function CategoryPage() {
                   </button>
                 </div>
 
-                <div className="mt-4 grid grid-cols-4 gap-2">
-                  {entityFilterTags.map((tag) => {
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {entityFilterMenuTags.map((tag) => {
                     const active = entityFilter === tag.value;
 
                     return (
@@ -957,9 +978,6 @@ export function CategoryPage() {
                     titleClassName="text-[20px] font-black tracking-[-0.02em] text-[color:var(--client-text)]"
                   />
                 </div>
-                <Button className="shrink-0 whitespace-nowrap px-4" size="sm" to={viewMoreTo} variant="secondary">
-                  更多
-                </Button>
               </div>
 
               {showServiceSection && relatedServices.length > 0 ? (
@@ -974,9 +992,9 @@ export function CategoryPage() {
                 </div>
               ) : null}
 
-              {bookableProfiles.length > 0 ? <div className="space-y-3">
-                {bookableProfiles.map((item) =>
-                  item.type === "shop" ? (
+              {bookableProfiles.length > 0 ? (
+                <div className="space-y-3">
+                  {bookableStoreProfiles.map((item) => (
                     <UnifiedSimpleProfileCard
                       className="border-transparent"
                       detailTo={`/stores/${item.store.id}`}
@@ -986,18 +1004,25 @@ export function CategoryPage() {
                       technicians={item.technicians}
                       variant="list"
                     />
-                  ) : (
-                    <UnifiedSimpleProfileCard
-                      className="border-transparent"
-                      detailTo={`/profiles/technician/${item.technician.id}`}
-                      entityType="technician"
-                      key={item.id}
-                      technician={item.technician}
-                      variant="list"
-                    />
-                  )
-                )}
-              </div> : null}
+                  ))}
+
+                  {bookableTechnicianProfiles.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
+                      {bookableTechnicianProfiles.map((item, index) => (
+                        <TechnicianShowcaseCard
+                          detailTo={getTechnicianDynamicPath(item.technician)}
+                          directService={serviceByTechnicianId.get(item.technician.id)}
+                          fallbackServices={relatedServices}
+                          key={item.id}
+                          language={language}
+                          rankIndex={index}
+                          technician={item.technician}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
           )}
         </div>

@@ -1,0 +1,280 @@
+import { Link } from "react-router-dom";
+import { translateText, type Language } from "../../i18n/translations";
+import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
+import { cn } from "../../lib/utils";
+import type { ServiceItem, Technician } from "../../types/domain";
+
+type TechnicianShowcaseCardProps = {
+  className?: string;
+  detailTo?: string;
+  directService?: ServiceItem;
+  fallbackServices?: ServiceItem[];
+  language: Language;
+  rankIndex: number;
+  technician: Technician;
+};
+
+function formatTechnicianCardRating(value: number) {
+  const normalized = Number.isFinite(value) && value > 0 ? value : 0;
+  return normalized > 5 ? normalized / 2 : normalized;
+}
+
+function formatCardYen(value: number) {
+  return `¥${Math.max(0, Math.round(value)).toLocaleString("ja-JP")}`;
+}
+
+function getTechnicianDisplayName(technician: Technician) {
+  return technician.nickname?.trim() || technician.name;
+}
+
+function getTechnicianPhoto(technician: Technician) {
+  return technician.gallery?.[0] || technician.avatar;
+}
+
+export function getTechnicianDynamicPath(technician: Technician) {
+  return `/profiles/technician/${technician.id}`;
+}
+
+function getTechnicianCardCopy(language: Language) {
+  if (language === "zh-Hant") {
+    return {
+      acceptRate: "接單率",
+      available: "可預約",
+      bookingConfirm: "預約確認中",
+      inexperienced: "未經驗",
+      newcomer: "新人",
+      off: "休息中",
+      recommended: "推薦",
+      recommendedService: "推薦服務",
+      serviceFallback: "預約服務",
+      minuteSuffix: "分鐘",
+      pricePending: "價格待確認",
+      taxSuffix: "稅後",
+      tokyo: "東京"
+    };
+  }
+
+  if (language === "ja") {
+    return {
+      acceptRate: "注文受入率",
+      available: "予約可能です",
+      bookingConfirm: "予約確認中",
+      inexperienced: "未経験",
+      newcomer: "新人",
+      off: "休憩中",
+      recommended: "おすすめ",
+      recommendedService: "おすすめサービス",
+      serviceFallback: "予約サービス",
+      minuteSuffix: "分",
+      pricePending: "価格確認中",
+      taxSuffix: "税込",
+      tokyo: "東京"
+    };
+  }
+
+  if (language === "en") {
+    return {
+      acceptRate: "acceptance",
+      available: "Bookable",
+      bookingConfirm: "Confirm booking",
+      inexperienced: "Newcomer",
+      newcomer: "New",
+      off: "Off",
+      recommended: "Recommended",
+      recommendedService: "Recommended service",
+      serviceFallback: "Bookable service",
+      minuteSuffix: "min",
+      pricePending: "Price pending",
+      taxSuffix: "tax included",
+      tokyo: "Tokyo"
+    };
+  }
+
+  if (language === "ko") {
+    return {
+      acceptRate: "수락률",
+      available: "예약 가능",
+      bookingConfirm: "예약 확인 중",
+      inexperienced: "미경험",
+      newcomer: "신규",
+      off: "휴식 중",
+      recommended: "추천",
+      recommendedService: "추천 서비스",
+      serviceFallback: "예약 서비스",
+      minuteSuffix: "분",
+      pricePending: "가격 확인 중",
+      taxSuffix: "세후",
+      tokyo: "도쿄"
+    };
+  }
+
+  return {
+    acceptRate: "接单率",
+    available: "可预约",
+    bookingConfirm: "预约确认中",
+    inexperienced: "未经验",
+    newcomer: "新人",
+    off: "休息中",
+    recommended: "推荐",
+    recommendedService: "推荐服务",
+    serviceFallback: "预约服务",
+    minuteSuffix: "分钟",
+    pricePending: "价格待确认",
+    taxSuffix: "税后",
+    tokyo: "东京"
+  };
+}
+
+function localizeTechnicianCardText(value: string, language: Language) {
+  const normalized = value.trim().toLowerCase();
+  const copy = getTechnicianCardCopy(language);
+
+  if (normalized === "tokyo" || normalized === "東京") {
+    return copy.tokyo;
+  }
+
+  if (normalized === "kitchen") {
+    if (language === "zh-Hant") return "廚衛清潔";
+    if (language === "ja") return "キッチン";
+    if (language === "ko") return "주방";
+    if (language === "en") return "kitchen";
+    return "厨卫清洁";
+  }
+
+  if (normalized === "clean") {
+    if (language === "zh-Hant") return "清潔";
+    if (language === "ja") return "清掃";
+    if (language === "ko") return "청소";
+    if (language === "en") return "clean";
+    return "清洁";
+  }
+
+  return translateText(value, language);
+}
+
+function buildTechnicianCardTags(technician: Technician, rankIndex: number, language: Language) {
+  const isNewToPlatform = technician.reviewCount <= 3 || technician.orderCount <= 3;
+  const copy = getTechnicianCardCopy(language);
+  const tags = [isNewToPlatform ? copy.newcomer : `No.${rankIndex + 1}`, copy.recommended];
+
+  if (isNewToPlatform) {
+    tags.push(copy.inexperienced);
+  }
+
+  return tags.slice(0, 5);
+}
+
+function normalizeCardText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, "");
+}
+
+function scoreServiceForTechnician(service: ServiceItem, technician: Technician) {
+  const serviceText = [service.name, service.summary, ...service.tags, ...service.serviceAreas].map(normalizeCardText).join("|");
+  const targets = [technician.name, technician.nickname ?? "", ...technician.skills, ...(technician.profileTags ?? []), ...technician.serviceAreas]
+    .map(normalizeCardText)
+    .filter(Boolean);
+
+  return targets.reduce((total, target) => total + Number(Boolean(target && serviceText.includes(target))), 0);
+}
+
+function getRecommendedServiceForTechnician(technician: Technician, directService?: ServiceItem, fallbackServices: ServiceItem[] = []) {
+  if (directService) {
+    return directService;
+  }
+
+  return (
+    [...fallbackServices].sort((left, right) => scoreServiceForTechnician(right, technician) - scoreServiceForTechnician(left, technician))[0] ??
+    null
+  );
+}
+
+export function TechnicianShowcaseCard({
+  className,
+  detailTo,
+  directService,
+  fallbackServices = [],
+  language,
+  rankIndex,
+  technician
+}: TechnicianShowcaseCardProps) {
+  const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
+  const copy = getTechnicianCardCopy(language);
+  const displayName = getTechnicianDisplayName(technician);
+  const topTags = buildTechnicianCardTags(technician, rankIndex, language);
+  const primarySkill = localizeTechnicianCardText(technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback, language);
+  const areaLabel = localizeTechnicianCardText(technician.serviceAreas[0] ?? copy.tokyo, language);
+  const statusLabel = technician.status === "available" ? copy.available : technician.status === "busy" ? copy.bookingConfirm : copy.off;
+  const packageInfo = recommendedService?.packages[0];
+  const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
+  const duration = packageInfo?.durationMinutes ?? 60;
+  const priceLabel = Number.isFinite(price) && price > 0 ? formatCardYen(price) : copy.pricePending;
+  const serviceName = localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
+
+  return (
+    <Link
+      className={cn(
+        "group block overflow-hidden rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-left shadow-[0_16px_34px_rgba(0,0,0,0.16)] transition active:scale-[0.99]",
+        className
+      )}
+      to={detailTo ?? getTechnicianDynamicPath(technician)}
+    >
+      <div className="relative aspect-[3/4] min-h-[228px] overflow-hidden bg-black">
+        <img
+          alt={displayName}
+          className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
+          src={getGeneratedImageThumbnailUrl(getTechnicianPhoto(technician))}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
+        <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
+
+        <div className="absolute left-2 top-2 flex max-w-[calc(100%-62px)] flex-col items-start gap-1.5" data-no-i18n>
+          {topTags.map((tag, index) => (
+            <span
+              className={cn(
+                "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-black leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-md",
+                index === 0
+                  ? "bg-black/70"
+                  : index === 1
+                    ? "bg-[color:color-mix(in_srgb,var(--client-primary)_72%,black_8%)]"
+                    : "bg-[color:color-mix(in_srgb,var(--client-accent)_72%,black_8%)]"
+              )}
+              key={tag}
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+
+        <div className="absolute right-2 top-2 inline-flex h-8 min-w-12 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-2 text-[12px] font-black leading-none text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]">
+          ★{formatTechnicianCardRating(technician.rating).toFixed(1)}
+        </div>
+
+        <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
+          <h3 className="line-clamp-1 text-[17px] font-black leading-6">
+            {displayName}
+            {technician.age ? <span className="ml-1 text-[14px] font-semibold text-white/82">({technician.age})</span> : null}
+          </h3>
+          <p className="mt-1 line-clamp-1 text-[12px] font-bold text-white/86">
+            {[technician.height ? `${technician.height}cm` : "", primarySkill, areaLabel].filter(Boolean).join(" / ")}
+          </p>
+          <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-white/72">
+            {statusLabel} · {copy.acceptRate} {technician.acceptRate}%
+          </p>
+        </div>
+      </div>
+
+      <div className="px-3 py-3 text-left">
+        <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]" data-no-i18n>
+          {copy.recommendedService}
+        </p>
+        <h4 className="mt-1.5 line-clamp-1 text-[13px] font-black leading-5 text-[color:var(--client-text)]">
+          {serviceName}
+        </h4>
+        <p className="mt-1 flex min-w-0 items-baseline justify-start gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
+          <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
+          <span className="min-w-0 truncate">/ {duration}{copy.minuteSuffix}({copy.taxSuffix})</span>
+        </p>
+      </div>
+    </Link>
+  );
+}

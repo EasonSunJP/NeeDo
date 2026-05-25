@@ -11,3 +11,12 @@ describe("HomePage appointment reminder", () => {
     expect(homePageSource).not.toContain("top-[calc(env(safe-area-inset-top)+152px)]");
   });
 });
+
+describe("HomePage technician recommendations", () => {
+  it("uses technician showcase cards with 20 recommendation records", () => {
+    expect(homePageSource).toContain("coreReadApi.getHomeRecommendations({ limit: 20 })");
+    expect(homePageSource).toContain('recommendationTab === "technicians" ? 20');
+    expect(homePageSource).toContain("TechnicianShowcaseCard");
+    expect(homePageSource).toContain("getTechnicianDynamicPath(technician)");
+  });
+});

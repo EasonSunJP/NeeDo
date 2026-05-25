@@ -2,6 +2,7 @@ import { demoTechnicianAvatar, imageBank, orders, reviews, schedules, serviceCat
 import { formatCustomerMembershipLevel, getCustomerLevelLabel, resolveCustomerMembership } from "../shared/profile-card/customerMembership";
 import { formatCustomerGenderLabel, getCustomerCreditReviewCount } from "../shared/profile-card/customerProfileLabels";
 import type { Customer, Review, ServiceItem, Store, Technician } from "../types/domain";
+import { composeTechnicianReviewTags } from "./technicianReviewTags";
 import type {
   DetailAvailabilityItem,
   DetailAvailabilityPreview,
@@ -538,6 +539,16 @@ function getTechnicianRecentSummary(technician: Technician) {
   return reviews.find((review) => review.targetName === technician.name)?.content;
 }
 
+export function getTechnicianReviewDisplayTags(technician: Technician) {
+  const config = technicianDetailOverrides[technician.id] ?? {};
+
+  return composeTechnicianReviewTags({
+    specialTags: technician.profileTags ?? [],
+    fallbackTags: technician.skills,
+    customerCustomTags: config.extraTags ?? []
+  });
+}
+
 function getTechnicianUpcomingSchedules(technician: Technician) {
   return schedules
     .filter((schedule) => schedule.staffId === technician.id && schedule.date >= detailDemoReferenceDate)
@@ -699,7 +710,7 @@ function buildReviewSummary(params: {
     score: params.score,
     reviewCount: params.reviewCount,
     reviewUnitLabel: inferReviewUnitLabel(params.roleType),
-    tags: dedupeStrings(params.tags).slice(0, 6),
+    tags: dedupeStrings(params.tags).slice(0, 8),
     recentSummary: params.recentSummary
   };
 }
@@ -798,6 +809,7 @@ export function buildTechnicianDetailProfile(technician: Technician): PersonalDe
   const paymentMethods = getTechnicianPaymentMethods(technician);
   const creditThreshold = getTechnicianCreditThreshold(technician);
   const prepayRequired = getTechnicianPrepayRequired(technician);
+  const reviewDisplayTags = getTechnicianReviewDisplayTags(technician);
 
   return {
     id: technician.id,
@@ -871,7 +883,7 @@ export function buildTechnicianDetailProfile(technician: Technician): PersonalDe
       scoreLabel: "服务评价",
       score,
       reviewCount: technician.reviewCount,
-      tags: [...(technician.profileTags ?? []), ...technician.skills, ...(config.extraTags ?? [])],
+      tags: reviewDisplayTags,
       recentSummary: getTechnicianRecentSummary(technician)
     })
   };

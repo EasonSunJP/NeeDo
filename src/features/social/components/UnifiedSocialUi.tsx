@@ -33,11 +33,13 @@ import { cn } from "../../../lib/utils";
 import { CustomerMembershipBadge } from "../../../shared/profile-card";
 import { resolveCustomerMembership } from "../../../shared/profile-card/customerMembership";
 import { useEntityStore } from "../../../state/entityStore";
+import { useTechnicianScheduleStore } from "../../../state/technicianScheduleStore";
 import { getImRoleConfig } from "../../im/role-config";
 import { useImStore } from "../../im/store";
 import type { ImUser } from "../../im/model";
 import { useSocial } from "../context";
 import { socialPaths } from "../paths";
+import { buildTechnicianWeeklyScheduleItems, type TechnicianWeeklyScheduleTone } from "../profileHeaderPresentation";
 import type { SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialSearchTab, SocialTimelineFilterTab } from "../types";
 import {
   buildAbsoluteUrl,
@@ -615,7 +617,6 @@ function buildProfileHeaderNotes(profile: SocialProfile) {
   if (profile.entityType === "technician") {
     return compactFieldItems([
       buildFieldItem(profile, "serviceTags", "服务标签", "primary"),
-      buildFieldItem(profile, "nextAvailability", "最近可约", "accent"),
       buildFieldItem(profile, "languages", "服务语言")
     ]);
   }
@@ -686,6 +687,52 @@ function ProfileMetaRow({
       <AppIcon className="h-4 w-4 text-[color:var(--client-muted)]" name={icon} />
       <span>{children}</span>
     </span>
+  );
+}
+
+function weeklyScheduleToneClassName(tone: TechnicianWeeklyScheduleTone) {
+  switch (tone) {
+    case "booked":
+      return "bg-[color:var(--client-warm)] shadow-[0_0_16px_color-mix(in_srgb,var(--client-warm)_46%,transparent)]";
+    case "available":
+      return "bg-[color:var(--client-primary)] shadow-[0_0_16px_color-mix(in_srgb,var(--client-primary)_46%,transparent)]";
+    case "blocked":
+      return "bg-[color:var(--client-muted)]";
+    default:
+      return "bg-[color:color-mix(in_srgb,var(--client-primary)_62%,transparent)]";
+  }
+}
+
+function SocialTechnicianWeeklySchedule({ profile }: { profile: SocialProfile }) {
+  const snapshot = useTechnicianScheduleStore();
+  const weekItems = useMemo(
+    () => buildTechnicianWeeklyScheduleItems(profile.id, snapshot),
+    [profile.id, snapshot]
+  );
+
+  return (
+    <div className="mt-3 -mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-w-max gap-2">
+        {weekItems.map((item) => (
+          <Link
+            aria-label={`${item.date} ${item.statusLabel}${item.meta ? ` ${item.meta}` : ""}`}
+            className={cn(
+              "grid h-[76px] min-w-[72px] place-items-center rounded-[22px] border px-2 py-2 text-center transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--client-primary)_52%,transparent)] hover:bg-[color:var(--client-primary-soft)]",
+              item.isToday
+                ? "border-[color:color-mix(in_srgb,var(--client-primary)_58%,transparent)] bg-[color:var(--client-primary-soft)]"
+                : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_58%,transparent)]"
+            )}
+            key={item.id}
+            title={`${item.date} ${item.statusLabel}${item.meta ? ` ${item.meta}` : ""}`}
+            to={item.href}
+          >
+            <span className="text-[11px] font-black leading-none text-[color:var(--client-muted)]">{item.weekdayLabel}</span>
+            <strong className="text-[20px] font-black leading-none text-[color:var(--client-text)]">{Number(item.dayNumber)}</strong>
+            <span className={cn("h-2.5 w-2.5 rounded-full", weeklyScheduleToneClassName(item.tone))} />
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -2229,6 +2276,8 @@ export function SocialProfileHeader({
               ) : null}
               <ProfileMetaRow icon="clock">加入于 {formatJoinedDate(profile.joinedAt)}</ProfileMetaRow>
             </div>
+
+            {profile.entityType === "technician" ? <SocialTechnicianWeeklySchedule profile={profile} /> : null}
 
             {headerNotes.length > 0 ? (
               <div className="mt-3 space-y-1.5 text-[13px] leading-6 text-[color:var(--client-muted)]">

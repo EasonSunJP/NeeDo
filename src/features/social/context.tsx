@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import { demoTechnicianAvatar, imageBank } from "../../data/mock";
+import { getTechnicianReviewDisplayTags } from "../../lib/detailProfiles";
 import { useEntityStore } from "../../state/entityStore";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import type { Customer, Store, Technician } from "../../types/domain";
@@ -230,7 +231,7 @@ function baseProfileFromTechnician(technician: Technician, index: number): Socia
     followerCount: 0,
     followingCount: 0,
     extraProfileFields: {
-      serviceTags: technician.profileTags ?? technician.skills,
+      serviceTags: getTechnicianReviewDisplayTags(technician),
       bookingAction: "预约档期",
       nextAvailability: technician.status === "available" ? "今天可约" : technician.status === "busy" ? "稍后可约" : "离线中",
       languages: technician.languages,

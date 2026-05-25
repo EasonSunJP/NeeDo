@@ -23,7 +23,7 @@ import { getResolvedCarouselSlides, resolveCarouselTargetPath, useCarouselStore 
 import { useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import { useUserOrders } from "../../state/userOrderStore";
-import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
+import { SocialProfileMiniCard, TechnicianShowcaseCard, buildServiceMiniCardData, getTechnicianDynamicPath } from "../../shared/profile-card";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import {
   useHomeLayoutStore,
@@ -342,11 +342,27 @@ function LocationSheet({
   );
 }
 
-function NearbyTechnicianCard({ technician }: { technician: Technician }) {
+function NearbyTechnicianCard({
+  directService,
+  fallbackServices,
+  language,
+  rankIndex,
+  technician
+}: {
+  directService?: ServiceItem;
+  fallbackServices: ServiceItem[];
+  language: Language;
+  rankIndex: number;
+  technician: Technician;
+}) {
   return (
-    <SocialProfileMiniCard
-      className="w-[342px] min-w-[342px]"
-      detailTo={`/profiles/technician/${technician.id}`}
+    <TechnicianShowcaseCard
+      className="w-[180px] min-w-[180px]"
+      detailTo={getTechnicianDynamicPath(technician)}
+      directService={directService}
+      fallbackServices={fallbackServices}
+      language={language}
+      rankIndex={rankIndex}
       technician={technician}
     />
   );
@@ -698,7 +714,7 @@ export function HomePage() {
   const userOrders = useUserOrders();
   const currentCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
-  const homeRecommendationsQuery = useCoreReadQuery(() => coreReadApi.getHomeRecommendations({ limit: 12 }), []);
+  const homeRecommendationsQuery = useCoreReadQuery(() => coreReadApi.getHomeRecommendations({ limit: 20 }), []);
   const apiServices = useMemo(
     () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? [],
     [homeRecommendationsQuery.data]
@@ -709,6 +725,16 @@ export function HomePage() {
   );
   const apiTechnicians = useMemo(
     () => homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? [],
+    [homeRecommendationsQuery.data]
+  );
+  const serviceByTechnicianId = useMemo(
+    () => {
+      const entries = (homeRecommendationsQuery.data?.services ?? [])
+        .filter((service) => Boolean(service.technician))
+        .map((service) => [String(service.technician?.id), mapCoreServiceToServiceItem(service)] as const);
+
+      return new Map(entries);
+    },
     [homeRecommendationsQuery.data]
   );
   const [locationSheetOpen, setLocationSheetOpen] = useState(false);
@@ -846,7 +872,7 @@ export function HomePage() {
       technicians: recommendationTechnicians.map((technician) => ({
         kind: "technician" as const,
         id: technician.id,
-        to: `/profiles/technician/${technician.id}`,
+        to: getTechnicianDynamicPath(technician),
         technician
       })),
       services: recommendationServices.map((service) => ({
@@ -861,8 +887,9 @@ export function HomePage() {
   );
 
   const currentRecommendationList = recommendationCards[recommendationTab];
-  const visibleRecommendationList = currentRecommendationList.slice(0, config.recommendation.maxItems);
-  const shouldShowMore = currentRecommendationList.length > config.recommendation.maxItems;
+  const recommendationVisibleLimit = recommendationTab === "technicians" ? 20 : config.recommendation.maxItems;
+  const visibleRecommendationList = currentRecommendationList.slice(0, recommendationVisibleLimit);
+  const shouldShowMore = currentRecommendationList.length > recommendationVisibleLimit;
   const quickActionItems = [
     {
       id: "stores",
@@ -1075,11 +1102,29 @@ export function HomePage() {
           ) : homeCoreError ? (
             <HomeCoreReadState description={homeCoreError} title="推荐读取失败" />
           ) : visibleRecommendationList.length > 0 ? (
-            <div className="space-y-3">
-              {visibleRecommendationList.map((card) => (
-                <RecommendationCard data={card} key={`${recommendationTab}-${card.id}`} />
-              ))}
-            </div>
+            recommendationTab === "technicians" ? (
+              <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
+                {visibleRecommendationList.map((card, index) =>
+                  card.kind === "technician" ? (
+                    <TechnicianShowcaseCard
+                      detailTo={card.to}
+                      directService={serviceByTechnicianId.get(card.technician.id)}
+                      fallbackServices={apiServices}
+                      key={`${recommendationTab}-${card.id}`}
+                      language={language}
+                      rankIndex={index}
+                      technician={card.technician}
+                    />
+                  ) : null
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {visibleRecommendationList.map((card) => (
+                  <RecommendationCard data={card} key={`${recommendationTab}-${card.id}`} />
+                ))}
+              </div>
+            )
           ) : (
             <HomeCoreReadState description="当前 API 暂无可展示的店铺、技师或服务推荐。" title="暂无推荐内容" />
           )}
@@ -1108,8 +1153,15 @@ export function HomePage() {
             <HomeCoreReadState description={homeCoreError} title="技师读取失败" />
           ) : nearbyTechnicians.length > 0 ? (
             <div className="scrollbar-none flex gap-3 overflow-x-auto pb-1">
-              {nearbyTechnicians.map((technician) => (
-                <NearbyTechnicianCard key={technician.id} technician={technician} />
+              {nearbyTechnicians.map((technician, index) => (
+                <NearbyTechnicianCard
+                  directService={serviceByTechnicianId.get(technician.id)}
+                  fallbackServices={apiServices}
+                  key={technician.id}
+                  language={language}
+                  rankIndex={index}
+                  technician={technician}
+                />
               ))}
             </div>
           ) : (

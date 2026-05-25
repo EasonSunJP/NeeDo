@@ -3,6 +3,7 @@ import { AppTopBar, EmptyStatePanel, PageScaffold, SurfacePanel } from "../../co
 import { Badge } from "../../components/ui/Badge";
 import { coreReadApi, coreReadIdFromRoute, mapCoreCustomerToCustomer, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { SocialProfilePage } from "../../features/social/pages/SocialProfilePage";
 import { UnifiedSimpleProfileCard } from "../../shared/profile-card";
 
@@ -59,14 +60,68 @@ function TechnicianApiProfilePage({ id }: { id: number }) {
   const services = query.data.services.map((service) => ({
     id: String(service.id),
     name: service.name,
+    description: service.description ?? `${service.name} · ${service.city}`,
+    durationMinutes: service.durationMinutes,
     price: Number.parseFloat(service.priceAmount),
     to: `/services/${service.id}`
   }));
+  const publicActivities = [
+    ...services.slice(0, 4).map((service) => ({
+      id: `service-${service.id}`,
+      title: service.name,
+      description: service.description,
+      meta: `${service.durationMinutes} 分钟 · ¥${service.price.toLocaleString("ja-JP")}`,
+      image: query.data?.services.find((item) => String(item.id) === service.id)?.coverUrl ?? null,
+      to: service.to
+    })),
+    ...query.data.mediaAssets.slice(0, 2).map((asset) => ({
+      id: `media-${asset.id}`,
+      title: asset.altText ?? "服务现场记录",
+      description: "来自技师公开资料的服务图片，可用于预约前判断服务风格。",
+      meta: "公开媒体",
+      image: asset.url,
+      to: `/profiles/technician/${query.data?.id}`
+    }))
+  ].slice(0, 4);
 
   return (
     <PageScaffold contentClassName="space-y-5 pb-28">
-      <AppTopBar subtitle="真实 API 数据源" title="技师详情" />
+      <AppTopBar subtitle="真实 API 数据源" title="技师动态" />
       <UnifiedSimpleProfileCard entityType="technician" technician={technician} variant="list" />
+      <SurfacePanel>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-black text-[color:var(--client-text)]">公开动态</h2>
+          <Badge tone="blue">{publicActivities.length} 条</Badge>
+        </div>
+        <div className="mt-3 space-y-3">
+          {publicActivities.length > 0 ? (
+            publicActivities.map((activity) => (
+              <Link
+                className="block overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:var(--client-bg-soft)]"
+                key={activity.id}
+                to={activity.to}
+              >
+                {activity.image ? (
+                  <img
+                    alt={activity.title}
+                    className="h-32 w-full object-cover"
+                    src={getGeneratedImageThumbnailUrl(activity.image)}
+                  />
+                ) : null}
+                <div className="p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="min-w-0 text-sm font-black text-[color:var(--client-text)]">{activity.title}</h3>
+                    <span className="shrink-0 text-[11px] font-black text-[color:var(--client-primary)]">{activity.meta}</span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-[color:var(--client-muted)]">{activity.description}</p>
+                </div>
+              </Link>
+            ))
+          ) : (
+            <p className="text-sm leading-6 text-[color:var(--client-muted)]">当前技师暂未公开动态内容。</p>
+          )}
+        </div>
+      </SurfacePanel>
       <SurfacePanel>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-[color:var(--client-text)]">可预约服务</h2>
