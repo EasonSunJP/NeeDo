@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
 import { useAuth } from "../../auth/AuthProvider";
+import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -30,6 +31,7 @@ type BackendLoginCopy = {
   accountPlaceholder: string;
   passwordLabel: string;
   passwordPlaceholder: string;
+  rememberCredentials: string;
   codeEmailLabel: string;
   codeEmailPlaceholder: string;
   codeLabel: string;
@@ -78,6 +80,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
+    rememberCredentials: "记录账号密码",
     codeEmailLabel: "登录邮箱",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "验证码",
@@ -122,6 +125,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
+    rememberCredentials: "記錄帳號密碼",
     codeEmailLabel: "登入信箱",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "驗證碼",
@@ -166,6 +170,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
+    rememberCredentials: "アカウントとパスワードを保存",
     codeEmailLabel: "ログインメール",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "認証コード",
@@ -210,6 +215,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
+    rememberCredentials: "Remember account and password",
     codeEmailLabel: "Login email",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "Verification code",
@@ -254,6 +260,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
+    rememberCredentials: "계정과 비밀번호 저장",
     codeEmailLabel: "로그인 이메일",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "인증코드",
@@ -340,6 +347,10 @@ function getInitialBackendLoginTheme(portal: AdminLoginPortal): AdminTheme {
   return detectSystemAdminTheme(config.dayTheme, config.nightTheme, config.themeOptions);
 }
 
+function getAdminRememberCredentialsScope(portal: AdminLoginPortal) {
+  return `admin.${portal}`;
+}
+
 function QrLoginGraphic({ mark }: { mark: string }) {
   return (
     <div className="admin-login-qr-card relative mx-auto grid aspect-square w-full max-w-[260px] grid-cols-9 gap-1 p-4">
@@ -371,6 +382,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [mode, setMode] = useState<LoginMode>(requestedMode);
   const [account, setAccount] = useState<string>(config.defaultEmail);
   const [password, setPassword] = useState<string>("");
+  const [rememberCredentials, setRememberCredentials] = useState(false);
   const [codeEmail, setCodeEmail] = useState<string>(config.defaultEmail);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -380,10 +392,26 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const nextPath = redirectPath || config.entryPath;
   const hasAccess = isAuthenticated && canAccess(config.authPortal);
   const qrToken = adminLoginQrTokens[portal];
+  const rememberCredentialsScope = useMemo(() => getAdminRememberCredentialsScope(portal), [portal]);
 
   useEffect(() => {
     setMode(requestedMode);
   }, [requestedMode]);
+
+  useEffect(() => {
+    const remembered = readRememberedCredentials(rememberCredentialsScope);
+    setRememberCredentials(remembered.enabled);
+    setAccount(remembered.enabled ? remembered.account : config.defaultEmail);
+    setPassword(remembered.enabled ? remembered.password : "");
+  }, [config.defaultEmail, rememberCredentialsScope]);
+
+  useEffect(() => {
+    if (!rememberCredentials) {
+      return;
+    }
+
+    writeRememberedCredentials(rememberCredentialsScope, account, password);
+  }, [account, password, rememberCredentials, rememberCredentialsScope]);
 
   useEffect(() => {
     if (scanStatus !== "approved") {
@@ -426,6 +454,17 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     }
 
     navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
+  };
+
+  const toggleRememberCredentials = (checked: boolean) => {
+    setRememberCredentials(checked);
+
+    if (checked) {
+      writeRememberedCredentials(rememberCredentialsScope, account, password);
+      return;
+    }
+
+    clearRememberedCredentials(rememberCredentialsScope);
   };
 
   const submitCodeLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -554,7 +593,31 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       </div>
                     </label>
                     <label className="block">
-                      <span className="admin-login-label mb-2 block text-sm font-black">{copy.passwordLabel}</span>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="admin-login-label text-sm font-black">{copy.passwordLabel}</span>
+                        <button
+                          aria-checked={rememberCredentials}
+                          className="inline-flex items-center gap-2 rounded-full px-1 py-1 text-xs font-black text-[color:var(--admin-muted)] transition hover:text-[color:var(--admin-text)]"
+                          onClick={() => toggleRememberCredentials(!rememberCredentials)}
+                          role="switch"
+                          type="button"
+                        >
+                          <span>{copy.rememberCredentials}</span>
+                          <span
+                            className={cn(
+                              "relative inline-flex h-6 w-11 items-center rounded-full border border-[color:var(--admin-line)] transition",
+                              rememberCredentials ? "bg-[color:color-mix(in_srgb,var(--admin-accent)_45%,var(--admin-surface))]" : "bg-[color:var(--admin-elevated)]"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "h-5 w-5 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.24)] transition",
+                                rememberCredentials ? "translate-x-[19px]" : "translate-x-[2px]"
+                              )}
+                            />
+                          </span>
+                        </button>
+                      </div>
                       <PasswordInput
                         inputClassName="pr-10"
                         onChange={(event) => setPassword(event.target.value)}

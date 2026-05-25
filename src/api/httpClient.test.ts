@@ -139,4 +139,19 @@ describe("httpClient auth tokens", () => {
       status: 408
     });
   });
+
+  it("reports non-json API responses as a routing error", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response("<!doctype html><html><body>NeeDo</body></html>", {
+        headers: { "content-type": "text/html" },
+        status: 200
+      })
+    );
+
+    await expect(httpClient.request("/auth/login", { auth: false })).rejects.toMatchObject({
+      code: 404,
+      message: "error.resource_not_found",
+      status: 404
+    });
+  });
 });

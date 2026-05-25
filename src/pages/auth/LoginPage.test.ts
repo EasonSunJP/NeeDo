@@ -74,4 +74,11 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).not.toContain('type="password"');
     expect(adminLoginPageSource).not.toContain('type="password"');
   });
+
+  it("offers a remember-account switch on account password login forms", () => {
+    expect(loginPageSource).toContain("rememberCredentials");
+    expect(loginPageSource).toContain("readRememberedCredentials");
+    expect(adminLoginPageSource).toContain("rememberCredentials");
+    expect(adminLoginPageSource).toContain("writeRememberedCredentials");
+  });
 });

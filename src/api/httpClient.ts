@@ -94,10 +94,16 @@ async function parseEnvelope<TData>(response: Response): Promise<ApiEnvelope<TDa
       : ({ code: response.status, message: response.statusText || "error.network", data: null } satisfies ApiErrorResponse);
   }
 
+  const contentType = response.headers.get("content-type") ?? "";
+  const looksLikeHtml = /^\s*<!doctype html|^\s*<html[\s>]/i.test(text);
+  if (looksLikeHtml || (contentType && !contentType.includes("application/json"))) {
+    throw new ApiClientError("error.resource_not_found", 404, 404);
+  }
+
   try {
     return JSON.parse(text) as ApiEnvelope<TData>;
   } catch {
-    throw new ApiClientError("error.response.invalid_json", response.status, response.status);
+    throw new ApiClientError("error.response.invalid_json", response.status || 502, response.status || 502);
   }
 }
 

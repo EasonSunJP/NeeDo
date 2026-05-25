@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
+import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -27,6 +28,7 @@ type FrontendLoginCopy = {
   accountPlaceholder: string;
   passwordLabel: string;
   passwordPlaceholder: string;
+  rememberCredentials: string;
   loginButton: string;
   loginPending: string;
   back: string;
@@ -164,6 +166,10 @@ const portalGmailEmail: Record<PortalScope, string> = {
 
 const loginCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
 
+function getFrontendRememberCredentialsScope(portal: PortalScope) {
+  return `frontend.${portal}`;
+}
+
 const loginCopy = {
   zh: {
     brand: "NeeDo",
@@ -181,6 +187,7 @@ const loginCopy = {
     accountPlaceholder: "请输入邮箱",
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
+    rememberCredentials: "记录账号密码",
     loginButton: "登录",
     loginPending: "登录中...",
     back: "返回",
@@ -243,6 +250,7 @@ const loginCopy = {
     accountPlaceholder: "請輸入信箱",
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
+    rememberCredentials: "記錄帳號密碼",
     loginButton: "登入",
     loginPending: "登入中...",
     back: "返回",
@@ -305,6 +313,7 @@ const loginCopy = {
     accountPlaceholder: "メールを入力",
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
+    rememberCredentials: "アカウントとパスワードを保存",
     loginButton: "ログイン",
     loginPending: "ログイン中...",
     back: "戻る",
@@ -367,6 +376,7 @@ const loginCopy = {
     accountPlaceholder: "Enter email",
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
+    rememberCredentials: "Remember account and password",
     loginButton: "Log in",
     loginPending: "Logging in...",
     back: "Back",
@@ -429,6 +439,7 @@ const loginCopy = {
     accountPlaceholder: "이메일 입력",
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
+    rememberCredentials: "계정과 비밀번호 저장",
     loginButton: "로그인",
     loginPending: "로그인 중...",
     back: "뒤로",
@@ -531,6 +542,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState<LoginFeedbackState | null>(null);
   const [isLoginPending, setIsLoginPending] = useState(false);
+  const [rememberCredentials, setRememberCredentials] = useState(false);
 
   useEffect(() => {
     setActivePortal(requestedPortal);
@@ -539,6 +551,7 @@ export function LoginPage() {
   const copy = loginCopy[language];
   const activePortalCopy = copy.portals[activePortal];
   const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
+  const rememberCredentialsScope = useMemo(() => getFrontendRememberCredentialsScope(activePortal), [activePortal]);
   const testCredentials = useMemo(
     () => resolveTestLoginCredentials(import.meta.env as TestCredentialEnv, activePortal),
     [activePortal]
@@ -566,6 +579,26 @@ export function LoginPage() {
     });
   }, [activePortal, loginWithProvider, redirectPath, searchParams]);
 
+  useEffect(() => {
+    const remembered = readRememberedCredentials(rememberCredentialsScope);
+    setRememberCredentials(remembered.enabled);
+
+    if (remembered.enabled) {
+      setUsername(remembered.account);
+      setPassword(remembered.password);
+    } else {
+      setPassword("");
+    }
+  }, [rememberCredentialsScope]);
+
+  useEffect(() => {
+    if (!rememberCredentials) {
+      return;
+    }
+
+    writeRememberedCredentials(rememberCredentialsScope, username, password);
+  }, [password, rememberCredentials, rememberCredentialsScope, username]);
+
   const clearFeedback = () => {
     setFeedback(null);
   };
@@ -576,6 +609,17 @@ export function LoginPage() {
     }
 
     openPortalEntry(activePortal, nextPath);
+  };
+
+  const toggleRememberCredentials = (checked: boolean) => {
+    setRememberCredentials(checked);
+
+    if (checked) {
+      writeRememberedCredentials(rememberCredentialsScope, username, password);
+      return;
+    }
+
+    clearRememberedCredentials(rememberCredentialsScope);
   };
 
   const continueWithGmail = async () => {
@@ -776,7 +820,36 @@ export function LoginPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.passwordLabel}</span>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.passwordLabel}</span>
+                    <button
+                      aria-checked={rememberCredentials}
+                      className={cn(
+                        "inline-flex items-center gap-2 rounded-full px-1 py-1 text-xs font-black text-[color:var(--client-muted)]",
+                        "transition hover:text-[color:var(--client-text)]"
+                      )}
+                      onClick={() => toggleRememberCredentials(!rememberCredentials)}
+                      role="switch"
+                      type="button"
+                    >
+                      <span>{copy.rememberCredentials}</span>
+                      <span
+                        className={cn(
+                          "relative inline-flex h-6 w-11 items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] transition",
+                          rememberCredentials
+                            ? "bg-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-surface))]"
+                            : "bg-[color:color-mix(in_srgb,var(--client-surface)_86%,var(--client-bg))]"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "h-5 w-5 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.24)] transition",
+                            rememberCredentials ? "translate-x-[19px]" : "translate-x-[2px]"
+                          )}
+                        />
+                      </span>
+                    </button>
+                  </div>
                   <PasswordInput
                     autoComplete="current-password"
                     disabled={isLoginPending}
