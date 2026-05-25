@@ -70,6 +70,7 @@ export interface CreateAuditLogInput {
 
 export interface AuthRepositoryPort {
   findUserByEmail: (email: string) => Promise<AuthUserRecord | null>;
+  findUserByLoginIdentifier: (identifier: string) => Promise<AuthUserRecord | null>;
   findUserById: (id: number) => Promise<AuthUserRecord | null>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
@@ -111,6 +112,16 @@ export class AuthRepository implements AuthRepositoryPort {
     return this.client.user.findFirst({
       where: {
         email,
+        deletedAt: null
+      },
+      include: authUserInclude
+    });
+  }
+
+  public async findUserByLoginIdentifier(identifier: string): Promise<AuthUserRecord | null> {
+    return this.client.user.findFirst({
+      where: {
+        OR: [{ email: identifier }, { username: identifier }],
         deletedAt: null
       },
       include: authUserInclude

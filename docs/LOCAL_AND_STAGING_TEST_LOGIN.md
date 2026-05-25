@@ -62,7 +62,7 @@ npm run dev:frontend
 
 ## Test Accounts
 
-The password is read from `TEST_USER_DEFAULT_PASSWORD`. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`.
+The password is read from `TEST_USER_DEFAULT_PASSWORD`. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`. The default local/staging admin test login is `admin` / `Admin.2026`.
 The frontend welcome screen can show a direct test-account login button when Vite env credentials are configured.
 For local development, `.env.development` may set portal-specific values such as
 `VITE_TEST_LOGIN_CUSTOMER_EMAIL`, `VITE_TEST_LOGIN_CUSTOMER_PASSWORD`,
@@ -72,9 +72,9 @@ For local development, `.env.development` may set portal-specific values such as
 `VITE_TEST_LOGIN_ADMIN_EMAIL`, and `VITE_TEST_LOGIN_ADMIN_PASSWORD`.
 The button still calls the real login API (`/auth/login` under the configured API base); it is not a mock login shortcut.
 
-| Email | Role | Entry |
+| Login | Role | Entry |
 |---|---|---|
-| `admin@example.com` | `admin` | Operations admin / User Management |
+| `admin` | `admin` | Operations admin / User Management |
 | `operator@example.com` | `operator` | Operations admin basic features |
 | `merchant@example.com` | `merchant_owner` | Merchant app / merchant admin |
 | `affiliate@example.com` | `broker` | Afirieito / NDA admin |
@@ -131,7 +131,7 @@ curl http://localhost:3000/api/v1/health
 ```bash
 curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"REPLACE_WITH_TEST_USER_DEFAULT_PASSWORD"}'
+  -d '{"username":"admin","password":"Admin.2026","type":"username"}'
 ```
 
 ```bash

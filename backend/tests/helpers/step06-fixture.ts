@@ -473,6 +473,13 @@ export const createStep06Fixture = async () => {
       async (email: string) =>
         users.find((user) => user.email === email && user.deletedAt === null) ?? null
     ),
+    findUserByLoginIdentifier: jest.fn(
+      async (identifier: string) =>
+        users.find(
+          (user) =>
+            (user.email === identifier || user.username === identifier) && user.deletedAt === null
+        ) ?? null
+    ),
     findUserById: jest.fn(async (id: number) => {
       attachRolePermissions(roles, permissions);
       const user = users.find((item) => item.id === id && item.deletedAt === null);

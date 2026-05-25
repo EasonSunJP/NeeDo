@@ -19,6 +19,7 @@ type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export type HttpClientRequestOptions = {
   auth?: boolean;
+  baseUrl?: string;
   body?: unknown;
   headers?: Record<string, string>;
   method?: HttpMethod;
@@ -64,6 +65,12 @@ function getApiBaseUrl() {
   return configured ? trimTrailingSlash(configured) : defaultApiPrefix;
 }
 
+function getRequestBaseUrl(baseUrl?: string) {
+  const configured = baseUrl?.trim();
+
+  return configured ? trimTrailingSlash(configured) : getApiBaseUrl();
+}
+
 function appendQuery(url: string, query?: HttpClientRequestOptions["query"]) {
   if (!query) {
     return url;
@@ -82,8 +89,12 @@ function appendQuery(url: string, query?: HttpClientRequestOptions["query"]) {
   return queryString ? `${url}?${queryString}` : url;
 }
 
-function buildApiUrl(path: string, query?: HttpClientRequestOptions["query"]) {
-  return appendQuery(`${getApiBaseUrl()}${normalizePath(path)}`, query);
+function buildApiUrl(path: string, query?: HttpClientRequestOptions["query"], baseUrl?: string) {
+  return appendQuery(`${getRequestBaseUrl(baseUrl)}${normalizePath(path)}`, query);
+}
+
+function isJsonContentType(contentType: string) {
+  return contentType.includes("application/json") || contentType.includes("+json");
 }
 
 async function parseEnvelope<TData>(response: Response): Promise<ApiEnvelope<TData>> {
@@ -97,7 +108,7 @@ async function parseEnvelope<TData>(response: Response): Promise<ApiEnvelope<TDa
 
   const contentType = response.headers.get("content-type") ?? "";
   const looksLikeHtml = /^\s*<!doctype html|^\s*<html[\s>]/i.test(text);
-  if (looksLikeHtml || (contentType && !contentType.includes("application/json"))) {
+  if (looksLikeHtml || (contentType && !isJsonContentType(contentType))) {
     throw new ApiClientError("error.resource_not_found", 404, 404);
   }
 
@@ -234,7 +245,7 @@ async function sendRequest<TData>(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<TData> {
-  const response = await fetchWithTimeout(buildApiUrl(path, options.query), {
+  const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
     headers: await createRequestHeaders(options),
     method: options.method ?? (options.body === undefined ? "GET" : "POST")
@@ -259,6 +270,40 @@ async function sendRequest<TData>(
   }
 
   return assertSuccess(envelope, response.status);
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+
+  return globalThis.btoa(binary);
+}
+
+async function sendDataUrlRequest(path: string, options: HttpClientRequestOptions): Promise<string> {
+  const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
+    body: createRequestBody(options.body),
+    headers: await createRequestHeaders(options),
+    method: options.method ?? (options.body === undefined ? "GET" : "POST")
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (!response.ok || isJsonContentType(contentType)) {
+    const envelope = await parseEnvelope<string>(response);
+    return assertSuccess(envelope, response.status);
+  }
+
+  if (contentType.includes("text/html")) {
+    throw new ApiClientError("error.resource_not_found", 404, 404);
+  }
+
+  const buffer = await response.arrayBuffer();
+
+  return `data:${contentType || "application/octet-stream"};base64,${arrayBufferToBase64(buffer)}`;
 }
 
 export function getAccessToken() {
@@ -295,5 +340,8 @@ export function setAuthExpiredHandler(handler: (() => void) | null) {
 export const httpClient = {
   request<TData>(path: string, options: HttpClientRequestOptions = {}) {
     return sendRequest<TData>(path, options, true);
+  },
+  requestDataUrl(path: string, options: HttpClientRequestOptions = {}) {
+    return sendDataUrlRequest(path, options);
   }
 };

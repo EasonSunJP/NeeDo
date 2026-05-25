@@ -19,9 +19,20 @@ const portalRouteHtmlEntries = [
 type EnvMap = Record<string, string | undefined>;
 
 export const defaultNeedoApiProxyTarget = "http://127.0.0.1:3000";
+export const defaultLegacyAuthProxyPrefix = "/legacy-auth";
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeProxyPrefix(value: string) {
+  const normalized = value.trim().replace(/^\/+|\/+$/g, "");
+
+  return normalized ? `/${normalized}` : defaultLegacyAuthProxyPrefix;
 }
 
 function stripApiPrefix(value: string) {
@@ -44,6 +55,43 @@ export function createNeedoApiProxyConfig(target: string): Record<string, ProxyO
   return {
     "/api/v1": {
       changeOrigin: true,
+      secure: false,
+      target
+    }
+  };
+}
+
+export function resolveLegacyAuthProxyTarget(env: EnvMap) {
+  const explicitTarget = env.NEEDO_LEGACY_AUTH_PROXY_TARGET?.trim() || env.VITE_LEGACY_AUTH_PROXY_TARGET?.trim();
+
+  return explicitTarget ? trimTrailingSlash(explicitTarget) : null;
+}
+
+export function resolveLegacyAuthProxyPrefix(env: EnvMap) {
+  const configuredBase = env.VITE_LEGACY_AUTH_BASE_URL?.trim();
+
+  if (configuredBase && !/^https?:\/\//i.test(configuredBase)) {
+    return normalizeProxyPrefix(configuredBase);
+  }
+
+  return defaultLegacyAuthProxyPrefix;
+}
+
+export function createLegacyAuthProxyConfig(
+  target: string | null,
+  prefix = defaultLegacyAuthProxyPrefix
+): Record<string, ProxyOptions> {
+  if (!target) {
+    return {};
+  }
+
+  const normalizedPrefix = normalizeProxyPrefix(prefix);
+  const rewritePattern = new RegExp(`^${escapeRegExp(normalizedPrefix)}`);
+
+  return {
+    [normalizedPrefix]: {
+      changeOrigin: true,
+      rewrite: (path) => path.replace(rewritePattern, "") || "/",
       secure: false,
       target
     }
@@ -99,7 +147,11 @@ function needoPortalEntryFallbackPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const apiProxy = createNeedoApiProxyConfig(resolveNeedoApiProxyTarget(loadEnv(mode, ".", "")));
+  const env = loadEnv(mode, ".", "");
+  const apiProxy = {
+    ...createNeedoApiProxyConfig(resolveNeedoApiProxyTarget(env)),
+    ...createLegacyAuthProxyConfig(resolveLegacyAuthProxyTarget(env), resolveLegacyAuthProxyPrefix(env))
+  };
 
   return {
     base: "./",

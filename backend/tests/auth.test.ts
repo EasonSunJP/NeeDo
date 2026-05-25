@@ -122,7 +122,7 @@ const createAuthFixture = async () => {
     email: "admin@example.com",
     phone: null,
     passwordHash,
-    username: "NeeDo Admin",
+    username: "admin",
     avatarUrl: null,
     isActive: true,
     lastLoginAt: null as Date | null,
@@ -134,7 +134,7 @@ const createAuthFixture = async () => {
         type: "platform",
         scopeType: "global",
         scopeId: null,
-        displayName: "NeeDo Admin",
+        displayName: "admin",
         isDefault: true,
         isActive: true,
         deletedAt: null
@@ -252,6 +252,9 @@ const createAuthFixture = async () => {
     findUserByEmail: jest.fn(async (email: string) =>
       users.find((item) => item.email === email && !item.deletedAt) ?? null
     ),
+    findUserByLoginIdentifier: jest.fn(async (identifier: string) =>
+      users.find((item) => (item.email === identifier || item.username === identifier) && !item.deletedAt) ?? null
+    ),
     findUserById: jest.fn(async (id: number) =>
       users.find((item) => item.id === id && !item.deletedAt) ?? null
     ),
@@ -339,6 +342,19 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
     expect(response.body.data.refreshToken).toEqual(expect.any(String));
   });
 
+  it("logs in with the issued admin username and password", async () => {
+    const fixture = await createAuthFixture();
+
+    const response = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ username: "admin", password: "Abcd@1234", type: "username" })
+      .expect(200);
+
+    expect(response.body.data.accessToken).toEqual(expect.any(String));
+    expect(response.body.data.refreshToken).toEqual(expect.any(String));
+    expect(fixture.repository.findUserByLoginIdentifier).toHaveBeenCalledWith("admin");
+  });
+
   it("accepts the Apifox password-login form shape on the deployed /login URI", async () => {
     const fixture = await createAuthFixture();
 
@@ -354,7 +370,7 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
 
     expect(response.body.data.accessToken).toEqual(expect.any(String));
     expect(response.body.data.refreshToken).toEqual(expect.any(String));
-    expect(fixture.repository.findUserByEmail).toHaveBeenCalledWith("admin@example.com");
+    expect(fixture.repository.findUserByLoginIdentifier).toHaveBeenCalledWith("admin@example.com");
   });
 
   it("logs in customer@example.com with email and password", async () => {
@@ -558,7 +574,7 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
     expect(meResponse.body.data).toMatchObject({
       id: 1,
       email: "admin@example.com",
-      username: "NeeDo Admin",
+      username: "admin",
       isActive: true,
       currentIdentity: {
         id: 10,

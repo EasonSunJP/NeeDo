@@ -653,6 +653,10 @@ const createFixture = async () => {
       findUserByEmail: jest.fn(
         async (email: string) => users.find((user) => user.email === email) ?? null
       ),
+      findUserByLoginIdentifier: jest.fn(
+        async (identifier: string) =>
+          users.find((user) => user.email === identifier || user.username === identifier) ?? null
+      ),
       findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
       updateLastLoginAt: jest.fn(async (id: number, loggedInAt: Date) => {
         const user = users.find((item) => item.id === id);

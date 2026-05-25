@@ -1,5 +1,6 @@
 import { clearAuthTokens, getStoredRefreshToken, httpClient, setAccessToken, setAuthTokens } from "./httpClient";
 import type { AuthMePayload } from "../auth/rbac";
+import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 
 export type TokenPairPayload = {
   accessToken: string;
@@ -18,7 +19,8 @@ export type OtpSendPayload = {
 };
 
 export const authEndpointPaths = {
-  login: "/login",
+  captcha: "/captcha",
+  login: "/auth/login",
   register: "/reg",
   refresh: "/auth/refresh",
   logout: "/auth/logout",
@@ -27,16 +29,54 @@ export const authEndpointPaths = {
   otpVerify: "/auth/otp/verify"
 } as const;
 
+function createCaptchaRequestId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getLegacyAuthBaseUrl() {
+  return import.meta.env.VITE_LEGACY_AUTH_BASE_URL?.trim() || undefined;
+}
+
+function createLegacyAuthRequestOptions() {
+  const baseUrl = getLegacyAuthBaseUrl();
+
+  return baseUrl ? { baseUrl } : {};
+}
+
 export const authApi = {
-  async login(email: string, password: string) {
-    const body = new URLSearchParams({
+  async fetchCaptcha() {
+    const deviceToken = await getDeviceFingerprint();
+
+    return httpClient.requestDataUrl(authEndpointPaths.captcha, {
+      auth: false,
+      ...createLegacyAuthRequestOptions(),
+      method: "GET",
+      query: {
+        token: deviceToken,
+        r: createCaptchaRequestId()
+      },
+      retryOnUnauthorized: false
+    });
+  },
+
+  async login(email: string, password: string, captchaCode?: string) {
+    const normalizedCaptchaCode = captchaCode?.trim();
+    const deviceToken = await getDeviceFingerprint();
+    const body = {
       username: email,
       password,
-      type: "username"
-    });
+      type: "username",
+      ...(normalizedCaptchaCode ? { numcode: normalizedCaptchaCode } : {})
+    };
+
     const tokens = await httpClient.request<TokenPairPayload>(authEndpointPaths.login, {
       auth: false,
       body,
+      headers: deviceToken ? { token: deviceToken } : undefined,
       method: "POST",
       retryOnUnauthorized: false
     });

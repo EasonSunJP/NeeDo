@@ -86,21 +86,21 @@ export class AuthService {
   }
 
   public async login(
-    emailInput: string,
+    loginIdentifierInput: string,
     password: string,
     context: AuthRequestContext
   ): Promise<TokenPairPayload> {
-    const email = this.normalizeEmail(emailInput);
+    const loginIdentifier = this.normalizeLoginIdentifier(loginIdentifierInput);
 
-    await this.assertNotLoginLocked(email, context);
+    await this.assertNotLoginLocked(loginIdentifier, context);
 
-    const user = await this.repository.findUserByEmail(email);
+    const user = await this.repository.findUserByLoginIdentifier(loginIdentifier);
     const passwordMatches = user ? await compare(password, user.passwordHash) : false;
 
     if (!user || !passwordMatches) {
       await this.rejectFailedLogin({
         userId: user?.id,
-        email,
+        email: loginIdentifier,
         reason: "invalid_credentials",
         context
       });
@@ -109,7 +109,7 @@ export class AuthService {
     if (user && !user.isActive) {
       await this.repository.createLoginLog({
         userId: user.id,
-        email,
+        email: user.email,
         ip: context.ip,
         userAgent: context.userAgent,
         status: "failed",
@@ -123,7 +123,7 @@ export class AuthService {
     }
 
     this.assertActiveUser(user);
-    await this.sessionStore.clearFailedLogin(context.ip, email);
+    await this.sessionStore.clearFailedLogin(context.ip, loginIdentifier);
 
     return this.completeSuccessfulLogin(user, context);
   }
@@ -481,6 +481,10 @@ export class AuthService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private normalizeLoginIdentifier(identifier: string): string {
+    return identifier.trim().toLowerCase();
   }
 
   private secureEquals(expected: string, actual: string): boolean {

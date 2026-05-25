@@ -229,6 +229,9 @@ const createFixture = async () => {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: {
       findUserByEmail: jest.fn(async (email: string) => (email === user.email ? user : null)),
+      findUserByLoginIdentifier: jest.fn(async (identifier: string) =>
+        identifier === user.email || identifier === user.username ? user : null
+      ),
       findUserById: jest.fn(async (id: number) => (id === user.id ? user : null)),
       updateLastLoginAt: jest.fn(async (_id: number, loggedInAt: Date) => {
         user.lastLoginAt = loggedInAt;

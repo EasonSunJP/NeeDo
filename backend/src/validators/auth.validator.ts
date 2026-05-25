@@ -7,10 +7,17 @@ const emailSchema = z
   .max(255)
   .transform((email) => email.toLowerCase());
 
+const loginIdentifierSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .transform((identifier) => identifier.toLowerCase());
+
 export const loginBodySchema = z
   .object({
     email: emailSchema.optional(),
-    username: emailSchema.optional(),
+    username: loginIdentifierSchema.optional(),
     password: z.string().min(1).max(128),
     type: z.enum(["username", "mobile", "email", "wechat", "qq", "weibo"]).optional(),
     numcode: z.string().trim().max(32).optional()
@@ -27,7 +34,7 @@ export const loginBodySchema = z
     });
   })
   .transform((body) => ({
-    email: body.email ?? body.username ?? "",
+    loginIdentifier: body.email ?? body.username ?? "",
     password: body.password
   }));
 

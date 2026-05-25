@@ -14,7 +14,7 @@ import {
 
 const BCRYPT_ROUNDS = 12;
 const DEFAULT_ADMIN_EMAIL = "admin@example.com";
-const DEFAULT_ADMIN_USERNAME = "NeeDo Super Admin";
+const DEFAULT_ADMIN_USERNAME = "admin";
 const SEED_PRISMA_LOG_LEVELS: Prisma.LogLevel[] = ["error"];
 
 const getDatabaseUrl = (): string => {

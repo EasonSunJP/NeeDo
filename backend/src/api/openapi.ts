@@ -980,18 +980,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/login`]: {
       post: {
         tags: ["Auth"],
-        summary: "Email and password login short URI",
+        summary: "Username/email and password login short URI",
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["email", "password"],
+                required: ["password"],
                 properties: {
                   email: { type: "string", format: "email" },
+                  username: { type: "string", minLength: 1, maxLength: 255 },
+                  type: { type: "string", enum: ["username", "mobile", "email", "wechat", "qq", "weibo"] },
+                  numcode: { type: "string", maxLength: 32 },
                   password: { type: "string", minLength: 1, maxLength: 128 }
-                }
+                },
+                anyOf: [{ required: ["email"] }, { required: ["username"] }]
               }
             }
           }
@@ -1022,18 +1026,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/auth/login`]: {
       post: {
         tags: ["Auth"],
-        summary: "Email and password login",
+        summary: "Username/email and password login",
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["email", "password"],
+                required: ["password"],
                 properties: {
                   email: { type: "string", format: "email" },
+                  username: { type: "string", minLength: 1, maxLength: 255 },
+                  type: { type: "string", enum: ["username", "mobile", "email", "wechat", "qq", "weibo"] },
+                  numcode: { type: "string", maxLength: 32 },
                   password: { type: "string", minLength: 1, maxLength: 128 }
-                }
+                },
+                anyOf: [{ required: ["email"] }, { required: ["username"] }]
               }
             }
           }

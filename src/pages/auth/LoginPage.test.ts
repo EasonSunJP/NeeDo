@@ -8,6 +8,8 @@ import cpsAccountManagementSource from "../cps-admin/CpsAccountManagementPage.ts
 
 const zhCopy = {
   accountError: "账号错误",
+  captchaLoadError: "验证码加载失败",
+  captchaRequiredError: "请填写验证码",
   createNotice: "创建提示",
   googleLoginUnavailable: "无法发起 Google 登录",
   requiredError: "请填写信息"
@@ -15,6 +17,8 @@ const zhCopy = {
 
 const jaCopy = {
   accountError: "アカウントエラー",
+  captchaLoadError: "認証コードを読み込めません",
+  captchaRequiredError: "認証コードを入力してください",
   createNotice: "作成案内",
   googleLoginUnavailable: "Google ログインを開始できません",
   requiredError: "入力してください"
@@ -62,6 +66,9 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).toContain("VITE_TEST_LOGIN_CUSTOMER_EMAIL");
     expect(loginPageSource).toContain("fillTestCredentials");
     expect(loginPageSource).toContain("continueWithTestCredentials");
+    expect(loginPageSource).toContain("authApi.fetchCaptcha");
+    expect(loginPageSource).toContain("captchaCode");
+    expect(loginPageSource).toContain("captchaRequiredError");
     expect(loginPageSource).toContain("isLoginPending");
     expect(loginPageSource).toContain("copy.loginPending");
   });

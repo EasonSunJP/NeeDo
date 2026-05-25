@@ -22,11 +22,13 @@ export class AuthController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const { email, password } = request.body;
+      const { loginIdentifier, password } = request.body;
       response
         .status(200)
         .json(
-          successResponse(await this.authService.login(email, password, this.getContext(request)))
+          successResponse(
+            await this.authService.login(loginIdentifier, password, this.getContext(request))
+          )
         );
     } catch (error) {
       next(error);

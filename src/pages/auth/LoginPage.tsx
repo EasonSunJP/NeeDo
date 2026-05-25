@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
+import { authApi } from "../../api/auth";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
@@ -28,11 +29,16 @@ type FrontendLoginCopy = {
   accountPlaceholder: string;
   passwordLabel: string;
   passwordPlaceholder: string;
+  captchaLabel: string;
+  captchaPlaceholder: string;
+  captchaRefresh: string;
   rememberCredentials: string;
   loginButton: string;
   loginPending: string;
   back: string;
   requiredError: string;
+  captchaRequiredError: string;
+  captchaLoadError: string;
   accountError: string;
   dependencyUnavailableError: string;
   networkTimeoutError: string;
@@ -46,7 +52,10 @@ type FrontendLoginCopy = {
   portals: Record<PortalScope, { label: string; shortLabel: string; title: string; subtitle: string }>;
 };
 
-export type LoginFeedbackCopy = Pick<FrontendLoginCopy, "accountError" | "createNotice" | "googleLoginUnavailable" | "requiredError">;
+export type LoginFeedbackCopy = Pick<
+  FrontendLoginCopy,
+  "accountError" | "captchaLoadError" | "captchaRequiredError" | "createNotice" | "googleLoginUnavailable" | "requiredError"
+>;
 export type LoginErrorCopy = Pick<FrontendLoginCopy, "accountError" | "dependencyUnavailableError" | "networkTimeoutError" | "resourceNotFoundError">;
 type LoginFeedbackTone = "error" | "notice";
 type LoginFeedbackKey = keyof LoginFeedbackCopy;
@@ -208,11 +217,16 @@ const loginCopy = {
     accountPlaceholder: "请输入邮箱",
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
+    captchaLabel: "图形验证码",
+    captchaPlaceholder: "请输入验证码",
+    captchaRefresh: "换一张",
     rememberCredentials: "记录账号密码",
     loginButton: "登录",
     loginPending: "登录中...",
     back: "返回",
     requiredError: "请先填写登录信息。",
+    captchaRequiredError: "请先填写图形验证码。",
+    captchaLoadError: "图形验证码加载失败，请刷新后再试。",
     accountError: "账号或密码不正确，请确认后再试。",
     dependencyUnavailableError: "登录服务依赖未启动，请确认真实 backend、MySQL 和 Redis 已启动。",
     networkTimeoutError: "后端没有响应，请确认真实 backend、MySQL 和 Redis 已启动。",
@@ -272,11 +286,16 @@ const loginCopy = {
     accountPlaceholder: "請輸入信箱",
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
+    captchaLabel: "圖形驗證碼",
+    captchaPlaceholder: "請輸入驗證碼",
+    captchaRefresh: "換一張",
     rememberCredentials: "記錄帳號密碼",
     loginButton: "登入",
     loginPending: "登入中...",
     back: "返回",
     requiredError: "請先填寫登入資訊。",
+    captchaRequiredError: "請先填寫圖形驗證碼。",
+    captchaLoadError: "圖形驗證碼載入失敗，請重新整理後再試。",
     accountError: "帳號或密碼不正確，請確認後再試。",
     dependencyUnavailableError: "登入服務依賴未啟動，請確認真實 backend、MySQL 和 Redis 已啟動。",
     networkTimeoutError: "後端沒有回應，請確認真實 backend、MySQL 和 Redis 已啟動。",
@@ -336,11 +355,16 @@ const loginCopy = {
     accountPlaceholder: "メールを入力",
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
+    captchaLabel: "画像認証コード",
+    captchaPlaceholder: "認証コードを入力",
+    captchaRefresh: "更新",
     rememberCredentials: "アカウントとパスワードを保存",
     loginButton: "ログイン",
     loginPending: "ログイン中...",
     back: "戻る",
     requiredError: "ログイン情報を入力してください。",
+    captchaRequiredError: "画像認証コードを入力してください。",
+    captchaLoadError: "画像認証コードを読み込めません。更新してから再試行してください。",
     accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
     dependencyUnavailableError: "ログインサービスの依存先が起動していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
     networkTimeoutError: "バックエンドが応答していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
@@ -400,11 +424,16 @@ const loginCopy = {
     accountPlaceholder: "Enter email",
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
+    captchaLabel: "Captcha",
+    captchaPlaceholder: "Enter captcha",
+    captchaRefresh: "Refresh",
     rememberCredentials: "Remember account and password",
     loginButton: "Log in",
     loginPending: "Logging in...",
     back: "Back",
     requiredError: "Fill in the login information first.",
+    captchaRequiredError: "Enter the captcha first.",
+    captchaLoadError: "Captcha could not be loaded. Refresh and try again.",
     accountError: "The account or password is incorrect. Please check and try again.",
     dependencyUnavailableError: "The login service dependency is not running. Confirm the real backend, MySQL, and Redis are running.",
     networkTimeoutError: "The backend did not respond. Confirm the real backend, MySQL, and Redis are running.",
@@ -464,11 +493,16 @@ const loginCopy = {
     accountPlaceholder: "이메일 입력",
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
+    captchaLabel: "이미지 인증 코드",
+    captchaPlaceholder: "인증 코드 입력",
+    captchaRefresh: "새로고침",
     rememberCredentials: "계정과 비밀번호 저장",
     loginButton: "로그인",
     loginPending: "로그인 중...",
     back: "뒤로",
     requiredError: "먼저 로그인 정보를 입력하세요.",
+    captchaRequiredError: "먼저 이미지 인증 코드를 입력하세요.",
+    captchaLoadError: "이미지 인증 코드를 불러오지 못했습니다. 새로고침 후 다시 시도하세요.",
     accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
     dependencyUnavailableError: "로그인 서비스 의존성이 실행 중이 아닙니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
     networkTimeoutError: "백엔드가 응답하지 않습니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
@@ -568,6 +602,9 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState<LoginFeedbackState | null>(null);
   const [isLoginPending, setIsLoginPending] = useState(false);
+  const [captchaImage, setCaptchaImage] = useState("");
+  const [captchaCode, setCaptchaCode] = useState("");
+  const [isCaptchaPending, setIsCaptchaPending] = useState(false);
   const [rememberCredentials, setRememberCredentials] = useState(false);
 
   useEffect(() => {
@@ -629,6 +666,30 @@ export function LoginPage() {
     setFeedback(null);
   };
 
+  const loadCaptcha = useCallback(async () => {
+    setIsCaptchaPending(true);
+
+    try {
+      const nextCaptchaImage = await authApi.fetchCaptcha();
+      setCaptchaImage(nextCaptchaImage);
+      setCaptchaCode("");
+    } catch {
+      setCaptchaImage("");
+      setCaptchaCode("");
+      setFeedback({ key: "captchaLoadError", tone: "error", type: "localized" });
+    } finally {
+      setIsCaptchaPending(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (hasActiveAccess || (panelMode !== "account" && !testCredentials)) {
+      return;
+    }
+
+    void loadCaptcha();
+  }, [hasActiveAccess, loadCaptcha, panelMode, testCredentials]);
+
   const enterPortal = () => {
     if (isAuthenticated) {
       switchSessionPortal(activePortal);
@@ -686,12 +747,20 @@ export function LoginPage() {
     }
 
     clearFeedback();
+    const normalizedCaptchaCode = captchaCode.trim();
+
+    if (!normalizedCaptchaCode) {
+      setFeedback({ key: "captchaRequiredError", tone: "error", type: "localized" });
+      return;
+    }
+
     setIsLoginPending(true);
 
     try {
-      const result = await login(activePortal, testCredentials.email, testCredentials.password);
+      const result = await login(activePortal, testCredentials.email, testCredentials.password, normalizedCaptchaCode);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
+        void loadCaptcha();
         return;
       }
 
@@ -713,13 +782,20 @@ export function LoginPage() {
       setFeedback({ key: "requiredError", tone: "error", type: "localized" });
       return;
     }
+    const normalizedCaptchaCode = captchaCode.trim();
+
+    if (!normalizedCaptchaCode) {
+      setFeedback({ key: "captchaRequiredError", tone: "error", type: "localized" });
+      return;
+    }
 
     setIsLoginPending(true);
 
     try {
-      const result = await login(activePortal, username, password);
+      const result = await login(activePortal, username, password, normalizedCaptchaCode);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
+        void loadCaptcha();
         return;
       }
 
@@ -728,6 +804,39 @@ export function LoginPage() {
       setIsLoginPending(false);
     }
   };
+
+  const captchaControl = (
+    <label className="block text-left">
+      <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.captchaLabel}</span>
+      <div className="mt-2 grid grid-cols-[1fr_128px] gap-2">
+        <input
+          autoComplete="off"
+          className="h-12 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
+          disabled={isLoginPending}
+          inputMode="text"
+          onChange={(event) => setCaptchaCode(event.target.value)}
+          placeholder={copy.captchaPlaceholder}
+          value={captchaCode}
+        />
+        <button
+          aria-label={copy.captchaRefresh}
+          className="flex h-12 items-center justify-center overflow-hidden rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] text-xs font-black text-[color:var(--client-muted)] disabled:cursor-wait disabled:opacity-70"
+          disabled={isLoginPending || isCaptchaPending}
+          onClick={() => {
+            void loadCaptcha();
+          }}
+          title={copy.captchaRefresh}
+          type="button"
+        >
+          {captchaImage ? (
+            <img alt="" className="h-full w-full object-cover" draggable="false" src={captchaImage} />
+          ) : (
+            <span>{isCaptchaPending ? copy.loginPending : copy.captchaRefresh}</span>
+          )}
+        </button>
+      </div>
+    </label>
+  );
 
   return (
     <div
@@ -810,14 +919,17 @@ export function LoginPage() {
                   {copy.accountLogin}
                 </button>
                 {testCredentials ? (
-                  <button
-                    className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"
-                    disabled={isLoginPending}
-                    onClick={continueWithTestCredentials}
-                    type="button"
-                  >
-                    {isLoginPending ? copy.loginPending : copy.testCredentialLogin}
-                  </button>
+                  <div className="space-y-3">
+                    {captchaControl}
+                    <button
+                      className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"
+                      disabled={isLoginPending}
+                      onClick={continueWithTestCredentials}
+                      type="button"
+                    >
+                      {isLoginPending ? copy.loginPending : copy.testCredentialLogin}
+                    </button>
+                  </div>
                 ) : null}
                 <button
                   className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
@@ -897,6 +1009,7 @@ export function LoginPage() {
                     {copy.testCredentialFill}
                   </button>
                 ) : null}
+                {captchaControl}
                 <button
                   className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
                   disabled={isLoginPending}

@@ -27,7 +27,7 @@ type AuthContextValue = {
   session: AuthSession | null;
   isAuthenticated: boolean;
   isRestoring: boolean;
-  login: (portal: PortalScope, email: string, password: string) => Promise<AuthActionResult>;
+  login: (portal: PortalScope, email: string, password: string, captchaCode?: string) => Promise<AuthActionResult>;
   sendVerificationCode: (email: string) => Promise<{ message?: string; ok: boolean }>;
   loginWithVerificationCode: (portal: PortalScope, email: string, code: string) => Promise<AuthActionResult>;
   loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => Promise<AuthActionResult>;
@@ -130,9 +130,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearSession, completeAuthenticatedSession]);
 
   const login = useCallback(
-    async (portal: PortalScope, email: string, password: string): Promise<AuthActionResult> => {
+    async (portal: PortalScope, email: string, password: string, captchaCode?: string): Promise<AuthActionResult> => {
       try {
-        await authApi.login(email, password);
+        await authApi.login(email, password, captchaCode);
 
         return completeAuthenticatedSession(portal, "password");
       } catch (error) {

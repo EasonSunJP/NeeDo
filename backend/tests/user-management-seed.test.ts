@@ -54,7 +54,7 @@ describe("user management seed contract", () => {
     ).toMatchObject({
       email: "admin@example.com",
       password: "S3cure-dev-password!",
-      username: "NeeDo Super Admin"
+      username: "admin"
     });
 
     expect(

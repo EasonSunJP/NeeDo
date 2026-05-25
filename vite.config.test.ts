@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createNeedoApiProxyConfig, resolveNeedoApiProxyTarget } from "./vite.config";
+import {
+  createLegacyAuthProxyConfig,
+  createNeedoApiProxyConfig,
+  resolveLegacyAuthProxyTarget,
+  resolveNeedoApiProxyTarget
+} from "./vite.config";
 
 describe("Needo API proxy config", () => {
   it("defaults local dev API traffic to the formal backend port", () => {
@@ -30,5 +35,25 @@ describe("Needo API proxy config", () => {
         target: "http://127.0.0.1:3000"
       }
     });
+  });
+
+  it("keeps legacy auth proxy disabled unless a target is configured", () => {
+    expect(resolveLegacyAuthProxyTarget({})).toBeNull();
+    expect(createLegacyAuthProxyConfig(null)).toEqual({});
+  });
+
+  it("adds a local same-origin proxy for Apifox legacy auth endpoints", () => {
+    const target = resolveLegacyAuthProxyTarget({
+      VITE_LEGACY_AUTH_PROXY_TARGET: "https://t.dackou.com/"
+    });
+    const proxy = createLegacyAuthProxyConfig(target);
+
+    expect(target).toBe("https://t.dackou.com");
+    expect(proxy["/legacy-auth"]).toMatchObject({
+      changeOrigin: true,
+      secure: false,
+      target: "https://t.dackou.com"
+    });
+    expect(proxy["/legacy-auth"].rewrite?.("/legacy-auth/captcha?token=abc")).toBe("/captcha?token=abc");
   });
 });

@@ -14,7 +14,7 @@ export interface TestUserAccountDefinition {
 export const TEST_USER_ACCOUNTS = [
   {
     email: "admin@example.com",
-    username: "NeeDo Super Admin",
+    username: "admin",
     roleCode: "admin",
     identityType: "platform",
     expectedPortal: "admin",

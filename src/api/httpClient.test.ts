@@ -221,6 +221,64 @@ describe("httpClient auth tokens", () => {
     );
   });
 
+  it("can read legacy captcha image responses as data URLs", async () => {
+    vi.stubEnv("VITE_API_PUBLIC_AUTHORIZATION", "Bearer public-prelogin-token");
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "content-type": "image/png" },
+        status: 200
+      })
+    );
+
+    await expect(httpClient.requestDataUrl("/captcha", {
+      auth: false,
+      method: "GET",
+      query: {
+        token: "visitor-token",
+        r: "captcha-request"
+      },
+      retryOnUnauthorized: false
+    })).resolves.toBe("data:image/png;base64,AQID");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/captcha?token=visitor-token&r=captcha-request",
+      expect.objectContaining({
+        body: undefined,
+        headers: expect.objectContaining({
+          Authorization: "Bearer public-prelogin-token"
+        }),
+        method: "GET"
+      })
+    );
+  });
+
+  it("can route legacy captcha requests through a dedicated local proxy base", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      code: 0,
+      msg: "success",
+      data: "data:image/png;base64,abc"
+    }));
+
+    await expect(httpClient.requestDataUrl("/captcha", {
+      auth: false,
+      baseUrl: "/legacy-auth",
+      method: "GET",
+      query: {
+        token: "visitor-token",
+        r: "captcha-request"
+      },
+      retryOnUnauthorized: false
+    })).resolves.toBe("data:image/png;base64,abc");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/legacy-auth/captcha?token=visitor-token&r=captcha-request",
+      expect.objectContaining({
+        body: undefined,
+        method: "GET"
+      })
+    );
+  });
+
   it("does not attach the device fingerprint header by default", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
 
