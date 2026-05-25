@@ -66,6 +66,7 @@ const getPassword = (): string => {
 const expectedPortalPermission = (account: TestUserAccountDefinition): string => {
   const permissions: Record<TestUserAccountDefinition["expectedPortal"], string> = {
     admin: "menu:admin-console",
+    business: "menu:dashboard",
     merchant: "menu:merchant-app",
     technician: "menu:technician-app",
     customer: "menu:client-app"

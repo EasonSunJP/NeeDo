@@ -185,6 +185,17 @@ describe("translations", () => {
     expect(translateText("修水管", "ja")).toBe("水回り");
   });
 
+  it("localizes English core-read seed copy before rendering user cards", () => {
+    expect(translateText("Move-out Deep Cleaning", "zh")).toBe("退房深度清洁");
+    expect(translateText("Move-out Deep Cleaning", "ja")).toBe("退去時の徹底清掃");
+    expect(translateText("Move-out deep cleaning for kitchen, bath, flooring, and final photo report.", "ja")).toBe("キッチン・浴室・床まで徹底清掃し、完了写真レポートをお送りします。");
+    expect(translateText("Roppongi Recovery Lounge", "ja")).toBe("六本木リカバリーラウンジ");
+    expect(translateText("Tokyo", "ja")).toBe("東京");
+    expect(translateText("6-8 Roppongi, Minato-ku", "ja")).toBe("東京都港区六本木 6-8");
+    expect(translateText("recovery", "ja")).toBe("リカバリー");
+    expect(translateText("private", "ja")).toBe("プライベート");
+  });
+
   it("uses follow wording for social and contact relationships", () => {
     expect(translateText("关注", "ja")).toBe("フォロー");
     expect(translateText("关注", "en")).toBe("Follow");
