@@ -14,9 +14,18 @@ export const validateRequest =
   (schemas: RequestSchemas) =>
   (request: Request, _response: Response, next: NextFunction): void => {
     try {
-      schemas.params?.parse(request.params);
-      schemas.query?.parse(request.query);
-      schemas.body?.parse(request.body);
+      if (schemas.params) {
+        request.params = schemas.params.parse(request.params) as Request["params"];
+      }
+
+      if (schemas.query) {
+        request.query = schemas.query.parse(request.query) as Request["query"];
+      }
+
+      if (schemas.body) {
+        request.body = schemas.body.parse(request.body);
+      }
+
       next();
     } catch (error) {
       if (error instanceof ZodError) {

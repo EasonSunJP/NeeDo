@@ -18,8 +18,7 @@ export type OtpSendPayload = {
 };
 
 export const authEndpointPaths = {
-  login: "/login",
-  register: "/reg",
+  login: "/auth/login",
   refresh: "/auth/refresh",
   logout: "/auth/logout",
   me: "/auth/me",

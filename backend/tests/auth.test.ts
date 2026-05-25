@@ -339,6 +339,24 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
     expect(response.body.data.refreshToken).toEqual(expect.any(String));
   });
 
+  it("accepts the Apifox password-login form shape on the deployed /login URI", async () => {
+    const fixture = await createAuthFixture();
+
+    const response = await request(fixture.app)
+      .post("/api/v1/login")
+      .type("form")
+      .send({
+        username: "admin@example.com",
+        password: "Abcd@1234",
+        type: "username"
+      })
+      .expect(200);
+
+    expect(response.body.data.accessToken).toEqual(expect.any(String));
+    expect(response.body.data.refreshToken).toEqual(expect.any(String));
+    expect(fixture.repository.findUserByEmail).toHaveBeenCalledWith("admin@example.com");
+  });
+
   it("logs in customer@example.com with email and password", async () => {
     const fixture = await createAuthFixture();
 

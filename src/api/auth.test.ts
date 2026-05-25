@@ -17,7 +17,7 @@ describe("authApi endpoint paths", () => {
     vi.clearAllMocks();
   });
 
-  it("uses the deployed interface URI for email login", async () => {
+  it("uses the formal NeeDo auth URI for email login", async () => {
     vi.mocked(httpClient.request).mockResolvedValueOnce({
       accessToken: "access-token",
       refreshToken: "refresh-token",
@@ -35,8 +35,7 @@ describe("authApi endpoint paths", () => {
       method: "POST",
       retryOnUnauthorized: false
     });
-    expect(authEndpointPaths.login).toBe("/login");
-    expect(authEndpointPaths.register).toBe("/reg");
+    expect(authEndpointPaths.login).toBe("/auth/login");
     expect(setAuthTokens).toHaveBeenCalledWith({
       accessToken: "access-token",
       refreshToken: "refresh-token",

@@ -1014,7 +1014,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           "401": { description: "Invalid credentials" },
-          "429": { description: "Account locked" }
+          "429": { description: "Account locked" },
+          "503": { description: "Redis auth session dependency is unavailable" }
         }
       }
     },
@@ -1055,7 +1056,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           "401": { description: "Invalid credentials" },
-          "429": { description: "Account locked" }
+          "429": { description: "Account locked" },
+          "503": { description: "Redis auth session dependency is unavailable" }
         }
       }
     },

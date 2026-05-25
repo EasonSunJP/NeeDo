@@ -14,6 +14,14 @@ describe("Needo API proxy config", () => {
     ).toBe("http://127.0.0.1:3000");
   });
 
+  it("keeps the default proxy target when the frontend API base is same-origin", () => {
+    expect(
+      resolveNeedoApiProxyTarget({
+        VITE_API_BASE_URL: "/api/v1"
+      })
+    ).toBe("http://127.0.0.1:3000");
+  });
+
   it("adds a dev and preview proxy for formal /api/v1 backend requests", () => {
     expect(createNeedoApiProxyConfig("http://127.0.0.1:3000")).toEqual({
       "/api/v1": {

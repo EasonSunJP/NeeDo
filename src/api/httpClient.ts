@@ -124,7 +124,7 @@ function createRequestBody(body: unknown) {
     return undefined;
   }
 
-  if (body instanceof FormData) {
+  if (body instanceof FormData || body instanceof URLSearchParams) {
     return body;
   }
 
@@ -136,7 +136,10 @@ async function createRequestHeaders(options: HttpClientRequestOptions) {
     Accept: "application/json",
     ...(options.headers ?? {})
   };
-  const hasJsonBody = options.body !== undefined && !(options.body instanceof FormData);
+  const hasJsonBody =
+    options.body !== undefined &&
+    !(options.body instanceof FormData) &&
+    !(options.body instanceof URLSearchParams);
 
   if (hasJsonBody && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";

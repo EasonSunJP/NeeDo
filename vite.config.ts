@@ -30,8 +30,12 @@ function stripApiPrefix(value: string) {
 
 export function resolveNeedoApiProxyTarget(env: EnvMap) {
   const explicitTarget = env.NEEDO_API_PROXY_TARGET?.trim() || env.VITE_API_PROXY_TARGET?.trim();
+  if (explicitTarget) {
+    return stripApiPrefix(explicitTarget);
+  }
+
   const apiBaseUrl = env.VITE_API_BASE_URL?.trim();
-  const target = explicitTarget || apiBaseUrl || defaultNeedoApiProxyTarget;
+  const target = apiBaseUrl && /^https?:\/\//i.test(apiBaseUrl) ? apiBaseUrl : defaultNeedoApiProxyTarget;
 
   return stripApiPrefix(target);
 }

@@ -69,7 +69,7 @@ For local development, `.env.development` may set portal-specific values such as
 `VITE_TEST_LOGIN_MERCHANT_EMAIL`, `VITE_TEST_LOGIN_MERCHANT_PASSWORD`,
 `VITE_TEST_LOGIN_TECHNICIAN_EMAIL`, `VITE_TEST_LOGIN_TECHNICIAN_PASSWORD`,
 `VITE_TEST_LOGIN_ADMIN_EMAIL`, and `VITE_TEST_LOGIN_ADMIN_PASSWORD`.
-The button still calls the real login API (`/login` under the configured API base); it is not a mock login shortcut.
+The button still calls the real login API (`/auth/login` under the configured API base); it is not a mock login shortcut.
 
 | Email | Role | Entry |
 |---|---|---|
@@ -105,8 +105,10 @@ cp .env.staging.example .env.staging
 
 Valid options:
 
-- `VITE_API_BASE_URL=https://t.dackou.com`
-- `VITE_API_BASE_URL=/api/v1` only when Nginx proxies same-origin `/api/v1` to staging backend
+- `VITE_API_BASE_URL=https://api-test.needo.jp/api/v1`, or another formal NeeDo backend origin with the `/api/v1` prefix included
+- `VITE_API_BASE_URL=/api/v1` only when Nginx proxies same-origin `/api/v1` to the staging backend
+
+Do not point the formal login frontend at the legacy `https://t.dackou.com/login` webman/Apifox service. That service is not the NeeDo User Management backend and can return `token不能为空` or graph-captcha errors before the formal `/auth/me` session can be established.
 
 4. Staging must have its own backend, MySQL, Redis, migrations, and seed data:
 
@@ -125,7 +127,7 @@ curl http://localhost:3000/api/v1/health
 ```
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/login \
+curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"REPLACE_WITH_TEST_USER_DEFAULT_PASSWORD"}'
 ```
@@ -159,17 +161,18 @@ npm run check:test-login -- --email admin@example.com
 npm run check:test-login -- --all --base-url http://localhost:3000/api/v1
 ```
 
-The script checks health, Prisma/MySQL, Redis, seed account state, `/login`, `/auth/me`, permissions count, and whether each account can enter its expected portal. It does not print passwords or full tokens.
+The script checks health, Prisma/MySQL, Redis, seed account state, `/auth/login`, `/auth/me`, permissions count, and whether each account can enter its expected portal. It does not print passwords or full tokens.
 
 ## Troubleshooting
 
 - `401 error.auth.invalid_credentials`: wrong password or seed not rerun after changing `TEST_USER_DEFAULT_PASSWORD`.
 - `403 error.forbidden` or empty permissions: role permissions are missing; rerun seed and inspect `RolePermission`.
 - `500 database connection`: MySQL is down or `DATABASE_URL` points to the wrong host from the process location.
-- Redis unavailable: start Redis and verify `REDIS_URL`; refresh/logout/OTP/lockout require Redis.
+- `503 error.dependency.redis_unavailable`: Redis is down or `REDIS_URL` points to the wrong host from the backend process location. Start Redis and verify `REDIS_URL`; login refresh sessions, logout, OTP, token blacklist, and login lockout require Redis.
 - CORS failure: add the exact frontend origin to `CORS_ORIGINS`.
 - Staging frontend requests `localhost`: rebuild frontend with staging `VITE_API_BASE_URL` or same-origin `/api/v1`.
-- `/login` succeeds but `/auth/me` fails: check Authorization header, token blacklist, Redis, and `auth:me` permission.
+- Login shows `token不能为空` or graph-captcha errors: the frontend is still reaching the legacy webman/Apifox `/login` service or an old cached bundle. Rebuild with a formal `/api/v1` API base and clear the browser cache.
+- `/auth/login` succeeds but `/auth/me` fails: check Authorization header, token blacklist, Redis, and `auth:me` permission.
 - Login succeeds then jumps back to login: check stale `needo.auth.refresh-token`, old `needo.auth.session`, and failed `/auth/me`.
 - User Management menu missing: verify `menu:user-management`, `page:user-management`, and `user:list` are in `/auth/me`.
 - Menu empty: verify menu-type permissions exist and are assigned to the role.

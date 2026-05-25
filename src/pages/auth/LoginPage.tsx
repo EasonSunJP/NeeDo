@@ -34,6 +34,7 @@ type FrontendLoginCopy = {
   back: string;
   requiredError: string;
   accountError: string;
+  dependencyUnavailableError: string;
   networkTimeoutError: string;
   resourceNotFoundError: string;
   googleLoginUnavailable: string;
@@ -46,7 +47,7 @@ type FrontendLoginCopy = {
 };
 
 export type LoginFeedbackCopy = Pick<FrontendLoginCopy, "accountError" | "createNotice" | "googleLoginUnavailable" | "requiredError">;
-export type LoginErrorCopy = Pick<FrontendLoginCopy, "accountError" | "networkTimeoutError" | "resourceNotFoundError">;
+export type LoginErrorCopy = Pick<FrontendLoginCopy, "accountError" | "dependencyUnavailableError" | "networkTimeoutError" | "resourceNotFoundError">;
 type LoginFeedbackTone = "error" | "notice";
 type LoginFeedbackKey = keyof LoginFeedbackCopy;
 
@@ -67,11 +68,32 @@ export function resolveLoginFeedbackMessage(feedback: LoginFeedbackState | null,
 }
 
 export function resolveLoginErrorMessage(message: string | undefined, copy: LoginErrorCopy) {
+  const normalizedMessage = message?.trim();
+
   if (message === "error.network.timeout") {
     return copy.networkTimeoutError;
   }
 
-  if (message === "error.resource_not_found" || message === "resource_not_found" || message === "Not Found") {
+  if (message === "error.dependency.redis_unavailable" || normalizedMessage === "Internal Server Error") {
+    return copy.dependencyUnavailableError;
+  }
+
+  if (
+    message === "error.resource_not_found" ||
+    message === "resource_not_found" ||
+    message === "error.cors_forbidden" ||
+    message === "Not Found"
+  ) {
+    return copy.resourceNotFoundError;
+  }
+
+  if (
+    normalizedMessage === "token不能为空" ||
+    normalizedMessage === "圖形驗證碼不能為空" ||
+    normalizedMessage === "图形验证码不能为空" ||
+    normalizedMessage === "图形验证码不正确" ||
+    normalizedMessage?.toLowerCase().includes("wrong number of segments")
+  ) {
     return copy.resourceNotFoundError;
   }
 
@@ -193,6 +215,7 @@ const loginCopy = {
     back: "返回",
     requiredError: "请先填写登录信息。",
     accountError: "账号或密码不正确，请确认后再试。",
+    dependencyUnavailableError: "登录服务依赖未启动，请确认真实 backend、MySQL 和 Redis 已启动。",
     networkTimeoutError: "后端没有响应，请确认真实 backend、MySQL 和 Redis 已启动。",
     resourceNotFoundError: "接口不存在，请确认前端 API 地址指向 NeeDo 真实 /api/v1 后端。",
     googleLoginUnavailable: "当前环境暂时无法发起 Google 登录，请在正式环境配置 Google 账号 API 后重试。",
@@ -256,6 +279,7 @@ const loginCopy = {
     back: "返回",
     requiredError: "請先填寫登入資訊。",
     accountError: "帳號或密碼不正確，請確認後再試。",
+    dependencyUnavailableError: "登入服務依賴未啟動，請確認真實 backend、MySQL 和 Redis 已啟動。",
     networkTimeoutError: "後端沒有回應，請確認真實 backend、MySQL 和 Redis 已啟動。",
     resourceNotFoundError: "介面不存在，請確認前端 API 位址指向 NeeDo 真實 /api/v1 後端。",
     googleLoginUnavailable: "目前環境暫時無法發起 Google 登入，請在正式環境配置 Google 帳號 API 後重試。",
@@ -319,6 +343,7 @@ const loginCopy = {
     back: "戻る",
     requiredError: "ログイン情報を入力してください。",
     accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
+    dependencyUnavailableError: "ログインサービスの依存先が起動していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
     networkTimeoutError: "バックエンドが応答していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
     resourceNotFoundError: "API が見つかりません。フロントエンドの API URL が NeeDo の実際の /api/v1 backend を向いているか確認してください。",
     googleLoginUnavailable: "現在の環境では Google ログインを開始できません。正式環境で Google アカウント API を設定してから再試行してください。",
@@ -382,6 +407,7 @@ const loginCopy = {
     back: "Back",
     requiredError: "Fill in the login information first.",
     accountError: "The account or password is incorrect. Please check and try again.",
+    dependencyUnavailableError: "The login service dependency is not running. Confirm the real backend, MySQL, and Redis are running.",
     networkTimeoutError: "The backend did not respond. Confirm the real backend, MySQL, and Redis are running.",
     resourceNotFoundError: "The API route was not found. Confirm the frontend API URL points to the real NeeDo /api/v1 backend.",
     googleLoginUnavailable: "Google login cannot be started in this environment. Configure the Google Account API in the production environment and try again.",
@@ -445,6 +471,7 @@ const loginCopy = {
     back: "뒤로",
     requiredError: "먼저 로그인 정보를 입력하세요.",
     accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
+    dependencyUnavailableError: "로그인 서비스 의존성이 실행 중이 아닙니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
     networkTimeoutError: "백엔드가 응답하지 않습니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
     resourceNotFoundError: "API 경로를 찾을 수 없습니다. 프런트엔드 API URL이 실제 NeeDo /api/v1 backend를 가리키는지 확인하세요.",
     googleLoginUnavailable: "현재 환경에서는 Google 로그인을 시작할 수 없습니다. 정식 환경에서 Google 계정 API를 설정한 후 다시 시도하세요.",

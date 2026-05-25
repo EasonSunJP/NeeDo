@@ -21,6 +21,7 @@ const jaCopy = {
 
 const zhLoginErrorCopy = {
   accountError: "账号错误",
+  dependencyUnavailableError: "登录服务依赖未启动",
   networkTimeoutError: "后端没有响应",
   resourceNotFoundError: "接口不存在"
 } satisfies LoginErrorCopy;
@@ -43,7 +44,12 @@ describe("LoginPage feedback localization", () => {
 
   it("maps low-level network and routing errors to readable login messages", () => {
     expect(resolveLoginErrorMessage("error.network.timeout", zhLoginErrorCopy)).toBe("后端没有响应");
+    expect(resolveLoginErrorMessage("error.dependency.redis_unavailable", zhLoginErrorCopy)).toBe("登录服务依赖未启动");
+    expect(resolveLoginErrorMessage("Internal Server Error", zhLoginErrorCopy)).toBe("登录服务依赖未启动");
     expect(resolveLoginErrorMessage("error.resource_not_found", zhLoginErrorCopy)).toBe("接口不存在");
+    expect(resolveLoginErrorMessage("error.cors_forbidden", zhLoginErrorCopy)).toBe("接口不存在");
+    expect(resolveLoginErrorMessage("token不能为空", zhLoginErrorCopy)).toBe("接口不存在");
+    expect(resolveLoginErrorMessage("图形验证码不能为空", zhLoginErrorCopy)).toBe("接口不存在");
     expect(resolveLoginErrorMessage("", zhLoginErrorCopy)).toBe("账号错误");
   });
 });

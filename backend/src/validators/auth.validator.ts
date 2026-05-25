@@ -7,10 +7,29 @@ const emailSchema = z
   .max(255)
   .transform((email) => email.toLowerCase());
 
-export const loginBodySchema = z.object({
-  email: emailSchema,
-  password: z.string().min(1).max(128)
-});
+export const loginBodySchema = z
+  .object({
+    email: emailSchema.optional(),
+    username: emailSchema.optional(),
+    password: z.string().min(1).max(128),
+    type: z.enum(["username", "mobile", "email", "wechat", "qq", "weibo"]).optional(),
+    numcode: z.string().trim().max(32).optional()
+  })
+  .superRefine((body, context) => {
+    if (body.email || body.username) {
+      return;
+    }
+
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "email or username is required",
+      path: ["email"]
+    });
+  })
+  .transform((body) => ({
+    email: body.email ?? body.username ?? "",
+    password: body.password
+  }));
 
 export const otpSendBodySchema = z.object({
   email: emailSchema
