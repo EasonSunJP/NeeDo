@@ -45,3 +45,54 @@ describe("GET /api/v1/health", () => {
     });
   });
 });
+
+describe("GET /api/v1/ready", () => {
+  it("returns ready when Redis and database checks pass", async () => {
+    const response = await request(
+      createApp(undefined, {
+        redisHealthCheck: async () => ({ status: "ok", latencyMs: 2 }),
+        databaseHealthCheck: async () => ({ status: "ok", latencyMs: 3, poolSize: 20 })
+      })
+    )
+      .get("/api/v1/ready")
+      .expect(200);
+
+    expect(response.body).toEqual({
+      code: 0,
+      message: "success",
+      data: {
+        status: "ready",
+        service: "needo-backend",
+        timestamp: expect.any(String),
+        dependencies: {
+          database: {
+            status: "ok",
+            latencyMs: expect.any(Number),
+            poolSize: 20
+          },
+          redis: {
+            status: "ok",
+            latencyMs: expect.any(Number)
+          }
+        }
+      }
+    });
+  });
+
+  it("returns 503 when a required dependency is not ready", async () => {
+    const response = await request(
+      createApp(undefined, {
+        redisHealthCheck: async () => ({ status: "ok", latencyMs: 2 }),
+        databaseHealthCheck: async () => ({ status: "error", message: "database timeout" })
+      })
+    )
+      .get("/api/v1/ready")
+      .expect(503);
+
+    expect(response.body.data.status).toBe("not_ready");
+    expect(response.body.data.dependencies.database).toEqual({
+      status: "error",
+      message: "database timeout"
+    });
+  });
+});

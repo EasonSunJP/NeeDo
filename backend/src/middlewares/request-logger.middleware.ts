@@ -12,7 +12,9 @@ export const createRequestLoggerMiddleware = (config: AppConfig): RequestHandler
       const header = request.headers["x-request-id"];
       return typeof header === "string" && header.trim().length > 0 ? header : randomUUID();
     },
-    customProps: () => ({
-      service: config.SERVICE_NAME
+    customProps: (_request, response) => ({
+      service: config.SERVICE_NAME,
+      traceId: response.locals.traceId,
+      spanId: response.locals.spanId
     })
   });

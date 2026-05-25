@@ -897,6 +897,86 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/ready`]: {
+      get: {
+        tags: ["System"],
+        summary: "Backend readiness check for load balancers and orchestrators",
+        responses: {
+          "200": {
+            description: "Backend dependencies are ready",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: {
+                      type: "object",
+                      required: ["status", "service", "timestamp", "dependencies"],
+                      properties: {
+                        status: { type: "string", enum: ["ready", "not_ready"] },
+                        service: { type: "string" },
+                        timestamp: { type: "string", format: "date-time" },
+                        dependencies: {
+                          type: "object",
+                          required: ["database", "redis"],
+                          properties: {
+                            database: {
+                              type: "object",
+                              required: ["status"],
+                              properties: {
+                                status: { type: "string", enum: ["ok", "error"] },
+                                latencyMs: { type: "number" },
+                                poolSize: { type: "number" },
+                                message: { type: "string" }
+                              }
+                            },
+                            redis: {
+                              type: "object",
+                              required: ["status"],
+                              properties: {
+                                status: { type: "string", enum: ["ok", "error"] },
+                                latencyMs: { type: "number" },
+                                poolSize: { type: "number" },
+                                healthyClients: { type: "number" },
+                                message: { type: "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            description: "One or more required dependencies are not ready"
+          }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/metrics`]: {
+      get: {
+        tags: ["System"],
+        summary: "Prometheus metrics endpoint",
+        responses: {
+          "200": {
+            description: "Prometheus text exposition format",
+            content: {
+              "text/plain": {
+                schema: {
+                  type: "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     [`${config.API_PREFIX}/auth/login`]: {
       post: {
         tags: ["Auth"],

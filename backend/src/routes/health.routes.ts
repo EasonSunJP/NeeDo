@@ -10,6 +10,7 @@ export const createHealthRoutes = (config: AppConfig, dependencies: AppDependenc
   const controller = new HealthController(config, dependencies);
 
   router.get("/health", validateRequest({ query: healthQuerySchema }), controller.getHealth);
+  router.get("/ready", validateRequest({ query: healthQuerySchema }), controller.getReadiness);
 
   return router;
 };

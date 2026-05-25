@@ -22,4 +22,17 @@ export class HealthController {
       next(error);
     }
   };
+
+  public getReadiness = async (
+    _request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const readiness = await this.healthService.getReadiness();
+      response.status(readiness.status === "ready" ? 200 : 503).json(successResponse(readiness));
+    } catch (error) {
+      next(error);
+    }
+  };
 }

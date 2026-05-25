@@ -1,0 +1,84 @@
+name: needo-prod
+
+services:
+  backend:
+    image: "${NEEDO_BACKEND_IMAGE:-needo-backend:prod}"
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ${NEEDO_ENV_FILE:-../../backend/.env.prod}
+    ports:
+      - "${BACKEND_HOST_PORT:-3100}:${BACKEND_CONTAINER_PORT:-3100}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const port=process.env.PORT||3100; const prefix=process.env.API_PREFIX||'/api/v1'; fetch('http://127.0.0.1:'+port+prefix+'/ready').then((r)=>{if(!r.ok) process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2048M
+        reservations:
+          cpus: "1.00"
+          memory: 1024M
+
+  mysql:
+    image: mysql:8.0
+    env_file:
+      - ${NEEDO_ENV_FILE:-../../backend/.env.prod}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max-connections=500
+      - --innodb-buffer-pool-size=2G
+      - --slow-query-log=ON
+      - --long-query-time=0.5
+      - --log-output=TABLE
+    volumes:
+      - needo_prod_mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -u root -p$${MYSQL_ROOT_PASSWORD}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.2-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory-policy
+      - allkeys-lru
+    volumes:
+      - needo_prod_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  needo_prod_mysql_data:
+  needo_prod_redis_data:

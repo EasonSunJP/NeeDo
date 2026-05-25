@@ -2,7 +2,11 @@ import express, { Router, type Express } from "express";
 import { createOpenApiRoutes } from "./api/openapi";
 import { env, type AppConfig } from "./config/env";
 import { checkRedisHealth, type RedisHealthStatus } from "./config/redis";
+import type { DatabaseHealthStatus } from "./config/database";
+import { checkDatabaseHealth } from "./prisma/client";
 import { errorMiddleware } from "./middlewares/error.middleware";
+import { createCacheHeadersMiddleware } from "./middlewares/cache.middleware";
+import { createMetricsMiddleware } from "./middlewares/metrics.middleware";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { createRequestLoggerMiddleware } from "./middlewares/request-logger.middleware";
 import {
@@ -10,6 +14,7 @@ import {
   createHelmetMiddleware,
   createRateLimitMiddleware
 } from "./middlewares/security.middleware";
+import { createTracingMiddleware } from "./middlewares/tracing.middleware";
 import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
 import type { AuthRepositoryPort } from "./repositories/auth.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
@@ -29,6 +34,7 @@ import { createBookingRoutes } from "./routes/booking.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
 import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
+import { createObservabilityRoutes } from "./routes/observability.routes";
 import { createPermissionRoutes } from "./routes/permission.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createRoleRoutes } from "./routes/role.routes";
@@ -40,9 +46,15 @@ import {
   type RealtimeEventGatewayPort
 } from "./services/realtime-event.gateway";
 import { RealtimeService } from "./services/realtime.service";
+import {
+  ObservabilityMetricsService,
+  type ObservabilityMetricsPort
+} from "./services/observability.service";
 
 export interface AppDependencies {
   redisHealthCheck: () => Promise<RedisHealthStatus>;
+  databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
+  metricsService?: ObservabilityMetricsPort;
   authRepository?: AuthRepositoryPort;
   authSessionStore?: AuthSessionStore;
   otpDeliveryClient?: OtpDeliveryClient;
@@ -60,7 +72,8 @@ export interface AppDependencies {
 }
 
 const createDefaultAppDependencies = (): AppDependencies => ({
-  redisHealthCheck: checkRedisHealth
+  redisHealthCheck: checkRedisHealth,
+  databaseHealthCheck: checkDatabaseHealth
 });
 
 export const createApp = (
@@ -69,14 +82,22 @@ export const createApp = (
 ): Express => {
   const app = express();
   const apiRouter = Router();
+  const metricsService = dependencies.metricsService ?? new ObservabilityMetricsService(config);
+
+  if (config.TRUST_PROXY) {
+    app.set("trust proxy", 1);
+  }
 
   app.disable("x-powered-by");
+  app.use(createTracingMiddleware(config));
   app.use(createRequestLoggerMiddleware(config));
+  app.use(createMetricsMiddleware(config, metricsService));
   app.use(createHelmetMiddleware());
   app.use(createCorsMiddleware(config));
   app.use(express.json({ limit: config.REQUEST_BODY_LIMIT }));
   app.use(express.urlencoded({ extended: false, limit: config.REQUEST_BODY_LIMIT }));
   app.use(createRateLimitMiddleware(config));
+  app.use(createCacheHeadersMiddleware(config));
 
   const realtimeRepository = dependencies.realtimeRepository ?? new RealtimeRepository();
   const realtimeEventGateway = dependencies.realtimeEventGateway ?? new SseRealtimeEventGateway();
@@ -84,12 +105,15 @@ export const createApp = (
     dependencies.realtimeService ?? new RealtimeService(realtimeRepository, realtimeEventGateway);
   const resolvedDependencies: AppDependencies = {
     ...dependencies,
+    databaseHealthCheck: dependencies.databaseHealthCheck ?? checkDatabaseHealth,
+    metricsService,
     realtimeRepository,
     realtimeEventGateway,
     realtimeService
   };
 
   apiRouter.use(createHealthRoutes(config, resolvedDependencies));
+  apiRouter.use(createObservabilityRoutes(config, metricsService));
   apiRouter.use(createAuthRoutes(config, resolvedDependencies));
   apiRouter.use(createPermissionRoutes(config, resolvedDependencies));
   apiRouter.use(createRoleRoutes(config, resolvedDependencies));

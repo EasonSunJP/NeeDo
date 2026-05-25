@@ -14,6 +14,7 @@
     "test": "jest --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
     "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
   },
