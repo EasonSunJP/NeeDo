@@ -17,6 +17,10 @@ export interface RedisHealthClient {
   ping: () => Promise<string>;
 }
 
+interface RedisHealthCheckOptions {
+  timeoutMs?: number;
+}
+
 export type RedisHealthStatus =
   | {
       status: "ok";
@@ -76,13 +80,20 @@ export const getRedisClient = (): RedisClient => {
   return client;
 };
 
-export const checkRedisHealth = async (client?: RedisHealthClient): Promise<RedisHealthStatus> => {
+export const checkRedisHealth = async (
+  client?: RedisHealthClient,
+  options: RedisHealthCheckOptions = {}
+): Promise<RedisHealthStatus> => {
+  const timeoutMs = options.timeoutMs ?? env.REDIS_CONNECT_TIMEOUT_MS;
+
   if (client) {
-    return checkSingleRedisHealth(client);
+    return checkSingleRedisHealth(client, timeoutMs);
   }
 
   const pool = getRedisPool();
-  const results = await Promise.all(pool.map((poolClient) => checkSingleRedisHealth(poolClient)));
+  const results = await Promise.all(
+    pool.map((poolClient) => checkSingleRedisHealth(poolClient, timeoutMs))
+  );
   const healthyClients = results.filter((result) => result.status === "ok").length;
 
   if (healthyClients === pool.length) {
@@ -111,15 +122,18 @@ export const checkRedisHealth = async (client?: RedisHealthClient): Promise<Redi
   };
 };
 
-const checkSingleRedisHealth = async (client: RedisHealthClient): Promise<RedisHealthStatus> => {
+const checkSingleRedisHealth = async (
+  client: RedisHealthClient,
+  timeoutMs: number
+): Promise<RedisHealthStatus> => {
   const startedAt = Date.now();
 
   try {
     if (!client.isOpen) {
-      await client.connect();
+      await withRedisOperationTimeout(client.connect(), timeoutMs);
     }
 
-    const pong = await client.ping();
+    const pong = await withRedisOperationTimeout(client.ping(), timeoutMs);
 
     if (pong !== "PONG") {
       return {
@@ -137,6 +151,26 @@ const checkSingleRedisHealth = async (client: RedisHealthClient): Promise<RedisH
       status: "error",
       message: error instanceof Error ? error.message : "Unknown Redis health check error"
     };
+  }
+};
+
+const withRedisOperationTimeout = async <T>(operation: Promise<T>, timeoutMs: number): Promise<T> => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`Redis operation timed out after ${timeoutMs}ms`)),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
   }
 };
 

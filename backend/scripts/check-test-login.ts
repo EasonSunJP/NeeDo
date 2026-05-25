@@ -184,7 +184,7 @@ const main = async (): Promise<void> => {
       }
 
       try {
-        const loginResponse = await fetch(joinUrl(baseUrl, "/auth/login"), {
+        const loginResponse = await fetch(joinUrl(baseUrl, "/login"), {
           body: JSON.stringify({ email: account.email, password }),
           headers: {
             "Content-Type": "application/json"

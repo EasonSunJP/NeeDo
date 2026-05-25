@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import FingerprintJS from "@fingerprintjs/fingerprintjs";
+import type { Agent, GetResult } from "@fingerprintjs/fingerprintjs";
 import {
   apiRequestTimeoutMs,
   clearAuthTokens,
@@ -7,6 +9,13 @@ import {
   httpClient,
   setAuthTokens
 } from "./httpClient";
+import { clearCachedDeviceFingerprint } from "../lib/deviceFingerprint";
+
+vi.mock("@fingerprintjs/fingerprintjs", () => ({
+  default: {
+    load: vi.fn()
+  }
+}));
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -34,18 +43,37 @@ function createStorage() {
   } satisfies Storage;
 }
 
+function createFingerprintAgent(visitorId: string) {
+  const result = {
+    visitorId,
+    confidence: { score: 1 },
+    components: {} as GetResult["components"],
+    version: "test"
+  } satisfies GetResult;
+  const get = vi.fn<Agent["get"]>(async () => result);
+
+  return {
+    agent: { get } satisfies Agent,
+    get
+  };
+}
+
 describe("httpClient auth tokens", () => {
   beforeEach(() => {
     vi.stubGlobal("window", {
       localStorage: createStorage()
     });
     vi.stubGlobal("fetch", vi.fn());
+    vi.mocked(FingerprintJS.load).mockReset();
     clearAuthTokens();
+    clearCachedDeviceFingerprint();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     clearAuthTokens();
+    clearCachedDeviceFingerprint();
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
@@ -153,5 +181,66 @@ describe("httpClient auth tokens", () => {
       message: "error.resource_not_found",
       status: 404
     });
+  });
+
+  it("uses msg from non-NeeDo JSON API errors when message is absent", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        code: 100011,
+        msg: "token不能为空"
+      })
+    );
+
+    await expect(httpClient.request("/login", { auth: false })).rejects.toMatchObject({
+      code: 100011,
+      message: "token不能为空",
+      status: 200
+    });
+  });
+
+  it("does not attach the device fingerprint header by default", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
+
+    await httpClient.request("/login", {
+      auth: false,
+      body: {
+        email: "admin@example.com",
+        password: "secret"
+      }
+    });
+
+    expect(FingerprintJS.load).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/login",
+      expect.objectContaining({
+        headers: expect.not.objectContaining({
+          "X-Needo-Device-Fingerprint": expect.any(String)
+        })
+      })
+    );
+  });
+
+  it("attaches the FingerprintJS visitorId when the device fingerprint header is enabled", async () => {
+    vi.stubEnv("VITE_ENABLE_DEVICE_FINGERPRINT_HEADER", "true");
+    const { agent } = createFingerprintAgent("visitor-http-client");
+    vi.mocked(FingerprintJS.load).mockResolvedValue(agent);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { accessToken: "access", refreshToken: "refresh", expiresIn: 900 } }));
+
+    await httpClient.request("/login", {
+      auth: false,
+      body: {
+        email: "admin@example.com",
+        password: "secret"
+      }
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/login",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Needo-Device-Fingerprint": "visitor-http-client"
+        })
+      })
+    );
   });
 });

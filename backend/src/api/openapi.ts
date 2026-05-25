@@ -977,6 +977,47 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/login`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Email and password login short URI",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["email", "password"],
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string", minLength: 1, maxLength: 128 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "JWT token pair",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/TokenPair" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { description: "Invalid credentials" },
+          "429": { description: "Account locked" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/auth/login`]: {
       post: {
         tags: ["Auth"],

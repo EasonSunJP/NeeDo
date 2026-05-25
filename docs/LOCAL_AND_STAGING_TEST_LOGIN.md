@@ -69,7 +69,7 @@ For local development, `.env.development` may set portal-specific values such as
 `VITE_TEST_LOGIN_MERCHANT_EMAIL`, `VITE_TEST_LOGIN_MERCHANT_PASSWORD`,
 `VITE_TEST_LOGIN_TECHNICIAN_EMAIL`, `VITE_TEST_LOGIN_TECHNICIAN_PASSWORD`,
 `VITE_TEST_LOGIN_ADMIN_EMAIL`, and `VITE_TEST_LOGIN_ADMIN_PASSWORD`.
-The button still calls the real `/api/v1/auth/login`; it is not a mock login shortcut.
+The button still calls the real login API (`/login` under the configured API base); it is not a mock login shortcut.
 
 | Email | Role | Entry |
 |---|---|---|
@@ -105,7 +105,7 @@ cp .env.staging.example .env.staging
 
 Valid options:
 
-- `VITE_API_BASE_URL=https://api-test.needo.jp/api/v1`
+- `VITE_API_BASE_URL=https://t.dackou.com`
 - `VITE_API_BASE_URL=/api/v1` only when Nginx proxies same-origin `/api/v1` to staging backend
 
 4. Staging must have its own backend, MySQL, Redis, migrations, and seed data:
@@ -125,7 +125,7 @@ curl http://localhost:3000/api/v1/health
 ```
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/auth/login \
+curl -X POST http://localhost:3000/api/v1/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"REPLACE_WITH_TEST_USER_DEFAULT_PASSWORD"}'
 ```
@@ -159,7 +159,7 @@ npm run check:test-login -- --email admin@example.com
 npm run check:test-login -- --all --base-url http://localhost:3000/api/v1
 ```
 
-The script checks health, Prisma/MySQL, Redis, seed account state, `/auth/login`, `/auth/me`, permissions count, and whether each account can enter its expected portal. It does not print passwords or full tokens.
+The script checks health, Prisma/MySQL, Redis, seed account state, `/login`, `/auth/me`, permissions count, and whether each account can enter its expected portal. It does not print passwords or full tokens.
 
 ## Troubleshooting
 
@@ -169,7 +169,7 @@ The script checks health, Prisma/MySQL, Redis, seed account state, `/auth/login`
 - Redis unavailable: start Redis and verify `REDIS_URL`; refresh/logout/OTP/lockout require Redis.
 - CORS failure: add the exact frontend origin to `CORS_ORIGINS`.
 - Staging frontend requests `localhost`: rebuild frontend with staging `VITE_API_BASE_URL` or same-origin `/api/v1`.
-- `/auth/login` succeeds but `/auth/me` fails: check Authorization header, token blacklist, Redis, and `auth:me` permission.
+- `/login` succeeds but `/auth/me` fails: check Authorization header, token blacklist, Redis, and `auth:me` permission.
 - Login succeeds then jumps back to login: check stale `needo.auth.refresh-token`, old `needo.auth.session`, and failed `/auth/me`.
 - User Management menu missing: verify `menu:user-management`, `page:user-management`, and `user:list` are in `/auth/me`.
 - Menu empty: verify menu-type permissions exist and are assigned to the role.

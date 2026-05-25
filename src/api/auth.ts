@@ -17,9 +17,19 @@ export type OtpSendPayload = {
   cooldownSeconds: number;
 };
 
+export const authEndpointPaths = {
+  login: "/login",
+  register: "/reg",
+  refresh: "/auth/refresh",
+  logout: "/auth/logout",
+  me: "/auth/me",
+  otpSend: "/auth/otp/send",
+  otpVerify: "/auth/otp/verify"
+} as const;
+
 export const authApi = {
   async login(email: string, password: string) {
-    const tokens = await httpClient.request<TokenPairPayload>("/auth/login", {
+    const tokens = await httpClient.request<TokenPairPayload>(authEndpointPaths.login, {
       auth: false,
       body: { email, password },
       method: "POST",
@@ -31,7 +41,7 @@ export const authApi = {
   },
 
   async sendOtp(email: string) {
-    return httpClient.request<OtpSendPayload>("/auth/otp/send", {
+    return httpClient.request<OtpSendPayload>(authEndpointPaths.otpSend, {
       auth: false,
       body: { email },
       method: "POST",
@@ -40,7 +50,7 @@ export const authApi = {
   },
 
   async verifyOtp(email: string, otp: string) {
-    const tokens = await httpClient.request<TokenPairPayload>("/auth/otp/verify", {
+    const tokens = await httpClient.request<TokenPairPayload>(authEndpointPaths.otpVerify, {
       auth: false,
       body: { email, otp },
       method: "POST",
@@ -57,7 +67,7 @@ export const authApi = {
       throw new Error("error.auth.refresh_missing");
     }
 
-    const tokens = await httpClient.request<RefreshPayload>("/auth/refresh", {
+    const tokens = await httpClient.request<RefreshPayload>(authEndpointPaths.refresh, {
       auth: false,
       body: { refreshToken },
       method: "POST",
@@ -76,7 +86,7 @@ export const authApi = {
     }
 
     try {
-      return await httpClient.request<Record<string, never>>("/auth/logout", {
+      return await httpClient.request<Record<string, never>>(authEndpointPaths.logout, {
         body: { refreshToken },
         method: "POST",
         retryOnUnauthorized: false
@@ -87,6 +97,6 @@ export const authApi = {
   },
 
   async me() {
-    return httpClient.request<AuthMePayload>("/auth/me");
+    return httpClient.request<AuthMePayload>(authEndpointPaths.me);
   }
 };

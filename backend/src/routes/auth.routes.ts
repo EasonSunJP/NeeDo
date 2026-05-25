@@ -26,6 +26,7 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   const authenticate = createAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
 
+  router.post("/login", validateRequest({ body: loginBodySchema }), controller.login);
   router.post("/auth/login", validateRequest({ body: loginBodySchema }), controller.login);
   router.post("/auth/otp/send", validateRequest({ body: otpSendBodySchema }), controller.sendOtp);
   router.post(

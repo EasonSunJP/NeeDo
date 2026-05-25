@@ -327,6 +327,18 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       });
   });
 
+  it("supports the deployed /login URI under the API base path", async () => {
+    const fixture = await createAuthFixture();
+
+    const response = await request(fixture.app)
+      .post("/api/v1/login")
+      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
+
+    expect(response.body.data.accessToken).toEqual(expect.any(String));
+    expect(response.body.data.refreshToken).toEqual(expect.any(String));
+  });
+
   it("logs in customer@example.com with email and password", async () => {
     const fixture = await createAuthFixture();
 

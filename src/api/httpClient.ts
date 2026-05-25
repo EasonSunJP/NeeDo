@@ -1,4 +1,5 @@
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
+import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 
 export type ApiSuccessResponse<TData> = {
   code: 0;
@@ -109,7 +110,10 @@ async function parseEnvelope<TData>(response: Response): Promise<ApiEnvelope<TDa
 
 function assertSuccess<TData>(envelope: ApiEnvelope<TData>, status: number): TData {
   if (envelope.code !== 0 || envelope.data === null) {
-    throw new ApiClientError(envelope.message || "error.api", envelope.code, status);
+    const upstreamMessage = (envelope as { msg?: unknown }).msg;
+    const message = envelope.message || (typeof upstreamMessage === "string" ? upstreamMessage : "error.api");
+
+    throw new ApiClientError(message, envelope.code, status);
   }
 
   return envelope.data;
@@ -127,7 +131,7 @@ function createRequestBody(body: unknown) {
   return JSON.stringify(body);
 }
 
-function createRequestHeaders(options: HttpClientRequestOptions) {
+async function createRequestHeaders(options: HttpClientRequestOptions) {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(options.headers ?? {})
@@ -140,6 +144,14 @@ function createRequestHeaders(options: HttpClientRequestOptions) {
 
   if (options.auth !== false && accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  if (import.meta.env.VITE_ENABLE_DEVICE_FINGERPRINT_HEADER === "true" && !headers["X-Needo-Device-Fingerprint"]) {
+    const deviceFingerprint = await getDeviceFingerprint();
+
+    if (deviceFingerprint) {
+      headers["X-Needo-Device-Fingerprint"] = deviceFingerprint;
+    }
   }
 
   return headers;
@@ -182,12 +194,10 @@ async function refreshAccessToken(): Promise<string> {
   }
 
   refreshRequest = (async () => {
+    const body = { refreshToken };
     const response = await fetchWithTimeout(buildApiUrl("/auth/refresh"), {
-      body: JSON.stringify({ refreshToken }),
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json"
-      },
+      body: JSON.stringify(body),
+      headers: await createRequestHeaders({ auth: false, body }),
       method: "POST"
     });
     const envelope = await parseEnvelope<{ accessToken: string; expiresIn: number }>(response);
@@ -211,7 +221,7 @@ async function sendRequest<TData>(
 ): Promise<TData> {
   const response = await fetchWithTimeout(buildApiUrl(path, options.query), {
     body: createRequestBody(options.body),
-    headers: createRequestHeaders(options),
+    headers: await createRequestHeaders(options),
     method: options.method ?? (options.body === undefined ? "GET" : "POST")
   });
   const envelope = await parseEnvelope<TData>(response);

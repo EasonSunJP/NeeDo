@@ -1,5 +1,8 @@
 import type { RedisClient } from "../config/redis";
 import { getRedisClient } from "../config/redis";
+import { env } from "../config/env";
+import { ERROR_CODES } from "../constants/error-codes";
+import { AppError } from "../utils/app-error";
 
 export interface LoginFailureOptions {
   failureLimit: number;
@@ -33,8 +36,19 @@ export interface AuthSessionStore {
   isAccessTokenBlacklisted: (jti: string) => Promise<boolean>;
 }
 
+interface RedisAuthSessionStoreOptions {
+  operationTimeoutMs?: number;
+}
+
 export class RedisAuthSessionStore implements AuthSessionStore {
-  public constructor(private readonly getClient: () => RedisClient = getRedisClient) {}
+  private readonly operationTimeoutMs: number;
+
+  public constructor(
+    private readonly getClient: () => RedisClient = getRedisClient,
+    options: RedisAuthSessionStoreOptions = {}
+  ) {
+    this.operationTimeoutMs = options.operationTimeoutMs ?? env.REDIS_CONNECT_TIMEOUT_MS;
+  }
 
   public async getLoginLock(email: string): Promise<boolean> {
     return (await this.getValue(this.loginLockKey(email))) !== null;
@@ -120,7 +134,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   private async connect(): Promise<RedisClient> {
     const client = this.getClient();
     if (!client.isOpen) {
-      await client.connect();
+      await this.withRedisUnavailableGuard(() => client.connect());
     }
 
     return client;
@@ -128,19 +142,59 @@ export class RedisAuthSessionStore implements AuthSessionStore {
 
   private async setValue(key: string, value: string, ttlSeconds: number): Promise<void> {
     const client = await this.connect();
-    await client.set(key, value, {
-      EX: ttlSeconds
-    });
+    await this.withRedisUnavailableGuard(() =>
+      client.set(key, value, {
+        EX: ttlSeconds
+      })
+    );
   }
 
   private async getValue(key: string): Promise<string | null> {
     const client = await this.connect();
-    return client.get(key);
+    return this.withRedisUnavailableGuard(() => client.get(key));
   }
 
   private async deleteValue(key: string): Promise<void> {
     const client = await this.connect();
-    await client.del(key);
+    await this.withRedisUnavailableGuard(() => client.del(key));
+  }
+
+  private async withRedisUnavailableGuard<T>(operation: () => Promise<T>): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      return await Promise.race([
+        operation(),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () =>
+              reject(
+                new Error(`Redis operation timed out after ${this.operationTimeoutMs}ms`)
+              ),
+            this.operationTimeoutMs
+          );
+        })
+      ]);
+    } catch (error) {
+      throw this.redisUnavailableError(error);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
+  }
+
+  private redisUnavailableError(cause: unknown): AppError {
+    if (cause instanceof AppError) {
+      return cause;
+    }
+
+    return new AppError({
+      code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+      message: "error.dependency.redis_unavailable",
+      statusCode: 503,
+      cause
+    });
   }
 
   private loginFailureKey(ip: string, email: string): string {
