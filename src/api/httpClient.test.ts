@@ -198,7 +198,7 @@ describe("httpClient auth tokens", () => {
     });
   });
 
-  it("attaches the configured public Authorization header for legacy auth requests", async () => {
+  it("does not expose a public Authorization header on pre-login requests", async () => {
     vi.stubEnv("VITE_API_PUBLIC_AUTHORIZATION", "Bearer public-prelogin-token");
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
 
@@ -214,7 +214,7 @@ describe("httpClient auth tokens", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/login",
       expect.objectContaining({
-        headers: expect.objectContaining({
+        headers: expect.not.objectContaining({
           Authorization: "Bearer public-prelogin-token"
         })
       })
@@ -244,7 +244,7 @@ describe("httpClient auth tokens", () => {
       "/api/v1/captcha?token=visitor-token&r=captcha-request",
       expect.objectContaining({
         body: undefined,
-        headers: expect.objectContaining({
+        headers: expect.not.objectContaining({
           Authorization: "Bearer public-prelogin-token"
         }),
         method: "GET"

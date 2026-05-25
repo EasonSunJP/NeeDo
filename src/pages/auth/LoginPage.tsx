@@ -230,7 +230,7 @@ const loginCopy = {
     accountError: "账号或密码不正确，请确认后再试。",
     dependencyUnavailableError: "登录服务依赖未启动，请确认真实 backend、MySQL 和 Redis 已启动。",
     networkTimeoutError: "后端没有响应，请确认真实 backend、MySQL 和 Redis 已启动。",
-    resourceNotFoundError: "接口不存在，请确认前端 API 地址指向 NeeDo 真实 /api/v1 后端。",
+    resourceNotFoundError: "接口不存在，请确认接口域名和登录 / 注册路径配置正确。",
     googleLoginUnavailable: "当前环境暂时无法发起 Google 登录，请在正式环境配置 Google 账号 API 后重试。",
     continueTitle: "已登录",
     signedInAs: "当前账号",
@@ -299,7 +299,7 @@ const loginCopy = {
     accountError: "帳號或密碼不正確，請確認後再試。",
     dependencyUnavailableError: "登入服務依賴未啟動，請確認真實 backend、MySQL 和 Redis 已啟動。",
     networkTimeoutError: "後端沒有回應，請確認真實 backend、MySQL 和 Redis 已啟動。",
-    resourceNotFoundError: "介面不存在，請確認前端 API 位址指向 NeeDo 真實 /api/v1 後端。",
+    resourceNotFoundError: "介面不存在，請確認介面域名和登入 / 註冊路徑配置正確。",
     googleLoginUnavailable: "目前環境暫時無法發起 Google 登入，請在正式環境配置 Google 帳號 API 後重試。",
     continueTitle: "已登入",
     signedInAs: "目前帳號",
@@ -368,7 +368,7 @@ const loginCopy = {
     accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
     dependencyUnavailableError: "ログインサービスの依存先が起動していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
     networkTimeoutError: "バックエンドが応答していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
-    resourceNotFoundError: "API が見つかりません。フロントエンドの API URL が NeeDo の実際の /api/v1 backend を向いているか確認してください。",
+    resourceNotFoundError: "API が見つかりません。API ドメインとログイン / 登録パスの設定を確認してください。",
     googleLoginUnavailable: "現在の環境では Google ログインを開始できません。正式環境で Google アカウント API を設定してから再試行してください。",
     continueTitle: "ログイン済み",
     signedInAs: "現在のアカウント",
@@ -437,7 +437,7 @@ const loginCopy = {
     accountError: "The account or password is incorrect. Please check and try again.",
     dependencyUnavailableError: "The login service dependency is not running. Confirm the real backend, MySQL, and Redis are running.",
     networkTimeoutError: "The backend did not respond. Confirm the real backend, MySQL, and Redis are running.",
-    resourceNotFoundError: "The API route was not found. Confirm the frontend API URL points to the real NeeDo /api/v1 backend.",
+    resourceNotFoundError: "The API route was not found. Confirm the API domain and login / register routes are configured correctly.",
     googleLoginUnavailable: "Google login cannot be started in this environment. Configure the Google Account API in the production environment and try again.",
     continueTitle: "Signed in",
     signedInAs: "Current account",
@@ -506,7 +506,7 @@ const loginCopy = {
     accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
     dependencyUnavailableError: "로그인 서비스 의존성이 실행 중이 아닙니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
     networkTimeoutError: "백엔드가 응답하지 않습니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
-    resourceNotFoundError: "API 경로를 찾을 수 없습니다. 프런트엔드 API URL이 실제 NeeDo /api/v1 backend를 가리키는지 확인하세요.",
+    resourceNotFoundError: "API 경로를 찾을 수 없습니다. API 도메인과 로그인 / 가입 경로 설정을 확인하세요.",
     googleLoginUnavailable: "현재 환경에서는 Google 로그인을 시작할 수 없습니다. 정식 환경에서 Google 계정 API를 설정한 후 다시 시도하세요.",
     continueTitle: "로그인됨",
     signedInAs: "현재 계정",
@@ -632,8 +632,8 @@ export function getPostLoginRoute(portal: PortalScope, redirectPath: string | nu
   return redirectRoute;
 }
 
-export function getPublicTestLoginPortal(): PortalScope {
-  return "user";
+export function getPublicTestLoginPortal(portal: PortalScope): PortalScope {
+  return portal;
 }
 
 export function LoginPage() {
@@ -805,7 +805,7 @@ export function LoginPage() {
     setIsLoginPending(true);
 
     try {
-      const result = await login(getPublicTestLoginPortal(), testCredentials.email, testCredentials.password, normalizedCaptchaCode);
+      const result = await login(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password, normalizedCaptchaCode);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
         void loadCaptcha();

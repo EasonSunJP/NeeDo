@@ -120,7 +120,7 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
   const portal = allowedPortals.includes(requestedPortal) ? requestedPortal : allowedPortals[0] ?? requestedPortal;
 
   return {
-    authVersion: 3,
+    authVersion: 4,
     id: me.id,
     username: me.username,
     email: me.email,

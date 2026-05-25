@@ -11,6 +11,7 @@ import {
   canAccessPortalFromSession,
   hasAnyPermissionInSession,
   hasPermissionInSession,
+  type AuthMePayload,
   type AuthSession,
   type LoginMethod
 } from "./rbac";
@@ -55,13 +56,48 @@ function readStoredPortal() {
   return normalizeStoredPortal(readBrowserStorage(portalStorageKey, { silent: true }));
 }
 
+function isStoredAuthSession(value: unknown): value is AuthSession {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const session = value as Partial<AuthSession>;
+
+  return (
+    session.authVersion === 4 &&
+    typeof session.id === "number" &&
+    typeof session.username === "string" &&
+    allPortals.includes(session.portal as PortalScope) &&
+    Array.isArray(session.allowedPortals) &&
+    Array.isArray(session.roles) &&
+    Array.isArray(session.permissions) &&
+    Array.isArray(session.menus)
+  );
+}
+
+function readStoredAuthSession() {
+  const rawSession = readBrowserStorage(legacySessionStorageKey, { silent: true });
+
+  if (!rawSession) {
+    return null;
+  }
+
+  try {
+    const parsedSession: unknown = JSON.parse(rawSession);
+
+    return isStoredAuthSession(parsedSession) ? parsedSession : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeApiError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(null);
-  const [isRestoring, setIsRestoring] = useState(() => Boolean(getStoredRefreshToken()));
+  const [session, setSession] = useState<AuthSession | null>(() => readStoredAuthSession());
+  const [isRestoring, setIsRestoring] = useState(() => !readStoredAuthSession() && Boolean(getStoredRefreshToken()));
 
   const clearSession = useCallback(() => {
     clearAuthTokens();
@@ -71,13 +107,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const completeAuthenticatedSession = useCallback(
-    async (requestedPortal: PortalScope, loginMethod: LoginMethod): Promise<AuthActionResult> => {
+    async (requestedPortal: PortalScope, loginMethod: LoginMethod, providedMe?: AuthMePayload): Promise<AuthActionResult> => {
       try {
-        const me = await authApi.me();
+        const me = providedMe ?? (await authApi.me());
         const nextSession = buildAuthSessionFromMe(me, requestedPortal, loginMethod);
         setSession(nextSession);
         writeBrowserStorage(portalStorageKey, nextSession.portal, { silent: true });
-        removeBrowserStorage(legacySessionStorageKey, { silent: true });
+        writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), { silent: true });
 
         return { ok: true, session: nextSession };
       } catch (error) {
@@ -99,9 +135,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     const restoreSession = async () => {
+      if (session) {
+        setIsRestoring(false);
+        return;
+      }
+
       if (!getStoredRefreshToken()) {
         setIsRestoring(false);
-        removeBrowserStorage(legacySessionStorageKey, { silent: true });
         return;
       }
 
@@ -127,14 +167,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [clearSession, completeAuthenticatedSession]);
+  }, [clearSession, completeAuthenticatedSession, session]);
 
   const login = useCallback(
     async (portal: PortalScope, email: string, password: string, captchaCode?: string): Promise<AuthActionResult> => {
       try {
-        await authApi.login(email, password, captchaCode);
+        const loginPayload = await authApi.login(email, password, captchaCode);
 
-        return completeAuthenticatedSession(portal, "password");
+        return completeAuthenticatedSession(portal, "password", loginPayload.me);
       } catch (error) {
         clearSession();
 

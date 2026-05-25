@@ -80,6 +80,12 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).not.toContain("demoAuthAccount.password");
   });
 
+  it("does not point production login failures back to the formal /api/v1 backend path", () => {
+    expect(loginPageSource).toContain("登录 / 注册路径");
+    expect(loginPageSource).not.toContain("真实 /api/v1 后端");
+    expect(loginPageSource).not.toContain("real NeeDo /api/v1 backend");
+  });
+
   it("uses the shared password reveal control on visible password fields", () => {
     expect(loginPageSource).toContain("PasswordInput");
     expect(adminLoginPageSource).toContain("PasswordInput");
@@ -119,7 +125,9 @@ describe("LoginPage real-account login", () => {
     expect(getPostLoginRoute("admin", "/login/merchant?redirect=%2Fmerchant")).toBe("/admin");
   });
 
-  it("keeps the public test-account shortcut on the user portal", () => {
-    expect(getPublicTestLoginPortal()).toBe("user");
+  it("keeps the public test-account shortcut inside the current frontend portal", () => {
+    expect(getPublicTestLoginPortal("user")).toBe("user");
+    expect(getPublicTestLoginPortal("business")).toBe("business");
+    expect(loginPageSource).toContain("login(getPublicTestLoginPortal(activePortal)");
   });
 });

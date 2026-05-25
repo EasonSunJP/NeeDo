@@ -61,6 +61,54 @@ describe("frontend RBAC session helpers", () => {
     expect(canAccessPortalFromSession(session, "user")).toBe(true);
   });
 
+  it("keeps the shared legacy test account on user by default while allowing merchant, technician, and Afirieito switches", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        identities: [
+          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+          { id: 3, type: "merchant_owner", scopeType: "store", scopeId: 20 },
+          { id: 4, type: "technician", scopeType: "technician_profile", scopeId: 30 },
+          { id: 5, type: "scout", scopeType: "global", scopeId: null }
+        ],
+        roles: ["customer", "merchant_owner", "technician", "scout"],
+        permissions: ["page:client-app", "page:merchant-app", "page:technician-app", "page:business-app"],
+        menus: ["menu:client-app", "menu:merchant-app", "menu:technician-app", "menu:business-app"]
+      },
+      "user",
+      "password"
+    );
+
+    expect(session.portal).toBe("user");
+    expect(session.allowedPortals).toEqual(["user", "merchant", "technician", "business"]);
+    expect(canAccessPortalFromSession(session, "merchant")).toBe(true);
+    expect(canAccessPortalFromSession(session, "technician")).toBe(true);
+    expect(canAccessPortalFromSession(session, "business")).toBe(true);
+  });
+
+  it("keeps a legacy account inside Afirieito when the login starts from the promotion entry", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        identities: [
+          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+          { id: 3, type: "merchant_owner", scopeType: "store", scopeId: 20 },
+          { id: 4, type: "technician", scopeType: "technician_profile", scopeId: 30 },
+          { id: 5, type: "scout", scopeType: "global", scopeId: null }
+        ],
+        roles: ["customer", "merchant_owner", "technician", "scout"],
+        permissions: ["page:client-app", "page:merchant-app", "page:technician-app", "page:business-app"],
+        menus: ["menu:client-app", "menu:merchant-app", "menu:technician-app", "menu:business-app"]
+      },
+      "business",
+      "password"
+    );
+
+    expect(session.portal).toBe("business");
+  });
+
   it("checks page and button permissions from the backend permission list", () => {
     const session = buildAuthSessionFromMe(baseMe, "admin", "password");
 
