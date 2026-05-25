@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../../components/client-ui/FeatureCarousel";
 import { PageScaffold, PrimaryButton } from "../../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
@@ -88,7 +88,7 @@ function readStoredTimelineFilter(scope: SocialPortalScope): SocialTimelineFilte
 
   const raw = window.localStorage.getItem(timelineFilterStorageKey(scope));
 
-  return raw === "nearby" || raw === "friends" ? raw : "nearby";
+  return raw === "nearby" || raw === "friends" || raw === "mine" ? raw : "nearby";
 }
 
 function createNearbyPanelFromHomeLocation(
@@ -198,7 +198,6 @@ function getEmptyStateCopy(filter: SocialTimelineFilterTab, tab: SocialProfileTa
 
 export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } = {}) {
   const location = useLocation();
-  const navigate = useNavigate();
   const scope = getSocialScopeFromPathname(location.pathname);
   const {
     profiles,
@@ -391,11 +390,6 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   };
 
   const handleTimelineFilterChange = (nextFilter: SocialTimelineFilterTab) => {
-    if (nextFilter === "mine") {
-      navigate(actorProfilePath);
-      return;
-    }
-
     setTimelineFilter(nextFilter);
   };
 

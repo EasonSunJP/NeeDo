@@ -1058,6 +1058,37 @@ function buildDemoAccountTimelinePosts(baseProfiles: Record<string, SocialProfil
   ];
 }
 
+export function resolveSocialActorKey({
+  entityType,
+  fallbackId,
+  legacyIdPrefix,
+  linkedId,
+  profiles
+}: {
+  entityType: SocialProfile["entityType"];
+  fallbackId?: string;
+  legacyIdPrefix: string;
+  linkedId?: string;
+  profiles: Record<string, SocialProfile>;
+}) {
+  const firstProfileId = Object.values(profiles).find((profile) => profile.entityType === entityType)?.id;
+  const candidateIds = unique([
+    linkedId,
+    linkedId ? `${legacyIdPrefix}-${linkedId}` : undefined,
+    fallbackId,
+    firstProfileId
+  ].filter((value): value is string => Boolean(value?.trim())));
+  const matchedKey = candidateIds
+    .map((id) => profileKey({ entityType, id }))
+    .find((key) => Boolean(profiles[key]));
+
+  if (matchedKey) {
+    return matchedKey;
+  }
+
+  return profileKey({ entityType, id: fallbackId ?? firstProfileId ?? `${legacyIdPrefix}-demo` });
+}
+
 function ensureDemoAccountTimelineContent(
   state: SocialState,
   baseProfiles: Record<string, SocialProfile>,
@@ -1172,11 +1203,29 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   const actorByScope = useMemo<Record<SocialPortalScope, string>>(
     () => ({
-      user: profileKey({ entityType: "user", id: session?.linkedCustomerId ?? customers[0]?.id ?? "user-demo" }),
-      merchant: profileKey({ entityType: "shop", id: session?.linkedStoreId ?? stores[0]?.id ?? "shop-demo" }),
-      technician: profileKey({ entityType: "technician", id: session?.linkedTechnicianId ?? technicians[0]?.id ?? "technician-demo" })
+      user: resolveSocialActorKey({
+        entityType: "user",
+        fallbackId: customers[0]?.id,
+        legacyIdPrefix: "cus",
+        linkedId: session?.linkedCustomerId,
+        profiles: baseProfiles
+      }),
+      merchant: resolveSocialActorKey({
+        entityType: "shop",
+        fallbackId: stores[0]?.id,
+        legacyIdPrefix: "store",
+        linkedId: session?.linkedStoreId,
+        profiles: baseProfiles
+      }),
+      technician: resolveSocialActorKey({
+        entityType: "technician",
+        fallbackId: technicians[0]?.id,
+        legacyIdPrefix: "tech",
+        linkedId: session?.linkedTechnicianId,
+        profiles: baseProfiles
+      })
     }),
-    [customers, entityRevision, session?.linkedCustomerId, session?.linkedStoreId, session?.linkedTechnicianId, stores, technicians]
+    [baseProfiles, customers, entityRevision, session?.linkedCustomerId, session?.linkedStoreId, session?.linkedTechnicianId, stores, technicians]
   );
 
   const [state, setState] = useState<SocialState>(() =>
