@@ -72,12 +72,18 @@ After updating the frontend bundle and Nginx, verify from outside the server:
 ```bash
 curl -fsS https://needo.dackou.com/api/v1/health
 curl -fsS https://needo.dackou.com/api/v1/ready
+curl -fsS "https://needo.dackou.com/api/v1/home/recommendations?limit=1"
 ```
 
 If the login page shows `token不能为空` or graph-captcha errors, the browser is
 still running an old frontend bundle or the API base points to the legacy
 service. If it shows an API-route-not-found message, the frontend bundle is new
 but `/api/v1` is not yet proxied to the formal backend.
+
+If `home/recommendations` returns `404`, the user home page cannot render real
+shop, technician, or service cards. Do not add frontend fallback mock data for
+this case; start the formal backend, apply migrations, run the real seed, and
+fix the `/api/v1` proxy first.
 
 ## Migrations And Seed
 

@@ -126,6 +126,67 @@ Most entries are documented as `POST`; captcha is verified as `GET`.
 | `POST` | `article` | 获取文章列表 |
 | `POST` | `article/cate` | 获取文章分类列表 |
 
+## Home UI / Production Display Gap
+
+The current user homepage UI is already wired to the formal Core Read REST
+contract, not directly to the legacy Apifox module-list endpoints. Copying the
+local `dist/` bundle to production can align the visual shell and card layout,
+but the live homepage still needs same-origin `/api/v1` to reach a formal NeeDo
+backend.
+
+Current production check on `https://needo.dackou.com`:
+
+- `GET /api/v1/home/recommendations?limit=1` returns `404`.
+- `GET /api/v1/health` returns `404`.
+
+Minimum formal APIs required for the local homepage/search/detail display:
+
+| Purpose | Formal frontend contract | Current Apifox overlap |
+|---|---|---|
+| Homepage recommendations | `GET /api/v1/home/recommendations?limit=20` | Related legacy source: `POST application/app`, but response shape is not compatible. |
+| Store cards/detail | `GET /api/v1/shops/:id` and aggregated `shops` inside home recommendations | Related legacy source: `POST store`, with `keyword`, `page`, `pagesize`. |
+| Technician cards/detail | `GET /api/v1/technicians/:id` and aggregated `technicians` inside home recommendations | Related legacy source: `POST user/arter`; request/response shape is not enough for the formal card DTO. |
+| Service cards/detail | `GET /api/v1/services/:id`, `GET /api/v1/services`, `GET /api/v1/search` | Related legacy source: `POST goods`, with `keyword`, `page`, `pagesize`. |
+| Categories | `GET /api/v1/categories` | Related legacy source: `POST goods/cate`, with `keyword`, `page`, `pagesize`. |
+| Public customer profile | `GET /api/v1/profiles/customers/:id` | Apifox exposes user/member list endpoints, but not the public customer profile DTO. |
+
+The formal homepage response must use the shared NeeDo envelope:
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "categories": [],
+    "services": [],
+    "shops": [],
+    "technicians": []
+  }
+}
+```
+
+The card DTOs are documented in `docs/api.md`. They must include published
+shop, technician, service, category, media, and review summary fields from the
+real database. Do not satisfy the production homepage by adding frontend fallback
+mock data.
+
+For frontend-driven test merchant and technician creation, the current formal
+backend has admin `User` CRUD and read-only `Shop` / `TechnicianProfile` public
+APIs, but does not yet expose a public or merchant self-service onboarding API
+that creates:
+
+- a merchant or technician `UserIdentity`,
+- a `Shop`,
+- a `TechnicianProfile`,
+- related `Service`, `MediaAsset`, and `ReviewSummary` rows,
+- review/audit status transitions.
+
+Until that API exists, realistic production test data should be inserted by the
+backend seed or an approved admin/onboarding API, then verified through the
+frontend. A later onboarding API can still be aligned to the Apifox `reg`,
+`store`, `user/arter`, `goods`, and `goods/cate` concepts, but it should return
+the formal `/api/v1` DTOs used by the current frontend.
+
 ## Gaps Still Open In Apifox
 
 - The successful `login` response shape is still not documented with a real token payload.

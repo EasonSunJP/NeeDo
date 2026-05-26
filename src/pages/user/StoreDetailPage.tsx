@@ -27,6 +27,8 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
+import { useI18n } from "../../i18n/I18nProvider";
+import type { Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { appendNeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
@@ -40,9 +42,10 @@ import {
 import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUiDecoration } from "../../lib/storeUiDecoration";
 import { cn, shortNumber, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
+import { TechnicianShowcaseCard } from "../../shared/profile-card";
 import { updateCustomerEntity, updateStoreEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
-import type { Review, Store, StoreCardDecorationConfig, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
+import type { Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
 
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
@@ -709,14 +712,6 @@ function normalizeStoreBookingTimeParam(value: string | null) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(normalized) ? normalized : null;
 }
 
-function weekdayLabel(date: Date) {
-  return ["日", "月", "火", "水", "木", "金", "土"][date.getDay()];
-}
-
-function formatSelectedDateLabel(date: Date) {
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日（${weekdayLabel(date)}）`;
-}
-
 function formatTopMetricCount(value: number) {
   const safeValue = Math.max(0, Math.floor(value));
 
@@ -828,6 +823,89 @@ function FlatCard({
       {editor ? <div className="absolute right-3 top-3 z-10">{editor}</div> : null}
       {children}
     </div>
+  );
+}
+
+function CollapsibleSectionButton({
+  collapsed,
+  label,
+  onToggle
+}: {
+  collapsed: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      aria-expanded={!collapsed}
+      aria-label={`${collapsed ? "展开" : "收起"}${label}`}
+      className="focus-ring inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.10)] transition active:scale-95"
+      onClick={onToggle}
+      title={collapsed ? "展开" : "收起"}
+      type="button"
+    >
+      <AppIcon className="h-4 w-4" name={collapsed ? "plus" : "minus"} />
+    </button>
+  );
+}
+
+function StoreTechnicianSelectableCard({
+  active,
+  fallbackServices,
+  language,
+  onSelect,
+  rankIndex,
+  technician
+}: {
+  active: boolean;
+  fallbackServices: ServiceItem[];
+  language: Language;
+  onSelect: () => void;
+  rankIndex: number;
+  technician: Technician;
+}) {
+  return (
+    <TechnicianShowcaseCard
+      aria-label={active ? "已选技师" : "待选技师"}
+      className="h-full w-full"
+      fallbackServices={fallbackServices}
+      language={language}
+      onSelect={onSelect}
+      rankIndex={rankIndex}
+      selected={active}
+      selectionAriaLabel={active ? "已选技师" : "待选技师"}
+      technician={technician}
+    />
+  );
+}
+
+function StoreSelectionIconButton({
+  active,
+  className,
+  label,
+  onSelect
+}: {
+  active: boolean;
+  className?: string;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={active}
+      className={cn(
+        "focus-ring inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95",
+        active
+          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_36%,transparent)]"
+          : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_42%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_24px_rgba(0,0,0,0.18)]",
+        className
+      )}
+      onClick={onSelect}
+      type="button"
+    >
+      <AppIcon className="h-5 w-5" name={active ? "check" : "plus"} />
+    </button>
   );
 }
 
@@ -1434,21 +1512,25 @@ function StoreDisplayInlineEditor({
 
 function CompactMenuCard({
   item,
-  bookingTo,
   cardUi,
   editing = false,
+  selected = false,
+  selectLabel,
   showHighlights = false,
   editor,
   onChange,
+  onSelect,
   onReplaceImage
 }: {
   item: MenuCard;
-  bookingTo: string;
   cardUi?: StoreCardDecorationConfig;
   editing?: boolean;
+  selected?: boolean;
+  selectLabel: string;
   showHighlights?: boolean;
   editor?: ReactNode;
   onChange?: (item: MenuCard) => void;
+  onSelect: () => void;
   onReplaceImage?: (files: FileList | null) => void;
 }) {
   const coverHeight = cardUi?.coverHeight ? Number.parseInt(cardUi.coverHeight, 10) : 88;
@@ -1517,10 +1599,7 @@ function CompactMenuCard({
               onChange={(value) => updateField("priceLabel", value)}
               value={item.priceLabel}
             />
-            <PrimaryButton className="ml-auto h-10 min-w-[136px] max-w-[48%] shrink-0 gap-1.5 px-3 text-[13px] sm:hidden" to={bookingTo}>
-              <AppIcon className="h-4 w-4 shrink-0" name="calendar" />
-              <span className="min-w-0 truncate whitespace-nowrap">{cardUi?.cta ?? "预约"}</span>
-            </PrimaryButton>
+            <StoreSelectionIconButton active={selected} className="ml-auto sm:hidden" label={selectLabel} onSelect={onSelect} />
           </div>
           {showHighlights ? (
             <div className="mt-2">
@@ -1528,11 +1607,8 @@ function CompactMenuCard({
             </div>
           ) : null}
         </div>
-        <div className="hidden justify-end sm:block">
-          <PrimaryButton className="h-10 min-w-[160px] gap-1.5 px-4 text-[13px] sm:w-full sm:min-w-0 sm:px-3.5" to={bookingTo}>
-            <AppIcon className="h-4 w-4" name="calendar" />
-            <span>{cardUi?.cta ?? "预约"}</span>
-          </PrimaryButton>
+        <div className="hidden justify-end sm:flex">
+          <StoreSelectionIconButton active={selected} label={selectLabel} onSelect={onSelect} />
         </div>
       </div>
     </FlatCard>
@@ -1614,6 +1690,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { session } = useAuth();
+  const { language } = useI18n();
   const { customers, technicians } = useEntityStore();
   const displayedTechnicians = techniciansOverride ?? technicians;
   const { getActorForScope, getProfilePosts } = useSocial();
@@ -1629,6 +1706,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const heroBlock = useMemo(() => getStoreDecorationBlockConfig(store, "hero"), [store.id, store.uiDecoration]);
   const bookingBlock = useMemo(() => getStoreDecorationBlockConfig(store, "booking"), [store.id, store.uiDecoration]);
   const menuBlock = useMemo(() => getStoreDecorationBlockConfig(store, "menu"), [store.id, store.uiDecoration]);
+  const technicianBlock = useMemo(() => getStoreDecorationBlockConfig(store, "technicians"), [store.id, store.uiDecoration]);
   const galleryBlock = useMemo(() => getStoreDecorationBlockConfig(store, "gallery"), [store.id, store.uiDecoration]);
   const blockOrderMap = useMemo(
     () => Object.fromEntries(getStoreUiDecoration(store).blocks.map((block, index) => [block.id, index])),
@@ -1637,7 +1715,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const packageCardUi = useMemo(() => getStoreCardDecorationConfig(store, "package"), [store.id, store.uiDecoration]);
 
   const storeTechnicians = useMemo(
-    () => displayedTechnicians.filter((item) => item.storeId === store.id).slice(0, 4),
+    () => displayedTechnicians.filter((item) => item.storeId === store.id || item.relatedStoreIds?.includes(store.id)).slice(0, 8),
     [displayedTechnicians, store.id]
   );
   const config = useMemo(() => buildStoreProfileConfig(store, industry), [industry, store, store.presentation]);
@@ -1719,6 +1797,10 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const [selectedVisitDate, setSelectedVisitDate] = useState(() => routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
   const [selectedPeople, setSelectedPeople] = useState(industry === "dining" ? "2名" : "1名");
   const [selectedTime, setSelectedTime] = useState(routeTime ?? timeOptions[0] ?? nextSlotTime(store.nextSlot));
+  const [selectedMenuCardId, setSelectedMenuCardId] = useState(primaryCheckoutTarget);
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState(routeTechnicianId);
+  const [serviceMenuCollapsed, setServiceMenuCollapsed] = useState(false);
+  const [technicianListCollapsed, setTechnicianListCollapsed] = useState(false);
   const [shareBoost, setShareBoost] = useState(0);
   const [offersNowMs, setOffersNowMs] = useState(() => Date.now());
   const [likedOfferIds, setLikedOfferIds] = useState<string[]>([]);
@@ -1733,13 +1815,17 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
     setSelectedVisitDate(routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
     setSelectedPeople(industry === "dining" ? "2名" : "1名");
     setSelectedTime(routeTime ?? buildTimeOptions(industry, store.nextSlot, store.alwaysBookable)[0] ?? nextSlotTime(store.nextSlot));
+    setSelectedMenuCardId(primaryCheckoutTarget);
+    setSelectedTechnicianId(routeTechnicianId);
+    setServiceMenuCollapsed(false);
+    setTechnicianListCollapsed(false);
     setShareBoost(0);
     setLikedOfferIds([]);
     setTranslatedOfferIds([]);
     setOfferReplyBoosts({});
     setLightboxIndex(null);
     setActiveEditor(null);
-  }, [industry, routeTime, routeVisitDate, store.alwaysBookable, store.id, store.nextSlot]);
+  }, [industry, primaryCheckoutTarget, routeTechnicianId, routeTime, routeVisitDate, store.alwaysBookable, store.id, store.nextSlot]);
 
   useEffect(() => {
     setActiveImageIndex((current) => Math.min(current, Math.max(0, images.length - 1)));
@@ -1789,7 +1875,17 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
 
   const favoriteCount = config.favoriteCount + (isFavorite ? 1 : 0);
   const shareCount = baseShareCount + shareBoost;
-  const selectedBookingTechnicianName = routedBookingTechnician?.nickname?.trim() || routedBookingTechnician?.name || "";
+  const selectedBookingTechnician = useMemo(
+    () =>
+      displayedTechnicians.find(
+        (technician) =>
+          technician.id === selectedTechnicianId &&
+          (technician.storeId === store.id || technician.relatedStoreIds?.includes(store.id))
+      ) ??
+      routedBookingTechnician ??
+      null,
+    [displayedTechnicians, routedBookingTechnician, selectedTechnicianId, store.id]
+  );
   const displayedTimeOptions = useMemo(
     () => (timeOptions.includes(selectedTime) ? timeOptions : [selectedTime, ...timeOptions]),
     [selectedTime, timeOptions]
@@ -1799,10 +1895,11 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       date: formatDateParam(selectedVisitDate),
       people: selectedPeople,
       storeId: store.id,
-      technicianId: routedBookingTechnician?.id,
+      technicianId: selectedBookingTechnician?.id,
       time: selectedTime
     });
-  const bookingHref = buildBookingHref(primaryCheckoutTarget);
+  const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
+  const bookingHref = buildBookingHref(selectedCheckoutTarget);
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
   const updateBasicStoreField = (key: StoreBasicEditorFieldKey, value: string) => {
     updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, StoreBasicEditorFieldKey>>);
@@ -1957,7 +2054,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       value={activeTab}
     />
   );
-  const blockOrderStyle = (blockId: "hero" | "booking" | "menu" | "gallery"): CSSProperties => ({
+  const blockOrderStyle = (blockId: StoreDecorationBlockId): CSSProperties => ({
     order: blockOrderMap[blockId] ?? 0
   });
   const basicCardEditing = isMerchantEditorActive("basic-card");
@@ -2159,15 +2256,8 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                     timeOptions={displayedTimeOptions}
                     title="来店日"
                   />
-                  <div className="flex items-center justify-between gap-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] pt-3">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--client-muted)]">已选预约</p>
-                      <p className="mt-1 text-sm font-black text-[color:var(--client-text)]">
-                        {formatSelectedDateLabel(selectedVisitDate)} · {selectedPeople} · {selectedTime}
-                        {selectedBookingTechnicianName ? ` · 指名 ${selectedBookingTechnicianName}` : ""}
-                      </p>
-                    </div>
-                    <PrimaryButton className="gap-2 px-5" to={bookingHref}>
+                  <div className="flex justify-center border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] pt-3">
+                    <PrimaryButton className="min-h-14 min-w-[188px] justify-center gap-2 px-8 text-center" to={bookingHref}>
                       <AppIcon className="h-4 w-4" name="calendar" />
                       <span>{bookingCtaCopy(store.openStatus)}</span>
                     </PrimaryButton>
@@ -2179,29 +2269,75 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
 
           {menuBlock.visible ? (
             <section style={blockOrderStyle("menu")}>
-              <SectionTitle caption="先看当前最受欢迎的预约菜单" title={menuBlock.name} />
-              <div className="mt-3 grid gap-2.5">
-                {menuCards.slice(0, 3).map((item, index) => {
-                  const editorTarget = `home-menu-${item.id}`;
+              <SectionTitle caption="先看当前最受欢迎的预约菜单" title={menuBlock.name}>
+                <CollapsibleSectionButton
+                  collapsed={serviceMenuCollapsed}
+                  label={menuBlock.name}
+                  onToggle={() => setServiceMenuCollapsed((current) => !current)}
+                />
+              </SectionTitle>
+              {!serviceMenuCollapsed ? (
+                <div className="mt-3 grid gap-2.5">
+                  {menuCards.slice(0, 3).map((item, index) => {
+                    const editorTarget = `home-menu-${item.id}`;
+                    const active = selectedCheckoutTarget === item.sourceServiceId;
 
-                  return (
-                    <div className="grid gap-2" key={item.id}>
-                      <CompactMenuCard
-                        bookingTo={buildBookingHref(item.sourceServiceId)}
-                        cardUi={packageCardUi}
-                        editing={isMerchantEditorActive(editorTarget)}
-                        editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}
-                        item={item}
-                        onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
-                        onReplaceImage={(files) => {
-                          void replaceMenuCardImage(index, files);
-                        }}
-                      />
-                      {renderActiveInlineEditor(editorTarget)}
-                    </div>
-                  );
-                })}
-              </div>
+                    return (
+                      <div className="grid gap-2" key={item.id}>
+                        <CompactMenuCard
+                          cardUi={packageCardUi}
+                          editing={isMerchantEditorActive(editorTarget)}
+                          editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}
+                          item={item}
+                          onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
+                          onReplaceImage={(files) => {
+                            void replaceMenuCardImage(index, files);
+                          }}
+                          onSelect={() => setSelectedMenuCardId(item.sourceServiceId)}
+                          selected={active}
+                          selectLabel={active ? "已选服务套餐" : "选择服务套餐"}
+                        />
+                        {renderActiveInlineEditor(editorTarget)}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {technicianBlock.visible ? (
+            <section style={blockOrderStyle("technicians")}>
+              <SectionTitle caption="本店开放的可预约指名担当" title={technicianBlock.name}>
+                <CollapsibleSectionButton
+                  collapsed={technicianListCollapsed}
+                  label={technicianBlock.name}
+                  onToggle={() => setTechnicianListCollapsed((current) => !current)}
+                />
+              </SectionTitle>
+              {!technicianListCollapsed ? (
+                storeTechnicians.length > 0 ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2.5">
+                    {storeTechnicians.map((technician, index) => {
+                      const active = selectedBookingTechnician?.id === technician.id;
+
+                      return (
+                        <StoreTechnicianSelectableCard
+                          active={active}
+                          fallbackServices={services}
+                          key={technician.id}
+                          language={language}
+                          onSelect={() => setSelectedTechnicianId(active ? "" : technician.id)}
+                          rankIndex={index}
+                          technician={technician}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <EmptyStatePanel caption="当前商户还没有开放可预约技师。" title="暂无技师" />
+                )
+              ) : null}
             </section>
           ) : null}
 
@@ -2249,31 +2385,76 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       {activeTab === "menu" && menuBlock.visible ? (
         <div className="space-y-4">
           <section>
-            <SectionTitle caption="按价格、时长和适合人群快速查看" title={menuBlock.name} />
-            <div className="mt-3 grid gap-2.5">
-              {menuCards.map((item, index) => {
-                const editorTarget = `menu-${item.id}`;
+            <SectionTitle caption="按价格、时长和适合人群快速查看" title={menuBlock.name}>
+              <CollapsibleSectionButton
+                collapsed={serviceMenuCollapsed}
+                label={menuBlock.name}
+                onToggle={() => setServiceMenuCollapsed((current) => !current)}
+              />
+            </SectionTitle>
+            {!serviceMenuCollapsed ? (
+              <div className="mt-3 grid gap-2.5">
+                {menuCards.map((item, index) => {
+                  const editorTarget = `menu-${item.id}`;
+                  const active = selectedCheckoutTarget === item.sourceServiceId;
 
-                return (
-                  <div className="grid gap-2" key={item.id}>
-                    <CompactMenuCard
-                      bookingTo={buildBookingHref(item.sourceServiceId)}
-                      cardUi={packageCardUi}
-                      editing={isMerchantEditorActive(editorTarget)}
-                      editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}
-                      item={item}
-                      onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
-                      onReplaceImage={(files) => {
-                        void replaceMenuCardImage(index, files);
-                      }}
-                      showHighlights
-                    />
-                    {renderActiveInlineEditor(editorTarget)}
-                  </div>
-                );
-              })}
-            </div>
+                  return (
+                    <div className="grid gap-2" key={item.id}>
+                      <CompactMenuCard
+                        cardUi={packageCardUi}
+                        editing={isMerchantEditorActive(editorTarget)}
+                        editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}
+                        item={item}
+                        onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
+                        onReplaceImage={(files) => {
+                          void replaceMenuCardImage(index, files);
+                        }}
+                        onSelect={() => setSelectedMenuCardId(item.sourceServiceId)}
+                        selected={active}
+                        selectLabel={active ? "已选服务套餐" : "选择服务套餐"}
+                        showHighlights
+                      />
+                      {renderActiveInlineEditor(editorTarget)}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </section>
+          {technicianBlock.visible ? (
+            <section style={blockOrderStyle("technicians")}>
+              <SectionTitle caption="本店开放的可预约担当" title={technicianBlock.name}>
+                <CollapsibleSectionButton
+                  collapsed={technicianListCollapsed}
+                  label={technicianBlock.name}
+                  onToggle={() => setTechnicianListCollapsed((current) => !current)}
+                />
+              </SectionTitle>
+              {!technicianListCollapsed ? (
+                storeTechnicians.length > 0 ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2.5">
+                    {storeTechnicians.map((technician, index) => {
+                      const active = selectedBookingTechnician?.id === technician.id;
+
+                      return (
+                        <StoreTechnicianSelectableCard
+                          active={active}
+                          fallbackServices={services}
+                          key={technician.id}
+                          language={language}
+                          onSelect={() => setSelectedTechnicianId(active ? "" : technician.id)}
+                          rankIndex={index}
+                          technician={technician}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <EmptyStatePanel caption="当前商户还没有开放可预约技师。" title="暂无技师" />
+                )
+              ) : null}
+            </section>
+          ) : null}
         </div>
       ) : null}
 

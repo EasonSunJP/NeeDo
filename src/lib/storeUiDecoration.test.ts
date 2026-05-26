@@ -10,7 +10,7 @@ describe("storeUiDecoration", () => {
   it("keeps all known UI decoration blocks and cards", () => {
     const decoration = getDefaultStoreUiDecoration();
 
-    expect(decoration.blocks.map((block) => block.id)).toEqual(["hero", "booking", "menu", "gallery"]);
+    expect(decoration.blocks.map((block) => block.id)).toEqual(["hero", "booking", "menu", "technicians", "gallery"]);
     expect(decoration.cards.map((card) => card.id)).toEqual(["store", "package", "technician"]);
   });
 
@@ -32,7 +32,7 @@ describe("storeUiDecoration", () => {
       color: "#123abc",
       visible: false
     });
-    expect(decoration.blocks).toHaveLength(4);
+    expect(decoration.blocks).toHaveLength(5);
     expect(decoration.cards.find((card) => card.id === "package")).toMatchObject({
       coverHeight: "220",
       tagStyle: "实心",
@@ -54,7 +54,7 @@ describe("storeUiDecoration", () => {
       ]
     });
 
-    expect(decoration.blocks.map((block) => block.id)).toEqual(["menu", "hero", "booking", "gallery"]);
+    expect(decoration.blocks.map((block) => block.id)).toEqual(["menu", "hero", "booking", "technicians", "gallery"]);
   });
 
   it("resolves block and card config from a store snapshot", () => {

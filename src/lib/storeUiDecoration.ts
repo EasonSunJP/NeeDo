@@ -16,6 +16,7 @@ export const defaultStoreDecorationBlocks: StoreDecorationBlockConfig[] = [
   { id: "hero", name: "店铺首屏图文", area: "详情页顶部", style: "图文", color: "#2f9d86", visible: true },
   { id: "booking", name: "最近两周预约模块", area: "详情页预约区", style: "横滑", color: "#e3b84f", visible: true },
   { id: "menu", name: "服务套餐菜单", area: "详情页中段", style: "菜单", color: "#8d7aff", visible: true },
+  { id: "technicians", name: "技师列表", area: "服务套餐菜单下方", style: "图文", color: "#35a7ff", visible: true },
   { id: "gallery", name: "店铺照片墙", area: "详情页图片区", style: "照片墙", color: "#ef7e68", visible: true }
 ];
 

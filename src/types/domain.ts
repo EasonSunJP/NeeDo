@@ -151,7 +151,7 @@ export interface Merchant {
   documents: string[];
 }
 
-export type StoreDecorationBlockId = "hero" | "booking" | "menu" | "gallery";
+export type StoreDecorationBlockId = "hero" | "booking" | "menu" | "technicians" | "gallery";
 export type StoreDecorationBlockStyle = "横滑" | "图文" | "菜单" | "照片墙";
 export type StoreCardDecorationId = "store" | "package" | "technician";
 export type StoreCardTagStyle = "实心" | "描边";

@@ -1,16 +1,21 @@
 import { Link } from "react-router-dom";
+import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
 
 type TechnicianShowcaseCardProps = {
+  "aria-label"?: string;
   className?: string;
   detailTo?: string;
   directService?: ServiceItem;
   fallbackServices?: ServiceItem[];
   language: Language;
+  onSelect?: () => void;
   rankIndex: number;
+  selected?: boolean;
+  selectionAriaLabel?: string;
   technician: Technician;
 };
 
@@ -189,12 +194,16 @@ function getRecommendedServiceForTechnician(technician: Technician, directServic
 }
 
 export function TechnicianShowcaseCard({
+  "aria-label": ariaLabel,
   className,
   detailTo,
   directService,
   fallbackServices = [],
   language,
+  onSelect,
   rankIndex,
+  selected,
+  selectionAriaLabel,
   technician
 }: TechnicianShowcaseCardProps) {
   const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
@@ -209,72 +218,114 @@ export function TechnicianShowcaseCard({
   const duration = packageInfo?.durationMinutes ?? 60;
   const priceLabel = Number.isFinite(price) && price > 0 ? formatCardYen(price) : copy.pricePending;
   const serviceName = localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
+  const detailHref = detailTo ?? getTechnicianDynamicPath(technician);
+  const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
+  const cardClassName = cn(
+    "group block overflow-hidden rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-left shadow-[0_16px_34px_rgba(0,0,0,0.16)] transition",
+    typeof selected === "boolean" && selected
+      ? "border-[color:color-mix(in_srgb,var(--client-primary)_72%,transparent)] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
+      : "",
+    className
+  );
+  const photoContent = (
+    <div className="relative aspect-[3/4] min-h-[228px] overflow-hidden bg-black">
+      <img
+        alt={displayName}
+        className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
+        src={getGeneratedImageThumbnailUrl(getTechnicianPhoto(technician))}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
+      <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
 
-  return (
+      <div className="absolute left-2 top-2 flex max-w-[calc(100%-62px)] flex-col items-start gap-1.5" data-no-i18n>
+        {topTags.map((tag, index) => (
+          <span
+            className={cn(
+              "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-black leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-md",
+              index === 0
+                ? "bg-black/70"
+                : index === 1
+                  ? "bg-[color:color-mix(in_srgb,var(--client-primary)_72%,black_8%)]"
+                  : "bg-[color:color-mix(in_srgb,var(--client-accent)_72%,black_8%)]"
+            )}
+            key={tag}
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      <div className="absolute right-2 top-2 inline-flex h-8 min-w-12 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-2 text-[12px] font-black leading-none text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]">
+        ★{formatTechnicianCardRating(technician.rating).toFixed(1)}
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
+        <h3 className="line-clamp-1 text-[17px] font-black leading-6">
+          {displayName}
+          {technician.age ? <span className="ml-1 text-[14px] font-semibold text-white/82">({technician.age})</span> : null}
+        </h3>
+        <p className="mt-1 line-clamp-1 text-[12px] font-bold text-white/86">
+          {[technician.height ? `${technician.height}cm` : "", primarySkill, areaLabel].filter(Boolean).join(" / ")}
+        </p>
+        <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-white/72">
+          {statusLabel} · {copy.acceptRate} {technician.acceptRate}%
+        </p>
+      </div>
+    </div>
+  );
+  const detailContent = (
+    <div className="px-3 py-3 text-left">
+      <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]" data-no-i18n>
+        {copy.recommendedService}
+      </p>
+      <h4 className="mt-1.5 line-clamp-1 text-[13px] font-black leading-5 text-[color:var(--client-text)]">
+        {serviceName}
+      </h4>
+      <p className="mt-1 flex min-w-0 items-baseline justify-start gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
+        <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
+        <span className="min-w-0 truncate">/ {duration}{copy.minuteSuffix}({copy.taxSuffix})</span>
+      </p>
+    </div>
+  );
+
+  return onSelect ? (
+    <div className={cardClassName}>
+      <div className="relative">
+        <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+          {photoContent}
+        </Link>
+        {typeof selected === "boolean" ? (
+          <button
+            aria-label={selectionLabel}
+            aria-pressed={selected}
+            className={cn(
+              "absolute bottom-2 right-2 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95",
+              selected
+                ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_8px_20px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
+                : "border-white/58 bg-black/38 text-white/78 shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+            )}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect();
+            }}
+            type="button"
+          >
+            <AppIcon className="h-5 w-5" name={selected ? "check" : "plus"} />
+          </button>
+        ) : null}
+      </div>
+      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+        {detailContent}
+      </Link>
+    </div>
+  ) : (
     <Link
-      className={cn(
-        "group block overflow-hidden rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-left shadow-[0_16px_34px_rgba(0,0,0,0.16)] transition active:scale-[0.99]",
-        className
-      )}
-      to={detailTo ?? getTechnicianDynamicPath(technician)}
+      className={cardClassName}
+      to={detailHref}
     >
-      <div className="relative aspect-[3/4] min-h-[228px] overflow-hidden bg-black">
-        <img
-          alt={displayName}
-          className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
-          src={getGeneratedImageThumbnailUrl(getTechnicianPhoto(technician))}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
-        <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
-
-        <div className="absolute left-2 top-2 flex max-w-[calc(100%-62px)] flex-col items-start gap-1.5" data-no-i18n>
-          {topTags.map((tag, index) => (
-            <span
-              className={cn(
-                "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-black leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-md",
-                index === 0
-                  ? "bg-black/70"
-                  : index === 1
-                    ? "bg-[color:color-mix(in_srgb,var(--client-primary)_72%,black_8%)]"
-                    : "bg-[color:color-mix(in_srgb,var(--client-accent)_72%,black_8%)]"
-              )}
-              key={tag}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-
-        <div className="absolute right-2 top-2 inline-flex h-8 min-w-12 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-2 text-[12px] font-black leading-none text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]">
-          ★{formatTechnicianCardRating(technician.rating).toFixed(1)}
-        </div>
-
-        <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
-          <h3 className="line-clamp-1 text-[17px] font-black leading-6">
-            {displayName}
-            {technician.age ? <span className="ml-1 text-[14px] font-semibold text-white/82">({technician.age})</span> : null}
-          </h3>
-          <p className="mt-1 line-clamp-1 text-[12px] font-bold text-white/86">
-            {[technician.height ? `${technician.height}cm` : "", primarySkill, areaLabel].filter(Boolean).join(" / ")}
-          </p>
-          <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-white/72">
-            {statusLabel} · {copy.acceptRate} {technician.acceptRate}%
-          </p>
-        </div>
-      </div>
-
-      <div className="px-3 py-3 text-left">
-        <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]" data-no-i18n>
-          {copy.recommendedService}
-        </p>
-        <h4 className="mt-1.5 line-clamp-1 text-[13px] font-black leading-5 text-[color:var(--client-text)]">
-          {serviceName}
-        </h4>
-        <p className="mt-1 flex min-w-0 items-baseline justify-start gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
-          <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
-          <span className="min-w-0 truncate">/ {duration}{copy.minuteSuffix}({copy.taxSuffix})</span>
-        </p>
-      </div>
+      {photoContent}
+      {detailContent}
     </Link>
   );
 }
