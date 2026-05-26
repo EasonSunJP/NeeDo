@@ -12,4 +12,13 @@ describe("login copyright copy", () => {
       expect(source).not.toContain("NeeDo Co., Ltd. All rights reserved.");
     });
   });
+
+  it("keeps splash entry loading copy minimal", () => {
+    expect(appSource).toContain('const splashVersionLabel = "1.001";');
+    expect(appSource).not.toContain("ver：2604170914");
+    expect(appSource).not.toContain("正在进入当前端口。");
+    expect(appSource).not.toContain("正在载入界面");
+    expect(appSource).not.toContain("启动页加载中");
+    expect(appSource).toContain("<NeedoPetRunningSprite />");
+  });
 });

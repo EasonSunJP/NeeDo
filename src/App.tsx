@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ReactElement, type ReactNode } from "react";
+import { Component, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
@@ -131,7 +131,7 @@ import {
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
 import { OfficialNoticeAutoPopup } from "./components/ui/OfficialNoticeAutoPopup";
-import { NeedoPet } from "./components/ui/NeedoPet";
+import { NeedoPet, NeedoPetRunningSprite } from "./components/ui/NeedoPet";
 import { clearNeedoStorage } from "./lib/browserStorage";
 import { isNonFatalBrowserRuntimeError } from "./lib/share";
 import { useEntityStore } from "./state/entityStore";
@@ -506,34 +506,27 @@ function CategoryListRedirect({ type }: { type: "store" | "service" }) {
   return <Navigate replace to={`/categories?${nextParams.toString()}`} />;
 }
 
-const splashCopy: Record<SplashPortal, { title: string; subtitle: string }> = {
+const splashCopy: Record<SplashPortal, { title: string }> = {
   user: {
-    title: "NeeDo 用户端",
-    subtitle: "搜索服务、联系店铺、查看订单与继续聊天。"
+    title: "NeeDo 用户端"
   },
   business: {
-    title: "NeeDoAfirieito",
-    subtitle: "独立联盟营销增长平台，管理推广计划、素材、归因、佣金、NDP 与风控。"
+    title: "NeeDoAfirieito"
   },
   businessAdmin: {
-    title: "NDA管理后台",
-    subtitle: "NeeDoAfirieito 独立 PC 管理后台，负责活动、素材、归因、佣金、钱包与风控。"
+    title: "NDA管理后台"
   },
   merchant: {
-    title: "NeeDo 商户端",
-    subtitle: "同步订单、排班、门店通讯录与经营动态。"
+    title: "NeeDo 商户端"
   },
   technician: {
-    title: "NeeDo 技师端",
-    subtitle: "查看任务、处理对话、确认排班并继续服务。"
+    title: "NeeDo 技师端"
   },
   admin: {
-    title: "NeeDo 运营后台",
-    subtitle: "进入平台总控，继续查看数据、订单、调度与风控。"
+    title: "NeeDo 运营后台"
   },
   merchantAdmin: {
-    title: "商户后台",
-    subtitle: "继续处理店铺后台里的订单、排班、人员与设置。"
+    title: "商户后台"
   }
 };
 
@@ -547,7 +540,7 @@ const splashImages: Record<SplashPortal, string> = {
   merchantAdmin: backendManagementSystemBgUrl
 };
 
-const splashVersionLabel = "ver：2604170914";
+const splashVersionLabel = "1.001";
 const splashCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
 
 const splashAdminThemeConfig = {
@@ -670,7 +663,7 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       if (active) {
         setMinimumElapsed(true);
       }
-    }, 720);
+    }, 920);
 
     return () => {
       active = false;
@@ -685,7 +678,7 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
       return;
     }
 
-    const timer = window.setTimeout(onDone, 120);
+    const timer = window.setTimeout(onDone, 620);
 
     return () => window.clearTimeout(timer);
   }, [imageReady, minimumElapsed, onDone]);
@@ -693,6 +686,7 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
   return (
     <div
       className="fixed inset-0 z-[999] overflow-hidden bg-[#090806]"
+      data-needo-splash-version={splashVersionLabel}
       style={{
         backgroundImage: `url('${splashImage}')`,
         backgroundPosition: "center",
@@ -719,48 +713,25 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
           loading="eager"
           src={splashImage}
         />
-        <div className="fixed right-5 top-[max(1.2rem,env(safe-area-inset-top))] z-[1001] sm:right-8 sm:top-7">
-          <div className="rounded-full border border-[color:var(--needo-splash-border)] bg-[color:var(--needo-splash-panel)] px-4 py-2 text-right text-[11px] font-black tracking-[0.16em] text-[color:var(--needo-splash-muted)] shadow-[0_14px_34px_rgba(0,0,0,0.2)] backdrop-blur-md">
-            {splashVersionLabel}
-          </div>
-        </div>
 
         <div className="fixed inset-x-0 bottom-0 z-[1001] w-full px-5 pb-[max(1.4rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-7">
-          <div className="max-h-[calc(100dvh-5.5rem)] w-full max-w-xl overflow-y-auto">
-            <p className="text-sm font-bold tracking-[0.18em] text-[color:var(--needo-splash-accent)]">正在进入</p>
-            <h1 className="mt-3 text-[clamp(2rem,7vw,4.5rem)] font-black leading-[0.95] tracking-normal text-[color:var(--needo-splash-text)]">{copy.title}</h1>
-            <p className="mt-4 max-w-lg text-sm leading-6 text-[color:var(--needo-splash-muted)] sm:text-base sm:leading-7">{copy.subtitle}</p>
+          <div className="mx-auto flex max-h-[calc(100dvh-5.5rem)] w-full max-w-xl flex-col items-stretch overflow-y-auto">
+            <h1 className="text-[clamp(2rem,7vw,4.5rem)] font-black leading-[0.95] tracking-normal text-[color:var(--needo-splash-text)]">{copy.title}</h1>
 
-            <div className="mt-8 flex items-center gap-3 rounded-[24px] border border-[color:var(--needo-splash-border)] bg-[color:var(--needo-splash-panel)] px-4 py-3 backdrop-blur-md sm:max-w-[420px]">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[color:var(--needo-splash-border)] bg-[color:var(--needo-splash-panel-strong)]">
-                <span
-                  className="h-4 w-4 animate-spin rounded-full border-2 border-[color:var(--needo-splash-ring)]"
-                  style={{
-                    borderTopColor: "var(--needo-splash-accent)",
-                    boxShadow: "0 0 14px color-mix(in srgb, var(--needo-splash-accent) 78%, transparent)"
-                  }}
-                />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-black text-[color:var(--needo-splash-text)]">正在载入界面</p>
-                <p className="mt-1 text-xs leading-5 text-[color:var(--needo-splash-soft)]">正在进入当前端口。</p>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[color:var(--needo-splash-track)]">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${minimumElapsed ? "w-full" : "w-2/5 animate-pulse"}`}
-                    style={{
-                      background:
-                        "linear-gradient(90deg, color-mix(in srgb, var(--needo-splash-accent) 64%, transparent) 0%, var(--needo-splash-accent) 100%)",
-                      boxShadow: "0 0 18px color-mix(in srgb, var(--needo-splash-accent) 62%, transparent)"
-                    }}
-                  />
-                </div>
+            <div
+              className={`needo-splash-loading mt-8 ${minimumElapsed ? "needo-splash-loading-complete" : ""}`}
+              style={{ "--needo-splash-progress": minimumElapsed ? "100%" : "24%" } as CSSProperties}
+            >
+              <div className="needo-splash-runner" aria-hidden="true">
+                <NeedoPetRunningSprite />
+              </div>
+              <p className="needo-splash-loading-label">Loading</p>
+              <div className="needo-splash-progress-track" aria-hidden="true">
+                <div className="needo-splash-progress-fill" />
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col gap-2 border-t border-[color:var(--needo-splash-border)] pt-4 text-xs leading-5 text-[color:var(--needo-splash-soft)] sm:flex-row sm:items-center sm:justify-between">
-              <span>{splashCopyrightText}</span>
-              <span>启动页加载中</span>
-            </div>
+            <p className="mt-7 text-center text-xs leading-5 text-[color:var(--needo-splash-soft)]">{splashCopyrightText}</p>
           </div>
         </div>
       </div>

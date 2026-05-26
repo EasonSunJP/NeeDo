@@ -322,7 +322,6 @@ function OrderDetailBottomActionMask({ children }: { children: ReactNode }) {
       <ClientEdgeMask
         edge="bottom"
         style={{
-          "--client-edge-mask-rgb": "2 3 10",
           "--client-edge-mask-bottom-height": "calc(env(safe-area-inset-bottom,0px) + 8.75rem)",
           "--client-edge-mask-bottom-mid-opacity": "0.66",
           "--client-edge-mask-bottom-mid-stop": "38%",
@@ -590,7 +589,7 @@ export function UserOrderDetailPage() {
               "focus-ring inline-flex h-12 min-w-0 items-center justify-center rounded-[20px] px-3 text-[13px] font-black shadow-[0_14px_30px_rgba(0,0,0,0.18)] transition sm:text-sm",
               isServiceInProgress && !pendingExtensionRequest
                 ? "border border-[color:color-mix(in_srgb,var(--client-primary)_34%,var(--client-line)_66%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-bg)_8%)] text-[color:var(--client-text)] hover:-translate-y-0.5"
-                : "cursor-not-allowed border border-[#4a4764] bg-[#343149] text-[#928dab]"
+                : "cursor-not-allowed border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] text-[color:var(--client-muted)] shadow-none"
             )}
             disabled={!isServiceInProgress || Boolean(pendingExtensionRequest)}
             onClick={openExtensionPicker}
@@ -604,8 +603,8 @@ export function UserOrderDetailPage() {
               isServiceInProgress
                 ? "bg-[linear-gradient(180deg,#ff7d72_0%,#f04f47_58%,#df332f_100%)] text-white shadow-[0_18px_38px_rgba(244,76,68,0.34)] hover:-translate-y-0.5"
                 : isServiceCompleted
-                  ? "cursor-not-allowed border border-[#4a4764] bg-[#343149] text-[#928dab] shadow-none"
-                  : "bg-[color:var(--client-primary)] text-[#090806] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_30%,transparent)] hover:-translate-y-0.5"
+                  ? "cursor-not-allowed border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] text-[color:var(--client-muted)] shadow-none"
+                  : "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_30%,transparent)] hover:-translate-y-0.5"
             )}
             disabled={isServiceCompleted}
             onClick={isServiceInProgress ? requestFinishService : () => setStartConfirmOpen(true)}
@@ -721,7 +720,7 @@ export function UserOrderDetailPage() {
           </main>
           <footer className="px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-2">
             <button
-              className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-[20px] bg-[color:var(--client-primary)] px-5 text-sm font-black text-[#090806] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
+              className="focus-ring inline-flex h-12 w-full items-center justify-center rounded-[20px] bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
               onClick={confirmExtensionRequest}
               type="button"
             >

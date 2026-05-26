@@ -7,14 +7,17 @@ import {
   EmptyStatePanel,
   FeatureSegmentedTabs,
   IconButton,
+  IconMetricAction,
   MetaPill,
   PageScaffold,
   PrimaryButton,
   SecondaryButton,
-  UnifiedListItem
+  UnifiedListItem,
+  floatingHeaderControlButtonClassName
 } from "../../components/client-ui/AppScaffold";
 import { featureCarouselFrameClassName, FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
 import { AvailabilityCalendar } from "../../components/mobile/AvailabilityCalendar";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MomentActionBar } from "../../components/mobile/MomentActionBar";
 import { OfferInfoCard } from "../../components/mobile/OfferInfoCard";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
@@ -80,6 +83,10 @@ type OfferCard = StoreOfferConfig;
 type StoreProfileConfig = StorePresentationConfig;
 
 const baseBookingDate = new Date(2026, 3, 22);
+const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center gap-2 px-7 text-center text-sm";
+const storeBottomActionRowClassName = "mx-auto flex w-full max-w-[888px] items-center gap-3 px-4 pb-2";
+const storeBottomSecondaryButtonClassName = "h-[52px] shrink-0 gap-2 px-5 shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl";
+const storeBottomPrimaryButtonClassName = "h-[52px] flex-1 gap-2 px-5 text-sm shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]";
 const storeBasicEditorFields = [
   { label: "店铺名称", key: "name" },
   { label: "首页角标", key: "rankLabel" },
@@ -710,16 +717,6 @@ function normalizeStoreBookingTimeParam(value: string | null) {
   const normalized = value?.trim() ?? "";
 
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(normalized) ? normalized : null;
-}
-
-function formatTopMetricCount(value: number) {
-  const safeValue = Math.max(0, Math.floor(value));
-
-  if (safeValue >= 1000) {
-    return `${Math.min(99, Math.floor(safeValue / 1000))}k`;
-  }
-
-  return `${Math.min(999, safeValue)}`;
 }
 
 function parsePriceNumber(value: string) {
@@ -1657,35 +1654,6 @@ function EnvironmentGalleryCard({
   );
 }
 
-function TopMetricAction({
-  icon,
-  count,
-  label,
-  active = false,
-  onClick
-}: {
-  icon: ReactNode;
-  count: string;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button className="focus-ring relative flex h-11 w-12 items-start justify-center text-center" onClick={onClick} type="button">
-      <span
-        className={cn(
-          "inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-text)] shadow-[0_18px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl transition",
-          active ? "border-[color:color-mix(in_srgb,var(--client-primary)_40%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]" : ""
-        )}
-      >
-        {icon}
-      </span>
-      <span className="absolute left-1/2 top-[calc(100%+6px)] w-12 -translate-x-1/2 truncate text-[10px] font-black leading-none text-[color:var(--client-muted)]">{count}</span>
-      <span className="sr-only">{label}</span>
-    </button>
-  );
-}
-
 export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -2257,7 +2225,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                     title="来店日"
                   />
                   <div className="flex justify-center border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] pt-3">
-                    <PrimaryButton className="min-h-14 min-w-[188px] justify-center gap-2 px-8 text-center" to={bookingHref}>
+                    <PrimaryButton className={storeBookingCtaButtonClassName} to={bookingHref}>
                       <AppIcon className="h-4 w-4" name="calendar" />
                       <span>{bookingCtaCopy(store.openStatus)}</span>
                     </PrimaryButton>
@@ -2797,60 +2765,74 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   }
 
   return (
-    <PageScaffold contentClassName="space-y-3 pb-40 pt-[calc(env(safe-area-inset-top,0px)+176px)] sm:pt-[calc(env(safe-area-inset-top,0px)+184px)]" navItems={[]}>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[calc(env(safe-area-inset-top,0px)+176px)] bg-[linear-gradient(180deg,var(--client-bg)_0%,color-mix(in_srgb,var(--client-bg)_98%,transparent)_56%,color-mix(in_srgb,var(--client-bg)_88%,transparent)_82%,transparent_100%)] sm:h-[calc(env(safe-area-inset-top,0px)+184px)]"
-      />
-      <AppTopBar
-        actions={
-          <div className="flex items-start gap-2">
-            <TopMetricAction
-              active={isFavorite}
-              count={formatTopMetricCount(favoriteCount)}
-              icon={<AppIcon className="h-5 w-5" name="heart" />}
-              label={isFavorite ? "取消收藏" : "收藏店铺"}
-              onClick={() => setIsFavorite((current) => !current)}
-            />
-            <TopMetricAction
-              count={formatTopMetricCount(shareCount)}
-              icon={<ShareNetworkIcon />}
-              label="转发店铺"
-              onClick={() => {
-                void shareContent({
-                  title: `${store.name} | NeeDo`,
-                  text: `${store.name} · ${store.area}`,
-                  url: `/stores/${store.id}`
-                }).then((result) => {
-                  if (result.status !== "cancelled" && result.status !== "unsupported") {
-                    setShareBoost((current) => current + 1);
-                  }
-                });
-              }}
-            />
+    <PageScaffold contentClassName="pb-40 pt-[calc(env(safe-area-inset-top,0px)+148px)] sm:pt-[calc(env(safe-area-inset-top,0px)+156px)]" navItems={[]}>
+      <FloatingHomeHeader
+        className="gap-0"
+        frameClassName="z-40"
+        maxWidth="1600px"
+        panelClassName={cn(floatingHeaderGlassPanelClassName, "border-b-transparent bg-transparent text-[color:var(--client-text)] backdrop-blur-none")}
+        showSpacer={false}
+        spacerGapPx={0}
+      >
+        <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
+          <div className="mx-auto w-full max-w-[1480px]">
+            <div className="flex min-h-[54px] items-start gap-3">
+              <button
+                aria-label="返回"
+                className={cn(floatingHeaderControlButtonClassName, "h-12 w-12 shrink-0")}
+                onClick={() => navigate(-1)}
+                type="button"
+              >
+                <AppIcon className="h-5 w-5" name="back" />
+              </button>
+              <div className="min-w-0 flex-1 pt-2">
+                <h1 className="truncate text-[22px] font-black leading-none tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h1>
+                <p className="mt-2 truncate text-[12px] font-semibold leading-none text-[color:var(--client-muted)]">{store.address}</p>
+              </div>
+              <div className="flex h-[54px] shrink-0 items-start gap-2">
+                <IconMetricAction
+                  active={isFavorite}
+                  count={favoriteCount}
+                  icon="heart"
+                  label={isFavorite ? "取消收藏" : "收藏店铺"}
+                  onClick={() => setIsFavorite((current) => !current)}
+                />
+                <IconMetricAction
+                  count={shareCount}
+                  icon="share"
+                  label="转发店铺"
+                  onClick={() => {
+                    void shareContent({
+                      title: `${store.name} | NeeDo`,
+                      text: `${store.name} · ${store.area}`,
+                      url: `/stores/${store.id}`
+                    }).then((result) => {
+                      if (result.status !== "cancelled" && result.status !== "unsupported") {
+                        setShareBoost((current) => current + 1);
+                      }
+                    });
+                  }}
+                />
+              </div>
+            </div>
+            <div className="mt-2">{tabSwitcher}</div>
           </div>
-        }
-        footer={tabSwitcher}
-        fixed
-        footerClassName="mt-7"
-        className="border-b-transparent bg-transparent backdrop-blur-none"
-        subtitle={store.address}
-        title={store.name}
-      />
+        </div>
+      </FloatingHomeHeader>
 
-      {content}
+      <div className="space-y-3">{content}</div>
 
       <div
         aria-hidden="true"
         className="pointer-events-none fixed inset-x-0 bottom-0 z-30 h-[calc(env(safe-area-inset-bottom,0px)+9.75rem)] bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_46%,transparent)_30%,color-mix(in_srgb,var(--client-bg)_88%,transparent)_62%,var(--client-bg)_100%)]"
       />
       <div className="safe-nav-bottom fixed inset-x-0 bottom-0 z-40">
-        <div className="mx-auto flex w-full max-w-[888px] items-center gap-3 px-4 pb-3">
-          <SecondaryButton className="h-14 shrink-0 gap-2 px-6 shadow-[0_14px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl" to="/messages">
+        <div className={storeBottomActionRowClassName}>
+          <SecondaryButton className={storeBottomSecondaryButtonClassName} to="/messages">
             <AppIcon className="h-4 w-4" name="chat" />
             <span>聊天咨询</span>
           </SecondaryButton>
-          <PrimaryButton className="h-14 flex-1 gap-2 px-6 text-sm shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]" to={bookingHref}>
+          <PrimaryButton className={storeBottomPrimaryButtonClassName} to={bookingHref}>
             <AppIcon className="h-4 w-4" name="calendar" />
             <span>{bookingCtaCopy(store.openStatus)}</span>
           </PrimaryButton>

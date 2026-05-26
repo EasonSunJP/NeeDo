@@ -65,7 +65,7 @@ export function UnifiedChatHomePage({
         </div>
       </FloatingHomeHeader>
 
-      <div className="relative z-10 px-5 pb-6 pt-4">
+      <div className="relative z-10 -mt-12 px-5 pb-6 pt-4">
         {children}
       </div>
     </div>

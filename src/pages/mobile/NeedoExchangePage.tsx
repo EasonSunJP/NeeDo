@@ -1453,9 +1453,10 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   };
 
   return (
-    <MobileShell navItems={getNavItems(context)}>
+    <MobileShell navItems={getNavItems(context)} showTopEdgeMask={false}>
       <FloatingHomeHeader
         className="relative z-10"
+        frameClassName="z-40"
         panelClassName="relative overflow-hidden"
       >
         <FeatureSegmentedTabs

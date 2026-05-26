@@ -1,6 +1,5 @@
 import type { CSSProperties } from "react";
 import { cn } from "../../lib/utils";
-import { useClientTheme } from "../../theme/ClientThemeProvider";
 
 export function ClientEdgeMask({
   edge,
@@ -13,12 +12,6 @@ export function ClientEdgeMask({
   className?: string;
   style?: CSSProperties;
 }) {
-  const { isNight } = useClientTheme();
-  const maskStyle = {
-    "--client-edge-mask-rgb": isNight ? "0 0 0" : "255 255 255",
-    ...style
-  } as CSSProperties;
-
   return (
     <div
       aria-hidden="true"
@@ -28,7 +21,7 @@ export function ClientEdgeMask({
         mode === "absolute" ? "client-edge-mask--absolute" : "",
         className
       )}
-      style={maskStyle}
+      style={style}
     />
   );
 }

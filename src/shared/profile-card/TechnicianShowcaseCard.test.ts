@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
 import { getTechnicianCardRankBadge } from "./TechnicianShowcaseCard";
 import cardSource from "./TechnicianShowcaseCard.tsx?raw";
 
@@ -35,5 +36,33 @@ describe("TechnicianShowcaseCard ranking badges", () => {
     expect(cardSource).toContain("/images/icons/ranking/needo_rank_3_icon_transparent.png");
     expect(cardSource).not.toContain("RecommendationIconBadge");
     expect(cardSource).not.toContain('kind: "recommendation"');
+  });
+});
+
+describe("TechnicianShowcaseCard engagement metrics", () => {
+  it("uses the shared icon metric action for favorite and share counts", () => {
+    expect(cardSource).toContain("IconMetricAction");
+    expect(cardSource).toContain('icon="heart"');
+    expect(cardSource).toContain('icon="share"');
+    expect(cardSource).toContain("textShadow");
+    expect(cardSource).not.toContain("WebkitTextStroke");
+    expect(cardSource).not.toContain("ShareNetworkIcon");
+  });
+
+  it("aligns compact metric icons with the rank badge left edge and keeps counts below the circle", () => {
+    expect(cardSource).toContain('className="-ml-[5px] flex flex-col items-center gap-2"');
+    expect(appScaffoldSource).toContain('count: "top-[25px] w-10 text-[10px]"');
+    expect(appScaffoldSource).toContain('icon: "h-[11px] w-[11px]"');
+    expect(appScaffoldSource).toContain('root: "h-[39px] w-8"');
+    expect(appScaffoldSource).toContain('shell: "h-[22px] w-[22px]"');
+  });
+
+  it("renders the inexperienced label as a same-style sprout icon", () => {
+    expect(cardSource).toContain("InexperiencedMarkBadge");
+    expect(cardSource).toContain("/images/icons/profile/needo_inexperienced_sprout_icon.png");
+    expect(cardSource).toContain("rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]");
+    expect(cardSource).toContain('className="h-[14px] w-[14px] object-contain"');
+    expect(cardSource).toContain('className="absolute left-2 top-2 flex max-w-[calc(100%-62px)] flex-col items-start gap-2"');
+    expect(cardSource).not.toContain('mt-3 flex flex-col items-center gap-2');
   });
 });

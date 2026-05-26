@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -232,6 +232,114 @@ export function IconButton({
       to={to}
     >
       <AppIcon name={icon} />
+      <span className="sr-only">{label}</span>
+    </InteractiveWrapper>
+  );
+}
+
+type IconMetricActionSize = "sm" | "md";
+
+const iconMetricActionSizeClassName: Record<
+  IconMetricActionSize,
+  {
+    count: string;
+    icon: string;
+    root: string;
+    shell: string;
+  }
+> = {
+  md: {
+    count: "top-[39px] w-11 text-[10px]",
+    icon: "h-5 w-5",
+    root: "h-[54px] w-11",
+    shell: "h-11 w-11"
+  },
+  sm: {
+    count: "top-[25px] w-10 text-[10px]",
+    icon: "h-[11px] w-[11px]",
+    root: "h-[39px] w-8",
+    shell: "h-[22px] w-[22px]"
+  }
+};
+
+export function formatIconMetricCount(value: number) {
+  const safeValue = Math.max(0, Math.floor(value));
+
+  if (safeValue >= 1000) {
+    return `${Math.min(99, Math.floor(safeValue / 1000))}k`;
+  }
+
+  return `${Math.min(999, safeValue)}`;
+}
+
+export function IconMetricAction({
+  active = false,
+  className,
+  count,
+  countClassName,
+  countStyle,
+  icon,
+  iconClassName,
+  label,
+  onClick,
+  shellClassName,
+  size = "md",
+  to
+}: {
+  active?: boolean;
+  className?: string;
+  count: number | string;
+  countClassName?: string;
+  countStyle?: CSSProperties;
+  icon: IconName;
+  iconClassName?: string;
+  label: string;
+  onClick?: () => void;
+  shellClassName?: string;
+  size?: IconMetricActionSize;
+  to?: string;
+}) {
+  const sizeClassName = iconMetricActionSizeClassName[size];
+  const interactive = Boolean(onClick || to);
+  const outlinedCountStyle: CSSProperties = {
+    textShadow:
+      "0 1px 0 color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%), 1px 0 0 color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%), 0 -1px 0 color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%), -1px 0 0 color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%), 0 2px 8px color-mix(in_srgb,var(--client-bg)_46%,transparent)",
+    ...countStyle
+  };
+
+  return (
+    <InteractiveWrapper
+      className={cn(
+        "focus-ring relative flex items-start justify-center text-center",
+        sizeClassName.root,
+        interactive ? "" : "pointer-events-none",
+        className
+      )}
+      onClick={onClick}
+      to={to}
+    >
+      <span
+        className={cn(
+          "inline-flex items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-primary)] shadow-[0_18px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl transition",
+          sizeClassName.shell,
+          active
+            ? "border-[color:color-mix(in_srgb,var(--client-primary)_40%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
+            : "",
+          shellClassName
+        )}
+      >
+        <AppIcon className={cn(sizeClassName.icon, iconClassName)} name={icon} />
+      </span>
+      <span
+        className={cn(
+          "absolute left-1/2 -translate-x-1/2 truncate font-black leading-none text-[color:var(--client-text)]",
+          sizeClassName.count,
+          countClassName
+        )}
+        style={outlinedCountStyle}
+      >
+        {typeof count === "number" ? formatIconMetricCount(count) : count}
+      </span>
       <span className="sr-only">{label}</span>
     </InteractiveWrapper>
   );

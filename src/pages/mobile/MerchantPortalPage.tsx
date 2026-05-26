@@ -1738,7 +1738,7 @@ export function MerchantPortalPage() {
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
-      showTopEdgeMask={activeView !== "orders"}
+      showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
         <FloatingHomeHeader

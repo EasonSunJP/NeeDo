@@ -4369,7 +4369,11 @@ export function TechnicianPortalPage() {
   );
 
   return (
-    <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"}>
+    <MobileShell
+      navItems={technicianNavItems}
+      navPanelStyle={activeView === "me" ? "plain" : "default"}
+      showTopEdgeMask={activeView !== "messages" && activeView !== "contacts"}
+    >
       {activeView === "tasks" ? (
         <FloatingHomeHeader
           panelClassName={floatingHeaderGlassPanelClassName}

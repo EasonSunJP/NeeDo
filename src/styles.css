@@ -70,6 +70,50 @@ body {
   overscroll-behavior-y: auto;
 }
 
+html:has(.client-theme-light-green),
+html:has(.client-theme-jade-light),
+body:has(.client-theme-light-green),
+body:has(.client-theme-jade-light),
+#root:has(.client-theme-light-green),
+#root:has(.client-theme-jade-light) {
+  background: #ffffff !important;
+  background-image: none !important;
+}
+
+html:has(.client-theme-vital-mono),
+body:has(.client-theme-vital-mono),
+#root:has(.client-theme-vital-mono) {
+  background: #f7f7f8 !important;
+  background-image: none !important;
+}
+
+html:has(.client-theme-dark-green),
+html:has(.client-theme-night),
+body:has(.client-theme-dark-green),
+body:has(.client-theme-night),
+#root:has(.client-theme-dark-green),
+#root:has(.client-theme-night) {
+  background: #02070c !important;
+  background-image: none !important;
+}
+
+html:has(.client-theme-cool-black-gray),
+body:has(.client-theme-cool-black-gray),
+#root:has(.client-theme-cool-black-gray) {
+  background: #0a0d10 !important;
+  background-image: none !important;
+}
+
+html:has(.client-theme-neon-pink),
+html:has(.client-theme-lovely-neon),
+body:has(.client-theme-neon-pink),
+body:has(.client-theme-lovely-neon),
+#root:has(.client-theme-neon-pink),
+#root:has(.client-theme-lovely-neon) {
+  background: #080a1a !important;
+  background-image: none !important;
+}
+
 html[data-needo-display-mode="standalone"] {
   background: var(--needo-pwa-status-bg, #02070c);
 }
@@ -1453,6 +1497,7 @@ img {
 .client-theme-black-gold,
 .client-theme-noir-gold {
   --client-theme-name: "black-gold";
+  --client-edge-mask-rgb: 0 0 0;
   --client-bg: #000000;
   --client-top-chrome-bg: #000000;
   --client-bg-soft: rgba(20, 20, 20, 0.82);
@@ -1499,10 +1544,12 @@ body:has(.client-theme-noir-gold),
 #root:has(.client-theme-black-gold),
 #root:has(.client-theme-noir-gold) {
   background: #000000 !important;
+  background-image: none !important;
 }
 
 .client-theme-vital-mono {
   --client-theme-name: "vital-mono";
+  --client-edge-mask-rgb: 247 247 248;
   --client-bg: #f7f7f8;
   --client-top-chrome-bg: #f7f7f8;
   --client-bg-soft: rgba(255, 255, 255, 0.9);
@@ -1558,6 +1605,7 @@ body:has(.client-theme-noir-gold),
 
 .client-theme-cool-black-gray {
   --client-theme-name: "cool-black-gray";
+  --client-edge-mask-rgb: 10 13 16;
   --client-bg: #0a0d10;
   --client-top-chrome-bg: #0a0d10;
   --client-bg-soft: rgba(28, 34, 39, 0.78);
@@ -1616,6 +1664,7 @@ body:has(.client-theme-noir-gold),
 .client-theme-neon-pink,
 .client-theme-lovely-neon {
   --client-theme-name: "neon-pink";
+  --client-edge-mask-rgb: 8 10 26;
   --client-bg: #080a1a;
   --client-top-chrome-bg: #080a1a;
   --client-bg-soft: rgba(30, 34, 66, 0.72);
@@ -1679,11 +1728,13 @@ body:has(.client-theme-noir-gold),
 
 .client-theme-dark-green {
   --client-theme-name: "dark-green";
+  --client-edge-mask-rgb: 2 7 12;
 }
 
 .client-theme-light-green,
 .client-theme-jade-light {
   --client-theme-name: "light-green";
+  --client-edge-mask-rgb: 255 255 255;
   --client-top-chrome-bg: #f6fbf8;
 }
 
@@ -1877,7 +1928,7 @@ body:has(.merchant-analytics-clean-shell),
     rgb(var(--client-edge-mask-rgb) / var(--client-edge-mask-bottom-start-opacity, 0)) var(--client-edge-mask-bottom-start-stop, 0%),
     rgb(var(--client-edge-mask-rgb) / var(--client-edge-mask-bottom-mid-opacity, 0.54)) var(--client-edge-mask-bottom-mid-stop, 44%),
     rgb(var(--client-edge-mask-rgb) / var(--client-edge-mask-bottom-strong-opacity, 0.92)) var(--client-edge-mask-bottom-strong-stop, 72%),
-    rgb(var(--client-edge-mask-rgb) / 1) 100%
+    rgb(var(--client-edge-mask-rgb) / var(--client-edge-mask-bottom-end-opacity, 1)) 100%
   );
 }
 
@@ -1910,8 +1961,7 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--single-frame,
-.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header,
-.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--compact {
+.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header {
   border: 0;
   background: transparent !important;
   padding: 0 !important;
@@ -1922,6 +1972,123 @@ body:has(.merchant-analytics-clean-shell),
 
 .client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header {
   gap: 8px;
+}
+
+.client-shell :is(
+  .client-liquid-glass-header,
+  .client-liquid-glass-nav,
+  .client-sticky-tab-panel,
+  .client-portal-framed-header,
+  .client-sticky-control-panel
+) {
+  position: relative;
+  isolation: isolate;
+}
+
+.client-shell :is(
+  .client-liquid-glass-header,
+  .client-liquid-glass-nav,
+  .client-sticky-tab-panel,
+  .client-portal-framed-header,
+  .client-sticky-control-panel,
+  .business-cps-segmented-tabs
+) > * {
+  position: relative;
+  z-index: 1;
+}
+
+.client-shell :is(
+  .client-liquid-glass-header,
+  .client-liquid-glass-nav,
+  .client-sticky-tab-panel,
+  .client-portal-framed-header,
+  .client-sticky-control-panel,
+  .business-cps-segmented-tabs
+)::before,
+.client-shell :is(
+  .client-liquid-glass-header,
+  .client-liquid-glass-nav,
+  .client-sticky-tab-panel,
+  .client-portal-framed-header,
+  .client-sticky-control-panel,
+  .business-cps-segmented-tabs
+)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.client-shell :is(
+  .client-liquid-glass-header,
+  .client-liquid-glass-nav,
+  .client-sticky-tab-panel,
+  .client-portal-framed-header,
+  .client-sticky-control-panel,
+  .business-cps-segmented-tabs
+)::before {
+  background:
+    linear-gradient(
+      118deg,
+      color-mix(in srgb, var(--client-elevated) 24%, transparent) 0%,
+      transparent 30%,
+      color-mix(in srgb, var(--client-primary) 5%, transparent) 54%,
+      transparent 76%,
+      color-mix(in srgb, var(--client-elevated) 18%, transparent) 100%
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--client-elevated) 14%, transparent),
+      transparent 18%,
+      transparent 82%,
+      color-mix(in srgb, var(--client-line) 16%, transparent)
+    );
+  opacity: 0.46;
+}
+
+.client-shell :is(
+  .client-liquid-glass-header,
+  .client-liquid-glass-nav,
+  .client-sticky-tab-panel,
+  .client-portal-framed-header,
+  .client-sticky-control-panel,
+  .business-cps-segmented-tabs
+)::after {
+  inset: 1px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 16%, transparent) 0%,
+      transparent 24%,
+      transparent 76%,
+      color-mix(in srgb, var(--client-line) 12%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--client-line) 34%, transparent),
+    inset 12px 0 18px -18px color-mix(in srgb, var(--client-elevated) 62%, transparent),
+    inset -12px 0 18px -18px color-mix(in srgb, var(--client-line) 46%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--client-elevated) 34%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--client-line) 18%, transparent);
+  opacity: 0.72;
+}
+
+.client-shell .client-liquid-glass-header {
+  border-color: color-mix(in srgb, var(--client-line) 42%, transparent) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 18%, transparent),
+      color-mix(in srgb, var(--client-bg) 8%, transparent)
+    ) !important;
+  box-shadow:
+    0 18px 42px color-mix(in srgb, var(--client-bg) 28%, rgba(0, 0, 0, 0.2)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 18%, transparent),
+    inset 0 18px 24px -26px color-mix(in srgb, var(--client-elevated) 54%, transparent),
+    inset 0 -18px 24px -26px color-mix(in srgb, var(--client-text) 18%, transparent) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03) !important;
+  backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03) !important;
 }
 
 .client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--compact {
@@ -1982,28 +2149,38 @@ body:has(.merchant-analytics-clean-shell),
   isolation: isolate;
   width: 100%;
   max-width: 100%;
-  border: 1px solid color-mix(in srgb, var(--client-line) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--client-line) 44%, transparent);
   border-radius: 24px;
-  background: color-mix(in srgb, var(--client-surface) 84%, transparent);
-  padding: 4px;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
-  -webkit-backdrop-filter: blur(24px) saturate(1.45);
-  backdrop-filter: blur(24px) saturate(1.45);
-}
-
-.client-shell .client-floating-header-glass-frame {
-  border-color: transparent !important;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--client-top-chrome-bg) 78%, transparent),
-      color-mix(in srgb, var(--client-bg) 58%, transparent)
+      color-mix(in srgb, var(--client-elevated) 20%, transparent),
+      color-mix(in srgb, var(--client-bg) 9%, transparent)
+    );
+  padding: 4px;
+  box-shadow:
+    0 18px 42px color-mix(in srgb, var(--client-bg) 30%, rgba(0, 0, 0, 0.2)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--client-elevated) 24%, transparent);
+  -webkit-backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03);
+  backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03);
+}
+
+.client-shell .client-floating-header-glass-frame {
+  border-color: color-mix(in srgb, var(--client-line) 42%, transparent) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-top-chrome-bg) 18%, var(--client-elevated) 12%),
+      color-mix(in srgb, var(--client-bg) 7%, transparent)
     ) !important;
   box-shadow:
-    inset 0 -1px 0 color-mix(in srgb, var(--client-line) 28%, transparent),
-    0 18px 36px color-mix(in srgb, var(--client-bg) 24%, transparent) !important;
-  -webkit-backdrop-filter: blur(34px) saturate(1.28) !important;
-  backdrop-filter: blur(34px) saturate(1.28) !important;
+    0 18px 42px color-mix(in srgb, var(--client-bg) 30%, rgba(0, 0, 0, 0.22)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 16%, transparent),
+    inset 0 18px 24px -26px color-mix(in srgb, var(--client-elevated) 52%, transparent),
+    inset 0 -18px 24px -26px color-mix(in srgb, var(--client-text) 16%, transparent) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
+  backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
 }
 
 .client-shell .client-portal-tab-header {
@@ -2016,24 +2193,33 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .client-shell .client-portal-framed-header {
-  border-color: color-mix(in srgb, var(--client-primary) 22%, var(--client-line)) !important;
+  border-color: color-mix(in srgb, var(--client-primary) 14%, var(--client-line) 36%) !important;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--client-surface) 96%, var(--client-bg) 4%),
-      color-mix(in srgb, var(--client-bg) 86%, var(--client-primary) 14%)
+      color-mix(in srgb, var(--client-elevated) 24%, transparent),
+      color-mix(in srgb, var(--client-bg) 10%, var(--client-primary) 3%)
     ) !important;
   box-shadow:
-    0 18px 40px rgba(0, 0, 0, 0.18),
-    inset 0 -1px 0 color-mix(in srgb, var(--client-primary) 16%, transparent) !important;
+    0 18px 42px color-mix(in srgb, var(--client-bg) 30%, rgba(0, 0, 0, 0.2)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--client-elevated) 24%, transparent) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03);
+  backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03);
 }
 
 .client-shell.client-theme-night .client-portal-framed-header {
-  border-color: rgba(139, 123, 255, 0.28) !important;
-  background: linear-gradient(180deg, rgba(28, 27, 49, 0.96), rgba(37, 32, 69, 0.94)) !important;
+  border-color: color-mix(in srgb, var(--client-primary) 12%, var(--client-line) 42%) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 20%, transparent),
+      color-mix(in srgb, var(--client-bg) 12%, var(--client-primary) 3%)
+    ) !important;
   box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.28),
-    inset 0 -1px 0 rgba(139, 123, 255, 0.2) !important;
+    0 20px 46px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-line) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--client-elevated) 18%, transparent) !important;
 }
 
 .client-shell .client-sticky-control-panel {
@@ -2041,12 +2227,21 @@ body:has(.merchant-analytics-clean-shell),
   top: var(--client-schedule-substicky-top);
   z-index: var(--client-sticky-content-layer);
   isolation: isolate;
-  border: 1px solid color-mix(in srgb, var(--client-line) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--client-line) 44%, transparent);
   border-radius: 20px;
-  background: color-mix(in srgb, var(--client-elevated) 90%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 22%, transparent),
+      color-mix(in srgb, var(--client-bg) 10%, transparent)
+    );
   padding: 10px 12px;
-  -webkit-backdrop-filter: blur(24px) saturate(1.45);
-  backdrop-filter: blur(24px) saturate(1.45);
+  box-shadow:
+    0 16px 36px color-mix(in srgb, var(--client-bg) 28%, rgba(0, 0, 0, 0.18)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--client-elevated) 22%, transparent);
+  -webkit-backdrop-filter: blur(8px) saturate(1.85) contrast(1.07) brightness(1.03);
+  backdrop-filter: blur(8px) saturate(1.85) contrast(1.07) brightness(1.03);
 }
 
 .client-theme-day .client-bottom-nav {
@@ -2057,11 +2252,21 @@ body:has(.merchant-analytics-clean-shell),
   box-shadow: none !important;
 }
 
-.client-shell .client-bottom-nav > div {
-  -webkit-backdrop-filter: blur(24px) saturate(1.45);
-  backdrop-filter: blur(24px) saturate(1.45);
-  border-color: color-mix(in srgb, var(--client-line) 92%, transparent) !important;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.2) !important;
+.client-shell .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  border-color: color-mix(in srgb, var(--client-line) 42%, transparent) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 18%, transparent),
+      color-mix(in srgb, var(--client-bg) 8%, transparent)
+    ) !important;
+  box-shadow:
+    0 -18px 44px color-mix(in srgb, var(--client-bg) 28%, rgba(0, 0, 0, 0.22)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 18%, transparent),
+    inset 0 18px 22px -25px color-mix(in srgb, var(--client-elevated) 50%, transparent),
+    inset 0 -18px 22px -25px color-mix(in srgb, var(--client-text) 18%, transparent) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
+  backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
 }
 
 .client-nav-aligned-panel {
@@ -2071,58 +2276,73 @@ body:has(.merchant-analytics-clean-shell),
   width: calc(100dvw - var(--client-bottom-nav-inline-gap, 12px) - var(--client-bottom-nav-inline-gap, 12px));
 }
 
-.client-theme-day .client-bottom-nav > div {
-  background: color-mix(in srgb, var(--client-bg) 82%, var(--client-surface) 18%) !important;
+.client-theme-day .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 18%, transparent),
+      color-mix(in srgb, var(--client-bg) 8%, transparent)
+    ) !important;
 }
 
-.client-theme-night .client-bottom-nav > div {
-  background: color-mix(in srgb, var(--client-bg) 34%, var(--client-surface) 66%) !important;
+.client-theme-night .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 16%, transparent),
+      color-mix(in srgb, var(--client-bg) 10%, transparent)
+    ) !important;
 }
 
-.client-theme-black-gold .client-bottom-nav > div,
-.client-theme-cool-black-gray .client-bottom-nav > div,
-.client-theme-noir-gold .client-bottom-nav > div {
-  background: linear-gradient(180deg, rgba(39, 44, 35, 0.82), rgba(18, 22, 18, 0.88)) !important;
-  border-color: rgba(196, 255, 122, 0.13) !important;
+.client-theme-black-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-cool-black-gray .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-noir-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  background: linear-gradient(180deg, rgba(39, 44, 35, 0.2), rgba(18, 22, 18, 0.1)) !important;
+  border-color: rgba(196, 255, 122, 0.16) !important;
   box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.54),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
-}
-
-.client-theme-dark-green .client-bottom-nav > div {
-  background: linear-gradient(180deg, rgba(14, 31, 45, 0.94), rgba(7, 20, 31, 0.96)) !important;
-  border-color: rgba(108, 144, 170, 0.28) !important;
-  box-shadow:
-    0 20px 46px rgba(0, 0, 0, 0.58),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
-}
-
-.client-theme-black-gold .client-bottom-nav > div,
-.client-theme-noir-gold .client-bottom-nav > div {
-  background: linear-gradient(180deg, rgba(42, 42, 40, 0.88), rgba(13, 13, 13, 0.92)) !important;
-  border-color: rgba(254, 222, 160, 0.14) !important;
-  box-shadow:
-    0 20px 46px rgba(0, 0, 0, 0.58),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
-}
-
-.client-theme-vital-mono .client-bottom-nav > div {
-  background: linear-gradient(180deg, rgba(47, 47, 48, 0.96), rgba(18, 18, 19, 0.98)) !important;
-  border-color: rgba(255, 255, 255, 0.16) !important;
-  box-shadow:
-    0 20px 46px rgba(0, 0, 0, 0.34),
+    0 -18px 44px rgba(0, 0, 0, 0.34),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
-.client-theme-cool-black-gray .client-bottom-nav > div {
-  background: linear-gradient(180deg, rgba(50, 58, 66, 0.9), rgba(13, 17, 21, 0.94)) !important;
-  border-color: rgba(183, 204, 214, 0.16) !important;
+.client-theme-dark-green .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  background: linear-gradient(180deg, rgba(14, 31, 45, 0.22), rgba(7, 20, 31, 0.1)) !important;
+  border-color: rgba(108, 144, 170, 0.3) !important;
   box-shadow:
-    0 20px 46px rgba(0, 0, 0, 0.56),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    0 -18px 44px rgba(0, 0, 0, 0.36),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 
-.client-shell .client-bottom-nav > div[data-nav-panel-style="plain"] {
+.client-theme-black-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"],
+.client-theme-noir-gold .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  background: linear-gradient(180deg, rgba(42, 42, 40, 0.2), rgba(13, 13, 13, 0.1)) !important;
+  border-color: rgba(254, 222, 160, 0.16) !important;
+  box-shadow:
+    0 -18px 44px rgba(0, 0, 0, 0.36),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+.client-theme-vital-mono .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  background: linear-gradient(180deg, rgba(47, 47, 48, 0.2), rgba(18, 18, 19, 0.1)) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  box-shadow:
+    0 -18px 44px rgba(0, 0, 0, 0.32),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
+}
+
+.client-theme-cool-black-gray .client-bottom-nav > [data-client-bottom-nav-panel="true"] {
+  background: linear-gradient(180deg, rgba(50, 58, 66, 0.22), rgba(13, 17, 21, 0.1)) !important;
+  border-color: rgba(183, 204, 214, 0.18) !important;
+  box-shadow:
+    0 -18px 44px rgba(0, 0, 0, 0.36),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+.client-shell .client-bottom-nav > [data-client-bottom-nav-panel="true"][data-nav-panel-style="plain"] {
   background: transparent !important;
 }
 
@@ -4434,6 +4654,72 @@ body:has(.merchant-analytics-clean-shell),
     linear-gradient(180deg, #181927 0%, #151624 100%) !important;
 }
 
+html:has(.admin-theme-light-green),
+body:has(.admin-theme-light-green),
+#root:has(.admin-theme-light-green) {
+  background: #f6fbf8 !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-vital-mono),
+body:has(.admin-theme-vital-mono),
+#root:has(.admin-theme-vital-mono) {
+  background: #f2f3f4 !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-pink-purple-black),
+body:has(.admin-theme-pink-purple-black),
+#root:has(.admin-theme-pink-purple-black) {
+  background: #f6f3fb !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-classic-white-black),
+body:has(.admin-theme-classic-white-black),
+#root:has(.admin-theme-classic-white-black) {
+  background: #f7f8fa !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-dark-green),
+body:has(.admin-theme-dark-green),
+#root:has(.admin-theme-dark-green) {
+  background: #02070c !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-black-gold),
+body:has(.admin-theme-black-gold),
+#root:has(.admin-theme-black-gold) {
+  background: #050505 !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-cool-black-gray),
+body:has(.admin-theme-cool-black-gray),
+#root:has(.admin-theme-cool-black-gray) {
+  background: #0a0d10 !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-neon-pink),
+body:has(.admin-theme-neon-pink),
+#root:has(.admin-theme-neon-pink) {
+  background: #100817 !important;
+  background-image: none !important;
+}
+
+html:has(.admin-theme-blue-black),
+html:has(.admin-theme-dark),
+body:has(.admin-theme-blue-black),
+body:has(.admin-theme-dark),
+#root:has(.admin-theme-blue-black),
+#root:has(.admin-theme-dark) {
+  background: #171825 !important;
+  background-image: none !important;
+}
+
 .needo-splash-theme {
   --needo-splash-accent: var(--client-primary);
   --needo-splash-accent-strong: var(--client-primary-strong);
@@ -4504,6 +4790,78 @@ body:has(.merchant-analytics-clean-shell),
       rgba(4, 6, 7, 0.54) 72%,
       rgba(4, 6, 7, 0.82) 100%
     );
+}
+
+.needo-splash-loading {
+  --needo-splash-progress: 24%;
+  position: relative;
+  padding-top: 4rem;
+}
+
+.needo-splash-runner {
+  position: absolute;
+  left: clamp(2.25rem, var(--needo-splash-progress), calc(100% - 2.25rem));
+  top: 0;
+  z-index: 1;
+  width: clamp(4.1rem, 18vw, 5.35rem);
+  height: clamp(4.15rem, 18vw, 5.45rem);
+  transform: translateX(-50%);
+  transition: left 680ms cubic-bezier(0.2, 0.82, 0.22, 1);
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));
+}
+
+.needo-splash-runner .needo-pet-sprite-shell {
+  position: absolute;
+  left: 50%;
+  bottom: -0.25rem;
+  transform: translateX(-50%) scale(0.58);
+  transform-origin: 50% 86%;
+}
+
+.needo-splash-runner .needo-pet-motion-image {
+  filter: none;
+}
+
+.needo-splash-loading-label {
+  margin: 0 0 0.65rem;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.15;
+  color: var(--needo-splash-text);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.46);
+}
+
+.needo-splash-progress-track {
+  position: relative;
+  height: 0.48rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--needo-splash-accent) 15%, rgba(255, 255, 255, 0.2));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--needo-splash-text) 12%, transparent),
+    0 10px 24px rgba(0, 0, 0, 0.26);
+}
+
+.needo-splash-progress-fill {
+  height: 100%;
+  width: var(--needo-splash-progress);
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--needo-splash-accent) 68%, transparent) 0%,
+    var(--needo-splash-accent) 100%
+  );
+  box-shadow: 0 0 18px color-mix(in srgb, var(--needo-splash-accent) 62%, transparent);
+  transition: width 680ms cubic-bezier(0.2, 0.82, 0.22, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .needo-splash-runner,
+  .needo-splash-progress-fill {
+    transition: none;
+  }
 }
 
 .admin-shell .admin-sidebar {
@@ -7426,19 +7784,27 @@ html.im-conversation-scroll-lock #root {
   top: 0;
   left: 50%;
   z-index: 42;
+  isolation: isolate;
   width: min(calc(100vw - 24px), 1180px);
   min-height: 76px;
   transform: translateX(-50%);
   gap: 0;
-  border: 1px solid var(--business-cps-line-faint);
+  border: 1px solid color-mix(in srgb, var(--business-cps-line-faint) 46%, transparent);
   border-radius: 0 0 28px 28px;
-  background: color-mix(in srgb, var(--client-surface) 92%, var(--client-bg) 8%);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-elevated) 22%, transparent),
+      color-mix(in srgb, var(--client-bg) 10%, var(--client-primary) 3%)
+    );
+  backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03);
+  -webkit-backdrop-filter: blur(9px) saturate(1.9) contrast(1.08) brightness(1.03);
   padding: 8px;
   box-shadow:
-    inset 0 -1px 0 var(--business-cps-line-whisper),
-    0 18px 42px color-mix(in srgb, var(--client-bg) 44%, transparent);
+    0 18px 42px color-mix(in srgb, var(--client-bg) 30%, rgba(0, 0, 0, 0.22)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--client-elevated) 24%, transparent),
+    inset 0 -1px 0 var(--business-cps-line-whisper);
 }
 
 @media (min-width: 768px) {

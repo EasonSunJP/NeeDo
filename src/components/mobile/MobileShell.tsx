@@ -1,6 +1,7 @@
 import {
   useEffect,
   useRef,
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -160,6 +161,15 @@ function getDefaultNavItems(pathname: string) {
   return userNavItems;
 }
 
+const liquidGlassBottomEdgeMaskStyle = {
+  "--client-edge-mask-bottom-mid-opacity": "0.18",
+  "--client-edge-mask-bottom-mid-stop": "40%",
+  "--client-edge-mask-bottom-strong-opacity": "0.34",
+  "--client-edge-mask-bottom-strong-stop": "78%",
+  "--client-edge-mask-bottom-end-opacity": "0.44"
+} as CSSProperties;
+const darkLiquidGlassNavThemes = new Set<ClientTheme>(["dark-green", "black-gold", "vital-mono", "cool-black-gray", "neon-pink"]);
+
 export function MobileShell({
   children,
   dark = false,
@@ -177,6 +187,10 @@ export function MobileShell({
 }) {
   const location = useLocation();
   const { isNight, theme } = useClientTheme();
+  const bottomEdgeMaskStyle = {
+    ...liquidGlassBottomEdgeMaskStyle,
+    ...(isNight || darkLiquidGlassNavThemes.has(theme) ? { "--client-edge-mask-rgb": "0 0 0" } : null)
+  } as CSSProperties;
   const portalRole = getClientPortalRole(location.pathname);
   const imStore = useImStore(portalRole);
   const social = useSocial();
@@ -383,7 +397,7 @@ export function MobileShell({
       {resolvedNavItems.length > 0 ? (
         <>
           {showTopEdgeMask ? <ClientEdgeMask edge="top" /> : null}
-          <ClientEdgeMask edge="bottom" />
+          <ClientEdgeMask edge="bottom" style={bottomEdgeMaskStyle} />
         </>
       ) : null}
       {resolvedNavItems.length > 0 ? (
@@ -427,7 +441,7 @@ export function MobileShell({
           <div
             data-nav-panel-style={navPanelStyle}
             data-client-bottom-nav-panel="true"
-            className="pointer-events-none grid gap-1 rounded-[28px] border p-1.5 backdrop-blur-2xl"
+            className="client-liquid-glass-nav pointer-events-none grid gap-1 overflow-hidden rounded-[28px] border p-1.5 backdrop-blur-2xl"
             style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}
           >
             {visibleItems.map((item, index) => {

@@ -1824,7 +1824,7 @@ export function ImConversationListPage() {
   }
 
   return (
-    <MobileShell navItems={config.navItems}>
+    <MobileShell navItems={config.navItems} showTopEdgeMask={false}>
       <UnifiedChatHomePage
         actions={
           <div className="relative" ref={quickMenuRef}>
@@ -2227,7 +2227,7 @@ export function ImContactsListPage() {
   };
 
   return (
-    <MobileShell navItems={config.navItems}>
+    <MobileShell navItems={config.navItems} showTopEdgeMask={false}>
       <UnifiedChatHomePage
         actions={isAddStaffMode ? undefined : (
           <div className="relative" ref={quickMenuRef}>

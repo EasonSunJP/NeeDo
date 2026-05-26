@@ -739,6 +739,10 @@ function NeedoPetSprite({ runId, sprite }: { runId: number; sprite: PetSpriteKey
   );
 }
 
+export function NeedoPetRunningSprite() {
+  return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} sprite="running" />;
+}
+
 function findClimbSurface(position: MotionPosition) {
   const selectors = [
     "main",
