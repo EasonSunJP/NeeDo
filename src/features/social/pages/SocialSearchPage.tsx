@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AppIcon, AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
+import {
+  floatingHeaderSearchActionClassName,
+  floatingHeaderSearchFieldClassName,
+  floatingHeaderSearchIconClassName,
+  floatingHeaderSearchInputClassName
+} from "../../../components/mobile/FloatingHomeHeader";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { getLocationAreaHints } from "../../../lib/location";
 import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
@@ -131,23 +137,20 @@ export function SocialSearchPage() {
             setTab("nearby");
           }}
         >
-          <div className="flex h-12 min-w-0 flex-1 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4">
-            <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
+          <div className={floatingHeaderSearchFieldClassName}>
+            <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
             <input
-              className="h-full min-w-0 flex-1 bg-transparent text-[16px] font-bold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+              className={floatingHeaderSearchInputClassName}
               onChange={(event) => setInput(event.target.value)}
               placeholder="搜索 @用户、#话题、动态内容"
               value={input}
             />
           </div>
           <button
-            className="focus-ring relative inline-flex h-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-4 text-sm font-black text-[#090806] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition active:scale-[0.97]"
+            className={floatingHeaderSearchActionClassName}
             type="submit"
           >
             搜索
-            <span className="absolute -right-1 -top-2 rounded-full border border-[color:var(--client-bg)] bg-[color:var(--client-surface)] px-1.5 py-0.5 text-[10px] font-black leading-none text-[color:var(--client-primary)] shadow-[0_6px_14px_rgba(0,0,0,0.22)]">
-              3km
-            </span>
           </button>
         </form>
         <SearchTabs onChange={setTab} value={tab} />

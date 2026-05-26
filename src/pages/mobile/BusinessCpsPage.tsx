@@ -382,9 +382,14 @@ function SectionTabs<T extends string>({
   activeTab: T;
   onChange: (tab: T) => void;
 }) {
+  const compact = tabs.length <= 3;
+
   return (
-    <div className="business-cps-segmented-tabs-shell">
-      <div className="business-cps-segmented-tabs grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+    <div className={cn("business-cps-segmented-tabs-shell", compact && "business-cps-segmented-tabs-shell--compact")}>
+      <div
+        className={cn("business-cps-segmented-tabs grid", compact && "business-cps-segmented-tabs--compact")}
+        style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+      >
         {tabs.map((tab) => (
           <button
             className={cn("business-cps-segmented-tab", tab.id === activeTab && "business-cps-segmented-tab-active")}
@@ -798,7 +803,7 @@ function MobilePromoterFormModal({
 function BusinessCpsFloatingHeader({ onOpenMore }: { onOpenMore: () => void }) {
   return (
     <FloatingHomeHeader
-      panelClassName="business-cps-header-panel client-floating-header-glass-frame rounded-none border-transparent px-4 pb-4 shadow-none"
+      panelClassName="business-cps-header-panel client-floating-header-glass-frame rounded-b-[28px] rounded-t-none border-transparent px-4 pb-4 shadow-none"
       spacerClassName="h-[calc(env(safe-area-inset-top)+144px)]"
       stacked
     >
@@ -814,7 +819,7 @@ function BusinessCpsFloatingHeader({ onOpenMore }: { onOpenMore: () => void }) {
       />
 
       <button
-        className="focus-ring flex h-12 items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] px-3 text-left text-[color:var(--client-text)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]"
+        className="focus-ring flex h-12 items-center gap-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] px-3 text-left text-[color:var(--client-text)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]"
         onClick={onOpenMore}
         type="button"
       >

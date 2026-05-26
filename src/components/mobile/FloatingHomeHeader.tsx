@@ -4,10 +4,19 @@ import { cn } from "../../lib/utils";
 const floatingHeaderFrameGapPx = 8;
 
 export const floatingHeaderGlassPanelClassName =
-  "client-floating-header-glass-frame !rounded-none !border-transparent !px-0 !pb-0 !shadow-none";
+  "client-floating-header-glass-frame !rounded-b-[28px] !rounded-t-none !border-transparent !px-0 !pb-0 !shadow-none";
 export const floatingHeaderInnerClassName = "px-3 pb-3";
 export const floatingHeaderPillSurfaceClassName =
   "rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]";
+export const floatingHeaderSearchRowClassName = "flex h-10 w-full items-center gap-1.5";
+export const floatingHeaderSearchFieldClassName =
+  `flex h-10 min-w-0 flex-1 items-center gap-2.5 px-3 ${floatingHeaderPillSurfaceClassName} bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)]`;
+export const floatingHeaderSearchIconClassName = "h-4 w-4 shrink-0 text-[color:var(--client-soft-muted)]";
+export const floatingHeaderSearchTextClassName = "min-w-0 flex-1 truncate text-[13px] font-semibold leading-none text-[color:var(--client-muted)]";
+export const floatingHeaderSearchInputClassName =
+  "h-full min-w-0 flex-1 bg-transparent text-[13px] font-medium text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
+export const floatingHeaderSearchActionClassName =
+  "focus-ring inline-flex h-10 min-w-[60px] shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3.5 text-[14px] font-black text-[color:var(--pin-badge-glyph)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_22%,transparent)] transition active:scale-[0.97]";
 
 export function FloatingHomeHeader({
   children,

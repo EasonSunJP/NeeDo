@@ -7,7 +7,9 @@ import {
   FloatingHomeHeader,
   floatingHeaderGlassPanelClassName,
   floatingHeaderInnerClassName,
-  floatingHeaderPillSurfaceClassName
+  floatingHeaderSearchFieldClassName,
+  floatingHeaderSearchIconClassName,
+  floatingHeaderSearchTextClassName
 } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig } from "../../components/mobile/navItems";
@@ -1034,22 +1036,11 @@ export function HomePage() {
           />
 
           <Link
-            className={cn(
-              "focus-ring flex h-12 items-center gap-3 px-3",
-              floatingHeaderPillSurfaceClassName,
-              "bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]"
-            )}
+            className={cn("focus-ring", floatingHeaderSearchFieldClassName)}
             to="/categories"
           >
-            <span
-              className={cn(
-                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                isNight ? "bg-white/12 text-white" : "bg-[color:var(--client-primary-soft)] text-[#3c887e]"
-              )}
-            >
-              <AppIcon className="h-4 w-4" name="search" />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[14px] font-black text-[color:var(--client-text)]">搜索店铺、技师、服务</span>
+            <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
+            <span className={floatingHeaderSearchTextClassName}>搜索店铺、技师、服务</span>
           </Link>
         </div>
       </FloatingHomeHeader>

@@ -4,7 +4,9 @@ import {
   FloatingHomeHeader,
   floatingHeaderGlassPanelClassName,
   floatingHeaderInnerClassName,
-  floatingHeaderPillSurfaceClassName
+  floatingHeaderSearchFieldClassName,
+  floatingHeaderSearchIconClassName,
+  floatingHeaderSearchTextClassName
 } from "../../components/mobile/FloatingHomeHeader";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
@@ -102,14 +104,10 @@ export function UnifiedConversationSearchBar({
 }) {
   const content = (
     <span
-      className={cn(
-        "flex h-12 w-full items-center gap-3 px-4 text-[14px] text-[color:var(--client-muted)]",
-        floatingHeaderPillSurfaceClassName,
-        "bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] shadow-none"
-      )}
+      className={cn("focus-ring", floatingHeaderSearchFieldClassName)}
     >
-      <ImIcon className="h-4 w-4 text-[color:var(--client-soft-muted)]" name="search" />
-      <span className="truncate">{placeholder}</span>
+      <ImIcon className={floatingHeaderSearchIconClassName} name="search" />
+      <span className={floatingHeaderSearchTextClassName}>{placeholder}</span>
     </span>
   );
 

@@ -6,7 +6,11 @@ import {
   FloatingHomeHeader,
   floatingHeaderGlassPanelClassName,
   floatingHeaderInnerClassName,
-  floatingHeaderPillSurfaceClassName
+  floatingHeaderSearchActionClassName,
+  floatingHeaderSearchFieldClassName,
+  floatingHeaderSearchIconClassName,
+  floatingHeaderSearchRowClassName,
+  floatingHeaderSearchTextClassName
 } from "../../../components/mobile/FloatingHomeHeader";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { getLocationAreaHints } from "../../../lib/location";
@@ -57,27 +61,20 @@ function getSocialMePath(scope: SocialPortalScope) {
 
 function SocialTimelineHeaderSearch({ to }: { to: string }) {
   return (
-    <div className="flex h-12 w-full items-center gap-2">
+    <div className={floatingHeaderSearchRowClassName}>
       <Link
         aria-label="搜索动态内容"
-        className={cn(
-          "focus-ring flex h-full min-w-0 flex-1 items-center gap-3 px-3.5 text-[color:var(--client-muted)]",
-          floatingHeaderPillSurfaceClassName,
-          "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)]"
-        )}
+        className={cn("focus-ring", floatingHeaderSearchFieldClassName)}
         to={to}
       >
-        <AppIcon className="h-5 w-5 shrink-0 text-[color:var(--client-soft-muted)]" name="search" />
-        <span className="min-w-0 flex-1 truncate text-[16px] font-black tracking-[-0.01em]">搜索 @用户、#话题、动态内容</span>
+        <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
+        <span className={floatingHeaderSearchTextClassName}>搜索 @用户、#话题、动态内容</span>
       </Link>
       <Link
         aria-label="开始搜索动态"
-        className="focus-ring relative flex h-full min-w-[72px] shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-4 text-[15px] font-black text-[color:var(--pin-badge-glyph)] shadow-[0_12px_26px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
+        className={floatingHeaderSearchActionClassName}
         to={to}
       >
-        <span className="absolute -top-2 right-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-bg)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_70%,var(--client-surface)_30%)] px-2 py-0.5 text-[11px] font-black leading-none text-[color:var(--pin-badge-glyph)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]">
-          3km
-        </span>
         搜索
       </Link>
     </div>

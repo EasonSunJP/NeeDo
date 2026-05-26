@@ -757,12 +757,14 @@ export function FeatureSegmentedTabs<T extends string>({
 }) {
   const { language } = useI18n();
   const isHeaderVariant = variant === "header";
+  const isCompactTabGroup = items.length <= 3;
   const hasRoomyLabels = items.length <= 2;
 
   return (
     <div
       className={cn(
         "client-feature-segmented-tabs flex w-full items-stretch rounded-full",
+        isCompactTabGroup && "client-feature-segmented-tabs--compact",
         isHeaderVariant
           ? "client-feature-segmented-tabs--header gap-2 border-0 bg-transparent p-0 shadow-none"
           : "gap-0.5 border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_28px_rgba(0,0,0,0.12)] backdrop-blur-xl",
@@ -776,8 +778,10 @@ export function FeatureSegmentedTabs<T extends string>({
         return (
           <button
             className={cn(
-              "client-feature-segmented-tab flex min-w-0 flex-1 items-center justify-center rounded-full px-1 py-2 text-center text-[11px] font-black leading-none transition sm:px-2 sm:text-[13px]",
-              isHeaderVariant ? "min-h-[48px]" : "min-h-[44px]",
+              "client-feature-segmented-tab flex min-w-0 flex-1 items-center justify-center rounded-full px-1 py-2 text-center text-[11px] font-black leading-none sm:px-2 sm:text-[13px]",
+              isCompactTabGroup && "client-feature-segmented-tab--compact px-3 text-[13px]",
+              !isCompactTabGroup && "transition",
+              isCompactTabGroup ? "min-h-10" : isHeaderVariant ? "min-h-[48px]" : "min-h-[44px]",
               active
                 ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
                 : "text-[color:var(--client-muted)]"

@@ -1910,7 +1910,8 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--single-frame,
-.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header {
+.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header,
+.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--compact {
   border: 0;
   background: transparent !important;
   padding: 0 !important;
@@ -1921,6 +1922,22 @@ body:has(.merchant-analytics-clean-shell),
 
 .client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--header {
   gap: 8px;
+}
+
+.client-shell .client-feature-segmented-tabs.client-feature-segmented-tabs--compact {
+  min-height: 40px;
+  justify-content: stretch;
+  gap: 6px;
+}
+
+.client-shell .client-feature-segmented-tabs--compact .client-feature-segmented-tab {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  min-height: 40px !important;
+  padding-inline: 12px !important;
+  font-size: 13px !important;
+  transition: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .client-shell .client-fixed-tab-bar {
@@ -7400,6 +7417,10 @@ html.im-conversation-scroll-lock #root {
   min-height: 76px;
 }
 
+.business-cps-segmented-tabs-shell--compact {
+  min-height: 48px;
+}
+
 .business-cps-segmented-tabs {
   position: fixed;
   top: 0;
@@ -7441,6 +7462,22 @@ html.im-conversation-scroll-lock #root {
     background 180ms ease,
     color 180ms ease,
     box-shadow 180ms ease;
+}
+
+.business-cps-segmented-tabs--compact {
+  display: grid;
+  align-items: center;
+  min-height: 48px;
+  padding: 4px 8px;
+}
+
+.business-cps-segmented-tabs--compact .business-cps-segmented-tab {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: 13px;
+  transition: none !important;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .business-cps-segmented-tab-active {

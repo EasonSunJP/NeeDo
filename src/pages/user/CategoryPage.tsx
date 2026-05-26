@@ -2,7 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AppIcon, IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { featureCarouselFrameClassName, FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
-import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderPillSurfaceClassName } from "../../components/mobile/FloatingHomeHeader";
+import {
+  FloatingHomeHeader,
+  floatingHeaderGlassPanelClassName,
+  floatingHeaderPillSurfaceClassName,
+  floatingHeaderSearchFieldClassName,
+  floatingHeaderSearchIconClassName,
+  floatingHeaderSearchInputClassName
+} from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
@@ -792,14 +799,13 @@ export function CategoryPage() {
 
                 <label
                   className={cn(
-                    "flex h-11 min-w-0 flex-1 items-center gap-2 px-3 pr-1.5 text-[color:var(--client-muted)]",
-                    floatingHeaderPillSurfaceClassName,
-                    "bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+                    floatingHeaderSearchFieldClassName,
+                    "pr-1.5"
                   )}
                 >
-                  <AppIcon className="h-4 w-4" name="search" />
+                  <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
                   <input
-                    className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+                    className={floatingHeaderSearchInputClassName}
                     onChange={(event) => {
                       setSearchDraft(event.target.value);
                     }}
@@ -823,7 +829,7 @@ export function CategoryPage() {
 
                 <button
                   className={cn(
-                    "inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-black text-[color:var(--client-text)]",
+                    "inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-black text-[color:var(--client-text)]",
                     floatingHeaderPillSurfaceClassName,
                     "bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
                   )}

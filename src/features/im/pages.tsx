@@ -27,7 +27,9 @@ import {
   FloatingHomeHeader,
   floatingHeaderGlassPanelClassName,
   floatingHeaderInnerClassName,
-  floatingHeaderPillSurfaceClassName
+  floatingHeaderSearchFieldClassName,
+  floatingHeaderSearchIconClassName,
+  floatingHeaderSearchInputClassName
 } from "../../components/mobile/FloatingHomeHeader";
 import { chatBgUrl } from "../../assets/runtime/images";
 import { customers, imageBank, orders, services } from "../../data/mock";
@@ -2244,17 +2246,11 @@ export function ImContactsListPage() {
         )}
         roleType={scope}
         searchBar={isAddStaffMode ? (
-          <label
-            className={cn(
-              "flex h-12 w-full items-center gap-3 px-4 text-[14px] text-[color:var(--client-muted)]",
-              floatingHeaderPillSurfaceClassName,
-              "bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] shadow-none"
-            )}
-          >
-            <ImIcon className="h-4 w-4 shrink-0 text-[color:var(--client-soft-muted)]" name="search" />
+          <label className={floatingHeaderSearchFieldClassName}>
+            <ImIcon className={floatingHeaderSearchIconClassName} name="search" />
             <input
               aria-label="搜索联系人"
-              className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+              className={floatingHeaderSearchInputClassName}
               onChange={(event) => setAddStaffQuery(event.target.value)}
               placeholder="搜索联系人"
               value={addStaffQuery}
@@ -3053,15 +3049,11 @@ function ImConversationListSearchBar({
 
   return (
     <div
-      className={cn(
-        "flex h-12 w-full items-center gap-2 px-4 text-[14px] text-[color:var(--client-muted)]",
-        floatingHeaderPillSurfaceClassName,
-        "bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] shadow-none"
-      )}
+      className={floatingHeaderSearchFieldClassName}
     >
-      <ImIcon className="h-4 w-4 shrink-0 text-[color:var(--client-soft-muted)]" name="search" />
+      <ImIcon className={floatingHeaderSearchIconClassName} name="search" />
       <input
-        className="min-w-0 flex-1 bg-transparent text-[14px] text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+        className={floatingHeaderSearchInputClassName}
         onChange={(event) => onQueryChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
@@ -3085,7 +3077,7 @@ function ImConversationListSearchBar({
       <button
         aria-label={filterLabel}
         className={cn(
-          "focus-ring relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
+          "focus-ring relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors",
           hasActiveFilter
             ? "bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
             : "text-[color:var(--client-primary)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
@@ -3094,7 +3086,7 @@ function ImConversationListSearchBar({
         title={filterLabel}
         type="button"
       >
-        <ImIcon className="h-5 w-5" name="filter" />
+        <ImIcon className="h-4 w-4" name="filter" />
         {activeTagCount > 0 ? (
           <span className="absolute -right-1 -top-1 min-w-[1.125rem] rounded-full bg-[#ff6767] px-1 text-[10px] font-black leading-[1.125rem] text-white ring-2 ring-[color:var(--client-bg)]">
             {activeTagCount}
@@ -3522,15 +3514,11 @@ export function ImSearchPage() {
         >
           <div className={cn(floatingHeaderInnerClassName, "flex items-center gap-3")}>
             <label
-              className={cn(
-                "flex h-10 min-w-0 flex-1 items-center gap-2 px-3 text-[color:var(--client-muted)]",
-                floatingHeaderPillSurfaceClassName,
-                "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg))] shadow-none"
-              )}
+              className={floatingHeaderSearchFieldClassName}
             >
-              <ImIcon className="h-4 w-4 shrink-0" name="search" />
+              <ImIcon className={floatingHeaderSearchIconClassName} name="search" />
               <input
-                className="h-full min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:color-mix(in_srgb,var(--client-muted)_74%,transparent)]"
+                className={floatingHeaderSearchInputClassName}
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
