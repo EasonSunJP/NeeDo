@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AppIcon, IconButton } from "../client-ui/AppScaffold";
 import { cn } from "../../lib/utils";
@@ -77,6 +78,7 @@ export function SharedHomeHeader({
   secondaryActionIcon = "bell",
   settingsTo,
   settingsLabel = "打开设置",
+  rightAction,
   onLocationClick,
   dark = false,
   forceLight = false,
@@ -95,8 +97,9 @@ export function SharedHomeHeader({
   secondaryActionTo?: string;
   secondaryActionLabel?: string;
   secondaryActionIcon?: "bell" | "chat";
-  settingsTo: string;
+  settingsTo?: string;
   settingsLabel?: string;
+  rightAction?: ReactNode;
   onLocationClick?: () => void;
   dark?: boolean;
   forceLight?: boolean;
@@ -186,16 +189,20 @@ export function SharedHomeHeader({
             to={secondaryActionTo}
           />
         ) : null}
-        <IconButton
-          className={cn(
-            dark
-              ? "border-white/12 bg-white/10 text-white shadow-[0_16px_34px_rgba(0,0,0,0.24)]"
-              : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-text)]"
-          )}
-          icon="settings"
-          label={settingsLabel}
-          to={settingsTo}
-        />
+        {rightAction ?? (
+          settingsTo ? (
+            <IconButton
+              className={cn(
+                dark
+                  ? "border-white/12 bg-white/10 text-white shadow-[0_16px_34px_rgba(0,0,0,0.24)]"
+                  : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-text)]"
+              )}
+              icon="settings"
+              label={settingsLabel}
+              to={settingsTo}
+            />
+          ) : null
+        )}
       </div>
     </div>
   );

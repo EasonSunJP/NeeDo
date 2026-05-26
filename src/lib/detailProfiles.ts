@@ -1,4 +1,5 @@
 import { demoTechnicianAvatar, imageBank, orders, reviews, schedules, serviceCategories, services } from "../data/mock";
+import { serviceReviewSpecialTags } from "../shared/order-detail/serviceReviewTagCatalog";
 import { formatCustomerMembershipLevel, getCustomerLevelLabel, resolveCustomerMembership } from "../shared/profile-card/customerMembership";
 import { formatCustomerGenderLabel, getCustomerCreditReviewCount } from "../shared/profile-card/customerProfileLabels";
 import type { Customer, Review, ServiceItem, Store, Technician } from "../types/domain";
@@ -543,8 +544,8 @@ export function getTechnicianReviewDisplayTags(technician: Technician) {
   const config = technicianDetailOverrides[technician.id] ?? {};
 
   return composeTechnicianReviewTags({
-    specialTags: technician.profileTags ?? [],
-    fallbackTags: technician.skills,
+    specialTags: serviceReviewSpecialTags.map((tag) => tag.label),
+    fallbackTags: [],
     customerCustomTags: config.extraTags ?? []
   });
 }

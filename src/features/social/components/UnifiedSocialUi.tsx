@@ -28,6 +28,7 @@ import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { getGeneratedImageThumbnailUrl } from "../../../lib/imageThumbnails";
 import { readImageFileAsDataUrl } from "../../../lib/imageUpload";
 import { shareContent } from "../../../lib/share";
+import { buildStoreBookingRoute } from "../../../lib/storeBookingRoute";
 import { getVisibleRelatedShopsForTechnician, type TechnicianRelatedShopEntry } from "../../../lib/technicianRelatedShops";
 import { cn } from "../../../lib/utils";
 import { CustomerMembershipBadge } from "../../../shared/profile-card";
@@ -40,6 +41,12 @@ import type { ImUser } from "../../im/model";
 import { useSocial } from "../context";
 import { socialPaths } from "../paths";
 import { buildTechnicianWeeklyScheduleItems, type TechnicianWeeklyScheduleTone } from "../profileHeaderPresentation";
+import { getCustomerCustomProfileReviewTags } from "../profileReviewPresentation";
+import {
+  getServiceReviewStampVisual,
+  serviceReviewSpecialTags,
+  splitMaxReviewStampLabel
+} from "../../../shared/order-detail/serviceReviewTagCatalog";
 import type { SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialSearchTab, SocialTimelineFilterTab } from "../types";
 import {
   buildAbsoluteUrl,
@@ -80,12 +87,12 @@ const profileFieldLabelMap: Record<string, string> = {
   priceLabel: "价格区间",
   announcement: "当前公告",
   mediaFocus: "内容焦点",
-  serviceTags: "服务标签",
+  serviceTags: "评价信息",
   bookingAction: "预约入口",
   nextAvailability: "最近可约",
-  recentAvailability: "最近可约"
+  recentAvailability: "档期更新"
 };
-const hiddenProfileFieldKeys = new Set(["memberLevel", "memberLevelLabel", "points", "nextBookingAt"]);
+const hiddenProfileFieldKeys = new Set(["memberLevel", "memberLevelLabel", "points", "nextBookingAt", "nextAvailability", "recentAvailability"]);
 
 export function navItemsForSocialScope(scope: SocialPortalScope) {
   if (scope === "merchant") {
@@ -484,6 +491,21 @@ function buildFieldItem(
   };
 }
 
+function buildTechnicianReviewInfoField(profile: SocialProfile): ProfileFieldItem | null {
+  const customTags = getCustomerCustomProfileReviewTags(profile.extraProfileFields.serviceTags);
+
+  if (customTags.length === 0) {
+    return null;
+  }
+
+  return {
+    key: "customerReviewTags",
+    label: "评价信息",
+    value: customTags.join(" / "),
+    tone: "primary"
+  };
+}
+
 function compactFieldItems(items: Array<ProfileFieldItem | null>) {
   return items.filter((item): item is ProfileFieldItem => Boolean(item));
 }
@@ -500,9 +522,7 @@ function buildProfileHighlights(profile: SocialProfile) {
 
   if (profile.entityType === "technician") {
     return compactFieldItems([
-      buildFieldItem(profile, "serviceTags", "服务标签", "primary"),
-      buildFieldItem(profile, "nextAvailability", "最近可约", "accent"),
-      buildFieldItem(profile, "recentAvailability", "档期更新", "accent"),
+      buildTechnicianReviewInfoField(profile),
       buildFieldItem(profile, "languages", "服务语言")
     ]);
   }
@@ -547,20 +567,16 @@ function buildProfileSections(profile: SocialProfile): ProfileFieldSection[] {
       ])
     });
   } else if (profile.entityType === "technician") {
+    usedKeys.add("serviceTags");
+    usedKeys.add("nextAvailability");
+    usedKeys.add("recentAvailability");
     sections.push({
       title: "服务摘要",
       description: "技师端仍然共用同一套 profile 结构，只通过字段与 section 做扩展。",
       items: compactFieldItems([
-        pick("serviceTags", "服务标签", "primary"),
+        buildTechnicianReviewInfoField(profile),
         pick("languages", "服务语言"),
         pick("bookingAction", "预约入口", "primary")
-      ])
-    });
-    sections.push({
-      title: "预约状态",
-      items: compactFieldItems([
-        pick("nextAvailability", "最近可约", "accent"),
-        pick("recentAvailability", "档期更新", "accent")
       ])
     });
   } else {
@@ -616,7 +632,7 @@ function buildProfileHeaderNotes(profile: SocialProfile) {
 
   if (profile.entityType === "technician") {
     return compactFieldItems([
-      buildFieldItem(profile, "serviceTags", "服务标签", "primary"),
+      buildTechnicianReviewInfoField(profile),
       buildFieldItem(profile, "languages", "服务语言")
     ]);
   }
@@ -703,35 +719,107 @@ function weeklyScheduleToneClassName(tone: TechnicianWeeklyScheduleTone) {
   }
 }
 
-function SocialTechnicianWeeklySchedule({ profile }: { profile: SocialProfile }) {
+function SocialTechnicianWeeklySchedule({
+  profile,
+  relatedShops,
+  scope
+}: {
+  profile: SocialProfile;
+  relatedShops: TechnicianRelatedShopEntry[];
+  scope: SocialPortalScope;
+}) {
   const snapshot = useTechnicianScheduleStore();
+  const explicitScheduleTechnicianId = profile.extraProfileFields.scheduleTechnicianId;
+  const scheduleTechnicianId =
+    typeof explicitScheduleTechnicianId === "string" && explicitScheduleTechnicianId.trim()
+      ? explicitScheduleTechnicianId
+      : profile.id;
+  const mainStoreEntry = relatedShops.find((entry) => entry.relationType === "main");
   const weekItems = useMemo(
-    () => buildTechnicianWeeklyScheduleItems(profile.id, snapshot),
-    [profile.id, snapshot]
+    () => buildTechnicianWeeklyScheduleItems(scheduleTechnicianId, snapshot),
+    [scheduleTechnicianId, snapshot]
   );
 
   return (
-    <div className="mt-3 -mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <div className="flex min-w-max gap-2">
+    <div className="mt-3">
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
         {weekItems.map((item) => (
           <Link
             aria-label={`${item.date} ${item.statusLabel}${item.meta ? ` ${item.meta}` : ""}`}
             className={cn(
-              "grid h-[76px] min-w-[72px] place-items-center rounded-[22px] border px-2 py-2 text-center transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--client-primary)_52%,transparent)] hover:bg-[color:var(--client-primary-soft)]",
+              "grid h-[64px] min-w-0 place-items-center rounded-[18px] border px-1 py-1.5 text-center transition hover:-translate-y-0.5 hover:border-[color:color-mix(in_srgb,var(--client-primary)_52%,transparent)] hover:bg-[color:var(--client-primary-soft)] sm:h-[76px] sm:rounded-[22px] sm:px-2 sm:py-2",
               item.isToday
                 ? "border-[color:color-mix(in_srgb,var(--client-primary)_58%,transparent)] bg-[color:var(--client-primary-soft)]"
                 : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_58%,transparent)]"
             )}
             key={item.id}
             title={`${item.date} ${item.statusLabel}${item.meta ? ` ${item.meta}` : ""}`}
-            to={item.href}
+            to={
+              scope === "user" && mainStoreEntry
+                ? buildStoreBookingRoute({
+                    date: item.date,
+                    storeId: mainStoreEntry.store.id,
+                    technicianId: profile.id,
+                    time: item.startTime
+                  })
+                : item.href
+            }
           >
-            <span className="text-[11px] font-black leading-none text-[color:var(--client-muted)]">{item.weekdayLabel}</span>
-            <strong className="text-[20px] font-black leading-none text-[color:var(--client-text)]">{Number(item.dayNumber)}</strong>
+            <span className="text-[10px] font-black leading-none text-[color:var(--client-muted)] sm:text-[11px]">{item.weekdayLabel}</span>
+            <strong className="text-[17px] font-black leading-none text-[color:var(--client-text)] sm:text-[20px]">{Number(item.dayNumber)}</strong>
             <span className={cn("h-2.5 w-2.5 rounded-full", weeklyScheduleToneClassName(item.tone))} />
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+function renderProfileStampLabel(label: string) {
+  const labelParts = splitMaxReviewStampLabel(label);
+
+  if (!labelParts.marker) {
+    return <span>{label}</span>;
+  }
+
+  return (
+    <>
+      <span className="block text-[11px] leading-[1.05] tracking-normal sm:text-[12px]">{labelParts.title}</span>
+      <span className="mt-0.5 block text-[17px] leading-[0.92] tracking-normal sm:text-[18px]">{labelParts.marker}</span>
+    </>
+  );
+}
+
+function SocialTechnicianReviewStamps() {
+  return (
+    <div aria-label="评价特殊标签" className="social-profile-review-stamps mt-4 grid grid-cols-4 gap-2 px-0.5 pt-2" role="list">
+      {serviceReviewSpecialTags.map((tag, index) => {
+        const stampVisual = getServiceReviewStampVisual(tag, index);
+
+        return (
+          <div
+            aria-label={`${tag.label} ×${tag.count}`}
+            className={cn("service-review-stamp min-w-0", `service-review-stamp--${stampVisual.tone}`)}
+            key={tag.label}
+            role="listitem"
+          >
+            <span className="service-review-stamp__icon">
+              <img
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                src={stampVisual.iconSrc}
+              />
+            </span>
+            <span className="service-review-stamp__label">
+              {renderProfileStampLabel(tag.label)}
+            </span>
+            <span className="service-review-stamp__count">
+              ×{tag.count}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -872,18 +960,21 @@ const socialProfileHeaderActionButtonClassName =
   "focus-ring inline-flex h-10 min-w-[76px] shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] px-3 text-sm font-black text-[color:var(--client-text)] backdrop-blur transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-55 sm:min-w-[88px] sm:px-4";
 
 const socialProfileHeaderMessageButtonClassName =
-  "focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_64%,#fff_36%)] bg-[color:color-mix(in_srgb,var(--client-primary)_86%,#fff_14%)] text-[color:var(--pin-badge-glyph)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_42%,transparent)] transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-55";
+  "focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_72%,#fff_28%)] bg-[color:color-mix(in_srgb,var(--client-primary)_92%,#fff_8%)] text-[color:var(--client-primary-contrast,var(--pin-badge-glyph,#fff))] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_48%,transparent)] transition hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-100";
 
 function TechnicianRelatedShopHeaderAction({
+  profile,
   relatedShops,
   scope
 }: {
+  profile: SocialProfile;
   relatedShops: TechnicianRelatedShopEntry[];
   scope: SocialPortalScope;
 }) {
   const navigate = useNavigate();
   const [selectorOpen, setSelectorOpen] = useState(false);
   const primaryEntry = relatedShops[0];
+  const hasMainStoreEntry = relatedShops.some((entry) => entry.relationType === "main");
 
   if (!primaryEntry) {
     return null;
@@ -891,7 +982,11 @@ function TechnicianRelatedShopHeaderAction({
 
   const openShop = (entry: TechnicianRelatedShopEntry) => {
     setSelectorOpen(false);
-    navigate(socialPaths.profile(scope, { entityType: "shop", id: entry.store.id }));
+    navigate(
+      scope === "user" && hasMainStoreEntry
+        ? buildStoreBookingRoute({ storeId: entry.store.id, technicianId: profile.id })
+        : socialPaths.profile(scope, { entityType: "shop", id: entry.store.id })
+    );
   };
   const handleClick = () => {
     if (relatedShops.length === 1) {
@@ -1569,7 +1664,9 @@ export function SocialPostItem({
   actorKey,
   compact = false,
   highlight = false,
-  hideActions = false
+  hideActions = false,
+  profileOverrides,
+  disableDetailNavigation = false
 }: {
   post: SocialPost;
   scope: SocialPortalScope;
@@ -1577,13 +1674,16 @@ export function SocialPostItem({
   compact?: boolean;
   highlight?: boolean;
   hideActions?: boolean;
+  profileOverrides?: Record<string, SocialProfile>;
+  disableDetailNavigation?: boolean;
 }) {
   const navigate = useNavigate();
   const { profiles, getPostById } = useSocial();
-  const activityAuthor = profiles[profileKey({ entityType: post.authorType, id: post.authorId })];
+  const mergedProfiles = profileOverrides ? { ...profiles, ...profileOverrides } : profiles;
+  const activityAuthor = mergedProfiles[profileKey({ entityType: post.authorType, id: post.authorId })];
   const repostedPost = post.repostPostId ? getPostById(post.repostPostId) : undefined;
   const contentPost = repostedPost ?? post;
-  const contentAuthor = profiles[profileKey({ entityType: contentPost.authorType, id: contentPost.authorId })] ?? activityAuthor;
+  const contentAuthor = mergedProfiles[profileKey({ entityType: contentPost.authorType, id: contentPost.authorId })] ?? activityAuthor;
   const quotedPost = contentPost.quotePostId ? getPostById(contentPost.quotePostId) : undefined;
   const detailHref = socialPaths.post(scope, contentPost.id);
 
@@ -1604,7 +1704,7 @@ export function SocialPostItem({
           <AvatarImage alt={contentAuthor.displayName} className={cn(highlight ? "h-12 w-12" : "h-10 w-10")} src={contentAuthor.avatar} />
         </Link>
         <div className="min-w-0 flex-1">
-          {!compact ? <SocialPostContextRow activityAuthor={activityAuthor} contentPost={contentPost} post={post} profiles={profiles} /> : null}
+          {!compact ? <SocialPostContextRow activityAuthor={activityAuthor} contentPost={contentPost} post={post} profiles={mergedProfiles} /> : null}
 
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
@@ -1615,9 +1715,15 @@ export function SocialPostItem({
                 <VerificationBadge status={contentAuthor.verifiedStatus} />
                 <SocialMembershipStatusBadge compact profile={contentAuthor} />
                 <span className="text-sm text-[color:var(--client-muted)]">·</span>
-                <Link className="text-sm text-[color:var(--client-muted)] hover:text-[color:var(--client-text)]" to={detailHref}>
-                  {formatRelativeTime(contentPost.createdAt)}
-                </Link>
+                {disableDetailNavigation ? (
+                  <span className="text-sm text-[color:var(--client-muted)]">
+                    {formatRelativeTime(contentPost.createdAt)}
+                  </span>
+                ) : (
+                  <Link className="text-sm text-[color:var(--client-muted)] hover:text-[color:var(--client-text)]" to={detailHref}>
+                    {formatRelativeTime(contentPost.createdAt)}
+                  </Link>
+                )}
               </div>
               {contentAuthor.headline && !compact ? <p className="mt-1 text-[12px] font-semibold text-[color:var(--client-muted)]">{contentAuthor.headline}</p> : null}
             </div>
@@ -1629,6 +1735,10 @@ export function SocialPostItem({
             <div
               className="mt-2.5 cursor-pointer"
               onClick={(event) => {
+                if (disableDetailNavigation) {
+                  return;
+                }
+
                 if (shouldIgnorePostNavigation(event.target)) {
                   return;
                 }
@@ -1640,14 +1750,14 @@ export function SocialPostItem({
                 allowExpand={!compact && !highlight}
                 className={highlight ? "text-[18px] leading-8 sm:text-[21px]" : undefined}
                 expanded={highlight}
-                profiles={profiles}
+                profiles={mergedProfiles}
                 scope={scope}
                 text={contentPost.text}
               />
             </div>
           ) : null}
 
-          {quotedPost ? <EmbeddedPostCard post={quotedPost} profiles={profiles} scope={scope} /> : null}
+          {quotedPost ? <EmbeddedPostCard post={quotedPost} profiles={mergedProfiles} scope={scope} /> : null}
           <UnifiedMediaBlock post={contentPost} scope={scope} />
 
           {!hideActions ? <SocialInteractionBar actorKey={actorKey} compact={compact} post={contentPost} scope={scope} /> : null}
@@ -1859,12 +1969,14 @@ export function SocialProfileHeader({
   profile,
   scope,
   actorKey,
-  variant = "default"
+  variant = "default",
+  relatedShopEntries
 }: {
   profile: SocialProfile;
   scope: SocialPortalScope;
   actorKey: string;
   variant?: "default" | "timelineCompact";
+  relatedShopEntries?: TechnicianRelatedShopEntry[];
 }) {
   const { updateProfileOverride } = useSocial();
   const entityStore = useEntityStore();
@@ -1893,6 +2005,10 @@ export function SocialProfileHeader({
   const targetImUser = isSelf ? undefined : findImUserForSocialProfile(imStore.users, profile);
   const canOpenPrivateMessage = Boolean(targetImUser && targetImUser.id !== imStore.currentUserId && !targetImUser.serviceAccount);
   const relatedShops = useMemo(() => {
+    if (relatedShopEntries) {
+      return relatedShopEntries;
+    }
+
     if (profile.entityType !== "technician") {
       return [];
     }
@@ -1901,7 +2017,7 @@ export function SocialProfileHeader({
       technician: entityStore.technicians.find((technician) => technician.id === profile.id),
       stores: entityStore.stores
     });
-  }, [entityStore.stores, entityStore.technicians, profile.entityType, profile.id]);
+  }, [entityStore.stores, entityStore.technicians, profile.entityType, profile.id, relatedShopEntries]);
 
   useEffect(() => {
     setCoverDraft(profile.coverImage);
@@ -2179,7 +2295,7 @@ export function SocialProfileHeader({
                     scope={scope}
                     targetKey={profileKey(profile)}
                   />
-                  {relatedShops.length > 0 ? <TechnicianRelatedShopHeaderAction relatedShops={relatedShops} scope={scope} /> : null}
+                  {relatedShops.length > 0 ? <TechnicianRelatedShopHeaderAction profile={profile} relatedShops={relatedShops} scope={scope} /> : null}
                   {profileMessageActions.map((action) => (
                     <button
                       aria-label={privateMessagePending ? "正在打开私信" : action.label}
@@ -2277,7 +2393,8 @@ export function SocialProfileHeader({
               <ProfileMetaRow icon="clock">加入于 {formatJoinedDate(profile.joinedAt)}</ProfileMetaRow>
             </div>
 
-            {profile.entityType === "technician" ? <SocialTechnicianWeeklySchedule profile={profile} /> : null}
+            {profile.entityType === "technician" ? <SocialTechnicianWeeklySchedule profile={profile} relatedShops={relatedShops} scope={scope} /> : null}
+            {profile.entityType === "technician" ? <SocialTechnicianReviewStamps /> : null}
 
             {headerNotes.length > 0 ? (
               <div className="mt-3 space-y-1.5 text-[13px] leading-6 text-[color:var(--client-muted)]">

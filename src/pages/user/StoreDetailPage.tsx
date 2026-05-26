@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   AppIcon,
@@ -30,6 +30,7 @@ import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { appendNeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
+import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
 import {
   detectStorePresentationIndustry,
   getStorePresentationConfig,
@@ -691,6 +692,21 @@ function formatDateParam(date: Date) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function parseStoreBookingDateParam(value: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function normalizeStoreBookingTimeParam(value: string | null) {
+  const normalized = value?.trim() ?? "";
+
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(normalized) ? normalized : null;
 }
 
 function weekdayLabel(date: Date) {
@@ -1596,6 +1612,7 @@ function TopMetricAction({
 
 export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { session } = useAuth();
   const { customers, technicians } = useEntityStore();
   const displayedTechnicians = techniciansOverride ?? technicians;
@@ -1677,6 +1694,20 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
     [config.subtitle, images, seatCards, store.id, store.tags]
   );
   const timeOptions = useMemo(() => buildTimeOptions(industry, store.nextSlot, store.alwaysBookable), [industry, store.alwaysBookable, store.nextSlot]);
+  const routeTechnicianId = searchParams.get("technician")?.trim() ?? "";
+  const routeDateParam = searchParams.get("date");
+  const routeTimeParam = searchParams.get("time");
+  const routeVisitDate = useMemo(() => parseStoreBookingDateParam(routeDateParam), [routeDateParam]);
+  const routeTime = useMemo(() => normalizeStoreBookingTimeParam(routeTimeParam), [routeTimeParam]);
+  const routedBookingTechnician = useMemo(
+    () =>
+      displayedTechnicians.find(
+        (technician) =>
+          technician.id === routeTechnicianId &&
+          (technician.storeId === store.id || technician.relatedStoreIds?.includes(store.id))
+      ) ?? null,
+    [displayedTechnicians, routeTechnicianId, store.id]
+  );
   const primaryCheckoutTarget = menuCards[0]?.sourceServiceId ?? services[0]?.id ?? "svc-fallback";
   const baseShareCount = useMemo(() => socialPosts.reduce((sum, post) => sum + post.repostCount, 0), [socialPosts]);
   const pinnedSocialPost = socialPosts.find((post) => post.isPinned);
@@ -1685,9 +1716,9 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const [isFavorite, setIsFavorite] = useState(false);
   const [activeTab, setActiveTab] = useState<StoreTab>("home");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [selectedVisitDate, setSelectedVisitDate] = useState(() => getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
+  const [selectedVisitDate, setSelectedVisitDate] = useState(() => routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
   const [selectedPeople, setSelectedPeople] = useState(industry === "dining" ? "2名" : "1名");
-  const [selectedTime, setSelectedTime] = useState(timeOptions[0] ?? nextSlotTime(store.nextSlot));
+  const [selectedTime, setSelectedTime] = useState(routeTime ?? timeOptions[0] ?? nextSlotTime(store.nextSlot));
   const [shareBoost, setShareBoost] = useState(0);
   const [offersNowMs, setOffersNowMs] = useState(() => Date.now());
   const [likedOfferIds, setLikedOfferIds] = useState<string[]>([]);
@@ -1699,16 +1730,16 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   useEffect(() => {
     setActiveTab("home");
     setActiveImageIndex(0);
-    setSelectedVisitDate(getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
+    setSelectedVisitDate(routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
     setSelectedPeople(industry === "dining" ? "2名" : "1名");
-    setSelectedTime(buildTimeOptions(industry, store.nextSlot, store.alwaysBookable)[0] ?? nextSlotTime(store.nextSlot));
+    setSelectedTime(routeTime ?? buildTimeOptions(industry, store.nextSlot, store.alwaysBookable)[0] ?? nextSlotTime(store.nextSlot));
     setShareBoost(0);
     setLikedOfferIds([]);
     setTranslatedOfferIds([]);
     setOfferReplyBoosts({});
     setLightboxIndex(null);
     setActiveEditor(null);
-  }, [industry, store.alwaysBookable, store.id, store.nextSlot]);
+  }, [industry, routeTime, routeVisitDate, store.alwaysBookable, store.id, store.nextSlot]);
 
   useEffect(() => {
     setActiveImageIndex((current) => Math.min(current, Math.max(0, images.length - 1)));
@@ -1758,7 +1789,20 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
 
   const favoriteCount = config.favoriteCount + (isFavorite ? 1 : 0);
   const shareCount = baseShareCount + shareBoost;
-  const bookingHref = `/checkout/${primaryCheckoutTarget}?store=${store.id}&date=${formatDateParam(selectedVisitDate)}&people=${encodeURIComponent(selectedPeople)}&time=${encodeURIComponent(selectedTime)}`;
+  const selectedBookingTechnicianName = routedBookingTechnician?.nickname?.trim() || routedBookingTechnician?.name || "";
+  const displayedTimeOptions = useMemo(
+    () => (timeOptions.includes(selectedTime) ? timeOptions : [selectedTime, ...timeOptions]),
+    [selectedTime, timeOptions]
+  );
+  const buildBookingHref = (checkoutTarget: string) =>
+    buildStoreCheckoutRoute(checkoutTarget, {
+      date: formatDateParam(selectedVisitDate),
+      people: selectedPeople,
+      storeId: store.id,
+      technicianId: routedBookingTechnician?.id,
+      time: selectedTime
+    });
+  const bookingHref = buildBookingHref(primaryCheckoutTarget);
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
   const updateBasicStoreField = (key: StoreBasicEditorFieldKey, value: string) => {
     updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, StoreBasicEditorFieldKey>>);
@@ -2112,7 +2156,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                     selectedDate={selectedVisitDate}
                     selectedDay={selectedVisitDate.getDate()}
                     time={selectedTime}
-                    timeOptions={timeOptions}
+                    timeOptions={displayedTimeOptions}
                     title="来店日"
                   />
                   <div className="flex items-center justify-between gap-3 border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] pt-3">
@@ -2120,6 +2164,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                       <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--client-muted)]">已选预约</p>
                       <p className="mt-1 text-sm font-black text-[color:var(--client-text)]">
                         {formatSelectedDateLabel(selectedVisitDate)} · {selectedPeople} · {selectedTime}
+                        {selectedBookingTechnicianName ? ` · 指名 ${selectedBookingTechnicianName}` : ""}
                       </p>
                     </div>
                     <PrimaryButton className="gap-2 px-5" to={bookingHref}>
@@ -2142,7 +2187,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                   return (
                     <div className="grid gap-2" key={item.id}>
                       <CompactMenuCard
-                        bookingTo={`/checkout/${item.sourceServiceId}?store=${store.id}`}
+                        bookingTo={buildBookingHref(item.sourceServiceId)}
                         cardUi={packageCardUi}
                         editing={isMerchantEditorActive(editorTarget)}
                         editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}
@@ -2212,7 +2257,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                 return (
                   <div className="grid gap-2" key={item.id}>
                     <CompactMenuCard
-                      bookingTo={`/checkout/${item.sourceServiceId}?store=${store.id}`}
+                      bookingTo={buildBookingHref(item.sourceServiceId)}
                       cardUi={packageCardUi}
                       editing={isMerchantEditorActive(editorTarget)}
                       editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}

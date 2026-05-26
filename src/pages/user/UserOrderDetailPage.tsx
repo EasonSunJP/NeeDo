@@ -18,7 +18,8 @@ import { getMessagePath, getUserConversationId } from "../../lib/messageCenter";
 import { canShowServiceStartCode, getServiceStartCode } from "../../lib/serviceStartCode";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
-import { ContactInfoDetailText, ServiceCountdownPill, ServiceReviewPrompt, ServiceRingAlert, type ServiceReviewSubmission, type ServiceReviewTag } from "../../shared/order-detail/ServiceSessionUi";
+import { ContactInfoDetailText, ServiceCountdownPill, ServiceReviewPrompt, ServiceRingAlert, type ServiceReviewSubmission } from "../../shared/order-detail/ServiceSessionUi";
+import { serviceReviewSpecialTags } from "../../shared/order-detail/serviceReviewTagCatalog";
 import { SocialProfileMiniCard, buildServiceMiniCardData, type SocialProfileMiniData } from "../../shared/profile-card";
 import {
   dismissOrderExtensionNotice,
@@ -97,13 +98,6 @@ function resolveSessionOrderStatus(order: Order, serviceStatus: "waiting" | "inS
 
   return order.status;
 }
-
-const userServiceReviewTags: ServiceReviewTag[] = [
-  { label: "魅力值MAX", count: 13, kind: "stamp" },
-  { label: "服务精神MAX", count: 2, kind: "stamp" },
-  { label: "情绪价值MAX", count: 1, kind: "stamp" },
-  { label: "元气MAX", count: 1, kind: "stamp" }
-];
 
 function getOrderReviewRewardMaxNdp(order: Order) {
   return Math.max(0, Math.round(order.amount / 100));
@@ -768,7 +762,7 @@ export function UserOrderDetailPage() {
           onSkip={closeServiceReview}
           onSubmit={submitServiceReview}
           submitHint={`评价后可能获得0~${reviewRewardMaxNdp}NDP`}
-          tagOptions={userServiceReviewTags}
+          tagOptions={serviceReviewSpecialTags}
           title="服务已经结束"
           topContent={
             <section className="grid gap-2">

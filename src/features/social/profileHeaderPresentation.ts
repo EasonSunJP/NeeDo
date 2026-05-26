@@ -4,6 +4,10 @@ import {
   getTodayDateKey,
   type TechnicianScheduleSnapshot
 } from "../technician-schedule/model";
+import {
+  buildTechnicianPublicAvailabilityRanges,
+  formatTechnicianPublicAvailabilityRange
+} from "../../lib/technicianPublicAvailability";
 
 export type TechnicianWeeklyScheduleTone = "available" | "booked" | "blocked" | "empty";
 
@@ -11,8 +15,10 @@ export type TechnicianWeeklyScheduleItem = {
   id: string;
   date: string;
   dayNumber: string;
+  endTime?: string;
   weekdayLabel: string;
   href: string;
+  startTime?: string;
   statusLabel: string;
   tone: TechnicianWeeklyScheduleTone;
   meta?: string;
@@ -37,6 +43,10 @@ function formatTimeRange(item: ScheduleLike) {
   return `${item.startTime}-${item.endTime}`;
 }
 
+function buildUserTechnicianScheduleHref(technicianId: string, date: string) {
+  return `/schedule/technicians/${encodeURIComponent(technicianId)}?date=${encodeURIComponent(date)}`;
+}
+
 export function buildTechnicianWeeklyScheduleItems(
   technicianId: string,
   snapshot: TechnicianScheduleSnapshot,
@@ -52,21 +62,55 @@ export function buildTechnicianWeeklyScheduleItems(
     const customEvents = sortByTime(snapshot.customEvents.filter((item) => item.technicianId === technicianId && item.date === date));
     const availabilityEvents = customEvents.filter((item) => item.kind === "availability");
     const blockingEvents = customEvents.filter((item) => item.kind !== "availability");
-    const primary = bookings[0] ?? shifts[0] ?? availabilityEvents[0] ?? blockingEvents[0];
-    const href = primary
-      ? `/technician/schedule/events/${encodeURIComponent(primary.id)}`
-      : `/technician/schedule?date=${encodeURIComponent(date)}&technicianId=${encodeURIComponent(technicianId)}`;
+    const availableRanges = buildTechnicianPublicAvailabilityRanges({ technicianId, date, snapshot });
+    const href = buildUserTechnicianScheduleHref(technicianId, date);
+
+    if (availableRanges.length > 0) {
+      const firstRange = availableRanges[0];
+
+      return {
+        id: date,
+        date,
+        dayNumber: date.slice(-2),
+        endTime: firstRange?.endTime,
+        weekdayLabel: weekdayLabels[index] ?? "",
+        href,
+        startTime: firstRange?.startTime,
+        statusLabel: availableRanges.length > 1 ? `${availableRanges.length}段可约` : "可约",
+        tone: "available",
+        meta: firstRange ? formatTechnicianPublicAvailabilityRange(firstRange) : undefined,
+        isToday: date === today
+      };
+    }
 
     if (bookings.length > 0) {
       return {
         id: date,
         date,
         dayNumber: date.slice(-2),
+        endTime: bookings[0]?.endTime,
         weekdayLabel: weekdayLabels[index] ?? "",
         href,
-        statusLabel: `${bookings.length}件`,
+        startTime: bookings[0]?.startTime,
+        statusLabel: "已满",
         tone: "booked",
         meta: formatTimeRange(bookings[0]),
+        isToday: date === today
+      };
+    }
+
+    if (blockingEvents.length > 0) {
+      return {
+        id: date,
+        date,
+        dayNumber: date.slice(-2),
+        endTime: blockingEvents[0]?.endTime,
+        weekdayLabel: weekdayLabels[index] ?? "",
+        href,
+        startTime: blockingEvents[0]?.startTime,
+        statusLabel: "休",
+        tone: "blocked",
+        meta: formatTimeRange(blockingEvents[0]),
         isToday: date === today
       };
     }
@@ -78,25 +122,13 @@ export function buildTechnicianWeeklyScheduleItems(
         id: date,
         date,
         dayNumber: date.slice(-2),
+        endTime: availableItem?.endTime,
         weekdayLabel: weekdayLabels[index] ?? "",
         href,
+        startTime: availableItem?.startTime,
         statusLabel: "可约",
         tone: "available",
         meta: availableItem ? formatTimeRange(availableItem) : undefined,
-        isToday: date === today
-      };
-    }
-
-    if (blockingEvents.length > 0) {
-      return {
-        id: date,
-        date,
-        dayNumber: date.slice(-2),
-        weekdayLabel: weekdayLabels[index] ?? "",
-        href,
-        statusLabel: "休",
-        tone: "blocked",
-        meta: formatTimeRange(blockingEvents[0]),
         isToday: date === today
       };
     }

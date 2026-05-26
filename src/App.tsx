@@ -92,6 +92,7 @@ import { UserCenterPage } from "./pages/user/UserCenterPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
 import { UserOrderDetailPage } from "./pages/user/UserOrderDetailPage";
 import { UserSchedulePage } from "./pages/user/UserSchedulePage";
+import { UserTechnicianScheduleDetailPage } from "./pages/user/UserTechnicianScheduleDetailPage";
 import {
   UserSettingsAccountPage,
   UserSettingsAboutPage,
@@ -975,6 +976,7 @@ export default function App() {
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />
               <Route path="/checkout/:serviceId" element={protect("user", <CheckoutPage />)} />
               <Route path="/schedule" element={protect("user", <UserSchedulePage />)} />
+              <Route path="/schedule/technicians/:technicianId" element={protect("user", <UserTechnicianScheduleDetailPage />)} />
               <Route path="/schedule/new" element={protect("user", <Navigate replace to="/schedule" />)} />
               <Route path="/schedule/events/:eventId/edit" element={protect("user", <Navigate replace to="/schedule" />)} />
               <Route path="/schedule/events/:eventId" element={protect("user", <Navigate replace to="/schedule" />)} />

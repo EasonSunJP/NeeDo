@@ -27,7 +27,7 @@ describe("buildTechnicianWeeklyScheduleItems", () => {
     expect(items.map((item) => item.weekdayLabel)).toEqual(["一", "二", "三", "四", "五", "六", "日"]);
   });
 
-  it("links a scheduled day to that technician schedule confirmation page", () => {
+  it("links a scheduled day to the user-side technician availability detail", () => {
     const snapshot: TechnicianScheduleSnapshot = {
       ...emptySnapshot,
       dutyShifts: [
@@ -36,10 +36,10 @@ describe("buildTechnicianWeeklyScheduleItems", () => {
           technicianId: "tech-1",
           storeId: "store-1",
           date: "2026-05-26",
-          startTime: "10:00",
-          endTime: "18:00",
+          startTime: "08:00",
+          endTime: "22:00",
           title: "已确认勤务",
-          shiftLabel: "日班"
+          shiftLabel: "全天可约"
         }
       ],
       bookings: [
@@ -48,8 +48,8 @@ describe("buildTechnicianWeeklyScheduleItems", () => {
           technicianId: "tech-1",
           storeId: "store-1",
           date: "2026-05-26",
-          startTime: "11:00",
-          endTime: "12:00",
+          startTime: "10:00",
+          endTime: "18:00",
           title: "门店肩颈护理",
           customerName: "顾客A"
         }
@@ -58,9 +58,12 @@ describe("buildTechnicianWeeklyScheduleItems", () => {
 
     expect(buildTechnicianWeeklyScheduleItems("tech-1", snapshot, "2026-05-26")[1]).toMatchObject({
       date: "2026-05-26",
-      href: "/technician/schedule/events/booking-a",
-      statusLabel: "1件",
-      tone: "booked"
+      href: "/schedule/technicians/tech-1?date=2026-05-26",
+      statusLabel: "2段可约",
+      tone: "available",
+      meta: "08:00-10:00",
+      startTime: "08:00",
+      endTime: "10:00"
     });
   });
 });

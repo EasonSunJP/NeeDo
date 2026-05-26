@@ -3,12 +3,13 @@ import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { Badge } from "../../components/ui/Badge";
 import { cn } from "../../lib/utils";
+import {
+  getServiceReviewStampVisual,
+  splitMaxReviewStampLabel,
+  type ServiceReviewTagOption
+} from "./serviceReviewTagCatalog";
 
-export type ServiceReviewTag = {
-  label: string;
-  count?: number;
-  kind?: "stamp" | "chip";
-};
+export type ServiceReviewTag = ServiceReviewTagOption;
 
 export type ServiceReviewSubmission = {
   rating: number;
@@ -116,28 +117,6 @@ export function ServiceRingAlert({
   );
 }
 
-const stampVisuals: Array<{
-  iconSrc: string;
-  tone: "appeal" | "service" | "empathy" | "energy";
-}> = [
-  {
-    iconSrc: "/images/generated/ui/review-stamp-appeal.svg",
-    tone: "appeal"
-  },
-  {
-    iconSrc: "/images/generated/ui/review-stamp-service.svg",
-    tone: "service"
-  },
-  {
-    iconSrc: "/images/generated/ui/review-stamp-empathy.svg",
-    tone: "empathy"
-  },
-  {
-    iconSrc: "/images/generated/ui/review-stamp-energy.svg",
-    tone: "energy"
-  }
-];
-
 function normalizeReviewTags(tags: Array<string | ServiceReviewTag>) {
   return tags.map<ServiceReviewTag>((tag) => typeof tag === "string" ? { label: tag } : tag);
 }
@@ -147,16 +126,16 @@ function clampReviewTag(value: string) {
 }
 
 function renderStampLabel(label: string) {
-  const maxIndex = label.lastIndexOf("MAX");
+  const labelParts = splitMaxReviewStampLabel(label);
 
-  if (maxIndex <= 0 || maxIndex !== label.length - 3) {
+  if (!labelParts.marker) {
     return <span>{label}</span>;
   }
 
   return (
     <>
-      <span className="block text-[12px] leading-[1.05] tracking-normal sm:text-[13px]">{label.slice(0, maxIndex)}</span>
-      <span className="mt-0.5 block text-[17px] leading-[0.92] tracking-normal sm:text-[18px]">MAX</span>
+      <span className="block text-[12px] leading-[1.05] tracking-normal sm:text-[13px]">{labelParts.title}</span>
+      <span className="mt-0.5 block text-[17px] leading-[0.92] tracking-normal sm:text-[18px]">{labelParts.marker}</span>
     </>
   );
 }
@@ -308,7 +287,7 @@ export function ServiceReviewPrompt({
                 const selected = selectedTags.includes(tag.label);
                 const count = tagCounts[tag.label] ?? tag.count ?? 0;
                 const isStamp = tag.kind === "stamp";
-                const stampVisual = stampVisuals[index % stampVisuals.length];
+                const stampVisual = getServiceReviewStampVisual(tag, index);
                 const disabledByStampLimit = isStamp && Boolean(selectedStampTag) && !selected;
 
                 return (
