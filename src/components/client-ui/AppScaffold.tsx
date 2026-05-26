@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { cn, hasLocalizedTitleText } from "../../lib/utils";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../mobile/FloatingHomeHeader";
 import { MobileShell, type MobileNavItem } from "../mobile/MobileShell";
 import { ShareNetworkIconPath } from "../ui/ShareNetworkIcon";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
@@ -275,8 +276,8 @@ export function FloatingTopRightControl({
 export const floatingHeaderControlButtonClassName =
   "focus-ring inline-flex h-11 w-11 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] text-[color:var(--client-text)] shadow-[0_14px_30px_rgba(0,0,0,0.14)] backdrop-blur-xl transition active:scale-[0.97]";
 
-const appTopBarSurfaceClassName =
-  "border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-top-chrome-bg)] shadow-[0_14px_32px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)]";
+const appTopBarPanelClassName =
+  `${floatingHeaderGlassPanelClassName} text-[color:var(--client-text)]`;
 
 export function FloatingBackButton({
   onClick,
@@ -419,7 +420,6 @@ export function AppTopBar({
     }
   };
   const showCloseButton = Boolean(onClose || closeTo) && !hideCloseButton;
-  const spacerClassName = footer ? "h-[calc(env(safe-area-inset-top)+7.75rem)]" : "h-[calc(env(safe-area-inset-top)+5.75rem)]";
   const rightControls = (
     <>
       {actions}
@@ -435,7 +435,7 @@ export function AppTopBar({
   );
 
   const content = (
-    <>
+    <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5", containerClassName)}>
       <div
         className={cn(
           "mx-auto grid w-full max-w-[1480px] items-center gap-x-3",
@@ -456,40 +456,20 @@ export function AppTopBar({
         {subtitle ? <p className={cn("mt-1 truncate text-[12px] font-semibold text-[color:var(--client-muted)]", subtitleColumnClassName)}>{subtitle}</p> : null}
       </div>
       {footer ? <div className={cn("mx-auto mt-2 w-full max-w-[1480px]", footerClassName)}>{footer}</div> : null}
-    </>
+    </div>
   );
 
-  if (fixed) {
-    return (
-      <header
-        className={cn(
-          "safe-header-top fixed inset-x-0 top-0 z-40",
-          appTopBarSurfaceClassName,
-          className
-        )}
-      >
-        <div className={cn("mx-auto w-full max-w-[1600px] px-4 pb-3 sm:px-6 lg:px-8", containerClassName)}>
-          {content}
-        </div>
-      </header>
-    );
-  }
-
   return (
-    <div className="contents">
-      <header
-        className={cn(
-          "safe-header-top fixed inset-x-0 top-0 z-40",
-          appTopBarSurfaceClassName,
-          className
-        )}
-      >
-        <div className={cn("mx-auto w-full max-w-[1600px] px-4 pb-3 sm:px-6 lg:px-8", containerClassName)}>
-          {content}
-        </div>
-      </header>
-      <div aria-hidden="true" className={spacerClassName} />
-    </div>
+    <FloatingHomeHeader
+      className="gap-0"
+      frameClassName="z-40"
+      maxWidth="1600px"
+      panelClassName={cn(appTopBarPanelClassName, className)}
+      showSpacer={!fixed}
+      spacerGapPx={0}
+    >
+      {content}
+    </FloatingHomeHeader>
   );
 }
 

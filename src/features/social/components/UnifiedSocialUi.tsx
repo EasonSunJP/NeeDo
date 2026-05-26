@@ -15,6 +15,7 @@ import {
 } from "../../../components/client-ui/AppScaffold";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../../components/client-ui/FeatureCarousel";
 import { FloatingActionButton } from "../../../components/mobile/FloatingActionButton";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../../components/mobile/FloatingHomeHeader";
 import { merchantNavItems, technicianNavItems, userNavItems } from "../../../components/mobile/navItems";
 import { InteractiveAvatar } from "../../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
@@ -1918,11 +1919,16 @@ export function SocialProfileTopBar({
   onClose: () => void;
 }) {
   return (
-    <div className="contents">
-      <header className="safe-header-top fixed inset-x-0 top-0 z-40 border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,transparent)] backdrop-blur-xl">
-        <SocialFloatingTopAction icon="close" label="关闭资料页" onClick={onClose} />
-        <div className="mx-auto flex h-[60px] w-full max-w-[1480px] items-center px-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3 pr-[56px] sm:pr-[60px]">
+    <FloatingHomeHeader
+      className="gap-0"
+      frameClassName="z-40"
+      maxWidth="1480px"
+      panelClassName={floatingHeaderGlassPanelClassName}
+      spacerGapPx={0}
+    >
+      <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
+        <div className="mx-auto flex min-h-[60px] w-full items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <AvatarImage
               alt={profile.displayName}
               className="h-11 w-11 shrink-0 border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)]"
@@ -1939,10 +1945,10 @@ export function SocialProfileTopBar({
               </p>
             </div>
           </div>
+          <IconButton icon="close" label="关闭资料页" onClick={onClose} />
         </div>
-      </header>
-      <div aria-hidden="true" className="h-[calc(env(safe-area-inset-top)+5.75rem)]" />
-    </div>
+      </div>
+    </FloatingHomeHeader>
   );
 }
 

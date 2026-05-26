@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
+import { AppIcon, IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { featureCarouselFrameClassName, FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderPillSurfaceClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
@@ -349,15 +350,6 @@ function CoreReadInlineState({
       <p className="text-[16px] font-black text-[color:var(--client-text)]">{title}</p>
       <p className="mt-2 text-[13px] leading-6 text-[color:var(--client-muted)]">{description}</p>
     </section>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="5.5" stroke="currentColor" strokeWidth="1.9" />
-      <path d="m16 16 4 4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
-    </svg>
   );
 }
 
@@ -782,10 +774,15 @@ export function CategoryPage() {
           />
         ) : null}
 
-        <div className="pointer-events-none fixed inset-x-0 top-0 z-40 mx-auto w-full max-w-[880px]">
-          <div className="pointer-events-auto safe-header-top relative border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] shadow-[0_18px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl">
-            <div className="px-4 pb-2">
-              <div className="flex items-center gap-2">
+        <FloatingHomeHeader
+          className="gap-0"
+          frameClassName="z-40"
+          panelClassName={floatingHeaderGlassPanelClassName}
+          spacerGapPx={0}
+          stacked
+        >
+          <div className="relative px-3 pb-3">
+            <div className="flex items-center gap-2">
                 <IconButton
                   className={`${floatingHeaderControlButtonClassName} shrink-0`}
                   icon="back"
@@ -793,8 +790,14 @@ export function CategoryPage() {
                   onClick={() => navigate(-1)}
                 />
 
-                <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] px-3 pr-1.5 text-[color:var(--client-muted)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]">
-                  <SearchIcon />
+                <label
+                  className={cn(
+                    "flex h-11 min-w-0 flex-1 items-center gap-2 px-3 pr-1.5 text-[color:var(--client-muted)]",
+                    floatingHeaderPillSurfaceClassName,
+                    "bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+                  )}
+                >
+                  <AppIcon className="h-4 w-4" name="search" />
                   <input
                     className="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
                     onChange={(event) => {
@@ -810,7 +813,7 @@ export function CategoryPage() {
                     value={searchDraft}
                   />
                   <button
-                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-[14px] bg-[color:var(--client-primary)] px-3 text-[12px] font-black text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-[12px] font-black text-[#090806] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_28%,transparent)]"
                     onClick={() => applySearch()}
                     type="button"
                   >
@@ -819,7 +822,11 @@ export function CategoryPage() {
                 </label>
 
                 <button
-                  className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-3.5 text-[13px] font-black text-[color:var(--client-text)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+                  className={cn(
+                    "inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap px-3.5 text-[13px] font-black text-[color:var(--client-text)]",
+                    floatingHeaderPillSurfaceClassName,
+                    "bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] shadow-[0_10px_24px_rgba(0,0,0,0.05)]"
+                  )}
                   onClick={() => setTagMenuOpen((current) => !current)}
                   type="button"
                 >
@@ -828,27 +835,26 @@ export function CategoryPage() {
                 </button>
               </div>
 
-              <div
-                {...tagRailDragProps}
-                className="mt-2 flex gap-2 overflow-x-auto py-1 [scrollbar-width:none]"
-                ref={tagRailRef}
-                style={{ msOverflowStyle: "none" }}
-              >
-                {pinnedCategoryTags.map((tag) => {
-                  const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory.id === tag.categoryId);
+            <div
+              {...tagRailDragProps}
+              className="mt-2 flex gap-2 overflow-x-auto py-1 [scrollbar-width:none]"
+              ref={tagRailRef}
+              style={{ msOverflowStyle: "none" }}
+            >
+              {pinnedCategoryTags.map((tag) => {
+                const active = appliedTagIds.includes(tag.id) || (!hasAppliedSearch && !searchDraft.trim() && activeCategory.id === tag.categoryId);
 
-                  return (
-                    <button
-                      className="shrink-0 whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-3.5 py-2 text-[13px] font-black transition"
-                      key={tag.id}
-                      onClick={() => handleTagSelect(tag)}
-                      type="button"
-                    >
-                      <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+                return (
+                  <button
+                    className="shrink-0 whitespace-nowrap rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-3.5 py-2 text-[13px] font-black transition"
+                    key={tag.id}
+                    onClick={() => handleTagSelect(tag)}
+                    type="button"
+                  >
+                    <span className={cn("transition", active ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-text)]")}>{tag.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {tagMenuOpen ? (
@@ -905,9 +911,9 @@ export function CategoryPage() {
               </div>
             ) : null}
           </div>
-        </div>
+        </FloatingHomeHeader>
 
-        <div className="space-y-4 px-4 pb-28 pt-[calc(env(safe-area-inset-top)+128px)]">
+        <div className="space-y-4 px-4 pb-28 pt-4">
           <section className="space-y-3">
             <FeatureCarousel autoRotateMs={5200} cardHeightClassName="h-[204px]" slides={categoryHeroSlides} />
 

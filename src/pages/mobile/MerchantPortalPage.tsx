@@ -17,7 +17,7 @@ import {
   matchesCustomContactCategory,
   useCustomContactCategories
 } from "../../components/mobile/ContactDirectory";
-import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -1742,18 +1742,20 @@ export function MerchantPortalPage() {
     >
       {activeView === "dashboard" ? (
         <FloatingHomeHeader
-          panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+          panelClassName={floatingHeaderGlassPanelClassName}
         >
-          <SharedHomeHeader
-            avatarAlt={store.name}
-            avatarLabel="打开经营数据中心"
-            avatarSrc={store.cover}
-            avatarTo={merchantPortalConfig.myPath}
-            locationLabel={getMerchantLocationLabel(store)}
-            locationTo="/merchant/settings/profile"
-            settingsLabel="打开设置中心"
-            settingsTo={merchantPortalConfig.settingsPath}
-          />
+          <div className={floatingHeaderInnerClassName}>
+            <SharedHomeHeader
+              avatarAlt={store.name}
+              avatarLabel="打开经营数据中心"
+              avatarSrc={store.cover}
+              avatarTo={merchantPortalConfig.myPath}
+              locationLabel={getMerchantLocationLabel(store)}
+              locationTo="/merchant/settings/profile"
+              settingsLabel="打开设置中心"
+              settingsTo={merchantPortalConfig.settingsPath}
+            />
+          </div>
         </FloatingHomeHeader>
       ) : null}
       {activeView === "me" ? (

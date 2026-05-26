@@ -3,7 +3,12 @@ import { Link } from "react-router-dom";
 import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
-import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import {
+  FloatingHomeHeader,
+  floatingHeaderGlassPanelClassName,
+  floatingHeaderInnerClassName,
+  floatingHeaderPillSurfaceClassName
+} from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
@@ -1011,36 +1016,42 @@ export function HomePage() {
   return (
     <MobileShell>
       <FloatingHomeHeader
-        panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+        panelClassName={floatingHeaderGlassPanelClassName}
         stacked
       >
-        <SharedHomeHeader
-          avatarAlt={currentCustomer.name}
-          avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
-          avatarMembershipLevel={currentCustomer.memberLevel}
-          avatarSrc={currentCustomer.avatar}
-          avatarTo={userPortalConfig.myPath}
-          locationLabel={selectedLocation.label}
-          locationCaption="当前服务区域"
-          onLocationClick={() => setLocationSheetOpen(true)}
-          settingsLabel="系统设置"
-          settingsTo={userPortalConfig.settingsPath}
-        />
+        <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
+          <SharedHomeHeader
+            avatarAlt={currentCustomer.name}
+            avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
+            avatarMembershipLevel={currentCustomer.memberLevel}
+            avatarSrc={currentCustomer.avatar}
+            avatarTo={userPortalConfig.myPath}
+            locationLabel={selectedLocation.label}
+            locationCaption="当前服务区域"
+            onLocationClick={() => setLocationSheetOpen(true)}
+            settingsLabel="系统设置"
+            settingsTo={userPortalConfig.settingsPath}
+          />
 
-        <Link
-          className="focus-ring flex h-12 items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] px-3 shadow-[0_12px_30px_rgba(0,0,0,0.07)]"
-          to="/categories"
-        >
-          <span
+          <Link
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-              isNight ? "bg-white/12 text-white" : "bg-[color:var(--client-primary-soft)] text-[#3c887e]"
+              "focus-ring flex h-12 items-center gap-3 px-3",
+              floatingHeaderPillSurfaceClassName,
+              "bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)]"
             )}
+            to="/categories"
           >
-            <AppIcon className="h-4 w-4" name="search" />
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[14px] font-black text-[color:var(--client-text)]">搜索店铺、技师、服务</span>
-        </Link>
+            <span
+              className={cn(
+                "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                isNight ? "bg-white/12 text-white" : "bg-[color:var(--client-primary-soft)] text-[#3c887e]"
+              )}
+            >
+              <AppIcon className="h-4 w-4" name="search" />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[14px] font-black text-[color:var(--client-text)]">搜索店铺、技师、服务</span>
+          </Link>
+        </div>
       </FloatingHomeHeader>
 
       <div className="space-y-5 px-4 pb-28 pt-2">

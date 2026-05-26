@@ -24,7 +24,7 @@ export function ScheduleSearchField({
   return (
     <form
       className={cn(
-        "focus-ring-within flex h-12 items-center gap-3 rounded-[20px] border px-3",
+        "focus-ring-within flex h-12 items-center gap-3 rounded-full border px-3",
         isNight
           ? "border-[color:color-mix(in_srgb,var(--client-line)_46%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_62%,var(--client-bg)_38%)] shadow-[0_18px_34px_rgba(0,0,0,0.22)]"
           : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]",

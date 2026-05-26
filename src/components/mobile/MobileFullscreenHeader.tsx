@@ -2,12 +2,13 @@ import type { CSSProperties, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { AppIcon, floatingHeaderControlButtonClassName } from "../client-ui/AppScaffold";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "./FloatingHomeHeader";
 
 export const mobileFullscreenHeaderSurfaceClassName =
-  "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-top-chrome-bg)] text-[color:var(--client-text)] shadow-[0_14px_34px_rgba(0,0,0,0.10)]";
+  `${floatingHeaderGlassPanelClassName} text-[color:var(--client-text)]`;
 
 export const mobileFullscreenHeaderDarkSurfaceClassName =
-  "border-white/10 bg-[color:var(--client-top-chrome-bg)] text-white shadow-[0_14px_34px_rgba(0,0,0,0.22)]";
+  `${floatingHeaderGlassPanelClassName} text-white`;
 
 export function MobileFullscreenCloseButton({
   onClose,
@@ -108,17 +109,17 @@ export function MobileFullscreenHeader({
   ) : info ?? subtitle;
 
   return (
-    <div className="contents">
-      <header
-        className={cn(
-          "safe-header-top relative z-40 isolate min-h-16 shrink-0 border-b pb-3",
-          dark ? mobileFullscreenHeaderDarkSurfaceClassName : mobileFullscreenHeaderSurfaceClassName,
-          className
-        )}
-      >
+    <FloatingHomeHeader
+      className="gap-0"
+      frameClassName="z-40"
+      maxWidth="480px"
+      panelClassName={cn(dark ? mobileFullscreenHeaderDarkSurfaceClassName : mobileFullscreenHeaderSurfaceClassName, className)}
+      spacerGapPx={0}
+    >
+      <div className={floatingHeaderInnerClassName}>
         <div
           className={cn(
-            "mx-auto grid w-full max-w-[480px] items-center gap-3 px-4",
+            "mx-auto grid min-h-11 w-full items-center gap-3",
             showBackButton ? "grid-cols-[44px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"
           )}
         >
@@ -150,7 +151,7 @@ export function MobileFullscreenHeader({
             </div>
           ) : null}
         </div>
-      </header>
-    </div>
+      </div>
+    </FloatingHomeHeader>
   );
 }

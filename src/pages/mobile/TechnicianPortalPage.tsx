@@ -17,7 +17,7 @@ import {
 } from "../../components/mobile/ContactDirectory";
 import { AppIcon, AppTopBar, FeatureSegmentedTabs, IconButton, PageScaffold, ScheduleViewSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
-import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { ChatConversationInfoCard } from "../../components/mobile/ChatConversationInfoCard";
@@ -4372,18 +4372,20 @@ export function TechnicianPortalPage() {
     <MobileShell navItems={technicianNavItems} navPanelStyle={activeView === "me" ? "plain" : "default"}>
       {activeView === "tasks" ? (
         <FloatingHomeHeader
-          panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+          panelClassName={floatingHeaderGlassPanelClassName}
         >
-          <SharedHomeHeader
-            avatarAlt={techProfile.nickname}
-            avatarLabel="打开我的页面"
-            avatarSrc={techProfile.avatar}
-            avatarTo="/technician/me"
-            locationLabel={activeOrder?.area ? `东京 · ${activeOrder.area}` : "东京 · 新宿区"}
-            locationTo="/technician/settings/service-range"
-            settingsLabel="打开技师设置"
-            settingsTo={technicianPortalConfig.settingsPath}
-          />
+          <div className={floatingHeaderInnerClassName}>
+            <SharedHomeHeader
+              avatarAlt={techProfile.nickname}
+              avatarLabel="打开我的页面"
+              avatarSrc={techProfile.avatar}
+              avatarTo="/technician/me"
+              locationLabel={activeOrder?.area ? `东京 · ${activeOrder.area}` : "东京 · 新宿区"}
+              locationTo="/technician/settings/service-range"
+              settingsLabel="打开技师设置"
+              settingsTo={technicianPortalConfig.settingsPath}
+            />
+          </div>
         </FloatingHomeHeader>
       ) : null}
       {activeView === "me" ? (

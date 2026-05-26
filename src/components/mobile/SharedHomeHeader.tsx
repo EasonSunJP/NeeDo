@@ -160,18 +160,18 @@ export function SharedHomeHeader({
 
       {onLocationClick ? (
         <button
-          className={cn("flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-[20px] border px-3 text-left", locationToneClass)}
+          className={cn("flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-full border px-3 text-left", locationToneClass)}
           onClick={onLocationClick}
           type="button"
         >
           {locationContent}
         </button>
       ) : locationTo ? (
-        <Link className={cn("focus-ring flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-[20px] border px-3 text-left", locationToneClass)} to={locationTo}>
+        <Link className={cn("focus-ring flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-full border px-3 text-left", locationToneClass)} to={locationTo}>
           {locationContent}
         </Link>
       ) : (
-        <div className={cn("flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-[20px] border px-3", locationToneClass)}>
+        <div className={cn("flex h-12 min-w-0 flex-1 items-center gap-2.5 rounded-full border px-3", locationToneClass)}>
           {locationContent}
         </div>
       )}

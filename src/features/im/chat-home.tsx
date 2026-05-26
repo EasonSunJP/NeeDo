@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import {
+  FloatingHomeHeader,
+  floatingHeaderGlassPanelClassName,
+  floatingHeaderInnerClassName,
+  floatingHeaderPillSurfaceClassName
+} from "../../components/mobile/FloatingHomeHeader";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { cn } from "../../lib/utils";
@@ -40,24 +46,24 @@ export function UnifiedChatHomePage({
       className="relative min-h-[calc(100dvh-88px)] overflow-hidden bg-transparent"
       data-role-type={roleType}
     >
-      <div className="fixed inset-x-0 top-0 z-40 mx-auto w-full max-w-[880px]">
-        <header className="safe-header-top border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,transparent)] backdrop-blur-xl">
-          <div className="px-5 pb-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">{titleNode}</div>
-              {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-            </div>
-            <div className="mt-4">{searchBar}</div>
-          </div>
-        </header>
-      </div>
-
-      <div
-        className="relative z-10 px-5 pb-6"
-        style={{
-          paddingTop: "calc(env(safe-area-inset-top) + 9.25rem)"
-        }}
+      <FloatingHomeHeader
+        className="gap-0"
+        frameClassName="z-40"
+        maxWidth="880px"
+        panelClassName={cn(floatingHeaderGlassPanelClassName, "text-[color:var(--client-text)]")}
+        spacerGapPx={0}
+        stacked
       >
+        <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">{titleNode}</div>
+            {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          </div>
+          <div>{searchBar}</div>
+        </div>
+      </FloatingHomeHeader>
+
+      <div className="relative z-10 px-5 pb-6 pt-4">
         {children}
       </div>
     </div>
@@ -95,7 +101,13 @@ export function UnifiedConversationSearchBar({
   onClick?: () => void;
 }) {
   const content = (
-    <span className="flex h-12 w-full items-center gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] px-4 text-[14px] text-[color:var(--client-muted)]">
+    <span
+      className={cn(
+        "flex h-12 w-full items-center gap-3 px-4 text-[14px] text-[color:var(--client-muted)]",
+        floatingHeaderPillSurfaceClassName,
+        "bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] shadow-none"
+      )}
+    >
       <ImIcon className="h-4 w-4 text-[color:var(--client-soft-muted)]" name="search" />
       <span className="truncate">{placeholder}</span>
     </span>

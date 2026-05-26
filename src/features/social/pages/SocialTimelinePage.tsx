@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../../components/client-ui/FeatureCarousel";
-import { PageScaffold, PrimaryButton } from "../../../components/client-ui/AppScaffold";
+import { AppIcon, PageScaffold, PrimaryButton } from "../../../components/client-ui/AppScaffold";
+import {
+  FloatingHomeHeader,
+  floatingHeaderGlassPanelClassName,
+  floatingHeaderInnerClassName,
+  floatingHeaderPillSurfaceClassName
+} from "../../../components/mobile/FloatingHomeHeader";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { getLocationAreaHints } from "../../../lib/location";
+import { cn } from "../../../lib/utils";
 import { getResolvedCarouselSlides, resolveCarouselTargetPath, useCarouselStore } from "../../../state/homeCarouselStore";
 import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
 import { useHomeLocationPreference, type HomeLocationPreferenceState } from "../../../state/homeLocationStore";
@@ -17,7 +24,6 @@ import {
   SocialComposeFab,
   SocialEmptyState,
   SocialFollowButton,
-  SocialFloatingTopAction,
   SocialPostItem,
   SocialProfileSummaryCard,
   SocialTimelineFilterTabs,
@@ -47,6 +53,35 @@ function getSocialMePath(scope: SocialPortalScope) {
   }
 
   return "/me";
+}
+
+function SocialTimelineHeaderSearch({ to }: { to: string }) {
+  return (
+    <div className="flex h-12 w-full items-center gap-2">
+      <Link
+        aria-label="搜索动态内容"
+        className={cn(
+          "focus-ring flex h-full min-w-0 flex-1 items-center gap-3 px-3.5 text-[color:var(--client-muted)]",
+          floatingHeaderPillSurfaceClassName,
+          "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)]"
+        )}
+        to={to}
+      >
+        <AppIcon className="h-5 w-5 shrink-0 text-[color:var(--client-soft-muted)]" name="search" />
+        <span className="min-w-0 flex-1 truncate text-[16px] font-black tracking-[-0.01em]">搜索 @用户、#话题、动态内容</span>
+      </Link>
+      <Link
+        aria-label="开始搜索动态"
+        className="focus-ring relative flex h-full min-w-[72px] shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-4 text-[15px] font-black text-[color:var(--pin-badge-glyph)] shadow-[0_12px_26px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]"
+        to={to}
+      >
+        <span className="absolute -top-2 right-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-bg)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_70%,var(--client-surface)_30%)] px-2 py-0.5 text-[11px] font-black leading-none text-[color:var(--pin-badge-glyph)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]">
+          3km
+        </span>
+        搜索
+      </Link>
+    </div>
+  );
 }
 
 function createVisibleCountByTab(): Record<SocialProfileTab, number> {
@@ -400,37 +435,48 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   const timelineContent = (
     <>
       {!embedded ? (
-        <div className="safe-header-top fixed inset-x-0 top-0 z-50 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,transparent)] pb-2 backdrop-blur-xl">
-          <SocialFloatingTopAction icon="search" label="搜索动态" to={socialPaths.search(scope)} />
-          <div className="mx-auto w-full max-w-[1600px] px-4">
-            <div className="flex items-center gap-3">
-              <div className="flex min-w-0 flex-1 items-center gap-3 pr-[56px] sm:pr-[60px]">
-                <Link className="shrink-0" to={actorProfilePath}>
-                  <AvatarImage
-                    alt={actor?.displayName ?? "我的头像"}
-                    className="h-12 w-12 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]"
-                    src={actor?.avatar ?? ""}
-                  />
-                </Link>
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <h1 className="truncate text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-text)] sm:text-[24px]">
-                      {actor?.displayName ?? "动态"}
-                    </h1>
-                    {actor ? <VerificationBadge status={actor.verifiedStatus} /> : null}
-                    {actor ? <IdentityBadge entityType={actor.entityType} /> : null}
+        <FloatingHomeHeader
+          className="gap-0"
+          frameClassName="z-50"
+          maxWidth="1600px"
+          panelClassName={floatingHeaderGlassPanelClassName}
+          spacerGapPx={0}
+          stacked
+        >
+          <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
+            <div className="mx-auto w-full max-w-[1480px]">
+              <div className="flex min-h-12 items-center gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <Link className="shrink-0" to={actorProfilePath}>
+                    <AvatarImage
+                      alt={actor?.displayName ?? "我的头像"}
+                      className="h-12 w-12 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]"
+                      src={actor?.avatar ?? ""}
+                    />
+                  </Link>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h1 className="truncate text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-text)] sm:text-[24px]">
+                        {actor?.displayName ?? "动态"}
+                      </h1>
+                      {actor ? <VerificationBadge status={actor.verifiedStatus} /> : null}
+                      {actor ? <IdentityBadge entityType={actor.entityType} /> : null}
+                    </div>
+                    <p className="mt-1 text-[12px] font-semibold leading-none text-[color:var(--client-muted)]">
+                      {actor ? `${formatCount(actorPostCount)} 条动态` : "公开讨论型信息流"}
+                    </p>
                   </div>
-                  <p className="mt-1 text-[12px] font-semibold leading-none text-[color:var(--client-muted)]">
-                    {actor ? `${formatCount(actorPostCount)} 条动态` : "公开讨论型信息流"}
-                  </p>
                 </div>
+              </div>
+              <div className="mt-3">
+                <SocialTimelineHeaderSearch to={socialPaths.search(scope)} />
               </div>
             </div>
           </div>
-        </div>
+        </FloatingHomeHeader>
       ) : null}
 
-      <div className="space-y-0" style={embedded ? undefined : { paddingTop: "calc(env(safe-area-inset-top) + 72px)" }}>
+      <div className="space-y-0">
         <div className="py-1 sm:py-1.5">
           <FeatureCarousel cardHeightClassName="h-[204px]" slides={timelineCarouselSlides} />
         </div>

@@ -19,6 +19,19 @@ type TechnicianShowcaseCardProps = {
   technician: Technician;
 };
 
+type TechnicianCardBadge =
+  | {
+      id: string;
+      kind: "rank";
+      label: string;
+      rank: 1 | 2 | 3;
+    }
+  | {
+      id: string;
+      kind: "newcomer" | "inexperienced";
+      label: string;
+    };
+
 function formatTechnicianCardRating(value: number) {
   const normalized = Number.isFinite(value) && value > 0 ? value : 0;
   return normalized > 5 ? normalized / 2 : normalized;
@@ -157,16 +170,91 @@ function localizeTechnicianCardText(value: string, language: Language) {
   return translateText(value, language);
 }
 
-function buildTechnicianCardTags(technician: Technician, rankIndex: number, language: Language) {
-  const isNewToPlatform = technician.reviewCount <= 3 || technician.orderCount <= 3;
-  const copy = getTechnicianCardCopy(language);
-  const tags = [isNewToPlatform ? copy.newcomer : `No.${rankIndex + 1}`, copy.recommended];
+export function getTechnicianCardRankBadge(rankIndex: number): Extract<TechnicianCardBadge, { kind: "rank" }> | null {
+  const rank = rankIndex + 1;
 
-  if (isNewToPlatform) {
-    tags.push(copy.inexperienced);
+  if (rank !== 1 && rank !== 2 && rank !== 3) {
+    return null;
   }
 
-  return tags.slice(0, 5);
+  return {
+    id: `rank-${rank}`,
+    kind: "rank",
+    label: `Best${rank}`,
+    rank
+  };
+}
+
+function buildTechnicianCardBadges(technician: Technician, rankIndex: number, language: Language) {
+  const isNewToPlatform = technician.reviewCount <= 3 || technician.orderCount <= 3;
+  const copy = getTechnicianCardCopy(language);
+  const rankBadge = getTechnicianCardRankBadge(rankIndex);
+  const badges: TechnicianCardBadge[] = rankBadge ? [rankBadge] : [];
+
+  if (!rankBadge && isNewToPlatform) {
+    badges.push({
+      id: "newcomer",
+      kind: "newcomer",
+      label: copy.newcomer
+    });
+  }
+
+  if (isNewToPlatform) {
+    badges.push({
+      id: "inexperienced",
+      kind: "inexperienced",
+      label: copy.inexperienced
+    });
+  }
+
+  return badges.slice(0, 5);
+}
+
+const topRankIconSrcByRank: Record<1 | 2 | 3, string> = {
+  1: "/images/icons/ranking/needo_rank_1_icon_transparent.png",
+  2: "/images/icons/ranking/needo_rank_2_icon_transparent.png",
+  3: "/images/icons/ranking/needo_rank_3_icon_transparent.png"
+};
+
+function TopRankImageBadge({ label, rank }: { label: string; rank: 1 | 2 | 3 }) {
+  return (
+    <span
+      aria-label={label}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center"
+      title={label}
+    >
+      <img
+        alt=""
+        aria-hidden="true"
+        className="h-full w-full origin-center scale-[1.56] object-contain"
+        draggable={false}
+        src={topRankIconSrcByRank[rank]}
+        style={{ filter: "drop-shadow(0 0 1px rgba(0,0,0,0.95)) drop-shadow(0 0 2px rgba(0,0,0,0.72))" }}
+      />
+    </span>
+  );
+}
+
+function TextStatusBadge({ label, tone }: { label: string; tone: "newcomer" | "inexperienced" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-black leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-md",
+        tone === "newcomer" ? "bg-black/70" : "bg-[color:color-mix(in_srgb,var(--client-accent)_72%,black_8%)]"
+      )}
+      title={label}
+    >
+      {label}
+    </span>
+  );
+}
+
+function TechnicianCardBadgeView({ badge }: { badge: TechnicianCardBadge }) {
+  if (badge.kind === "rank") {
+    return <TopRankImageBadge label={badge.label} rank={badge.rank} />;
+  }
+
+  return <TextStatusBadge label={badge.label} tone={badge.kind} />;
 }
 
 function normalizeCardText(value: string) {
@@ -209,7 +297,7 @@ export function TechnicianShowcaseCard({
   const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const copy = getTechnicianCardCopy(language);
   const displayName = getTechnicianDisplayName(technician);
-  const topTags = buildTechnicianCardTags(technician, rankIndex, language);
+  const topBadges = buildTechnicianCardBadges(technician, rankIndex, language);
   const primarySkill = localizeTechnicianCardText(technician.skills[0] ?? technician.profileTags?.[0] ?? copy.serviceFallback, language);
   const areaLabel = localizeTechnicianCardText(technician.serviceAreas[0] ?? copy.tokyo, language);
   const statusLabel = technician.status === "available" ? copy.available : technician.status === "busy" ? copy.bookingConfirm : copy.off;
@@ -238,20 +326,8 @@ export function TechnicianShowcaseCard({
       <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
 
       <div className="absolute left-2 top-2 flex max-w-[calc(100%-62px)] flex-col items-start gap-1.5" data-no-i18n>
-        {topTags.map((tag, index) => (
-          <span
-            className={cn(
-              "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-black leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-md",
-              index === 0
-                ? "bg-black/70"
-                : index === 1
-                  ? "bg-[color:color-mix(in_srgb,var(--client-primary)_72%,black_8%)]"
-                  : "bg-[color:color-mix(in_srgb,var(--client-accent)_72%,black_8%)]"
-            )}
-            key={tag}
-          >
-            {tag}
-          </span>
+        {topBadges.map((badge) => (
+          <TechnicianCardBadgeView badge={badge} key={badge.id} />
         ))}
       </div>
 

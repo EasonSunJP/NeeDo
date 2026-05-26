@@ -10,6 +10,7 @@ import {
 } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
@@ -673,11 +674,9 @@ export function ImTopBar({
   className?: string;
 }) {
   const titleNode = typeof title === "string" ? <h1 className="truncate text-[18px] font-black tracking-[-0.02em] text-[color:var(--client-text)]">{title}</h1> : title;
-  const spacerClassName = footer ? "h-[calc(env(safe-area-inset-top)+7.25rem)]" : "h-[calc(env(safe-area-inset-top)+4rem)]";
-  const topBarSurfaceClassName = "safe-header-top fixed inset-x-0 top-0 z-40 w-full max-w-full overflow-x-hidden border-b border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-[color:var(--client-bg)] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-shadow)_16%,transparent)] [overflow-x:clip]";
 
   const content = (
-    <>
+    <div className={floatingHeaderInnerClassName}>
       <div className={cn("relative flex items-center justify-between gap-3", centerTitle || onBack ? "min-h-11" : "")}>
         {onBack ? <ImTopBarBackButton onClick={onBack} /> : null}
         {centerTitle ? (
@@ -704,38 +703,21 @@ export function ImTopBar({
         )}
       </div>
       {footer ? <div className={cn("mt-3", footerClassName)}>{footer}</div> : null}
-    </>
+    </div>
   );
 
-  if (fixed) {
-    return (
-      <header
-        className={cn(
-          topBarSurfaceClassName,
-          className
-        )}
-      >
-        <div className="mx-auto w-full px-4 pb-3" style={{ maxWidth: "min(880px, 100%)" }}>
-          {content}
-        </div>
-      </header>
-    );
-  }
-
   return (
-    <div className="contents">
-      <header
-        className={cn(
-          topBarSurfaceClassName,
-          className
-        )}
-      >
-        <div className="mx-auto w-full px-4 pb-3" style={{ maxWidth: "min(880px, 100%)" }}>
-          {content}
-        </div>
-      </header>
-      <div aria-hidden="true" className={spacerClassName} />
-    </div>
+    <FloatingHomeHeader
+      className="gap-0"
+      frameClassName="z-40"
+      maxWidth="880px"
+      panelClassName={cn(floatingHeaderGlassPanelClassName, "text-[color:var(--client-text)]", className)}
+      showSpacer={!fixed}
+      spacerGapPx={0}
+      stacked={Boolean(footer)}
+    >
+      {content}
+    </FloatingHomeHeader>
   );
 }
 

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
-import { IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
+import { IconButton } from "../../components/client-ui/AppScaffold";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
-import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { reviews, stores, userStories } from "../../data/mock";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
@@ -34,8 +34,6 @@ const accountSettings = [
   { label: "联系客服", caption: "退款、改期、投诉风控", to: "/support" }
 ];
 
-const topBarButtonClassName =
-  floatingHeaderControlButtonClassName;
 const pagePanelClassName =
   "rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.05)]";
 const pageInnerCardClassName =
@@ -610,30 +608,12 @@ export function UserCenterPage() {
         className="!z-20"
         innerClassName="bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]"
       >
-        <header className="safe-header-top relative z-50 shrink-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)] px-4 pb-3 text-[color:var(--client-text)]">
-          <IconButton
-            className={`${topBarButtonClassName} absolute left-4 top-[calc(env(safe-area-inset-top)+12px)]`}
-            icon="back"
-            label="返回"
-            onClick={() => navigate("/", { replace: true })}
-          />
-          <IconButton
-            className={`${topBarButtonClassName} absolute right-4 top-[calc(env(safe-area-inset-top)+12px)]`}
-            icon="settings"
-            label="打开设置中心"
-            to="/me/settings"
-          />
-          <div className="min-h-12 px-[56px] pt-0.5">
-            <TitleWithInfo
-              as="h1"
-              info="账号资料、订单入口与服务权益都统一收在这里。"
-              label="个人中心说明"
-              title="个人中心"
-              titleClassName="truncate text-base font-black"
-              variant="client"
-            />
-          </div>
-        </header>
+        <MobileFullscreenHeader
+          action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
+          info="账号资料、订单入口与服务权益都统一收在这里。"
+          onBack={() => navigate("/", { replace: true })}
+          title="个人中心"
+        />
 
         <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[calc(132px+env(safe-area-inset-bottom))]">
           {profileToastMessage ? (

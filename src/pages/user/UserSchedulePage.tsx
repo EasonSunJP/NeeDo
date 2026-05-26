@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
+import { cn } from "../../lib/utils";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig, userNavItems } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
@@ -26,22 +27,24 @@ export function UserSchedulePage() {
   return (
     <MobileShell navItems={userNavItems}>
       <FloatingHomeHeader
-        panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+        panelClassName={floatingHeaderGlassPanelClassName}
         stacked
       >
-        <SharedHomeHeader
-          avatarAlt={currentCustomer.name}
-          avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
-          avatarMembershipLevel={currentCustomer.memberLevel}
-          avatarSrc={currentCustomer.avatar}
-          avatarTo={userPortalConfig.myPath}
-          locationLabel={selectedLocation.label}
-          locationCaption="当前服务区域"
-          settingsLabel="系统设置"
-          settingsTo={userPortalConfig.settingsPath}
-        />
+        <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
+          <SharedHomeHeader
+            avatarAlt={currentCustomer.name}
+            avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
+            avatarMembershipLevel={currentCustomer.memberLevel}
+            avatarSrc={currentCustomer.avatar}
+            avatarTo={userPortalConfig.myPath}
+            locationLabel={selectedLocation.label}
+            locationCaption="当前服务区域"
+            settingsLabel="系统设置"
+            settingsTo={userPortalConfig.settingsPath}
+          />
 
-        <ScheduleSearchField onChange={setScheduleSearchQuery} value={scheduleSearchQuery} />
+          <ScheduleSearchField onChange={setScheduleSearchQuery} value={scheduleSearchQuery} />
+        </div>
       </FloatingHomeHeader>
 
       <div className="space-y-3 px-4 pb-28 pt-2">

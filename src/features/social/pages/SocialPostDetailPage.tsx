@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, PrimaryButton } from "../../../components/client-ui/AppScaffold";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../../components/mobile/FloatingHomeHeader";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { ShareNetworkIconPath } from "../../../components/ui/ShareNetworkIcon";
 import { getGeneratedImageThumbnailUrl } from "../../../lib/imageThumbnails";
@@ -96,6 +97,25 @@ function SocialPostDetailBackButton({ onClick }: { onClick: () => void }) {
       <AppIcon className="h-5 w-5" name="back" />
       <span className="sr-only">返回</span>
     </button>
+  );
+}
+
+function SocialPostDetailHeader({ onBack, title }: { onBack: () => void; title: string }) {
+  return (
+    <FloatingHomeHeader
+      className="gap-0"
+      frameClassName="z-40"
+      maxWidth="720px"
+      panelClassName={cn(floatingHeaderGlassPanelClassName, "text-white")}
+      spacerGapPx={0}
+    >
+      <div className={floatingHeaderInnerClassName}>
+        <div className="flex min-h-[52px] items-center gap-3">
+          <SocialPostDetailBackButton onClick={onBack} />
+          <p className="truncate text-[20px] font-black text-white">{title}</p>
+        </div>
+      </div>
+    </FloatingHomeHeader>
   );
 }
 
@@ -545,14 +565,9 @@ export function SocialPostDetailPage() {
   if (!post) {
     return (
       <div className={shellClassName}>
-        <header className="safe-header-top fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-black/84 backdrop-blur-xl">
-          <div className="mx-auto flex h-[52px] max-w-[720px] items-center gap-3 px-4">
-            <SocialPostDetailBackButton onClick={() => navigate(-1)} />
-            <p className="text-[20px] font-black text-white">帖子</p>
-          </div>
-        </header>
+        <SocialPostDetailHeader onBack={() => navigate(-1)} title="帖子" />
 
-        <main className="mx-auto max-w-[720px] px-4 pb-20 pt-[92px]">
+        <main className="mx-auto max-w-[720px] px-4 pb-20 pt-4">
           <SocialEmptyState
             action={<PrimaryButton to={socialPaths.timeline(scope)}>返回动态页</PrimaryButton>}
             description="这条动态可能已删除，或当前链接已经失效。"
@@ -569,14 +584,9 @@ export function SocialPostDetailPage() {
 
   return (
     <div className={shellClassName}>
-      <header className="safe-header-top fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-black/84 backdrop-blur-xl">
-        <div className="mx-auto flex h-[52px] max-w-[720px] items-center gap-3 px-4">
-          <SocialPostDetailBackButton onClick={() => navigate(-1)} />
-          <p className="text-[20px] font-black text-white">{isThreadPage ? "回复" : "帖子"}</p>
-        </div>
-      </header>
+      <SocialPostDetailHeader onBack={() => navigate(-1)} title={isThreadPage ? "回复" : "帖子"} />
 
-      <main className="mx-auto max-w-[720px] px-4 pb-[152px] pt-[92px]">
+      <main className="mx-auto max-w-[720px] px-4 pb-[152px] pt-4">
         {ancestors.length > 0 ? (
           <section className="space-y-3 pb-4">
             <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/42">回复上下文</p>

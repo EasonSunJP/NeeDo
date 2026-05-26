@@ -22,7 +22,13 @@ import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../.
 import { MobileShell } from "../../components/mobile/MobileShell";
 import type { MyQrCodePurpose } from "../../components/mobile/MyQrCodeButton";
 import { UnifiedScanSimulator } from "../../components/mobile/UnifiedScanSimulator";
-import { FloatingBackButton } from "../../components/client-ui/AppScaffold";
+import { IconButton } from "../../components/client-ui/AppScaffold";
+import {
+  FloatingHomeHeader,
+  floatingHeaderGlassPanelClassName,
+  floatingHeaderInnerClassName,
+  floatingHeaderPillSurfaceClassName
+} from "../../components/mobile/FloatingHomeHeader";
 import { chatBgUrl } from "../../assets/runtime/images";
 import { customers, imageBank, orders, services } from "../../data/mock";
 import { parseBrowserStorageJson } from "../../lib/browserStorage";
@@ -2238,7 +2244,13 @@ export function ImContactsListPage() {
         )}
         roleType={scope}
         searchBar={isAddStaffMode ? (
-          <label className="flex h-12 w-full items-center gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] px-4 text-[14px] text-[color:var(--client-muted)]">
+          <label
+            className={cn(
+              "flex h-12 w-full items-center gap-3 px-4 text-[14px] text-[color:var(--client-muted)]",
+              floatingHeaderPillSurfaceClassName,
+              "bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] shadow-none"
+            )}
+          >
             <ImIcon className="h-4 w-4 shrink-0 text-[color:var(--client-soft-muted)]" name="search" />
             <input
               aria-label="搜索联系人"
@@ -3040,7 +3052,13 @@ function ImConversationListSearchBar({
   const hasActiveFilter = filterActive ?? activeTagCount > 0;
 
   return (
-    <div className="flex h-12 w-full items-center gap-2 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] px-4 text-[14px] text-[color:var(--client-muted)]">
+    <div
+      className={cn(
+        "flex h-12 w-full items-center gap-2 px-4 text-[14px] text-[color:var(--client-muted)]",
+        floatingHeaderPillSurfaceClassName,
+        "bg-[color:color-mix(in_srgb,var(--client-surface)_46%,var(--client-bg)_54%)] shadow-none"
+      )}
+    >
       <ImIcon className="h-4 w-4 shrink-0 text-[color:var(--client-soft-muted)]" name="search" />
       <input
         className="min-w-0 flex-1 bg-transparent text-[14px] text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
@@ -3496,9 +3514,20 @@ export function ImSearchPage() {
   return (
     <ImStandaloneShell>
       <div className="min-h-dvh bg-[color:var(--client-bg)] text-[color:var(--client-text)]">
-        <div className="safe-header-top fixed inset-x-0 top-0 z-40 bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] backdrop-blur-xl">
-          <div className="mx-auto flex w-full max-w-[880px] items-center gap-3 px-4 pb-3">
-            <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-[6px] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg))] px-3 text-[color:var(--client-muted)]">
+        <FloatingHomeHeader
+          className="gap-0"
+          frameClassName="z-40"
+          panelClassName={floatingHeaderGlassPanelClassName}
+          spacerGapPx={0}
+        >
+          <div className={cn(floatingHeaderInnerClassName, "flex items-center gap-3")}>
+            <label
+              className={cn(
+                "flex h-10 min-w-0 flex-1 items-center gap-2 px-3 text-[color:var(--client-muted)]",
+                floatingHeaderPillSurfaceClassName,
+                "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,var(--client-bg))] shadow-none"
+              )}
+            >
               <ImIcon className="h-4 w-4 shrink-0" name="search" />
               <input
                 className="h-full min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:color-mix(in_srgb,var(--client-muted)_74%,transparent)]"
@@ -3512,15 +3541,12 @@ export function ImSearchPage() {
                 value={query}
               />
             </label>
-            <button className="shrink-0 px-1 text-sm font-black text-[color:color-mix(in_srgb,var(--client-primary)_82%,var(--client-text))]" onClick={() => navigate(-1)} type="button">
-              取消
-            </button>
+            <IconButton icon="close" label="取消搜索" onClick={() => navigate(-1)} />
           </div>
-        </div>
-        <div aria-hidden="true" className="h-[calc(env(safe-area-inset-top)+5rem)]" />
+        </FloatingHomeHeader>
 
         {!searching ? (
-          <div className="mx-auto w-full max-w-[880px] px-7 pt-16">
+          <div className="mx-auto w-full max-w-[880px] px-7 pt-4">
             <p className="text-center text-sm font-black text-[color:color-mix(in_srgb,var(--client-text)_76%,var(--client-muted))]">聊天快速搜索</p>
             <div className="mt-9 grid grid-cols-3 gap-y-8">
               {imConversationQuickSearchItems.map((item, index) => (
@@ -6328,15 +6354,7 @@ export function ImConversationInfoPage() {
   return (
     <ImStandaloneShell>
       <div className="contents">
-        <header className="safe-header-top fixed inset-x-0 top-0 z-40 border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,transparent)] backdrop-blur-xl">
-          <FloatingBackButton onClick={() => navigate(-1)} />
-          <div className="mx-auto flex h-[60px] w-full max-w-[880px] items-center px-4">
-            <div className="min-w-0 pl-[56px] pr-[56px] sm:pl-[60px] sm:pr-[60px]">
-              <h1 className="truncate text-[20px] font-black tracking-[-0.02em] text-[color:var(--client-text)]">信息设置</h1>
-            </div>
-          </div>
-        </header>
-        <div aria-hidden="true" className="h-[calc(env(safe-area-inset-top)+5.75rem)]" />
+        <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
       </div>
       <div className="space-y-4 px-4 py-4">
         {infoMiniCard ?? (user ? <ContactSummaryCard contact={contact} detailTo={infoCardDetailTo} showTags={false} user={user} /> : null)}
@@ -7191,7 +7209,6 @@ export function ImNewConversationPage() {
       {isGroupMode ? (
         <ImTopBar
           centerTitle
-          className="border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,transparent)] backdrop-blur-xl"
           fixed
           footer={
             <div className="space-y-2">

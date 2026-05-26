@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { AppIcon, IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
-import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { roleBasedTabConfig, userNavItems } from "../../components/mobile/navItems";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
@@ -289,26 +289,28 @@ export function UserTechnicianScheduleDetailPage() {
   return (
     <MobileShell navItems={userNavItems}>
       <FloatingHomeHeader
-        panelClassName="client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none"
+        panelClassName={floatingHeaderGlassPanelClassName}
         stacked
       >
-        <SharedHomeHeader
-          avatarAlt={currentCustomer.name}
-          avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
-          avatarMembershipLevel={currentCustomer.memberLevel}
-          avatarSrc={currentCustomer.avatar}
-          avatarTo={userPortalConfig.myPath}
-          locationLabel={selectedLocation.label}
-          locationCaption="当前服务区域"
-          rightAction={
-            <IconButton
-              className="border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-primary)]"
-              icon="close"
-              label="关闭技师班表"
-              onClick={closeScheduleDetail}
-            />
-          }
-        />
+        <div className={floatingHeaderInnerClassName}>
+          <SharedHomeHeader
+            avatarAlt={currentCustomer.name}
+            avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
+            avatarMembershipLevel={currentCustomer.memberLevel}
+            avatarSrc={currentCustomer.avatar}
+            avatarTo={userPortalConfig.myPath}
+            locationLabel={selectedLocation.label}
+            locationCaption="当前服务区域"
+            rightAction={
+              <IconButton
+                className="border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-primary)]"
+                icon="close"
+                label="关闭技师班表"
+                onClick={closeScheduleDetail}
+              />
+            }
+          />
+        </div>
       </FloatingHomeHeader>
 
       <div className="space-y-3 px-4 pb-28 pt-2">

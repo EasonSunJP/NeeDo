@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { buildAdminLoginScanRedirect } from "../../auth/adminLogin";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
-import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
+import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import type { MyQrCodePurpose } from "../../components/mobile/MyQrCodeButton";
 import { UnifiedScanSimulator } from "../../components/mobile/UnifiedScanSimulator";
@@ -236,26 +237,25 @@ function DineInCustomerHeader({
   const activeTabLabel = dineInCustomerOrderTabs.find((tab) => tab.value === activeTab)?.label ?? "菜单";
 
   return (
-    <header className="safe-header-top fixed inset-x-0 top-0 z-50 border-b border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] text-[color:var(--client-text)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)] backdrop-blur-2xl">
-      <div className="mx-auto flex min-h-16 w-full max-w-[880px] items-center gap-3 px-4 pb-3">
-        <div className="min-w-0 flex-1 text-center">
-          <p className="text-[11px] font-black uppercase text-[color:var(--client-muted)]">{activeTabLabel}</p>
-          <h1 className="mt-0.5 truncate text-2xl font-black leading-tight">{facilityLabel}</h1>
-          <p className="mt-0.5 truncate text-xs font-bold text-[color:var(--client-muted)]">{statusLabel}</p>
+    <FloatingHomeHeader
+      className="gap-0"
+      frameClassName="z-50"
+      panelClassName={floatingHeaderGlassPanelClassName}
+      spacerGapPx={0}
+      stacked={activeTab === "menu" && categories.length > 0}
+    >
+      <div className={floatingHeaderInnerClassName}>
+        <div className="grid min-h-14 grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-3">
+          <div aria-hidden="true" />
+          <div className="min-w-0 text-center">
+            <p className="text-[11px] font-black uppercase text-[color:var(--client-muted)]">{activeTabLabel}</p>
+            <h1 className="mt-0.5 truncate text-[20px] font-black leading-tight">{facilityLabel}</h1>
+            <p className="mt-0.5 truncate text-xs font-bold text-[color:var(--client-muted)]">{statusLabel}</p>
+          </div>
+          <MobileFullscreenCloseButton onClose={onClose} />
         </div>
-        <button
-          aria-label="关闭"
-          className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] text-[color:var(--client-text)] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)]"
-          onClick={onClose}
-          type="button"
-        >
-          <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
-            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />
-          </svg>
-        </button>
-      </div>
-      {activeTab === "menu" && categories.length > 0 ? (
-        <nav className="mx-auto flex w-full max-w-[880px] gap-1 overflow-x-auto px-4 pb-3 scrollbar-none" data-scroll-drag-ignore="true">
+        {activeTab === "menu" && categories.length > 0 ? (
+        <nav className="mt-3 flex gap-1 overflow-x-auto scrollbar-none" data-scroll-drag-ignore="true">
           {categories.map((category) => {
             const active = category.id === activeCategoryId;
 
@@ -263,7 +263,7 @@ function DineInCustomerHeader({
               <button
                 aria-pressed={active}
                 className={cn(
-                  "focus-ring h-11 shrink-0 rounded-[18px] border px-4 text-sm font-black transition",
+                  "focus-ring h-11 shrink-0 rounded-full border px-4 text-sm font-black transition",
                   active
                     ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
                     : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-[color:var(--client-muted)]"
@@ -277,8 +277,9 @@ function DineInCustomerHeader({
             );
           })}
         </nav>
-      ) : null}
-    </header>
+        ) : null}
+      </div>
+    </FloatingHomeHeader>
   );
 }
 
@@ -726,7 +727,7 @@ export function DineInCustomerMenuPage() {
           onClose={() => navigate("/scan")}
           statusLabel={`${facilityStatusLabels[facility.status]} · ${availableMenus.map((menu) => getLocalizedName(menu.name)).join(" / ")}`}
         />
-        <main className={cn("mx-auto w-full max-w-[880px] px-4 pb-[calc(env(safe-area-inset-bottom)+6.25rem)]", activeTab === "menu" ? "pt-[calc(env(safe-area-inset-top)+9.75rem)]" : "pt-[calc(env(safe-area-inset-top)+6.7rem)]")}>
+        <main className="mx-auto w-full max-w-[880px] px-4 pb-[calc(env(safe-area-inset-bottom)+6.25rem)] pt-4">
           {activeTab === "menu" ? (
             <div className="space-y-3">
               {activeCategory ? (

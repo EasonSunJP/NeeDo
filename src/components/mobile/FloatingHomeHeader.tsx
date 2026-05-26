@@ -3,28 +3,44 @@ import { cn } from "../../lib/utils";
 
 const floatingHeaderFrameGapPx = 8;
 
+export const floatingHeaderGlassPanelClassName =
+  "client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none";
+export const floatingHeaderInnerClassName = "px-3 pb-3";
+export const floatingHeaderPillSurfaceClassName =
+  "rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]";
+
 export function FloatingHomeHeader({
   children,
   dark = false,
   stacked = false,
   className,
+  frameClassName,
+  maxWidth = "var(--client-bottom-nav-max-width, 880px)",
+  inlineGap = "var(--client-bottom-nav-inline-gap, 12px)",
   panelClassName,
-  spacerClassName
+  spacerClassName,
+  showSpacer = true,
+  spacerGapPx = floatingHeaderFrameGapPx
 }: {
   children: ReactNode;
   dark?: boolean;
   stacked?: boolean;
   className?: string;
+  frameClassName?: string;
+  maxWidth?: CSSProperties["maxWidth"];
+  inlineGap?: CSSProperties["paddingLeft"];
   panelClassName?: string;
   spacerClassName?: string;
+  showSpacer?: boolean;
+  spacerGapPx?: number;
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [measuredSpacerHeight, setMeasuredSpacerHeight] = useState<number | null>(null);
   const fallbackSpacerClassName = stacked ? "h-[calc(env(safe-area-inset-top)+140px)]" : "h-[calc(env(safe-area-inset-top)+80px)]";
-  const spacerStyle: CSSProperties | undefined = !spacerClassName && measuredSpacerHeight ? { height: measuredSpacerHeight } : undefined;
+  const spacerStyle: CSSProperties | undefined = showSpacer && !spacerClassName && measuredSpacerHeight ? { height: measuredSpacerHeight } : undefined;
 
   useEffect(() => {
-    if (spacerClassName) {
+    if (spacerClassName || !showSpacer) {
       return undefined;
     }
 
@@ -34,7 +50,7 @@ export function FloatingHomeHeader({
     }
 
     const updateSpacerHeight = () => {
-      setMeasuredSpacerHeight(Math.ceil(panel.getBoundingClientRect().height) + floatingHeaderFrameGapPx);
+      setMeasuredSpacerHeight(Math.ceil(panel.getBoundingClientRect().height) + spacerGapPx);
     };
 
     updateSpacerHeight();
@@ -47,18 +63,18 @@ export function FloatingHomeHeader({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", updateSpacerHeight);
     };
-  }, [spacerClassName]);
+  }, [showSpacer, spacerClassName, spacerGapPx]);
 
   return (
     <>
-      <div aria-hidden="true" className={spacerClassName ?? fallbackSpacerClassName} style={spacerStyle} />
-      <div className="pointer-events-none fixed inset-x-0 top-0 z-[35]">
+      {showSpacer ? <div aria-hidden="true" className={spacerClassName ?? fallbackSpacerClassName} style={spacerStyle} /> : null}
+      <div className={cn("pointer-events-none fixed inset-x-0 top-0 z-[35]", frameClassName)}>
         <div
           className="pointer-events-auto mx-auto w-full"
           style={{
-            maxWidth: "var(--client-bottom-nav-max-width, 880px)",
-            paddingLeft: "var(--client-bottom-nav-inline-gap, 12px)",
-            paddingRight: "var(--client-bottom-nav-inline-gap, 12px)"
+            maxWidth,
+            paddingLeft: inlineGap,
+            paddingRight: inlineGap
           }}
         >
           <div
