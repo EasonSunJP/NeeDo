@@ -4,7 +4,7 @@ import { cn } from "../../lib/utils";
 const floatingHeaderFrameGapPx = 8;
 
 export const floatingHeaderGlassPanelClassName =
-  "client-floating-header-glass-frame rounded-none border-transparent px-0 pb-0 shadow-none";
+  "client-floating-header-glass-frame !rounded-none !border-transparent !px-0 !pb-0 !shadow-none";
 export const floatingHeaderInnerClassName = "px-3 pb-3";
 export const floatingHeaderPillSurfaceClassName =
   "rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]";
