@@ -28,9 +28,11 @@ type TechnicianCardBadge =
     }
   | {
       id: string;
-      kind: "newcomer" | "inexperienced";
+      kind: "newcomer";
       label: string;
     };
+
+const beginnerMarkIconSrc = "/images/icons/profile/needo_beginner_mark_icon.png";
 
 function formatTechnicianCardRating(value: number) {
   const normalized = Number.isFinite(value) && value > 0 ? value : 0;
@@ -59,6 +61,27 @@ function getTechnicianCardShareCount() {
 
 export function getTechnicianDynamicPath(technician: Technician) {
   return `/profiles/technician/${technician.id}`;
+}
+
+function getStableBucketFromText(value: string) {
+  let hash = 0;
+
+  for (const character of value) {
+    hash = (hash * 31 + character.charCodeAt(0)) % 9973;
+  }
+
+  return hash % 5;
+}
+
+export function shouldShowTechnicianBeginnerIcon(technician: Pick<Technician, "id" | "name"> & Partial<Pick<Technician, "nickname">>) {
+  const numericSuffix = technician.id.match(/\d+$/)?.[0];
+
+  if (numericSuffix) {
+    return Number.parseInt(numericSuffix, 10) % 5 === 1;
+  }
+
+  const seed = `${technician.id || ""}${technician.nickname || ""}${technician.name || ""}`;
+  return getStableBucketFromText(seed) === 0;
 }
 
 function getTechnicianCardCopy(language: Language) {
@@ -217,14 +240,6 @@ function buildTechnicianCardBadges(technician: Technician, rankIndex: number, la
     });
   }
 
-  if (isNewToPlatform) {
-    badges.push({
-      id: "inexperienced",
-      kind: "inexperienced",
-      label: copy.inexperienced
-    });
-  }
-
   return badges.slice(0, 5);
 }
 
@@ -233,7 +248,6 @@ const topRankIconSrcByRank: Record<1 | 2 | 3, string> = {
   2: "/images/icons/ranking/needo_rank_2_icon_transparent.png",
   3: "/images/icons/ranking/needo_rank_3_icon_transparent.png"
 };
-const inexperiencedSproutIconSrc = "/images/icons/profile/needo_inexperienced_sprout_icon.png";
 
 function TopRankImageBadge({ label, rank }: { label: string; rank: 1 | 2 | 3 }) {
   return (
@@ -254,34 +268,13 @@ function TopRankImageBadge({ label, rank }: { label: string; rank: 1 | 2 | 3 }) 
   );
 }
 
-function TextStatusBadge({ label, tone }: { label: string; tone: "newcomer" | "inexperienced" }) {
+function TextStatusBadge({ label }: { label: string }) {
   return (
     <span
-      className={cn(
-        "inline-flex h-6 items-center rounded-full px-2 text-[10px] font-black leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-md",
-        tone === "newcomer" ? "bg-black/70" : "bg-[color:color-mix(in_srgb,var(--client-accent)_72%,black_8%)]"
-      )}
+      className="inline-flex h-6 items-center rounded-full bg-black/70 px-2 text-[10px] font-black leading-none text-white shadow-[0_8px_18px_rgba(0,0,0,0.22)] backdrop-blur-md"
       title={label}
     >
       {label}
-    </span>
-  );
-}
-
-function InexperiencedMarkBadge({ label }: { label: string }) {
-  return (
-    <span
-      aria-label={label}
-      className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-bg)_28%,transparent)] backdrop-blur-xl"
-      title={label}
-    >
-      <img
-        alt=""
-        aria-hidden="true"
-        className="h-[14px] w-[14px] object-contain"
-        draggable={false}
-        src={inexperiencedSproutIconSrc}
-      />
     </span>
   );
 }
@@ -291,11 +284,7 @@ function TechnicianCardBadgeView({ badge }: { badge: TechnicianCardBadge }) {
     return <TopRankImageBadge label={badge.label} rank={badge.rank} />;
   }
 
-  if (badge.kind === "inexperienced") {
-    return <InexperiencedMarkBadge label={badge.label} />;
-  }
-
-  return <TextStatusBadge label={badge.label} tone={badge.kind} />;
+  return <TextStatusBadge label={badge.label} />;
 }
 
 function normalizeCardText(value: string) {
@@ -351,6 +340,7 @@ export function TechnicianShowcaseCard({
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
   const favoriteCount = getTechnicianCardFavoriteCount(technician);
   const shareCount = getTechnicianCardShareCount();
+  const showBeginnerIcon = shouldShowTechnicianBeginnerIcon(technician);
   const cardClassName = cn(
     "group block overflow-hidden rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-left shadow-[0_16px_34px_rgba(0,0,0,0.16)] transition",
     typeof selected === "boolean" && selected
@@ -405,9 +395,18 @@ export function TechnicianShowcaseCard({
       </div>
 
       <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
-        <h3 className="line-clamp-1 text-[17px] font-black leading-6">
-          {displayName}
-          {technician.age ? <span className="ml-1 text-[14px] font-semibold text-white/82">({technician.age})</span> : null}
+        <h3 className="flex min-w-0 items-center text-[17px] font-black leading-6">
+          {showBeginnerIcon ? (
+            <img
+              alt=""
+              aria-hidden="true"
+              className="h-[18px] w-[18px] shrink-0 object-contain"
+              draggable={false}
+              src={beginnerMarkIconSrc}
+            />
+          ) : null}
+          <span className={cn("min-w-0 truncate", showBeginnerIcon ? "ml-1.5" : "")}>{displayName}</span>
+          {technician.age ? <span className="ml-1 shrink-0 text-[14px] font-semibold text-white/82">({technician.age})</span> : null}
         </h3>
         <p className="mt-1 line-clamp-1 text-[12px] font-bold text-white/86">
           {[technician.height ? `${technician.height}cm` : "", primarySkill, areaLabel].filter(Boolean).join(" / ")}

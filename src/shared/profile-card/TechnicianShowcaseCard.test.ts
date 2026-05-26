@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
-import { getTechnicianCardRankBadge } from "./TechnicianShowcaseCard";
+import { getTechnicianCardRankBadge, shouldShowTechnicianBeginnerIcon } from "./TechnicianShowcaseCard";
 import cardSource from "./TechnicianShowcaseCard.tsx?raw";
 
 describe("TechnicianShowcaseCard selectable behavior", () => {
@@ -57,12 +57,19 @@ describe("TechnicianShowcaseCard engagement metrics", () => {
     expect(appScaffoldSource).toContain('shell: "h-[22px] w-[22px]"');
   });
 
-  it("renders the inexperienced label as a same-style sprout icon", () => {
-    expect(cardSource).toContain("InexperiencedMarkBadge");
-    expect(cardSource).toContain("/images/icons/profile/needo_inexperienced_sprout_icon.png");
-    expect(cardSource).toContain("rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]");
-    expect(cardSource).toContain('className="h-[14px] w-[14px] object-contain"');
-    expect(cardSource).toContain('className="absolute left-2 top-2 flex max-w-[calc(100%-62px)] flex-col items-start gap-2"');
-    expect(cardSource).not.toContain('mt-3 flex flex-col items-center gap-2');
+  it("renders the beginner mark before stable 20% test technician names", () => {
+    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-1", name: "A" })).toBe(true);
+    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-2", name: "B" })).toBe(false);
+    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-3", name: "C" })).toBe(false);
+    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-4", name: "D" })).toBe(false);
+    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-5", name: "E" })).toBe(false);
+    expect(shouldShowTechnicianBeginnerIcon({ id: "technician-6", name: "F" })).toBe(true);
+    expect(cardSource).toContain("const showBeginnerIcon = shouldShowTechnicianBeginnerIcon(technician)");
+    expect(cardSource).toContain("/images/icons/profile/needo_beginner_mark_icon.png");
+    expect(cardSource).toContain('className="h-[18px] w-[18px] shrink-0 object-contain"');
+    expect(cardSource).toContain('className="flex min-w-0 items-center text-[17px] font-black leading-6"');
+    expect(cardSource).not.toContain("InexperiencedMarkBadge");
+    expect(cardSource).not.toContain('name="sprout"');
+    expect(appScaffoldSource).not.toContain('case "sprout":');
   });
 });

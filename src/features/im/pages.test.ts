@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { imConversationQuickSearchItems } from "./pages";
+import { getConversationInfoStartChatTarget, imConversationQuickSearchItems } from "./pages";
+import { getImRoleConfig } from "./role-config";
 
 describe("IM pages", () => {
   it("defines icon-backed quick search entries for conversation search", () => {
@@ -21,5 +22,13 @@ describe("IM pages", () => {
       "贴纸"
     ]);
     expect(imConversationQuickSearchItems.every((item) => item.icon)).toBe(true);
+  });
+
+  it("resolves the fixed start-chat action only for single-contact info pages", () => {
+    const config = getImRoleConfig("user");
+
+    expect(getConversationInfoStartChatTarget(config, { id: "conversation-amy", type: "single" })).toBe("/messages/conversation-amy");
+    expect(getConversationInfoStartChatTarget(config, { id: "conversation-group", type: "group" })).toBeUndefined();
+    expect(getConversationInfoStartChatTarget(config, undefined)).toBeUndefined();
   });
 });

@@ -5553,6 +5553,7 @@ export const translations: TranslationMap = {
   "开启自动派单": { "zh-Hant": "開啟自動派單", ja: "自動割当を有効にする", en: "Enable automatic order dispatch", ko: "자동 주문 발송을 활성화합니다." },
   "开启自动提交": { ja: "オン自動提出", en: "Onautosubmit", ko: "켜기자동제출" },
   "开始": { "zh-Hant": "開始", ja: "始める", en: "Start", ko: "시작" },
+  "开始聊天": { "zh-Hant": "開始聊天", ja: "チャットを開始", en: "Start chat", ko: "채팅 시작" },
   "开始 · 点击查看预约详情": { "zh-Hant": "開始 · 點擊查看預約詳情", ja: "開始 · クリックして予約の詳細を表示", en: "Start · Click to view appointment details", ko: "시작 · 예약 세부 정보 보기" },
   "开始，按设定好的周循环和星期规则补排班表。": { "zh-Hant": "開始，依照設定好的週循環和星期規則補排班表。", ja: "まず、作業スケジュールは、事前に設定された週単位の周期と曜日ごとのルールに従って補足された。", en: "To begin, the work schedule was supplemented according to the pre-set weekly cycle and weekday rules.", ko: "우선, 업무 일정은 미리 정해진 주간 주기와 요일 규칙에 따라 보완되었습니다." },
   "开始导航": { "zh-Hant": "開始導航", ja: "ナビゲーション…", en: "Start navigation", ko: "내비게이션 시작" },

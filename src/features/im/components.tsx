@@ -45,6 +45,7 @@ export function ImIcon({
     | "emoji"
     | "plus"
     | "mic"
+    | "message"
     | "photo"
     | "camera"
     | "file"
@@ -195,6 +196,15 @@ export function ImIcon({
     return (
       <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
         <path d="M12 5.5a3 3 0 0 1 3 3v3a3 3 0 1 1-6 0v-3a3 3 0 0 1 3-3ZM7.5 11.5a4.5 4.5 0 0 0 9 0M12 16v2.5M9 19.5h6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  if (name === "message") {
+    return (
+      <svg aria-hidden="true" className={cn("h-5 w-5", className)} fill="none" viewBox="0 0 24 24">
+        <path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v5A3.5 3.5 0 0 1 15.5 15H11l-4.5 4v-4A3.5 3.5 0 0 1 3 11.5v-5Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
+        <path d="M8 8h8M8 11h5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
       </svg>
     );
   }

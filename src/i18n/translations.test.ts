@@ -30,6 +30,13 @@ describe("translations", () => {
     expect(translateText(unknownText, "zh-Hant")).toBe(unknownText);
   });
 
+  it("localizes the IM start-chat CTA", () => {
+    expect(translateText("开始聊天", "zh-Hant")).toBe("開始聊天");
+    expect(translateText("开始聊天", "ja")).toBe("チャットを開始");
+    expect(translateText("开始聊天", "en")).toBe("Start chat");
+    expect(translateText("开始聊天", "ko")).toBe("채팅 시작");
+  });
+
   it("ignores spreadsheet error placeholders and falls back safely", () => {
     expect(translateText("保存", "en")).not.toBe("#NAME?");
     expect(translateText("保存", "ko")).not.toBe("#VALUE!");

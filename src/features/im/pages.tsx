@@ -1089,6 +1089,17 @@ function getContactInfoSettingsTarget(config: ReturnType<typeof getImRoleConfig>
   return config.routes.contactDetail(contact.id);
 }
 
+export function getConversationInfoStartChatTarget(
+  config: Pick<ReturnType<typeof getImRoleConfig>, "routes">,
+  conversation?: Pick<Conversation, "id" | "type">
+) {
+  if (!conversation || conversation.type !== "single") {
+    return undefined;
+  }
+
+  return config.routes.conversation(conversation.id);
+}
+
 function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, store: ReturnType<typeof useImStore>, conversation: Conversation) {
   return resolveImProfilePath(scope, getConversationPartner(store, conversation));
 }
@@ -6338,13 +6349,14 @@ export function ImConversationInfoPage() {
   const infoSocialPreviewMedia = infoSocialProfileKey && infoSocialProfile
     ? social.getProfilePosts(infoSocialProfileKey, "media", infoSocialActorKey).flatMap((post) => post.media).slice(0, 5)
     : [];
+  const startChatTarget = getConversationInfoStartChatTarget(config, conversation);
 
   return (
     <ImStandaloneShell>
       <div className="contents">
         <ImTopBar onBack={() => navigate(-1)} title="信息设置" />
       </div>
-      <div className="space-y-4 px-4 py-4">
+      <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
         {infoMiniCard ?? (user ? <ContactSummaryCard contact={contact} detailTo={infoCardDetailTo} showTags={false} user={user} /> : null)}
         {infoSocialProfileTo ? <ImContactMomentsEntry media={infoSocialPreviewMedia} to={infoSocialProfileTo} /> : null}
 
@@ -6683,6 +6695,17 @@ export function ImConversationInfoPage() {
           )}
         </section>
       </div>
+      {startChatTarget ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-40 flex justify-center px-4">
+          <Link
+            className="focus-ring pointer-events-auto inline-flex h-14 w-full max-w-[420px] items-center justify-center gap-2 rounded-full bg-[color:var(--client-primary)] px-6 text-[16px] font-black text-[color:var(--pin-badge-glyph)] shadow-[0_18px_42px_color-mix(in_srgb,var(--client-primary)_34%,transparent)] transition hover:translate-y-[-1px] hover:shadow-[0_22px_48px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
+            to={startChatTarget}
+          >
+            <ImIcon className="h-5 w-5" name="message" />
+            <span>开始聊天</span>
+          </Link>
+        </div>
+      ) : null}
       <ImBottomSheet onClose={() => setTagPickerOpen(false)} open={tagPickerOpen} title="添加标签">
         <div className="space-y-4 pb-2">
           {availableInfoTags.length > 0 ? (
