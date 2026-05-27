@@ -27,8 +27,13 @@ describe("UnifiedUserCalendar event editor page", () => {
     expect(source).toContain('<MobileFullscreenPage className="z-[130]"');
     expect(source).toContain('closeLabel={`关闭${title}`}');
     expect(source).toContain('info={draft.id ? "编辑完整行程信息" : "新建完整行程信息"}');
+    expect(source).toContain("grid grid-cols-[0.9fr_1.1fr] gap-2");
+    expect(source).toContain('aria-label={`取消${title}`}');
+    expect(source).toContain('aria-label={`完成${title}`}');
+    expect(source).toContain("bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_76%,transparent)_42%,var(--client-bg)_100%)]");
     expect(source).toContain("<CalendarEventEditorPage");
     expect(source).not.toContain("function EditorSheet");
+    expect(source).not.toContain("border-t border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)]");
     expect(source).not.toContain("<BottomSheet onClose={onClose} title={draft.id ? \"编辑行程\" : \"新增行程\"}>");
   });
 });

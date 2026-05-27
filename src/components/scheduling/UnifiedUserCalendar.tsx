@@ -3657,14 +3657,26 @@ function CalendarEventEditorPage({
         </section>
       </div>
       </main>
-      <footer className="safe-bottom fixed bottom-0 left-1/2 z-[132] w-full max-w-[480px] -translate-x-1/2 border-t border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl">
-        <button
-          className="focus-ring flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)]"
-          onClick={onSave}
-          type="button"
-        >
-          完成
-        </button>
+      <footer className="safe-bottom pointer-events-none fixed bottom-0 left-1/2 z-[132] w-full max-w-[480px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-12">
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[140px] bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_76%,transparent)_42%,var(--client-bg)_100%)]" />
+        <div className="pointer-events-auto relative z-10 grid grid-cols-[0.9fr_1.1fr] gap-2">
+          <button
+            aria-label={`取消${title}`}
+            className="focus-ring flex h-12 min-w-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] px-3 text-sm font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.18)] backdrop-blur-xl"
+            onClick={onClose}
+            type="button"
+          >
+            取消
+          </button>
+          <button
+            aria-label={`完成${title}`}
+            className="focus-ring flex h-12 min-w-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-3 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)]"
+            onClick={onSave}
+            type="button"
+          >
+            完成
+          </button>
+        </div>
       </footer>
     </MobileFullscreenPage>
   );
