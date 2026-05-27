@@ -1835,7 +1835,7 @@ export function ImConversationListPage() {
   }
 
   return (
-    <MobileShell navItems={config.navItems} showTopEdgeMask={false}>
+    <MobileShell className="!pb-0 overflow-hidden" navItems={config.navItems} showTopEdgeMask={false}>
       <UnifiedChatHomePage
         actions={
           <div className="relative" ref={quickMenuRef}>
@@ -2238,7 +2238,7 @@ export function ImContactsListPage() {
   };
 
   return (
-    <MobileShell navItems={config.navItems} showTopEdgeMask={false}>
+    <MobileShell className="!pb-0 overflow-hidden" navItems={config.navItems} showTopEdgeMask={false}>
       <UnifiedChatHomePage
         actions={isAddStaffMode ? undefined : (
           <div className="relative" ref={quickMenuRef}>
@@ -5468,6 +5468,8 @@ export function ImConversationRoomPage({
             </ImHeaderAction>
           }
           centerTitle
+          className="im-conversation-glass-header"
+          fixed
           onBack={back}
           subtitle={conversation.type === "group" ? `${members.length} 人` : partner?.signature}
           title={
@@ -5481,7 +5483,7 @@ export function ImConversationRoomPage({
           }
         />
 
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none pt-[calc(env(safe-area-inset-top)+70px)]">
           <div aria-hidden="true" className="im-conversation-wallpaper pointer-events-none absolute inset-0 overflow-hidden">
             <img
               alt=""

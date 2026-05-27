@@ -239,6 +239,7 @@ export function FloatingActionButton({
       <Link
         aria-label={ariaLabel}
         className={rootClassName}
+        data-page-drag-ignore="true"
         draggable={false}
         onClick={handleClick}
         onPointerCancel={finishDragging}
@@ -258,6 +259,7 @@ export function FloatingActionButton({
     <button
       aria-label={ariaLabel}
       className={rootClassName}
+      data-page-drag-ignore="true"
       draggable={false}
       onClick={handleClick}
       onPointerCancel={finishDragging}

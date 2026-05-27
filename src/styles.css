@@ -1364,6 +1364,7 @@ img {
   min-height: 100vh;
   overflow-x: hidden;
   overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -1394,6 +1395,29 @@ img {
   height: 100dvh;
   min-height: 100dvh;
   overflow: hidden;
+}
+
+.client-shell.client-glass-page-surface,
+.client-shell .client-glass-page-surface {
+  background-color: var(--client-bg) !important;
+  background-image:
+    radial-gradient(
+      circle at 18% -6%,
+      color-mix(in srgb, var(--client-primary) 14%, transparent) 0%,
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 84% 2%,
+      color-mix(in srgb, var(--client-elevated) 18%, transparent) 0%,
+      transparent 30%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-bg) 76%, var(--client-elevated) 24%) 0%,
+      var(--client-bg) 46%,
+      color-mix(in srgb, var(--client-bg) 88%, var(--client-surface) 12%) 100%
+    ) !important;
+  background-size: auto !important;
 }
 
 .needo-login-logo {
@@ -1779,6 +1803,7 @@ body:has(.merchant-analytics-clean-shell),
   overflow-x: hidden;
   overflow-x: clip;
   overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
 }
 
 .client-floating-action-button {
@@ -2188,6 +2213,37 @@ body:has(.merchant-analytics-clean-shell),
     inset 0 -18px 24px -26px color-mix(in srgb, var(--client-text) 12%, transparent) !important;
   -webkit-backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
   backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
+}
+
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header).client-floating-header-glass-frame {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-top-chrome-bg) 7%, transparent) 0%,
+      color-mix(in srgb, var(--client-elevated) 4%, transparent) 48%,
+      color-mix(in srgb, var(--client-bg) 2%, transparent) 100%
+    ),
+    linear-gradient(
+      112deg,
+      color-mix(in srgb, var(--client-primary) 4%, transparent),
+      transparent 50%,
+      color-mix(in srgb, var(--client-text) 2%, transparent)
+    ) !important;
+  box-shadow:
+    0 14px 34px color-mix(in srgb, var(--client-bg) 16%, rgba(0, 0, 0, 0.16)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 8%, transparent),
+    inset 0 16px 22px -26px color-mix(in srgb, var(--client-elevated) 24%, transparent),
+    inset 0 -16px 22px -26px color-mix(in srgb, var(--client-text) 8%, transparent) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.95) contrast(1.08) brightness(1.06) !important;
+  backdrop-filter: blur(20px) saturate(1.95) contrast(1.08) brightness(1.06) !important;
+}
+
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header).client-floating-header-glass-frame::before {
+  opacity: 0.24;
+}
+
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header).client-floating-header-glass-frame::after {
+  opacity: 0.42;
 }
 
 .client-shell .client-portal-tab-header {

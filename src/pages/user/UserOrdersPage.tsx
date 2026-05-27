@@ -406,15 +406,17 @@ export function UserOrdersPage() {
 
   return (
     <MobileShell navItems={[]}>
-      <MobileFullscreenPage>
+      <MobileFullscreenPage innerClassName="client-glass-page-surface">
         <MobileFullscreenHeader
-          className={fullscreenHeaderClassName}
+          className={cn(fullscreenHeaderClassName, "needo-orders-glass-header")}
           info="确认后的订单、待服务记录与历史履约都统一收口在这里。"
           onBack={closePage}
+          onClose={closePage}
+          showSpacer={false}
           title="预约一览"
         />
 
-        <main ref={scrollRootRef} className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-8">
+        <main ref={scrollRootRef} className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-[calc(env(safe-area-inset-top)+86px)]">
           <section>
             {visibleOrders.length > 0 ? (
               <>

@@ -78,7 +78,7 @@ export function FloatingHomeHeader({
   return (
     <>
       {showSpacer ? <div aria-hidden="true" className={spacerClassName ?? fallbackSpacerClassName} style={spacerStyle} /> : null}
-      <div className={cn("pointer-events-none fixed inset-x-0 top-0 z-[35] !mt-0", frameClassName)}>
+      <div className={cn("pointer-events-none fixed inset-x-0 top-0 z-[35] !mt-0", frameClassName)} data-page-drag-ignore="true">
         <div
           className="pointer-events-auto mx-auto w-full"
           style={{

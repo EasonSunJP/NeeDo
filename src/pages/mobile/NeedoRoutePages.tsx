@@ -1,7 +1,15 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent
+} from "react";
 import { floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
-import { MobileFullscreenBackButton, MobileFullscreenCloseButton, MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
@@ -31,7 +39,6 @@ import {
   markNeedoPostViewed,
   getNeedoBasePath,
   getNeedoPostCustomerPath,
-  getPostLikeCount,
   getPostReplyCount,
   submitNeedoDemandApplication,
   storeForwardedExchange,
@@ -50,10 +57,162 @@ function getNeedoBudgetLabel(post: { budget: number; budgetLabel?: string }) {
   return post.budgetLabel ?? yen(post.budget);
 }
 
-type NeedoTopActionIconName = "like" | "favorite" | "translate" | "forward";
+type DetailDragSession = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startScrollTop: number;
+  captured: boolean;
+};
+
+function shouldIgnoreNeedoDetailDragTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return true;
+  }
+
+  return Boolean(
+    target.closest("a,input,select,textarea,option,nav,[contenteditable='true'],[data-page-drag-ignore='true'],[data-scroll-drag-ignore='true']")
+  );
+}
+
+function useNeedoDetailDragScroll() {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dragSessionRef = useRef<DetailDragSession | null>(null);
+  const suppressClickUntilRef = useRef(0);
+  const originalUserSelectRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (originalUserSelectRef.current !== null) {
+        document.body.style.userSelect = originalUserSelectRef.current;
+        originalUserSelectRef.current = null;
+      }
+    };
+  }, []);
+
+  const restoreDragStyles = () => {
+    if (originalUserSelectRef.current === null) {
+      return;
+    }
+
+    document.body.style.userSelect = originalUserSelectRef.current;
+    originalUserSelectRef.current = null;
+  };
+
+  const stopDrag = (pointerId: number) => {
+    const element = scrollRef.current;
+    const dragSession = dragSessionRef.current;
+
+    if (!element || !dragSession || dragSession.pointerId !== pointerId) {
+      return;
+    }
+
+    try {
+      element.releasePointerCapture(pointerId);
+    } catch {
+      // Pointer capture is best effort only.
+    }
+
+    if (dragSession.captured) {
+      suppressClickUntilRef.current = Date.now() + 180;
+    }
+
+    restoreDragStyles();
+    dragSessionRef.current = null;
+  };
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "mouse" || event.button !== 0 || shouldIgnoreNeedoDetailDragTarget(event.target)) {
+      return;
+    }
+
+    const element = scrollRef.current;
+
+    if (!element || element.scrollHeight <= element.clientHeight + 1) {
+      return;
+    }
+
+    dragSessionRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollTop: element.scrollTop,
+      captured: false
+    };
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const element = scrollRef.current;
+    const dragSession = dragSessionRef.current;
+
+    if (!element || !dragSession || dragSession.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - dragSession.startX;
+    const deltaY = event.clientY - dragSession.startY;
+    const absX = Math.abs(deltaX);
+    const absY = Math.abs(deltaY);
+
+    if (!dragSession.captured) {
+      if (absX > absY && absX > 8) {
+        dragSessionRef.current = null;
+        return;
+      }
+
+      if (absY <= 8) {
+        return;
+      }
+
+      try {
+        element.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is best effort only.
+      }
+
+      dragSession.captured = true;
+      originalUserSelectRef.current = document.body.style.userSelect;
+      document.body.style.userSelect = "none";
+    }
+
+    element.scrollTop = dragSession.startScrollTop - deltaY;
+    event.preventDefault();
+  };
+
+  const handleClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (suppressClickUntilRef.current <= Date.now()) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleDragStartCapture = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (!dragSessionRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+  };
+
+  return {
+    scrollRef,
+    dragScrollProps: {
+      onClickCapture: handleClickCapture,
+      onDragStartCapture: handleDragStartCapture,
+      onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => stopDrag(event.pointerId),
+      onPointerDown: handlePointerDown,
+      onPointerMove: handlePointerMove,
+      onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => stopDrag(event.pointerId)
+    }
+  };
+}
+
+type NeedoTopActionIconName = "favorite" | "translate" | "forward";
 
 function NeedoTopActionIcon({ name }: { name: NeedoTopActionIconName }) {
-  if (name === "like") {
+  if (name === "favorite") {
     return (
       <path
         d="M12 19.2s-6.8-4.3-8.6-8.3C2 7.8 4 5.2 7 5.2c1.8 0 3.2.8 5 2.9 1.8-2.1 3.2-2.9 5-2.9 3 0 5 2.6 3.6 5.7-1.8 4-8.6 8.3-8.6 8.3Z"
@@ -62,10 +221,6 @@ function NeedoTopActionIcon({ name }: { name: NeedoTopActionIconName }) {
         strokeWidth="1.8"
       />
     );
-  }
-
-  if (name === "favorite") {
-    return <path d="m12 4 2.5 5 5.5.8-4 3.9.9 5.3-4.9-2.6-4.9 2.6.9-5.3-4-3.9 5.5-.8L12 4Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.7" />;
   }
 
   if (name === "translate") {
@@ -348,13 +503,13 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
   const { postId } = useParams();
   const post = useMemo(() => findNeedoPost(context, postId), [context, postId]);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [liked, setLiked] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [translated, setTranslated] = useState(false);
   const [sharePost, setSharePost] = useState<ExchangePost | null>(null);
   const [sharedContact, setSharedContact] = useState<ForwardContact | null>(null);
   const [applicationFeedbackOpen, setApplicationFeedbackOpen] = useState(false);
   const [heroPreviewOpen, setHeroPreviewOpen] = useState(false);
+  const detailDragScroll = useNeedoDetailDragScroll();
   const forwardContacts = getForwardContacts(context);
   const appliedDemandPostIds = useNeedoDemandApplications(context);
   const bookedReversePostIds = useNeedoReverseBookings(context);
@@ -449,36 +604,33 @@ function NeedoPostDetailContent({ context }: { context: MessageCenterContext }) 
   };
 
   return (
-    <MobileFullscreenPage>
-      <div
-        aria-hidden="true"
-        className="absolute inset-x-0 top-0 z-10 h-[var(--client-sticky-tab-single-spacer)] border-b border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)]"
+    <MobileFullscreenPage innerClassName="client-glass-page-surface">
+      <MobileFullscreenHeader
+        action={(
+          <div className="flex items-center gap-1.5">
+            <NeedoTopActionButton active={translated} label={uiText("翻译")} name="translate" onClick={() => setTranslated((current) => !current)} />
+            <NeedoTopActionButton active={favorited} label={uiText("收藏")} name="favorite" onClick={() => setFavorited((current) => !current)} />
+            <NeedoTopActionButton
+              label={uiText("分享")}
+              name="forward"
+              onClick={() => {
+                setSharePost(post);
+                setSharedContact(null);
+              }}
+            />
+          </div>
+        )}
+        className={fullscreenHeaderClassName}
+        info={detailText(`${post.time} · ${post.area}`)}
+        onBack={closePage}
+        showSpacer={false}
+        title={uiText(post.type === "demand" ? "需求详情" : "情报详情")}
       />
-      <div className="pointer-events-none absolute inset-x-0 safe-floating-top z-[90] px-4">
-        <MobileFullscreenBackButton className="pointer-events-auto" onBack={closePage} />
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 safe-floating-top z-[90] flex justify-end px-4">
-        <div className="pointer-events-auto flex items-center gap-1.5">
-          <NeedoTopActionButton active={liked} label={`${uiText("点赞")} ${getPostLikeCount(post) + (liked ? 1 : 0)}`} name="like" onClick={() => setLiked((current) => !current)} />
-          <NeedoTopActionButton active={favorited} label={uiText("收藏")} name="favorite" onClick={() => setFavorited((current) => !current)} />
-          <NeedoTopActionButton active={translated} label={uiText("翻译")} name="translate" onClick={() => setTranslated((current) => !current)} />
-          <NeedoTopActionButton
-            label={uiText("转发")}
-            name="forward"
-            onClick={() => {
-              setSharePost(post);
-              setSharedContact(null);
-            }}
-          />
-        </div>
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 safe-header-top px-4 pb-3 text-[color:var(--client-text)]">
-        <div className="min-w-0 pl-[56px] pr-[212px]">
-          <div className="truncate text-base font-black">{uiText(post.type === "demand" ? "需求详情" : "情报详情")}</div>
-          <p className="mt-0.5 truncate text-[11px] font-bold leading-5 text-ink/45" data-no-i18n>{detailText(`${post.time} · ${post.area}`)}</p>
-        </div>
-      </div>
-      <main className="scrollbar-none relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+8.5rem)] pt-[var(--client-sticky-tab-single-spacer)]">
+      <main
+        className="scrollbar-none relative z-0 min-h-0 flex-1 cursor-grab space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+8.5rem)] pt-[calc(env(safe-area-inset-top)+86px)] active:cursor-grabbing"
+        ref={detailDragScroll.scrollRef}
+        {...detailDragScroll.dragScrollProps}
+      >
         <NeedoDetailHero
           applied={applied}
           appliedLabel={detailText("应募中")}

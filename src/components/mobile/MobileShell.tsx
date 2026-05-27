@@ -123,7 +123,7 @@ function shouldIgnorePageDrag(target: EventTarget | null) {
 
   return Boolean(
     target.closest(
-      "button, input, select, textarea, option, nav, [role='button'], [contenteditable='true'], [data-page-drag-ignore='true'], [data-scroll-drag-ignore='true']"
+      "input, select, textarea, option, nav, [contenteditable='true'], [data-page-drag-ignore='true'], [data-scroll-drag-ignore='true']"
     )
   );
 }

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   FloatingHomeHeader,
@@ -10,10 +10,14 @@ import {
 } from "../../components/mobile/FloatingHomeHeader";
 import { InteractiveAvatar } from "../../components/ui/InteractiveAvatar";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
+import { useIosScrollContainer } from "../../lib/useIosScrollContainer";
 import { cn } from "../../lib/utils";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Conversation, ImRoleType } from "./model";
 import { ImIcon, PrivateConversationTitle, SwipeActionRow } from "./components";
+
+const unifiedChatHomeShellClassName = "client-glass-page-surface relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-transparent";
+const unifiedChatHomeContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+143px)] [-webkit-overflow-scrolling:touch]";
 
 type UnifiedConversationPreview = {
   text: string;
@@ -41,11 +45,14 @@ export function UnifiedChatHomePage({
   searchBar: ReactNode;
   children: ReactNode;
 }) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const titleNode = typeof title === "string" ? <h1 className="truncate text-[29px] font-semibold tracking-[-0.05em] text-[color:var(--client-text)]">{title}</h1> : title;
+
+  useIosScrollContainer(contentRef);
 
   return (
     <div
-      className="relative min-h-[calc(100dvh-88px)] overflow-hidden bg-transparent"
+      className={unifiedChatHomeShellClassName}
       data-role-type={roleType}
     >
       <FloatingHomeHeader
@@ -53,6 +60,7 @@ export function UnifiedChatHomePage({
         frameClassName="z-40"
         maxWidth="880px"
         panelClassName={cn(floatingHeaderGlassPanelClassName, "text-[color:var(--client-text)]")}
+        showSpacer={false}
         spacerGapPx={0}
         stacked
       >
@@ -65,7 +73,7 @@ export function UnifiedChatHomePage({
         </div>
       </FloatingHomeHeader>
 
-      <div className="relative z-10 -mt-12 px-5 pb-6 pt-4">
+      <div className={unifiedChatHomeContentClassName} data-im-home-scroll="true" ref={contentRef}>
         {children}
       </div>
     </div>

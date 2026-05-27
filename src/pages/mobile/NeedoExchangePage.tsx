@@ -1474,16 +1474,17 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
       <div className="space-y-4 px-4 pb-4">
 
         {showComposer && (
-          <MobileFullscreenPage>
+          <MobileFullscreenPage innerClassName="client-glass-page-surface">
             <MobileFullscreenHeader
-              className={fullscreenHeaderClassName}
+              className={cn(fullscreenHeaderClassName, "needo-composer-glass-header")}
               onClose={closeComposer}
+              showSpacer={false}
               title={composerType === "demand" ? "发送需求" : composerStep === "preview" ? "预览情报" : "发送情报"}
             />
 
             {composerType === "demand" ? (
               <>
-                <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+                <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-28 pt-[calc(env(safe-area-inset-top)+86px)]">
                   <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
                     <TitleWithInfo
                       as="h3"
@@ -1637,7 +1638,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
               </>
             ) : composerStep === "edit" ? (
               <>
-                <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+                <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-28 pt-[calc(env(safe-area-inset-top)+86px)]">
                   <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
                     <TitleWithInfo
                       as="h3"
@@ -1879,7 +1880,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
               </>
             ) : (
               <>
-                <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-28">
+                <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-28 pt-[calc(env(safe-area-inset-top)+86px)]">
                   <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
                     <div className="flex items-center justify-between gap-3">
                       <Badge tone="green">情报预览</Badge>
