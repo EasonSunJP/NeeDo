@@ -315,6 +315,7 @@ const scheduleInsetClass =
   "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)]";
 const inputClass =
   "focus-ring h-11 min-w-0 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3.5 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
+const temporalInputClass = "calendar-event-editor__temporal-input mt-1 text-center";
 
 export function UnifiedCalendarSurface({ className, children, ...props }: HTMLAttributes<HTMLElement>) {
   return (
@@ -3530,7 +3531,7 @@ function CalendarEventEditorPage({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             日期
-            <input className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, date: event.target.value })} type="date" value={draft.date} />
+            <input className={cn(inputClass, temporalInputClass)} onChange={(event) => onChange({ ...draft, date: event.target.value })} type="date" value={draft.date} />
           </label>
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             提醒
@@ -3545,11 +3546,11 @@ function CalendarEventEditorPage({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             开始
-            <input className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, startTime: event.target.value })} type="time" value={draft.startTime} />
+            <input className={cn(inputClass, temporalInputClass)} onChange={(event) => onChange({ ...draft, startTime: event.target.value })} type="time" value={draft.startTime} />
           </label>
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             结束
-            <input className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, endTime: event.target.value })} type="time" value={draft.endTime} />
+            <input className={cn(inputClass, temporalInputClass)} onChange={(event) => onChange({ ...draft, endTime: event.target.value })} type="time" value={draft.endTime} />
           </label>
         </div>
         <input

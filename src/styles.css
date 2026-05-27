@@ -2622,6 +2622,49 @@ body:has(.merchant-analytics-clean-shell),
   border-radius: 9999px !important;
 }
 
+.client-shell .calendar-event-editor__temporal-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  inline-size: 100%;
+  max-width: 100%;
+  max-inline-size: 100%;
+  min-width: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: center;
+  text-align-last: center;
+}
+
+.client-shell .calendar-event-editor__temporal-input::-webkit-date-and-time-value {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  text-align: center;
+}
+
+.client-shell .calendar-event-editor__temporal-input::-webkit-datetime-edit {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.client-shell .calendar-event-editor__temporal-input::-webkit-datetime-edit-fields-wrapper {
+  display: flex;
+  min-width: 0;
+  justify-content: center;
+}
+
+.client-shell .calendar-event-editor__temporal-input::-webkit-calendar-picker-indicator {
+  flex: 0 0 auto;
+  margin-inline-start: 0;
+}
+
 .client-shell input,
 .client-shell select,
 .client-shell textarea {

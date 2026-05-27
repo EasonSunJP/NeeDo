@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+// @ts-expect-error -- Vitest runs this source guard in Node; frontend tsconfig intentionally omits Node types.
+import { readFileSync } from "node:fs";
 import source from "./UnifiedUserCalendar.tsx?raw";
+
+const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 
 describe("UnifiedUserCalendar event detail page", () => {
   it("shows event creator details, participant list entry, and creator chat wiring", () => {
@@ -35,5 +39,18 @@ describe("UnifiedUserCalendar event editor page", () => {
     expect(source).not.toContain("function EditorSheet");
     expect(source).not.toContain("border-t border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)]");
     expect(source).not.toContain("<BottomSheet onClose={onClose} title={draft.id ? \"编辑行程\" : \"新增行程\"}>");
+  });
+
+  it("keeps native date and time inputs constrained on mobile WebKit", () => {
+    expect(source).toContain('const temporalInputClass = "calendar-event-editor__temporal-input mt-1 text-center";');
+    expect(source).toContain('type="date"');
+    expect(source).toContain('type="time"');
+    expect(source.match(/cn\(inputClass, temporalInputClass\)/g)).toHaveLength(3);
+    expect(styles).toContain(".client-shell .calendar-event-editor__temporal-input");
+    expect(styles).toContain(".client-shell .calendar-event-editor__temporal-input::-webkit-date-and-time-value");
+    expect(styles).toContain(".client-shell .calendar-event-editor__temporal-input::-webkit-datetime-edit");
+    expect(styles).toContain("max-width: 100%;");
+    expect(styles).toContain("max-inline-size: 100%;");
+    expect(styles).toContain("-webkit-appearance: none;");
   });
 });
