@@ -1751,7 +1751,7 @@ export function MerchantPortalPage() {
               avatarSrc={store.cover}
               avatarTo={merchantPortalConfig.myPath}
               locationLabel={getMerchantLocationLabel(store)}
-              locationTo="/merchant/settings/profile"
+              locationTo="/merchant/settings/service-range"
               settingsLabel="打开设置中心"
               settingsTo={merchantPortalConfig.settingsPath}
             />
@@ -1770,7 +1770,7 @@ export function MerchantPortalPage() {
             avatarTo={merchantPortalConfig.myPath}
             forceLight
             locationLabel={getMerchantLocationLabel(store)}
-            locationTo="/merchant/settings/profile"
+            locationTo="/merchant/settings/service-range"
             settingsLabel="打开设置中心"
             settingsTo={merchantPortalConfig.settingsPath}
           />

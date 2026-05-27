@@ -98,6 +98,7 @@ export function ScheduleCycleBoard({
     [schedulingCurrentCycle, schedulingCycleSlots.nextCycle]
   );
   const canSelectCells = selectable && (!editingToggle || editing);
+  const hasBoardToolbar = Boolean(editingToggle || toolbarActions);
   const t = (text: string) => translateText(text, language);
 
   useEffect(() => {
@@ -177,29 +178,25 @@ export function ScheduleCycleBoard({
         </div>
       ) : null}
 
-      <div className="space-y-0">
-        <div className={cn("rounded-t-[28px] rounded-b-none border border-b-0 p-3 sm:p-4", cycleClusterClass)}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="min-w-0 text-xl font-black text-ink">{t("排班详细")}</h3>
-            <div className="flex min-w-0 flex-wrap justify-end gap-2">
-              {editingToggle ? (
-                <button
-                  aria-label={t(editing ? "完成修改" : "修改排班")}
-                  className={editIconButtonClass}
-                  onClick={() => setEditing((current) => !current)}
-                  title={t(editing ? "完成修改" : "修改排班")}
-                  type="button"
-                >
-                  <AppIcon className="h-4 w-4" name="edit" />
-                </button>
-              ) : null}
-              {toolbarActions}
-            </div>
+      <div className="space-y-3">
+        {hasBoardToolbar ? (
+          <div className="flex min-w-0 flex-wrap justify-end gap-2">
+            {editingToggle ? (
+              <button
+                aria-label={t(editing ? "完成修改" : "修改排班")}
+                className={editIconButtonClass}
+                onClick={() => setEditing((current) => !current)}
+                title={t(editing ? "完成修改" : "修改排班")}
+                type="button"
+              >
+                <AppIcon className="h-4 w-4" name="edit" />
+              </button>
+            ) : null}
+            {toolbarActions}
           </div>
-        </div>
+        ) : null}
 
         <ScheduleCycleCalendarBoard
-          className="rounded-t-none rounded-b-[28px]"
           cycleId={cycle.id}
           dateKey={dateKey}
           getTechnicianDetailPath={(technicianId) => `/merchant/staff/${encodeURIComponent(technicianId)}`}

@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent as ReactUIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent as ReactUIEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AppIcon, floatingHeaderControlButtonClassName } from "../client-ui/AppScaffold";
+import { AppIcon, floatingHeaderControlButtonClassName, type IconName } from "../client-ui/AppScaffold";
 import { FloatingActionButton } from "../mobile/FloatingActionButton";
-import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
+import { MobileFullscreenCloseButton, MobileFullscreenHeader } from "../mobile/MobileFullscreenHeader";
+import { MobileFullscreenPage } from "../mobile/MobileFullscreenPage";
 import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./ScheduleDraftRangeBlock";
 import { AvatarImage } from "../ui/AvatarImage";
+import { ConversationListItem } from "../ui/ConversationListItem";
 import { orders } from "../../data/mock";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
 import { getDisplayName, type ContactRelation, type Conversation, type ImRoleType, type ImUser } from "../../features/im/model";
-import { isContactVisibleForRole } from "../../features/im/role-config";
+import { getImRoleConfig, isContactVisibleForRole } from "../../features/im/role-config";
 import { useImStore } from "../../features/im/store";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn } from "../../lib/utils";
@@ -18,6 +20,8 @@ import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserS
 import { japaneseHolidaySeeds } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
+import { useI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import {
   fetchGoogleCalendarApi,
   getGoogleCalendarActorId,
@@ -31,7 +35,6 @@ import { googleAccountIconSrc } from "../../lib/googleAccountApi";
 import { useEntityStore } from "../../state/entityStore";
 import { useScheduleStore } from "../../state/scheduleStore";
 import { useTechnicianScheduleStore } from "../../state/technicianScheduleStore";
-import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Customer, Order, Schedule, Store, Technician } from "../../types/domain";
 import {
   addDays,
@@ -70,6 +73,22 @@ type SyncContactOption = {
   kind?: SyncContactFilterMode;
 };
 
+type CalendarEventCreator = {
+  label: string;
+  userId?: string;
+  entityType?: ImUser["entityType"];
+  entityId?: string;
+};
+
+export type UnifiedCalendarParticipant = {
+  id: string;
+  name: string;
+  avatar?: string;
+  meta?: string;
+  role?: string;
+  to?: string;
+};
+
 export type UnifiedCalendarLane = {
   id: string;
   label: string;
@@ -101,6 +120,11 @@ export type UnifiedCalendarEvent = {
   birthdayContactId?: string;
   birthdayTags?: string[];
   birthdayScope?: "self" | "contact";
+  creatorLabel?: string;
+  creatorUserId?: string;
+  creatorEntityType?: ImUser["entityType"];
+  creatorEntityId?: string;
+  participants?: UnifiedCalendarParticipant[];
 };
 
 type LocalCalendarEvent = {
@@ -286,12 +310,19 @@ const merchantAppointmentStatusFilterOptions: Array<{ value: MerchantAppointment
 const merchantAssignedAppointmentLaneId = "merchant:assigned-appointments";
 const merchantUnassignedAppointmentLaneId = "merchant:unassigned-appointments";
 
-const schedulePanelClass =
-  "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[var(--client-shadow)]";
+const unifiedCalendarSurfaceClassName = "relative overflow-visible";
 const scheduleInsetClass =
   "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)]";
 const inputClass =
   "focus-ring h-11 min-w-0 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3.5 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
+
+export function UnifiedCalendarSurface({ className, children, ...props }: HTMLAttributes<HTMLElement>) {
+  return (
+    <section className={cn(unifiedCalendarSurfaceClassName, className)} {...props}>
+      {children}
+    </section>
+  );
+}
 
 function addMinutesToTime(time: string, minutes: number) {
   return minutesToTime(timeToMinutes(time) + minutes);
@@ -358,7 +389,7 @@ function getTechnicianCalendarLaneId(technicianId: string) {
   return `technician:${technicianId}`;
 }
 
-function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOptions: SyncContactOption[]): UnifiedCalendarEvent[] {
+function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOptions: SyncContactOption[], creator?: CalendarEventCreator): UnifiedCalendarEvent[] {
   return localEvents.map((event): UnifiedCalendarEvent => ({
     id: event.id,
     sourceId: "user",
@@ -376,7 +407,18 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
     images: event.images,
     reminder: event.reminder,
     syncContactLabels: getSyncContactLabels(event.syncContactIds, syncContactOptions),
-    visibility: getSyncContactLabels(event.syncContactIds, syncContactOptions).join("、") || "未同步"
+    visibility: getSyncContactLabels(event.syncContactIds, syncContactOptions).join("、") || "未同步",
+    participants: event.syncContactIds
+      .map((contactId) => syncContactOptions.find((option) => option.id === contactId))
+      .filter((option): option is SyncContactOption => Boolean(option))
+      .map((option) => ({
+        id: option.id,
+        name: option.label,
+        avatar: option.avatar,
+        meta: option.description,
+        role: option.id.startsWith("group:") ? "群组" : option.id.startsWith("tag:") ? "标签" : "参加者"
+      })),
+    ...getCalendarCreatorFields(creator)
   }));
 }
 
@@ -402,7 +444,11 @@ function getOrderEvents(currentCustomer: Customer): UnifiedCalendarEvent[] {
         badge: order.status === "inService" ? "服务中" : "我的行程",
         readOnly: true,
         orderId: order.id,
-        location: order.area
+        location: order.area,
+        participants: dedupeCalendarParticipants([
+          getCustomerParticipant(currentCustomer, "user", "参加者")
+        ]),
+        ...getCalendarCreatorFields(getCustomerCreator(currentCustomer))
       };
     })
     .filter((event): event is UnifiedCalendarEvent => Boolean(event));
@@ -434,6 +480,165 @@ function getTechnicianName(technicians: Technician[], technicianId: string) {
 
 function getStoreName(stores: ReturnType<typeof useEntityStore>["stores"], storeId: string) {
   return stores.find((store) => store.id === storeId)?.name ?? "店铺";
+}
+
+function getCustomerDisplayName(customer: Customer) {
+  return customer.nickname?.trim() || customer.name;
+}
+
+function getTechnicianDisplayName(technician: Technician) {
+  return technician.nickname?.trim() || technician.name;
+}
+
+function getCustomerCreator(customer: Customer): CalendarEventCreator {
+  return {
+    label: getCustomerDisplayName(customer),
+    entityType: "user",
+    entityId: customer.id
+  };
+}
+
+function getStoreCreator(stores: ReturnType<typeof useEntityStore>["stores"], storeId: string): CalendarEventCreator {
+  return {
+    label: getStoreName(stores, storeId),
+    entityType: "shop",
+    entityId: storeId
+  };
+}
+
+function getCurrentScopeCreator(
+  scope: UnifiedCalendarScope,
+  currentCustomer: Customer | undefined,
+  currentTechnician: Technician | undefined,
+  currentStore: Store | undefined
+): CalendarEventCreator | undefined {
+  if (scope === "merchant" && currentStore) {
+    return { label: currentStore.name, entityType: "shop", entityId: currentStore.id };
+  }
+
+  if (scope === "technician" && currentTechnician) {
+    return { label: getTechnicianDisplayName(currentTechnician), entityType: "technician", entityId: currentTechnician.id };
+  }
+
+  if (currentCustomer) {
+    return getCustomerCreator(currentCustomer);
+  }
+
+  return { label: "我" };
+}
+
+function dedupeCalendarParticipants(participants: Array<UnifiedCalendarParticipant | null | undefined>) {
+  const seen = new Set<string>();
+  return participants.filter((participant): participant is UnifiedCalendarParticipant => {
+    if (!participant?.name.trim()) {
+      return false;
+    }
+
+    const key = participant.id || participant.name;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function getCustomerParticipant(customer: Customer | undefined, scope: UnifiedCalendarScope, role = "参加者"): UnifiedCalendarParticipant | null {
+  if (!customer) {
+    return null;
+  }
+
+  return {
+    id: `customer:${customer.id}`,
+    name: customer.nickname?.trim() || customer.name,
+    avatar: customer.avatar,
+    meta: [customer.memberLevel, customer.systemId].filter(Boolean).join(" · "),
+    role,
+    to: getScopedProfileDetailPath(scope, "user", customer.id)
+  };
+}
+
+function getTechnicianParticipant(technician: Technician | undefined, scope: UnifiedCalendarScope, role = "参加者"): UnifiedCalendarParticipant | null {
+  if (!technician) {
+    return null;
+  }
+
+  return {
+    id: `technician:${technician.id}`,
+    name: technician.nickname?.trim() || technician.name,
+    avatar: technician.avatar,
+    meta: [technician.identityLabel, technician.status === "busy" ? "服务中" : technician.status === "off" ? "休息" : "可排班"].filter(Boolean).join(" · "),
+    role,
+    to: getScopedProfileDetailPath(scope, "technician", technician.id)
+  };
+}
+
+function getStoreParticipant(store: Store | undefined, scope: UnifiedCalendarScope, role = "创建者"): UnifiedCalendarParticipant | null {
+  if (!store) {
+    return null;
+  }
+
+  return {
+    id: `store:${store.id}`,
+    name: store.name,
+    avatar: store.cover,
+    meta: [store.area, store.tags[0]].filter(Boolean).join(" · "),
+    role,
+    to: getScopedProfileDetailPath(scope, "shop", store.id)
+  };
+}
+
+function getNamedParticipant(name: string | undefined, role = "参加者", meta?: string): UnifiedCalendarParticipant | null {
+  const label = name?.trim();
+  if (!label) {
+    return null;
+  }
+
+  return {
+    id: `named:${label}`,
+    name: label,
+    meta,
+    role
+  };
+}
+
+function getCalendarCreatorFields(creator?: CalendarEventCreator) {
+  if (!creator) {
+    return {};
+  }
+
+  return {
+    creatorLabel: creator.label,
+    creatorUserId: creator.userId,
+    creatorEntityType: creator.entityType,
+    creatorEntityId: creator.entityId
+  } satisfies Pick<UnifiedCalendarEvent, "creatorLabel" | "creatorUserId" | "creatorEntityType" | "creatorEntityId">;
+}
+
+function findCalendarCreatorUser(event: UnifiedCalendarEvent, users: ImUser[]) {
+  if (event.creatorUserId) {
+    return users.find((user) => user.id === event.creatorUserId);
+  }
+
+  if (!event.creatorEntityType || !event.creatorEntityId) {
+    return undefined;
+  }
+
+  return users.find((user) => user.entityType === event.creatorEntityType && user.entityId === event.creatorEntityId);
+}
+
+function resolveCalendarCreator(event: UnifiedCalendarEvent, users: ImUser[]): UnifiedCalendarEvent {
+  const creatorUser = findCalendarCreatorUser(event, users);
+
+  if (!creatorUser) {
+    return event;
+  }
+
+  return {
+    ...event,
+    creatorLabel: event.creatorLabel?.trim() || creatorUser.nickname,
+    creatorUserId: creatorUser.id
+  };
 }
 
 function getBookingBadge(eventType?: string) {
@@ -471,7 +676,12 @@ function getTechnicianEvents(
       title: `${getTechnicianName(technicians, shift.technicianId)} 出勤`,
       subtitle: `${getStoreName(stores, shift.storeId)} · ${shift.shiftLabel}`,
       badge: "出勤",
-      readOnly: true
+      readOnly: true,
+      participants: dedupeCalendarParticipants([
+        getTechnicianParticipant(technicians.find((item) => item.id === shift.technicianId), "user", "参加者"),
+        getStoreParticipant(stores.find((item) => item.id === shift.storeId), "user", "创建者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, shift.storeId))
     }));
 
   const bookingEvents = snapshot.bookings
@@ -488,7 +698,12 @@ function getTechnicianEvents(
       subtitle: `${getTechnicianName(technicians, booking.technicianId)} · ${getStoreName(stores, booking.storeId)}`,
       badge: getBookingBadge(booking.eventType),
       readOnly: true,
-      orderId: booking.orderId
+      orderId: booking.orderId,
+      participants: dedupeCalendarParticipants([
+        getCustomerParticipant(currentCustomer, "user", "参加者"),
+        getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "user", "参加者")
+      ]),
+      ...getCalendarCreatorFields(getCustomerCreator(currentCustomer))
     }));
 
   return [...shiftEvents, ...bookingEvents];
@@ -532,7 +747,12 @@ function getTechnicianEventsForTechnician(
       title: `${getTechnicianName(technicians, shift.technicianId)} 出勤`,
       subtitle: `${getStoreName(stores, shift.storeId)} · ${shift.shiftLabel}`,
       badge: "出勤",
-      readOnly: true
+      readOnly: true,
+      participants: dedupeCalendarParticipants([
+        getTechnicianParticipant(technicians.find((item) => item.id === shift.technicianId), "technician", "参加者"),
+        getStoreParticipant(stores.find((item) => item.id === shift.storeId), "technician", "创建者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, shift.storeId))
     }));
 
   const bookingEvents = snapshot.bookings
@@ -549,7 +769,12 @@ function getTechnicianEventsForTechnician(
       subtitle: `${booking.customerName} · ${getStoreName(stores, booking.storeId)}`,
       badge: getBookingBadge(booking.eventType),
       readOnly: true,
-      orderId: booking.orderId
+      orderId: booking.orderId,
+      participants: dedupeCalendarParticipants([
+        getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "technician", "参加者"),
+        getNamedParticipant(booking.customerName, "参加者", "顾客")
+      ]),
+      ...getCalendarCreatorFields({ label: booking.customerName })
     }));
 
   const customEvents = snapshot.customEvents
@@ -568,7 +793,12 @@ function getTechnicianEventsForTechnician(
       readOnly: true,
       location: event.location,
       reminder: event.reminder,
-      visibility: event.visibility
+      visibility: event.visibility,
+      participants: dedupeCalendarParticipants([
+        getTechnicianParticipant(technicians.find((item) => item.id === event.technicianId), "technician", "参加者"),
+        getStoreParticipant(stores.find((item) => item.id === event.storeId), "technician", "创建者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, event.storeId))
     }));
 
   return [...shiftEvents, ...bookingEvents, ...customEvents];
@@ -609,7 +839,13 @@ function getMerchantEvents(
       badge: arrangement.status === "inService" ? "服务中" : arrangement.status === "pending" ? "待确认" : "商户安排",
       readOnly: true,
       orderId: arrangement.orderId,
-      location: arrangement.address
+      location: arrangement.address,
+      participants: dedupeCalendarParticipants([
+        getCustomerParticipant(currentCustomer, "user", "参加者"),
+        getTechnicianParticipant(technicians.find((item) => item.id === arrangement.technicianId), "user", "参加者"),
+        getStoreParticipant(stores.find((item) => item.id === arrangement.storeId), "user", "创建者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, arrangement.storeId))
     }));
 
   const scheduleEvents = scheduleSnapshot.schedules
@@ -628,7 +864,12 @@ function getMerchantEvents(
         subtitle: technician ? getStoreName(stores, technician.storeId) : "商户排班",
         badge: getMerchantScheduleBadge(schedule),
         readOnly: true,
-        orderId: schedule.orderId
+        orderId: schedule.orderId,
+        participants: dedupeCalendarParticipants([
+          getTechnicianParticipant(technician, "user", "参加者"),
+          getCustomerParticipant(currentCustomer, "user", "参加者")
+        ]),
+        ...getCalendarCreatorFields(technician ? getStoreCreator(stores, technician.storeId) : { label: "商户排班" })
       };
     });
 
@@ -647,7 +888,12 @@ function getMerchantEvents(
       subtitle: `${getStoreName(stores, booking.storeId)} · ${getTechnicianName(technicians, booking.technicianId)}`,
       badge: booking.eventType === "extension" ? "商户加钟" : booking.eventType === "reschedule" ? "商户改期" : "商户确认",
       readOnly: true,
-      orderId: booking.orderId
+      orderId: booking.orderId,
+      participants: dedupeCalendarParticipants([
+        getCustomerParticipant(currentCustomer, "user", "参加者"),
+        getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "user", "参加者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, booking.storeId))
     }));
 
   return [...arrangementEvents, ...scheduleEvents, ...bookingBackfillEvents];
@@ -689,7 +935,13 @@ function getMerchantEventsForTechnician(
       badge: getArrangementStatusBadge(arrangement.status),
       readOnly: true,
       orderId: arrangement.orderId,
-      location: arrangement.address
+      location: arrangement.address,
+      participants: dedupeCalendarParticipants([
+        getTechnicianParticipant(technicians.find((item) => item.id === technicianId), "technician", "参加者"),
+        getNamedParticipant(arrangement.customerName, "参加者", "顾客"),
+        getStoreParticipant(stores.find((item) => item.id === arrangement.storeId), "technician", "创建者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, arrangement.storeId))
     }));
 
   const scheduleEvents = scheduleSnapshot.schedules
@@ -706,7 +958,12 @@ function getMerchantEventsForTechnician(
       subtitle: technician ? getStoreName(stores, technician.storeId) : "商户排班",
       badge: getMerchantScheduleBadge(schedule),
       readOnly: true,
-      orderId: schedule.orderId
+      orderId: schedule.orderId,
+      participants: dedupeCalendarParticipants([
+        getTechnicianParticipant(technicians.find((item) => item.id === schedule.staffId), "technician", "参加者"),
+        getStoreParticipant(technician ? stores.find((item) => item.id === technician.storeId) : undefined, "technician", "创建者")
+      ]),
+      ...getCalendarCreatorFields(technician ? getStoreCreator(stores, technician.storeId) : { label: "商户排班" })
     }));
 
   return [...arrangementEvents, ...scheduleEvents];
@@ -745,6 +1002,7 @@ function getMerchantEventsForStore(
   arrangements: DispatchArrangement[],
   technicianSnapshot: ReturnType<typeof useTechnicianScheduleStore>,
   scheduleSnapshot: ReturnType<typeof useScheduleStore>,
+  customers: Customer[],
   stores: ReturnType<typeof useEntityStore>["stores"],
   technicians: Technician[],
   laneMode: MerchantCalendarLaneMode = "technician"
@@ -775,7 +1033,13 @@ function getMerchantEventsForStore(
       badge: getArrangementStatusBadge(arrangement.status),
       readOnly: true,
       orderId: arrangement.orderId,
-      location: arrangement.address
+      location: arrangement.address,
+      participants: dedupeCalendarParticipants([
+        getCustomerParticipant(customers.find((item) => item.id === arrangement.customerId), "merchant", "参加者"),
+        getTechnicianParticipant(technicians.find((item) => item.id === arrangement.technicianId), "merchant", "参加者"),
+        getStoreParticipant(currentStore, "merchant", "创建者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, arrangement.storeId))
     }));
   const scheduleEvents = scheduleSnapshot.schedules
     .filter((schedule) => storeTechnicianIds.has(schedule.staffId))
@@ -792,7 +1056,12 @@ function getMerchantEventsForStore(
       subtitle: laneMode === "appointmentStatus" ? `${getTechnicianName(technicians, schedule.staffId)} · ${currentStore.name}` : `${currentStore.name} · 商户排班`,
       badge: getMerchantScheduleBadge(schedule),
       readOnly: true,
-      orderId: schedule.orderId
+      orderId: schedule.orderId,
+      participants: dedupeCalendarParticipants([
+        getTechnicianParticipant(technicians.find((item) => item.id === schedule.staffId), "merchant", "参加者"),
+        getStoreParticipant(currentStore, "merchant", "创建者")
+      ]),
+      ...getCalendarCreatorFields(getStoreCreator(stores, currentStore.id))
     }));
 
   const arrangementEventKeys = new Set(arrangementEvents.map((event) => `${event.orderId ?? event.id}:${event.date}`));
@@ -814,7 +1083,13 @@ function getMerchantEventsForStore(
           subtitle: `${booking.customerName} · ${getTechnicianName(technicians, booking.technicianId)}`,
           badge: booking.eventType === "extension" ? "加钟" : booking.eventType === "reschedule" ? "改期" : "已排预约",
           readOnly: true,
-          orderId: booking.orderId
+          orderId: booking.orderId,
+          participants: dedupeCalendarParticipants([
+            getNamedParticipant(booking.customerName, "参加者", "顾客"),
+            getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "merchant", "参加者"),
+            getStoreParticipant(currentStore, "merchant", "创建者")
+          ]),
+          ...getCalendarCreatorFields(getStoreCreator(stores, booking.storeId))
         }))
     : [];
 
@@ -2447,7 +2722,8 @@ function DayTimeline({
 
   return (
     <div
-      className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)]"
+      className="overflow-visible rounded-none border-0 bg-transparent"
+      data-calendar-day-timeline="true"
       ref={timelineRootRef}
     >
       {floatingLaneFrame.visible && hasParallelCalendars && activeCalendarLanes ? (
@@ -2477,7 +2753,8 @@ function DayTimeline({
         </div>
       ) : null}
       <div
-        className={cn(hasHorizontalTimeline && "scrollbar-none cursor-grab overflow-x-auto overscroll-x-contain active:cursor-grabbing")}
+        className={cn("min-w-0", hasHorizontalTimeline && "scrollbar-none cursor-grab overflow-x-auto overflow-y-visible overscroll-x-contain active:cursor-grabbing")}
+        data-calendar-day-timeline-scroll="true"
         ref={hasHorizontalTimeline ? scrollRef : undefined}
         style={hasHorizontalTimeline ? { touchAction: "pan-y" } : undefined}
         {...(hasHorizontalTimeline ? dragScrollProps : {})}
@@ -2489,7 +2766,10 @@ function DayTimeline({
               ref={timelineHeaderRef}
               style={{ gridTemplateColumns: `${timelineTimeColumnWidth}px minmax(0, 1fr)` }}
             >
-              <div className="sticky left-0 z-[12] border-r border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)]" />
+              <div
+                className="sticky left-0 z-[12] border-r border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-transparent"
+                data-calendar-time-corner="true"
+              />
               <div className="grid" style={{ gridTemplateColumns: `repeat(${activeCalendarLanes.length}, minmax(${timelineLaneMinWidth}px, 1fr))` }}>
                 {activeCalendarLanes.map((calendar) => {
                   const content = (
@@ -2520,7 +2800,10 @@ function DayTimeline({
             </div>
           ) : null}
           <div className="grid" style={{ gridTemplateColumns: `${timelineTimeColumnWidth}px minmax(0, 1fr)` }}>
-            <div className="sticky left-0 z-[12] border-r border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)] shadow-[12px_0_18px_rgba(0,0,0,0.10)]">
+            <div
+              className="sticky left-0 z-[12] border-r border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-transparent shadow-none"
+              data-calendar-time-column="true"
+            >
               {Array.from({ length: dayEndHour - dayStartHour }, (_, index) => {
                 const hour = dayStartHour + index;
                 return (
@@ -2709,92 +2992,6 @@ function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onC
   );
 }
 
-function BottomSheet({
-  title,
-  children,
-  onClose,
-  placement = "bottom"
-}: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-  placement?: "bottom" | "center";
-}) {
-  useEffect(() => {
-    if (typeof document === "undefined") {
-      return undefined;
-    }
-
-    const root = document.documentElement;
-    const body = document.body;
-    const scrollY = window.scrollY;
-    const previousRootOverflow = root.style.overflow;
-    const previousRootOverscrollBehavior = root.style.overscrollBehavior;
-    const previousBodyOverflow = body.style.overflow;
-    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
-    const previousBodyPosition = body.style.position;
-    const previousBodyTop = body.style.top;
-    const previousBodyWidth = body.style.width;
-
-    root.style.overflow = "hidden";
-    root.style.overscrollBehavior = "none";
-    body.style.overflow = "hidden";
-    body.style.overscrollBehavior = "none";
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.width = "100%";
-
-    return () => {
-      root.style.overflow = previousRootOverflow;
-      root.style.overscrollBehavior = previousRootOverscrollBehavior;
-      body.style.overflow = previousBodyOverflow;
-      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
-      body.style.position = previousBodyPosition;
-      body.style.top = previousBodyTop;
-      body.style.width = previousBodyWidth;
-      window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
-    };
-  }, []);
-
-  const isCentered = placement === "center";
-  const sheet = (
-    <div
-      aria-modal="true"
-      className={cn(
-        "fixed inset-0 z-[260] flex h-[100dvh] w-screen max-w-full touch-pan-y justify-center overflow-hidden overscroll-none bg-black/42 text-[color:var(--client-text)] backdrop-blur-[5px] backdrop-saturate-75",
-        isCentered
-          ? "items-center px-5 pb-[max(18px,env(safe-area-inset-bottom))] pt-[max(18px,env(safe-area-inset-top))]"
-          : "items-end px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-[max(12px,env(safe-area-inset-top))]"
-      )}
-      data-page-drag-ignore="true"
-      data-scroll-drag-ignore="true"
-      onClick={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-      onPointerMove={(event) => event.stopPropagation()}
-      onTouchMove={(event) => event.stopPropagation()}
-      onWheel={(event) => event.stopPropagation()}
-      role="dialog"
-    >
-      <div
-        className={cn(
-          "flex max-h-[calc(100dvh_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)_-_24px)] w-full min-w-0 flex-col overflow-hidden border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,var(--client-bg)_4%)] shadow-[var(--client-shadow)] backdrop-blur-xl",
-          isCentered ? "max-w-[min(440px,calc(100vw-40px))] rounded-[26px]" : "max-w-[min(480px,calc(100vw-24px))] rounded-[28px]"
-        )}
-      >
-        <div className="grid shrink-0 grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-3">
-          <span aria-hidden="true" className="h-11 w-11" />
-          <strong className="min-w-0 truncate text-center text-sm font-black text-[color:var(--client-text)]">{title}</strong>
-          <MobileFullscreenCloseButton label={`关闭${title}`} onClose={onClose} />
-        </div>
-        <div className="scrollbar-none min-h-0 max-w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-4 py-4 [-webkit-overflow-scrolling:touch]">{children}</div>
-      </div>
-    </div>
-  );
-
-  return sheet;
-}
-
 function SyncContactOptionAvatar({ option, active }: { option: SyncContactOption; active: boolean }) {
   if (option.avatar) {
     return (
@@ -2824,92 +3021,425 @@ function SyncContactOptionAvatar({ option, active }: { option: SyncContactOption
   );
 }
 
-function EventDetailSheet({
-  event,
-  onClose,
-  onEdit,
-  onDelete
+function getEventParticipantFallback(event: UnifiedCalendarEvent, creatorLabel: string, sourceLabel: string) {
+  return dedupeCalendarParticipants([
+    ...(event.participants ?? []),
+    event.creatorLabel ? getNamedParticipant(creatorLabel, "创建者", sourceLabel) : null,
+    ...(event.syncContactLabels ?? []).map((label) => getNamedParticipant(label, "参加者", "同步联系人")),
+    event.calendarLabel ? getNamedParticipant(event.calendarLabel, "参加者", event.calendarId) : null
+  ]);
+}
+
+function EventParticipantAvatar({
+  participant,
+  className
 }: {
-  event: UnifiedCalendarEvent;
-  onClose: () => void;
-  onEdit: (event: UnifiedCalendarEvent) => void;
-  onDelete: (event: UnifiedCalendarEvent) => void;
+  participant: UnifiedCalendarParticipant;
+  className?: string;
 }) {
-  const source = sourceConfigs[event.sourceId];
+  if (participant.avatar) {
+    return <AvatarImage alt={participant.name} className={cn("border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)]", className)} src={participant.avatar} />;
+  }
+
   return (
-    <BottomSheet onClose={onClose} placement="center" title="行程详情">
-      <div className="space-y-3">
-        <div className={cn(scheduleInsetClass, "px-4 py-3")} style={getEventStyle(event)}>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full bg-[color:var(--calendar-accent)]" />
-            <span className="text-xs font-black text-[color:var(--calendar-text)]">{source.label}</span>
-            <span className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-2 py-0.5 text-[10px] font-black text-[color:var(--client-muted)]">
-              {event.badge}
-            </span>
-          </div>
-          <h3 className="mt-3 text-xl font-black leading-7 text-[color:var(--client-text)]">{event.title || "（无标题）"}</h3>
-          <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">
-            {formatLongDate(event.date)} · {event.startTime} - {event.endTime}
-          </p>
-        </div>
-
-        {[
-          ["位置", event.location],
-          ["备注", event.note],
-          ["提醒", event.reminder],
-          ["同步联系人", event.syncContactLabels?.join("、") || event.visibility],
-          ["同步信息", event.subtitle]
-        ]
-          .filter(([, value]) => Boolean(value))
-          .map(([label, value]) => (
-            <div className={cn(scheduleInsetClass, "px-4 py-3")} key={label}>
-              <span className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</span>
-              <p className="mt-1 text-sm font-black text-[color:var(--client-text)]">{value}</p>
-            </div>
-          ))}
-
-        {event.images && event.images.length > 0 ? (
-          <div className="grid grid-cols-3 gap-2">
-            {event.images.map((image) => (
-              <img alt={image.name} className="aspect-square rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] object-cover" key={image.id} src={image.dataUrl} />
-            ))}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-2 gap-2">
-          {!event.readOnly ? (
-            <>
-              <button
-                className="focus-ring h-11 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:var(--client-primary-soft)] text-sm font-black text-[color:var(--client-primary-strong)]"
-                onClick={() => onEdit(event)}
-                type="button"
-              >
-                编辑
-              </button>
-              <button
-                className="focus-ring h-11 rounded-full border border-[color:color-mix(in_srgb,var(--client-accent)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-accent)_12%,var(--client-elevated))] text-sm font-black text-[color:color-mix(in_srgb,var(--client-accent)_82%,var(--client-text)_18%)]"
-                onClick={() => onDelete(event)}
-                type="button"
-              >
-                删除
-              </button>
-            </>
-          ) : (
-            <button
-              className="focus-ring col-span-2 h-11 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] text-sm font-black text-[color:var(--client-muted)]"
-              onClick={onClose}
-              type="button"
-            >
-              只读同步
-            </button>
-          )}
-        </div>
-      </div>
-    </BottomSheet>
+    <span className={cn("grid place-items-center rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[12px] font-black text-[color:var(--client-muted)]", className)}>
+      {participant.name.trim().slice(0, 1) || "参"}
+    </span>
   );
 }
 
-function EditorSheet({
+function EventParticipantStack({ participants }: { participants: UnifiedCalendarParticipant[] }) {
+  const previewParticipants = participants.slice(0, 4);
+  const overflowCount = Math.max(0, participants.length - previewParticipants.length);
+
+  return (
+    <div className="flex shrink-0 items-center">
+      {previewParticipants.map((participant, index) => (
+        <EventParticipantAvatar
+          className={cn("h-9 w-9 shadow-[0_8px_18px_rgba(0,0,0,0.18)]", index > 0 && "-ml-2")}
+          key={participant.id}
+          participant={participant}
+        />
+      ))}
+      {overflowCount > 0 ? (
+        <span className="-ml-2 grid h-9 min-w-9 place-items-center rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_86%,transparent)] px-2 text-[11px] font-black text-[color:var(--client-muted)]">
+          +{overflowCount}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function EventDetailIconButton({
+  disabled,
+  icon,
+  label,
+  onClick,
+  tone = "default"
+}: {
+  disabled?: boolean;
+  icon: IconName;
+  label: string;
+  onClick?: () => void;
+  tone?: "default" | "primary";
+}) {
+  return (
+    <button
+      aria-label={label}
+      className={cn(
+        floatingHeaderControlButtonClassName,
+        "shrink-0",
+        tone === "primary" && "text-[color:var(--client-primary)]",
+        disabled && "cursor-not-allowed opacity-45"
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <AppIcon className="h-5 w-5" name={icon} />
+    </button>
+  );
+}
+
+function EventDetailMoreMenuItem({
+  danger,
+  disabled,
+  icon,
+  label,
+  onClick
+}: {
+  danger?: boolean;
+  disabled?: boolean;
+  icon: IconName;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        "focus-ring flex w-full items-center gap-3 whitespace-nowrap rounded-[16px] px-3 py-3 text-left text-[14px] font-black transition hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+        danger ? "text-[#ff7f74]" : "text-[color:var(--client-text)]",
+        disabled && "cursor-not-allowed opacity-45"
+      )}
+      data-no-i18n
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      <span
+        className={cn(
+          "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] text-[color:var(--client-primary)]",
+          danger && "bg-[color:color-mix(in_srgb,var(--client-accent)_12%,transparent)] text-[#ff9b92]"
+        )}
+      >
+        <AppIcon className="h-4.5 w-4.5" name={icon} />
+      </span>
+      <span className="whitespace-nowrap">{label}</span>
+    </button>
+  );
+}
+
+function EventDetailField({
+  icon,
+  label,
+  value
+}: {
+  icon: "calendar" | "map" | "manager" | "bell" | "clock";
+  label: string;
+  value?: ReactNode;
+}) {
+  if (!value) {
+    return null;
+  }
+
+  return (
+    <div className="grid grid-cols-[36px_minmax(0,1fr)] gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] px-3 py-3">
+      <span className="grid h-9 w-9 place-items-center rounded-[14px] text-[color:var(--client-muted)]">
+        <AppIcon className="h-5 w-5" name={icon} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] font-black text-[color:var(--client-muted)]">{label}</span>
+        <span className="mt-1 block text-sm font-black leading-5 text-[color:var(--client-text)]">{value}</span>
+      </span>
+    </div>
+  );
+}
+
+function isNeedoAppointmentEvent(event: UnifiedCalendarEvent) {
+  return Boolean(getNeedoAppBookingTitle(event.orderId, event.title));
+}
+
+export function UnifiedCalendarEventDetailPage({
+  event,
+  onBack,
+  onEdit,
+  onDelete,
+  onSync,
+  onContactCreator,
+  onOpenAppointmentDetail
+}: {
+  event: UnifiedCalendarEvent;
+  onBack: () => void;
+  onEdit?: (event: UnifiedCalendarEvent) => void;
+  onDelete?: (event: UnifiedCalendarEvent) => void;
+  onSync?: (event: UnifiedCalendarEvent) => void;
+  onContactCreator?: (event: UnifiedCalendarEvent) => void;
+  onOpenAppointmentDetail?: (event: UnifiedCalendarEvent) => void;
+}) {
+  const { language } = useI18n();
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [detailMode, setDetailMode] = useState<"detail" | "participants">("detail");
+  const [status, setStatus] = useState<"已承诺" | "辞退" | "保留">("已承诺");
+  const [statusSheetOpen, setStatusSheetOpen] = useState(false);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const source = sourceConfigs[event.sourceId];
+  const creatorLabel = event.creatorLabel?.trim() || source.label;
+  const participants = getEventParticipantFallback(event, creatorLabel, source.label);
+  const canContactCreator = Boolean(event.creatorUserId && onContactCreator);
+  const contactCreatorLabel = `${translateText("联系创建者", language)}：${creatorLabel}`;
+  const canEdit = Boolean(onEdit);
+  const canDelete = Boolean(onDelete);
+  const canOpenAppointmentDetail = isNeedoAppointmentEvent(event) && Boolean(event.orderId && onOpenAppointmentDetail);
+  const headerTitle = detailMode === "participants" ? "参加者" : "行程详情";
+
+  const closeActionSheet = () => setActionSheetOpen(false);
+  const closeStatusSheet = () => setStatusSheetOpen(false);
+  const handleDelete = () => {
+    if (!canDelete) {
+      return;
+    }
+    closeActionSheet();
+    onDelete?.(event);
+  };
+
+  useEffect(() => {
+    if (!actionSheetOpen || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const handlePointerDown = (pointerEvent: PointerEvent) => {
+      const target = pointerEvent.target;
+
+      if (target instanceof Node && actionMenuRef.current?.contains(target)) {
+        return;
+      }
+
+      setActionSheetOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [actionSheetOpen]);
+
+  const renderParticipants = () => (
+    <div className="space-y-3">
+      <section className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_78%,transparent)] px-4 py-3">
+        <p className="text-[11px] font-black text-[color:var(--client-muted)]">当前行程参加者</p>
+        <strong className="mt-1 block text-xl font-black text-[color:var(--client-text)]">{participants.length} 名</strong>
+      </section>
+      <section className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]">
+        {participants.length > 0 ? participants.map((participant, index) => {
+          const row = (
+            <ConversationListItem
+              avatar={participant.avatar ?? ""}
+              avatarNode={participant.avatar ? undefined : <EventParticipantAvatar className="h-12 w-12" participant={participant} />}
+              className="px-4 py-3"
+              meta={participant.role ?? "参加者"}
+              preview={participant.meta}
+              sideText={participant.to ? "详细" : undefined}
+              title={participant.name}
+            />
+          );
+
+          return participant.to ? (
+            <Link
+              className={cn("block transition active:bg-[color:color-mix(in_srgb,var(--client-primary-soft)_38%,transparent)]", index > 0 && "border-t border-[color:color-mix(in_srgb,var(--client-line)_40%,transparent)]")}
+              key={participant.id}
+              to={participant.to}
+            >
+              {row}
+            </Link>
+          ) : (
+            <article className={cn(index > 0 && "border-t border-[color:color-mix(in_srgb,var(--client-line)_40%,transparent)]")} key={participant.id}>
+              {row}
+            </article>
+          );
+        }) : (
+          <p className="px-4 py-5 text-sm font-bold text-[color:var(--client-muted)]">当前行程没有同步参加者。</p>
+        )}
+      </section>
+    </div>
+  );
+
+  const renderDetail = () => (
+    <>
+      <section className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--calendar-accent)_36%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--calendar-soft)_92%,var(--client-elevated)),color-mix(in_srgb,var(--client-surface)_90%,transparent))] px-4 py-4 shadow-[0_18px_42px_color-mix(in_srgb,var(--calendar-accent)_12%,transparent)]" style={getEventStyle(event)}>
+        <div className="flex items-center gap-2">
+          <span className="h-3.5 w-3.5 rounded-[5px] bg-[color:var(--calendar-accent)]" />
+          <span className="rounded-[8px] bg-[color:color-mix(in_srgb,var(--calendar-accent)_20%,transparent)] px-2 py-1 text-[11px] font-black text-[color:var(--calendar-text)]">{event.badge}</span>
+        </div>
+        <h2 className="mt-5 text-[28px] font-black leading-tight text-[color:var(--client-text)]">{event.title || "（无标题）"}</h2>
+      </section>
+
+      <div className="space-y-3">
+        <EventDetailField icon="calendar" label="日期时间" value={`${formatLongDate(event.date)} ${event.startTime} - ${event.endTime}`} />
+        <EventDetailField icon="map" label="地址" value={event.location || event.subtitle} />
+        <EventDetailField
+          icon="manager"
+          label={translateText("创建者", language)}
+          value={(
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">{creatorLabel}</span>
+              {canContactCreator ? (
+                <button
+                  aria-label={contactCreatorLabel}
+                  className="focus-ring grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
+                  onClick={() => onContactCreator?.(event)}
+                  title={contactCreatorLabel}
+                  type="button"
+                >
+                  <AppIcon className="h-4 w-4" name="chat" />
+                </button>
+              ) : null}
+            </span>
+          )}
+        />
+        <button
+          className="focus-ring grid w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] px-3 py-3 text-left transition active:scale-[0.99]"
+          onClick={() => setDetailMode("participants")}
+          type="button"
+        >
+          <span className="grid h-9 w-9 place-items-center rounded-[14px] text-[color:var(--client-muted)]">
+            <AppIcon className="h-5 w-5" name="manager" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-black text-[color:var(--client-muted)]">参加者</span>
+            <span className="mt-1 block text-sm font-black leading-5 text-[color:var(--client-text)]">{participants.length} 名</span>
+          </span>
+          <EventParticipantStack participants={participants} />
+        </button>
+        <EventDetailField icon="bell" label="提醒时间" value={event.reminder ?? "5 分前"} />
+        {canOpenAppointmentDetail ? (
+          <button
+            className="focus-ring flex w-full items-center justify-between gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-left text-[color:var(--client-primary-strong)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_12%,transparent)] transition active:scale-[0.99]"
+            onClick={() => onOpenAppointmentDetail?.(event)}
+            type="button"
+          >
+            <span className="min-w-0">
+              <span className="block text-[11px] font-black opacity-75">ND预约</span>
+              <span className="mt-1 block truncate text-sm font-black">预约详细确认</span>
+            </span>
+            <AppIcon className="h-5 w-5 shrink-0" name="calendar" />
+          </button>
+        ) : null}
+      </div>
+
+      {event.images && event.images.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2">
+          {event.images.map((image) => (
+            <img alt={image.name} className="aspect-square rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] object-cover" key={image.id} src={image.dataUrl} />
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+
+  const headerActions = detailMode === "detail" ? (
+    <>
+      <EventDetailIconButton disabled={!onSync} icon="share" label="同步行程" onClick={onSync ? () => onSync(event) : undefined} />
+      <EventDetailIconButton disabled={!canEdit} icon="edit" label="编辑行程" onClick={canEdit ? () => onEdit?.(event) : undefined} />
+      <div className="relative" ref={actionMenuRef}>
+        <EventDetailIconButton icon="more" label="更多行程操作" onClick={() => setActionSheetOpen((current) => !current)} tone="primary" />
+        {actionSheetOpen ? (
+          <div className="absolute right-0 top-[calc(100%+10px)] z-[90] w-[224px] rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-text)_12%)] p-2 shadow-[0_20px_48px_rgba(0,0,0,0.26)] backdrop-blur-xl">
+            <EventDetailMoreMenuItem icon="plus" label="制作一个复制" onClick={closeActionSheet} />
+            <EventDetailMoreMenuItem icon="share" label="日程转让" onClick={closeActionSheet} />
+            <EventDetailMoreMenuItem danger disabled={!canDelete} icon="trash" label="日程删除" onClick={handleDelete} />
+            <EventDetailMoreMenuItem icon="close" label="取消" onClick={closeActionSheet} />
+          </div>
+        ) : null}
+      </div>
+    </>
+  ) : null;
+  const statusOptions = ["已承诺", "辞退", "保留"] as const;
+
+  return (
+    <MobileFullscreenPage className="z-[120]" innerClassName="client-glass-page-surface">
+      <MobileFullscreenHeader
+        action={headerActions}
+        backLabel={detailMode === "participants" ? "返回行程详情" : "返回"}
+        className="client-mobile-schedule-detail__floating-header"
+        info={detailMode === "participants" ? "和通讯录列表一致，只显示当前行程参加者。" : "统一行程详情页，适用于预约、排班和可排班行程。"}
+        onBack={detailMode === "participants" ? () => setDetailMode("detail") : onBack}
+        showSpacer={false}
+        title={headerTitle}
+      />
+      <main className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+104px)] pt-[calc(env(safe-area-inset-top)+92px)]">
+        {detailMode === "participants" ? renderParticipants() : renderDetail()}
+      </main>
+
+      {detailMode === "detail" ? (
+        <footer className="safe-bottom fixed bottom-0 left-1/2 z-[122] w-full max-w-[480px] -translate-x-1/2 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
+          {statusSheetOpen ? (
+            <>
+              <button
+                aria-label="关闭状态选择"
+                className="fixed inset-0 z-[120] bg-transparent"
+                onClick={closeStatusSheet}
+                type="button"
+              />
+              <section className="relative z-[124] mb-2 overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,transparent)] shadow-[0_22px_72px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
+                {statusOptions.map((option) => (
+                  <button
+                    aria-pressed={status === option}
+                    className={cn(
+                      "focus-ring flex h-14 w-full items-center justify-between border-b border-[color:color-mix(in_srgb,var(--client-line)_46%,transparent)] px-4 text-left text-sm font-black last:border-b-0",
+                      status === option ? "text-[color:var(--client-primary-strong)]" : "text-[color:var(--client-text)]"
+                    )}
+                    key={option}
+                    onClick={() => {
+                      setStatus(option);
+                      closeStatusSheet();
+                    }}
+                    type="button"
+                  >
+                    <span>{option}</span>
+                    {status === option ? <AppIcon className="h-5 w-5" name="check" /> : null}
+                  </button>
+                ))}
+              </section>
+            </>
+          ) : null}
+          <button
+            aria-expanded={statusSheetOpen}
+            className={cn(
+              "focus-ring relative z-[126] flex min-h-14 w-full items-center justify-between rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] px-5 text-left shadow-[0_18px_52px_rgba(0,0,0,0.24)] backdrop-blur-2xl transition active:scale-[0.99]",
+              statusSheetOpen
+                ? "bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-[color:var(--client-text)]"
+                : "bg-[color:color-mix(in_srgb,var(--client-primary-soft)_82%,var(--client-surface)_18%)] text-[color:var(--client-primary-strong)]"
+            )}
+            onClick={statusSheetOpen ? closeStatusSheet : () => setStatusSheetOpen(true)}
+            type="button"
+          >
+            {statusSheetOpen ? (
+              <>
+                <span className="min-w-0 text-base font-black" data-no-i18n>取消</span>
+                <AppIcon className="h-5 w-5 shrink-0" name="close" />
+              </>
+            ) : (
+              <>
+                <span className="min-w-0 text-base font-black" data-no-i18n>{status}</span>
+                <AppIcon className="h-5 w-5 shrink-0" name="more" />
+              </>
+            )}
+          </button>
+        </footer>
+      ) : null}
+    </MobileFullscreenPage>
+  );
+}
+
+function CalendarEventEditorPage({
   draft,
   onChange,
   onClose,
@@ -2973,9 +3503,24 @@ function EditorSheet({
     event.currentTarget.value = "";
   };
 
+  const title = draft.id ? "编辑行程" : "新增行程";
+
   return (
-    <BottomSheet onClose={onClose} title={draft.id ? "编辑行程" : "新增行程"}>
-      <div className="space-y-3">
+    <MobileFullscreenPage className="z-[130]" innerClassName="client-glass-page-surface">
+      <MobileFullscreenHeader
+        className="client-mobile-schedule-detail__floating-header"
+        closeLabel={`关闭${title}`}
+        info={draft.id ? "编辑完整行程信息" : "新建完整行程信息"}
+        onClose={onClose}
+        showSpacer={false}
+        title={title}
+      />
+      <main
+        className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+104px)] pt-[calc(env(safe-area-inset-top)+92px)] [-webkit-overflow-scrolling:touch]"
+        data-page-drag-ignore="true"
+        data-scroll-drag-ignore="true"
+      >
+        <div className="space-y-3">
         <input
           className={cn(inputClass, "h-12 text-base")}
           onChange={(event) => onChange({ ...draft, title: event.target.value })}
@@ -3110,6 +3655,9 @@ function EditorSheet({
             <p className="text-[11px] font-bold leading-5 text-[color:var(--client-muted)]">{activeSyncFilter.emptyCaption}</p>
           )}
         </section>
+      </div>
+      </main>
+      <footer className="safe-bottom fixed bottom-0 left-1/2 z-[132] w-full max-w-[480px] -translate-x-1/2 border-t border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,transparent)] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-3 backdrop-blur-xl">
         <button
           className="focus-ring flex h-12 w-full items-center justify-center rounded-full bg-[color:var(--client-primary)] text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_16px_36px_color-mix(in_srgb,var(--client-primary)_22%,transparent)]"
           onClick={onSave}
@@ -3117,8 +3665,8 @@ function EditorSheet({
         >
           完成
         </button>
-      </div>
-    </BottomSheet>
+      </footer>
+    </MobileFullscreenPage>
   );
 }
 
@@ -3356,8 +3904,7 @@ export function UnifiedUserCalendar({
   scope = "user"
 }: UnifiedUserCalendarProps) {
   const navigate = useNavigate();
-  const { theme, isNight } = useClientTheme();
-  const { stores, technicians } = useEntityStore();
+  const { customers, stores, technicians } = useEntityStore();
   const scheduleSnapshot = useScheduleStore();
   const technicianSnapshot = useTechnicianScheduleStore();
   const dispatchSnapshot = useDispatchCenterStore();
@@ -3382,11 +3929,15 @@ export function UnifiedUserCalendar({
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
-  const themeRootClassName = cn(isNight ? "client-theme-night" : "client-theme-day", getClientThemeClassName(theme));
   const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
   const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
   const appointmentStatusFilterLabel =
     merchantAppointmentStatusFilterOptions.find((option) => option.value === appointmentStatusFilter)?.label ?? "全预约";
+  const currentScopeCreator = useMemo(
+    () => getCurrentScopeCreator(activeScope, currentCustomer, currentTechnician, currentStore),
+    [activeScope, currentCustomer, currentStore, currentTechnician]
+  );
+  const imConfig = getImRoleConfig(imScope);
 
   useEffect(() => {
     writeBrowserStorage(localCalendarStorageKey, JSON.stringify(localEvents), { silent: true });
@@ -3463,7 +4014,7 @@ export function UnifiedUserCalendar({
     const neeDoEvents = [
       ...(activeScope === "user" && currentCustomer ? getOrderEvents(currentCustomer) : []),
       ...(activeScope === "merchant" && currentStore
-        ? getMerchantEventsForStore(currentStore, dispatchSnapshot.arrangements, technicianSnapshot, scheduleSnapshot, stores, technicians, effectiveMerchantLaneMode)
+        ? getMerchantEventsForStore(currentStore, dispatchSnapshot.arrangements, technicianSnapshot, scheduleSnapshot, customers, stores, technicians, effectiveMerchantLaneMode)
         : activeScope === "technician" && currentTechnician
         ? getTechnicianEventsForTechnician(currentTechnician.id, technicianSnapshot, stores, technicians)
         : currentCustomer
@@ -3479,23 +4030,26 @@ export function UnifiedUserCalendar({
     ];
 
     if (isMerchantAppointmentStatusMode) {
-      return neeDoEvents.sort(sortEvents);
+      return neeDoEvents.map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
     }
 
     return [
-      ...getLocalCalendarEvents(localEvents, syncContactOptions),
+      ...getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator),
       ...neeDoEvents,
       ...birthdayEvents,
       ...getReferenceCalendarEvents()
-    ].sort(sortEvents);
+    ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
   }, [
     activeScope,
     birthdayContactOptions,
+    customers,
     currentCustomer,
     currentStore,
     currentTechnician,
+    currentScopeCreator,
     dispatchSnapshot.arrangements,
     effectiveMerchantLaneMode,
+    imStore.users,
     isMerchantAppointmentStatusMode,
     localEvents,
     period,
@@ -3549,6 +4103,19 @@ export function UnifiedUserCalendar({
   );
   const groupedVisibleEvents = groupEventsByDate(searchedVisiblePeriodEvents);
   const selectedDateEvents = (groupedVisibleEvents[selectedDate] ?? []).sort(sortEvents);
+  const displayActiveEvent = activeEvent ? allEvents.find((event) => event.id === activeEvent.id) ?? activeEvent : null;
+  const currentImUserId = imStore.currentUserId;
+  const ensureCreatorConversation = imStore.ensureDirectConversation;
+
+  const openCreatorChat = useCallback(async (event: UnifiedCalendarEvent) => {
+    if (!event.creatorUserId || event.creatorUserId === currentImUserId) {
+      return;
+    }
+
+    const conversation = await ensureCreatorConversation(event.creatorUserId);
+    setActiveEvent(null);
+    navigate(imConfig.routes.conversation(conversation.id));
+  }, [currentImUserId, ensureCreatorConversation, imConfig.routes, navigate]);
 
   useEffect(() => {
     if (!normalizedSearchQuery || view === "agenda") {
@@ -3734,22 +4301,6 @@ export function UnifiedUserCalendar({
   };
 
   const openCalendarEvent = (event: UnifiedCalendarEvent) => {
-    if (activeScope === "merchant" && event.orderId) {
-      const encodedOrderId = encodeURIComponent(event.orderId);
-      const hasArrangementDetail = Boolean(
-        currentStore &&
-          dispatchSnapshot.arrangements.some(
-            (arrangement) =>
-              arrangement.storeId === currentStore.id &&
-              arrangement.orderId === event.orderId &&
-              arrangement.status !== "cancelled"
-          )
-      );
-
-      navigate(hasArrangementDetail ? `/merchant/schedule/arrangements/${encodedOrderId}` : `/merchant/orders/${encodedOrderId}`);
-      return;
-    }
-
     setActiveEvent(event);
   };
 
@@ -3857,7 +4408,7 @@ export function UnifiedUserCalendar({
   };
 
   return (
-    <section className={cn(themeRootClassName, schedulePanelClass, "relative overflow-visible p-3")}>
+    <UnifiedCalendarSurface data-unified-user-calendar="true">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -4044,9 +4595,49 @@ export function UnifiedUserCalendar({
       )}
 
       {editorDraft ? (
-        <EditorSheet draft={editorDraft} onChange={setEditorDraft} onClose={() => setEditorDraft(null)} onSave={saveDraft} syncContactOptions={syncContactOptions} />
+        <CalendarEventEditorPage draft={editorDraft} onChange={setEditorDraft} onClose={() => setEditorDraft(null)} onSave={saveDraft} syncContactOptions={syncContactOptions} />
       ) : null}
-      {activeEvent ? <EventDetailSheet event={activeEvent} onClose={() => setActiveEvent(null)} onDelete={deleteEvent} onEdit={openEdit} /> : null}
+      {displayActiveEvent ? (
+        <UnifiedCalendarEventDetailPage
+          event={displayActiveEvent}
+          onBack={() => setActiveEvent(null)}
+          onContactCreator={displayActiveEvent.creatorUserId && displayActiveEvent.creatorUserId !== imStore.currentUserId ? openCreatorChat : undefined}
+          onDelete={displayActiveEvent.readOnly ? undefined : deleteEvent}
+          onEdit={displayActiveEvent.readOnly ? undefined : openEdit}
+          onOpenAppointmentDetail={(event) => {
+            if (!event.orderId) {
+              return;
+            }
+
+            const encodedOrderId = encodeURIComponent(event.orderId);
+            const detailPath = activeScope === "user"
+              ? `/orders/${encodedOrderId}`
+              : activeScope === "technician"
+                ? `/technician/orders/${encodedOrderId}`
+                : (() => {
+                    const hasArrangementDetail = Boolean(
+                      currentStore &&
+                        dispatchSnapshot.arrangements.some(
+                          (arrangement) =>
+                            arrangement.storeId === currentStore.id &&
+                            arrangement.orderId === event.orderId &&
+                            arrangement.status !== "cancelled"
+                        )
+                    );
+
+                    return hasArrangementDetail ? `/merchant/schedule/arrangements/${encodedOrderId}` : `/merchant/orders/${encodedOrderId}`;
+                  })();
+
+            setActiveEvent(null);
+            navigate(detailPath);
+          }}
+          onSync={(event) => {
+            setActiveEvent(null);
+            setSourceDrawerOpen(true);
+            void event;
+          }}
+        />
+      ) : null}
       <CalendarSourceDrawer
         birthdayContactOptions={birthdayContactOptions}
         birthdayContactQuery={birthdayContactQuery}
@@ -4080,6 +4671,6 @@ export function UnifiedUserCalendar({
           <AppIcon name="plus" />
         </FloatingActionButton>
       ) : null}
-    </section>
+    </UnifiedCalendarSurface>
   );
 }

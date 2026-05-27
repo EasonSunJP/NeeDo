@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { PortalScope } from "../../auth/AuthProvider";
 import { useAuth } from "../../auth/AuthProvider";
 import { PrimaryButton, SecondaryButton, SectionBlock, SegmentedTabs, StickyBottomBar, SurfacePanel } from "../../components/client-ui/AppScaffold";
+import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
+import { FloatingHeaderSearchBar } from "../../components/mobile/FloatingHeaderSearchBar";
 import { businessNavItems } from "../../components/mobile/businessNavItems";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -46,6 +48,8 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { formatCustomerCreditScore } from "../../shared/profile-card/customerProfileLabels";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
+import { selectHomeLocationManually } from "../../state/homeLocationStore";
+import { updateHomeLayoutConfig, useHomeLayoutStore, type HomeLocationOption } from "../../state/homeLayoutStore";
 import { setNeedoPetEnabled, useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useProfileCardBackgroundSettings } from "../../state/profileCardBackgroundStore";
 import type { Customer, InfoCardVisibilityMode, InfoCardVisibilitySettings, Store, StorePresentationConfig, Technician } from "../../types/domain";
@@ -65,6 +69,54 @@ const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "�
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
 const appVersion = "0.1.0";
 const merchantTagPool = ["深夜营业", "女性友好", "到店主力", "上门服务", "可预约", "多语言", "企业合作", "高复购"];
+
+function normalizeAreaToken(value: string) {
+  return value.toLocaleLowerCase().replace(/[\s/／・,，、区市町丁目.-]/g, "");
+}
+
+function buildServiceAreaOptions(...sources: Array<string | string[] | undefined>) {
+  const values = sources.flatMap((source) => (Array.isArray(source) ? source : source ? [source] : []));
+
+  return Array.from(new Set([...serviceAreaPool, ...values.map((value) => value.trim()).filter(Boolean)]));
+}
+
+function getManualHomeLocationId(area: string) {
+  const encoded = Array.from(area.trim())
+    .map((char) => char.charCodeAt(0).toString(36))
+    .join("-");
+
+  return `manual-location-${encoded || "area"}`;
+}
+
+function getHomeLocationAreaLabel(location: HomeLocationOption) {
+  const tokens = [location.district, location.area, location.city, location.label].filter(Boolean).map((value) => normalizeAreaToken(value ?? ""));
+  const matchedArea = serviceAreaPool.find((area) => {
+    const areaToken = normalizeAreaToken(area);
+
+    return tokens.some((token) => token.includes(areaToken) || areaToken.includes(token));
+  });
+
+  return matchedArea ?? location.district ?? location.area ?? location.label;
+}
+
+function findHomeLocationForArea(locations: HomeLocationOption[], area: string) {
+  const areaToken = normalizeAreaToken(area);
+
+  return locations.find((location) => {
+    const tokens = [location.label, location.city, location.area, location.district ?? ""].map(normalizeAreaToken).filter(Boolean);
+
+    return tokens.some((token) => token === areaToken || token.includes(areaToken) || areaToken.includes(token));
+  });
+}
+
+function createManualHomeLocation(area: string): HomeLocationOption {
+  return {
+    id: getManualHomeLocationId(area),
+    label: area,
+    city: area === "横滨" ? "横滨" : "东京",
+    area
+  };
+}
 
 function settingsListToText(items: string[]) {
   return items.join("\n");
@@ -335,6 +387,7 @@ const supportedSettingsSuffixes: Record<UnifiedSettingsPortal, Set<string>> = {
     "/portal",
     "/profile",
     "/verification",
+    "/service-range",
     "/account",
     "/notifications",
     "/help",
@@ -1319,10 +1372,12 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const [portalSettings] = usePortalSettingsState(portal);
   const profileCardBackgroundSettings = useProfileCardBackgroundSettings();
   const { customers, technicians, stores } = useEntityStore();
+  const { config: homeLocationConfig } = useHomeLayoutStore();
   const { session } = useAuth();
   const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
   const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+  const selectedHomeLocation = homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ?? homeLocationConfig.locations[0];
   const t = (source: string) => translateText(source, language);
   const currentThemeLabel = t(clientThemes.find((item) => item.id === theme)?.label ?? "活力黑白版");
   const currentLanguageLabel = languages.find((item) => item.code === language)?.label ?? "简中";
@@ -1402,9 +1457,11 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
               />
             ) : null}
             <SettingsListItem title={t(getVerificationTitle(portal))} to={getSettingsPath(portal, "verification")} value={t(getVerificationStatusLabel(portal))} />
-            {portal === "technician" ? (
-              <SettingsListItem title={t("服务范围")} to={getSettingsPath(portal, "service-range")} value={t(summarizeServiceRange(technician.serviceAreas))} />
-            ) : null}
+            <SettingsListItem
+              title={t("服务范围")}
+              to={getSettingsPath(portal, "service-range")}
+              value={t(portal === "technician" ? summarizeServiceRange(technician.serviceAreas) : portal === "merchant" ? store.area : getHomeLocationAreaLabel(selectedHomeLocation))}
+            />
           </SettingsSection>
         )}
 
@@ -2879,59 +2936,146 @@ export function UnifiedSettingsVerificationPage({ portal }: { portal: UnifiedSet
 
 export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSettingsPortal }) {
   const navigate = useNavigate();
+  const { language } = useI18n();
   const { session } = useAuth();
-  const { technicians } = useEntityStore();
+  const { stores, technicians } = useEntityStore();
+  const { config: homeLocationConfig } = useHomeLayoutStore();
   const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
-  const [areas, setAreas] = useState<string[]>(technician.serviceAreas);
+  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+  const fallbackHomeLocation = homeLocationConfig.locations[0] ?? createManualHomeLocation("新宿");
+  const selectedHomeLocation = homeLocationConfig.locations.find((item) => item.id === homeLocationConfig.selectedLocationId) ?? fallbackHomeLocation;
+  const selectedHomeArea = getHomeLocationAreaLabel(selectedHomeLocation);
+  const technicianAreaKey = technician.serviceAreas.join("|");
+  const initialAreas = useMemo(() => {
+    if (portal === "user") {
+      return [selectedHomeArea];
+    }
 
-  if (portal !== "technician") {
-    return (
-      <PortalScopedSettingsPage portal={portal}>
-        <SettingsDetailPage backTo={getSettingsBasePath(portal)} info="这个入口只在技师身份下显示。" title="服务范围">
-          <SettingsSection panelClassName="p-4" title="当前不可用">
-            <p className="text-sm leading-7 text-[color:var(--client-muted)]">服务范围是技师端独有设置项，用户端和店铺端不会展示这个页面。</p>
-          </SettingsSection>
-        </SettingsDetailPage>
-      </PortalScopedSettingsPage>
-    );
-  }
+    if (portal === "merchant") {
+      return [store.area];
+    }
+
+    return technician.serviceAreas;
+  }, [portal, selectedHomeArea, store.area, technicianAreaKey]);
+  const [areas, setAreas] = useState<string[]>(initialAreas);
+  const [serviceRangeSearchQuery, setServiceRangeSearchQuery] = useState("");
+  const t = (source: string) => translateText(source, language);
+  const serviceRangeAreaOptions = useMemo(
+    () => buildServiceAreaOptions(initialAreas, portal === "merchant" ? store.area : undefined, portal === "technician" ? technician.serviceAreas : undefined),
+    [initialAreas, portal, store.area, technicianAreaKey]
+  );
+  const filteredServiceAreas = useMemo(() => {
+    const query = serviceRangeSearchQuery.trim().toLocaleLowerCase();
+
+    if (!query) {
+      return serviceRangeAreaOptions;
+    }
+
+    return serviceRangeAreaOptions.filter((area) => {
+      const translatedArea = t(area);
+
+      return area.toLocaleLowerCase().includes(query) || translatedArea.toLocaleLowerCase().includes(query);
+    });
+  }, [language, serviceRangeAreaOptions, serviceRangeSearchQuery]);
+  useEffect(() => {
+    setAreas(initialAreas);
+  }, [initialAreas]);
+  const closeServiceRangePage = () => {
+    if (typeof window !== "undefined" && typeof window.history.state?.idx === "number" && window.history.state.idx > 0) {
+      navigate(-1);
+      return;
+    }
+
+    navigate(getSettingsBasePath(portal), { replace: true });
+  };
+  const handleSaveServiceRange = () => {
+    if (portal === "user") {
+      const selectedArea = areas[0] ?? selectedHomeArea;
+      const existingLocation = findHomeLocationForArea(homeLocationConfig.locations, selectedArea);
+      const nextLocation = existingLocation ?? createManualHomeLocation(selectedArea);
+
+      if (!existingLocation) {
+        updateHomeLayoutConfig({
+          locations: [...homeLocationConfig.locations.filter((item) => item.id !== nextLocation.id), nextLocation],
+          selectedLocationId: nextLocation.id
+        });
+      }
+
+      selectHomeLocationManually(nextLocation.id);
+      closeServiceRangePage();
+      return;
+    }
+
+    if (portal === "merchant") {
+      const selectedArea = areas[0] ?? store.area;
+
+      updateStoreEntity(store.id, { area: selectedArea });
+      closeServiceRangePage();
+      return;
+    }
+
+    updateTechnicianEntity(technician.id, { serviceAreas: areas });
+    closeServiceRangePage();
+  };
 
   return (
     <PortalScopedSettingsPage portal={portal}>
-      <SettingsDetailPage backTo={getSettingsBasePath(portal)} contentClassName="space-y-8 pb-32" info="服务范围改为技师身份下的独立设置页。" title="服务范围">
-        <SectionBlock description="服务范围不再散落在其他入口，统一从设置中心进入。" title="可服务区域">
-          <SurfacePanel>
-            <div className="flex flex-wrap gap-2">
-              {serviceAreaPool.map((area) => {
-                const active = areas.includes(area);
+      <SettingsDetailPage
+        backTo={getSettingsBasePath(portal)}
+        contentClassName="space-y-6 pb-32 !pt-[calc(env(safe-area-inset-top)+9.5rem)]"
+        footer={
+          <FloatingHeaderSearchBar
+            actionAriaLabel={t("搜索按钮")}
+            actionLabel={t("搜索")}
+            fieldAriaLabel={t("搜索地点")}
+            inputId="service-range-search"
+            onChange={setServiceRangeSearchQuery}
+            placeholder={t("搜索地点")}
+            value={serviceRangeSearchQuery}
+          />
+        }
+        info={t("服务范围不再散落在其他入口，统一从设置中心进入。")}
+        navItems={[]}
+        onClose={closeServiceRangePage}
+        title={t("服务范围")}
+      >
+        <div className="space-y-4 pt-1">
+          <div className="flex flex-wrap gap-3">
+            {filteredServiceAreas.map((area) => {
+              const active = areas.includes(area);
 
-                return (
-                  <button
-                    className={`rounded-full px-4 py-2 text-sm font-black ${
-                      active
-                        ? "bg-[color:var(--client-primary)] text-[#090806]"
-                        : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
-                    }`}
-                    key={area}
-                    onClick={() =>
-                      setAreas((current) => (current.includes(area) ? current.filter((item) => item !== area) : [...current, area]))
-                    }
-                    type="button"
-                  >
-                    {area}
-                  </button>
-                );
-              })}
-            </div>
-          </SurfacePanel>
-        </SectionBlock>
+              return (
+                <button
+                  className={cn(
+                    "inline-flex min-h-11 min-w-[86px] items-center justify-center rounded-full px-4 text-[14px] font-black leading-none transition active:scale-[0.98]",
+                    active
+                      ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+                      : "bg-[color:color-mix(in_srgb,var(--client-surface)_58%,transparent)] text-[color:var(--client-text)]"
+                  )}
+                  key={area}
+                  onClick={() =>
+                    portal === "technician"
+                      ? setAreas((current) => (current.includes(area) ? current.filter((item) => item !== area) : [...current, area]))
+                      : setAreas([area])
+                  }
+                  type="button"
+                >
+                  {t(area)}
+                </button>
+              );
+            })}
+          </div>
+          {filteredServiceAreas.length === 0 ? (
+            <p className="px-1 text-sm font-bold text-[color:var(--client-muted)]">{t("没有匹配结果")}</p>
+          ) : null}
+        </div>
 
         <StickySaveBar
-          onCancel={() => navigate(-1)}
-          onSave={() => {
-            updateTechnicianEntity(technician.id, { serviceAreas: areas });
-            navigate(getSettingsBasePath(portal));
-          }}
+          cancelLabel={t("取消")}
+          onCancel={closeServiceRangePage}
+          onSave={handleSaveServiceRange}
+          saveLabel={t("保存并关闭")}
+          simple
         />
       </SettingsDetailPage>
     </PortalScopedSettingsPage>
@@ -3518,22 +3662,53 @@ export function UnifiedSettingsDeleteAccountPage({ portal }: { portal: UnifiedSe
 
 function StickySaveBar({
   onCancel,
-  onSave
+  onSave,
+  cancelLabel = "取消",
+  saveLabel = "保存并返回设置中心",
+  simple = false
 }: {
   onCancel: () => void;
   onSave: () => void;
+  cancelLabel?: ReactNode;
+  saveLabel?: ReactNode;
+  simple?: boolean;
 }) {
+  const content = (
+    <div className={cn(simple ? "grid grid-cols-2 gap-3" : "grid gap-3 md:grid-cols-[160px,1fr]")}>
+      <SecondaryButton className="w-full" onClick={onCancel}>
+        {cancelLabel}
+      </SecondaryButton>
+      <PrimaryButton className="w-full" onClick={onSave}>
+        {saveLabel}
+      </PrimaryButton>
+    </div>
+  );
+
+  if (simple) {
+    return (
+      <>
+        <ClientEdgeMask
+          className="z-30"
+          edge="bottom"
+          style={{
+            "--client-edge-mask-bottom-height": "calc(env(safe-area-inset-bottom,0px) + 11rem)",
+            "--client-edge-mask-bottom-mid-opacity": "0.72",
+            "--client-edge-mask-bottom-mid-stop": "42%",
+            "--client-edge-mask-bottom-strong-opacity": "1",
+            "--client-edge-mask-bottom-strong-stop": "78%"
+          } as CSSProperties}
+        />
+        <div className="safe-nav-bottom pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] bg-gradient-to-t from-[color:var(--client-bg)] via-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] to-transparent px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)] pt-16 sm:px-6 lg:px-8">
+          <div className="pointer-events-auto">{content}</div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <div className="safe-nav-bottom client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-4 pb-3 sm:px-6 lg:px-8">
       <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl">
-        <div className="grid gap-3 md:grid-cols-[160px,1fr]">
-          <SecondaryButton className="w-full" onClick={onCancel}>
-            取消
-          </SecondaryButton>
-          <PrimaryButton className="w-full" onClick={onSave}>
-            保存并返回设置中心
-          </PrimaryButton>
-        </div>
+        {content}
       </div>
     </div>
   );

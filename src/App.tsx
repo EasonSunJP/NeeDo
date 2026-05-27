@@ -540,7 +540,7 @@ const splashImages: Record<SplashPortal, string> = {
   merchantAdmin: backendManagementSystemBgUrl
 };
 
-const splashVersionLabel = "1.001";
+const splashVersionLabel = "1.235";
 const splashCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
 
 const splashAdminThemeConfig = {
@@ -713,9 +713,12 @@ function SplashScreen({ onDone, portal }: { onDone: () => void; portal: SplashPo
           loading="eager"
           src={splashImage}
         />
+        <div className="needo-splash-version-badge" aria-label={`版本 ${splashVersionLabel}`}>
+          ver：{splashVersionLabel}
+        </div>
 
         <div className="fixed inset-x-0 bottom-0 z-[1001] w-full px-5 pb-[max(1.4rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-7">
-          <div className="mx-auto flex max-h-[calc(100dvh-5.5rem)] w-full max-w-xl flex-col items-stretch overflow-y-auto">
+          <div className="needo-splash-content-frame mx-auto flex max-h-[calc(100dvh-5.5rem)] w-full max-w-xl flex-col items-stretch overflow-y-auto">
             <h1 className="text-[clamp(2rem,7vw,4.5rem)] font-black leading-[0.95] tracking-normal text-[color:var(--needo-splash-text)]">{copy.title}</h1>
 
             <div
@@ -1104,6 +1107,7 @@ export default function App() {
               <Route path="/merchant/settings/profile" element={protect("merchant", <UnifiedSettingsProfilePage portal="merchant" />)} />
               <Route path="/merchant/settings/profile-card-background" element={protect("merchant", <UnifiedSettingsProfileCardBackgroundPage portal="merchant" />)} />
               <Route path="/merchant/settings/verification" element={protect("merchant", <UnifiedSettingsVerificationPage portal="merchant" />)} />
+              <Route path="/merchant/settings/service-range" element={protect("merchant", <UnifiedSettingsServiceRangePage portal="merchant" />)} />
               <Route path="/merchant/settings/account" element={protect("merchant", <UnifiedSettingsAccountPage portal="merchant" />)} />
               <Route path="/merchant/settings/notifications" element={protect("merchant", <UnifiedSettingsNotificationsPage portal="merchant" />)} />
               <Route path="/merchant/settings/help" element={protect("merchant", <UnifiedSettingsHelpPage portal="merchant" />)} />

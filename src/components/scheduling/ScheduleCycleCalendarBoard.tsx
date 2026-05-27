@@ -1,13 +1,17 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppIcon } from "../client-ui/AppScaffold";
 import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
 import {
   UnifiedCalendarAgendaView,
+  UnifiedCalendarEventDetailPage,
   UnifiedCalendarDayTimeline,
   UnifiedCalendarEventCard,
+  UnifiedCalendarSurface,
   type UnifiedCalendarEvent,
   type UnifiedCalendarLane,
+  type UnifiedCalendarParticipant,
   type UnifiedCalendarSourceId
 } from "./UnifiedUserCalendar";
 import {
@@ -30,6 +34,8 @@ import {
 } from "../../features/dispatch-center/store";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { cn } from "../../lib/utils";
+import { useEntityStore } from "../../state/entityStore";
+import type { Customer, Store, Technician } from "../../types/domain";
 
 export type ScheduleCycleCalendarBoardView = "day" | "week" | "month" | "agenda";
 export type ScheduleCycleCalendarStatusFilter = "all" | DispatchScheduleCellStatus;
@@ -136,6 +142,14 @@ const scheduleStatusSource: Record<DispatchScheduleCellStatus, UnifiedCalendarSo
   open: "technician",
   other: "merchant",
   pending: "merchant"
+};
+
+type CycleCalendarParticipantContext = {
+  arrangements: ReturnType<typeof useDispatchCenterStore>["arrangements"];
+  customers: Customer[];
+  storeId: string;
+  stores: Store[];
+  technicians: Technician[];
 };
 
 function createDefaultCycleStatusVisibility(): Record<DispatchScheduleCellStatus, boolean> {
@@ -296,8 +310,87 @@ function getCycleCalendarEventTitle(status: DispatchScheduleCellStatus, represen
   return representativeCell.title || scheduleStatusLabel[status];
 }
 
+function dedupeCycleParticipants(participants: Array<UnifiedCalendarParticipant | null | undefined>) {
+  const seen = new Set<string>();
+  return participants.filter((participant): participant is UnifiedCalendarParticipant => {
+    if (!participant?.name.trim()) {
+      return false;
+    }
+
+    const key = participant.id || participant.name;
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function getCycleTechnicianParticipant(technician: Technician | undefined, row: { technicianId: string; technicianName: string; technicianAvatar?: string }): UnifiedCalendarParticipant {
+  return {
+    id: `technician:${technician?.id ?? row.technicianId}`,
+    name: technician?.nickname?.trim() || technician?.name || row.technicianName,
+    avatar: technician?.avatar || row.technicianAvatar,
+    meta: [technician?.identityLabel, technician?.status === "busy" ? "服务中" : technician?.status === "off" ? "休息" : "可排班"].filter(Boolean).join(" · "),
+    role: "参加者",
+    to: `/merchant/staff/${encodeURIComponent(technician?.id ?? row.technicianId)}`
+  };
+}
+
+function getCycleCustomerParticipant(customer: Customer | undefined, fallbackName?: string | null): UnifiedCalendarParticipant | null {
+  const name = customer?.nickname?.trim() || customer?.name || fallbackName?.trim();
+  if (!name) {
+    return null;
+  }
+
+  return {
+    id: `customer:${customer?.id ?? name}`,
+    name,
+    avatar: customer?.avatar,
+    meta: customer ? [customer.memberLevel, customer.systemId].filter(Boolean).join(" · ") : "顾客",
+    role: "参加者",
+    to: customer ? `/merchant/profiles/user/${customer.id}` : undefined
+  };
+}
+
+function getCycleStoreParticipant(store: Store | undefined): UnifiedCalendarParticipant | null {
+  if (!store) {
+    return null;
+  }
+
+  return {
+    id: `store:${store.id}`,
+    name: store.name,
+    avatar: store.cover,
+    meta: [store.area, store.tags[0]].filter(Boolean).join(" · "),
+    role: "创建者",
+    to: `/merchant/profiles/shop/${store.id}`
+  };
+}
+
+function getCycleEventParticipants(
+  representativeCell: DispatchScheduleCell,
+  row: { technicianId: string; technicianName: string; technicianAvatar?: string },
+  context: CycleCalendarParticipantContext
+) {
+  const technician = context.technicians.find((item) => item.id === row.technicianId);
+  const arrangement = representativeCell.orderId
+    ? context.arrangements.find((item) => item.storeId === context.storeId && item.orderId === representativeCell.orderId && item.status !== "cancelled")
+    : null;
+  const customer = arrangement ? context.customers.find((item) => item.id === arrangement.customerId) : undefined;
+  const store = context.stores.find((item) => item.id === context.storeId);
+
+  return dedupeCycleParticipants([
+    getCycleCustomerParticipant(customer, arrangement?.customerName),
+    getCycleTechnicianParticipant(technician, row),
+    getCycleStoreParticipant(store)
+  ]);
+}
+
 function buildCycleCalendarData(
   dayGrids: ReturnType<typeof getDispatchScheduleGrid>[],
+  context: CycleCalendarParticipantContext,
   getTechnicianDetailPath: ((technicianId: string) => string | undefined) | undefined,
   normalizedSearchQuery: string,
   statusFilter: ScheduleCycleCalendarStatusFilter,
@@ -367,11 +460,17 @@ function buildCycleCalendarData(
           badge: scheduleStatusLabel[range.status],
           calendarId: `technician:${row.technicianId}`,
           calendarLabel: row.technicianName,
+          creatorEntityId: context.storeId,
+          creatorEntityType: "shop",
+          creatorLabel: context.stores.find((item) => item.id === context.storeId)?.name,
           date: representativeCell.date,
           endTime: formatCycleCalendarHour(range.endHour),
           id: eventId,
+          location: context.stores.find((item) => item.id === context.storeId)?.address,
           orderId: representativeCell.orderId,
+          participants: getCycleEventParticipants(representativeCell, row, context),
           readOnly: true,
+          reminder: "5 分前",
           sourceId: scheduleStatusSource[range.status],
           startTime: formatCycleCalendarHour(range.startHour),
           subtitle: `${row.technicianName} · ${representativeCell.detail}`,
@@ -512,8 +611,11 @@ export function ScheduleCycleCalendarBoard({
   subtitle = "当前周期 · 多技师并行日程",
   view
 }: ScheduleCycleCalendarBoardProps) {
+  const navigate = useNavigate();
   const dispatchSnapshot = useDispatchCenterStore();
+  const entitySnapshot = useEntityStore();
   const [labelDrawerOpen, setLabelDrawerOpen] = useState(false);
+  const [activeDetail, setActiveDetail] = useState<{ cell: DispatchScheduleCell; event: UnifiedCalendarEvent } | null>(null);
   const [statusVisibility, setStatusVisibility] = useState(createDefaultCycleStatusVisibility);
   const normalizedSearchQuery = normalizeSearchValue(searchQuery);
   const cycle = useMemo(
@@ -527,8 +629,21 @@ export function ScheduleCycleCalendarBoard({
     [cycleId, dispatchSnapshot.revision, periodKey, storeId]
   );
   const { cellByEventId, events, lanes, statusCounts } = useMemo(
-    () => buildCycleCalendarData(dayGrids, getTechnicianDetailPath, normalizedSearchQuery, statusFilter, statusVisibility),
-    [dayGrids, getTechnicianDetailPath, normalizedSearchQuery, statusFilter, statusVisibility]
+    () => buildCycleCalendarData(
+      dayGrids,
+      {
+        arrangements: dispatchSnapshot.arrangements,
+        customers: entitySnapshot.customers,
+        storeId,
+        stores: entitySnapshot.stores,
+        technicians: entitySnapshot.technicians
+      },
+      getTechnicianDetailPath,
+      normalizedSearchQuery,
+      statusFilter,
+      statusVisibility
+    ),
+    [dayGrids, dispatchSnapshot.arrangements, entitySnapshot.customers, entitySnapshot.stores, entitySnapshot.technicians, getTechnicianDetailPath, normalizedSearchQuery, statusFilter, statusVisibility, storeId]
   );
   const groupedEvents = useMemo(() => groupEventsByDate(events), [events]);
   const selectedDateEvents = groupedEvents[dateKey] ?? [];
@@ -537,7 +652,7 @@ export function ScheduleCycleCalendarBoard({
     const cell = cellByEventId.get(event.id);
 
     if (cell) {
-      onOpenCell(cell);
+      setActiveDetail({ cell, event });
     }
   };
   const toggleStatusLabels = (statuses: DispatchScheduleCellStatus[]) => {
@@ -566,10 +681,10 @@ export function ScheduleCycleCalendarBoard({
   );
 
   return (
-    <section className={cn(
-      "relative overflow-visible rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[var(--client-shadow)]",
-      className
-    )}>
+    <UnifiedCalendarSurface
+      className={className}
+      data-schedule-cycle-calendar-board="true"
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -744,6 +859,25 @@ export function ScheduleCycleCalendarBoard({
         statusCounts={statusCounts}
         statusVisibility={statusVisibility}
       />
-    </section>
+      {activeDetail ? (
+        <UnifiedCalendarEventDetailPage
+          event={activeDetail.event}
+          onBack={() => setActiveDetail(null)}
+          onEdit={() => {
+            const cell = activeDetail.cell;
+            setActiveDetail(null);
+            onOpenCell(cell);
+          }}
+          onOpenAppointmentDetail={(event) => {
+            if (!event.orderId) {
+              return;
+            }
+
+            setActiveDetail(null);
+            navigate(`/merchant/schedule/arrangements/${encodeURIComponent(event.orderId)}`);
+          }}
+        />
+      ) : null}
+    </UnifiedCalendarSurface>
   );
 }

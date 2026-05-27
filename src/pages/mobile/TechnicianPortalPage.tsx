@@ -88,7 +88,7 @@ import {
   useScheduleStore
 } from "../../state/scheduleStore";
 import { markShiftPlanningNotificationRead, useShiftPlanningStore } from "../../state/shiftPlanningStore";
-import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
+import { useClientTheme } from "../../theme/ClientThemeProvider";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import type { NotificationType } from "../../types/shiftPlanning";
 import type { Customer, Order, ServiceItem, ServicePaymentMethod, Store, Technician } from "../../types/domain";
@@ -264,13 +264,12 @@ function getCompactStatusLabelClass(label: string) {
 function ScheduleNewBadge({ className }: { className?: string }) {
   return (
     <span
+      aria-hidden="true"
       className={cn(
-        "inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/80 bg-[linear-gradient(180deg,#ff8b7f_0%,#ff5f58_48%,#ff453f_100%)] text-[8px] font-black leading-none text-white shadow-[0_5px_14px_rgba(255,86,79,0.28)]",
+        "inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-white/85 bg-[#ff4f49] shadow-[0_0_0_3px_rgba(255,79,73,0.16),0_3px_8px_rgba(255,79,73,0.32)]",
         className
       )}
-    >
-      New
-    </span>
+    />
   );
 }
 
@@ -2521,17 +2520,13 @@ export function TechnicianPortalPage() {
   const activeView = getTechnicianView(view);
   const activeMeTab = getTechnicianMeTab(searchParams.get("meTab"));
   const { session } = useAuth();
-  const { theme, isNight } = useClientTheme();
+  const { isNight } = useClientTheme();
   const { language } = useI18n();
   const { customers, stores, technicians } = useEntityStore();
   const baseTech = technicians.find((technician) => technician.id === session?.linkedTechnicianId) ?? technicians[0];
   const linkedCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId);
   const defaultAreaSelection = useRef(getDefaultAreaSelection()).current;
   const defaultLineSelection = useRef(getDefaultLineSelection()).current;
-  const scheduleThemeRootClass = cn(
-    isNight ? "client-theme-night" : "client-theme-day",
-    getClientThemeClassName(theme)
-  );
   const nextJob = fieldJobs[0];
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -4284,7 +4279,7 @@ export function TechnicianPortalPage() {
       label: (
         <span className="inline-flex items-center justify-center gap-1">
           <span>排班设置</span>
-          {hasSchedulePlanningNew ? <ScheduleNewBadge className="h-6 w-6 text-[7px]" /> : null}
+          {hasSchedulePlanningNew ? <ScheduleNewBadge /> : null}
         </span>
       ),
       value: "planning"
@@ -4498,7 +4493,7 @@ export function TechnicianPortalPage() {
                 >
                   <AppIcon className="h-4 w-4" name="calendar" />
                   排班
-                  {hasSchedulePlanningNew ? <ScheduleNewBadge className="absolute -right-2 -top-2" /> : null}
+                  {hasSchedulePlanningNew ? <ScheduleNewBadge className="absolute -right-0.5 -top-0.5" /> : null}
                 </Link>
               </SectionTitle>
               <div className="mt-3 grid grid-cols-5 gap-2">
@@ -4870,7 +4865,7 @@ export function TechnicianPortalPage() {
           <>
             {scheduleTopControls}
 
-            <div className={cn(scheduleThemeRootClass, "w-full min-w-0 max-w-full overflow-x-hidden [overflow-x:clip]")}>
+            <div className="w-full min-w-0 max-w-full overflow-visible">
               {schedulePrimaryTab === "mySchedule" ? (
                 <div className="space-y-4">
                   <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" searchQuery={scheduleSearchQuery} />

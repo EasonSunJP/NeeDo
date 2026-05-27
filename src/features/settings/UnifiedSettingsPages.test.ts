@@ -1,0 +1,46 @@
+import { describe, expect, it } from "vitest";
+import source from "./UnifiedSettingsPages.tsx?raw";
+
+const serviceRangeSource = source.slice(
+  source.indexOf("export function UnifiedSettingsServiceRangePage"),
+  source.indexOf("export function UnifiedSettingsAccountPage")
+);
+
+describe("UnifiedSettingsServiceRangePage", () => {
+  it("uses an isolated settings detail shell with close control and no main nav", () => {
+    expect(serviceRangeSource).toContain("navItems={[]}");
+    expect(serviceRangeSource).toContain("onClose={closeServiceRangePage}");
+  });
+
+  it("keeps search in the header area and removes framed title/location blocks", () => {
+    expect(serviceRangeSource).toContain("FloatingHeaderSearchBar");
+    expect(serviceRangeSource).toContain("serviceRangeSearchQuery");
+    expect(serviceRangeSource).toContain('placeholder={t("搜索地点")}');
+    expect(serviceRangeSource).not.toContain("<SurfacePanel>");
+    expect(serviceRangeSource).not.toContain("<SectionBlock");
+  });
+
+  it("uses a simple two-button bottom action row with the updated save label", () => {
+    expect(serviceRangeSource).toContain("simple");
+    expect(source).toContain("fixed inset-x-0 bottom-0");
+    expect(source).toContain("bg-gradient-to-t");
+    expect(serviceRangeSource).toContain('saveLabel={t("保存并关闭")}');
+    expect(serviceRangeSource).not.toContain("保存并返回设置中心");
+  });
+
+  it("is shared by user, merchant, and technician location settings", () => {
+    expect(serviceRangeSource).toContain('portal === "user"');
+    expect(serviceRangeSource).toContain("selectHomeLocationManually");
+    expect(serviceRangeSource).toContain("updateStoreEntity(store.id");
+    expect(serviceRangeSource).toContain("updateTechnicianEntity(technician.id");
+    expect(serviceRangeSource).not.toContain('portal !== "technician"');
+    expect(serviceRangeSource).not.toContain("当前不可用");
+  });
+
+  it("keeps the area chips compact and removes the duplicate section title", () => {
+    expect(serviceRangeSource).toContain("min-h-11");
+    expect(serviceRangeSource).not.toContain('label={t("可服务区域")}');
+    expect(serviceRangeSource).not.toContain('title={t("可服务区域")}');
+    expect(serviceRangeSource).not.toContain("min-h-12 rounded-full px-5");
+  });
+});

@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FeatureCarousel, type FeatureCarouselSlide } from "../../../components/client-ui/FeatureCarousel";
-import { AppIcon, PageScaffold, PrimaryButton } from "../../../components/client-ui/AppScaffold";
+import { PageScaffold, PrimaryButton } from "../../../components/client-ui/AppScaffold";
+import { FloatingHeaderSearchBar } from "../../../components/mobile/FloatingHeaderSearchBar";
 import {
   FloatingHomeHeader,
   floatingHeaderGlassPanelClassName,
-  floatingHeaderInnerClassName,
-  floatingHeaderSearchActionClassName,
-  floatingHeaderSearchFieldClassName,
-  floatingHeaderSearchIconClassName,
-  floatingHeaderSearchRowClassName,
-  floatingHeaderSearchTextClassName
+  floatingHeaderInnerClassName
 } from "../../../components/mobile/FloatingHomeHeader";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { getLocationAreaHints } from "../../../lib/location";
@@ -61,23 +57,12 @@ function getSocialMePath(scope: SocialPortalScope) {
 
 function SocialTimelineHeaderSearch({ to }: { to: string }) {
   return (
-    <div className={floatingHeaderSearchRowClassName}>
-      <Link
-        aria-label="搜索动态内容"
-        className={cn("focus-ring", floatingHeaderSearchFieldClassName)}
-        to={to}
-      >
-        <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
-        <span className={floatingHeaderSearchTextClassName}>搜索 @用户、#话题、动态内容</span>
-      </Link>
-      <Link
-        aria-label="开始搜索动态"
-        className={floatingHeaderSearchActionClassName}
-        to={to}
-      >
-        搜索
-      </Link>
-    </div>
+    <FloatingHeaderSearchBar
+      actionAriaLabel="开始搜索动态"
+      fieldAriaLabel="搜索动态内容"
+      placeholder="搜索 @用户、#话题、动态内容"
+      to={to}
+    />
   );
 }
 

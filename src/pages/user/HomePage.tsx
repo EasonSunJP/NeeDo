@@ -38,10 +38,7 @@ import {
   type HomeRecommendationTabKey,
   type HomeServiceModuleConfig
 } from "../../state/homeLayoutStore";
-import {
-  selectHomeLocationManually,
-  syncHomeDeviceLocationForAppOpen
-} from "../../state/homeLocationStore";
+import { syncHomeDeviceLocationForAppOpen } from "../../state/homeLocationStore";
 import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
 
 const reminderDismissStorageKey = "needo.home.reminder.dismiss.v1";
@@ -208,14 +205,6 @@ function ChevronIcon({ className }: { className?: string }) {
   );
 }
 
-function CloseIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-      <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
-    </svg>
-  );
-}
-
 function CalendarClockIcon({ className }: { className?: string }) {
   return (
     <svg aria-hidden="true" className={cn("h-8 w-8", className)} fill="none" viewBox="0 0 24 24">
@@ -265,86 +254,6 @@ function HomeSectionHeader({
           <ChevronIcon className="h-3.5 w-3.5" />
         </Link>
       ) : null}
-    </div>
-  );
-}
-
-function LocationSheet({
-  open,
-  currentLocationId,
-  locations,
-  onClose,
-  onSelect
-}: {
-  open: boolean;
-  currentLocationId: string;
-  locations: HomeLocationOption[];
-  onClose: () => void;
-  onSelect: (locationId: string) => void;
-}) {
-  if (!open) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-50">
-      <button
-        aria-label="关闭定位选择"
-        className="absolute inset-0 bg-[color:var(--client-overlay)]"
-        onClick={onClose}
-        type="button"
-      />
-      <div className="safe-panel-bottom absolute inset-x-0 bottom-0 rounded-t-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:var(--client-surface)] px-4 pb-6 pt-5 shadow-[0_-24px_50px_rgba(0,0,0,0.18)]">
-        <div className="mx-auto h-1.5 w-12 rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)]" />
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[16px] font-black text-[color:var(--client-text)]">切换服务定位</p>
-            <p className="mt-1 text-[12px] text-[color:var(--client-muted)]">切换后首页推荐内容和动态附近会按当前区域刷新。</p>
-          </div>
-          <button
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--client-primary-soft)_82%,transparent)] text-[color:var(--client-primary)]"
-            onClick={onClose}
-            type="button"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {locations.map((location) => {
-            const active = location.id === currentLocationId;
-
-            return (
-              <button
-                className={cn(
-                  "flex w-full items-start justify-between gap-3 rounded-[22px] border px-4 py-4 text-left transition",
-                  active
-                    ? "border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:var(--client-primary-soft)]"
-                    : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)]"
-                )}
-                key={location.id}
-                onClick={() => onSelect(location.id)}
-                type="button"
-              >
-                <div className="min-w-0">
-                  <p className="text-[15px] font-black text-[color:var(--client-text)]">{location.label}</p>
-                  {location.summary ? <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">{location.summary}</p> : null}
-                </div>
-                <span
-                  className={cn(
-                    "mt-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                    active
-                      ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]"
-                      : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] text-transparent"
-                  )}
-                >
-                  <ChevronIcon className="h-3 w-3 rotate-90" />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
@@ -744,7 +653,6 @@ export function HomePage() {
     },
     [homeRecommendationsQuery.data]
   );
-  const [locationSheetOpen, setLocationSheetOpen] = useState(false);
   const [recommendationTab, setRecommendationTab] = useState<HomeRecommendationTabKey>(config.recommendation.defaultTab);
   const [now, setNow] = useState(() => new Date());
   const [dismissedReminder, setDismissedReminder] = useState(() => loadDismissedReminder());
@@ -1030,7 +938,7 @@ export function HomePage() {
             avatarTo={userPortalConfig.myPath}
             locationLabel={selectedLocation.label}
             locationCaption="当前服务区域"
-            onLocationClick={() => setLocationSheetOpen(true)}
+            locationTo="/me/settings/service-range"
             settingsLabel="系统设置"
             settingsTo={userPortalConfig.settingsPath}
           />
@@ -1200,16 +1108,6 @@ export function HomePage() {
 
       {petSettings.enabled ? null : <CurrentAppointmentFloatingButton count={activeAppointmentOrders.length} latestOrder={latestActiveAppointment} />}
 
-      <LocationSheet
-        currentLocationId={selectedLocation.id}
-        locations={config.locations}
-        onClose={() => setLocationSheetOpen(false)}
-        onSelect={(locationId) => {
-          selectHomeLocationManually(locationId);
-          setLocationSheetOpen(false);
-        }}
-        open={locationSheetOpen}
-      />
     </MobileShell>
   );
 }

@@ -111,8 +111,14 @@ export function SettingsDetailPage({
   info,
   subtitle,
   actions,
+  footer,
+  footerClassName,
   backTo = "/me/settings",
   onBack,
+  onClose,
+  closeTo,
+  closeLabel,
+  hideCloseButton,
   navItems,
   children,
   contentClassName
@@ -121,8 +127,14 @@ export function SettingsDetailPage({
   info?: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  footer?: ReactNode;
+  footerClassName?: string;
   backTo?: string;
   onBack?: () => void;
+  onClose?: () => void;
+  closeTo?: string;
+  closeLabel?: string;
+  hideCloseButton?: boolean;
   navItems?: MobileNavItem[];
   children: ReactNode;
   contentClassName?: string;
@@ -145,7 +157,19 @@ export function SettingsDetailPage({
 
   return (
     <PageScaffold contentClassName={cn("space-y-6 pt-[calc(env(safe-area-inset-top)+5.75rem)]", contentClassName)} navItems={navItems}>
-      <AppTopBar actions={actions} fixed info={titleInfo} onBack={handleBack} title={title} />
+      <AppTopBar
+        actions={actions}
+        closeLabel={closeLabel}
+        closeTo={closeTo}
+        fixed
+        footer={footer}
+        footerClassName={footerClassName}
+        hideCloseButton={hideCloseButton}
+        info={titleInfo}
+        onBack={handleBack}
+        onClose={onClose}
+        title={title}
+      />
       {children}
     </PageScaffold>
   );

@@ -301,6 +301,7 @@ export function UserTechnicianScheduleDetailPage() {
             avatarTo={userPortalConfig.myPath}
             locationLabel={selectedLocation.label}
             locationCaption="当前服务区域"
+            locationTo="/me/settings/service-range"
             rightAction={
               <IconButton
                 className="border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] text-[color:var(--client-primary)]"

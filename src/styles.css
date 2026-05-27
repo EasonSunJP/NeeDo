@@ -2215,7 +2215,7 @@ body:has(.merchant-analytics-clean-shell),
   backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
 }
 
-.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header).client-floating-header-glass-frame {
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header).client-floating-header-glass-frame {
   background:
     linear-gradient(
       180deg,
@@ -2238,11 +2238,11 @@ body:has(.merchant-analytics-clean-shell),
   backdrop-filter: blur(20px) saturate(1.95) contrast(1.08) brightness(1.06) !important;
 }
 
-.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header).client-floating-header-glass-frame::before {
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header).client-floating-header-glass-frame::before {
   opacity: 0.24;
 }
 
-.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header).client-floating-header-glass-frame::after {
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header).client-floating-header-glass-frame::after {
   opacity: 0.42;
 }
 
@@ -3851,6 +3851,24 @@ body:has(.merchant-analytics-clean-shell),
   background: var(--client-bg);
 }
 
+.client-mobile-schedule-detail__refractive-scroll {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--client-surface) 42%, transparent) 0%,
+      color-mix(in srgb, var(--client-surface) 18%, transparent) 112px,
+      transparent 220px
+    );
+}
+
+.client-mobile-schedule-detail__calendar-board {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 86px) !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .client-mobile-schedule-detail__schedule-grid {
   margin-inline: 0;
 }
@@ -4855,19 +4873,39 @@ body:has(.admin-theme-dark),
     );
 }
 
+.needo-splash-version-badge {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  right: calc(env(safe-area-inset-right, 0px) + 1rem);
+  z-index: 1002;
+  color: var(--needo-splash-text);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.34);
+}
+
+.needo-splash-content-frame {
+  overflow-x: hidden;
+}
+
 .needo-splash-loading {
   --needo-splash-progress: 24%;
+  --needo-splash-runner-size: clamp(4.1rem, 18vw, 5.35rem);
   position: relative;
+  overflow-x: hidden;
   padding-top: 4rem;
 }
 
 .needo-splash-runner {
   position: absolute;
-  left: clamp(2.25rem, var(--needo-splash-progress), calc(100% - 2.25rem));
+  left: clamp(calc(var(--needo-splash-runner-size) / 2), var(--needo-splash-progress), calc(100% - (var(--needo-splash-runner-size) / 2)));
   top: 0;
   z-index: 1;
-  width: clamp(4.1rem, 18vw, 5.35rem);
-  height: clamp(4.15rem, 18vw, 5.45rem);
+  width: var(--needo-splash-runner-size);
+  height: calc(var(--needo-splash-runner-size) + 0.1rem);
+  overflow: hidden;
   transform: translateX(-50%);
   transition: left 680ms cubic-bezier(0.2, 0.82, 0.22, 1);
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.32));

@@ -921,8 +921,9 @@ export function ScheduleGrid({
   const scheduleRowHeightPx = isPeriodGrid ? (isMobileSurface ? 72 : 76) : isMobileSurface ? 104 : 96;
   const scheduleRowHeight = `${scheduleRowHeightPx}px`;
   const wrapperClass = isMobileSurface
-    ? "border-line bg-white/90 shadow-panel backdrop-blur-xl"
+    ? "bg-transparent shadow-none backdrop-blur-0"
     : "merchant-dispatch-surface";
+  const wrapperFrameClass = isMobileSurface ? "" : "border";
   const headerBgClass = isMobileSurface ? "" : "merchant-dispatch-table-header";
   const rowBgClass = isMobileSurface ? "" : "merchant-dispatch-card";
   const toggleClass = isMobileSurface ? "border-line bg-white/80 text-ink/60 hover:border-moss hover:text-ink" : "merchant-dispatch-toggle";
@@ -1570,17 +1571,21 @@ export function ScheduleGrid({
 
   return (
     <div
-      className={cn("relative isolate overflow-visible border", wrapperClass, className)}
+      className={cn("relative isolate overflow-visible", wrapperFrameClass, wrapperClass, className)}
       ref={wrapperRef}
       style={{
         ...initialScheduleScrollStyle,
         ...scheduleSurfaceStyle
       }}
     >
-      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -left-px z-[95] w-[2px]" style={edgeGuardStyle} />
-      <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -right-px z-[95] w-[2px]" style={edgeGuardStyle} />
-      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-px z-[95] h-[2px]" style={edgeGuardStyle} />
-      <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -bottom-px z-[95] h-[2px]" style={edgeGuardStyle} />
+      {!isMobileSurface ? (
+        <>
+          <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -left-px z-[95] w-[2px]" style={edgeGuardStyle} />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 -right-px z-[95] w-[2px]" style={edgeGuardStyle} />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-px z-[95] h-[2px]" style={edgeGuardStyle} />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 -bottom-px z-[95] h-[2px]" style={edgeGuardStyle} />
+        </>
+      ) : null}
       {!compactHeader ? (
         <div className="flex items-center justify-end gap-3 border-b border-line px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">

@@ -39,6 +39,7 @@ export function UserSchedulePage() {
             avatarTo={userPortalConfig.myPath}
             locationLabel={selectedLocation.label}
             locationCaption="当前服务区域"
+            locationTo="/me/settings/service-range"
             settingsLabel="系统设置"
             settingsTo={userPortalConfig.settingsPath}
           />

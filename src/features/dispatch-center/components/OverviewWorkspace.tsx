@@ -1719,17 +1719,17 @@ export function DispatchOverviewWorkspace({
 
       {isMobileSurface && scheduleDetailOpen ? (
         <MobileFullscreenPage className="z-[90]" innerClassName="client-mobile-schedule-detail__inner">
-          <div className="client-mobile-schedule-detail__header shrink-0 border-b border-line bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] shadow-[0_16px_34px_rgba(0,0,0,0.16)] backdrop-blur-xl">
-            <MobileFullscreenHeader
-              className="border-b-0 bg-transparent text-ink backdrop-blur-none"
-              closeLabel="关闭排班表"
-              onClose={() => setScheduleDetailOpen(false)}
-              subtitle={summary.activePeriodLabel}
-              title="周期排班表"
-            />
-          </div>
-          <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-4">
+          <MobileFullscreenHeader
+            className="client-mobile-schedule-detail__floating-header"
+            closeLabel="关闭排班表"
+            onClose={() => setScheduleDetailOpen(false)}
+            showSpacer={false}
+            subtitle={summary.activePeriodLabel}
+            title="周期排班表"
+          />
+          <div className="scrollbar-none client-mobile-schedule-detail__refractive-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom,0px)+24px)] pt-3">
             <ScheduleCycleCalendarBoard
+              className="client-mobile-schedule-detail__calendar-board"
               cycleId={summary.activeCycle?.id ?? null}
               dateKey={dateKey}
               getTechnicianDetailPath={getMerchantStaffDetailPath}

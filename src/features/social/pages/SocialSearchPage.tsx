@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AppIcon, AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
-import {
-  floatingHeaderSearchActionClassName,
-  floatingHeaderSearchFieldClassName,
-  floatingHeaderSearchIconClassName,
-  floatingHeaderSearchInputClassName
-} from "../../../components/mobile/FloatingHomeHeader";
+import { AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
+import { FloatingHeaderSearchBar } from "../../../components/mobile/FloatingHeaderSearchBar";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { getLocationAreaHints } from "../../../lib/location";
 import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
@@ -114,10 +109,11 @@ export function SocialSearchPage() {
       />
 
       <SurfacePanel className="-mt-6 space-y-2 rounded-[28px] !p-2">
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
+        <FloatingHeaderSearchBar
+          actionAriaLabel="开始搜索动态"
+          fieldAriaLabel="搜索动态内容"
+          onChange={setInput}
+          onSubmit={() => {
             const next = input.trim();
 
             if (!next) {
@@ -136,23 +132,9 @@ export function SocialSearchPage() {
             navigate(socialPaths.search(scope, next));
             setTab("nearby");
           }}
-        >
-          <div className={floatingHeaderSearchFieldClassName}>
-            <AppIcon className={floatingHeaderSearchIconClassName} name="search" />
-            <input
-              className={floatingHeaderSearchInputClassName}
-              onChange={(event) => setInput(event.target.value)}
-              placeholder="搜索 @用户、#话题、动态内容"
-              value={input}
-            />
-          </div>
-          <button
-            className={floatingHeaderSearchActionClassName}
-            type="submit"
-          >
-            搜索
-          </button>
-        </form>
+          placeholder="搜索 @用户、#话题、动态内容"
+          value={input}
+        />
         <SearchTabs onChange={setTab} value={tab} />
       </SurfacePanel>
 

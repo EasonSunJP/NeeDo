@@ -165,6 +165,28 @@ function iconPath(name: IconName) {
       );
     case "share":
       return <ShareNetworkIconPath />;
+    case "sync":
+      return (
+        <>
+          <path d="M18.5 8.5A7 7 0 0 0 6.6 6.6L4.5 8.7M5.5 15.5a7 7 0 0 0 11.9 1.9l2.1-2.1" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+          <path d="M4.5 4.8v3.9h3.9M19.5 19.2v-3.9h-3.9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+        </>
+      );
+    case "more":
+      return (
+        <>
+          <circle cx="6.5" cy="12" fill="currentColor" r="1.6" />
+          <circle cx="12" cy="12" fill="currentColor" r="1.6" />
+          <circle cx="17.5" cy="12" fill="currentColor" r="1.6" />
+        </>
+      );
+    case "trash":
+      return (
+        <>
+          <path d="M5.5 7.5h13M9.2 7.5V5.2h5.6v2.3M8 9.8l.6 8.4a2 2 0 0 0 2 1.8h2.8a2 2 0 0 0 2-1.8l.6-8.4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+          <path d="M10.5 11.5v5M13.5 11.5v5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+        </>
+      );
     case "manager":
       return (
         <>
@@ -199,6 +221,9 @@ export type IconName =
   | "bell"
   | "sparkles"
   | "share"
+  | "sync"
+  | "more"
+  | "trash"
   | "manager";
 
 export function AppIcon({ name, className }: { name: IconName; className?: string }) {
