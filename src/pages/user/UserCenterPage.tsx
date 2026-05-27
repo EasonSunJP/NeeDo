@@ -421,12 +421,13 @@ export function UserCenterPage() {
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
   const bioInputRef = useRef<HTMLTextAreaElement>(null);
-  const serviceTools: Array<{ label: string; info: string; value: number; to: string }> = [
+  const serviceTools: Array<{ label: string; info: string; value: number | string; to: string }> = [
     { label: "我的收藏", info: "店铺、技师、服务", value: stores.length, to: "/categories?type=store" },
     { label: "我的地址", info: "家庭、公司、常用地址", value: 4, to: "/checkout/svc-clean-1" },
     { label: "我的评价", info: "已评价与待回复", value: reviews.length, to: "/me" },
     { label: "周期预约", info: "保洁、护理、家电维护", value: 2, to: "/categories?type=service" },
-    { label: "会员", info: "老人、儿童、共同居住人", value: 3, to: "/me" }
+    { label: "会员", info: "老人、儿童、共同居住人", value: 3, to: "/me" },
+    { label: "KYC身份验证", info: "实名、证件、本人确认", value: "去", to: "/me/settings/verification" }
   ];
   const startProfileEdit = () => {
     const nextDraft = savedProfilePreview ?? buildUserProfileDraft(currentCustomer, linkedTechnician);
