@@ -2171,16 +2171,23 @@ body:has(.merchant-analytics-clean-shell),
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--client-top-chrome-bg) 18%, var(--client-elevated) 12%),
-      color-mix(in srgb, var(--client-bg) 7%, transparent)
+      color-mix(in srgb, var(--client-top-chrome-bg) 14%, transparent) 0%,
+      color-mix(in srgb, var(--client-elevated) 10%, transparent) 42%,
+      color-mix(in srgb, var(--client-bg) 5%, transparent) 100%
+    ),
+    linear-gradient(
+      112deg,
+      color-mix(in srgb, var(--client-primary) 7%, transparent),
+      transparent 48%,
+      color-mix(in srgb, var(--client-text) 4%, transparent)
     ) !important;
   box-shadow:
-    0 18px 42px color-mix(in srgb, var(--client-bg) 30%, rgba(0, 0, 0, 0.22)),
-    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 16%, transparent),
-    inset 0 18px 24px -26px color-mix(in srgb, var(--client-elevated) 52%, transparent),
-    inset 0 -18px 24px -26px color-mix(in srgb, var(--client-text) 16%, transparent) !important;
-  -webkit-backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
-  backdrop-filter: blur(9px) saturate(1.95) contrast(1.08) brightness(1.03) !important;
+    0 18px 42px color-mix(in srgb, var(--client-bg) 22%, rgba(0, 0, 0, 0.18)),
+    inset 0 0 0 1px color-mix(in srgb, var(--client-elevated) 12%, transparent),
+    inset 0 18px 24px -26px color-mix(in srgb, var(--client-elevated) 36%, transparent),
+    inset 0 -18px 24px -26px color-mix(in srgb, var(--client-text) 12%, transparent) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
+  backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
 }
 
 .client-shell .client-portal-tab-header {

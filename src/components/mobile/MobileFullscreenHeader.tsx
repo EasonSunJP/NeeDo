@@ -83,7 +83,8 @@ export function MobileFullscreenHeader({
   hideBackButton = false,
   hideCloseButton = false,
   backLabel = "返回",
-  closeLabel = "关闭"
+  closeLabel = "关闭",
+  showSpacer = true
 }: {
   title: ReactNode;
   info?: ReactNode;
@@ -97,6 +98,7 @@ export function MobileFullscreenHeader({
   hideCloseButton?: boolean;
   backLabel?: string;
   closeLabel?: string;
+  showSpacer?: boolean;
 }) {
   const showBackButton = Boolean(onBack) && !hideBackButton;
   const showCloseButton = Boolean(onClose) && !hideCloseButton;
@@ -114,6 +116,7 @@ export function MobileFullscreenHeader({
       frameClassName="z-40"
       maxWidth="480px"
       panelClassName={cn(dark ? mobileFullscreenHeaderDarkSurfaceClassName : mobileFullscreenHeaderSurfaceClassName, className)}
+      showSpacer={showSpacer}
       spacerGapPx={0}
     >
       <div className={floatingHeaderInnerClassName}>

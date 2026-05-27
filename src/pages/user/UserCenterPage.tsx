@@ -5,14 +5,14 @@ import { IconButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
-import { reviews, stores, userStories } from "../../data/mock";
+import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
+import { reviews, stores } from "../../data/mock";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
-import { getCustomerLevelLabel, resolveCustomerMembership } from "../../shared/profile-card/customerMembership";
+import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
 import { updateCustomerEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { Customer, Technician } from "../../types/domain";
@@ -149,59 +149,17 @@ async function createCroppedAvatarDataUrl(crop: AvatarCropState) {
   return canvas.toDataURL("image/jpeg", 0.84);
 }
 
-function getMembershipSurfaceClassNames(kind?: string) {
-  if (kind === "black") {
-    return {
-      shell: "border-[#4d3b19]/80 bg-[radial-gradient(circle_at_top_left,rgba(247,216,132,0.26),transparent_34%),linear-gradient(145deg,#1a1714,#050505_58%,#0f0c09)] text-white",
-      panel: "border-[#f3cf785c] bg-[#17130f]/82",
-      metric: "border-[#f3cf784d] bg-white/[0.07]",
-      chip: "border-[#f3cf7866] bg-[#f3cf781f] text-[#f9dd8c]",
-      avatar: "border-[#f3cf7899] ring-1 ring-[#f3cf7866]",
-      muted: "text-[#f7ead0]/62",
-      label: "text-[#f7ead0]/52",
-      accent: "text-[#f3cf78]",
-      divider: "bg-[#f3cf7833]"
-    };
-  }
-
-  if (kind === "diamond") {
-    return {
-      shell: "border-[#a7d7ff66] bg-[radial-gradient(circle_at_top_left,rgba(178,224,255,0.30),transparent_34%),linear-gradient(145deg,#102033,#06101e_58%,#071626)] text-white",
-      panel: "border-[#b5e1ff5c] bg-white/[0.07]",
-      metric: "border-[#b5e1ff4d] bg-white/[0.08]",
-      chip: "border-[#b5e1ff66] bg-[#b5e1ff1f] text-[#ccecff]",
-      avatar: "border-[#b5e1ff99] ring-1 ring-[#b5e1ff66]",
-      muted: "text-[#d9edff]/64",
-      label: "text-[#d9edff]/54",
-      accent: "text-[#b5e1ff]",
-      divider: "bg-[#b5e1ff38]"
-    };
-  }
-
-  if (kind === "gold") {
-    return {
-      shell: "border-[#e7b94b73] bg-[radial-gradient(circle_at_top_left,rgba(255,208,99,0.30),transparent_34%),linear-gradient(145deg,#2a1c0a,#120d08_58%,#191007)] text-white",
-      panel: "border-[#f3cf785c] bg-white/[0.07]",
-      metric: "border-[#f3cf784d] bg-white/[0.08]",
-      chip: "border-[#f3cf7866] bg-[#f3cf781f] text-[#ffe3a1]",
-      avatar: "border-[#f3cf7899] ring-1 ring-[#f3cf7866]",
-      muted: "text-[#ffe8ba]/64",
-      label: "text-[#ffe8ba]/54",
-      accent: "text-[#f3cf78]",
-      divider: "bg-[#f3cf7838]"
-    };
-  }
-
+function getThemeProfileSurfaceClassNames() {
   return {
-    shell: "border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_30%,transparent),transparent_34%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_92%,black),color-mix(in_srgb,var(--client-bg)_88%,black))] text-[color:var(--client-text)]",
-    panel: "border-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] bg-white/[0.08]",
-    metric: "border-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] bg-white/[0.08]",
-    chip: "border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]",
-    avatar: "border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_30%,transparent)]",
+    shell: "border-[color:color-mix(in_srgb,var(--client-primary)_30%,var(--client-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_22%,transparent),transparent_34%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_94%,black))] text-[color:var(--client-text)]",
+    panel: "border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_14%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_58%,var(--client-bg)_42%)]",
+    metric: "border-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_16%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_50%,transparent)]",
+    chip: "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]",
+    avatar: "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)]",
     muted: "text-[color:var(--client-muted)]",
-    label: "text-[color:var(--client-muted)]",
-    accent: "text-[color:var(--client-primary)]",
-    divider: "bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)]"
+    label: "text-[color:var(--client-soft-muted)]",
+    accent: "text-[color:var(--client-primary-strong)]",
+    divider: "bg-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_18%)]"
   };
 }
 
@@ -457,19 +415,18 @@ export function UserCenterPage() {
   const usageCount = currentCustomer.orderCount;
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
-  const membership = resolveCustomerMembership(currentCustomer.memberLevel);
   const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
-  const membershipSurface = getMembershipSurfaceClassNames(membership.kind);
+  const membershipSurface = getThemeProfileSurfaceClassNames();
   const nicknameInputRef = useRef<HTMLTextAreaElement>(null);
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
   const bioInputRef = useRef<HTMLTextAreaElement>(null);
-  const serviceTools = [
-    { label: "我的收藏", caption: "店铺、技师、服务", value: stores.length, to: "/categories?type=store" },
-    { label: "我的地址", caption: "家庭、公司、常用地址", value: 4, to: "/checkout/svc-clean-1" },
-    { label: "我的评价", caption: "已评价与待回复", value: reviews.length, to: "/me" },
-    { label: "周期预约", caption: "保洁、护理、家电维护", value: 2, to: "/categories?type=service" },
-    { label: "家庭成员", caption: "老人、儿童、共同居住人", value: 3, to: "/me" }
+  const serviceTools: Array<{ label: string; info: string; value: number; to: string }> = [
+    { label: "我的收藏", info: "店铺、技师、服务", value: stores.length, to: "/categories?type=store" },
+    { label: "我的地址", info: "家庭、公司、常用地址", value: 4, to: "/checkout/svc-clean-1" },
+    { label: "我的评价", info: "已评价与待回复", value: reviews.length, to: "/me" },
+    { label: "周期预约", info: "保洁、护理、家电维护", value: 2, to: "/categories?type=service" },
+    { label: "会员", info: "老人、儿童、共同居住人", value: 3, to: "/me" }
   ];
   const startProfileEdit = () => {
     const nextDraft = savedProfilePreview ?? buildUserProfileDraft(currentCustomer, linkedTechnician);
@@ -612,10 +569,11 @@ export function UserCenterPage() {
           action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
           info="账号资料、订单入口与服务权益都统一收在这里。"
           onBack={() => navigate("/", { replace: true })}
+          showSpacer={false}
           title="个人中心"
         />
 
-        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[calc(132px+env(safe-area-inset-bottom))]">
+        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(132px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
           {profileToastMessage ? (
             <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+76px)] z-[90] flex justify-center px-6">
               <div className={profileToastClassName}>
@@ -872,15 +830,23 @@ export function UserCenterPage() {
 
             <section className="grid grid-cols-2 gap-3">
               {serviceTools.map((entry) => (
-                <Link className={pagePanelClassName} key={entry.label} to={entry.to}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-black">{entry.label}</h3>
-                      <p className="mt-2 text-xs leading-5 text-ink/50">{entry.caption}</p>
+                <div className={cn(pagePanelClassName, "relative min-h-[74px] px-4 py-3")} key={entry.label}>
+                  <Link aria-label={entry.label} className="absolute inset-0 rounded-[28px]" to={entry.to} />
+                  <div className="pointer-events-none relative z-10 flex min-h-[50px] items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <h3 className="min-w-0 font-black">{entry.label}</h3>
+                        <InfoTooltipTrigger
+                          className="pointer-events-auto h-4 w-4 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] text-[10px] text-ink/45 hover:text-ink/80"
+                          content={entry.info}
+                          label="查看说明"
+                          panelMode="tooltip"
+                        />
+                      </div>
                     </div>
-                    <span className="rounded-md bg-mint/20 px-2 py-1 text-xs font-black text-moss">{entry.value}</span>
+                    <span className="shrink-0 rounded-md bg-mint/20 px-2 py-1 text-xs font-black text-moss">{entry.value}</span>
                   </div>
-                </Link>
+                </div>
               ))}
             </section>
 
@@ -895,30 +861,6 @@ export function UserCenterPage() {
                     </div>
                     <span className="text-sm font-black text-ink/35">›</span>
                   </Link>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <SectionTitle caption="来自保洁、门店预约与宠物服务的真实使用场景" title="近期用户反馈" />
-              <div className="space-y-3">
-                {userStories.map((story) => (
-                  <article className={pagePanelClassName} key={story.name}>
-                    <div className="flex items-start gap-3">
-                      <AvatarImage
-                        alt={`${story.name}头像`}
-                        className="h-12 w-12 shrink-0 border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] shadow-[0_12px_24px_rgba(0,0,0,0.16)]"
-                        src={story.avatar}
-                      />
-                      <div className="min-w-0">
-                        <h3 className="font-black">{story.name}</h3>
-                        <p className="mt-1 text-xs text-ink/50">
-                          {story.city} · {story.service}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-ink/65">{story.content}</p>
-                  </article>
                 ))}
               </div>
             </section>
