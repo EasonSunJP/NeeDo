@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveSettingsSelectedPortal, shouldKeepSettingsRoutePortal } from "./UnifiedSettingsPages";
 import source from "./UnifiedSettingsPages.tsx?raw";
 
 const serviceRangeSource = source.slice(
@@ -42,5 +43,30 @@ describe("UnifiedSettingsServiceRangePage", () => {
     expect(serviceRangeSource).not.toContain('label={t("可服务区域")}');
     expect(serviceRangeSource).not.toContain('title={t("可服务区域")}');
     expect(serviceRangeSource).not.toContain("min-h-12 rounded-full px-5");
+  });
+});
+
+describe("UnifiedSettingsPortalPage", () => {
+  it("uses the current settings route as the selected frontend identity", () => {
+    expect(resolveSettingsSelectedPortal("technician", "user")).toBe("technician");
+    expect(resolveSettingsSelectedPortal("merchant", "user")).toBe("merchant");
+    expect(resolveSettingsSelectedPortal("business", "user")).toBe("business");
+  });
+
+  it("keeps technician and merchant settings routes when a user session can enter them", () => {
+    expect(
+      shouldKeepSettingsRoutePortal({
+        activePortal: "user",
+        canEnterRoutePortal: true,
+        routePortal: "technician"
+      })
+    ).toBe(true);
+    expect(
+      shouldKeepSettingsRoutePortal({
+        activePortal: "user",
+        canEnterRoutePortal: true,
+        routePortal: "merchant"
+      })
+    ).toBe(true);
   });
 });

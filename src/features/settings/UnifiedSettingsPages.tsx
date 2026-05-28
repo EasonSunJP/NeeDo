@@ -347,6 +347,40 @@ function isUnifiedSettingsPortal(portal: PortalScope | UnifiedSettingsPortal | u
   return portal === "user" || portal === "technician" || portal === "merchant" || portal === "business";
 }
 
+export function resolveSettingsSelectedPortal(routePortal: UnifiedSettingsPortal, sessionPortal?: PortalScope | null): UnifiedSettingsPortal {
+  if (settingsPortalOptions.includes(routePortal as SwitchableSettingsPortal)) {
+    return routePortal;
+  }
+
+  if (settingsPortalOptions.includes(sessionPortal as SwitchableSettingsPortal)) {
+    return sessionPortal as UnifiedSettingsPortal;
+  }
+
+  return "user";
+}
+
+export function shouldKeepSettingsRoutePortal({
+  activePortal,
+  canEnterRoutePortal,
+  pendingTargetPortal,
+  routePortal
+}: {
+  activePortal?: PortalScope | null;
+  canEnterRoutePortal: boolean;
+  pendingTargetPortal?: UnifiedSettingsPortal;
+  routePortal: UnifiedSettingsPortal;
+}) {
+  if (pendingTargetPortal === routePortal) {
+    return true;
+  }
+
+  if (!isUnifiedSettingsPortal(activePortal) || activePortal === routePortal) {
+    return true;
+  }
+
+  return canEnterRoutePortal;
+}
+
 const supportedSettingsSuffixes: Record<UnifiedSettingsPortal, Set<string>> = {
   user: new Set([
     "",
@@ -431,15 +465,22 @@ function useSettingsPortalRedirectWithOptions(
   } = {}
 ) {
   const location = useLocation();
-  const { session } = useAuth();
+  const { canEnterPortal, session } = useAuth();
   const activePortal = session?.portal;
   const pendingTargetPortal = (location.state as SettingsNavigationState | null)?.settingsPortalTarget;
 
-  if (pendingTargetPortal === portal) {
+  if (
+    shouldKeepSettingsRoutePortal({
+      activePortal,
+      canEnterRoutePortal: canEnterPortal(portal),
+      pendingTargetPortal,
+      routePortal: portal
+    })
+  ) {
     return null;
   }
 
-  if (!isUnifiedSettingsPortal(activePortal) || activePortal === portal) {
+  if (!isUnifiedSettingsPortal(activePortal)) {
     return null;
   }
 
@@ -1605,10 +1646,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
   const navigate = useNavigate();
   const { language } = useI18n();
   const { session, switchPortal } = useAuth();
-  const currentPortal = session?.portal ?? portal;
-  const selectedPortal: SwitchableSettingsPortal = settingsPortalOptions.includes(currentPortal as SwitchableSettingsPortal)
-    ? (currentPortal as SwitchableSettingsPortal)
-    : "user";
+  const selectedPortal = resolveSettingsSelectedPortal(portal, session?.portal) as SwitchableSettingsPortal;
   const t = (source: string) => translateText(source, language);
   const selectPortal = (nextPortal: SwitchableSettingsPortal) => {
     if (nextPortal === selectedPortal) {
