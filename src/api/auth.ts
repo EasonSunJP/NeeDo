@@ -34,6 +34,7 @@ type AuthLoginPayload = TokenPairPayload & {
 export const authEndpointPaths = {
   captcha: "/captcha",
   login: "/login",
+  formalLogin: "/auth/login",
   register: "/reg",
   refresh: "/auth/refresh",
   logout: "/auth/logout",
@@ -185,6 +186,24 @@ export const authApi = {
       retryOnUnauthorized: false
     });
     const tokens = normalizeLoginPayload(payload, email);
+    setAuthTokens({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken
+    });
+
+    return tokens;
+  },
+
+  async loginFormal(username: string, password: string) {
+    const tokens = await httpClient.request<AuthLoginPayload>(authEndpointPaths.formalLogin, {
+      auth: false,
+      body: {
+        username,
+        password
+      },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
     setAuthTokens({
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken

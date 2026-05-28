@@ -310,6 +310,18 @@ export function I18nRuntime({ children }: { children: ReactNode }) {
   const translationContext = useMemo<TranslationContext>(() => ({ portal: resolveRuntimeTranslationPortal(location.pathname) }), [location.pathname]);
 
   useEffect(() => {
+    if (language === "zh") {
+      const shouldRestoreRuntimeText = document.documentElement.lang !== "zh-CN";
+      document.documentElement.lang = "zh-CN";
+
+      if (!shouldRestoreRuntimeText) {
+        return;
+      }
+
+      const frame = window.requestAnimationFrame(() => translateDocument(language, translationContext));
+      return () => window.cancelAnimationFrame(frame);
+    }
+
     let frame = 0;
 
     const scheduleTranslate = () => {

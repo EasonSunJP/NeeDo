@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveAdminDefaultCredentials } from "./AdminLoginPage";
 import { getPostLoginRoute, getPublicTestLoginPortal, resolveLoginErrorMessage, resolveLoginFeedbackMessage, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
 import appSource from "../../App.tsx?raw";
 import adminLoginPageSource from "./AdminLoginPage.tsx?raw";
@@ -115,6 +116,27 @@ describe("LoginPage real-account login", () => {
     expect(adminLoginPageSource).toContain("testCredentialLogin");
     expect(adminLoginPageSource).toContain("VITE_TEST_LOGIN_BUSINESS_EMAIL");
     expect(adminLoginPageSource).toContain('"afirieito-admin"');
+  });
+
+  it("uses formal password login on backend login screens", () => {
+    expect(adminLoginPageSource).toContain("loginWithFormalPassword");
+    expect(adminLoginPageSource).not.toContain("login(config.authPortal");
+  });
+
+  it("prefills operations admin login fields from configured test credentials", () => {
+    expect(
+      resolveAdminDefaultCredentials(
+        {
+          VITE_TEST_LOGIN_ADMIN_EMAIL: "admin",
+          VITE_TEST_LOGIN_ADMIN_PASSWORD: "Admin.2026"
+        },
+        "admin",
+        "admin@example.com"
+      )
+    ).toEqual({
+      email: "admin",
+      password: "Admin.2026"
+    });
   });
 
   it("ignores redirects that belong to a different portal after login", () => {

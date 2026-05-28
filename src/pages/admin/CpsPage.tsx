@@ -510,6 +510,7 @@ function MetricCard({
   value,
   caption,
   tone = "default",
+  density = "default",
   className,
   ...articleProps
 }: {
@@ -517,6 +518,7 @@ function MetricCard({
   value: string;
   caption?: string;
   tone?: "default" | "green" | "red" | "dark";
+  density?: "default" | "compact";
 } & HTMLAttributes<HTMLElement>) {
   const toneClassName = {
     default: "bg-white",
@@ -524,12 +526,13 @@ function MetricCard({
     red: "bg-coral/10",
     dark: "bg-ink text-white"
   }[tone];
+  const compact = density === "compact";
 
   return (
-    <article {...articleProps} className={cn("rounded-lg border border-line p-4 shadow-panel", toneClassName, className)}>
-      <p className={cn("text-sm", tone === "dark" ? "text-white/60" : "text-ink/55")}>{label}</p>
-      <strong className="mt-2 block break-words text-2xl font-black">{value}</strong>
-      {caption ? <p className={cn("mt-2 text-xs", tone === "dark" ? "text-white/55" : "text-ink/50")}>{caption}</p> : null}
+    <article {...articleProps} className={cn("rounded-lg border border-line shadow-panel", compact ? "px-3 py-3" : "p-4", toneClassName, className)}>
+      <p className={cn(compact ? "text-xs leading-4" : "text-sm", tone === "dark" ? "text-white/60" : "text-ink/55")}>{label}</p>
+      <strong className={cn("block break-words font-black leading-tight", compact ? "mt-1.5 text-[1.45rem]" : "mt-2 text-2xl")}>{value}</strong>
+      {caption ? <p className={cn(compact ? "mt-1.5 text-[11px] leading-4" : "mt-2 text-xs", tone === "dark" ? "text-white/55" : "text-ink/50")}>{caption}</p> : null}
     </article>
   );
 }
@@ -1386,8 +1389,8 @@ function DashboardMetricBoard({ metrics }: { metrics: DashboardMetric[] }) {
   };
 
   return (
-    <section className="relative min-h-[120px] pr-0 sm:pr-14">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-6">
+    <section className="relative min-h-[96px] pr-0 sm:pr-12">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-6">
         {visibleMetrics.map((metric) => {
           const dragging = draggingMetricId === metric.id;
 
@@ -1396,10 +1399,11 @@ function DashboardMetricBoard({ metrics }: { metrics: DashboardMetric[] }) {
               aria-grabbed={dragging}
               caption={metric.caption}
               className={cn(
-                "min-h-[148px] select-none transition duration-150",
+                "min-h-[112px] select-none transition duration-150",
                 dragging ? "cursor-grabbing border-dashed opacity-25" : "cursor-grab hover:-translate-y-0.5 hover:border-moss/50"
               )}
               data-dashboard-metric-id={metric.id}
+              density="compact"
               key={metric.id}
               label={metric.label}
               onPointerCancel={finishMetricDrag}
@@ -1418,7 +1422,7 @@ function DashboardMetricBoard({ metrics }: { metrics: DashboardMetric[] }) {
         aria-expanded={selectorOpen}
         aria-label="打开指标显示设置"
         className={cn(
-          "focus-ring absolute right-0 top-0 z-20 grid h-11 w-11 place-items-center rounded-full border border-line bg-white text-ink shadow-[0_18px_40px_rgba(0,0,0,0.18)] transition hover:border-moss hover:text-moss",
+          "focus-ring absolute right-0 top-0 z-20 grid h-10 w-10 place-items-center rounded-full border border-line bg-white text-ink shadow-[0_18px_40px_rgba(0,0,0,0.18)] transition hover:border-moss hover:text-moss",
           selectorOpen ? "border-moss text-moss" : ""
         )}
         onClick={() => setSelectorOpen((open) => !open)}

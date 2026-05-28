@@ -384,6 +384,19 @@ export function resolveAdminTestLoginCredentials(env: AdminTestCredentialEnv, po
   return { email, password };
 }
 
+export function resolveAdminDefaultCredentials(
+  env: AdminTestCredentialEnv,
+  portal: AdminLoginPortal,
+  fallbackEmail: string
+) {
+  const testCredentials = resolveAdminTestLoginCredentials(env, portal);
+
+  return {
+    email: testCredentials?.email ?? fallbackEmail.trim(),
+    password: testCredentials?.password ?? ""
+  };
+}
+
 const qrCells = new Set([
   0, 1, 2, 3, 4, 5, 6, 8, 10, 14, 16, 18, 20, 21, 22, 24, 26, 28, 32, 34, 36, 37, 38, 39, 40, 42, 44,
   46, 48, 50, 52, 54, 55, 56, 58, 60, 62, 64, 66, 68, 69, 70, 72, 74, 76, 77, 78, 80
@@ -438,19 +451,33 @@ function QrLoginGraphic({ mark }: { mark: string }) {
 export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { canAccess, isAuthenticated, login, loginWithProvider, loginWithQr, loginWithVerificationCode, logout, sendVerificationCode, session } = useAuth();
+  const {
+    canAccess,
+    isAuthenticated,
+    loginWithFormalPassword,
+    loginWithProvider,
+    loginWithQr,
+    loginWithVerificationCode,
+    logout,
+    sendVerificationCode,
+    session
+  } = useAuth();
   const { language } = useI18n();
   const copy = adminLoginCopy[language];
   const config = backendLoginConfig[portal];
+  const defaultCredentials = useMemo(
+    () => resolveAdminDefaultCredentials(import.meta.env as AdminTestCredentialEnv, portal, config.defaultEmail),
+    [config.defaultEmail, portal]
+  );
   const theme = useMemo(() => getInitialBackendLoginTheme(portal), [portal]);
   const requestedMode = normalizeMode(searchParams.get("mode"));
   const scanStatus = searchParams.get("scan");
   const qrParam = searchParams.get("qr");
   const [mode, setMode] = useState<LoginMode>(requestedMode);
-  const [account, setAccount] = useState<string>(config.defaultEmail);
-  const [password, setPassword] = useState<string>("");
+  const [account, setAccount] = useState<string>(defaultCredentials.email);
+  const [password, setPassword] = useState<string>(defaultCredentials.password);
   const [rememberCredentials, setRememberCredentials] = useState(false);
-  const [codeEmail, setCodeEmail] = useState<string>(config.defaultEmail);
+  const [codeEmail, setCodeEmail] = useState<string>(defaultCredentials.email);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState("");
@@ -471,10 +498,17 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
 
   useEffect(() => {
     const remembered = readRememberedCredentials(rememberCredentialsScope);
-    setRememberCredentials(remembered.enabled);
-    setAccount(remembered.enabled ? remembered.account : config.defaultEmail);
-    setPassword(remembered.enabled ? remembered.password : "");
-  }, [config.defaultEmail, rememberCredentialsScope]);
+    const hasRememberedCredentials = remembered.enabled && Boolean(remembered.account.trim() || remembered.password.trim());
+
+    if (remembered.enabled && !hasRememberedCredentials) {
+      clearRememberedCredentials(rememberCredentialsScope);
+    }
+
+    setRememberCredentials(hasRememberedCredentials);
+    setAccount(hasRememberedCredentials && remembered.account.trim() ? remembered.account : defaultCredentials.email);
+    setPassword(hasRememberedCredentials && remembered.password.trim() ? remembered.password : defaultCredentials.password);
+    setCodeEmail(defaultCredentials.email);
+  }, [defaultCredentials.email, defaultCredentials.password, rememberCredentialsScope]);
 
   useEffect(() => {
     if (!rememberCredentials) {
@@ -518,7 +552,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    const result = await login(config.authPortal, account, password);
+    const result = await loginWithFormalPassword(config.authPortal, account, password);
     if (!result.ok) {
       setError(result.message || copy.accountError);
       return;
@@ -533,7 +567,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     }
 
     setError("");
-    const result = await login(config.authPortal, testCredentials.email, testCredentials.password);
+    const result = await loginWithFormalPassword(config.authPortal, testCredentials.email, testCredentials.password);
 
     if (!result.ok) {
       setError(result.message || copy.accountError);

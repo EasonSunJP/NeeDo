@@ -55,6 +55,33 @@ describe("authApi endpoint paths", () => {
     });
   });
 
+  it("uses the formal auth login URI for backend password login", async () => {
+    vi.stubEnv("VITE_LEGACY_AUTH_BASE_URL", "/legacy-auth");
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresIn: 900
+    });
+
+    await authApi.loginFormal("admin", "Admin.2026");
+
+    expect(httpClient.request).toHaveBeenCalledWith("/auth/login", expect.objectContaining({
+      auth: false,
+      body: {
+        username: "admin",
+        password: "Admin.2026"
+      },
+      method: "POST",
+      retryOnUnauthorized: false
+    }));
+    const [, options] = vi.mocked(httpClient.request).mock.calls[0] ?? [];
+    expect(options?.baseUrl).toBeUndefined();
+    expect(setAuthTokens).toHaveBeenCalledWith({
+      accessToken: "access-token",
+      refreshToken: "refresh-token"
+    });
+  });
+
   it("sends the legacy captcha code with email login when provided", async () => {
     vi.stubEnv("VITE_LEGACY_AUTH_BASE_URL", "/legacy-auth");
     vi.stubEnv("VITE_LEGACY_AUTHORIZATION", "Bearer legacy-prelogin-token");

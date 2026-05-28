@@ -904,18 +904,63 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const petTransitionRef = useRef<PetTransitionState>(null);
   const petTransitionRunIdRef = useRef(0);
   const petTransitionTimerRef = useRef<number | null>(null);
+  const animationTickTimerRef = useRef<number | null>(null);
+  const anchorPositionRef = useRef<MotionPosition | null>(null);
+  const anchorPositionUpdatedAtRef = useRef(0);
+  const lastAppliedPositionRef = useRef<MotionPosition | null>(null);
+  const settledRef = useRef(settled);
   const hasShownEntryRef = useRef(false);
   const petDisabled = disabled || !petSettings.enabled;
 
-  const applyPosition = () => {
+  const readAnchorPosition = (time = typeof performance === "undefined" ? Date.now() : performance.now(), force = false) => {
+    if (force || !anchorPositionRef.current || time - anchorPositionUpdatedAtRef.current > 1_000) {
+      anchorPositionRef.current = getAnchorPosition();
+      anchorPositionUpdatedAtRef.current = time;
+    }
+
+    return anchorPositionRef.current ?? getAnchorPosition();
+  };
+
+  const applyPosition = (force = false) => {
     const element = petRef.current;
 
     if (!element) {
       return;
     }
 
-    element.style.setProperty("--needo-pet-x", `${Math.round(positionRef.current.x)}px`);
-    element.style.setProperty("--needo-pet-y", `${Math.round(positionRef.current.y)}px`);
+    const nextPosition = {
+      x: Math.round(positionRef.current.x),
+      y: Math.round(positionRef.current.y)
+    };
+    const lastPosition = lastAppliedPositionRef.current;
+
+    if (!force && lastPosition?.x === nextPosition.x && lastPosition.y === nextPosition.y) {
+      return;
+    }
+
+    element.style.setProperty("--needo-pet-x", `${nextPosition.x}px`);
+    element.style.setProperty("--needo-pet-y", `${nextPosition.y}px`);
+    lastAppliedPositionRef.current = nextPosition;
+  };
+
+  const updateMotionState = (nextMotion: PetMotionState) => {
+    const currentMotion = motionRef.current;
+
+    if (currentMotion.mode === nextMotion.mode && currentMotion.facing === nextMotion.facing && currentMotion.moving === nextMotion.moving) {
+      return;
+    }
+
+    motionRef.current = nextMotion;
+    setMotion(nextMotion);
+  };
+
+  const updateSettled = (nextSettled: boolean) => {
+    if (settledRef.current === nextSettled) {
+      return;
+    }
+
+    settledRef.current = nextSettled;
+    setSettled(nextSettled);
   };
 
   const clearPetTransitionTimer = () => {
@@ -956,8 +1001,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
 
   const startEntryTransition = () => {
     clearPetTransitionTimer();
-    positionRef.current = getAnchorPosition();
-    applyPosition();
+    positionRef.current = readAnchorPosition(undefined, true);
+    applyPosition(true);
     setPanelOpen(false);
     stopPetMotion("rest");
     setSettled(false);
@@ -1129,6 +1174,10 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   }, [motion]);
 
   useEffect(() => {
+    settledRef.current = settled;
+  }, [settled]);
+
+  useEffect(() => {
     petSettingsRef.current = petSettings;
   }, [petSettings]);
 
@@ -1155,7 +1204,12 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   }, []);
 
   useEffect(() => {
-    const refreshPlacement = () => setViewportRevision((current) => current + 1);
+    const refreshPlacement = () => {
+      readAnchorPosition(undefined, true);
+      positionRef.current = clampDragPosition(positionRef.current);
+      applyPosition(true);
+      setViewportRevision((current) => current + 1);
+    };
 
     window.addEventListener("resize", refreshPlacement);
     window.addEventListener("orientationchange", refreshPlacement);
@@ -1263,15 +1317,28 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       return;
     }
 
+    const scheduleNextAnimationFrame = (callback: FrameRequestCallback, delayMs = 0) => {
+      if (delayMs > 0) {
+        animationTickTimerRef.current = window.setTimeout(() => {
+          animationTickTimerRef.current = null;
+          animationFrameRef.current = window.requestAnimationFrame(callback);
+        }, delayMs);
+        return;
+      }
+
+      animationFrameRef.current = window.requestAnimationFrame(callback);
+    };
+
     const animate = (time: number) => {
       const dt = Math.min(32, time - (lastFrameRef.current || time)) / 16.67;
       lastFrameRef.current = time;
+      let useIdleTick = false;
 
       if (!draggingRef.current) {
         if (petTransitionRef.current) {
           velocityRef.current = { x: 0, y: 0 };
           applyPosition();
-          animationFrameRef.current = window.requestAnimationFrame(animate);
+          scheduleNextAnimationFrame(animate);
           return;
         }
 
@@ -1304,7 +1371,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
           velocity.x *= 0.86;
           velocity.y *= 0.86;
         } else if (!petSettings.freeRoam || !idleEnough) {
-          const anchor = getAnchorPosition();
+          const anchor = readAnchorPosition(time);
           anchorTarget = anchor;
           mode = "anchor";
           climbTargetRef.current = null;
@@ -1379,31 +1446,39 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
             (mode === "peek" && peekDistance > 6) ||
             distanceMoved > 0.2);
         const nextFacing: PetFacing = Math.abs(horizontalDelta) > 0.08 ? (horizontalDelta >= 0 ? "right" : "left") : velocity.x >= 0 ? "right" : "left";
-        setMotion((current) =>
-          current.mode === mode && current.facing === nextFacing && current.moving === nextMoving
-            ? current
-            : { facing: nextFacing, mode, moving: nextMoving }
-        );
+        updateMotionState({ facing: nextFacing, mode, moving: nextMoving });
         const nextSettled =
           mode === "rest" ||
           mode === "dead" ||
           (mode === "anchor" &&
-            Math.hypot(positionRef.current.x - (anchorTarget ?? getAnchorPosition()).x, positionRef.current.y - (anchorTarget ?? getAnchorPosition()).y) < 10);
-        setSettled((current) => (current === nextSettled ? current : nextSettled));
+            Math.hypot(positionRef.current.x - (anchorTarget ?? readAnchorPosition(time)).x, positionRef.current.y - (anchorTarget ?? readAnchorPosition(time)).y) < 10);
+        updateSettled(nextSettled);
+        useIdleTick =
+          !petSettings.freeRoam &&
+          !petTransitionRef.current &&
+          !peekTargetRef.current &&
+          !panelOpen &&
+          mode === "anchor" &&
+          nextSettled &&
+          distanceMoved < 0.2;
         applyPosition();
       }
 
-      animationFrameRef.current = window.requestAnimationFrame(animate);
+      scheduleNextAnimationFrame(animate, useIdleTick ? 250 : 0);
     };
 
-    applyPosition();
-    animationFrameRef.current = window.requestAnimationFrame(animate);
+    applyPosition(true);
+    scheduleNextAnimationFrame(animate);
     const persist = () => persistMotionPosition(positionRef.current);
     const persistTimer = window.setInterval(persist, 4_000);
     window.addEventListener("beforeunload", persist);
 
     return () => {
       window.cancelAnimationFrame(animationFrameRef.current);
+      if (animationTickTimerRef.current !== null) {
+        window.clearTimeout(animationTickTimerRef.current);
+        animationTickTimerRef.current = null;
+      }
       window.clearInterval(persistTimer);
       window.removeEventListener("beforeunload", persist);
       persist();
