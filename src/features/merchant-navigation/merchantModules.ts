@@ -48,7 +48,7 @@ export const merchantPrimaryModules: MerchantPrimaryModule[] = [
   },
   {
     key: "dine_order",
-    labelZh: "点单",
+    labelZh: "点菜",
     labelJa: "オーダー",
     caption: "扫码店内单",
     route: "/merchant/dine/orders",

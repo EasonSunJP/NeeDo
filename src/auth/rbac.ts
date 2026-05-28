@@ -157,6 +157,21 @@ export function canUseUserSessionForClientPortal(session: AuthSession | null, po
   return Boolean(session?.allowedPortals.includes("user") && userSessionClientPortals.has(portal));
 }
 
+export function canAccessFeatureFromSession(
+  session: AuthSession | null,
+  portal: PortalScope,
+  permission: string,
+  isPortalFeaturePermission: boolean
+) {
+  const canEnterFeaturePortal =
+    canAccessPortalFromSession(session, portal) || canUseUserSessionForClientPortal(session, portal);
+
+  return Boolean(
+    canEnterFeaturePortal &&
+      (hasPermissionInSession(session, permission) || isPortalFeaturePermission)
+  );
+}
+
 export function canAccessMenuFromSession(session: AuthSession | null, menuPermission: string) {
   return Boolean(session && (session.menus.includes(menuPermission) || hasPermissionInSession(session, menuPermission)));
 }

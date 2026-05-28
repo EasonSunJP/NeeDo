@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAuthSessionFromMe,
+  canAccessFeatureFromSession,
   canUseUserSessionForClientPortal,
   canAccessPortalFromSession,
   hasPermissionInSession,
@@ -81,6 +82,28 @@ describe("frontend RBAC session helpers", () => {
     expect(canUseUserSessionForClientPortal(session, "technician")).toBe(true);
     expect(canUseUserSessionForClientPortal(session, "business")).toBe(true);
     expect(canUseUserSessionForClientPortal(session, "admin")).toBe(false);
+  });
+
+  it("keeps merchant client feature entries visible for a user-bootstrapped merchant portal", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        identities: [{ id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }],
+        roles: ["customer"],
+        permissions: ["page:client-app"],
+        menus: ["menu:client-app"]
+      },
+      "user",
+      "password"
+    );
+
+    expect(canAccessFeatureFromSession(session, "merchant", "shop.member.view", true)).toBe(true);
+    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.order.view", true)).toBe(true);
+    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.menu.view", true)).toBe(true);
+    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.floor.view", true)).toBe(true);
+    expect(canAccessFeatureFromSession(session, "merchant", "admin:dangerous", false)).toBe(false);
+    expect(canAccessFeatureFromSession(session, "admin", "page:user-management", true)).toBe(false);
   });
 
   it("keeps the shared legacy test account on user by default while allowing merchant, technician, and Afirieito switches", () => {

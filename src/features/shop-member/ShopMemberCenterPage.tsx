@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AppIcon, FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
-import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
+import {
+  FloatingHomeHeader,
+  floatingHeaderGlassPanelClassName,
+  floatingHeaderInnerClassName
+} from "../../components/mobile/FloatingHomeHeader";
 import { merchantNavItems } from "../../components/mobile/navItems";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
@@ -48,6 +52,7 @@ type TemplateEditDraft = {
 const shopId = "store-1";
 const operatorId = "merchant-admin";
 const basePath = "/shop/member";
+const memberHeaderContentGapPx = 16;
 
 const sectionTabs: Array<{ label: string; value: MemberSection }> = [
   { label: "概览", value: "overview" },
@@ -120,8 +125,9 @@ function MemberCenterHeaderTabs({
 }) {
   return (
     <FloatingHomeHeader
-      className="relative z-10"
-      panelClassName="relative overflow-hidden border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_92%,transparent),color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_12%))] shadow-[0_18px_40px_rgba(0,0,0,0.1)]"
+      className={cn(floatingHeaderInnerClassName, "relative z-10 gap-2")}
+      panelClassName={floatingHeaderGlassPanelClassName}
+      spacerGapPx={memberHeaderContentGapPx}
     >
       <FeatureSegmentedTabs items={sectionTabs} onChange={onChange} value={value} variant="header" />
     </FloatingHomeHeader>
@@ -290,11 +296,11 @@ function KpiTile({ label, value, tone = "default" }: { label: string; value: str
       className={cn(
         "min-w-0 rounded-[18px] border border-transparent px-2.5 py-3",
         tone === "dark"
-          ? "bg-white/[0.048] text-white shadow-[0_3px_7px_rgba(0,0,0,0.018)]"
+          ? "border-[color:color-mix(in_srgb,var(--client-line)_42%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,var(--client-bg)_28%)] text-[color:var(--client-text)] shadow-[0_3px_7px_color-mix(in_srgb,var(--client-bg)_12%,transparent)]"
           : "border-transparent bg-paper text-ink"
       )}
     >
-      <p className={cn("truncate text-[11px] font-black leading-4", tone === "dark" ? "text-white/72" : "text-ink/45")}>{label}</p>
+      <p className={cn("truncate text-[11px] font-black leading-4", tone === "dark" ? "text-[color:var(--client-muted)]" : "text-ink/45")}>{label}</p>
       <strong className="mt-1 block truncate text-base font-black leading-5">{value}</strong>
     </div>
   );
@@ -488,16 +494,16 @@ function OverviewScreen({ snapshot, setToast, openSection }: { snapshot: ShopMem
 
   return (
     <>
-      <section className="overflow-hidden rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[radial-gradient(circle_at_20%_18%,rgba(124,109,242,0.36),transparent_34%),linear-gradient(145deg,#17172d_0%,#22214a_54%,#11121e_100%)] p-4 text-white shadow-panel">
+      <section className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-3 text-[color:var(--client-text)] shadow-panel">
         <TitleWithInfo
           as="h2"
           info="店铺私域会员、会员卡账本、核销和经营提醒集中在这里；平台 NDP 主账本不会被这里的卡余额抵扣。"
           label="会员中心说明"
           title="会员中心"
-          titleClassName="text-[28px] font-black tracking-[-0.04em] text-white"
-          variant="dark"
+          titleClassName="text-2xl font-black text-[color:var(--client-text)]"
+          variant="paper"
         />
-        <div className="mt-4 grid grid-cols-4 gap-2">
+        <div className="mt-3 grid grid-cols-4 gap-2">
           <KpiTile label="有效会员" tone="dark" value={`${overview.activeMemberCount}`} />
           <KpiTile label="今日新增" tone="dark" value={`${overview.todayNewMemberCount}`} />
           <KpiTile label="今日核销" tone="dark" value={`${overview.todayVerifyCount}`} />
@@ -1074,7 +1080,7 @@ function CardsScreen({ snapshot, setToast }: { snapshot: ShopMemberSnapshot; set
 
   return (
     <>
-      <section className="rounded-[28px] border border-line bg-white p-4 shadow-panel">
+      <section className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)] p-3 shadow-panel">
         <SectionTitle caption="卡模板、已发行、即将到期和异常卡都按手机端轻量结构展示。" title="会员卡管理" />
         <FeatureSegmentedTabs
           items={[
@@ -1085,6 +1091,7 @@ function CardsScreen({ snapshot, setToast }: { snapshot: ShopMemberSnapshot; set
           ]}
           onChange={setFilter}
           value={filter}
+          variant="header"
         />
       </section>
 
@@ -1234,44 +1241,107 @@ function VerifyScreen({ snapshot, setToast }: { snapshot: ShopMemberSnapshot; se
   );
 }
 
+function getPiePoint(radius: number, angle: number) {
+  const radians = ((angle - 90) * Math.PI) / 180;
+
+  return {
+    x: 50 + radius * Math.cos(radians),
+    y: 50 + radius * Math.sin(radians)
+  };
+}
+
+function getPieSlicePath(startAngle: number, endAngle: number) {
+  const start = getPiePoint(48, startAngle);
+  const end = getPiePoint(48, endAngle);
+  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
+
+  return `M 50 50 L ${start.x.toFixed(3)} ${start.y.toFixed(3)} A 48 48 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)} Z`;
+}
+
+function getPieSlices(result: ReturnType<typeof getShopMemberAnalytics>) {
+  let currentAngle = 0;
+
+  return result.items.map((item) => {
+    const sweepAngle = result.total > 0 ? (item.value / result.total) * 360 : 0;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + sweepAngle;
+    const labelPoint = getPiePoint(sweepAngle < 32 ? 34 : 31, startAngle + sweepAngle / 2);
+    currentAngle = endAngle;
+
+    return {
+      item,
+      startAngle,
+      endAngle,
+      isFullCircle: sweepAngle >= 359.9,
+      labelX: labelPoint.x,
+      labelY: labelPoint.y
+    };
+  });
+}
+
 function AnalyticsChart({ result, activeKey, onSelect }: { result: ReturnType<typeof getShopMemberAnalytics>; activeKey?: string; onSelect: (key: string) => void }) {
   if (result.items.length === 0) {
     return <div className="rounded-[24px] bg-paper px-4 py-10 text-center text-sm font-bold text-ink/45">当前筛选条件下暂无会员数据。</div>;
   }
 
   if (result.chartType === "pie") {
-    let current = 0;
-    const gradient = result.items.map((item) => {
-      const start = current;
-      current += item.percentage;
-      return `${item.color} ${start}% ${current}%`;
-    }).join(", ");
+    const slices = getPieSlices(result);
 
     return (
-      <div className="grid gap-4 min-[390px]:grid-cols-[150px,minmax(0,1fr)] min-[390px]:items-center">
-        <button
-          aria-label="会员分析饼图"
-          className="mx-auto h-[150px] w-[150px] rounded-full border-[18px] border-white shadow-[0_20px_44px_rgba(0,0,0,0.08)]"
-          style={{ background: `conic-gradient(${gradient})` }}
-          type="button"
-        />
-        <div className="space-y-2">
-          {result.items.map((item) => (
-            <button
-              className={cn("flex w-full items-center justify-between gap-3 rounded-[16px] px-3 py-2 text-left transition", activeKey === item.key ? "bg-[color:var(--client-primary-soft)]" : "bg-paper")}
+      <svg
+        aria-label="会员分析饼图"
+        className="client-member-source-pie mx-auto block aspect-square w-full max-w-[330px] overflow-visible drop-shadow-[0_22px_42px_color-mix(in_srgb,var(--client-bg)_28%,transparent)]"
+        role="group"
+        viewBox="0 0 100 100"
+      >
+        <circle cx="50" cy="50" fill="color-mix(in srgb, var(--client-bg) 72%, transparent)" r="49" />
+        {slices.map(({ item, startAngle, endAngle, isFullCircle, labelX, labelY }) => {
+          const selected = activeKey === item.key;
+          const ariaLabel =
+            result.dimension === "source"
+              ? `会员来源：${item.label}，${item.percentage}%`
+              : `会员分析：${item.label}，${item.percentage}%`;
+
+          return (
+            <g
+              aria-label={ariaLabel}
+              className="cursor-pointer outline-none"
               key={item.key}
               onClick={() => onSelect(item.key)}
-              type="button"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(item.key);
+                }
+              }}
+              role="button"
+              tabIndex={0}
             >
-              <span className="min-w-0 text-sm font-black text-ink">
-                <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />
-                {item.label}
-              </span>
-              <span className="shrink-0 text-xs font-black text-ink/55">{item.value} · {item.percentage}%</span>
-            </button>
-          ))}
-        </div>
-      </div>
+              {isFullCircle ? (
+                <circle cx="50" cy="50" fill={item.color} r="48" stroke={selected ? "var(--client-primary)" : "var(--client-bg)"} strokeWidth={selected ? 2.2 : 0.8} />
+              ) : (
+                <path d={getPieSlicePath(startAngle, endAngle)} fill={item.color} stroke={selected ? "var(--client-primary)" : "var(--client-bg)"} strokeWidth={selected ? 2.2 : 0.8} />
+              )}
+              <text
+                fill="white"
+                fontSize="3.7"
+                fontWeight="900"
+                paintOrder="stroke"
+                stroke="rgba(0,0,0,0.58)"
+                strokeLinejoin="round"
+                strokeWidth="0.55"
+                textAnchor="middle"
+                x={labelX}
+                y={labelY}
+              >
+                <tspan x={labelX} dy="-0.25em">{item.label}</tspan>
+                <tspan fontSize="4.2" x={labelX} dy="1.18em">{item.percentage}%</tspan>
+              </text>
+            </g>
+          );
+        })}
+        <circle cx="50" cy="50" fill="none" r="49" stroke="color-mix(in srgb, var(--client-line) 72%, transparent)" strokeWidth="1.4" />
+      </svg>
     );
   }
 

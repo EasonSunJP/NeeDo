@@ -7,6 +7,7 @@ import type { FeaturePermission } from "./featurePermissions";
 import { hasPortalFeaturePermission } from "./featurePermissions";
 import {
   buildAuthSessionFromMe,
+  canAccessFeatureFromSession,
   canAccessMenuFromSession,
   canAccessPortalFromSession,
   canUseUserSessionForClientPortal,
@@ -268,10 +269,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canAccessMenu = useCallback((permission: string) => canAccessMenuFromSession(session, permission), [session]);
   const canAccessFeature = useCallback(
     (portal: PortalScope, permission: FeaturePermission | string) =>
-      Boolean(
-        canAccessPortalFromSession(session, portal) &&
-          (hasPermissionInSession(session, permission) ||
-            (portal === "merchant" && hasPortalFeaturePermission(portal, permission as FeaturePermission)))
+      canAccessFeatureFromSession(
+        session,
+        portal,
+        permission,
+        portal === "merchant" && hasPortalFeaturePermission(portal, permission as FeaturePermission)
       ),
     [session]
   );
