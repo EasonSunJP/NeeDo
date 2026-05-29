@@ -18,7 +18,7 @@ describe("login copyright copy", () => {
   });
 
   it("keeps splash entry loading copy minimal", () => {
-    expect(appSource).toContain('const splashVersionLabel = "1.235";');
+    expect(appSource).toContain('const splashVersionLabel = "0.001";');
     expect(appSource).toContain('className="needo-splash-version-badge"');
     expect(appSource).toContain("ver：{splashVersionLabel}");
     expect(appSource).not.toContain("ver：2604170914");

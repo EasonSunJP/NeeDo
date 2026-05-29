@@ -40,6 +40,23 @@ npm run dev:all
 npm run build
 ```
 
+## Static Demo Build
+
+需要一个不依赖后端、数据库、Redis 或外部 API 的演示包时，使用静态演示模式：
+
+```bash
+npm run dev:static
+npm run build:static
+npm run preview:static
+```
+
+静态演示脚本会注入 `VITE_NEEDO_STATIC_DEMO=true`。该模式只影响前端运行时：
+
+- `/api/v1/*`、登录/RBAC、核心浏览、Booking、运营后台、商户后台读请求会在浏览器内返回静态演示数据。
+- Google 账号、Google Calendar、Afirieito 翻译等本地辅助 API 不再访问 `4176` 或外部服务。
+- 正式 `backend/`、Prisma migration、seed、真实 API 代码和普通 `npm run dev` / `npm run build` 不受影响。
+- `dist/*.html` 仍需通过 `npm run preview:static` 或其他 HTTP 静态服务访问，不建议直接用 `file://` 双击打开。
+
 ## Formal Auth Frontend
 
 Step 07 has added the frontend side of formal Auth / RBAC while keeping the existing React / TSX / Vite stack. The frontend now calls `/api/v1/auth/*`, `/api/v1/users`, `/api/v1/roles`, and `/api/v1/permissions` through `src/api/httpClient.ts`.

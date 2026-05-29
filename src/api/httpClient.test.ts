@@ -9,6 +9,7 @@ import {
   httpClient,
   setAuthTokens
 } from "./httpClient";
+import type { AuthMePayload } from "../auth/rbac";
 import { clearCachedDeviceFingerprint } from "../lib/deviceFingerprint";
 
 vi.mock("@fingerprintjs/fingerprintjs", () => ({
@@ -277,6 +278,33 @@ describe("httpClient auth tokens", () => {
         method: "GET"
       })
     );
+  });
+
+  it("serves static demo auth responses without calling the network", async () => {
+    vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
+    const fetchMock = vi.mocked(fetch);
+
+    const result = await httpClient.request<AuthMePayload>("/auth/me");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      username: "admin",
+      roles: expect.arrayContaining(["admin", "merchant_owner", "technician", "customer"]),
+      permissions: expect.arrayContaining(["page:dashboard", "page:user-management"]),
+      menus: expect.arrayContaining(["menu:dashboard", "menu:user-management"])
+    });
+  });
+
+  it("serves static demo captcha data without calling the network", async () => {
+    vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
+    const fetchMock = vi.mocked(fetch);
+
+    await expect(httpClient.requestDataUrl("/captcha", {
+      auth: false,
+      method: "GET"
+    })).resolves.toMatch(/^data:image\/svg\+xml;base64,/);
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not attach the device fingerprint header by default", async () => {

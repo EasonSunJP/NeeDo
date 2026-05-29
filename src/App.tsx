@@ -540,7 +540,7 @@ const splashImages: Record<SplashPortal, string> = {
   merchantAdmin: backendManagementSystemBgUrl
 };
 
-const splashVersionLabel = "1.235";
+const splashVersionLabel = "0.001";
 const splashCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
 
 const splashAdminThemeConfig = {

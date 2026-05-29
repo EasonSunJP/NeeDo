@@ -1,5 +1,6 @@
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
+import { resolveStaticDemoDataUrl, resolveStaticDemoRequest } from "./staticDemo";
 
 export type ApiSuccessResponse<TData> = {
   code: 0;
@@ -241,6 +242,12 @@ async function sendRequest<TData>(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<TData> {
+  const staticResult = await resolveStaticDemoRequest<TData>(path, options);
+
+  if (staticResult.handled) {
+    return staticResult.data;
+  }
+
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
     headers: await createRequestHeaders(options),
@@ -281,6 +288,12 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 async function sendDataUrlRequest(path: string, options: HttpClientRequestOptions): Promise<string> {
+  const staticResult = resolveStaticDemoDataUrl(path);
+
+  if (staticResult.handled) {
+    return staticResult.data;
+  }
+
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
     headers: await createRequestHeaders(options),

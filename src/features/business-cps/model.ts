@@ -1,3 +1,5 @@
+import { createStaticDemoPlanCategoryTranslations, isStaticDemoMode } from "../../api/staticDemo";
+
 export type BusinessCpsRole = "creator" | "merchant" | "bd" | "agent" | "platform";
 
 export type BusinessCpsCampaignStatus =
@@ -2735,6 +2737,15 @@ export async function translatePlanCategoryDraft(
 
   if (!source || typeof fetch === "undefined") {
     return fallback;
+  }
+
+  const sourceText = normalizePlanWizardCategoryText(source.sourceText);
+  if (isStaticDemoMode()) {
+    return mergePlanCategoryTranslations(
+      draft,
+      createStaticDemoPlanCategoryTranslations(planWizardCategoryLocaleOrder, sourceText),
+      fallback
+    );
   }
 
   const backendTranslations = await translatePlanCategoryWithBackend(source.sourceLocale, source.sourceText);

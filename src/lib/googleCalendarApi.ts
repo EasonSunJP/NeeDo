@@ -1,3 +1,5 @@
+import { resolveStaticDemoGoogleCalendarApi } from "../api/staticDemo";
+
 export const googleCalendarIconSrc = "/icons/google-calendar-2026.png";
 
 export type GoogleCalendarScope = "user" | "technician" | "merchant";
@@ -52,6 +54,12 @@ function getGoogleCalendarApiCandidates(path: string) {
 }
 
 export async function fetchGoogleCalendarApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const staticResult = await resolveStaticDemoGoogleCalendarApi<T>(path, init);
+
+  if (staticResult.handled) {
+    return staticResult.data;
+  }
+
   let lastError: unknown = null;
 
   for (const url of getGoogleCalendarApiCandidates(path)) {
