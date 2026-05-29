@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent as ReactUIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent as ReactChangeEvent, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, type UIEvent as ReactUIEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppIcon, floatingHeaderControlButtonClassName, type IconName } from "../client-ui/AppScaffold";
 import { FloatingActionButton } from "../mobile/FloatingActionButton";
@@ -52,7 +52,7 @@ import {
   timeToMinutes
 } from "../../features/technician-schedule/model";
 
-export type UnifiedCalendarView = "day" | "week" | "month" | "agenda";
+export type UnifiedCalendarView = "day" | "threeDay" | "week" | "month" | "agenda";
 type UnifiedCalendarScope = "user" | "technician" | "merchant";
 type UnifiedCalendarDisplayMode = "personal" | "parallel";
 type MerchantCalendarLaneMode = "technician" | "appointmentStatus";
@@ -294,11 +294,11 @@ const parallelLaneAccents = [
 const neeDoSourceIds: UnifiedCalendarSourceId[] = ["user", "technician", "merchant"];
 const personalSourceIds: UnifiedCalendarSourceId[] = ["todo", "birthday", "holiday"];
 
-const viewOptions: Array<{ value: UnifiedCalendarView; label: string }> = [
-  { value: "day", label: "日" },
+const viewOptions: Array<{ value: Exclude<UnifiedCalendarView, "agenda">; label: string }> = [
+  { value: "day", label: "1日" },
+  { value: "threeDay", label: "3日" },
   { value: "week", label: "周" },
-  { value: "month", label: "月" },
-  { value: "agenda", label: "仅行程" }
+  { value: "month", label: "月" }
 ];
 
 const merchantAppointmentStatusFilterOptions: Array<{ value: MerchantAppointmentStatusFilter; label: string }> = [
@@ -664,27 +664,6 @@ function getTechnicianEvents(
   technicians: Technician[]
 ): UnifiedCalendarEvent[] {
   const customerOrderIds = new Set(orders.filter((order) => order.customerId === currentCustomer.id).map((order) => order.id));
-  const shiftEvents = snapshot.dutyShifts
-    .filter((shift) => relevantTechnicianIds.has(shift.technicianId))
-    .map((shift): UnifiedCalendarEvent => ({
-      id: `technician-shift-${shift.id}`,
-      sourceId: "technician",
-      calendarId: getTechnicianCalendarLaneId(shift.technicianId),
-      calendarLabel: getTechnicianName(technicians, shift.technicianId),
-      date: shift.date,
-      startTime: shift.startTime,
-      endTime: shift.endTime,
-      title: `${getTechnicianName(technicians, shift.technicianId)} 出勤`,
-      subtitle: `${getStoreName(stores, shift.storeId)} · ${shift.shiftLabel}`,
-      badge: "出勤",
-      readOnly: true,
-      participants: dedupeCalendarParticipants([
-        getTechnicianParticipant(technicians.find((item) => item.id === shift.technicianId), "user", "参加者"),
-        getStoreParticipant(stores.find((item) => item.id === shift.storeId), "user", "创建者")
-      ]),
-      ...getCalendarCreatorFields(getStoreCreator(stores, shift.storeId))
-    }));
-
   const bookingEvents = snapshot.bookings
     .filter((booking) => booking.customerName === currentCustomer.name || (booking.orderId && customerOrderIds.has(booking.orderId)))
     .map((booking): UnifiedCalendarEvent => ({
@@ -707,7 +686,7 @@ function getTechnicianEvents(
       ...getCalendarCreatorFields(getCustomerCreator(currentCustomer))
     }));
 
-  return [...shiftEvents, ...bookingEvents];
+  return bookingEvents;
 }
 
 function getTechnicianCustomEventBadge(kind: string) {
@@ -850,7 +829,7 @@ function getMerchantEvents(
     }));
 
   const scheduleEvents = scheduleSnapshot.schedules
-    .filter((schedule) => relevantTechnicianIds.has(schedule.staffId) || (schedule.orderId && customerOrderIds.has(schedule.orderId)))
+    .filter((schedule) => schedule.orderId && customerOrderIds.has(schedule.orderId))
     .map((schedule): UnifiedCalendarEvent => {
       const technician = technicians.find((item) => item.id === schedule.staffId);
       return {
@@ -1584,6 +1563,10 @@ function getAgendaDates(window: AgendaDateWindow) {
   return getDateRange(window.startDate, window.endDate);
 }
 
+function getThreeDayDates(anchorDate: string) {
+  return Array.from({ length: 3 }, (_, index) => addDays(anchorDate, index));
+}
+
 function getCalendarPeriod(view: UnifiedCalendarView, anchorDate: string, agendaDateWindow = createAgendaDateWindow(anchorDate)): UnifiedCalendarPeriod {
   if (view === "day") {
     return {
@@ -1591,6 +1574,16 @@ function getCalendarPeriod(view: UnifiedCalendarView, anchorDate: string, agenda
       endDate: anchorDate,
       label: formatLongDate(anchorDate),
       dates: [anchorDate]
+    };
+  }
+
+  if (view === "threeDay") {
+    const dates = getThreeDayDates(anchorDate);
+    return {
+      startDate: dates[0] ?? anchorDate,
+      endDate: dates[dates.length - 1] ?? anchorDate,
+      label: `${formatShortDate(dates[0] ?? anchorDate)} - ${formatShortDate(dates[dates.length - 1] ?? anchorDate)}`,
+      dates
     };
   }
 
@@ -1628,6 +1621,9 @@ function shiftCalendarAnchor(view: UnifiedCalendarView, anchorDate: string, dire
   if (view === "day") {
     return addDays(anchorDate, direction);
   }
+  if (view === "threeDay") {
+    return addDays(anchorDate, direction * 3);
+  }
   if (view === "week") {
     return addDays(anchorDate, direction * 7);
   }
@@ -1642,6 +1638,99 @@ function groupEventsByDate(events: UnifiedCalendarEvent[]) {
     grouped[event.date] = [...(grouped[event.date] ?? []), event];
     return grouped;
   }, {});
+}
+
+type TimelineAutoScrollAnchor = {
+  eventKey: string;
+  startMinute: number;
+};
+
+function isFullDayTimelineEvent(event: UnifiedCalendarEvent) {
+  const start = timeToMinutes(event.startTime);
+  const end = timeToMinutes(event.endTime);
+
+  return start <= dayStartHour * 60 && end >= dayEndHour * 60 - 1;
+}
+
+function getTimelineAutoScrollAnchor(events: UnifiedCalendarEvent[], dates: string[]): TimelineAutoScrollAnchor | null {
+  const dateSet = new Set(dates);
+  const anchorEvent = events
+    .filter((event) => dateSet.has(event.date) && !isFullDayTimelineEvent(event))
+    .map((event) => ({
+      event,
+      startMinute: timeToMinutes(event.startTime),
+      endMinute: timeToMinutes(event.endTime)
+    }))
+    .filter(({ startMinute, endMinute }) => endMinute > dayStartHour * 60 && startMinute < dayEndHour * 60)
+    .sort((left, right) => (
+      left.event.date.localeCompare(right.event.date) ||
+      left.startMinute - right.startMinute ||
+      left.event.id.localeCompare(right.event.id)
+    ))[0];
+
+  if (!anchorEvent) {
+    return null;
+  }
+
+  return {
+    eventKey: `${anchorEvent.event.date}:${anchorEvent.event.id}:${anchorEvent.event.startTime}`,
+    startMinute: Math.max(dayStartHour * 60, Math.min(anchorEvent.startMinute, dayEndHour * 60))
+  };
+}
+
+function getTimelineVerticalScrollContainer(target: HTMLElement) {
+  let element = target.parentElement;
+
+  while (element && element !== document.body) {
+    const style = window.getComputedStyle(element);
+    const canScrollVertically = /(auto|scroll)/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
+
+    if (canScrollVertically) {
+      return element;
+    }
+
+    element = element.parentElement;
+  }
+
+  return document.scrollingElement ?? document.documentElement;
+}
+
+function scrollTimelineToFirstEvent(canvas: HTMLElement | null, anchor: TimelineAutoScrollAnchor | null) {
+  if (!canvas || !anchor || typeof window === "undefined" || typeof document === "undefined") {
+    return;
+  }
+
+  const scrollContainer = getTimelineVerticalScrollContainer(canvas);
+  const isDocumentScroll = scrollContainer === document.scrollingElement || scrollContainer === document.documentElement || scrollContainer === document.body;
+  const containerRectTop = isDocumentScroll ? 0 : scrollContainer.getBoundingClientRect().top;
+  const viewportHeight = isDocumentScroll ? window.innerHeight : scrollContainer.clientHeight;
+  const currentScrollTop = isDocumentScroll ? scrollContainer.scrollTop || window.scrollY : scrollContainer.scrollTop;
+  const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+  const eventTop = ((anchor.startMinute - dayStartHour * 60) / 60) * hourRowHeight + 6;
+  const targetCenterOffset = Math.max(160, viewportHeight * 0.5);
+  const nextScrollTop = Math.max(
+    0,
+    Math.min(maxScrollTop, currentScrollTop + canvas.getBoundingClientRect().top - containerRectTop + eventTop - targetCenterOffset)
+  );
+
+  scrollContainer.scrollTo({ top: nextScrollTop, behavior: "auto" });
+}
+
+function useTimelineFirstEventAutoScroll(autoScrollKey: string, anchor: TimelineAutoScrollAnchor | null, canvasRef: RefObject<HTMLElement | null>) {
+  const lastAutoScrollKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!anchor || lastAutoScrollKeyRef.current === autoScrollKey || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      scrollTimelineToFirstEvent(canvasRef.current, anchor);
+      lastAutoScrollKeyRef.current = autoScrollKey;
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [anchor, autoScrollKey, canvasRef]);
 }
 
 function getEventStyle(event: UnifiedCalendarEvent): CSSProperties {
@@ -2335,6 +2424,10 @@ function DayTimeline({
         )
       )
     : undefined;
+  const timelineAutoScrollAnchor = useMemo(() => getTimelineAutoScrollAnchor(events, [date]), [date, events]);
+  const dayTimelineAutoScrollKey = timelineAutoScrollAnchor ? `${date}:${timelineAutoScrollAnchor.eventKey}` : `${date}:empty`;
+
+  useTimelineFirstEventAutoScroll(dayTimelineAutoScrollKey, timelineAutoScrollAnchor, canvasRef);
 
   useEffect(() => {
     draftRangeRef.current = draftRange;
@@ -2966,6 +3059,573 @@ function DayTimeline({
 
 export function UnifiedCalendarDayTimeline(props: DayTimelineProps) {
   return <DayTimeline {...props} />;
+}
+
+function CalendarTimelineEventPill({
+  event,
+  dense = false,
+  onOpen
+}: {
+  event: UnifiedCalendarEvent;
+  dense?: boolean;
+  onOpen: (event: UnifiedCalendarEvent) => void;
+}) {
+  const denseLabelStyle = dense
+    ? ({
+        letterSpacing: 0,
+        textOrientation: "upright",
+        writingMode: "vertical-rl"
+      } satisfies CSSProperties)
+    : undefined;
+
+  return (
+    <button
+      className={cn(
+        "focus-ring h-full w-full overflow-hidden rounded-[8px] border font-black shadow-[0_8px_16px_color-mix(in_srgb,var(--calendar-accent)_14%,transparent)] transition active:scale-[0.99]",
+        "border-[color:color-mix(in_srgb,var(--calendar-accent)_46%,transparent)] bg-[color:color-mix(in_srgb,var(--calendar-accent)_78%,var(--client-elevated)_22%)] text-[color:var(--calendar-contrast)]",
+        dense ? "grid place-items-center px-0.5 py-1 text-center text-[8px] leading-[9px]" : "px-2 py-1.5 text-left text-[11px] leading-[1.05]"
+      )}
+      onClick={() => onOpen(event)}
+      style={getEventStyle(event)}
+      title={`${event.startTime} - ${event.endTime} ${event.title}`}
+      type="button"
+    >
+      <span className={cn("block max-h-full overflow-hidden", dense ? "max-w-full" : "truncate")} style={denseLabelStyle}>{event.title}</span>
+    </button>
+  );
+}
+
+type MultiDayTimelineProps = {
+  dates: string[];
+  emptySearchQuery?: string;
+  events: UnifiedCalendarEvent[];
+  onCreate?: (date: string, startTime: string, endTime: string) => void;
+  onOpen: (event: UnifiedCalendarEvent) => void;
+  onSelectDate?: (date: string) => void;
+  selectedDate?: string;
+};
+
+type MultiDayDraftRange = DraftRange & {
+  date: string;
+};
+
+export function UnifiedCalendarMultiDayTimeline({
+  dates,
+  emptySearchQuery,
+  events,
+  onCreate,
+  onOpen,
+  onSelectDate,
+  selectedDate
+}: MultiDayTimelineProps) {
+  const today = getTodayDateKey();
+  const groupedEvents = groupEventsByDate(events);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [draftRange, setDraftRange] = useState<MultiDayDraftRange | null>(null);
+  const draftRangeRef = useRef<MultiDayDraftRange | null>(null);
+  const dragModeRef = useRef<DraftDragMode | null>(null);
+  const dragBaseRangeRef = useRef<MultiDayDraftRange | null>(null);
+  const dragPointerStartRef = useRef<number | null>(null);
+  const pointerDownTargetRef = useRef<{ date: string; minute: number } | null>(null);
+  const suppressNextCanvasClickRef = useRef(false);
+  const totalHeight = (dayEndHour - dayStartHour) * hourRowHeight;
+  const hasThreeDayLayout = dates.length <= 3;
+  const contentMinWidth = hasThreeDayLayout ? timelineTimeColumnWidth + dates.length * 110 : undefined;
+  const dayWidth = 100 / Math.max(1, dates.length);
+  const getPointerTarget = (event: { clientX: number; clientY: number }, canvas: HTMLElement) => {
+    const rect = canvas.getBoundingClientRect();
+    const relativeX = Math.max(0, Math.min(rect.width - 1, event.clientX - rect.left));
+    const dateIndex = Math.min(dates.length - 1, Math.max(0, Math.floor(relativeX / (rect.width / dates.length))));
+
+    return {
+      date: dates[dateIndex] ?? dates[0] ?? today,
+      minute: getDraftPointerMinute(event, canvas)
+    };
+  };
+  const isInteractiveTarget = (target: EventTarget | null) =>
+    target instanceof HTMLElement && target.closest("button,input,select,textarea,[data-schedule-range-handle],[data-schedule-create-action],[data-schedule-draft-range-block]");
+
+  useEffect(() => {
+    draftRangeRef.current = draftRange;
+  }, [draftRange]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    const isDraftInteractionTarget = (target: EventTarget | null) => {
+      const element =
+        target instanceof HTMLElement
+          ? target
+          : target instanceof Node
+            ? target.parentElement
+            : null;
+      return Boolean(element?.closest("[data-schedule-draft-range-block],[data-schedule-range-handle],[data-schedule-create-action]"));
+    };
+
+    const resetDraftInteraction = () => {
+      dragModeRef.current = null;
+      dragPointerStartRef.current = null;
+      dragBaseRangeRef.current = null;
+      pointerDownTargetRef.current = null;
+    };
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      if (!draftRangeRef.current || isDraftInteractionTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      suppressNextCanvasClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextCanvasClickRef.current = false;
+      }, 180);
+      resetDraftInteraction();
+      setDraftRange(null);
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+    };
+  }, []);
+
+  const handleCanvasPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!onCreate) {
+      pointerDownTargetRef.current = null;
+      return;
+    }
+
+    if ((event.button !== 0 && event.pointerType === "mouse") || isInteractiveTarget(event.target)) {
+      pointerDownTargetRef.current = null;
+      return;
+    }
+
+    pointerDownTargetRef.current = getPointerTarget(event, event.currentTarget);
+  };
+
+  const handleCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!onCreate) {
+      pointerDownTargetRef.current = null;
+      return;
+    }
+
+    if (suppressNextCanvasClickRef.current) {
+      suppressNextCanvasClickRef.current = false;
+      pointerDownTargetRef.current = null;
+      return;
+    }
+
+    if (isInteractiveTarget(event.target)) {
+      pointerDownTargetRef.current = null;
+      return;
+    }
+
+    const target = pointerDownTargetRef.current ?? getPointerTarget(event, event.currentTarget);
+    const startMinute = clampDraftMinute(target.minute, 0, 24 * 60 - 60);
+    const range = normalizeDraftRange(startMinute, startMinute + 60);
+    const nextDraftRange = { ...range, date: target.date };
+    pointerDownTargetRef.current = null;
+    dragBaseRangeRef.current = nextDraftRange;
+    setDraftRange(nextDraftRange);
+  };
+
+  const updateDraftRangeFromPointer = (event: ReactPointerEvent<HTMLElement>) => {
+    const canvas = canvasRef.current;
+    const mode = dragModeRef.current;
+    const baseRange = dragBaseRangeRef.current;
+
+    if (!canvas || !mode || !baseRange) {
+      return;
+    }
+
+    const target = getPointerTarget(event, canvas);
+
+    if (mode === "resize-start") {
+      setDraftRange({
+        date: baseRange.date,
+        start: clampDraftMinute(target.minute, 0, baseRange.end - scheduleDraftMinDurationMinutes),
+        end: baseRange.end
+      });
+      return;
+    }
+
+    if (mode === "resize-end") {
+      setDraftRange({
+        date: baseRange.date,
+        start: baseRange.start,
+        end: clampDraftMinute(target.minute, baseRange.start + scheduleDraftMinDurationMinutes, 24 * 60 - 1)
+      });
+      return;
+    }
+
+    const duration = baseRange.end - baseRange.start;
+    const pointerStart = dragPointerStartRef.current ?? target.minute;
+    const nextStart = clampDraftMinute(baseRange.start + target.minute - pointerStart, 0, 24 * 60 - 1 - duration);
+    setDraftRange({
+      date: target.date,
+      start: nextStart,
+      end: nextStart + duration
+    });
+  };
+
+  const handleDraftPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!dragModeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateDraftRangeFromPointer(event);
+  };
+
+  const handleDraftPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!dragModeRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragModeRef.current = null;
+    dragPointerStartRef.current = null;
+    dragBaseRangeRef.current = draftRange;
+  };
+
+  const handleDraftPointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    dragModeRef.current = null;
+    dragPointerStartRef.current = null;
+    dragBaseRangeRef.current = draftRange;
+  };
+
+  const handleDraftBlockPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!draftRange || (event.button !== 0 && event.pointerType === "mouse")) {
+      return;
+    }
+
+    if (event.target instanceof HTMLElement && event.target.closest("button,[data-schedule-range-handle],[data-schedule-create-action]")) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    dragModeRef.current = "move";
+    dragBaseRangeRef.current = draftRange;
+    dragPointerStartRef.current = getDraftPointerMinute(event, canvas);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleDraftResizePointerDown = (mode: Exclude<DraftDragMode, "move">, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!draftRange || (event.button !== 0 && event.pointerType === "mouse")) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    dragModeRef.current = mode;
+    dragBaseRangeRef.current = draftRange;
+    dragPointerStartRef.current = null;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const confirmDraftRange = () => {
+    if (!draftRange || !onCreate) {
+      return;
+    }
+
+    onCreate(draftRange.date, minutesToTime(draftRange.start), minutesToTime(draftRange.end));
+    setDraftRange(null);
+  };
+  const draftDateIndex = draftRange ? Math.max(0, dates.indexOf(draftRange.date)) : 0;
+  const draftDateInset = hasThreeDayLayout ? 6 : 3;
+  const useCompactDraftAction = !hasThreeDayLayout;
+  const timelineAutoScrollAnchor = useMemo(() => getTimelineAutoScrollAnchor(events, dates), [dates, events]);
+  const multiDayTimelineAutoScrollKey = timelineAutoScrollAnchor ? `${dates.join(",")}:${timelineAutoScrollAnchor.eventKey}` : `${dates.join(",")}:empty`;
+
+  useTimelineFirstEventAutoScroll(multiDayTimelineAutoScrollKey, timelineAutoScrollAnchor, canvasRef);
+
+  return (
+    <div className="overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)]">
+      <div className={cn(hasThreeDayLayout && "scrollbar-none overflow-x-auto overscroll-x-contain")}>
+        <div style={contentMinWidth ? { minWidth: contentMinWidth } : undefined}>
+          <div
+            className="grid border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]"
+            style={{ gridTemplateColumns: `${timelineTimeColumnWidth}px repeat(${dates.length}, minmax(0, 1fr))` }}
+          >
+            <div className="border-r border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]" />
+            {dates.map((date) => {
+              const isSelected = selectedDate === date;
+              const isToday = today === date;
+
+              return (
+                <button
+                  aria-pressed={isSelected}
+                  className={cn(
+                    "focus-ring relative min-h-[58px] border-r border-[color:color-mix(in_srgb,var(--client-line)_42%,transparent)] px-1 py-2 text-center last:border-r-0",
+                    isSelected && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]"
+                  )}
+                  key={date}
+                  onClick={() => onSelectDate?.(date)}
+                  type="button"
+                >
+                  <HolidayCornerBadge date={date} />
+                  <span className={cn("block text-[10px] font-black", isToday ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]")}>
+                    {getWeekdayLabel(date).replace("周", "")}
+                  </span>
+                  <strong
+                    className={cn(
+                      "mx-auto mt-1 grid h-7 w-7 place-items-center rounded-full text-[16px] font-black leading-none",
+                      isSelected || isToday
+                        ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+                        : "text-[color:var(--client-text)]"
+                    )}
+                  >
+                    {Number(date.slice(-2))}
+                  </strong>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid" style={{ gridTemplateColumns: `${timelineTimeColumnWidth}px minmax(0, 1fr)` }}>
+            <div className="border-r border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)]">
+              {Array.from({ length: dayEndHour - dayStartHour }, (_, index) => {
+                const hour = dayStartHour + index;
+                return (
+                  <div
+                    className="flex items-start justify-center border-b border-[color:color-mix(in_srgb,var(--client-line)_48%,transparent)] px-1 pt-2 last:border-b-0"
+                    key={hour}
+                    style={{ height: hourRowHeight }}
+                  >
+                    <span className="text-[10px] font-black leading-none text-[color:var(--client-muted)]">{String(hour).padStart(2, "0")}:00</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div
+              className="relative touch-pan-y"
+              onClick={handleCanvasClick}
+              onPointerDown={handleCanvasPointerDown}
+              ref={canvasRef}
+              style={{ height: totalHeight }}
+            >
+              {Array.from({ length: dayEndHour - dayStartHour }, (_, index) => (
+                <div
+                  className="absolute inset-x-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_44%,transparent)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary-soft)_34%,transparent)]"
+                  key={index}
+                  style={{ top: index * hourRowHeight, height: hourRowHeight }}
+                />
+              ))}
+
+              {emptySearchQuery && events.length === 0 ? (
+                <div className="absolute left-3 right-3 top-3 z-[3] rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-primary)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)] px-3 py-2 text-center shadow-[0_14px_28px_rgba(0,0,0,0.12)]">
+                  <strong className="block text-[12px] font-black text-[color:var(--client-text)]">没有符合「{emptySearchQuery}」的行程</strong>
+                </div>
+              ) : null}
+
+              {dates.map((date, dateIndex) => {
+                const dateLayout = getLayoutEvents((groupedEvents[date] ?? []).sort(sortEvents));
+                const inset = hasThreeDayLayout ? 4 : 2;
+                const dense = !hasThreeDayLayout;
+
+                return (
+                  <div
+                    className="absolute bottom-0 top-0 border-l border-[color:color-mix(in_srgb,var(--client-line)_38%,transparent)] last:border-r"
+                    key={date}
+                    style={{ left: `${dateIndex * dayWidth}%`, width: `${dayWidth}%` }}
+                  >
+                    {dateLayout.events.map(({ event, start, end, lane }) => {
+                      const laneCount = Math.max(1, dateLayout.cappedLaneCount);
+                      const displayLane = Math.min(lane, laneCount - 1);
+                      const clampedStart = Math.max(start, dayStartHour * 60);
+                      const clampedEnd = Math.min(end, dayEndHour * 60);
+
+                      return (
+                        <div
+                          className="absolute z-[2]"
+                          key={event.id}
+                          style={{
+                            left: laneCount > 1 ? `calc(${inset}px + ${displayLane} * ((100% - ${inset * 2}px) / ${laneCount}))` : inset,
+                            width: laneCount > 1 ? `calc((100% - ${inset * 2}px) / ${laneCount})` : `calc(100% - ${inset * 2}px)`,
+                            top: ((clampedStart - dayStartHour * 60) / 60) * hourRowHeight + 4,
+                            height: Math.max(((clampedEnd - clampedStart) / 60) * hourRowHeight - 8, dense ? 34 : 42)
+                          }}
+                        >
+                          <CalendarTimelineEventPill dense={dense} event={event} onOpen={onOpen} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {onCreate && draftRange ? (
+                <ScheduleDraftRangeBlock
+                  action={(
+                    <button
+                      aria-label="下一步"
+                      className={cn(
+                        "rounded-full bg-[color:var(--client-primary)] text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]",
+                        useCompactDraftAction ? "grid h-7 w-7 place-items-center" : "px-3 py-1.5"
+                      )}
+                      data-schedule-create-action="true"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        confirmDraftRange();
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      type="button"
+                    >
+                      {useCompactDraftAction ? <AppIcon className="h-3.5 w-3.5" name="check" /> : "下一步"}
+                    </button>
+                  )}
+                  compact={useCompactDraftAction}
+                  onBlockPointerCancel={handleDraftPointerCancel}
+                  onBlockPointerDown={handleDraftBlockPointerDown}
+                  onBlockPointerMove={handleDraftPointerMove}
+                  onBlockPointerUp={handleDraftPointerUp}
+                  onEndHandlePointerDown={(event) => handleDraftResizePointerDown("resize-end", event)}
+                  onHandlePointerCancel={handleDraftPointerCancel}
+                  onHandlePointerMove={handleDraftPointerMove}
+                  onHandlePointerUp={handleDraftPointerUp}
+                  onStartHandlePointerDown={(event) => handleDraftResizePointerDown("resize-start", event)}
+                  style={{
+                    left: `calc(${draftDateIndex * dayWidth}% + ${draftDateInset}px)`,
+                    width: `calc(${dayWidth}% - ${draftDateInset * 2}px)`,
+                    top: ((draftRange.start - dayStartHour * 60) / 60) * hourRowHeight + 6,
+                    height: Math.max(((draftRange.end - draftRange.start) / 60) * hourRowHeight - 12, scheduleDraftRangeVisualMinHeight)
+                  }}
+                  subtitle="拖动整块调整开始时间，拖动上下手柄调整时长"
+                  timeRange={`${minutesToTime(draftRange.start)} - ${minutesToTime(draftRange.end)}`}
+                  title="新建行程"
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type CalendarMonthGridProps = {
+  anchorDate: string;
+  dates: string[];
+  eventsByDate: Record<string, UnifiedCalendarEvent[]>;
+  onOpen: (event: UnifiedCalendarEvent) => void;
+  onSelectDate?: (date: string) => void;
+  selectedDate?: string;
+};
+
+export function UnifiedCalendarMonthGrid({
+  anchorDate,
+  dates,
+  eventsByDate,
+  onOpen,
+  onSelectDate,
+  selectedDate
+}: CalendarMonthGridProps) {
+  const today = getTodayDateKey();
+  const monthKey = anchorDate.slice(0, 7);
+
+  return (
+    <div className="overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)]">
+      <div className="grid grid-cols-7 border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] text-center text-[11px] font-black text-[color:var(--client-muted)]">
+        {getWeekdayHeaderLabel().map((label) => (
+          <span className="border-r border-[color:color-mix(in_srgb,var(--client-line)_38%,transparent)] py-2 last:border-r-0" key={label}>{label}</span>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {dates.map((date, index) => {
+          const dateEvents = eventsByDate[date] ?? [];
+          const inMonth = date.slice(0, 7) === monthKey;
+          const selected = selectedDate === date;
+          const isToday = today === date;
+          const overflowCount = Math.max(0, dateEvents.length - 3);
+          const selectDate = () => onSelectDate?.(date);
+
+          return (
+            <div
+              aria-label={`选择 ${formatLongDate(date)}`}
+              className={cn(
+                "focus-ring relative min-h-[86px] cursor-pointer border-b border-r border-[color:color-mix(in_srgb,var(--client-line)_42%,transparent)] px-1 py-1.5",
+                (index + 1) % 7 === 0 && "border-r-0",
+                index >= dates.length - 7 && "border-b-0",
+                selected && "bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)]",
+                !inMonth && "opacity-38"
+              )}
+              key={date}
+              onClick={selectDate}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") {
+                  return;
+                }
+
+                event.preventDefault();
+                selectDate();
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <HolidayCornerBadge date={date} />
+              <strong
+                className={cn(
+                  "relative z-[1] mx-auto grid h-6 w-6 place-items-center rounded-full text-[12px] font-black leading-none",
+                  selected || isToday
+                    ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
+                    : "text-[color:var(--client-text)]"
+                )}
+              >
+                {Number(date.slice(-2))}
+              </strong>
+              <div className="relative z-[2] mt-1 space-y-1">
+                {dateEvents.slice(0, 3).map((event) => (
+                  <button
+                    className="focus-ring block h-[14px] w-full truncate rounded-[4px] bg-[color:color-mix(in_srgb,var(--calendar-accent)_78%,var(--client-elevated)_22%)] px-0.5 text-left text-[8px] font-black leading-[14px] text-[color:var(--calendar-contrast)]"
+                    key={event.id}
+                    onClick={(clickEvent) => {
+                      clickEvent.stopPropagation();
+                      if (onSelectDate) {
+                        onSelectDate(date);
+                        return;
+                      }
+
+                      onOpen(event);
+                    }}
+                    style={getEventStyle(event)}
+                    title={`${formatLongDate(date)} · ${event.startTime} - ${event.endTime} ${event.title}`}
+                    type="button"
+                  >
+                    {event.title}
+                  </button>
+                ))}
+                {overflowCount > 0 ? (
+                  <span className="block truncate text-[9px] font-black text-[color:var(--client-muted)]">+{overflowCount}</span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function EmptyCalendarState({ date, onCreate, searchQuery }: { date: string; onCreate?: () => void; searchQuery?: string }) {
@@ -3683,22 +4343,6 @@ function CalendarEventEditorPage({
   );
 }
 
-function EventList({
-  events,
-  onOpen
-}: {
-  events: UnifiedCalendarEvent[];
-  onOpen: (event: UnifiedCalendarEvent) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      {events.map((event) => (
-        <CalendarEventCard event={event} key={event.id} onOpen={onOpen} />
-      ))}
-    </div>
-  );
-}
-
 function getAgendaWeekRangeLabel(date: string) {
   const week = getWeekDates(date);
   return `${formatShortDate(week[0] ?? date)} - ${formatShortDate(week[week.length - 1] ?? date)}`;
@@ -4153,7 +4797,7 @@ export function UnifiedUserCalendar({
     if (view === "agenda") {
       setAgendaDateWindow(createAgendaDateWindow(nextAnchorDate));
     }
-    if (view === "day" || view === "agenda") {
+    if (view === "day" || view === "threeDay" || view === "week" || view === "agenda") {
       setSelectedDate(nextAnchorDate);
     }
   };
@@ -4208,9 +4852,14 @@ export function UnifiedUserCalendar({
     if (nextView === "agenda") {
       setAgendaScrollRequestId((current) => current + 1);
     }
-    if (nextView === "day") {
+    if (nextView === "day" || nextView === "threeDay") {
       setAnchorDate(selectedDate);
     }
+  };
+  const openDateInDayView = (date: string) => {
+    setSelectedDate(date);
+    setAnchorDate(date);
+    setView("day");
   };
 
   const jumpToToday = () => {
@@ -4412,14 +5061,6 @@ export function UnifiedUserCalendar({
     };
   };
 
-  const renderSelectedDateList = () => {
-    if (selectedDateEvents.length === 0) {
-      return <EmptyCalendarState date={selectedDate} onCreate={isMerchantAppointmentStatusMode ? undefined : () => openCreate(selectedDate)} searchQuery={searchQuery} />;
-    }
-
-    return <EventList events={selectedDateEvents} onOpen={openCalendarEvent} />;
-  };
-
   return (
     <UnifiedCalendarSurface data-unified-user-calendar="true">
       <div className="flex items-center justify-between gap-2">
@@ -4460,23 +5101,20 @@ export function UnifiedUserCalendar({
         >
           ‹
         </button>
-        <div className="grid grid-cols-4 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1">
-          {viewOptions.map((option) => (
-            <button
-              className={cn(
-                "focus-ring h-8 rounded-full text-[12px] font-black transition",
-                view === option.value
-                  ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]"
-                  : "text-[color:var(--client-muted)]"
-              )}
-              key={option.value}
-              onClick={() => changeView(option.value)}
-              type="button"
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <label className="focus-within:ring-focus relative min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[color:var(--client-muted)]">显示</span>
+          <select
+            aria-label="切换日程展示范围"
+            className="h-9 w-full appearance-none rounded-full bg-transparent pl-12 pr-9 text-center text-[13px] font-black text-[color:var(--client-text)] outline-none"
+            onChange={(event) => changeView(event.target.value as UnifiedCalendarView)}
+            value={view === "agenda" ? "day" : view}
+          >
+            {viewOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-black text-[color:var(--client-muted)]">⌄</span>
+        </label>
         <button
           className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-lg font-black text-[color:var(--client-text)]"
           onClick={() => shiftPeriod(1)}
@@ -4523,75 +5161,28 @@ export function UnifiedUserCalendar({
             onOpen={openCalendarEvent}
           />
         </div>
-      ) : view === "week" ? (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-7 gap-1">
-            {getWeekDates(anchorDate).map((date) => {
-              const count = (groupedVisibleEvents[date] ?? []).length;
-              const selected = selectedDate === date;
-              return (
-                <button
-                  className={cn(
-                    "focus-ring relative min-h-[64px] rounded-[16px] border px-1.5 py-2 text-center transition",
-                    selected
-                      ? "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:var(--client-primary-soft)]"
-                      : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)]"
-                  )}
-                  key={date}
-                  onClick={() => setSelectedDate(date)}
-                  type="button"
-                >
-                  <HolidayCornerBadge date={date} />
-                  <span className="block text-[10px] font-black text-[color:var(--client-muted)]">{getWeekdayLabel(date).replace("周", "")}</span>
-                  <strong className="mt-1 block text-[13px] font-black text-[color:var(--client-text)]">{Number(date.slice(-2))}</strong>
-                  {count > 0 ? <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-[color:var(--client-primary)]" /> : null}
-                </button>
-              );
-            })}
-          </div>
-          {renderSelectedDateList()}
+      ) : view === "threeDay" || view === "week" ? (
+        <div className="mt-3">
+          <UnifiedCalendarMultiDayTimeline
+            dates={view === "threeDay" ? getThreeDayDates(anchorDate) : getWeekDates(anchorDate)}
+            emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
+            events={searchedVisiblePeriodEvents}
+            onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}
+            onOpen={openCalendarEvent}
+            onSelectDate={openDateInDayView}
+            selectedDate={selectedDate}
+          />
         </div>
       ) : view === "month" ? (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-7 gap-1 px-1 text-center text-[10px] font-black text-[color:var(--client-muted)]">
-            {getWeekdayHeaderLabel().map((label) => (
-              <span key={label}>{label}</span>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {getMonthGridDates(anchorDate).map((date) => {
-              const events = groupedVisibleEvents[date] ?? [];
-              const selected = selectedDate === date;
-              const inMonth = date.slice(0, 7) === anchorDate.slice(0, 7);
-              return (
-                <button
-                  className={cn(
-                    "focus-ring relative min-h-[66px] rounded-[13px] border px-1.5 py-1.5 text-left transition",
-                    selected
-                      ? "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:var(--client-primary-soft)]"
-                      : "border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)]",
-                    !inMonth && "opacity-35"
-                  )}
-                  key={date}
-                  onClick={() => setSelectedDate(date)}
-                  type="button"
-                >
-                  <HolidayCornerBadge date={date} />
-                  <strong className="block text-[12px] font-black text-[color:var(--client-text)]">{Number(date.slice(-2))}</strong>
-                  <span className="mt-2 flex flex-col gap-1">
-                    {events.slice(0, 3).map((event) => (
-                      <span
-                        className="h-1.5 rounded-full bg-[color:var(--calendar-accent)]"
-                        key={event.id}
-                        style={getEventStyle(event)}
-                      />
-                    ))}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {renderSelectedDateList()}
+        <div className="mt-3">
+          <UnifiedCalendarMonthGrid
+            anchorDate={anchorDate}
+            dates={getMonthGridDates(anchorDate)}
+            eventsByDate={groupedVisibleEvents}
+            onOpen={openCalendarEvent}
+            onSelectDate={openDateInDayView}
+            selectedDate={selectedDate}
+          />
         </div>
       ) : (
         <UnifiedCalendarAgendaView

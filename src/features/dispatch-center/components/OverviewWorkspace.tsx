@@ -746,6 +746,7 @@ function ContactStatusDetailContent({
 
 export function DispatchOverviewWorkspace({
   operatorId,
+  scheduleStickyTop,
   staffLabel = "技师",
   storeId,
   surface
@@ -760,6 +761,7 @@ export function DispatchOverviewWorkspace({
   const [view, setView] = useState<ScheduleCycleCalendarBoardView>("day");
   const [dateKey, setDateKey] = useState("2026-04-20");
   const [scheduleDetailOpen, setScheduleDetailOpen] = useState(false);
+  const [scheduleDetailReturnView, setScheduleDetailReturnView] = useState<ScheduleCycleCalendarBoardView | null>(null);
   const scheduleSearchQuery = "";
   const scheduleStatusFilter: ScheduleDetailStatusFilter = "all";
   const [contactReplacementFlows, setContactReplacementFlows] = useState<Record<string, ContactReplacementFlow>>({});
@@ -774,7 +776,8 @@ export function DispatchOverviewWorkspace({
   const entitySnapshot = useEntityStore();
   const summary = useMemo(() => getDispatchOverviewSummary(storeId), [dispatchSnapshot.revision, storeId]);
   const isMobileSurface = surface === "mobile";
-  const overviewRangeView: ScheduleViewSegmentedValue = view === "agenda" ? "day" : view;
+  const scheduleDetailStickyTop = "var(--client-mobile-schedule-detail-grid-header-top, calc(env(safe-area-inset-top, 0px) + 58px))";
+  const overviewRangeView: ScheduleViewSegmentedValue = view === "agenda" || view === "threeDay" ? "day" : view;
   const rangeSummary = useMemo(
     () => getDispatchOverviewRangeSummary(storeId, overviewRangeView, dateKey, summary.activeCycle?.id ?? null),
     [dateKey, dispatchSnapshot.revision, overviewRangeView, storeId, summary.activeCycle?.id]
@@ -810,7 +813,29 @@ export function DispatchOverviewWorkspace({
   const openDateSchedule = (nextDateKey: string) => {
     setDateKey(nextDateKey);
     setView("day");
+    setScheduleDetailReturnView(null);
     setSelectedCell(null);
+  };
+  const changeOverviewRangeView = (nextView: ScheduleViewSegmentedValue) => {
+    setScheduleDetailReturnView(null);
+    setView(nextView);
+  };
+  const changeScheduleDetailView = (nextView: ScheduleCycleCalendarBoardView) => {
+    if (nextView === "day" && view !== "day") {
+      setScheduleDetailReturnView(view);
+    } else if (nextView !== "day") {
+      setScheduleDetailReturnView(null);
+    }
+
+    setView(nextView);
+  };
+  const returnToScheduleDetailSourceView = () => {
+    if (!scheduleDetailReturnView) {
+      return;
+    }
+
+    setView(scheduleDetailReturnView);
+    setScheduleDetailReturnView(null);
   };
 
   useEffect(() => {
@@ -1636,7 +1661,7 @@ export function DispatchOverviewWorkspace({
             />
           </div>
           {isMobileSurface ? (
-            <ScheduleViewSegmentedTabs className="shrink-0" onChange={(nextView) => setView(nextView)} value={overviewRangeView} />
+            <ScheduleViewSegmentedTabs className="shrink-0" onChange={changeOverviewRangeView} value={overviewRangeView} />
           ) : null}
         </div>
 
@@ -1677,11 +1702,13 @@ export function DispatchOverviewWorkspace({
                 setSelectedCell(null);
               }}
               onOpenCell={openCellDetail}
-              onViewChange={setView}
+              onViewChange={changeScheduleDetailView}
+              scheduleStickyTop={scheduleStickyTop}
               searchQuery={scheduleSearchQuery}
               statusFilter={scheduleStatusFilter}
               storeId={storeId}
               subtitle={`${summary.activePeriodLabel} · 当前周期`}
+              surface={surface}
               view={view}
             />
           </div>
@@ -1722,7 +1749,11 @@ export function DispatchOverviewWorkspace({
           <MobileFullscreenHeader
             className="client-mobile-schedule-detail__floating-header"
             closeLabel="关闭排班表"
-            onClose={() => setScheduleDetailOpen(false)}
+            onBack={scheduleDetailReturnView ? returnToScheduleDetailSourceView : undefined}
+            onClose={() => {
+              setScheduleDetailOpen(false);
+              setScheduleDetailReturnView(null);
+            }}
             showSpacer={false}
             subtitle={summary.activePeriodLabel}
             title="周期排班表"
@@ -1738,11 +1769,13 @@ export function DispatchOverviewWorkspace({
                 setSelectedCell(null);
               }}
               onOpenCell={openCellDetail}
-              onViewChange={setView}
+              onViewChange={changeScheduleDetailView}
+              scheduleStickyTop={scheduleDetailStickyTop}
               searchQuery={scheduleSearchQuery}
               statusFilter={scheduleStatusFilter}
               storeId={storeId}
               subtitle={`${summary.activePeriodLabel} · 当前周期`}
+              surface={surface}
               view={view}
             />
           </div>

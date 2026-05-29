@@ -63,6 +63,29 @@ describe("frontend RBAC session helpers", () => {
     expect(canAccessPortalFromSession(session, "user")).toBe(true);
   });
 
+  it("maps formal numeric scoped identities to the local client entity ids", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 3 },
+        identities: [
+          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 3 },
+          { id: 3, type: "merchant_owner", scopeType: "store", scopeId: 2 },
+          { id: 4, type: "technician", scopeType: "technician_profile", scopeId: 4 }
+        ],
+        roles: ["customer", "merchant_owner", "technician"],
+        permissions: ["page:client-app", "page:merchant-app", "page:technician-app"],
+        menus: ["menu:client-app", "menu:merchant-app", "menu:technician-app"]
+      },
+      "user",
+      "password"
+    );
+
+    expect(session.linkedCustomerId).toBe("cus-3");
+    expect(session.linkedStoreId).toBe("store-2");
+    expect(session.linkedTechnicianId).toBe("tech-4");
+  });
+
   it("lets a signed-in user bootstrap non-admin client portals without granting admin access", () => {
     const session = buildAuthSessionFromMe(
       {

@@ -39,6 +39,20 @@ describe("IM pages", () => {
     expect(fixedShellMatches).toHaveLength(2);
   });
 
+  it("keeps chat and contact home headers compact without current-user profile cards", () => {
+    const messagesStart = pagesSource.indexOf("export function ImConversationListPage");
+    const contactsStart = pagesSource.indexOf("export function ImContactsListPage");
+    const nextPageStart = pagesSource.indexOf("export function ImFriendRequestsPage");
+    const messagesSource = pagesSource.slice(messagesStart, contactsStart);
+    const contactsSource = pagesSource.slice(contactsStart, nextPageStart);
+
+    expect(messagesSource).toContain("compactHeader");
+    expect(contactsSource).toContain("compactHeader");
+    expect(messagesSource).not.toContain("ImCurrentActorHeader");
+    expect(contactsSource).not.toContain("ImCurrentActorHeader");
+    expect(pagesSource).not.toContain("function ImCurrentActorHeader");
+  });
+
   it("lets conversation wallpaper sit behind the fixed glass top bar", () => {
     const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
     const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");

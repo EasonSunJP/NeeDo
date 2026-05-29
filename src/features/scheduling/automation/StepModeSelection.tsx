@@ -106,39 +106,40 @@ export function StepModeSelection({
             const active = draft.mode === item.mode;
 
             return (
-              <button
-                className={cn(
-                  "rounded-[24px] border p-4 text-left transition",
-                  cardClass,
-                  active && activeCardClass
-                )}
-                key={item.mode}
-                onClick={() => updateMode(item.mode)}
-                type="button"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <strong className="text-xl font-black leading-tight">{item.title}</strong>
-                  <InfoTooltipTrigger
-                    className={active ? "schedule-highlight-badge" : undefined}
-                    content={
-                      <div className="space-y-2">
-                        <p><span className="font-black">商户：</span>{item.merchantRole}</p>
-                        <p><span className="font-black">技师：</span>{item.technicianRole}</p>
-                        <p><span className="font-black">确认：</span>{item.confirmation}</p>
-                      </div>
-                    }
-                    label={`${item.title}说明`}
-                    variant={surface === "mobile" ? "client" : "paper"}
-                  />
-                  {item.recommended ? <Badge className={active ? "schedule-highlight-badge" : undefined} tone={active ? "yellow" : "green"}>默认推荐</Badge> : null}
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge className={active ? "schedule-highlight-badge" : undefined} tone="neutral">{item.scenario}</Badge>
-                  <Badge className={active ? "schedule-highlight-badge" : undefined} tone={item.confirmation.includes("自动") ? "green" : "yellow"}>
-                    {item.confirmation}
-                  </Badge>
-                </div>
-              </button>
+              <div className="relative" key={item.mode}>
+                <button
+                  className={cn(
+                    "w-full rounded-[24px] border p-4 text-left transition",
+                    cardClass,
+                    active && activeCardClass
+                  )}
+                  onClick={() => updateMode(item.mode)}
+                  type="button"
+                >
+                  <div className="flex flex-wrap items-center gap-2 pr-8">
+                    <strong className="text-xl font-black leading-tight">{item.title}</strong>
+                    {item.recommended ? <Badge className={active ? "schedule-highlight-badge" : undefined} tone={active ? "yellow" : "green"}>默认推荐</Badge> : null}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge className={active ? "schedule-highlight-badge" : undefined} tone="neutral">{item.scenario}</Badge>
+                    <Badge className={active ? "schedule-highlight-badge" : undefined} tone={item.confirmation.includes("自动") ? "green" : "yellow"}>
+                      {item.confirmation}
+                    </Badge>
+                  </div>
+                </button>
+                <InfoTooltipTrigger
+                  className={cn("absolute right-4 top-4", active ? "schedule-highlight-badge" : undefined)}
+                  content={
+                    <div className="space-y-2">
+                      <p><span className="font-black">商户：</span>{item.merchantRole}</p>
+                      <p><span className="font-black">技师：</span>{item.technicianRole}</p>
+                      <p><span className="font-black">确认：</span>{item.confirmation}</p>
+                    </div>
+                  }
+                  label={`${item.title}说明`}
+                  variant={surface === "mobile" ? "client" : "paper"}
+                />
+              </div>
             );
           })}
         </div>

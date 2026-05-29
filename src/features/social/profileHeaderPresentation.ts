@@ -25,7 +25,7 @@ export type TechnicianWeeklyScheduleItem = {
   isToday: boolean;
 };
 
-const weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"];
+const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
 
 type ScheduleLike = {
   id: string;

@@ -13,6 +13,7 @@ import {
   canUseUserSessionForClientPortal,
   hasAnyPermissionInSession,
   hasPermissionInSession,
+  normalizeAuthSessionEntityIds,
   type AuthMePayload,
   type AuthSession,
   type LoginMethod
@@ -89,7 +90,7 @@ function readStoredAuthSession() {
   try {
     const parsedSession: unknown = JSON.parse(rawSession);
 
-    return isStoredAuthSession(parsedSession) ? parsedSession : null;
+    return isStoredAuthSession(parsedSession) ? normalizeAuthSessionEntityIds(parsedSession) : null;
   } catch {
     return null;
   }
@@ -246,6 +247,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const switchPortal = useCallback((portal: PortalScope) => {
     setSession((current) => {
       if (!current || !canAccessPortalFromSession(current, portal)) {
+        return current;
+      }
+
+      if (current.portal === portal) {
         return current;
       }
 

@@ -33,13 +33,13 @@ import {
   timeToMinutes
 } from "../../features/technician-schedule/model";
 
-type AvailabilityView = "day" | "week" | "month" | "agenda";
+type AvailabilityView = "day" | "threeDay" | "week" | "month";
 
 const viewOptions: Array<{ value: AvailabilityView; label: string }> = [
-  { value: "day", label: "日" },
+  { value: "day", label: "1日" },
+  { value: "threeDay", label: "3日" },
   { value: "week", label: "周" },
-  { value: "month", label: "月" },
-  { value: "agenda", label: "仅行程" }
+  { value: "month", label: "月" }
 ];
 
 const hourRowHeight = 58;
@@ -87,6 +87,11 @@ function formatPeriodLabel(view: AvailabilityView, anchorDate: string) {
     return `${first.slice(5).replace("-", "/")} - ${last.slice(5).replace("-", "/")}`;
   }
 
+  if (view === "threeDay") {
+    const last = addDays(anchorDate, 2);
+    return `${anchorDate.slice(5).replace("-", "/")} - ${last.slice(5).replace("-", "/")}`;
+  }
+
   return formatLongDate(anchorDate);
 }
 
@@ -97,6 +102,10 @@ function shiftAnchor(view: AvailabilityView, anchorDate: string, direction: -1 |
 
   if (view === "week") {
     return addDays(anchorDate, direction * 7);
+  }
+
+  if (view === "threeDay") {
+    return addDays(anchorDate, direction * 3);
   }
 
   return addDays(anchorDate, direction);
@@ -218,6 +227,7 @@ export function UserTechnicianScheduleDetailPage() {
       : [],
     [buffer.post, buffer.pre, selectedDate, technician, technicianSnapshot]
   );
+  const threeDayDates = useMemo(() => Array.from({ length: 3 }, (_, index) => addDays(anchorDate, index)), [anchorDate]);
   const weekDates = useMemo(() => getWeekDates(anchorDate), [anchorDate]);
   const monthDates = useMemo(() => getMonthGridDates(anchorDate), [anchorDate]);
   const availabilityCountByDate = useMemo(() => {
@@ -225,7 +235,7 @@ export function UserTechnicianScheduleDetailPage() {
       return new Map<string, number>();
     }
 
-    const dates = new Set([...weekDates, ...monthDates, selectedDate]);
+    const dates = new Set([...threeDayDates, ...weekDates, ...monthDates, selectedDate]);
     return new Map(
       Array.from(dates).map((date) => [
         date,
@@ -238,11 +248,11 @@ export function UserTechnicianScheduleDetailPage() {
         }).length
       ])
     );
-  }, [buffer.post, buffer.pre, monthDates, selectedDate, technician, technicianSnapshot, weekDates]);
+  }, [buffer.post, buffer.pre, monthDates, selectedDate, technician, technicianSnapshot, threeDayDates, weekDates]);
 
   const changeView = (nextView: AvailabilityView) => {
     setView(nextView);
-    if (nextView === "day" || nextView === "agenda") {
+    if (nextView === "day" || nextView === "threeDay") {
       setAnchorDate(selectedDate);
     }
   };
@@ -250,7 +260,7 @@ export function UserTechnicianScheduleDetailPage() {
   const shiftPeriod = (direction: -1 | 1) => {
     const next = shiftAnchor(view, anchorDate, direction);
     setAnchorDate(next);
-    if (view === "day" || view === "agenda") {
+    if (view === "day" || view === "threeDay" || view === "week") {
       setSelectedDate(next);
     }
   };
@@ -259,6 +269,11 @@ export function UserTechnicianScheduleDetailPage() {
     const today = getTodayDateKey();
     setAnchorDate(today);
     setSelectedDate(today);
+  };
+  const openDateInDayView = (date: string) => {
+    setSelectedDate(date);
+    setAnchorDate(date);
+    setView("day");
   };
   const closeScheduleDetail = () => {
     if (canNavigateBack()) {
@@ -348,23 +363,20 @@ export function UserTechnicianScheduleDetailPage() {
             >
               ‹
             </button>
-            <div className="grid grid-cols-4 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1">
-              {viewOptions.map((option) => (
-                <button
-                  className={cn(
-                    "focus-ring h-8 min-w-0 rounded-full px-1 text-[12px] font-black transition",
-                    view === option.value
-                      ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]"
-                      : "text-[color:var(--client-muted)]"
-                  )}
-                  key={option.value}
-                  onClick={() => changeView(option.value)}
-                  type="button"
-                >
-                  <span className="block truncate">{option.label}</span>
-                </button>
-              ))}
-            </div>
+            <label className="focus-within:ring-focus relative min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[color:var(--client-muted)]">显示</span>
+              <select
+                aria-label="切换技师可预约日程范围"
+                className="h-9 w-full appearance-none rounded-full bg-transparent pl-12 pr-9 text-center text-[13px] font-black text-[color:var(--client-text)] outline-none"
+                onChange={(event) => changeView(event.target.value as AvailabilityView)}
+                value={view}
+              >
+                {viewOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-black text-[color:var(--client-muted)]">⌄</span>
+            </label>
             <button
               className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-lg font-black text-[color:var(--client-text)]"
               onClick={() => shiftPeriod(1)}
@@ -374,9 +386,9 @@ export function UserTechnicianScheduleDetailPage() {
             </button>
           </div>
 
-          {view === "week" ? (
-            <div className="mt-3 grid grid-cols-7 gap-1">
-              {weekDates.map((date) => {
+          {view === "threeDay" || view === "week" ? (
+            <div className={cn("mt-3 grid gap-1", view === "threeDay" ? "grid-cols-3" : "grid-cols-7")}>
+              {(view === "threeDay" ? threeDayDates : weekDates).map((date) => {
                 const selected = date === selectedDate;
                 const count = availabilityCountByDate.get(date) ?? 0;
                 return (
@@ -388,7 +400,7 @@ export function UserTechnicianScheduleDetailPage() {
                         : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)]"
                     )}
                     key={date}
-                    onClick={() => setSelectedDate(date)}
+                    onClick={() => openDateInDayView(date)}
                     type="button"
                   >
                     <span className="block text-[10px] font-black text-[color:var(--client-muted)]">{getWeekdayLabel(date).replace("周", "")}</span>
@@ -422,7 +434,7 @@ export function UserTechnicianScheduleDetailPage() {
                         !inMonth && "opacity-35"
                       )}
                       key={date}
-                      onClick={() => setSelectedDate(date)}
+                      onClick={() => openDateInDayView(date)}
                       type="button"
                     >
                       <strong className="block text-[12px] font-black text-[color:var(--client-text)]">{Number(date.slice(-2))}</strong>
@@ -434,28 +446,13 @@ export function UserTechnicianScheduleDetailPage() {
             </div>
           ) : null}
 
-          {view === "agenda" ? (
-            <div className="mt-3 space-y-2">
-              {selectedDateRanges.length > 0 ? selectedDateRanges.map((range) => (
-                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-3 py-3" key={`${range.startTime}-${range.endTime}`}>
-                  <strong className="text-sm font-black text-[color:var(--client-text)]">{formatTechnicianPublicAvailabilityRange(range)}</strong>
-                  <span className="ml-2 text-[11px] font-black text-[color:var(--client-muted)]">可预约</span>
-                </div>
-              )) : (
-                <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] px-3 py-4 text-center text-[12px] font-black text-[color:var(--client-muted)]">
-                  当前日期没有可预约的空档。
-                </div>
-              )}
-            </div>
-          ) : null}
-
           <div className="mt-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] px-3 py-2 text-[11px] font-black leading-5 text-[color:var(--client-muted)]">
             <AppIcon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" name="clock" />
             已自动扣除已预约、休息、锁定以及前后缓冲时间。缓冲：前 {buffer.pre} 分 / 后 {buffer.post} 分。
           </div>
         </section>
 
-        <AvailabilityTimeline date={selectedDate} ranges={selectedDateRanges} technician={technician} />
+        {view !== "month" ? <AvailabilityTimeline date={selectedDate} ranges={selectedDateRanges} technician={technician} /> : null}
       </div>
     </MobileShell>
   );

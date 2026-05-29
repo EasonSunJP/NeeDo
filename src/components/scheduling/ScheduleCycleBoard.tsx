@@ -44,6 +44,7 @@ export function ScheduleCycleBoard({
   headerContent,
   onMessage,
   operatorId,
+  scheduleStickyTop,
   selectable = true,
   storeId,
   surface,
@@ -203,8 +204,10 @@ export function ScheduleCycleBoard({
           onDateChange={changeScheduleDate}
           onOpenCell={canSelectCells ? selectScheduleCell : (cell) => openDateSchedule(cell.date)}
           onViewChange={setView}
+          scheduleStickyTop={scheduleStickyTop}
           storeId={storeId}
           subtitle={`${currentStore?.name ?? storeId} · ${t("排班")}`}
+          surface={surface}
           view={view}
         />
       </div>

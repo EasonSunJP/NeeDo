@@ -9,7 +9,7 @@ describe("UnifiedChatHomePage spacing", () => {
 
     expect(componentSource).not.toContain("-mt-");
     expect(source).toContain('const unifiedChatHomeContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+143px)] [-webkit-overflow-scrolling:touch]";');
-    expect(componentSource).toContain("className={unifiedChatHomeContentClassName}");
+    expect(componentSource).toContain("className={contentClassName}");
     expect(componentSource).toContain("showSpacer={false}");
   });
 
@@ -19,5 +19,17 @@ describe("UnifiedChatHomePage spacing", () => {
     expect(source).toContain("overscroll-y-contain");
     expect(source).toContain("useIosScrollContainer(contentRef);");
     expect(source).toContain('data-im-home-scroll="true"');
+  });
+
+  it("supports a compact search header that keeps actions beside the search field", () => {
+    const componentStart = source.indexOf("export function UnifiedChatHomePage");
+    const componentEnd = source.indexOf("export function UnifiedChatHeaderAction");
+    const componentSource = source.slice(componentStart, componentEnd);
+
+    expect(source).toContain('const unifiedChatHomeCompactContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+92px)] [-webkit-overflow-scrolling:touch]";');
+    expect(componentSource).toContain("compactHeader");
+    expect(componentSource).toContain('compactHeader ? "flex items-center gap-3" : "space-y-3"');
+    expect(componentSource).toContain('className="min-w-0 flex-1"');
+    expect(componentSource).toContain("compactHeader ? unifiedChatHomeCompactContentClassName : unifiedChatHomeContentClassName");
   });
 });

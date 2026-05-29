@@ -18,6 +18,7 @@ import { ImIcon, PrivateConversationTitle, SwipeActionRow } from "./components";
 
 const unifiedChatHomeShellClassName = "client-glass-page-surface relative flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-transparent";
 const unifiedChatHomeContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+143px)] [-webkit-overflow-scrolling:touch]";
+const unifiedChatHomeCompactContentClassName = "scrollbar-none relative z-10 min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-5 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] pt-[calc(env(safe-area-inset-top)+92px)] [-webkit-overflow-scrolling:touch]";
 
 type UnifiedConversationPreview = {
   text: string;
@@ -37,16 +38,19 @@ export function UnifiedChatHomePage({
   title,
   actions,
   searchBar,
+  compactHeader = false,
   children
 }: {
   roleType: ImRoleType;
-  title: ReactNode;
+  title?: ReactNode;
   actions?: ReactNode;
   searchBar: ReactNode;
+  compactHeader?: boolean;
   children: ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const titleNode = typeof title === "string" ? <h1 className="truncate text-[29px] font-semibold tracking-[-0.05em] text-[color:var(--client-text)]">{title}</h1> : title;
+  const contentClassName = compactHeader ? unifiedChatHomeCompactContentClassName : unifiedChatHomeContentClassName;
 
   useIosScrollContainer(contentRef);
 
@@ -64,16 +68,25 @@ export function UnifiedChatHomePage({
         spacerGapPx={0}
         stacked
       >
-        <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">{titleNode}</div>
-            {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
-          </div>
-          <div>{searchBar}</div>
+        <div className={cn(floatingHeaderInnerClassName, compactHeader ? "flex items-center gap-3" : "space-y-3")}>
+          {compactHeader ? (
+            <>
+              <div className="min-w-0 flex-1">{searchBar}</div>
+              {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">{titleNode}</div>
+                {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+              </div>
+              <div>{searchBar}</div>
+            </>
+          )}
         </div>
       </FloatingHomeHeader>
 
-      <div className={unifiedChatHomeContentClassName} data-im-home-scroll="true" ref={contentRef}>
+      <div className={contentClassName} data-im-home-scroll="true" ref={contentRef}>
         {children}
       </div>
     </div>

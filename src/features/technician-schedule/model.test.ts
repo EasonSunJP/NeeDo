@@ -13,11 +13,11 @@ describe("technician schedule date selection", () => {
 
   it("resolves week selections against the new target period", () => {
     expect(resolveSelectedScheduleDate("week", "2026-05-06", "2026-05-09")).toBe("2026-05-09");
-    expect(resolveSelectedScheduleDate("week", "2026-05-06", "2026-05-31")).toBe("2026-05-04");
+    expect(resolveSelectedScheduleDate("week", "2026-05-06", "2026-05-31")).toBe("2026-05-03");
 
     expect(shiftScheduleSelection("week", "2026-05-06", "2026-05-09", 1)).toEqual({
       anchorDate: "2026-05-13",
-      selectedDate: "2026-05-11"
+      selectedDate: "2026-05-10"
     });
   });
 

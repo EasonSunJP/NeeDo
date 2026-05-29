@@ -1,13 +1,11 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AppIcon } from "../client-ui/AppScaffold";
-import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { MobileFullscreenCloseButton } from "../mobile/MobileFullscreenHeader";
 import {
   UnifiedCalendarAgendaView,
   UnifiedCalendarEventDetailPage,
   UnifiedCalendarDayTimeline,
-  UnifiedCalendarEventCard,
   UnifiedCalendarSurface,
   type UnifiedCalendarEvent,
   type UnifiedCalendarLane,
@@ -22,22 +20,24 @@ import {
   getMonthGridDates,
   getTodayDateKey,
   getWeekDates,
-  getWeekdayHeaderLabel,
   getWeekdayLabel
 } from "../../features/technician-schedule/model";
+import { ScheduleGrid } from "../../features/dispatch-center/components/ScheduleGrid";
+import { TechnicianAvatarBadge } from "../../features/dispatch-center/components/TechnicianListUi";
 import {
   getDispatchCycleList,
   getDispatchScheduleGrid,
   useDispatchCenterStore,
   type DispatchScheduleCell,
-  type DispatchScheduleCellStatus
+  type DispatchScheduleCellStatus,
+  type DispatchScheduleGridData
 } from "../../features/dispatch-center/store";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { cn } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import type { Customer, Store, Technician } from "../../types/domain";
 
-export type ScheduleCycleCalendarBoardView = "day" | "week" | "month" | "agenda";
+export type ScheduleCycleCalendarBoardView = "day" | "threeDay" | "week" | "month" | "agenda";
 export type ScheduleCycleCalendarStatusFilter = "all" | DispatchScheduleCellStatus;
 
 type ScheduleCycleCalendarBoardProps = {
@@ -52,6 +52,8 @@ type ScheduleCycleCalendarBoardProps = {
   statusFilter?: ScheduleCycleCalendarStatusFilter;
   storeId: string;
   subtitle?: string;
+  scheduleStickyTop?: string;
+  surface?: "desktop" | "mobile";
   view: ScheduleCycleCalendarBoardView;
 };
 
@@ -60,11 +62,11 @@ type CycleCalendarPeriod = {
   label: string;
 };
 
-const cycleCalendarViewOptions: Array<{ label: string; value: ScheduleCycleCalendarBoardView }> = [
-  { label: "日", value: "day" },
+const cycleCalendarViewOptions: Array<{ label: string; value: Exclude<ScheduleCycleCalendarBoardView, "agenda"> }> = [
+  { label: "1日", value: "day" },
+  { label: "3日", value: "threeDay" },
   { label: "周", value: "week" },
-  { label: "月", value: "month" },
-  { label: "仅行程", value: "agenda" }
+  { label: "月", value: "month" }
 ];
 
 type CycleCalendarLabelOption = {
@@ -198,6 +200,14 @@ function getCycleCalendarPeriod(view: ScheduleCycleCalendarBoardView, dateKey: s
     };
   }
 
+  if (view === "threeDay") {
+    const dates = Array.from({ length: 3 }, (_, index) => addDays(dateKey, index));
+    return {
+      dates,
+      label: `${formatShortDate(dates[0] ?? dateKey)} - ${formatShortDate(dates[dates.length - 1] ?? dateKey)}`
+    };
+  }
+
   if (view === "week") {
     const dates = getWeekDates(dateKey);
     return {
@@ -225,6 +235,10 @@ function getCycleCalendarPeriod(view: ScheduleCycleCalendarBoardView, dateKey: s
 function shiftCycleCalendarDate(view: ScheduleCycleCalendarBoardView, dateKey: string, direction: -1 | 1) {
   if (view === "day") {
     return addDays(dateKey, direction);
+  }
+
+  if (view === "threeDay") {
+    return addDays(dateKey, direction * 3);
   }
 
   if (view === "week" || view === "agenda") {
@@ -483,6 +497,150 @@ function buildCycleCalendarData(
   return { cellByEventId, events, lanes, statusCounts };
 }
 
+function getVisibleCyclePeriodDayCells(
+  cells: DispatchScheduleCell[],
+  normalizedSearchQuery: string,
+  statusFilter: ScheduleCycleCalendarStatusFilter,
+  statusVisibility: Record<DispatchScheduleCellStatus, boolean>
+) {
+  return cells.filter((cell) =>
+    statusVisibility[cell.status] &&
+    canRenderCycleCell(cell, normalizedSearchQuery, statusFilter)
+  );
+}
+
+function getCyclePeriodCellStatus(cells: DispatchScheduleCell[]): DispatchScheduleCellStatus {
+  if (cells.some((cell) => cell.status === "conflict")) {
+    return "conflict";
+  }
+
+  if (cells.some((cell) => cell.status === "booked")) {
+    return "booked";
+  }
+
+  if (cells.some((cell) => cell.status === "confirmed")) {
+    return "confirmed";
+  }
+
+  if (cells.some((cell) => cell.status === "pending")) {
+    return "pending";
+  }
+
+  if (cells.some((cell) => cell.status === "other")) {
+    return "other";
+  }
+
+  if (cells.some((cell) => cell.status === "open")) {
+    return "open";
+  }
+
+  return "idle";
+}
+
+function getCyclePeriodCellRepresentative(cells: DispatchScheduleCell[]) {
+  return (
+    cells.find((cell) => cell.detailTargetType === "order_detail" && cell.detailTargetId) ??
+    cells.find((cell) => cell.orderId || cell.appointmentId || cell.detailTargetId) ??
+    cells[0]
+  );
+}
+
+function buildCyclePeriodGridData(
+  dayGrids: ReturnType<typeof getDispatchScheduleGrid>[],
+  dates: string[],
+  normalizedSearchQuery: string,
+  statusFilter: ScheduleCycleCalendarStatusFilter,
+  statusVisibility: Record<DispatchScheduleCellStatus, boolean>
+): DispatchScheduleGridData {
+  const firstGrid = dayGrids[0];
+
+  return {
+    cycle: firstGrid?.cycle ?? null,
+    dates,
+    headers: dates.map((date) => ({
+      key: date,
+      label: formatShortDate(date),
+      sublabel: getWeekdayLabel(date)
+    })),
+    nowHour: firstGrid?.nowHour ?? 0,
+    rows: (firstGrid?.rows ?? []).map((row) => {
+      const periodCells = dates.map((date, dateIndex) => {
+        const dayRow = dayGrids[dateIndex]?.rows.find((candidate) => candidate.technicianId === row.technicianId);
+        const visibleDayCells = getVisibleCyclePeriodDayCells(
+          dayRow?.cells ?? [],
+          normalizedSearchQuery,
+          statusFilter,
+          statusVisibility
+        );
+        const status = getCyclePeriodCellStatus(visibleDayCells);
+        const representativeCell = getCyclePeriodCellRepresentative(visibleDayCells);
+        const bookedCount = visibleDayCells.filter((cell) => cell.status === "booked").length;
+        const confirmedCount = visibleDayCells.filter((cell) => cell.status === "confirmed").length;
+        const conflictCount = visibleDayCells.filter((cell) => cell.status === "conflict").length;
+        const pendingCount = visibleDayCells.filter((cell) => cell.status === "pending").length;
+        const otherCount = visibleDayCells.filter((cell) => cell.status === "other").length;
+        const arrangedCount = bookedCount + confirmedCount + conflictCount + pendingCount + otherCount;
+
+        return {
+          id: `${row.technicianId}-${date}`,
+          date,
+          hour: null,
+          technicianId: row.technicianId,
+          technicianName: row.technicianName,
+          status,
+          title: status === "idle"
+            ? normalizedSearchQuery ? "无匹配" : "未排班"
+            : conflictCount > 0
+              ? `${conflictCount} 个冲突`
+              : arrangedCount > 0
+                ? `${arrangedCount} 个安排`
+                : "开放中",
+          detail: `${confirmedCount} 确认 / ${bookedCount} 预约 / ${pendingCount} 待定`,
+          orderId: bookedCount === 1 ? representativeCell?.orderId : undefined,
+          parentOrderId: bookedCount === 1 ? representativeCell?.parentOrderId : undefined,
+          appointmentId: bookedCount === 1 ? representativeCell?.appointmentId : undefined,
+          eventType: bookedCount === 1 ? representativeCell?.eventType : undefined,
+          isClickable: bookedCount === 1 ? representativeCell?.isClickable : undefined,
+          detailTargetType: bookedCount === 1 ? representativeCell?.detailTargetType : undefined,
+          detailTargetId: bookedCount === 1 ? representativeCell?.detailTargetId : undefined,
+          dayTimeline: visibleDayCells.map((cell) => ({
+            hour: cell.hour ?? 0,
+            status: cell.status,
+            title: cell.title,
+            detail: cell.detail,
+            orderId: cell.orderId,
+            parentOrderId: cell.parentOrderId,
+            appointmentId: cell.appointmentId,
+            eventType: cell.eventType,
+            isClickable: cell.isClickable,
+            detailTargetType: cell.detailTargetType,
+            detailTargetId: cell.detailTargetId,
+            serviceStatus: cell.serviceStatus,
+            serviceExceptionLabel: cell.serviceExceptionLabel,
+            darkened: cell.darkened,
+            isCurrent: cell.isCurrent
+          })),
+          serviceStatus: representativeCell?.serviceStatus,
+          serviceExceptionLabel: representativeCell?.serviceExceptionLabel,
+          darkened: visibleDayCells.length > 0
+            ? visibleDayCells.every((cell) => cell.darkened)
+            : date < getTodayDateKey(),
+          isCurrent: visibleDayCells.some((cell) => cell.isCurrent)
+        } satisfies DispatchScheduleCell;
+      });
+
+      return {
+        technicianId: row.technicianId,
+        technicianName: row.technicianName,
+        technicianSubtitle: `${periodCells.filter((cell) => ["confirmed", "booked", "other"].includes(cell.status)).length}/${dates.length} 天`,
+        technicianAvatar: row.technicianAvatar,
+        scheduledHours: periodCells.reduce((sum, cell) => sum + (cell.dayTimeline?.filter((slot) => ["confirmed", "booked", "other"].includes(slot.status)).length ?? 0), 0),
+        cells: periodCells
+      };
+    })
+  };
+}
+
 function groupEventsByDate(events: UnifiedCalendarEvent[]) {
   return events.reduce<Record<string, UnifiedCalendarEvent[]>>((grouped, event) => {
     grouped[event.date] = [...(grouped[event.date] ?? []), event];
@@ -501,6 +659,64 @@ function EmptyCycleCalendarState({ dateKey, searchQuery }: { dateKey: string; se
       <p className="mt-2 text-[11px] font-bold text-[color:var(--client-muted)]">
         {hasSearch ? "换个关键词，或清空搜索后查看全部周期排班。" : "切换日期后可以继续查看当前周期的并行排班。"}
       </p>
+    </div>
+  );
+}
+
+function CyclePeriodTechnicianHeader({
+  collapsedTechnicians,
+  getTechnicianDetailPath,
+  isMobileSurface,
+  row
+}: {
+  collapsedTechnicians: boolean;
+  getTechnicianDetailPath?: (technicianId: string) => string | undefined;
+  isMobileSurface: boolean;
+  row: DispatchScheduleGridData["rows"][number];
+}) {
+  const detailPath = getTechnicianDetailPath?.(row.technicianId);
+  const avatar = (
+    <TechnicianAvatarBadge
+      alt={row.technicianName}
+      className={cn(isMobileSurface ? "h-11 w-11" : "h-12 w-12")}
+      shape="roundedSquare"
+      src={row.technicianAvatar}
+    />
+  );
+
+  if (collapsedTechnicians) {
+    return (
+      <div className="relative z-10 flex justify-center">
+        {detailPath ? (
+          <Link aria-label={`查看${row.technicianName}头像详情`} className="focus-ring rounded-[16px] transition active:scale-95" to={detailPath}>
+            {avatar}
+          </Link>
+        ) : avatar}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative z-10 flex min-w-0 items-center gap-2.5">
+      {detailPath ? (
+        <Link aria-label={`查看${row.technicianName}头像详情`} className="focus-ring shrink-0 rounded-[16px] transition active:scale-95" to={detailPath}>
+          {avatar}
+        </Link>
+      ) : avatar}
+      <div className="min-w-0">
+        {detailPath ? (
+          <Link
+            aria-label={`查看${row.technicianName}详情`}
+            className="focus-ring inline-flex max-w-full min-w-0 items-center rounded-[10px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary-soft)_42%,var(--client-elevated)_58%)] px-2 py-1 text-[12px] font-black text-[color:var(--client-text)] shadow-[0_8px_16px_rgba(0,0,0,0.08)] transition active:scale-[0.98]"
+            to={detailPath}
+          >
+            <span className="truncate">{row.technicianName}</span>
+          </Link>
+        ) : (
+          <p className="truncate text-sm font-black text-[color:var(--client-text)]">{row.technicianName}</p>
+        )}
+        <p className="mt-1 truncate text-[11px] font-black text-[color:var(--client-muted)]">{row.technicianSubtitle}</p>
+      </div>
     </div>
   );
 }
@@ -609,6 +825,8 @@ export function ScheduleCycleCalendarBoard({
   statusFilter = "all",
   storeId,
   subtitle = "当前周期 · 多技师并行日程",
+  scheduleStickyTop,
+  surface = "mobile",
   view
 }: ScheduleCycleCalendarBoardProps) {
   const navigate = useNavigate();
@@ -616,6 +834,7 @@ export function ScheduleCycleCalendarBoard({
   const entitySnapshot = useEntityStore();
   const [labelDrawerOpen, setLabelDrawerOpen] = useState(false);
   const [activeDetail, setActiveDetail] = useState<{ cell: DispatchScheduleCell; event: UnifiedCalendarEvent } | null>(null);
+  const [periodTechniciansCollapsed, setPeriodTechniciansCollapsed] = useState(true);
   const [statusVisibility, setStatusVisibility] = useState(createDefaultCycleStatusVisibility);
   const normalizedSearchQuery = normalizeSearchValue(searchQuery);
   const cycle = useMemo(
@@ -645,9 +864,12 @@ export function ScheduleCycleCalendarBoard({
     ),
     [dayGrids, dispatchSnapshot.arrangements, entitySnapshot.customers, entitySnapshot.stores, entitySnapshot.technicians, getTechnicianDetailPath, normalizedSearchQuery, statusFilter, statusVisibility, storeId]
   );
+  const periodGridData = useMemo(
+    () => buildCyclePeriodGridData(dayGrids, period.dates, normalizedSearchQuery, statusFilter, statusVisibility),
+    [dayGrids, normalizedSearchQuery, period.dates, statusFilter, statusVisibility]
+  );
   const groupedEvents = useMemo(() => groupEventsByDate(events), [events]);
   const selectedDateEvents = groupedEvents[dateKey] ?? [];
-  const monthKey = dateKey.slice(0, 7);
   const openEvent = (event: UnifiedCalendarEvent) => {
     const cell = cellByEventId.get(event.id);
 
@@ -668,17 +890,10 @@ export function ScheduleCycleCalendarBoard({
   const showAllStatusLabels = () => {
     setStatusVisibility(createDefaultCycleStatusVisibility());
   };
-  const renderSelectedDateList = () => (
-    selectedDateEvents.length > 0 ? (
-      <div className="space-y-2">
-        {selectedDateEvents.map((event) => (
-          <UnifiedCalendarEventCard event={event} key={event.id} onOpen={openEvent} />
-        ))}
-      </div>
-    ) : (
-      <EmptyCycleCalendarState dateKey={dateKey} searchQuery={searchQuery} />
-    )
-  );
+  const openDateInDayView = (nextDateKey: string) => {
+    onDateChange(nextDateKey);
+    onViewChange("day");
+  };
 
   return (
     <UnifiedCalendarSurface
@@ -718,27 +933,20 @@ export function ScheduleCycleCalendarBoard({
         >
           ‹
         </button>
-        <div
-          className="grid rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1"
-          style={{ gridTemplateColumns: `repeat(${cycleCalendarViewOptions.length}, minmax(0, 1fr))` }}
-        >
-          {cycleCalendarViewOptions.map((option) => (
-            <button
-              aria-pressed={view === option.value}
-              className={cn(
-                "focus-ring h-8 rounded-full text-[12px] font-black transition",
-                view === option.value
-                  ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]"
-                  : "text-[color:var(--client-muted)]"
-              )}
-              key={option.value}
-              onClick={() => onViewChange(option.value)}
-              type="button"
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <label className="focus-within:ring-focus relative min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[color:var(--client-muted)]">显示</span>
+          <select
+            aria-label="切换排班展示范围"
+            className="h-9 w-full appearance-none rounded-full bg-transparent pl-12 pr-9 text-center text-[13px] font-black text-[color:var(--client-text)] outline-none"
+            onChange={(event) => onViewChange(event.target.value as ScheduleCycleCalendarBoardView)}
+            value={view === "agenda" ? "day" : view}
+          >
+            {cycleCalendarViewOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-black text-[color:var(--client-muted)]">⌄</span>
+        </label>
         <button
           className="focus-ring grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-lg font-black text-[color:var(--client-text)]"
           onClick={() => onDateChange(shiftCycleCalendarDate(view, dateKey, 1))}
@@ -764,73 +972,28 @@ export function ScheduleCycleCalendarBoard({
             onOpen={openEvent}
           />
         </div>
-      ) : view === "week" ? (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-7 gap-1">
-            {getWeekDates(dateKey).map((date) => {
-              const count = (groupedEvents[date] ?? []).length;
-              const selected = dateKey === date;
-
-              return (
-                <button
-                  className={cn(
-                    "focus-ring relative min-h-[64px] rounded-[16px] border px-1.5 py-2 text-center transition",
-                    selected
-                      ? "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:var(--client-primary-soft)]"
-                      : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)]"
-                  )}
-                  key={date}
-                  onClick={() => onDateChange(date)}
-                  type="button"
-                >
-                  <HolidayCornerBadge date={date} />
-                  <span className="block text-[10px] font-black text-[color:var(--client-muted)]">{getWeekdayLabel(date).replace("周", "")}</span>
-                  <strong className="mt-1 block text-[13px] font-black text-[color:var(--client-text)]">{Number(date.slice(-2))}</strong>
-                  {count > 0 ? <span className="mx-auto mt-1 block h-1.5 w-1.5 rounded-full bg-[color:var(--client-primary)]" /> : null}
-                </button>
-              );
-            })}
-          </div>
-          {renderSelectedDateList()}
-        </div>
-      ) : view === "month" ? (
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-7 gap-1 px-1 text-center text-[10px] font-black text-[color:var(--client-muted)]">
-            {getWeekdayHeaderLabel().map((label) => (
-              <span key={label}>{label}</span>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {getMonthGridDates(dateKey).map((date) => {
-              const dateEvents = groupedEvents[date] ?? [];
-              const selected = dateKey === date;
-              const inMonth = date.slice(0, 7) === monthKey;
-
-              return (
-                <button
-                  className={cn(
-                    "focus-ring relative min-h-[66px] rounded-[13px] border px-1.5 py-1.5 text-left transition",
-                    selected
-                      ? "border-[color:color-mix(in_srgb,var(--client-primary)_42%,transparent)] bg-[color:var(--client-primary-soft)]"
-                      : "border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)]",
-                    !inMonth && "opacity-35"
-                  )}
-                  key={date}
-                  onClick={() => onDateChange(date)}
-                  type="button"
-                >
-                  <HolidayCornerBadge date={date} />
-                  <strong className="block text-[12px] font-black text-[color:var(--client-text)]">{Number(date.slice(-2))}</strong>
-                  <span className="mt-2 flex flex-col gap-1">
-                    {dateEvents.slice(0, 3).map((event) => (
-                      <span className="h-1.5 rounded-full bg-[color:var(--client-primary)]" key={event.id} />
-                    ))}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {renderSelectedDateList()}
+      ) : view === "threeDay" || view === "week" || view === "month" ? (
+        <div className="mt-3">
+          <ScheduleGrid
+            collapsedTechnicians={periodTechniciansCollapsed}
+            compactHeader
+            data={periodGridData}
+            onSelectDate={openDateInDayView}
+            onToggleCollapsed={() => setPeriodTechniciansCollapsed((current) => !current)}
+            periodCellVariant="calendarSummary"
+            renderRowHeader={(row, context) => (
+              <CyclePeriodTechnicianHeader
+                collapsedTechnicians={context.collapsedTechnicians}
+                getTechnicianDetailPath={getTechnicianDetailPath}
+                isMobileSurface={context.isMobileSurface}
+                row={row}
+              />
+            )}
+            showActualWorkStatus={false}
+            stickyHeaderLabel="技师"
+            stickyTop={scheduleStickyTop}
+            surface={surface}
+          />
         </div>
       ) : (
         events.length > 0 ? (

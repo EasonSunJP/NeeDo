@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type UIEvent as ReactUIEvent } from "react";
 import { Badge, type BadgeTone } from "../../../components/ui/Badge";
+import { floatingHeaderControlButtonClassName } from "../../../components/client-ui/AppScaffold";
 import { NotificationBadge } from "../../../components/ui/NotificationBadge";
 import { useI18n } from "../../../i18n/I18nProvider";
 import { translateText, type Language, type LocalizedText } from "../../../i18n/translations";
@@ -84,6 +85,16 @@ type PeriodTimelineRange = {
   endHour: number;
 };
 
+type PeriodSummaryRange = {
+  appointmentCount: number;
+  cells: NonNullable<DispatchScheduleCell["dayTimeline"]>;
+  endHour: number;
+  isCurrent: boolean;
+  mergeKey: string;
+  startHour: number;
+  status: DispatchScheduleCellStatus;
+};
+
 type ScheduleGridDayCellAction = {
   className?: string;
   onClick?: () => void;
@@ -110,6 +121,8 @@ type ScheduleGridRowHeaderContext = {
   surface: "desktop" | "mobile";
 };
 
+type ScheduleGridPeriodCellVariant = "tone" | "calendarSummary";
+
 export type ScheduleLegendFilter = "available" | "scheduled" | "booked" | "conflictPending" | "other" | "standby" | "travel" | "inService" | "extraTime" | "breakBuffer";
 
 export const scheduleLegendItems: Array<{
@@ -130,6 +143,7 @@ export const scheduleLegendItems: Array<{
 ];
 
 const periodWorkStatuses = new Set<DispatchScheduleCellStatus>(["confirmed", "booked", "conflict", "pending"]);
+const periodSummaryStatuses = new Set<DispatchScheduleCellStatus>(["open", "confirmed", "booked", "conflict", "pending", "other"]);
 const openWorkStatuses = new Set<DispatchScheduleCellStatus>(["open"]);
 const bookedAppointmentStatuses = new Set<DispatchScheduleCellStatus>(["booked"]);
 const dayScheduledBaseStatuses = new Set<DispatchScheduleCellStatus>(["confirmed", "booked", "conflict", "pending"]);
@@ -815,6 +829,136 @@ function countBookedAppointmentSegments(cell: DispatchScheduleCell) {
   return buildPeriodTimelineRanges(cell, bookedAppointmentStatuses).length;
 }
 
+function getPeriodSummaryMergeKey(slot: NonNullable<DispatchScheduleCell["dayTimeline"]>[number]) {
+  if (slot.status === "booked" || slot.status === "conflict" || slot.status === "pending") {
+    return `${slot.status}:${slot.orderId ?? slot.detailTargetId ?? slot.appointmentId ?? slot.hour}`;
+  }
+
+  return slot.status;
+}
+
+function buildPeriodSummaryRanges(cell: DispatchScheduleCell) {
+  const timeline = cell.dayTimeline ?? [];
+  const ranges = timeline.reduce<PeriodSummaryRange[]>((summaryRanges, slot, index) => {
+    if (!periodSummaryStatuses.has(slot.status)) {
+      return summaryRanges;
+    }
+
+    const startHour = slot.hour ?? index;
+    const mergeKey = getPeriodSummaryMergeKey(slot);
+    const previous = summaryRanges[summaryRanges.length - 1];
+
+    if (previous && previous.endHour === startHour && previous.mergeKey === mergeKey) {
+      previous.cells.push(slot);
+      previous.endHour = startHour + 1;
+      previous.isCurrent = previous.isCurrent || slot.isCurrent;
+      return summaryRanges;
+    }
+
+    summaryRanges.push({
+      appointmentCount: slot.status === "booked" ? 1 : 0,
+      cells: [slot],
+      endHour: startHour + 1,
+      isCurrent: slot.isCurrent,
+      mergeKey,
+      startHour,
+      status: slot.status
+    });
+
+    return summaryRanges;
+  }, []);
+  const arrangedRanges = ranges.filter((range) => range.status !== "open");
+
+  return arrangedRanges.length > 0 ? arrangedRanges : ranges;
+}
+
+function getPeriodSummaryTone(range: PeriodSummaryRange): DayTimelineLegendTone {
+  if (range.status === "booked") {
+    return "booked";
+  }
+
+  if (range.status === "confirmed") {
+    return "scheduled";
+  }
+
+  if (range.status === "conflict" || range.status === "pending") {
+    return "conflictPending";
+  }
+
+  if (range.status === "other") {
+    return "other";
+  }
+
+  return "available";
+}
+
+function getPeriodSummaryRangeLabel(range: PeriodSummaryRange, language: Language) {
+  const label =
+    range.status === "booked"
+      ? getLocalizedTimelineLabel("appointments", language, Math.max(1, range.appointmentCount))
+      : range.status === "confirmed"
+        ? getLocalizedTimelineLabel("work", language)
+        : range.status === "pending"
+          ? getLocalizedTimelineLabel("pending", language)
+          : range.status === "conflict"
+            ? translateText("预约冲突", language)
+            : range.status === "other"
+              ? translateText("其他行程", language)
+              : getLocalizedTimelineLabel("storeOpen", language);
+
+  return `${formatPeriodHour(range.startHour)}-${formatPeriodHour(range.endHour)} ${label}`;
+}
+
+function renderCalendarSummaryPeriodCell(cell: DispatchScheduleCell, language: Language, isMobileSurface: boolean) {
+  const ranges = buildPeriodSummaryRanges(cell);
+  const visibleRanges = ranges.slice(0, 2);
+  const hiddenRangeCount = Math.max(0, ranges.length - visibleRanges.length);
+  const bookedAppointmentCount = countBookedAppointmentSegments(cell);
+
+  if (visibleRanges.length === 0) {
+    return (
+      <div className="relative z-10 flex h-full items-center justify-center">
+        <span className="inline-flex max-w-full items-center rounded-[8px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_70%,transparent)] px-2 py-1 text-[11px] font-black text-[color:var(--client-muted)]">
+          {translateText(cell.title, language)}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative z-10 flex h-full min-w-0 flex-col justify-between gap-1">
+      {bookedAppointmentCount > 0 ? (
+        <NotificationBadge className="absolute right-0 top-0 z-20" count={bookedAppointmentCount} size="sm" />
+      ) : null}
+      <div className="min-w-0 space-y-1 pr-1">
+        {visibleRanges.map((range, index) => (
+          <span
+            className={cn(
+              "flex min-w-0 items-center rounded-[7px] px-1.5 text-left font-black leading-none shadow-[0_8px_16px_rgba(0,0,0,0.16)]",
+              isMobileSurface ? "h-[20px] text-[10px]" : "h-[22px] text-[10px]",
+              bookedAppointmentCount > 0 && index === 0 && "pr-5",
+              range.isCurrent && "ring-2 ring-[color:color-mix(in_srgb,var(--client-primary)_52%,transparent)]"
+            )}
+            key={`${cell.id}-${range.mergeKey}-${range.startHour}-${range.endHour}`}
+            style={getScheduleToneStyle(getPeriodSummaryTone(range))}
+            title={getPeriodSummaryRangeLabel(range, language)}
+          >
+            <span className="truncate">{getPeriodSummaryRangeLabel(range, language)}</span>
+          </span>
+        ))}
+      </div>
+      <div className="flex min-h-[14px] min-w-0 items-center justify-between gap-1">
+        <span className="truncate text-[10px] font-black text-[color:var(--client-muted)]">{translateText(cell.detail, language)}</span>
+        {hiddenRangeCount > 0 ? (
+          <span className="shrink-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] px-1.5 py-0.5 text-[9px] font-black text-[color:var(--client-muted)]">
+            +{hiddenRangeCount}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 const initialScheduleScrollStyle = {
   "--schedule-grid-scroll-left": "0px",
   "--schedule-grid-scroll-offset": "0px"
@@ -832,6 +976,7 @@ export function ScheduleGrid({
   onSelectCell,
   onResizeDayPrimaryRange,
   onToggleCollapsed,
+  periodCellVariant = "tone",
   getDayCellAction,
   renderRowHeader,
   showActualWorkStatus = true,
@@ -852,6 +997,7 @@ export function ScheduleGrid({
   onSelectDate?: (dateKey: string) => void;
   onSelectCell?: (cell: DispatchScheduleCell) => void;
   onToggleCollapsed?: () => void;
+  periodCellVariant?: ScheduleGridPeriodCellVariant;
   renderRowHeader?: (row: DispatchScheduleGridData["rows"][number], context: ScheduleGridRowHeaderContext) => ReactNode;
   showActualWorkStatus?: boolean;
   stickyColumnWidthPx?: number;
@@ -863,12 +1009,14 @@ export function ScheduleGrid({
   const { language } = useI18n();
   const isPeriodGrid = data.dates.length > 1;
   const isDayGrid = !isPeriodGrid;
+  const usesCalendarSummaryPeriodGrid = isPeriodGrid && periodCellVariant === "calendarSummary";
   const stickyColumnWidthPx = collapsedTechnicians
     ? surface === "mobile" ? 72 : 84
     : stickyColumnWidthPxOverride ?? (surface === "mobile" ? 176 : 248);
   const stickyColumnWidth = `${stickyColumnWidthPx}px`;
   const dataColumnWidthPx = isPeriodGrid ? (isMobileSurface ? 96 : 112) : 58;
-  const columnWidth = isPeriodGrid ? `${dataColumnWidthPx}px` : "minmax(58px,1fr)";
+  const stretchPeriodColumnsToViewport = isMobileSurface && usesCalendarSummaryPeriodGrid;
+  const columnWidth = isPeriodGrid ? (stretchPeriodColumnsToViewport ? `minmax(${dataColumnWidthPx}px, 1fr)` : `${dataColumnWidthPx}px`) : "minmax(58px,1fr)";
   const [internalLegendFilter, setInternalLegendFilter] = useState<ScheduleLegendFilter | null>(null);
   const activeLegendFilter = legendFilter === undefined ? internalLegendFilter : legendFilter;
   const visibleRows = activeLegendFilter ? data.rows.filter((row) => rowMatchesLegendFilter(row, activeLegendFilter, showActualWorkStatus)) : data.rows;
@@ -928,25 +1076,32 @@ export function ScheduleGrid({
   const rowBgClass = isMobileSurface ? "" : "merchant-dispatch-card";
   const toggleClass = isMobileSurface ? "border-line bg-white/80 text-ink/60 hover:border-moss hover:text-ink" : "merchant-dispatch-toggle";
   const closedCellStyle = getScheduleClosedCellStyle(surface);
+  const calendarSummarySurfaceBackground = isMobileSurface && usesCalendarSummaryPeriodGrid ? "transparent" : null;
   const stickySurfaceStyle = {
-    background: isMobileSurface
-      ? "var(--client-schedule-sticky-bg, var(--client-elevated))"
-      : "var(--merchant-dispatch-table-sticky-bg, var(--admin-bg-soft, var(--admin-surface, #ffffff)))",
+    background: calendarSummarySurfaceBackground ?? (
+      isMobileSurface
+        ? "var(--client-schedule-sticky-bg, var(--client-elevated))"
+        : "var(--merchant-dispatch-table-sticky-bg, var(--admin-bg-soft, var(--admin-surface, #ffffff)))"
+    ),
     minWidth: stickyColumnWidth,
     width: stickyColumnWidth
   } satisfies CSSProperties;
   const headerBackgroundStyle = {
-    background: isMobileSurface
-      ? "var(--client-schedule-sticky-bg, var(--client-bg))"
-      : "var(--merchant-dispatch-table-header-bg, var(--merchant-dispatch-table-sticky-bg, var(--admin-bg-soft, #ffffff)))"
+    background: calendarSummarySurfaceBackground ?? (
+      isMobileSurface
+        ? "var(--client-schedule-sticky-bg, var(--client-bg))"
+        : "var(--merchant-dispatch-table-header-bg, var(--merchant-dispatch-table-sticky-bg, var(--admin-bg-soft, #ffffff)))"
+    )
   } satisfies CSSProperties;
   const pageMaskStyle = {
-    background: isMobileSurface
-      ? "var(--client-schedule-mask-bg, var(--client-bg))"
-      : "var(--merchant-dispatch-table-mask-bg, var(--admin-bg, #ffffff))"
+    background: calendarSummarySurfaceBackground ?? (
+      isMobileSurface
+        ? "var(--client-schedule-mask-bg, var(--client-bg))"
+        : "var(--merchant-dispatch-table-mask-bg, var(--admin-bg, #ffffff))"
+    )
   } satisfies CSSProperties;
   const scheduleSurfaceBackground = isMobileSurface
-    ? "var(--client-schedule-sticky-bg, var(--client-bg))"
+    ? calendarSummarySurfaceBackground ?? "var(--client-schedule-sticky-bg, var(--client-bg))"
     : "var(--merchant-dispatch-table-sticky-bg, var(--admin-surface, #ffffff))";
   const scheduleSurfaceStyle = {
     background: scheduleSurfaceBackground
@@ -970,7 +1125,7 @@ export function ScheduleGrid({
     ? `${data.headers.length * dataColumnWidthPx}px`
     : `max(${data.headers.length * dataColumnWidthPx}px, calc(1024px - ${stickyColumnWidth}))`;
   const mobileHeaderToggleClass =
-    "focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] shadow-[0_12px_24px_rgba(0,0,0,0.12)] transition";
+    cn(floatingHeaderControlButtonClassName, "h-11 w-11 p-2 text-[color:var(--client-primary)]");
   const resolvedStickyHeaderLabel = stickyHeaderLabel ?? translateText(data.dates.length === 1 ? "技师 / 小时" : "技师 / 日期", language);
   const hasInteractiveDateHeaders = isPeriodGrid && Boolean(onSelectDate);
   const updateLegendFilter = (nextFilter: ScheduleLegendFilter | null) => {
@@ -1502,13 +1657,24 @@ export function ScheduleGrid({
         >
           <span aria-hidden="true" style={{ height: scheduleHeaderHeight, minWidth: stickyColumnWidth, ...headerBackgroundStyle }} />
           {data.headers.map((header) => {
+            const framedPeriodHeader = usesCalendarSummaryPeriodGrid;
             const headerClassName = cn(
-              "overflow-hidden border-b border-line px-2 py-3 text-center shadow-[0_14px_28px_rgba(0,0,0,0.14)]",
-              headerBgClass,
+              "overflow-hidden border-b border-r border-line text-center",
+              framedPeriodHeader ? "px-1.5 py-2 shadow-none" : "px-2 py-3 shadow-[0_14px_28px_rgba(0,0,0,0.14)]",
+              !framedPeriodHeader && headerBgClass,
               hasInteractiveDateHeaders && "focus-ring cursor-pointer transition hover:brightness-95 active:brightness-90"
             );
             const headerStyle = { height: scheduleHeaderHeight, ...headerBackgroundStyle };
-            const headerContent = (
+            const headerContent = framedPeriodHeader ? (
+              <span
+                className={cn(
+                  "mx-auto flex h-[48px] min-w-[68px] max-w-full flex-col items-center justify-center rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,transparent)] px-2 text-center shadow-[0_10px_22px_rgba(0,0,0,0.24)]"
+                )}
+              >
+                <p className="text-[13px] font-black leading-none text-[color:var(--client-text)]">{translateText(header.label, language)}</p>
+                <p className="mt-1.5 text-[11px] font-black leading-none text-[color:var(--client-muted)]">{translateText(header.sublabel, language)}</p>
+              </span>
+            ) : (
               <>
                 <p className="text-xs font-black text-ink">{translateText(header.label, language)}</p>
                 <p className={cn("mt-1 text-[11px]", isMobileSurface ? "text-ink/45" : "text-ink/45")}>{translateText(header.sublabel, language)}</p>
@@ -1542,8 +1708,8 @@ export function ScheduleGrid({
           style={stickyHeaderStyle}
         >
           <span aria-hidden="true" className="pointer-events-none absolute inset-0 z-0" style={stickySurfaceStyle} />
-          <div className={cn("relative z-10 flex gap-2", collapsedTechnicians ? "justify-center" : "items-start justify-between")}>
-            {!collapsedTechnicians ? (
+          <div className={cn("relative z-10 flex gap-2", collapsedTechnicians ? "justify-center" : isMobileSurface ? "items-start justify-start" : "items-start justify-between")}>
+            {!collapsedTechnicians && !(isMobileSurface && onToggleCollapsed) ? (
               <div className="min-w-0">
                 <p className={cn("text-xs font-black uppercase tracking-[0.16em]", isMobileSurface ? "text-ink/45" : "text-ink/45")}>{resolvedStickyHeaderLabel}</p>
               </div>
@@ -1554,8 +1720,8 @@ export function ScheduleGrid({
                 className={cn(
                   mobileHeaderToggleClass,
                   collapsedTechnicians
-                    ? "border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:var(--client-primary-soft)]"
-                    : "text-[color:var(--client-muted)] hover:border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] hover:text-[color:var(--client-primary)]"
+                    ? "text-[color:var(--client-primary)]"
+                    : "text-[color:var(--client-text)]"
                 )}
                 onClick={onToggleCollapsed}
                 type="button"
@@ -1679,8 +1845,9 @@ export function ScheduleGrid({
               </div>
               {isDayGrid ? renderDayTimelineRow(row, rowIndex) : row.cells.map((cell, cellIndex) => {
                 const hasPeriodTimeline = cell.hour == null && Boolean(cell.dayTimeline?.length);
+                const useCalendarSummaryPeriodCell = isPeriodGrid && periodCellVariant === "calendarSummary";
                 const mobilePeriodCellToneStyle =
-                  hasPeriodTimeline && isMobileSurface ? getMobilePeriodCellToneStyle(cell.status) : undefined;
+                  hasPeriodTimeline && isMobileSurface && !useCalendarSummaryPeriodCell ? getMobilePeriodCellToneStyle(cell.status) : undefined;
                 const bookedAppointmentCount = hasPeriodTimeline ? countBookedAppointmentSegments(cell) : 0;
                 const periodWorkTimeLabel = hasPeriodTimeline ? getPeriodWorkTimeLabel(cell, language) : "";
                 const isLastCell = rowIndex === visibleRows.length - 1 && cellIndex === row.cells.length - 1;
@@ -1690,7 +1857,9 @@ export function ScheduleGrid({
                     className={cn(
                       "relative overflow-hidden border-b border-r px-2 py-2 text-left transition",
                       !isMobileSurface && "merchant-dispatch-cell-hover hover:z-[1]",
-                      getCellClassName(cell, surface),
+                      useCalendarSummaryPeriodCell
+                        ? "border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-transparent text-[color:var(--client-text)] hover:bg-[color:color-mix(in_srgb,var(--client-primary-soft)_14%,transparent)]"
+                        : getCellClassName(cell, surface),
                       cell.darkened && "brightness-[0.82]",
                       !isMobileSurface && cell.isCurrent && "merchant-dispatch-cell-current",
                       isLastCell && "rounded-br-[28px]"
@@ -1718,26 +1887,32 @@ export function ScheduleGrid({
                         date={cell.date}
                       />
                     ) : null}
-                    <p
-                      className={cn(
-                        hasPeriodTimeline
-                          ? cn(
-                              "whitespace-pre pr-2 font-normal tabular-nums",
-                              bookedAppointmentCount > 0 && "pt-5",
-                              isMobileSurface ? "text-[13px] leading-[16px]" : "text-[13px] leading-4"
-                            )
-                          : "text-xs font-black"
-                      )}
-                      title={hasPeriodTimeline ? periodWorkTimeLabel : translateText(cell.title, language)}
-                    >
-                      {hasPeriodTimeline ? periodWorkTimeLabel : translateText(cell.title, language)}
-                    </p>
-                    {hasPeriodTimeline ? (
-                      bookedAppointmentCount > 0 ? (
-                        <NotificationBadge className="absolute right-1 top-1 z-10" count={bookedAppointmentCount} size="sm" />
-                      ) : null
+                    {useCalendarSummaryPeriodCell ? (
+                      renderCalendarSummaryPeriodCell(cell, language, isMobileSurface)
                     ) : (
-                      <p className="mt-2 text-[11px] leading-5 opacity-90">{translateText(cell.detail, language)}</p>
+                      <>
+                        <p
+                          className={cn(
+                            hasPeriodTimeline
+                              ? cn(
+                                  "whitespace-pre pr-2 font-normal tabular-nums",
+                                  bookedAppointmentCount > 0 && "pt-5",
+                                  isMobileSurface ? "text-[13px] leading-[16px]" : "text-[13px] leading-4"
+                                )
+                              : "text-xs font-black"
+                          )}
+                          title={hasPeriodTimeline ? periodWorkTimeLabel : translateText(cell.title, language)}
+                        >
+                          {hasPeriodTimeline ? periodWorkTimeLabel : translateText(cell.title, language)}
+                        </p>
+                        {hasPeriodTimeline ? (
+                          bookedAppointmentCount > 0 ? (
+                            <NotificationBadge className="absolute right-1 top-1 z-10" count={bookedAppointmentCount} size="sm" />
+                          ) : null
+                        ) : (
+                          <p className="mt-2 text-[11px] leading-5 opacity-90">{translateText(cell.detail, language)}</p>
+                        )}
+                      </>
                     )}
                   </button>
                 );

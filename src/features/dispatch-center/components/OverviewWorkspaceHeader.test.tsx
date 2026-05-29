@@ -13,9 +13,16 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
 
     expect(scheduleDetailSource).toContain("<MobileFullscreenHeader");
     expect(scheduleDetailSource).toContain('className="client-mobile-schedule-detail__floating-header"');
+    expect(source).toContain("const [scheduleDetailReturnView, setScheduleDetailReturnView] = useState<ScheduleCycleCalendarBoardView | null>(null);");
+    expect(source).toContain("const changeScheduleDetailView = (nextView: ScheduleCycleCalendarBoardView) => {");
+    expect(source).toContain("const returnToScheduleDetailSourceView = () => {");
+    expect(scheduleDetailSource).toContain("onBack={scheduleDetailReturnView ? returnToScheduleDetailSourceView : undefined}");
+    expect(scheduleDetailSource).toContain("setScheduleDetailReturnView(null);");
     expect(scheduleDetailSource).toContain("showSpacer={false}");
     expect(scheduleDetailSource).toContain("client-mobile-schedule-detail__refractive-scroll");
     expect(scheduleDetailSource).toContain('className="client-mobile-schedule-detail__calendar-board"');
+    expect(scheduleDetailSource).toContain('scheduleStickyTop={scheduleDetailStickyTop}');
+    expect(scheduleDetailSource).toContain("onViewChange={changeScheduleDetailView}");
     expect(scheduleDetailSource).not.toContain("floating={false}");
     expect(scheduleDetailSource).not.toContain("client-mobile-schedule-detail__solid-header");
     expect(scheduleDetailSource).not.toContain("client-mobile-schedule-detail__header shrink-0");
@@ -24,6 +31,7 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
 
   it("lets schedule content sit under the header so the glass has backing content to refract", () => {
     expect(styles).toContain(".client-mobile-schedule-detail__refractive-scroll");
+    expect(styles).toContain("--client-mobile-schedule-detail-grid-header-top: calc(env(safe-area-inset-top, 0px) + 58px);");
     expect(styles).toContain(".client-mobile-schedule-detail__calendar-board");
     expect(styles).toContain("padding-top: calc(env(safe-area-inset-top, 0px) + 86px) !important;");
     expect(styles).toContain("border-color: transparent !important;");

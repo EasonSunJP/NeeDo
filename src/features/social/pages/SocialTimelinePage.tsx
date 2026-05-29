@@ -8,6 +8,8 @@ import {
   floatingHeaderGlassPanelClassName,
   floatingHeaderInnerClassName
 } from "../../../components/mobile/FloatingHomeHeader";
+import { SharedHomeHeader } from "../../../components/mobile/SharedHomeHeader";
+import { roleBasedTabConfig } from "../../../components/mobile/navItems";
 import { AvatarImage } from "../../../components/ui/AvatarImage";
 import { getLocationAreaHints } from "../../../lib/location";
 import { cn } from "../../../lib/utils";
@@ -18,7 +20,6 @@ import { useSocial } from "../context";
 import { getSocialScopeFromPathname, socialPaths } from "../paths";
 import { type SocialTimelineLocationContext } from "../timeline";
 import {
-  IdentityBadge,
   navItemsForSocialScope,
   NotificationRow,
   SocialComposeFab,
@@ -27,11 +28,10 @@ import {
   SocialPostItem,
   SocialProfileSummaryCard,
   SocialTimelineFilterTabs,
-  SocialSidebarSection,
-  VerificationBadge
+  SocialSidebarSection
 } from "../components/SocialUi";
-import { formatCount, profileKey } from "../utils";
-import type { SocialPortalScope, SocialProfileTab, SocialTimelineFilterTab } from "../types";
+import { profileKey } from "../utils";
+import type { SocialPortalScope, SocialProfile, SocialProfileTab, SocialTimelineFilterTab } from "../types";
 
 type TimelinePanelStatus = "idle" | "loading" | "ready" | "error";
 
@@ -43,18 +43,6 @@ type TimelinePanelState = {
   visibleCountByTab: Record<SocialProfileTab, number>;
 };
 
-function getSocialMePath(scope: SocialPortalScope) {
-  if (scope === "merchant") {
-    return "/merchant/me";
-  }
-
-  if (scope === "technician") {
-    return "/technician/me";
-  }
-
-  return "/me";
-}
-
 function SocialTimelineHeaderSearch({ to }: { to: string }) {
   return (
     <FloatingHeaderSearchBar
@@ -64,6 +52,20 @@ function SocialTimelineHeaderSearch({ to }: { to: string }) {
       to={to}
     />
   );
+}
+
+function getSocialProfileTextField(profile: SocialProfile | undefined, key: string) {
+  const value = profile?.extraProfileFields[key];
+
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).join(" / ") || undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "是" : undefined;
+  }
+
+  return value ? `${value}` : undefined;
 }
 
 function createVisibleCountByTab(): Record<SocialProfileTab, number> {
@@ -222,7 +224,6 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
     getActorForScope,
     getPostById,
     getTimelineFeed,
-    getProfilePosts,
     getTrendingTags,
     getNotifications,
     getFollowing,
@@ -230,7 +231,7 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   } = useSocial();
   const actorKey = getActorForScope(scope);
   const actor = profiles[actorKey];
-  const actorProfilePath = actor ? socialPaths.profile(scope, actor) : getSocialMePath(scope);
+  const portalConfig = roleBasedTabConfig[scope];
   const { config: homeLocationConfig } = useHomeLayoutStore();
   const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
   const { state: homeLocationPreference } = useHomeLocationPreference();
@@ -252,7 +253,6 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const touchStartRef = useRef<number | null>(null);
   const currentPanel = panelStates[timelineFilter];
-  const actorPostCount = useMemo(() => getProfilePosts(actorKey, "posts", actorKey).length, [actorKey, getProfilePosts]);
   const filteredTimelinePosts = useMemo(() => {
     if (timelineFilter === "nearby" && currentPanel.status !== "ready") {
       return [];
@@ -427,29 +427,18 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
         >
           <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
             <div className="mx-auto w-full max-w-[1480px]">
-              <div className="flex min-h-12 items-center gap-3">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <Link className="shrink-0" to={actorProfilePath}>
-                    <AvatarImage
-                      alt={actor?.displayName ?? "我的头像"}
-                      className="h-12 w-12 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]"
-                      src={actor?.avatar ?? ""}
-                    />
-                  </Link>
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <h1 className="truncate text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-text)] sm:text-[24px]">
-                        {actor?.displayName ?? "动态"}
-                      </h1>
-                      {actor ? <VerificationBadge status={actor.verifiedStatus} /> : null}
-                      {actor ? <IdentityBadge entityType={actor.entityType} /> : null}
-                    </div>
-                    <p className="mt-1 text-[12px] font-semibold leading-none text-[color:var(--client-muted)]">
-                      {actor ? `${formatCount(actorPostCount)} 条动态` : "公开讨论型信息流"}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <SharedHomeHeader
+                avatarAlt={actor?.displayName ?? "我的头像"}
+                avatarLevelLabel={getSocialProfileTextField(actor, "memberLevelLabel")}
+                avatarMembershipLevel={getSocialProfileTextField(actor, "memberLevel")}
+                avatarSrc={actor?.avatar ?? ""}
+                avatarTo={portalConfig.myPath}
+                locationCaption="当前服务区域"
+                locationLabel={selectedHomeLocation?.label ?? "当前服务区域"}
+                locationTo={scope === "user" ? "/me/settings/service-range" : portalConfig.settingsPath}
+                settingsLabel="系统设置"
+                settingsTo={portalConfig.settingsPath}
+              />
               <div className="mt-3">
                 <SocialTimelineHeaderSearch to={socialPaths.search(scope)} />
               </div>

@@ -1071,17 +1071,25 @@ function addDays(date: string, amount: number) {
   return formatInputDate(next);
 }
 
+function getStartOfWeek(date: string) {
+  const current = parseDate(date);
+  current.setDate(current.getDate() - current.getDay());
+
+  return formatInputDate(current);
+}
+
 function getWeekDates(date: string) {
-  return Array.from({ length: 7 }, (_, index) => addDays(date, index));
+  const startDate = getStartOfWeek(date);
+  return Array.from({ length: 7 }, (_, index) => addDays(startDate, index));
 }
 
 function getMonthGridDates(date: string) {
   const current = parseDate(date);
   const first = new Date(current.getFullYear(), current.getMonth(), 1);
-  const startOffset = (first.getDay() + 6) % 7;
+  const startOffset = first.getDay();
   const gridStart = formatInputDate(new Date(current.getFullYear(), current.getMonth(), 1 - startOffset));
 
-  return Array.from({ length: 35 }, (_, index) => addDays(gridStart, index));
+  return Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
 }
 
 function getRangeDates(date: string, scope: ScheduleScope) {
@@ -1294,13 +1302,13 @@ function groupScheduleEventsByDate(events: TechnicianScheduleEvent[]) {
 }
 
 function getLocalizedWeekday(date: string, language: Language) {
-  const weekdayIndex = (parseDate(date).getDay() + 6) % 7;
+  const weekdayIndex = parseDate(date).getDay();
   const weekdayMap: Record<Language, string[]> = {
-    zh: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
-    "zh-Hant": ["週一", "週二", "週三", "週四", "週五", "週六", "週日"],
-    ja: ["月", "火", "水", "木", "金", "土", "日"],
-    en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    ko: ["월", "화", "수", "목", "금", "토", "일"]
+    zh: ["周日", "周一", "周二", "周三", "周四", "周五", "周六"],
+    "zh-Hant": ["週日", "週一", "週二", "週三", "週四", "週五", "週六"],
+    ja: ["日", "月", "火", "水", "木", "金", "土"],
+    en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    ko: ["일", "월", "화", "수", "목", "금", "토"]
   };
 
   return weekdayMap[language][weekdayIndex];
@@ -1308,11 +1316,11 @@ function getLocalizedWeekday(date: string, language: Language) {
 
 function getLocalizedWeekdayHeaders(language: Language) {
   const weekdayHeaderMap: Record<Language, string[]> = {
-    zh: ["一", "二", "三", "四", "五", "六", "日"],
-    "zh-Hant": ["一", "二", "三", "四", "五", "六", "日"],
-    ja: ["月", "火", "水", "木", "金", "土", "日"],
-    en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    ko: ["월", "화", "수", "목", "금", "토", "일"]
+    zh: ["日", "一", "二", "三", "四", "五", "六"],
+    "zh-Hant": ["日", "一", "二", "三", "四", "五", "六"],
+    ja: ["日", "月", "火", "水", "木", "金", "土"],
+    en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    ko: ["일", "월", "화", "수", "목", "금", "토"]
   };
 
   return weekdayHeaderMap[language];
@@ -1497,7 +1505,7 @@ function getWorkTrendLabel(date: string) {
   const current = parseDate(date);
   const month = String(current.getMonth() + 1);
   const day = String(current.getDate());
-  const weekday = getLocalizedWeekdayHeaders("zh")[(current.getDay() + 6) % 7];
+  const weekday = getLocalizedWeekdayHeaders("zh")[current.getDay()];
 
   return {
     label: `${month}/${day}`,

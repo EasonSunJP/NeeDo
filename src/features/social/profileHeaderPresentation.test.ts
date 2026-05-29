@@ -12,19 +12,19 @@ const emptySnapshot: TechnicianScheduleSnapshot = {
 };
 
 describe("buildTechnicianWeeklyScheduleItems", () => {
-  it("builds the current Monday-to-Sunday week around the anchor date", () => {
+  it("builds the current Sunday-to-Saturday week around the anchor date", () => {
     const items = buildTechnicianWeeklyScheduleItems("tech-1", emptySnapshot, "2026-05-26");
 
     expect(items.map((item) => item.date)).toEqual([
+      "2026-05-24",
       "2026-05-25",
       "2026-05-26",
       "2026-05-27",
       "2026-05-28",
       "2026-05-29",
-      "2026-05-30",
-      "2026-05-31"
+      "2026-05-30"
     ]);
-    expect(items.map((item) => item.weekdayLabel)).toEqual(["一", "二", "三", "四", "五", "六", "日"]);
+    expect(items.map((item) => item.weekdayLabel)).toEqual(["日", "一", "二", "三", "四", "五", "六"]);
   });
 
   it("links a scheduled day to the user-side technician availability detail", () => {
@@ -56,7 +56,7 @@ describe("buildTechnicianWeeklyScheduleItems", () => {
       ]
     };
 
-    expect(buildTechnicianWeeklyScheduleItems("tech-1", snapshot, "2026-05-26")[1]).toMatchObject({
+    expect(buildTechnicianWeeklyScheduleItems("tech-1", snapshot, "2026-05-26")[2]).toMatchObject({
       date: "2026-05-26",
       href: "/schedule/technicians/tech-1?date=2026-05-26",
       statusLabel: "2段可约",

@@ -3895,6 +3895,7 @@ body:has(.merchant-analytics-clean-shell),
 }
 
 .client-mobile-schedule-detail__refractive-scroll {
+  --client-mobile-schedule-detail-grid-header-top: calc(env(safe-area-inset-top, 0px) + 58px);
   background:
     linear-gradient(
       180deg,
@@ -4070,6 +4071,10 @@ body:has(.merchant-analytics-clean-shell),
     --client-mobile-schedule-detail-pad-start: max(env(safe-area-inset-left, 0px), 10px);
     --client-mobile-schedule-detail-pad-end: max(env(safe-area-inset-right, 0px), 10px);
     padding-inline: var(--client-mobile-schedule-detail-pad-start) var(--client-mobile-schedule-detail-pad-end);
+  }
+
+  .client-mobile-schedule-detail__refractive-scroll {
+    --client-mobile-schedule-detail-grid-header-top: 44px;
   }
 
   .client-mobile-schedule-detail__grid-legend {

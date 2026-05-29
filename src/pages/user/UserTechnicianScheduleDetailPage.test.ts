@@ -9,4 +9,9 @@ describe("UserTechnicianScheduleDetailPage header action", () => {
     expect(pageSource).not.toContain('settingsLabel="系统设置"');
     expect(pageSource).not.toContain("settingsTo={userPortalConfig.settingsPath}");
   });
+
+  it("keeps month availability as a grid-only drilldown", () => {
+    expect(pageSource).toContain('{view !== "month" ? <AvailabilityTimeline');
+    expect(pageSource).toContain("onClick={() => openDateInDayView(date)}");
+  });
 });

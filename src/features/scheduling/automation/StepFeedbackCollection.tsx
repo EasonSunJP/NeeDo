@@ -178,7 +178,6 @@ export function StepFeedbackCollection({
   const labelTextClass = isMobileSurface ? "text-ink/45" : "text-ink/45";
   const toggleClass = isMobileSurface ? "border-line bg-white/80 text-ink/60" : "merchant-dispatch-toggle";
   const toggleActiveClass = isMobileSurface ? "border-moss bg-moss text-white" : "is-active";
-  const deadlineClass = isMobileSurface ? "border-line bg-white/80 text-ink" : "merchant-dispatch-field";
   const feedbackActionClass = "w-full px-3 font-black";
   const feedbackSummaryItems = [
     { label: "已提交", tone: "blue" as const, value: `${progress?.submittedCount ?? 0} 人` },
@@ -194,7 +193,7 @@ export function StepFeedbackCollection({
         <div>
           <div className="flex items-center justify-between gap-3">
             <h3 className="min-w-0 text-lg font-black">技师反馈</h3>
-            <article className={cn("ml-auto flex h-10 min-w-0 shrink items-center justify-end gap-2 rounded-full border px-3", deadlineClass)}>
+            <article className="ml-auto flex min-w-0 shrink items-center justify-end gap-2">
               <p className={cn("shrink-0 text-xs font-black", labelTextClass)}>反馈截止</p>
               <Badge className="min-w-0 justify-center truncate rounded-xl px-2.5 py-1 text-sm" tone="blue">{feedbackDeadlineLabel}</Badge>
             </article>

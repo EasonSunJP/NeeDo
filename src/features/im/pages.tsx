@@ -32,7 +32,7 @@ import {
   floatingHeaderSearchInputClassName
 } from "../../components/mobile/FloatingHomeHeader";
 import { chatBgUrl } from "../../assets/runtime/images";
-import { customers, imageBank, orders, services } from "../../data/mock";
+import { imageBank, orders, services } from "../../data/mock";
 import { parseBrowserStorageJson } from "../../lib/browserStorage";
 import { clampMessageText } from "../../lib/messageTextLimits";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
@@ -49,7 +49,6 @@ import {
   type MerchantManualStaffRoleRecord
 } from "../../lib/merchantStaffRoles";
 import { cn } from "../../lib/utils";
-import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import { SocialProfileMiniCard } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
@@ -70,7 +69,6 @@ import {
   ContactSummaryCard,
   ContactRow,
   ConversationRow,
-  ImActorHeaderSummary,
   ImBottomSheet,
   ImChatComposer,
   ImEmptyState,
@@ -1104,73 +1102,6 @@ function getConversationProfileTarget(scope: ReturnType<typeof useImScope>, stor
   return resolveImProfilePath(scope, getConversationPartner(store, conversation));
 }
 
-function getImMePath(scope: ImRoleType) {
-  if (scope === "merchant") {
-    return "/merchant/me";
-  }
-
-  if (scope === "technician") {
-    return "/technician/me";
-  }
-
-  return "/me";
-}
-
-function getScopeEntityType(scope: ImRoleType): "user" | "technician" | "shop" {
-  if (scope === "merchant") {
-    return "shop";
-  }
-
-  if (scope === "technician") {
-    return "technician";
-  }
-
-  return "user";
-}
-
-function getScopeVerifiedStatus(scope: ImRoleType): "none" | "rising" | "verified" | "business" {
-  if (scope === "merchant") {
-    return "business";
-  }
-
-  if (scope === "technician") {
-    return "verified";
-  }
-
-  return "rising";
-}
-
-function ImCurrentActorHeader({
-  scope,
-  subtitle,
-  currentUser
-}: {
-  scope: ImRoleType;
-  subtitle: string;
-  currentUser?: ImUser;
-}) {
-  const { profiles, getActorForScope } = useSocial();
-  const actor = profiles[getActorForScope(scope as SocialPortalScope)];
-  const linkedCustomer = scope === "user"
-    ? customers.find((customer) => customer.id === currentUser?.entityId || customer.id === actor?.id)
-    : undefined;
-  const customerLevelLabel = linkedCustomer ? getCustomerLevelLabel(linkedCustomer.activeScore) : undefined;
-  const signature = actor?.headline ?? currentUser?.signature ?? actor?.bio ?? currentUser?.bio ?? subtitle;
-
-  return (
-    <ImActorHeaderSummary
-      avatar={actor?.avatar ?? currentUser?.avatar}
-      entityType={actor?.entityType ?? getScopeEntityType(scope)}
-      levelLabel={customerLevelLabel}
-      membershipLevel={linkedCustomer?.memberLevel}
-      name={actor?.displayName ?? currentUser?.nickname ?? "当前账号"}
-      subtitle={signature}
-      to={getImMePath(scope)}
-      verifiedStatus={actor?.verifiedStatus ?? getScopeVerifiedStatus(scope)}
-    />
-  );
-}
-
 function appendQuery(path: string, entries: Record<string, string | string[] | undefined>) {
   const searchParams = new URLSearchParams();
 
@@ -1492,7 +1423,6 @@ export function ImConversationListPage() {
   const { store, config, scope } = useImRuntime();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentUser = getCurrentUser(store);
   const queryFromParams = searchParams.get("q") ?? "";
   const selectedTags = useMemo(() => readTagFilterParams(searchParams), [searchParams]);
   const [query, setQuery] = useState(queryFromParams);
@@ -1853,6 +1783,7 @@ export function ImConversationListPage() {
             ) : null}
           </div>
         }
+        compactHeader
         roleType={scope}
         searchBar={
           <ImConversationListSearchBar
@@ -1864,7 +1795,6 @@ export function ImConversationListPage() {
             query={query}
           />
         }
-        title={<ImCurrentActorHeader currentUser={currentUser} scope={scope} subtitle="聊天" />}
       >
         {conversations.length === 0 ? (
           <ImEmptyState
@@ -2255,6 +2185,7 @@ export function ImContactsListPage() {
             ) : null}
           </div>
         )}
+        compactHeader={!isAddStaffMode}
         roleType={scope}
         searchBar={isAddStaffMode ? (
           <label className={floatingHeaderSearchFieldClassName}>
@@ -2279,7 +2210,7 @@ export function ImContactsListPage() {
             query={contactQuery}
           />
         )}
-        title={isAddStaffMode ? getAddStaffTitle(addStaffType) : <ImCurrentActorHeader currentUser={currentUser} scope={scope} subtitle="通讯录" />}
+        title={isAddStaffMode ? getAddStaffTitle(addStaffType) : undefined}
       >
       <div className="relative pb-8">
         {!isAddStaffMode ? (

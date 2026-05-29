@@ -208,7 +208,7 @@ export function addMonths(date: string, amount: number) {
 
 export function getStartOfWeek(date: string) {
   const current = parseDateKey(date);
-  const offset = (current.getDay() + 6) % 7;
+  const offset = current.getDay();
   current.setDate(current.getDate() - offset);
   return formatDateKey(current);
 }
@@ -235,7 +235,7 @@ export function getMonthGridStart(date: string) {
 
 export function getMonthGridDates(date: string) {
   const start = getMonthGridStart(date);
-  return Array.from({ length: 35 }, (_, index) => addDays(start, index));
+  return Array.from({ length: 42 }, (_, index) => addDays(start, index));
 }
 
 export function getWeekDates(date: string) {
@@ -431,12 +431,11 @@ export function formatShortDate(date: string) {
 }
 
 export function getWeekdayLabel(date: string) {
-  const weekdayIndex = (parseDateKey(date).getDay() + 6) % 7;
-  return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][weekdayIndex];
+  return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][parseDateKey(date).getDay()];
 }
 
 export function getWeekdayHeaderLabel() {
-  return ["一", "二", "三", "四", "五", "六", "日"];
+  return ["日", "一", "二", "三", "四", "五", "六"];
 }
 
 export function getEventKindLabel(kind: TechnicianCalendarItem["kind"]) {

@@ -46,6 +46,13 @@ const adminRoles = new Set(["admin", "operator", "finance", "support", "viewer"]
 const merchantRoles = new Set(["merchant_owner", "merchant_staff"]);
 const businessRoles = new Set(["broker", "scout"]);
 const userSessionClientPortals = new Set<PortalScope>(["merchant", "technician", "business"]);
+const scopedIdentityLocalIdPrefix: Record<string, string> = {
+  customer: "cus",
+  merchant: "store",
+  merchant_owner: "store",
+  merchant_staff: "store",
+  technician: "tech"
+};
 
 const identityPortalMap: Record<string, PortalScope> = {
   admin: "admin",
@@ -98,6 +105,18 @@ function resolvePortalsFromRoles(roles: string[]) {
   return portals;
 }
 
+function normalizeScopedLocalEntityId(value: string, prefix: string) {
+  if (!value) {
+    return value;
+  }
+
+  if (value.startsWith(`${prefix}-`)) {
+    return value;
+  }
+
+  return /^\d+$/.test(value) ? `${prefix}-${value}` : value;
+}
+
 export function resolveAllowedPortals(me: AuthMePayload): PortalScope[] {
   const identityPortals = me.identities.map(resolvePortalFromIdentity).filter((portal): portal is PortalScope => Boolean(portal));
   const rolePortals = resolvePortalsFromRoles(me.roles);
@@ -113,14 +132,26 @@ function getScopedIdentityId(me: AuthMePayload, type: string | string[]) {
     return "";
   }
 
-  return identity.scopeId ? String(identity.scopeId) : `${type}:${me.id}`;
+  const rawId = identity.scopeId ? String(identity.scopeId) : `${types[0]}:${me.id}`;
+  const localPrefix = scopedIdentityLocalIdPrefix[identity.type];
+
+  return localPrefix ? normalizeScopedLocalEntityId(rawId, localPrefix) : rawId;
+}
+
+export function normalizeAuthSessionEntityIds(session: AuthSession): AuthSession {
+  return {
+    ...session,
+    linkedCustomerId: normalizeScopedLocalEntityId(session.linkedCustomerId, "cus"),
+    linkedStoreId: normalizeScopedLocalEntityId(session.linkedStoreId, "store"),
+    linkedTechnicianId: normalizeScopedLocalEntityId(session.linkedTechnicianId, "tech")
+  };
 }
 
 export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: PortalScope, loginMethod: LoginMethod): AuthSession {
   const allowedPortals = resolveAllowedPortals(me);
   const portal = allowedPortals.includes(requestedPortal) ? requestedPortal : allowedPortals[0] ?? requestedPortal;
 
-  return {
+  return normalizeAuthSessionEntityIds({
     authVersion: 4,
     id: me.id,
     username: me.username,
@@ -138,7 +169,7 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     menus: me.menus,
     currentIdentity: me.currentIdentity,
     identities: me.identities
-  };
+  });
 }
 
 export function hasPermissionInSession(session: AuthSession | null, permission: string) {

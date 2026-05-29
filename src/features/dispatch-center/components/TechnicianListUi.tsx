@@ -18,20 +18,24 @@ export function TechnicianAvatarBadge({
   alt,
   src,
   className,
-  fallbackClassName
+  fallbackClassName,
+  shape = "circle"
 }: {
   alt: string;
   src?: string;
   className?: string;
   fallbackClassName?: string;
+  shape?: "circle" | "roundedSquare";
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   const fallbackLabel = alt.trim().charAt(0) || "技";
+  const shapeClassName = shape === "roundedSquare" ? "rounded-[14px]" : "rounded-full";
 
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/12 bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-bg)_8%)] text-[10px] font-black text-[color:var(--client-primary)] shadow-[0_8px_18px_rgba(0,0,0,0.12)]",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden border border-white/12 bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-bg)_8%)] text-[10px] font-black text-[color:var(--client-primary)] shadow-[0_8px_18px_rgba(0,0,0,0.12)]",
+        shapeClassName,
         className
       )}
     >

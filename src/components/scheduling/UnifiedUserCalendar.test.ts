@@ -54,3 +54,55 @@ describe("UnifiedUserCalendar event editor page", () => {
     expect(styles).toContain("-webkit-appearance: none;");
   });
 });
+
+describe("UnifiedUserCalendar multi-day interactions", () => {
+  it("keeps week and three-day timeline creation aligned with the day timeline", () => {
+    expect(source).toContain("type MultiDayDraftRange = DraftRange &");
+    expect(source).toContain("function UnifiedCalendarMultiDayTimeline");
+    expect(source).toContain("onCreate(draftRange.date, minutesToTime(draftRange.start), minutesToTime(draftRange.end));");
+    expect(source).toContain('title="新建行程"');
+    expect(source).toContain("compact={useCompactDraftAction}");
+    expect(source).toContain("onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}");
+  });
+
+  it("centers day, three-day, and week timelines on the first timed event", () => {
+    expect(source).toContain("function getTimelineAutoScrollAnchor");
+    expect(source).toContain("function scrollTimelineToFirstEvent");
+    expect(source).toContain("function useTimelineFirstEventAutoScroll");
+    expect(source).toContain("!isFullDayTimelineEvent(event)");
+    expect(source).toContain("const dayTimelineAutoScrollKey");
+    expect(source).toContain("const multiDayTimelineAutoScrollKey");
+    expect(source).toContain("useTimelineFirstEventAutoScroll(dayTimelineAutoScrollKey, timelineAutoScrollAnchor, canvasRef);");
+    expect(source).toContain("useTimelineFirstEventAutoScroll(multiDayTimelineAutoScrollKey, timelineAutoScrollAnchor, canvasRef);");
+  });
+
+  it("switches date header selections back to the single-day view", () => {
+    expect(source).toContain("const openDateInDayView = (date: string) => {");
+    expect(source).toContain('setView("day");');
+    expect(source).toContain("onSelectDate={openDateInDayView}");
+  });
+
+  it("uses the month grid as a drilldown calendar without a lower itinerary list", () => {
+    expect(source).toContain('role="button"');
+    expect(source).toContain("const selectDate = () => onSelectDate?.(date);");
+    expect(source).toContain("onSelectDate(date);");
+    expect(source).not.toContain("renderSelectedDateList");
+    expect(source).not.toContain("function EventList");
+  });
+
+  it("keeps dense timeline and month labels readable in narrow columns", () => {
+    expect(source).toContain("letterSpacing: 0");
+    expect(source).toContain('textOrientation: "upright"');
+    expect(source).toContain('writingMode: "vertical-rl"');
+    expect(source).toContain('dense ? "grid place-items-center px-0.5 py-1 text-center text-[8px] leading-[9px]"');
+    expect(source).toContain('className="focus-ring block h-[14px] w-full truncate');
+    expect(source).not.toContain("break-words");
+  });
+
+  it("keeps the customer calendar focused on customer appointments instead of staff shift blocks", () => {
+    expect(source).toContain("return bookingEvents;");
+    expect(source).toContain(".filter((schedule) => schedule.orderId && customerOrderIds.has(schedule.orderId))");
+    expect(source).not.toContain("return [...shiftEvents, ...bookingEvents];");
+    expect(source).not.toContain(".filter((schedule) => relevantTechnicianIds.has(schedule.staffId) || (schedule.orderId && customerOrderIds.has(schedule.orderId)))");
+  });
+});
