@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { AppIcon, IconMetricAction } from "../../components/client-ui/AppScaffold";
+import { AppIcon, IconMetricAction, type IconName } from "../../components/client-ui/AppScaffold";
 import { translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
@@ -15,7 +15,9 @@ type TechnicianShowcaseCardProps = {
   onSelect?: () => void;
   rankIndex: number;
   selected?: boolean;
+  selectionActiveIcon?: IconName;
   selectionAriaLabel?: string;
+  selectionInactiveIcon?: IconName;
   technician: Technician;
 };
 
@@ -321,7 +323,9 @@ export function TechnicianShowcaseCard({
   onSelect,
   rankIndex,
   selected,
+  selectionActiveIcon = "check",
   selectionAriaLabel,
+  selectionInactiveIcon = "plus",
   technician
 }: TechnicianShowcaseCardProps) {
   const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
@@ -338,6 +342,7 @@ export function TechnicianShowcaseCard({
   const serviceName = localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
   const detailHref = detailTo ?? getTechnicianDynamicPath(technician);
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
+  const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon;
   const favoriteCount = getTechnicianCardFavoriteCount(technician);
   const shareCount = getTechnicianCardShareCount();
   const showBeginnerIcon = shouldShowTechnicianBeginnerIcon(technician);
@@ -455,7 +460,7 @@ export function TechnicianShowcaseCard({
             }}
             type="button"
           >
-            <AppIcon className="h-5 w-5" name={selected ? "check" : "plus"} />
+            <AppIcon className="h-5 w-5" name={selectionIconName} />
           </button>
         ) : null}
       </div>

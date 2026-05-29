@@ -250,7 +250,8 @@ function normalizeTechnician(base: Technician, raw?: Partial<Technician>): Techn
       relatedStoreIds: base.relatedStoreIds ? [...base.relatedStoreIds] : undefined,
       profileTags: base.profileTags ? [...base.profileTags] : undefined,
       paymentMethods: base.paymentMethods ? [...base.paymentMethods] : undefined,
-      infoCardVisibility: getInfoCardVisibility(base.infoCardVisibility)
+      infoCardVisibility: getInfoCardVisibility(base.infoCardVisibility),
+      visible: base.visible ?? true
     };
   }
 
@@ -292,7 +293,8 @@ function normalizeTechnician(base: Technician, raw?: Partial<Technician>): Techn
     bidBudgetMax: getOptionalString(raw.bidBudgetMax, base.bidBudgetMax),
     paymentMethods: getPaymentMethods(raw.paymentMethods, base.paymentMethods ?? ["platform", "offline"]),
     gallery: useDemoTechnicianDefaults ? [...(base.gallery ?? [])] : getImageArray(raw.gallery, base.gallery ?? [], { allowEmpty: true, maxLength: 5 }),
-    infoCardVisibility: getInfoCardVisibility(raw.infoCardVisibility, base.infoCardVisibility)
+    infoCardVisibility: getInfoCardVisibility(raw.infoCardVisibility, base.infoCardVisibility),
+    visible: getBoolean(raw.visible, base.visible ?? true)
   };
 }
 

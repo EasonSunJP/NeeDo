@@ -1,7 +1,16 @@
-import type { ChangeEvent } from "react";
+import { useState, type ChangeEvent } from "react";
 import { Button } from "./Button";
+import { ImageAdjustmentEditor } from "./ImageAdjustmentEditor";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
+
+type PendingImageEdit = {
+  acceptedImages: string[];
+  index?: number;
+  mode: "append" | "replace";
+  queue: string[];
+  source: string;
+};
 
 export function ImageGalleryManager({
   images,
@@ -11,6 +20,13 @@ export function ImageGalleryManager({
   emptyHint = "暂时还没有图片，新增后会立即参与轮播。",
   coverHint = "第 1 张会作为首图。",
   className,
+  editorAspectRatio = 4 / 3,
+  editorDescription = "拖动图片调整位置，用滑块放大缩小。保存后会套用到当前图片。",
+  editorFrameClassName,
+  editorFrameWidth,
+  editorTitle = "图片编辑",
+  previewAspectRatio = editorAspectRatio,
+  previewFrameClassName,
   onChange
 }: {
   images: string[];
@@ -20,16 +36,68 @@ export function ImageGalleryManager({
   emptyHint?: string;
   coverHint?: string;
   className?: string;
+  editorAspectRatio?: number;
+  editorDescription?: string;
+  editorFrameClassName?: string;
+  editorFrameWidth?: number;
+  editorTitle?: string;
+  previewAspectRatio?: number;
+  previewFrameClassName?: string;
   onChange: (next: string[]) => void;
 }) {
   const remainingSlots = Math.max(0, maxImages - images.length);
+  const [pendingImageEdit, setPendingImageEdit] = useState<PendingImageEdit | null>(null);
+
+  const openPendingImageEdit = (mode: PendingImageEdit["mode"], sources: string[], index?: number) => {
+    const [source, ...queue] = sources.filter(Boolean);
+
+    if (!source) {
+      return;
+    }
+
+    setPendingImageEdit({
+      acceptedImages: [],
+      index,
+      mode,
+      queue,
+      source
+    });
+  };
+
+  const applyPendingImageEdit = (editedImage: string) => {
+    if (!pendingImageEdit) {
+      return;
+    }
+
+    if (pendingImageEdit.mode === "replace") {
+      onChange(images.map((image, imageIndex) => (imageIndex === pendingImageEdit.index ? editedImage : image)));
+      setPendingImageEdit(null);
+      return;
+    }
+
+    const acceptedImages = [...pendingImageEdit.acceptedImages, editedImage];
+    const [nextSource, ...nextQueue] = pendingImageEdit.queue;
+
+    if (nextSource) {
+      setPendingImageEdit({
+        ...pendingImageEdit,
+        acceptedImages,
+        queue: nextQueue,
+        source: nextSource
+      });
+      return;
+    }
+
+    onChange([...images, ...acceptedImages].slice(0, maxImages));
+    setPendingImageEdit(null);
+  };
 
   const handleAppendImages = async (event: ChangeEvent<HTMLInputElement>) => {
     try {
       const nextImages = await readImageFilesAsDataUrls(event.target.files, remainingSlots);
 
       if (nextImages.length > 0) {
-        onChange([...images, ...nextImages].slice(0, maxImages));
+        openPendingImageEdit("append", nextImages);
       }
     } finally {
       event.target.value = "";
@@ -41,7 +109,7 @@ export function ImageGalleryManager({
       const [nextImage] = await readImageFilesAsDataUrls(event.target.files, 1);
 
       if (nextImage) {
-        onChange(images.map((image, imageIndex) => (imageIndex === index ? nextImage : image)));
+        openPendingImageEdit("replace", [nextImage], index);
       }
     } finally {
       event.target.value = "";
@@ -91,11 +159,14 @@ export function ImageGalleryManager({
                 key={`${label}-${index}`}
               >
                 <div className="grid gap-3 md:grid-cols-[124px,1fr]">
-                  <div className="overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-black/5">
+                  <div
+                    className={cn("overflow-hidden rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-black/5", previewFrameClassName)}
+                    style={{ aspectRatio: `${previewAspectRatio}` }}
+                  >
                     {image ? (
-                      <img alt={`${label}-${index + 1}`} className="h-[104px] w-full object-cover" src={image} />
+                      <img alt={`${label}-${index + 1}`} className="h-full w-full object-cover" src={image} />
                     ) : (
-                      <div className="flex h-[104px] items-center justify-center px-3 text-center text-xs font-semibold text-[color:var(--client-muted)]">
+                      <div className="flex h-full items-center justify-center px-3 text-center text-xs font-semibold text-[color:var(--client-muted)]">
                         上传图片后预览
                       </div>
                     )}
@@ -128,6 +199,20 @@ export function ImageGalleryManager({
           })}
         </div>
       )}
+
+      {pendingImageEdit ? (
+        <ImageAdjustmentEditor
+          aspectRatio={editorAspectRatio}
+          description={editorDescription}
+          frameClassName={editorFrameClassName}
+          frameWidth={editorFrameWidth}
+          onApply={applyPendingImageEdit}
+          onCancel={() => setPendingImageEdit(null)}
+          previewAlt={`${label}图片编辑预览`}
+          source={pendingImageEdit.source}
+          title={editorTitle}
+        />
+      ) : null}
     </section>
   );
 }

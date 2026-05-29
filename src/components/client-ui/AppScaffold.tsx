@@ -84,6 +84,21 @@ function iconPath(name: IconName) {
           <path d="m13.2 6.9 3.9 3.9M4.5 20h15" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
         </>
       );
+    case "eye":
+      return (
+        <>
+          <path d="M3.8 12s3.1-5.4 8.2-5.4 8.2 5.4 8.2 5.4-3.1 5.4-8.2 5.4S3.8 12 3.8 12Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.9" />
+          <circle cx="12" cy="12" r="2.7" stroke="currentColor" strokeWidth="1.9" />
+        </>
+      );
+    case "eyeOff":
+      return (
+        <>
+          <path d="M4.6 4.6 19.4 19.4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+          <path d="M9.1 6.9A8.5 8.5 0 0 1 12 6.4c5.1 0 8.2 5.6 8.2 5.6a14 14 0 0 1-2.3 2.8M14.5 16.9a8.7 8.7 0 0 1-2.5.4C6.9 17.3 3.8 12 3.8 12a14.3 14.3 0 0 1 3.1-3.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+          <path d="M10.5 10.6a2.6 2.6 0 0 0 3 3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.9" />
+        </>
+      );
     case "check":
       return <path d="m5.5 12.5 4.2 4.2 8.8-9.4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.3" />;
     case "calendar":
@@ -207,6 +222,8 @@ export type IconName =
   | "menu"
   | "settings"
   | "edit"
+  | "eye"
+  | "eyeOff"
   | "check"
   | "calendar"
   | "chat"
@@ -1028,13 +1045,19 @@ export function UnifiedListItem({
 }
 
 export function StickyBottomBar({
-  children
+  children,
+  className,
+  panelClassName,
+  style
 }: {
   children: ReactNode;
+  className?: string;
+  panelClassName?: string;
+  style?: CSSProperties;
 }) {
   return (
-    <div className="safe-nav-bottom client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-3 pb-3">
-      <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+    <div className={cn("safe-nav-bottom client-bottom-action-shell fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[880px] px-3 pb-3", className)} style={style}>
+      <div className={cn("rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] p-3 shadow-[0_-18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl", panelClassName)}>
         {children}
       </div>
     </div>

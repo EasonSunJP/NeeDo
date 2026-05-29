@@ -5,12 +5,20 @@ type ImageDataUrlOptions = {
   quality?: number;
 };
 
+const imageUploadFileNamePattern = /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i;
+
 const defaultImageDataUrlOptions: Required<ImageDataUrlOptions> = {
   maxDimension: 1280,
   maxStoredBytes: 420_000,
   mimeType: "image/jpeg",
   quality: 0.78
 };
+
+export function isReadableImageUploadFile(file: Pick<File, "name" | "type">) {
+  const normalizedType = file.type.toLowerCase();
+
+  return normalizedType.startsWith("image/") || imageUploadFileNamePattern.test(file.name);
+}
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -107,7 +115,7 @@ export async function readImageFileAsDataUrl(file: File, options?: ImageDataUrlO
 
 export async function readImageFilesAsDataUrls(fileList: FileList | null, limit = Number.POSITIVE_INFINITY, options?: ImageDataUrlOptions) {
   const files = Array.from(fileList ?? [])
-    .filter((file) => file.type.startsWith("image/"))
+    .filter(isReadableImageUploadFile)
     .slice(0, limit);
 
   return Promise.all(files.map((file) => readImageFileAsDataUrl(file, options)));

@@ -2215,7 +2215,7 @@ body:has(.merchant-analytics-clean-shell),
   backdrop-filter: blur(18px) saturate(1.7) contrast(1.04) brightness(1.03) !important;
 }
 
-.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header).client-floating-header-glass-frame {
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header, .client-store-display-editor-glass-header).client-floating-header-glass-frame {
   background:
     linear-gradient(
       180deg,
@@ -2238,11 +2238,11 @@ body:has(.merchant-analytics-clean-shell),
   backdrop-filter: blur(20px) saturate(1.95) contrast(1.08) brightness(1.06) !important;
 }
 
-.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header).client-floating-header-glass-frame::before {
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header, .client-store-display-editor-glass-header).client-floating-header-glass-frame::before {
   opacity: 0.24;
 }
 
-.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header).client-floating-header-glass-frame::after {
+.client-shell :is(.im-conversation-glass-header, .needo-composer-glass-header, .needo-orders-glass-header, .client-mobile-schedule-detail__floating-header, .client-store-display-editor-glass-header).client-floating-header-glass-frame::after {
   opacity: 0.42;
 }
 

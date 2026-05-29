@@ -11,6 +11,15 @@ describe("TechnicianShowcaseCard selectable behavior", () => {
     expect(cardSource).toContain("onClick={(event) => {");
     expect(cardSource).not.toContain("if (onSelect)");
   });
+
+  it("allows merchant-owned cards to replace the selection plus with visibility icons", () => {
+    expect(cardSource).toContain('selectionActiveIcon = "check"');
+    expect(cardSource).toContain('selectionInactiveIcon = "plus"');
+    expect(cardSource).toContain("const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon");
+    expect(cardSource).toContain("name={selectionIconName}");
+    expect(appScaffoldSource).toContain('case "eye":');
+    expect(appScaffoldSource).toContain('case "eyeOff":');
+  });
 });
 
 describe("TechnicianShowcaseCard ranking badges", () => {

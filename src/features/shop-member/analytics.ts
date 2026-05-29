@@ -22,6 +22,77 @@ export const MEMBER_ANALYTICS_DIMENSIONS = [
 
 const chartColors = ["#7c6df2", "#31b77d", "#f2b84b", "#ef6f61", "#52a7e8", "#d778d9", "#6aa89a", "#8a93a6"];
 
+type MemberAnalyticsBucket = { key: string; label: string };
+
+export const MEMBER_ANALYTICS_BUCKETS = {
+  gender: [
+    { key: "male", label: "男" },
+    { key: "female", label: "女" },
+    { key: "unknown", label: "不明" },
+    { key: "other", label: "其他" }
+  ],
+  age: [
+    { key: "under_20", label: "20岁以下" },
+    { key: "20_25", label: "20~25" },
+    { key: "25_30", label: "25~30" },
+    { key: "30_35", label: "30~35" },
+    { key: "35_40", label: "35~40" },
+    { key: "40_45", label: "40~45" },
+    { key: "45_50", label: "45~50" },
+    { key: "50_55", label: "50~55" },
+    { key: "55_60", label: "55~60" },
+    { key: "60_plus", label: "60岁以上" },
+    { key: "unknown", label: "不明" }
+  ],
+  card_status: [
+    { key: "active", label: "持有有效卡" },
+    { key: "frozen", label: "冻结卡" },
+    { key: "expired", label: "仅有过期卡" },
+    { key: "none", label: "无卡" }
+  ],
+  source: [
+    { key: "walk_in", label: "上门客" },
+    { key: "member_referral", label: "会员转介绍" },
+    { key: "staff_referral", label: "员工转介绍" },
+    { key: "line", label: "LINE" },
+    { key: "store_acquisition", label: "门店拓客" },
+    { key: "platform", label: "平台导入" },
+    { key: "legacy_meiyi", label: "美矣" },
+    { key: "other", label: "其他" },
+    { key: "unknown", label: "未知" }
+  ],
+  consume_count: [
+    { key: "0", label: "0 次" },
+    { key: "1", label: "1 次" },
+    { key: "2-3", label: "2-3 次" },
+    { key: "4-5", label: "4-5 次" },
+    { key: "6-10", label: "6-10 次" },
+    { key: "10+", label: "10 次以上" }
+  ],
+  recharge_count: [
+    { key: "0", label: "0 次" },
+    { key: "1", label: "1 次" },
+    { key: "2-3", label: "2-3 次" },
+    { key: "4-5", label: "4-5 次" },
+    { key: "5+", label: "5 次以上" }
+  ],
+  card_count: [
+    { key: "0", label: "0 张" },
+    { key: "1", label: "1 张" },
+    { key: "2", label: "2 张" },
+    { key: "3", label: "3 张" },
+    { key: "4+", label: "4 张以上" }
+  ],
+  total_spend: [
+    { key: "0", label: "0 JPY" },
+    { key: "1-9999", label: "1-9,999 JPY" },
+    { key: "10000-29999", label: "10,000-29,999 JPY" },
+    { key: "30000-49999", label: "30,000-49,999 JPY" },
+    { key: "50000-99999", label: "50,000-99,999 JPY" },
+    { key: "100000+", label: "100,000 JPY+" }
+  ]
+} satisfies Record<ShopMemberAnalyticsDimension, MemberAnalyticsBucket[]>;
+
 const sourceLabels: Record<ShopMember["source"], string> = {
   walk_in: "上门客",
   staff_referral: "员工转介绍",
@@ -38,7 +109,7 @@ const genderLabels: Record<ShopMember["gender"], string> = {
   male: "男",
   female: "女",
   other: "其他",
-  unknown: "未填写"
+  unknown: "不明"
 };
 
 function parseMemberAge(member: ShopMember) {
@@ -59,30 +130,46 @@ function bucketAge(member: ShopMember) {
   const age = parseMemberAge(member);
 
   if (age === null) {
-    return { key: "unknown", label: "未填写" };
+    return { key: "unknown", label: "不明" };
+  }
+
+  if (age < 20) {
+    return { key: "under_20", label: "20岁以下" };
   }
 
   if (age < 25) {
-    return { key: "18-24", label: "18-24" };
+    return { key: "20_25", label: "20~25" };
+  }
+
+  if (age < 30) {
+    return { key: "25_30", label: "25~30" };
   }
 
   if (age < 35) {
-    return { key: "25-34", label: "25-34" };
+    return { key: "30_35", label: "30~35" };
+  }
+
+  if (age < 40) {
+    return { key: "35_40", label: "35~40" };
   }
 
   if (age < 45) {
-    return { key: "35-44", label: "35-44" };
+    return { key: "40_45", label: "40~45" };
+  }
+
+  if (age < 50) {
+    return { key: "45_50", label: "45~50" };
   }
 
   if (age < 55) {
-    return { key: "45-54", label: "45-54" };
+    return { key: "50_55", label: "50~55" };
   }
 
-  if (age < 65) {
-    return { key: "55-64", label: "55-64" };
+  if (age < 60) {
+    return { key: "55_60", label: "55~60" };
   }
 
-  return { key: "65+", label: "65+" };
+  return { key: "60_plus", label: "60岁以上" };
 }
 
 function bucketCount(value: number, kind: "consume" | "recharge" | "card") {
@@ -188,11 +275,17 @@ export function getShopMemberAnalytics(
   dimension: ShopMemberAnalyticsDimension,
   filters: ShopMemberListFilters = {}
 ): ShopMemberAnalyticsResult {
-  const members = filterShopMembers(snapshot, filters);
+  const baseMembers = filterShopMembers(snapshot, filters);
+  const groupKeys = filters.groupKeys ?? (filters.groupKey ? [filters.groupKey] : undefined);
+  const groupKeySet = groupKeys ? new Set(groupKeys) : null;
+  const members = groupKeySet
+    ? baseMembers.filter((member) => groupKeySet.has(getMemberAnalyticsGroup(snapshot, member, dimension).key))
+    : baseMembers;
   const totalSpend = members.reduce((sum, member) => sum + member.totalSpend, 0);
   const paidOrderCount = members.reduce((sum, member) => sum + member.totalOrders, 0);
   const activeCardMemberIds = new Set(snapshot.cards.filter((card) => card.status === "active").map((card) => card.memberId));
-  const grouped = new Map<string, { label: string; value: number }>();
+  const bucketConfig = MEMBER_ANALYTICS_BUCKETS[dimension];
+  const grouped = new Map<string, { label: string; value: number }>(bucketConfig.map((item) => [item.key, { label: item.label, value: 0 }]));
 
   members.forEach((member) => {
     const group = getMemberAnalyticsGroup(snapshot, member, dimension);
@@ -209,8 +302,7 @@ export function getShopMemberAnalytics(
       value: item.value,
       percentage: total > 0 ? Number(((item.value / total) * 100).toFixed(1)) : 0,
       color: chartColors[index % chartColors.length] ?? chartColors[0]!
-    }))
-    .sort((a, b) => b.value - a.value);
+    }));
   const dimensionConfig = MEMBER_ANALYTICS_DIMENSIONS.find((item) => item.key === dimension);
 
   return {

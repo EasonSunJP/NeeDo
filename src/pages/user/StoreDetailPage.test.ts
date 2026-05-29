@@ -21,9 +21,212 @@ describe("StoreDetailPage routed booking defaults", () => {
 
   it("selects service packages through an icon control instead of a booking CTA", () => {
     expect(pageSource).toContain("selectedMenuCardId");
-    expect(pageSource).toContain('selectLabel={active ? "已选服务套餐" : "选择服务套餐"}');
-    expect(pageSource).toContain("onSelect={() => setSelectedMenuCardId(item.sourceServiceId)}");
+    expect(pageSource).toContain('const serviceSelectLabel = active ? "已选服务套餐" : "选择服务套餐";');
+    expect(pageSource).toContain("setSelectedMenuCardId(item.sourceServiceId);");
+    expect(pageSource).toContain("selectLabel={serviceSelectLabel}");
     expect(pageSource).not.toContain('cardUi?.cta ?? "预约"');
+  });
+
+  it("uses one consistent edit button size and avoids duplicate menu card edit actions", () => {
+    const inlineEditSource = pageSource.slice(pageSource.indexOf("function StoreInlineEditLink"), pageSource.indexOf("const inlineTextEditorClassName"));
+    const compactMenuSource = pageSource.slice(pageSource.indexOf("function CompactMenuCard"), pageSource.indexOf("function EnvironmentGalleryCard"));
+    const menuSectionSource = pageSource.slice(pageSource.indexOf("{menuBlock.visible ?"), pageSource.indexOf("{technicianBlock.visible ?"));
+
+    expect(pageSource).toContain('const storeInlineEditButtonSizeClassName = "h-10 w-10";');
+    expect(pageSource).toContain('const storeInlineEditIconSizeClassName = "h-4 w-4";');
+    expect(inlineEditSource).toContain("storeInlineEditButtonSizeClassName");
+    expect(inlineEditSource).toContain("storeInlineEditIconSizeClassName");
+    expect(inlineEditSource).not.toContain('"h-7 w-7"');
+    expect(inlineEditSource).not.toContain('"h-3.5 w-3.5"');
+    expect(pageSource).toContain("<StoreInlineEditLink");
+    expect(pageSource).toContain("to={merchantScheduleEditorHref}");
+    expect(compactMenuSource).toContain("showSelectAction = true");
+    expect(compactMenuSource).toContain("{showSelectAction ? (");
+    expect(menuSectionSource).toContain("showSelectAction={!isMerchantEditable}");
+    expect(menuSectionSource).not.toContain("merchantServiceEditLabel");
+  });
+
+  it("shows a merchant-only add service action between menu and technicians", () => {
+    const homeMenuToTechnicianSource = pageSource.slice(pageSource.indexOf("{menuBlock.visible ?"), pageSource.indexOf("{technicianBlock.visible ?"));
+
+    expect(pageSource).toContain("function MerchantAddServiceButton");
+    expect(pageSource).toContain("function buildNextStoreMenuCard");
+    expect(pageSource).toContain("const addMerchantMenuCard");
+    expect(pageSource).toContain("添加服务");
+    expect(homeMenuToTechnicianSource).toContain("{isMerchantEditable ? (");
+    expect(homeMenuToTechnicianSource).toContain("<MerchantAddServiceButton");
+    expect(homeMenuToTechnicianSource).toContain("onAdd={addMerchantMenuCard}");
+    expect(pageSource).toContain('`home-menu-${nextMenuCard.id}`');
+    expect(pageSource).toContain("target: nextMenuCardEditorTarget");
+  });
+
+  it("labels the booking calendar as appointment time selection with a merchant schedule edit action", () => {
+    const bookingSectionSource = pageSource.slice(pageSource.indexOf("{bookingBlock.visible ?"), pageSource.indexOf("{menuBlock.visible ?"));
+
+    expect(pageSource).toContain('const merchantScheduleEditorHref = "/merchant/schedule?tab=planning";');
+    expect(bookingSectionSource).toContain('title="选择预约时间"');
+    expect(bookingSectionSource).toContain('label="编辑排班"');
+    expect(bookingSectionSource).toContain("to={merchantScheduleEditorHref}");
+    expect(bookingSectionSource).not.toContain("bookingBlock.name");
+    expect(bookingSectionSource).not.toContain("最近两周预约模块");
+    expect(bookingSectionSource).not.toContain("最近可约");
+    expect(bookingSectionSource).not.toContain("随时可约");
+    expect(bookingSectionSource).not.toContain("bookingModeCopy(store.openStatus)");
+  });
+
+  it("opens merchant-owned service display edits in a fullscreen editor", () => {
+    expect(pageSource).toContain("StoreDisplayFullscreenEditor");
+    expect(pageSource).toContain("activeEditor ? (");
+    expect(pageSource).toContain('mode={activeEditor.mode}');
+    expect(pageSource).toContain('target={activeEditor.target}');
+    expect(pageSource).toContain('onClose={() => setActiveEditor(null)}');
+  });
+
+  it("uses edit affordances instead of user selection plus buttons for merchant-owned services and technicians", () => {
+    expect(pageSource).toContain('scope === "merchant"');
+    expect(pageSource).toContain("showSelectAction={!isMerchantEditable}");
+    expect(pageSource).toContain('selectionActiveIcon={isMerchantEditable ? "eye" : "check"}');
+    expect(pageSource).toContain('selectionInactiveIcon={isMerchantEditable ? "eyeOff" : "plus"}');
+    expect(pageSource).toContain('selectionAriaLabel={isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}');
+  });
+
+  it("uses the technician eye action as a merchant display visibility switch", () => {
+    expect(pageSource).toContain("isTechnicianDisplayVisible");
+    expect(pageSource).toContain("toggleTechnicianDisplayVisibility");
+    expect(pageSource).toContain("visible: !isTechnicianDisplayVisible(technician)");
+    expect(pageSource).toContain("isMerchantEditable || isTechnicianDisplayVisible(item)");
+    expect(pageSource).not.toContain('handleMerchantEditFocus("technician", technicianEditorTarget);');
+  });
+
+  it("opens the shared image adjustment editor before merchant image replacements are saved", () => {
+    expect(pageSource).toContain("ImageAdjustmentEditor");
+    expect(pageSource).toContain("pendingStoreImageEdit");
+    expect(pageSource).toContain("openStoreImageEditor");
+    expect(pageSource).toContain("setPendingFullscreenImageEdit");
+    expect(pageSource).toContain("replaceFullscreenMenuImage");
+    expect(pageSource).toContain("const fileInput = event.currentTarget;");
+    expect(pageSource).toContain("void replaceFullscreenMenuImage(fileInput.files).finally(() => {");
+  });
+
+  it("keeps the fullscreen merchant editor header compact with bottom actions", () => {
+    expect(pageSource).toContain('className="client-store-display-editor-glass-header"');
+    expect(pageSource).toContain("showSpacer={false}");
+    expect(pageSource).toContain('ClientEdgeMask edge="bottom"');
+    expect(pageSource).toContain("StickyBottomBar");
+    expect(pageSource).toContain("取消");
+    expect(pageSource).toContain("删除当前服务");
+    expect(pageSource).toContain("保存并关闭");
+    expect(pageSource).not.toContain("var(--client-floating-header-height");
+  });
+
+  it("keeps fullscreen editor content and bottom actions flat instead of nested framed shells", () => {
+    const inlineEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayInlineEditor"), pageSource.indexOf("function StoreDisplayEditorPanel"));
+    const editorPanelSource = pageSource.slice(pageSource.indexOf("function StoreDisplayEditorPanel"), pageSource.indexOf("function StoreDisplayEditorInput"));
+
+    expect(pageSource).toContain("const storeDisplayEditorContentClassName");
+    expect(inlineEditorSource).toContain("className={storeDisplayEditorContentClassName}");
+    expect(inlineEditorSource).not.toContain("shadow-[0_18px_42px");
+    expect(inlineEditorSource).not.toContain("backdrop-blur-xl");
+    expect(editorPanelSource).toContain("className={storeDisplayEditorContentClassName}");
+    expect(editorPanelSource).not.toContain("rounded-[24px] border");
+    expect(pageSource).toContain("const storeDisplayEditorBottomPanelClassName");
+    expect(pageSource).toContain("panelClassName={storeDisplayEditorBottomPanelClassName}");
+    expect(pageSource).not.toContain('panelClassName="p-2.5"');
+  });
+
+  it("keeps add service outside the menu fullscreen editor", () => {
+    const fullscreenEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayFullscreenEditor"), pageSource.indexOf("function CompactMenuCard"));
+
+    expect(fullscreenEditorSource).toContain("replaceFullscreenMenuImage");
+    expect(fullscreenEditorSource).not.toContain("新增服务内容");
+    expect(fullscreenEditorSource).not.toContain("onClick={addMenuCard}");
+  });
+
+  it("opens newly added services instead of falling back to the first menu card", () => {
+    const fullscreenEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayFullscreenEditor"), pageSource.indexOf("function CompactMenuCard"));
+    const addServiceSource = pageSource.slice(pageSource.indexOf("const addMerchantMenuCard"), pageSource.indexOf("const handleMerchantEditFocus"));
+
+    expect(fullscreenEditorSource).not.toContain("Math.max(0, menuCards.findIndex");
+    expect(fullscreenEditorSource).toContain("fallbackMenuCard");
+    expect(fullscreenEditorSource).toContain("menuIndex >= 0");
+    expect(addServiceSource).toContain("menuCard: nextMenuCard");
+  });
+
+  it("matches menu image editing previews to the displayed menu card crop", () => {
+    const compactMenuSource = pageSource.slice(pageSource.indexOf("function CompactMenuCard"), pageSource.indexOf("function EnvironmentGalleryCard"));
+    const fullscreenEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayFullscreenEditor"), pageSource.indexOf("function CompactMenuCard"));
+
+    expect(pageSource).toContain("function StoreMenuCoverImage");
+    expect(pageSource).toContain('const storeMenuCoverReferenceWidth = 344;');
+    expect(pageSource).toContain('const storeMenuCoverRadiusClassName = "rounded-[26px]";');
+    expect(pageSource).toContain("getStoreMenuCardCoverHeight(cardUi)");
+    expect(pageSource).toContain("getStoreMenuImageEditorAspectRatio(packageCardUi)");
+    expect(pageSource).toContain("getStoreMenuCoverFrameStyle(cardUi)");
+    expect(compactMenuSource).toContain("<StoreMenuCoverImage");
+    expect(fullscreenEditorSource).toContain("<StoreMenuCoverImage");
+    expect(fullscreenEditorSource).toContain("frameClassName: storeMenuCoverRadiusClassName");
+    expect(pageSource).toContain("frameClassName={pendingFullscreenImageEdit.frameClassName}");
+    expect(pageSource).toContain("frameClassName={pendingStoreImageEdit.frameClassName}");
+    expect(pageSource).not.toContain('style={{ height: `${menuCoverHeight}px` }}');
+    expect(pageSource).not.toContain("aspectRatio: 4 / 3");
+  });
+
+  it("keeps fullscreen menu image adjustment above the fullscreen editor portal", () => {
+    const fullscreenEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayFullscreenEditor"), pageSource.indexOf("function CompactMenuCard"));
+    const editorIndex = fullscreenEditorSource.indexOf("<ImageAdjustmentEditor");
+    const fullscreenCloseIndex = fullscreenEditorSource.indexOf("</MobileFullscreenPage>");
+
+    expect(editorIndex).toBeGreaterThan(-1);
+    expect(fullscreenCloseIndex).toBeGreaterThan(-1);
+    expect(editorIndex).toBeLessThan(fullscreenCloseIndex);
+  });
+
+  it("matches hero gallery editing previews to the displayed carousel card", () => {
+    const inlineEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayInlineEditor"), pageSource.indexOf("function StoreDisplayEditorPanel"));
+
+    expect(pageSource).toContain("const storeHeroGalleryCardHeight = 204;");
+    expect(pageSource).toContain("const storeHeroGalleryFrameWidth = 390;");
+    expect(pageSource).toContain("const storeHeroGalleryAspectRatio = storeHeroGalleryFrameWidth / storeHeroGalleryCardHeight;");
+    expect(pageSource).toContain("const storeHeroGalleryEditorFrameWidth = 344;");
+    expect(pageSource).toContain('const storeHeroGalleryRadiusClassName = "rounded-[28px]";');
+    expect(pageSource).toContain('cardHeightClassName="h-[204px]"');
+    expect(inlineEditorSource).toContain("editorAspectRatio={storeHeroGalleryAspectRatio}");
+    expect(inlineEditorSource).toContain("editorFrameClassName={storeHeroGalleryRadiusClassName}");
+    expect(inlineEditorSource).toContain("editorFrameWidth={storeHeroGalleryEditorFrameWidth}");
+    expect(inlineEditorSource).toContain("previewAspectRatio={storeHeroGalleryAspectRatio}");
+    expect(pageSource).toContain("aspectRatio: storeHeroGalleryAspectRatio");
+    expect(pageSource).toContain("frameClassName: storeHeroGalleryRadiusClassName");
+    expect(pageSource).toContain("frameWidth: storeHeroGalleryEditorFrameWidth");
+    expect(pageSource).not.toContain("aspectRatio: 16 / 10");
+    expect(pageSource).not.toContain("editorAspectRatio={16 / 10}");
+  });
+
+  it("keeps the store homepage carousel intro-only and moves intro editing to the gallery editor", () => {
+    const heroSlidesSource = pageSource.slice(pageSource.indexOf("const heroSlides"), pageSource.indexOf("const environmentGalleryItems"));
+    const homeCarouselSource = pageSource.slice(pageSource.indexOf("<FeatureCarousel"), pageSource.indexOf("<div className={cn(featureCarouselFrameClassName"));
+    const embeddedHeaderSource = pageSource.slice(pageSource.indexOf("if (embedded)"), pageSource.indexOf("{content}", pageSource.indexOf("if (embedded)")));
+    const fixedHeaderSource = pageSource.slice(pageSource.indexOf("<FloatingHomeHeader"), pageSource.indexOf('<div className="mt-2">{tabSwitcher}</div>'));
+    const inlineEditorSource = pageSource.slice(pageSource.indexOf("function StoreDisplayInlineEditor"), pageSource.indexOf("function StoreDisplayEditorPanel"));
+    const basicEditorSource = inlineEditorSource.slice(inlineEditorSource.indexOf('{mode === "basic" ?'), inlineEditorSource.indexOf('{mode === "presentation" ?'));
+    const galleryEditorSource = inlineEditorSource.slice(inlineEditorSource.indexOf('{mode === "gallery" ?'), inlineEditorSource.indexOf('{mode === "basic" ?'));
+
+    expect(heroSlidesSource).toContain("caption: config.subtitle");
+    expect(heroSlidesSource).not.toContain("badge: store.rankLabel");
+    expect(heroSlidesSource).not.toContain('cta: "查看大图"');
+    expect(homeCarouselSource).toContain("renderSlide={({ slide, index }) =>");
+    expect(homeCarouselSource).toContain("slide.caption");
+    expect(homeCarouselSource).not.toContain("<InlineEditableText");
+    expect(homeCarouselSource).not.toContain("slide.badge");
+    expect(pageSource).not.toContain("查看大图");
+    expect(embeddedHeaderSource).not.toContain(">服务展示<");
+    expect(embeddedHeaderSource).toContain("{store.address}</p>");
+    expect(embeddedHeaderSource).not.toContain("{config.subtitle}</p>");
+    expect(fixedHeaderSource).not.toContain("{config.subtitle}</p>");
+    expect(galleryEditorSource).toContain('label="轮播简介"');
+    expect(galleryEditorSource).toContain('onChange={(value) => updatePresentationField("subtitle", value)}');
+    expect(galleryEditorSource.indexOf('label="轮播简介"')).toBeLessThan(galleryEditorSource.indexOf("<ImageGalleryManager"));
+    expect(basicEditorSource).not.toContain("店铺介绍");
+    expect(basicEditorSource).not.toContain("{ description: event.target.value }");
   });
 
   it("uses the shared icon metric action for favorite and share controls", () => {

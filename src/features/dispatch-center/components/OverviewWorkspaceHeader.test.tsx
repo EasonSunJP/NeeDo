@@ -29,7 +29,9 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(styles).toContain("border-color: transparent !important;");
     expect(styles).toContain("border-radius: 0 !important;");
     expect(styles).toContain("box-shadow: none !important;");
-    expect(styles).toContain(".client-mobile-schedule-detail__floating-header).client-floating-header-glass-frame");
+    expect(styles).toContain(".client-mobile-schedule-detail__floating-header");
+    expect(styles).toContain(".client-store-display-editor-glass-header");
+    expect(styles).toContain(").client-floating-header-glass-frame");
     expect(styles).toContain("color-mix(in srgb, var(--client-top-chrome-bg) 7%, transparent) 0%");
   });
 });

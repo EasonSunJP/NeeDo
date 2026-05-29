@@ -246,7 +246,7 @@ export function normalizeStorePresentationConfig(
     routeGuide: normalizeString(raw?.routeGuide, defaults.routeGuide),
     seatFilters: normalizeStringArray(raw?.seatFilters, defaults.seatFilters, { allowEmpty: true, maxLength: 8 }),
     offers: defaults.offers.map((fallback, index) => normalizeOffer(rawOffers[index], fallback, index)),
-    menuCards: rawMenuCards.map((menuCard, index) => normalizeMenuCard(menuCard, index)).slice(0, 6)
+    menuCards: rawMenuCards.map((menuCard, index) => normalizeMenuCard(menuCard, index))
   };
 }
 

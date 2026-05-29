@@ -1258,6 +1258,15 @@ function getPieSlicePath(startAngle: number, endAngle: number) {
   return `M 50 50 L ${start.x.toFixed(3)} ${start.y.toFixed(3)} A 48 48 0 ${largeArcFlag} 1 ${end.x.toFixed(3)} ${end.y.toFixed(3)} Z`;
 }
 
+function getPieOffset(radius: number, angle: number) {
+  const point = getPiePoint(radius, angle);
+
+  return {
+    x: (point.x - 50).toFixed(2),
+    y: (point.y - 50).toFixed(2)
+  };
+}
+
 function getPieSlices(result: ReturnType<typeof getShopMemberAnalytics>) {
   let currentAngle = 0;
 
@@ -1265,13 +1274,15 @@ function getPieSlices(result: ReturnType<typeof getShopMemberAnalytics>) {
     const sweepAngle = result.total > 0 ? (item.value / result.total) * 360 : 0;
     const startAngle = currentAngle;
     const endAngle = currentAngle + sweepAngle;
-    const labelPoint = getPiePoint(sweepAngle < 32 ? 34 : 31, startAngle + sweepAngle / 2);
+    const midAngle = startAngle + sweepAngle / 2;
+    const labelPoint = getPiePoint(sweepAngle < 32 ? 34 : 31, midAngle);
     currentAngle = endAngle;
 
     return {
       item,
       startAngle,
       endAngle,
+      midAngle,
       isFullCircle: sweepAngle >= 359.9,
       labelX: labelPoint.x,
       labelY: labelPoint.y
@@ -1279,7 +1290,93 @@ function getPieSlices(result: ReturnType<typeof getShopMemberAnalytics>) {
   });
 }
 
-function AnalyticsChart({ result, activeKey, onSelect }: { result: ReturnType<typeof getShopMemberAnalytics>; activeKey?: string; onSelect: (key: string) => void }) {
+function getVisibleAnalyticsResult(result: ReturnType<typeof getShopMemberAnalytics>, visibleKeys: string[]) {
+  const visibleKeySet = new Set(visibleKeys);
+  const visibleItems = result.items.filter((item) => visibleKeySet.has(item.key) && item.value > 0);
+  const visibleTotal = visibleItems.reduce((sum, item) => sum + item.value, 0);
+
+  return {
+    ...result,
+    total: visibleTotal,
+    items: visibleItems.map((item) => ({
+      ...item,
+      percentage: visibleTotal > 0 ? Number(((item.value / visibleTotal) * 100).toFixed(1)) : 0
+    }))
+  };
+}
+
+function formatAnalyticsDetailValue(_dimension: ShopMemberAnalyticsDimension, value: number) {
+  return `${value}人`;
+}
+
+function AnalyticsSettingsDropdown({
+  result,
+  visibleKeys,
+  showChartDetails,
+  onToggleDetails,
+  onToggleKey
+}: {
+  result: ReturnType<typeof getShopMemberAnalytics>;
+  visibleKeys: string[];
+  showChartDetails: boolean;
+  onToggleDetails: (checked: boolean) => void;
+  onToggleKey: (key: string) => void;
+}) {
+  const visibleKeySet = new Set(visibleKeys);
+
+  return (
+    <div
+      aria-label="图表显示设置"
+      className="absolute right-0 top-full z-30 mt-2 w-[min(260px,calc(100vw-48px))] rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-bg)] p-2 shadow-[0_18px_48px_color-mix(in_srgb,var(--client-bg)_62%,transparent)]"
+    >
+      <label className="flex min-h-[38px] items-center justify-between gap-3 rounded-[16px] bg-[color:color-mix(in_srgb,var(--client-bg)_88%,var(--client-primary)_12%)] px-3 py-2">
+        <span className="text-xs font-black text-ink">显示详细数据</span>
+        <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+          <input
+            checked={showChartDetails}
+            className="peer sr-only"
+            onChange={(event) => onToggleDetails(event.target.checked)}
+            type="checkbox"
+          />
+          <span className="absolute inset-0 rounded-full border border-line bg-black/[0.08] transition peer-checked:border-[color:var(--client-primary)] peer-checked:bg-[color:var(--client-primary)]" />
+          <span className="absolute left-1 h-4 w-4 rounded-full bg-white shadow-sm transition peer-checked:translate-x-5 peer-checked:bg-[#090806]" />
+        </span>
+      </label>
+      <div className="mt-2 grid max-h-[172px] grid-cols-2 gap-2 overflow-y-auto pr-0.5">
+        {result.items.map((item) => {
+          const selected = visibleKeySet.has(item.key);
+
+          return (
+            <label
+              className={cn(
+                "flex min-h-[38px] items-center gap-2 rounded-[14px] border px-2 text-xs font-black transition",
+                selected ? "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-bg)_74%,var(--client-primary)_26%)] text-ink" : "border-line bg-[color:var(--client-bg)] text-ink/70"
+              )}
+              key={item.key}
+            >
+              <input checked={selected} className="sr-only" onChange={() => onToggleKey(item.key)} type="checkbox" />
+              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: item.color }} />
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              <span className="shrink-0 text-[11px] text-ink/45">{formatAnalyticsDetailValue(result.dimension, item.value)}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AnalyticsChart({
+  result,
+  activeKey,
+  showDetails,
+  onSelect
+}: {
+  result: ReturnType<typeof getShopMemberAnalytics>;
+  activeKey?: string;
+  showDetails: boolean;
+  onSelect: (key: string) => void;
+}) {
   if (result.items.length === 0) {
     return <div className="rounded-[24px] bg-paper px-4 py-10 text-center text-sm font-bold text-ink/45">当前筛选条件下暂无会员数据。</div>;
   }
@@ -1295,8 +1392,9 @@ function AnalyticsChart({ result, activeKey, onSelect }: { result: ReturnType<ty
         viewBox="0 0 100 100"
       >
         <circle cx="50" cy="50" fill="color-mix(in srgb, var(--client-bg) 72%, transparent)" r="49" />
-        {slices.map(({ item, startAngle, endAngle, isFullCircle, labelX, labelY }) => {
+        {slices.map(({ item, startAngle, endAngle, midAngle, isFullCircle, labelX, labelY }) => {
           const selected = activeKey === item.key;
+          const selectedOffset = selected ? getPieOffset(3.2, midAngle) : null;
           const ariaLabel =
             result.dimension === "source"
               ? `会员来源：${item.label}，${item.percentage}%`
@@ -1316,6 +1414,7 @@ function AnalyticsChart({ result, activeKey, onSelect }: { result: ReturnType<ty
               }}
               role="button"
               tabIndex={0}
+              transform={selectedOffset ? `translate(${selectedOffset.x} ${selectedOffset.y})` : undefined}
             >
               {isFullCircle ? (
                 <circle cx="50" cy="50" fill={item.color} r="48" stroke={selected ? "var(--client-primary)" : "var(--client-bg)"} strokeWidth={selected ? 2.2 : 0.8} />
@@ -1336,6 +1435,7 @@ function AnalyticsChart({ result, activeKey, onSelect }: { result: ReturnType<ty
               >
                 <tspan x={labelX} dy="-0.25em">{item.label}</tspan>
                 <tspan fontSize="4.2" x={labelX} dy="1.18em">{item.percentage}%</tspan>
+                {showDetails ? <tspan fontSize="3.1" x={labelX} dy="1.15em">{formatAnalyticsDetailValue(result.dimension, item.value)}</tspan> : null}
               </text>
             </g>
           );
@@ -1355,7 +1455,7 @@ function AnalyticsChart({ result, activeKey, onSelect }: { result: ReturnType<ty
           <span className="h-3 overflow-hidden rounded-full bg-black/[0.06]">
             <span className="block h-full rounded-full" style={{ width: `${Math.max(8, (item.value / maxValue) * 100)}%`, background: item.color }} />
           </span>
-          <span className="text-right text-xs font-black text-ink/55">{item.value}</span>
+          <span className="text-right text-xs font-black text-ink/55">{showDetails ? formatAnalyticsDetailValue(result.dimension, item.value) : `${item.percentage}%`}</span>
         </button>
       ))}
     </div>
@@ -1365,34 +1465,91 @@ function AnalyticsChart({ result, activeKey, onSelect }: { result: ReturnType<ty
 function AnalyticsScreen({ snapshot }: { snapshot: ShopMemberSnapshot }) {
   const [dimension, setDimension] = useState<ShopMemberAnalyticsDimension>("source");
   const [selectedGroupKey, setSelectedGroupKey] = useState<string | undefined>();
+  const [analyticsSettingsOpen, setAnalyticsSettingsOpen] = useState(false);
+  const [showChartDetails, setShowChartDetails] = useState(false);
+  const [visibleGroupKeysByDimension, setVisibleGroupKeysByDimension] = useState<Partial<Record<ShopMemberAnalyticsDimension, string[]>>>({});
   const result = useMemo(() => getShopMemberAnalytics(snapshot, dimension), [dimension, snapshot]);
+  const defaultVisibleGroupKeys = useMemo(() => result.items.map((item) => item.key), [result]);
+  const visibleGroupKeys = visibleGroupKeysByDimension[dimension] ?? defaultVisibleGroupKeys;
+  const filteredAnalyticsResult = useMemo(() => getShopMemberAnalytics(snapshot, dimension, { groupKeys: visibleGroupKeys }), [dimension, snapshot, visibleGroupKeys]);
+  const visibleResult = useMemo(() => getVisibleAnalyticsResult(filteredAnalyticsResult, visibleGroupKeys), [filteredAnalyticsResult, visibleGroupKeys]);
   const drilldownFilters: ShopMemberListFilters = selectedGroupKey ? { groupKey: selectedGroupKey, dimension } : {};
   const drilldownMembers = selectedGroupKey
     ? filterShopMembers(snapshot).filter((member) => getMemberAnalyticsGroup(snapshot, member, dimension).key === selectedGroupKey)
     : [];
+  const toggleVisibleGroupKey = (key: string) => {
+    const isVisible = visibleGroupKeys.includes(key);
+
+    if (isVisible && visibleGroupKeys.length <= 1) {
+      return;
+    }
+
+    const nextKeys = isVisible ? visibleGroupKeys.filter((item) => item !== key) : [...visibleGroupKeys, key];
+    setVisibleGroupKeysByDimension((current) => ({
+      ...current,
+      [dimension]: nextKeys
+    }));
+
+    if (isVisible && selectedGroupKey === key) {
+      setSelectedGroupKey(undefined);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedGroupKey && !visibleGroupKeys.includes(selectedGroupKey)) {
+      setSelectedGroupKey(undefined);
+    }
+  }, [selectedGroupKey, visibleGroupKeys]);
 
   return (
     <>
       <section className="rounded-[28px] border border-line bg-white p-4 shadow-panel">
         <SectionTitle caption="会员总数、客单价和总消费保留在首屏顶部。" title="会员分析" />
-        <div className="grid grid-cols-3 gap-2">
-          <KpiTile label="会员总数" value={`${result.summary.memberCount}`} />
-          <KpiTile label="客单价" value={yen(result.summary.avgTicket)} />
-          <KpiTile label="总消费" value={yen(result.summary.totalSpend)} />
+        <div className="grid grid-cols-2 gap-2">
+          <KpiTile label="会员总数" value={`${filteredAnalyticsResult.summary.memberCount}`} />
+          <KpiTile label="客单价" value={yen(filteredAnalyticsResult.summary.avgTicket)} />
+          <div className="col-span-2">
+            <KpiTile label="总消费" value={yen(filteredAnalyticsResult.summary.totalSpend)} />
+          </div>
         </div>
       </section>
 
       <section className="rounded-[28px] border border-line bg-white p-4 shadow-panel">
-        <SectionTitle caption="图表总数可能与会员总数不同，未知或未填写会单独入组。" title={MEMBER_ANALYTICS_DIMENSIONS.find((item) => item.key === dimension)?.label ?? "图表"} />
-        <AnalyticsChart activeKey={selectedGroupKey} onSelect={setSelectedGroupKey} result={result} />
+        <SectionTitle caption="可以在图表设置里增减分组，并选择是否显示详细数据。" title={MEMBER_ANALYTICS_DIMENSIONS.find((item) => item.key === dimension)?.label ?? "图表"}>
+          <div className="relative">
+            <button
+              aria-expanded={analyticsSettingsOpen}
+              aria-haspopup="menu"
+              aria-label="图表设置"
+              className={cn(
+                "focus-ring grid h-10 w-10 place-items-center rounded-full border text-ink transition",
+                analyticsSettingsOpen ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]" : "border-line bg-paper text-ink/70"
+              )}
+              onClick={() => setAnalyticsSettingsOpen((open) => !open)}
+              type="button"
+            >
+              <AppIcon className="h-5 w-5" name="settings" />
+            </button>
+            {analyticsSettingsOpen ? (
+              <AnalyticsSettingsDropdown
+                onToggleDetails={setShowChartDetails}
+                onToggleKey={toggleVisibleGroupKey}
+                result={result}
+                showChartDetails={showChartDetails}
+                visibleKeys={visibleGroupKeys}
+              />
+            ) : null}
+          </div>
+        </SectionTitle>
+        <AnalyticsChart activeKey={selectedGroupKey} onSelect={setSelectedGroupKey} result={visibleResult} showDetails={showChartDetails} />
       </section>
 
       <section className="rounded-[28px] border border-line bg-white p-4 shadow-panel">
         <SectionTitle caption="底部 2x4 维度选择，选中项使用品牌色高亮。" title="维度" />
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-4 gap-1.5">
           {MEMBER_ANALYTICS_DIMENSIONS.map((item) => (
             <button
-              className={cn("min-h-[58px] rounded-[18px] border px-1 text-center text-[12px] font-black leading-4 transition", dimension === item.key ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]" : "border-line bg-paper text-ink/60")}
+              className={cn("min-h-[44px] rounded-[14px] border px-1 text-center text-[11px] font-black leading-3 transition", dimension === item.key ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#090806]" : "border-line bg-paper text-ink/60")}
               key={item.key}
               onClick={() => {
                 setDimension(item.key);

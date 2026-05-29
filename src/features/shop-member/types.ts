@@ -290,5 +290,6 @@ export interface ShopMemberListFilters {
   hasCard?: boolean;
   riskStatus?: ShopMemberRiskStatus | "all";
   groupKey?: string;
+  groupKeys?: string[];
   dimension?: ShopMemberAnalyticsDimension;
 }

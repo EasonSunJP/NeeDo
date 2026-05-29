@@ -6,22 +6,27 @@ import {
   AppTopBar,
   EmptyStatePanel,
   FeatureSegmentedTabs,
-  IconButton,
   IconMetricAction,
   MetaPill,
   PageScaffold,
   PrimaryButton,
   SecondaryButton,
+  StickyBottomBar,
   UnifiedListItem,
+  type IconName,
   floatingHeaderControlButtonClassName
 } from "../../components/client-ui/AppScaffold";
 import { featureCarouselFrameClassName, FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
 import { AvailabilityCalendar } from "../../components/mobile/AvailabilityCalendar";
+import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
+import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MomentActionBar } from "../../components/mobile/MomentActionBar";
 import { OfferInfoCard } from "../../components/mobile/OfferInfoCard";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { AvatarImage } from "../../components/ui/AvatarImage";
+import { ImageAdjustmentEditor } from "../../components/ui/ImageAdjustmentEditor";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { customers, reviews, services } from "../../data/mock";
@@ -46,20 +51,31 @@ import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUi
 import { cn, shortNumber, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
 import { TechnicianShowcaseCard } from "../../shared/profile-card";
-import { updateCustomerEntity, updateStoreEntity, useEntityStore } from "../../state/entityStore";
+import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
 
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
-type StoreDisplayEditorMode = "gallery" | "basic" | "presentation";
+type StoreDisplayEditorMode = "gallery" | "basic" | "presentation" | "menu" | "technician";
+type StoreDisplayExternalEditorMode = Extract<StoreDisplayEditorMode, "gallery" | "basic" | "presentation">;
 type ActiveStoreDisplayEditor = {
+  menuCard?: MenuCard;
   mode: StoreDisplayEditorMode;
   target: string;
 };
+type PendingStoreImageEdit = {
+  apply: (editedImage: string) => void;
+  aspectRatio: number;
+  description?: string;
+  frameClassName?: string;
+  frameWidth?: number;
+  source: string;
+  title: string;
+};
 type StoreDetailExperienceProps = {
   embedded?: boolean;
-  onEditFocus?: (focus: StoreDisplayEditorMode) => void;
+  onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
   scope?: "user" | "merchant";
   store: Store;
   techniciansOverride?: Technician[];
@@ -87,6 +103,29 @@ const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center ga
 const storeBottomActionRowClassName = "mx-auto flex w-full max-w-[888px] items-center gap-3 px-4 pb-2";
 const storeBottomSecondaryButtonClassName = "h-[52px] shrink-0 gap-2 px-5 shadow-[0_12px_26px_rgba(0,0,0,0.20)] backdrop-blur-xl";
 const storeBottomPrimaryButtonClassName = "h-[52px] flex-1 gap-2 px-5 text-sm shadow-[0_12px_30px_color-mix(in_srgb,var(--client-primary)_20%,transparent)]";
+const merchantScheduleEditorHref = "/merchant/schedule?tab=planning";
+const storeDisplayEditorBottomBarStyle = { "--client-main-nav-action-offset": "0px" } as CSSProperties;
+const storeDisplayEditorBottomMaskStyle = {
+  "--client-edge-mask-bottom-mid-opacity": "0.2",
+  "--client-edge-mask-bottom-mid-stop": "34%",
+  "--client-edge-mask-bottom-strong-opacity": "0.64",
+  "--client-edge-mask-bottom-strong-stop": "70%",
+  "--client-edge-mask-bottom-end-opacity": "0.94"
+} as CSSProperties;
+const storeDisplayEditorContentClassName = "mx-auto grid w-full max-w-[390px] gap-4";
+const storeDisplayEditorBottomShellClassName = "max-w-[480px] !px-5 !pb-[calc(max(env(safe-area-inset-bottom),12px)+10px)]";
+const storeDisplayEditorBottomPanelClassName = "!rounded-none !border-0 !bg-transparent !p-0 !shadow-none !backdrop-blur-none";
+const storeInlineEditButtonSizeClassName = "h-10 w-10";
+const storeInlineEditIconSizeClassName = "h-4 w-4";
+const storeMenuCoverReferenceWidth = 344;
+const storeMenuCoverFrameWidthClassName = "mx-auto w-full max-w-[344px]";
+const storeMenuCoverRadiusClassName = "rounded-[26px]";
+const storeMenuCardCoverFallbackHeight = 140;
+const storeHeroGalleryCardHeight = 204;
+const storeHeroGalleryFrameWidth = 390;
+const storeHeroGalleryAspectRatio = storeHeroGalleryFrameWidth / storeHeroGalleryCardHeight;
+const storeHeroGalleryEditorFrameWidth = 344;
+const storeHeroGalleryRadiusClassName = "rounded-[28px]";
 const storeBasicEditorFields = [
   { label: "店铺名称", key: "name" },
   { label: "首页角标", key: "rankLabel" },
@@ -95,6 +134,55 @@ const storeBasicEditorFields = [
   { label: "营业时间", key: "businessHours" }
 ] as const;
 type StoreBasicEditorFieldKey = (typeof storeBasicEditorFields)[number]["key"];
+
+function getStoreMenuCardCoverHeight(cardUi?: StoreCardDecorationConfig) {
+  const coverHeight = Number.parseInt(cardUi?.coverHeight ?? "", 10);
+
+  return Number.isFinite(coverHeight) && coverHeight > 0 ? coverHeight : storeMenuCardCoverFallbackHeight;
+}
+
+function getStoreMenuImageEditorAspectRatio(cardUi?: StoreCardDecorationConfig) {
+  return storeMenuCoverReferenceWidth / getStoreMenuCardCoverHeight(cardUi);
+}
+
+function getStoreMenuCoverFrameStyle(cardUi?: StoreCardDecorationConfig): CSSProperties {
+  return {
+    aspectRatio: `${storeMenuCoverReferenceWidth} / ${getStoreMenuCardCoverHeight(cardUi)}`
+  };
+}
+
+function buildNextStoreMenuCard({
+  images,
+  menuCards,
+  source,
+  store
+}: {
+  images: string[];
+  menuCards: MenuCard[];
+  source?: MenuCard;
+  store: Store;
+}): MenuCard {
+  const template = source ?? menuCards[0];
+  const nextIndex = menuCards.length + 1;
+
+  return {
+    id: `${store.id}-menu-${nextIndex}`,
+    sourceServiceId: (template?.sourceServiceId ?? "") || `${store.id}-service-${nextIndex}`,
+    name: template ? `${template.name} 副本` : store.name,
+    subtitle: template?.subtitle ?? store.description,
+    duration: template?.duration ?? "60 分钟",
+    priceLabel: template?.priceLabel ?? store.priceLabel,
+    audience: template?.audience ?? store.area,
+    tags: template?.tags.slice(0, 3) ?? store.tags.slice(0, 3),
+    cover: template?.cover ?? images[0] ?? store.cover,
+    highlights: template?.highlights.slice(0, 3) ?? ["可预约"]
+  };
+}
+
+function isTechnicianDisplayVisible(technician: Technician) {
+  return technician.visible !== false;
+}
+
 const storeIndustryServiceCategoryMap: Record<StoreIndustry, string[]> = {
   massage: ["massage"],
   beauty: ["beauty"],
@@ -136,18 +224,6 @@ function openStatusCopy(status: "open" | "resting" | "closed") {
 function bookingCtaCopy(status: "open" | "resting" | "closed") {
   if (status === "open") {
     return "立即预约";
-  }
-
-  if (status === "resting") {
-    return "申请预约";
-  }
-
-  return "电话咨询";
-}
-
-function bookingModeCopy(status: "open" | "resting" | "closed") {
-  if (status === "open") {
-    return "即时预约";
   }
 
   if (status === "resting") {
@@ -604,8 +680,8 @@ function mergeMenuCardOverrides(baseCards: MenuCard[], overrides: StoreMenuConfi
     return baseCards;
   }
 
-  return baseCards.map((baseCard, index) => {
-    const override = overrides[index];
+  return overrides.map((override, index) => {
+    const baseCard = baseCards[index] ?? override;
 
     if (!override) {
       return baseCard;
@@ -849,28 +925,34 @@ function CollapsibleSectionButton({
 function StoreTechnicianSelectableCard({
   active,
   fallbackServices,
+  isMerchantEditable = false,
   language,
   onSelect,
   rankIndex,
-  technician
+  technician,
+  technicianVisible = true
 }: {
   active: boolean;
   fallbackServices: ServiceItem[];
+  isMerchantEditable?: boolean;
   language: Language;
   onSelect: () => void;
   rankIndex: number;
   technician: Technician;
+  technicianVisible?: boolean;
 }) {
   return (
     <TechnicianShowcaseCard
       aria-label={active ? "已选技师" : "待选技师"}
-      className="h-full w-full"
+      className={cn("h-full w-full", isMerchantEditable && !technicianVisible && "opacity-70 saturate-[0.72]")}
       fallbackServices={fallbackServices}
       language={language}
       onSelect={onSelect}
       rankIndex={rankIndex}
-      selected={active}
-      selectionAriaLabel={active ? "已选技师" : "待选技师"}
+      selected={isMerchantEditable ? technicianVisible : active}
+      selectionActiveIcon={isMerchantEditable ? "eye" : "check"}
+      selectionAriaLabel={isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
+      selectionInactiveIcon={isMerchantEditable ? "eyeOff" : "plus"}
       technician={technician}
     />
   );
@@ -878,12 +960,16 @@ function StoreTechnicianSelectableCard({
 
 function StoreSelectionIconButton({
   active,
+  activeIcon = "check",
   className,
+  inactiveIcon = "plus",
   label,
   onSelect
 }: {
   active: boolean;
+  activeIcon?: IconName;
   className?: string;
+  inactiveIcon?: IconName;
   label: string;
   onSelect: () => void;
 }) {
@@ -901,7 +987,7 @@ function StoreSelectionIconButton({
       onClick={onSelect}
       type="button"
     >
-      <AppIcon className="h-5 w-5" name={active ? "check" : "plus"} />
+      <AppIcon className="h-5 w-5" name={active ? activeIcon : inactiveIcon} />
     </button>
   );
 }
@@ -911,25 +997,23 @@ function StoreInlineEditLink({
   onClick,
   active = false,
   label = "编辑",
-  className,
-  size = "default"
+  className
 }: {
   to?: string;
   onClick?: () => void;
   active?: boolean;
   label?: string;
   className?: string;
-  size?: "default" | "compact";
 }) {
   const classes = cn(
     "focus-ring inline-flex shrink-0 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.12)] backdrop-blur-xl transition hover:-translate-y-0.5",
     active && "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b]",
-    size === "compact" ? "h-7 w-7" : "h-10 w-10",
+    storeInlineEditButtonSizeClassName,
     className
   );
   const content = (
     <>
-      <AppIcon className={cn(size === "compact" ? "h-3.5 w-3.5" : "h-4 w-4", active && "!text-[#06100b]")} name={active ? "check" : "edit"} />
+      <AppIcon className={cn(storeInlineEditIconSizeClassName, active && "!text-[#06100b]")} name={active ? "check" : "edit"} />
       <span className="sr-only">{label}</span>
     </>
   );
@@ -962,6 +1046,42 @@ function StoreInlineEditLink({
     >
       {content}
     </Link>
+  );
+}
+
+function StoreMenuCoverImage({
+  alt,
+  cardUi,
+  className,
+  frameClassName = storeMenuCoverRadiusClassName,
+  image
+}: {
+  alt: string;
+  cardUi?: StoreCardDecorationConfig;
+  className?: string;
+  frameClassName?: string;
+  image: string;
+}) {
+  return (
+    <div
+      className={cn("relative block overflow-hidden bg-black", storeMenuCoverFrameWidthClassName, frameClassName, className)}
+      style={getStoreMenuCoverFrameStyle(cardUi)}
+    >
+      <img alt={alt} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(image)} />
+    </div>
+  );
+}
+
+function MerchantAddServiceButton({ onAdd }: { onAdd: () => void }) {
+  return (
+    <button
+      className="focus-ring inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_16%,var(--client-surface)_84%)] px-4 text-sm font-black text-[color:var(--client-text)] shadow-[0_14px_28px_color-mix(in_srgb,var(--client-primary)_10%,transparent)]"
+      onClick={onAdd}
+      type="button"
+    >
+      <AppIcon className="h-4 w-4 text-[color:var(--client-primary)]" name="plus" />
+      添加服务
+    </button>
   );
 }
 
@@ -1357,24 +1477,43 @@ function StoreDisplayInlineEditor({
 
   return (
     <section
-      className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+      className={storeDisplayEditorContentClassName}
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
     >
-      <div className="mb-3">
-        <strong className="text-sm font-black text-[color:var(--client-text)]">{editorTitle}</strong>
-      </div>
+      {mode === "gallery" ? null : (
+        <div className="px-1">
+          <strong className="text-sm font-black text-[color:var(--client-text)]">{editorTitle}</strong>
+        </div>
+      )}
 
       {mode === "gallery" ? (
-        <ImageGalleryManager
-          className="text-[color:var(--client-text)]"
-          coverHint="第 1 张会同步为首图和店铺头像底图。"
-          description="当前上传或替换后，下面的轮播图、缩略图和环境图会立即刷新。"
-          images={images}
-          label="展示图片"
-          maxImages={5}
-          onChange={updateGallery}
-        />
+        <>
+          <div className="grid gap-3">
+            <h2 className="px-1 text-sm font-black text-[color:var(--client-text)]">轮播简介</h2>
+            <StoreDisplayEditorInput
+              label="轮播简介"
+              multiline
+              onChange={(value) => updatePresentationField("subtitle", value)}
+              rows={3}
+              value={config.subtitle}
+            />
+          </div>
+          <ImageGalleryManager
+            className="text-[color:var(--client-text)]"
+            coverHint="第 1 张会同步为首图和店铺头像底图。"
+            description="当前上传或替换后，下面的轮播图、缩略图和环境图会立即刷新。"
+            editorAspectRatio={storeHeroGalleryAspectRatio}
+            editorFrameClassName={storeHeroGalleryRadiusClassName}
+            editorFrameWidth={storeHeroGalleryEditorFrameWidth}
+            images={images}
+            label="展示图片"
+            maxImages={5}
+            onChange={updateGallery}
+            previewAspectRatio={storeHeroGalleryAspectRatio}
+            previewFrameClassName={storeHeroGalleryRadiusClassName}
+          />
+        </>
       ) : null}
 
       {mode === "basic" ? (
@@ -1397,27 +1536,11 @@ function StoreDisplayInlineEditor({
               value={listToText(store.tags)}
             />
           </label>
-          <label className="grid gap-1">
-            <span className="text-xs font-bold text-[color:var(--client-muted)]">店铺介绍</span>
-            <textarea
-              className="min-h-[96px] rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 py-2 text-[color:var(--client-text)] outline-none"
-              onChange={(event) => updateStoreEntity(store.id, { description: event.target.value })}
-              value={store.description}
-            />
-          </label>
         </div>
       ) : null}
 
       {mode === "presentation" ? (
         <div className="grid gap-3 text-sm">
-          <label className="grid gap-1">
-            <span className="text-xs font-bold text-[color:var(--client-muted)]">首屏说明</span>
-            <textarea
-              className="min-h-[84px] rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 py-2 text-[color:var(--client-text)] outline-none"
-              onChange={(event) => updatePresentationField("subtitle", event.target.value)}
-              value={config.subtitle}
-            />
-          </label>
           <div className="grid gap-2 sm:grid-cols-2">
             {([
               { label: "最近车站", key: "station", value: config.station },
@@ -1507,13 +1630,338 @@ function StoreDisplayInlineEditor({
   );
 }
 
+function StoreDisplayEditorPanel({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <section className={storeDisplayEditorContentClassName}>
+      <h2 className="px-1 text-sm font-black text-[color:var(--client-text)]">{title}</h2>
+      <div className="grid gap-3">{children}</div>
+    </section>
+  );
+}
+
+function StoreDisplayEditorInput({
+  label,
+  multiline = false,
+  onChange,
+  rows = 2,
+  value
+}: {
+  label: string;
+  multiline?: boolean;
+  onChange: (value: string) => void;
+  rows?: number;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-xs font-bold text-[color:var(--client-muted)]">{label}</span>
+      {multiline ? (
+        <textarea
+          className="min-h-[82px] rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 py-2 text-sm text-[color:var(--client-text)] outline-none"
+          data-page-drag-ignore="true"
+          data-scroll-drag-ignore="true"
+          onChange={(event) => onChange(event.target.value)}
+          rows={rows}
+          value={value}
+        />
+      ) : (
+        <input
+          className="h-10 rounded-[14px] border border-[color:var(--client-line)] bg-[color:var(--client-bg)] px-3 text-sm text-[color:var(--client-text)] outline-none"
+          data-page-drag-ignore="true"
+          data-scroll-drag-ignore="true"
+          onChange={(event) => onChange(event.target.value)}
+          value={value}
+        />
+      )}
+    </label>
+  );
+}
+
+function getStoreDisplayEditorTitle(mode: StoreDisplayEditorMode) {
+  if (mode === "gallery") {
+    return "编辑图片";
+  }
+
+  if (mode === "basic") {
+    return "编辑资料";
+  }
+
+  if (mode === "menu") {
+    return "编辑菜单";
+  }
+
+  if (mode === "technician") {
+    return "编辑技师资料";
+  }
+
+  return "编辑展示文字";
+}
+
+function getTargetEntityId(target: string, prefixes: string[]) {
+  const prefix = prefixes.find((item) => target.startsWith(item));
+
+  return prefix ? target.slice(prefix.length) : "";
+}
+
+function StoreDisplayFullscreenEditor({
+  config,
+  fallbackMenuCard,
+  images,
+  industry,
+  menuCards,
+  mode,
+  onClose,
+  packageCardUi,
+  store,
+  target,
+  technicians
+}: {
+  config: StorePresentationConfig;
+  fallbackMenuCard?: MenuCard;
+  images: string[];
+  industry: StoreIndustry;
+  menuCards: MenuCard[];
+  mode: StoreDisplayEditorMode;
+  onClose: () => void;
+  packageCardUi: StoreCardDecorationConfig;
+  store: Store;
+  target: string;
+  technicians: Technician[];
+}) {
+  const menuCardId = getTargetEntityId(target, ["home-menu-", "menu-"]);
+  const menuIndex = menuCards.findIndex((menuCard) => menuCard.id === menuCardId);
+  const menuCard = menuIndex >= 0 ? menuCards[menuIndex] : fallbackMenuCard;
+  const technicianId = getTargetEntityId(target, ["technician-"]);
+  const technician = technicians.find((item) => item.id === technicianId) ?? technicians[0];
+  const title = getStoreDisplayEditorTitle(mode);
+  const menuImageAspectRatio = getStoreMenuImageEditorAspectRatio(packageCardUi);
+  const showMenuDeleteAction = mode === "menu" && Boolean(menuCard) && menuIndex >= 0;
+  const [pendingFullscreenImageEdit, setPendingFullscreenImageEdit] = useState<PendingStoreImageEdit | null>(null);
+  const openFullscreenImageEditor = (source: string, apply: (editedImage: string) => void, options?: Partial<Pick<PendingStoreImageEdit, "aspectRatio" | "description" | "frameClassName" | "frameWidth" | "title">>) => {
+    setPendingFullscreenImageEdit({
+      apply,
+      aspectRatio: options?.aspectRatio ?? 1,
+      description: options?.description,
+      frameClassName: options?.frameClassName,
+      frameWidth: options?.frameWidth,
+      source,
+      title: options?.title ?? "图片编辑"
+    });
+  };
+  const applyFullscreenImageEdit = (editedImage: string) => {
+    pendingFullscreenImageEdit?.apply(editedImage);
+    setPendingFullscreenImageEdit(null);
+  };
+  const updateBasicStoreField = (key: StoreBasicEditorFieldKey, value: string) => {
+    updateStoreEntity(store.id, { [key]: value } as Partial<Pick<Store, StoreBasicEditorFieldKey>>);
+  };
+  const updatePresentationField = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
+    updateStoreEntity(store.id, {
+      presentation: normalizeStorePresentationConfig({ ...config, [key]: value }, industry)
+    });
+  };
+  const updateMenuCards = (nextMenuCards: MenuCard[]) => {
+    updateStoreEntity(store.id, {
+      presentation: normalizeStorePresentationConfig(
+        {
+          ...config,
+          menuCards: nextMenuCards
+        },
+        industry
+      )
+    });
+  };
+  const updateMenuCard = <Key extends keyof MenuCard>(key: Key, value: MenuCard[Key]) => {
+    if (!menuCard) {
+      return;
+    }
+
+    const nextMenuCard = { ...menuCard, [key]: value };
+
+    updateMenuCards(menuIndex >= 0 ? menuCards.map((item, index) => (index === menuIndex ? nextMenuCard : item)) : [...menuCards, nextMenuCard]);
+  };
+  const removeMenuCard = () => {
+    if (menuCards.length <= 1 || menuIndex < 0) {
+      return;
+    }
+
+    updateMenuCards(menuCards.filter((_, index) => index !== menuIndex));
+    onClose();
+  };
+  const updateGallery = (nextImages: string[]) => {
+    const gallery = nextImages.filter(Boolean).slice(0, 5);
+    updateStoreEntity(store.id, {
+      cover: gallery[0] ?? store.cover,
+      gallery
+    });
+  };
+  const replaceFullscreenMenuImage = async (files: FileList | null) => {
+    const [nextImage] = await readImageFilesAsDataUrls(files, 1);
+
+    if (!nextImage) {
+      return;
+    }
+
+    openFullscreenImageEditor(nextImage, (editedImage) => updateMenuCard("cover", editedImage), {
+      aspectRatio: menuImageAspectRatio,
+      frameClassName: storeMenuCoverRadiusClassName,
+      frameWidth: storeMenuCoverReferenceWidth,
+      title: "菜单图片编辑"
+    });
+  };
+  const updateTechnicianField = <Key extends keyof Technician>(key: Key, value: Technician[Key]) => {
+    if (!technician) {
+      return;
+    }
+
+    updateTechnicianEntity(technician.id, { [key]: value } as Partial<Technician>);
+  };
+  const updateTechnicianImages = (nextImages: string[]) => {
+    if (!technician) {
+      return;
+    }
+
+    const gallery = nextImages.filter(Boolean).slice(0, 5);
+    updateTechnicianEntity(technician.id, {
+      avatar: gallery[0] ?? technician.avatar,
+      gallery
+    });
+  };
+
+  return (
+    <MobileFullscreenPage className="z-[95]">
+      <MobileFullscreenHeader
+        className="client-store-display-editor-glass-header"
+        info="修改、添加或减少当前展示内容"
+        onClose={onClose}
+        showSpacer={false}
+        title={title}
+      />
+      <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(env(safe-area-inset-bottom,0px)+136px)] pt-[calc(env(safe-area-inset-top,0px)+92px)]">
+        {mode === "gallery" || mode === "basic" || mode === "presentation" ? (
+          <StoreDisplayInlineEditor
+            config={config}
+            images={images}
+            industry={industry}
+            mode={mode}
+            store={store}
+          />
+        ) : null}
+
+        {mode === "menu" ? (
+          menuCard ? (
+            <StoreDisplayEditorPanel title="服务内容">
+              <div className="grid gap-3">
+                <StoreMenuCoverImage alt={menuCard.name} cardUi={packageCardUi} image={menuCard.cover} />
+                <label className="focus-ring inline-flex h-11 cursor-pointer items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_80%,transparent)] px-4 text-sm font-black text-[color:var(--client-text)]">
+                  替换图片
+                  <input
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      const fileInput = event.currentTarget;
+                      void replaceFullscreenMenuImage(fileInput.files).finally(() => {
+                        fileInput.value = "";
+                      });
+                    }}
+                    type="file"
+                  />
+                </label>
+              </div>
+              <StoreDisplayEditorInput label="标题" onChange={(value) => updateMenuCard("name", value)} value={menuCard.name} />
+              <StoreDisplayEditorInput label="说明" multiline onChange={(value) => updateMenuCard("subtitle", value)} value={menuCard.subtitle} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <StoreDisplayEditorInput label="时长" onChange={(value) => updateMenuCard("duration", value)} value={menuCard.duration} />
+                <StoreDisplayEditorInput label="价格" onChange={(value) => updateMenuCard("priceLabel", value)} value={menuCard.priceLabel} />
+                <StoreDisplayEditorInput label="适用对象" onChange={(value) => updateMenuCard("audience", value)} value={menuCard.audience} />
+              </div>
+              <StoreDisplayEditorInput label="服务标签" multiline onChange={(value) => updateMenuCard("tags", textToList(value))} value={listToText(menuCard.tags)} />
+              <StoreDisplayEditorInput label="亮点标签" multiline onChange={(value) => updateMenuCard("highlights", textToList(value))} value={listToText(menuCard.highlights)} />
+            </StoreDisplayEditorPanel>
+          ) : (
+            <EmptyStatePanel caption="当前还没有可编辑的服务内容。" title="暂无服务内容" />
+          )
+        ) : null}
+
+        {mode === "technician" ? (
+          technician ? (
+            <div className="grid gap-3">
+              <ImageGalleryManager
+                className="text-[color:var(--client-text)]"
+                coverHint="第 1 张会同步为技师卡片主图。"
+                description="可以替换、增加或删除当前技师卡片图片。"
+                editorAspectRatio={1}
+                editorTitle="技师图片编辑"
+                images={[technician.avatar, ...(technician.gallery ?? []).filter((image) => image !== technician.avatar)].filter(Boolean).slice(0, 5)}
+                label="技师图片"
+                maxImages={5}
+                onChange={updateTechnicianImages}
+              />
+              <StoreDisplayEditorPanel title="技师文字与标签">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <StoreDisplayEditorInput label="姓名" onChange={(value) => updateTechnicianField("name", value)} value={technician.name} />
+                  <StoreDisplayEditorInput label="显示昵称" onChange={(value) => updateTechnicianField("nickname", value)} value={technician.nickname ?? ""} />
+                </div>
+                <StoreDisplayEditorInput label="简介" multiline onChange={(value) => updateTechnicianField("bio", value)} rows={3} value={technician.bio ?? ""} />
+                <StoreDisplayEditorInput label="技能" multiline onChange={(value) => updateTechnicianField("skills", textToList(value))} value={listToText(technician.skills)} />
+                <StoreDisplayEditorInput label="服务区域" multiline onChange={(value) => updateTechnicianField("serviceAreas", textToList(value))} value={listToText(technician.serviceAreas)} />
+                <StoreDisplayEditorInput label="展示标签" multiline onChange={(value) => updateTechnicianField("profileTags", textToList(value))} value={listToText(technician.profileTags ?? [])} />
+              </StoreDisplayEditorPanel>
+            </div>
+          ) : (
+            <EmptyStatePanel caption="当前没有可编辑的技师卡片。" title="暂无技师资料" />
+          )
+        ) : null}
+      </main>
+      <ClientEdgeMask edge="bottom" style={storeDisplayEditorBottomMaskStyle} />
+      <StickyBottomBar className={storeDisplayEditorBottomShellClassName} panelClassName={storeDisplayEditorBottomPanelClassName} style={storeDisplayEditorBottomBarStyle}>
+        <div className={cn("grid w-full gap-2", showMenuDeleteAction ? "grid-cols-[0.78fr_1.16fr_1.18fr]" : "grid-cols-2")}>
+          <SecondaryButton className="h-12 min-w-0 px-2 text-xs" onClick={onClose}>
+            取消
+          </SecondaryButton>
+          {showMenuDeleteAction ? (
+            <button
+              className="focus-ring inline-flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-full border border-[color:color-mix(in_srgb,var(--client-accent)_42%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-accent)_14%,var(--client-bg)_86%)] px-2 text-xs font-black text-[color:color-mix(in_srgb,var(--client-accent)_82%,white_18%)] shadow-[0_12px_24px_color-mix(in_srgb,var(--client-accent)_12%,transparent)] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={menuCards.length <= 1}
+              onClick={removeMenuCard}
+              type="button"
+            >
+              <AppIcon className="h-4 w-4 shrink-0" name="trash" />
+              <span className="min-w-0 whitespace-nowrap">删除当前服务</span>
+            </button>
+          ) : null}
+          <PrimaryButton className="h-12 min-w-0 gap-1.5 px-2 text-xs" onClick={onClose}>
+            <AppIcon className="h-4 w-4 shrink-0" name="check" />
+            <span className="min-w-0 whitespace-nowrap">保存并关闭</span>
+          </PrimaryButton>
+        </div>
+      </StickyBottomBar>
+      {pendingFullscreenImageEdit ? (
+        <ImageAdjustmentEditor
+          aspectRatio={pendingFullscreenImageEdit.aspectRatio}
+          description={pendingFullscreenImageEdit.description}
+          frameClassName={pendingFullscreenImageEdit.frameClassName}
+          frameWidth={pendingFullscreenImageEdit.frameWidth}
+          onApply={applyFullscreenImageEdit}
+          onCancel={() => setPendingFullscreenImageEdit(null)}
+          source={pendingFullscreenImageEdit.source}
+          title={pendingFullscreenImageEdit.title}
+        />
+      ) : null}
+    </MobileFullscreenPage>
+  );
+}
+
 function CompactMenuCard({
   item,
   cardUi,
+  activeIcon = "check",
   editing = false,
+  inactiveIcon = "plus",
   selected = false,
   selectLabel,
   showHighlights = false,
+  showSelectAction = true,
   editor,
   onChange,
   onSelect,
@@ -1521,16 +1969,18 @@ function CompactMenuCard({
 }: {
   item: MenuCard;
   cardUi?: StoreCardDecorationConfig;
+  activeIcon?: IconName;
   editing?: boolean;
+  inactiveIcon?: IconName;
   selected?: boolean;
   selectLabel: string;
   showHighlights?: boolean;
+  showSelectAction?: boolean;
   editor?: ReactNode;
   onChange?: (item: MenuCard) => void;
   onSelect: () => void;
   onReplaceImage?: (files: FileList | null) => void;
 }) {
-  const coverHeight = cardUi?.coverHeight ? Number.parseInt(cardUi.coverHeight, 10) : 88;
   const solidTags = cardUi?.tagStyle === "实心";
   const updateField = <Key extends keyof MenuCard>(key: Key, value: MenuCard[Key]) => {
     onChange?.({ ...item, [key]: value });
@@ -1538,11 +1988,9 @@ function CompactMenuCard({
 
   return (
     <FlatCard className="p-2.5" editor={editor}>
-      <div className="grid gap-2.5 sm:grid-cols-[88px,minmax(0,1fr),104px] sm:items-start">
+      <div className={cn("grid gap-2.5 sm:items-start", showSelectAction ? "sm:grid-cols-[88px,minmax(0,1fr),104px]" : "sm:grid-cols-[88px,minmax(0,1fr)]")}>
         <div className="relative">
-          <span className="relative block w-full overflow-hidden rounded-[18px] bg-black sm:w-[88px]" style={{ height: `${coverHeight}px` }}>
-            <img alt={item.name} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(item.cover)} />
-          </span>
+          <StoreMenuCoverImage alt={item.name} cardUi={cardUi} image={item.cover} />
           {editing ? (
             <label className="absolute inset-x-2 bottom-2 cursor-pointer rounded-full bg-black/58 px-3 py-1.5 text-center text-[11px] font-black text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)] backdrop-blur">
               替换图片
@@ -1596,7 +2044,9 @@ function CompactMenuCard({
               onChange={(value) => updateField("priceLabel", value)}
               value={item.priceLabel}
             />
-            <StoreSelectionIconButton active={selected} className="ml-auto sm:hidden" label={selectLabel} onSelect={onSelect} />
+            {showSelectAction ? (
+              <StoreSelectionIconButton active={selected} activeIcon={activeIcon} className="ml-auto sm:hidden" inactiveIcon={inactiveIcon} label={selectLabel} onSelect={onSelect} />
+            ) : null}
           </div>
           {showHighlights ? (
             <div className="mt-2">
@@ -1604,9 +2054,11 @@ function CompactMenuCard({
             </div>
           ) : null}
         </div>
-        <div className="hidden justify-end sm:flex">
-          <StoreSelectionIconButton active={selected} label={selectLabel} onSelect={onSelect} />
-        </div>
+        {showSelectAction ? (
+          <div className="hidden justify-end sm:flex">
+            <StoreSelectionIconButton active={selected} activeIcon={activeIcon} inactiveIcon={inactiveIcon} label={selectLabel} onSelect={onSelect} />
+          </div>
+        ) : null}
       </div>
     </FlatCard>
   );
@@ -1669,7 +2121,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
     typeof window !== "undefined" && (window.location.pathname.includes("merchant") || window.location.hash.startsWith("#/merchant"));
   const isMerchantOwnedStore = Boolean(session && session.linkedStoreId === store.id && session.allowedPortals.includes("merchant"));
   const isMerchantEditable = Boolean(
-    onEditFocus || (isMerchantOwnedStore && (scope === "merchant" || session?.portal === "merchant" || isMerchantShell))
+    onEditFocus || scope === "merchant" || (isMerchantOwnedStore && (session?.portal === "merchant" || isMerchantShell))
   );
   const heroBlock = useMemo(() => getStoreDecorationBlockConfig(store, "hero"), [store.id, store.uiDecoration]);
   const bookingBlock = useMemo(() => getStoreDecorationBlockConfig(store, "booking"), [store.id, store.uiDecoration]);
@@ -1683,8 +2135,11 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const packageCardUi = useMemo(() => getStoreCardDecorationConfig(store, "package"), [store.id, store.uiDecoration]);
 
   const storeTechnicians = useMemo(
-    () => displayedTechnicians.filter((item) => item.storeId === store.id || item.relatedStoreIds?.includes(store.id)).slice(0, 8),
-    [displayedTechnicians, store.id]
+    () =>
+      displayedTechnicians
+        .filter((item) => (item.storeId === store.id || item.relatedStoreIds?.includes(store.id)) && (isMerchantEditable || isTechnicianDisplayVisible(item)))
+        .slice(0, 8),
+    [displayedTechnicians, isMerchantEditable, store.id]
   );
   const config = useMemo(() => buildStoreProfileConfig(store, industry), [industry, store, store.presentation]);
   const seatCards = useMemo(() => buildSeatCards(store, industry), [industry, store]);
@@ -1720,11 +2175,9 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
         id: `${store.id}-hero-${index}`,
         image,
         title: store.name,
-        caption: config.subtitle,
-        badge: store.rankLabel,
-        cta: "查看大图"
+        caption: config.subtitle
       })),
-    [config.subtitle, images, store.id, store.name, store.rankLabel]
+    [config.subtitle, images, store.id, store.name]
   );
   const environmentGalleryItems = useMemo(
     () =>
@@ -1776,6 +2229,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const [offerReplyBoosts, setOfferReplyBoosts] = useState<Record<string, number>>({});
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [activeEditor, setActiveEditor] = useState<ActiveStoreDisplayEditor | null>(null);
+  const [pendingStoreImageEdit, setPendingStoreImageEdit] = useState<PendingStoreImageEdit | null>(null);
 
   useEffect(() => {
     setActiveTab("home");
@@ -1848,11 +2302,12 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       displayedTechnicians.find(
         (technician) =>
           technician.id === selectedTechnicianId &&
-          (technician.storeId === store.id || technician.relatedStoreIds?.includes(store.id))
+          (technician.storeId === store.id || technician.relatedStoreIds?.includes(store.id)) &&
+          (isMerchantEditable || isTechnicianDisplayVisible(technician))
       ) ??
       routedBookingTechnician ??
       null,
-    [displayedTechnicians, routedBookingTechnician, selectedTechnicianId, store.id]
+    [displayedTechnicians, isMerchantEditable, routedBookingTechnician, selectedTechnicianId, store.id]
   );
   const displayedTimeOptions = useMemo(
     () => (timeOptions.includes(selectedTime) ? timeOptions : [selectedTime, ...timeOptions]),
@@ -1888,16 +2343,19 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       )
     });
   };
-  const updateMenuCard = (menuIndex: number, nextMenuCard: MenuCard) => {
+  const updateMenuCards = (nextMenuCards: MenuCard[]) => {
     updateStoreEntity(store.id, {
       presentation: normalizeStorePresentationConfig(
         {
           ...config,
-          menuCards: menuCards.map((menuCard, index) => (index === menuIndex ? nextMenuCard : menuCard))
+          menuCards: nextMenuCards
         },
         industry
       )
     });
+  };
+  const updateMenuCard = (menuIndex: number, nextMenuCard: MenuCard) => {
+    updateMenuCards(menuCards.map((menuCard, index) => (index === menuIndex ? nextMenuCard : menuCard)));
   };
   const updateGallery = (nextImages: string[]) => {
     const gallery = nextImages.filter(Boolean).slice(0, 5);
@@ -1906,6 +2364,29 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       gallery
     });
   };
+  const openStoreImageEditor = (source: string, apply: (editedImage: string) => void, options?: Partial<Pick<PendingStoreImageEdit, "aspectRatio" | "description" | "frameClassName" | "frameWidth" | "title">>) => {
+    setPendingStoreImageEdit({
+      apply,
+      aspectRatio: options?.aspectRatio ?? 1,
+      description: options?.description,
+      frameClassName: options?.frameClassName,
+      frameWidth: options?.frameWidth,
+      source,
+      title: options?.title ?? "图片编辑"
+    });
+  };
+  const applyStoreImageEdit = (editedImage: string) => {
+    pendingStoreImageEdit?.apply(editedImage);
+    setPendingStoreImageEdit(null);
+  };
+  const toggleTechnicianDisplayVisibility = (technician: Technician) => {
+    const currentVisible = isTechnicianDisplayVisible(technician);
+
+    updateTechnicianEntity(technician.id, { visible: !isTechnicianDisplayVisible(technician) });
+    if (currentVisible && selectedTechnicianId === technician.id) {
+      setSelectedTechnicianId("");
+    }
+  };
   const replaceGalleryImage = async (imageIndex: number, files: FileList | null) => {
     const [nextImage] = await readImageFilesAsDataUrls(files, 1);
 
@@ -1913,7 +2394,12 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       return;
     }
 
-    updateGallery(images.map((image, index) => (index === imageIndex ? nextImage : image)));
+    openStoreImageEditor(nextImage, (editedImage) => updateGallery(images.map((image, index) => (index === imageIndex ? editedImage : image))), {
+      aspectRatio: storeHeroGalleryAspectRatio,
+      frameClassName: storeHeroGalleryRadiusClassName,
+      frameWidth: storeHeroGalleryEditorFrameWidth,
+      title: "展示图片编辑"
+    });
   };
   const replaceMenuCardImage = async (menuIndex: number, files: FileList | null) => {
     const [nextImage] = await readImageFilesAsDataUrls(files, 1);
@@ -1922,11 +2408,30 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       return;
     }
 
-    updateMenuCard(menuIndex, { ...menuCards[menuIndex], cover: nextImage });
+    openStoreImageEditor(nextImage, (editedImage) => updateMenuCard(menuIndex, { ...menuCards[menuIndex], cover: editedImage }), {
+      aspectRatio: getStoreMenuImageEditorAspectRatio(packageCardUi),
+      frameClassName: storeMenuCoverRadiusClassName,
+      frameWidth: storeMenuCoverReferenceWidth,
+      title: "菜单图片编辑"
+    });
+  };
+  const addMerchantMenuCard = () => {
+    const nextMenuCard = buildNextStoreMenuCard({
+      images,
+      menuCards,
+      store
+    });
+    const nextMenuCardEditorTarget = activeTab === "menu" ? `menu-${nextMenuCard.id}` : `home-menu-${nextMenuCard.id}`;
+
+    setServiceMenuCollapsed(false);
+    updateMenuCards([...menuCards, nextMenuCard]);
+    if (!onEditFocus) {
+      setActiveEditor({ menuCard: nextMenuCard, mode: "menu", target: nextMenuCardEditorTarget });
+    }
   };
   const handleMerchantEditFocus = (focus: StoreDisplayEditorMode, target: string = focus) => {
     if (onEditFocus) {
-      onEditFocus(focus);
+      onEditFocus(focus === "gallery" || focus === "basic" || focus === "presentation" ? focus : "presentation");
       return;
     }
 
@@ -1937,7 +2442,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
     focus: StoreDisplayEditorMode,
     label = "编辑",
     className?: string,
-    size: "default" | "compact" = "default",
+    _size: "default" | "compact" = "default",
     target: string = focus
   ) =>
     isMerchantEditable ? (
@@ -1946,7 +2451,6 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
         className={className}
         label={isMerchantEditorActive(target) ? "完成修改" : label}
         onClick={() => handleMerchantEditFocus(focus, target)}
-        size={size}
       />
     ) : null;
   const renderActiveInlineEditor = (_target: string) => null;
@@ -2043,53 +2547,44 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                     autoRotateMs={null}
                     cardHeightClassName="h-[204px]"
                     onActiveIndexChange={setActiveImageIndex}
-                    onSlideClick={isMerchantEditable ? undefined : (_, index) => setLightboxIndex(index)}
-                    renderSlide={
-                      heroGalleryEditing
-                        ? ({ slide, index }) => (
-                            <>
-                              <img alt={slide.title} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(slide.image)} />
-                              <div className="absolute inset-0 bg-gradient-to-r from-[rgba(0,0,0,0.66)] via-[rgba(0,0,0,0.34)] to-[rgba(0,0,0,0.12)]" />
-                              <div className="relative flex h-full flex-col justify-between p-4 pb-8 text-white">
-                                <div className="grid max-w-[78%] gap-2">
-                                  <InlineEditableText
-                                    className="w-[172px] rounded-full bg-[rgba(255,255,255,0.16)] px-3 py-1 text-[11px] font-black text-white backdrop-blur"
-                                    editing
-                                    onChange={(value) => updateBasicStoreField("rankLabel", value)}
-                                    value={store.rankLabel}
-                                  />
-                                  <InlineEditableText
-                                    className="text-[28px] font-black leading-[1.04] tracking-[-0.04em] text-white"
-                                    editing
-                                    onChange={(value) => updateBasicStoreField("name", value)}
-                                    value={store.name}
-                                  />
-                                  <InlineEditableText
-                                    className="text-[12px] leading-5 text-white/86"
-                                    editing
-                                    multiline
-                                    onChange={(value) => updatePresentationField("subtitle", value)}
-                                    rows={2}
-                                    value={config.subtitle}
-                                  />
-                                </div>
-                                <label className="focus-ring inline-flex w-fit cursor-pointer items-center rounded-full bg-white/16 px-3 py-2 text-[12px] font-black text-white backdrop-blur">
-                                  替换图片
-                                  <input
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={(event) => {
-                                      void replaceGalleryImage(index, event.target.files);
-                                      event.target.value = "";
-                                    }}
-                                    type="file"
-                                  />
-                                </label>
-                              </div>
-                            </>
-                          )
-                        : undefined
-                    }
+                    renderSlide={({ slide, index }) => (
+                      <>
+                        <img alt={slide.title} className="absolute inset-0 h-full w-full scale-[1.035] object-cover" src={getGeneratedImageThumbnailUrl(slide.image)} />
+                        {slide.caption ? (
+                          <>
+                            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/72 via-black/34 to-transparent" />
+                            <p className="absolute inset-x-4 bottom-8 max-w-[76%] text-[13px] font-bold leading-5 text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.55)]">
+                              {slide.caption}
+                            </p>
+                          </>
+                        ) : null}
+                        {heroGalleryEditing ? (
+                          <div className="relative flex h-full items-end justify-end p-4 pb-8 text-white">
+                            <label className="focus-ring inline-flex w-fit cursor-pointer items-center rounded-full bg-black/58 px-3 py-2 text-[12px] font-black text-white backdrop-blur">
+                              替换图片
+                              <input
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(event) => {
+                                  void replaceGalleryImage(index, event.target.files);
+                                  event.target.value = "";
+                                }}
+                                type="file"
+                              />
+                            </label>
+                          </div>
+                        ) : !isMerchantEditable ? (
+                          <button
+                            aria-label={`打开${store.name}大图 ${index + 1}`}
+                            className="absolute inset-0"
+                            onClick={() => setLightboxIndex(index)}
+                            type="button"
+                          >
+                            <span className="sr-only">打开大图</span>
+                          </button>
+                        ) : null}
+                      </>
+                    )}
                     slides={heroSlides}
                   />
                   {renderMerchantEditor("gallery", "编辑图片", "absolute right-3 top-3 z-30", "default", "hero-gallery")}
@@ -2200,17 +2695,19 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
 
           {bookingBlock.visible ? (
             <section style={blockOrderStyle("booking")}>
-              <SectionTitle caption="选择来店日期、人数与时间" title={bookingBlock.name} />
+              <SectionTitle caption="选择来店日期、人数与时间" title="选择预约时间">
+                {isMerchantEditable ? (
+                  <StoreInlineEditLink
+                    className="border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] text-[color:var(--client-text)]"
+                    label="编辑排班"
+                    to={merchantScheduleEditorHref}
+                  />
+                ) : null}
+              </SectionTitle>
               <div className="mt-3">
                 <FlatCard
                   className="space-y-3 bg-[color:color-mix(in_srgb,var(--client-surface)_58%,transparent)]"
                 >
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[color:var(--client-primary)]">最近可约</p>
-                    <p className="mt-1 text-sm font-black text-[color:var(--client-text)]">
-                      {store.alwaysBookable ? "随时可约" : store.nextSlot} · {bookingModeCopy(store.openStatus)}
-                    </p>
-                  </div>
                   <AvailabilityCalendar
                     onPeopleChange={setSelectedPeople}
                     onSelectDate={(date) => setSelectedVisitDate(date)}
@@ -2245,30 +2742,40 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                 />
               </SectionTitle>
               {!serviceMenuCollapsed ? (
-                <div className="mt-3 grid gap-2.5">
-                  {menuCards.slice(0, 3).map((item, index) => {
+              <div className="mt-3 grid gap-2.5">
+                  {(isMerchantEditable ? menuCards : menuCards.slice(0, 3)).map((item, index) => {
                     const editorTarget = `home-menu-${item.id}`;
                     const active = selectedCheckoutTarget === item.sourceServiceId;
+                    const menuEditorActive = isMerchantEditorActive(editorTarget);
+                    const serviceSelectLabel = active ? "已选服务套餐" : "选择服务套餐";
 
                     return (
                       <div className="grid gap-2" key={item.id}>
                         <CompactMenuCard
+                          activeIcon="check"
                           cardUi={packageCardUi}
-                          editing={isMerchantEditorActive(editorTarget)}
-                          editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}
+                          editing={menuEditorActive}
+                          editor={renderMerchantEditor("menu", "编辑菜单", undefined, "default", editorTarget)}
+                          inactiveIcon="plus"
                           item={item}
                           onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
                           onReplaceImage={(files) => {
                             void replaceMenuCardImage(index, files);
                           }}
-                          onSelect={() => setSelectedMenuCardId(item.sourceServiceId)}
+                          onSelect={() => {
+                            setSelectedMenuCardId(item.sourceServiceId);
+                          }}
                           selected={active}
-                          selectLabel={active ? "已选服务套餐" : "选择服务套餐"}
+                          selectLabel={serviceSelectLabel}
+                          showSelectAction={!isMerchantEditable}
                         />
                         {renderActiveInlineEditor(editorTarget)}
                       </div>
                     );
                   })}
+                  {isMerchantEditable ? (
+                    <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
+                  ) : null}
                 </div>
               ) : null}
             </section>
@@ -2288,16 +2795,26 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                   <div className="mt-3 grid grid-cols-2 gap-2.5">
                     {storeTechnicians.map((technician, index) => {
                       const active = selectedBookingTechnician?.id === technician.id;
+                      const technicianVisible = isTechnicianDisplayVisible(technician);
 
                       return (
                         <StoreTechnicianSelectableCard
                           active={active}
                           fallbackServices={services}
+                          isMerchantEditable={isMerchantEditable}
                           key={technician.id}
                           language={language}
-                          onSelect={() => setSelectedTechnicianId(active ? "" : technician.id)}
+                          onSelect={() => {
+                            if (isMerchantEditable) {
+                              toggleTechnicianDisplayVisibility(technician);
+                              return;
+                            }
+
+                            setSelectedTechnicianId(active ? "" : technician.id);
+                          }}
                           rankIndex={index}
                           technician={technician}
+                          technicianVisible={technicianVisible}
                         />
                       );
                     })}
@@ -2365,27 +2882,37 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                 {menuCards.map((item, index) => {
                   const editorTarget = `menu-${item.id}`;
                   const active = selectedCheckoutTarget === item.sourceServiceId;
+                  const menuEditorActive = isMerchantEditorActive(editorTarget);
+                  const serviceSelectLabel = active ? "已选服务套餐" : "选择服务套餐";
 
                   return (
                     <div className="grid gap-2" key={item.id}>
                       <CompactMenuCard
+                        activeIcon="check"
                         cardUi={packageCardUi}
-                        editing={isMerchantEditorActive(editorTarget)}
-                        editor={renderMerchantEditor("presentation", "编辑菜单", undefined, "default", editorTarget)}
+                        editing={menuEditorActive}
+                        editor={renderMerchantEditor("menu", "编辑菜单", undefined, "default", editorTarget)}
+                        inactiveIcon="plus"
                         item={item}
                         onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
                         onReplaceImage={(files) => {
                           void replaceMenuCardImage(index, files);
                         }}
-                        onSelect={() => setSelectedMenuCardId(item.sourceServiceId)}
+                        onSelect={() => {
+                          setSelectedMenuCardId(item.sourceServiceId);
+                        }}
                         selected={active}
-                        selectLabel={active ? "已选服务套餐" : "选择服务套餐"}
+                        selectLabel={serviceSelectLabel}
                         showHighlights
+                        showSelectAction={!isMerchantEditable}
                       />
                       {renderActiveInlineEditor(editorTarget)}
                     </div>
                   );
                 })}
+                {isMerchantEditable ? (
+                  <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
+                ) : null}
               </div>
             ) : null}
           </section>
@@ -2403,16 +2930,26 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
                   <div className="mt-3 grid grid-cols-2 gap-2.5">
                     {storeTechnicians.map((technician, index) => {
                       const active = selectedBookingTechnician?.id === technician.id;
+                      const technicianVisible = isTechnicianDisplayVisible(technician);
 
                       return (
                         <StoreTechnicianSelectableCard
                           active={active}
                           fallbackServices={services}
+                          isMerchantEditable={isMerchantEditable}
                           key={technician.id}
                           language={language}
-                          onSelect={() => setSelectedTechnicianId(active ? "" : technician.id)}
+                          onSelect={() => {
+                            if (isMerchantEditable) {
+                              toggleTechnicianDisplayVisibility(technician);
+                              return;
+                            }
+
+                            setSelectedTechnicianId(active ? "" : technician.id);
+                          }}
                           rankIndex={index}
                           technician={technician}
+                          technicianVisible={technicianVisible}
                         />
                       );
                     })}
@@ -2742,6 +3279,33 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
           </div>
         </div>
       ) : null;
+  const fullscreenEditor = activeEditor ? (
+    <StoreDisplayFullscreenEditor
+      config={config}
+      fallbackMenuCard={activeEditor.menuCard}
+      images={images}
+      industry={industry}
+      menuCards={menuCards}
+      mode={activeEditor.mode}
+      onClose={() => setActiveEditor(null)}
+      packageCardUi={packageCardUi}
+      store={store}
+      target={activeEditor.target}
+      technicians={storeTechnicians}
+    />
+  ) : null;
+  const storeImageEditor = pendingStoreImageEdit ? (
+    <ImageAdjustmentEditor
+      aspectRatio={pendingStoreImageEdit.aspectRatio}
+      description={pendingStoreImageEdit.description}
+      frameClassName={pendingStoreImageEdit.frameClassName}
+      frameWidth={pendingStoreImageEdit.frameWidth}
+      onApply={applyStoreImageEdit}
+      onCancel={() => setPendingStoreImageEdit(null)}
+      source={pendingStoreImageEdit.source}
+      title={pendingStoreImageEdit.title}
+    />
+  ) : null;
 
   if (embedded) {
     return (
@@ -2750,8 +3314,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
           {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0", "default", "header-basic")}
           <div className="flex flex-wrap items-start justify-between gap-3 pr-12">
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">服务展示</p>
-              <h2 className="mt-1 text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
+              <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
               <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
             </div>
           </div>
@@ -2760,6 +3323,8 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
         </section>
         {content}
         {lightbox}
+        {fullscreenEditor}
+        {storeImageEditor}
       </div>
     );
   }
@@ -2840,6 +3405,8 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       </div>
 
       {lightbox}
+      {fullscreenEditor}
+      {storeImageEditor}
     </PageScaffold>
   );
 }

@@ -77,4 +77,23 @@ describe("storePresentation", () => {
     expect(presentation.station).toBe("测试站");
     expect(presentation.paymentMethods).toEqual(["平台预付"]);
   });
+
+  it("keeps all merchant-added menu cards instead of silently dropping later services", () => {
+    const menuCards = Array.from({ length: 9 }, (_, index) => ({
+      id: `menu-${index + 1}`,
+      sourceServiceId: `svc-${index + 1}`,
+      name: `服务 ${index + 1}`,
+      subtitle: `说明 ${index + 1}`,
+      duration: "60 分钟",
+      priceLabel: `¥${8000 + index}`,
+      audience: "当前门店",
+      tags: ["可约"],
+      cover: "image.jpg",
+      highlights: ["亮点"]
+    }));
+    const presentation = normalizeStorePresentationConfig({ menuCards }, "massage");
+
+    expect(presentation.menuCards).toHaveLength(9);
+    expect(presentation.menuCards?.at(-1)?.id).toBe("menu-9");
+  });
 });

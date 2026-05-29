@@ -281,6 +281,7 @@ export interface Technician extends Staff {
   paymentMethods?: ServicePaymentMethod[];
   gallery?: string[];
   infoCardVisibility?: InfoCardVisibilitySettings;
+  visible?: boolean;
 }
 
 export interface ServiceCategory {
