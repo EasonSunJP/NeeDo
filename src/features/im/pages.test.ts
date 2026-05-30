@@ -64,4 +64,15 @@ describe("IM pages", () => {
     expect(componentSource).toContain("pt-[calc(env(safe-area-inset-top)+70px)]");
     expect(componentSource).toContain("im-conversation-wallpaper pointer-events-none absolute inset-0");
   });
+
+  it("only shows the hide member profiles switch after privacy mode is enabled", () => {
+    const componentStart = pagesSource.indexOf("export function ImNewConversationPage");
+    const componentEnd = pagesSource.length;
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const privacyConditionIndex = componentSource.indexOf("{privacyModeEnabled ? (");
+    const hideProfilesSwitchIndex = componentSource.indexOf("是否隐藏成员名称和资料");
+
+    expect(privacyConditionIndex).toBeGreaterThan(-1);
+    expect(hideProfilesSwitchIndex).toBeGreaterThan(privacyConditionIndex);
+  });
 });

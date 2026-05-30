@@ -7046,6 +7046,14 @@ export function ImNewConversationPage() {
     }));
   };
 
+  const togglePrivacyMode = (enabled: boolean) => {
+    setPrivacyModeEnabled(enabled);
+
+    if (!enabled) {
+      setHideMemberProfilesEnabled(false);
+    }
+  };
+
   const addFriendAndOpen = async (userId: string) => {
     await store.addContact(userId, "聊天页添加好友", "通过聊天页手动添加为好友");
     const conversation = await store.ensureDirectConversation(userId);
@@ -7125,16 +7133,12 @@ export function ImNewConversationPage() {
     const conversation = await store.createGroupConversation(
       selectedIds,
       groupTitle.trim() || undefined,
-      privacyModeEnabled || hideMemberProfilesEnabled
+      privacyModeEnabled
         ? {
             privacyModeEnabled,
             hideMemberProfiles: hideMemberProfilesEnabled,
-            ...(privacyModeEnabled
-              ? {
-                  disappearingCountdown: privacyCountdown,
-                  disappearingStartMode: privacyStartMode
-                }
-              : {})
+            disappearingCountdown: privacyCountdown,
+            disappearingStartMode: privacyStartMode
           }
         : undefined
     );
@@ -7457,24 +7461,23 @@ export function ImNewConversationPage() {
                     variant="client"
                   />
                 </div>
-                <ToggleSwitch ariaLabel="是否开启隐私模式" checked={privacyModeEnabled} onChange={setPrivacyModeEnabled} size="md" />
-              </div>
-
-              <div className="mt-3 flex min-w-0 items-center justify-between gap-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-bg)_46%,transparent)] px-3 py-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <p className="min-w-0 truncate text-[14px] font-black text-[color:var(--client-text)]">隐藏名称和资料</p>
-                  <InfoTooltipTrigger
-                    content={hideMemberProfilesInfo}
-                    label="查看隐藏名称和资料说明"
-                    panelMode="tooltip"
-                    variant="client"
-                  />
-                </div>
-                <ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="sm" />
+                <ToggleSwitch ariaLabel="是否开启隐私模式" checked={privacyModeEnabled} onChange={togglePrivacyMode} size="md" />
               </div>
 
               {privacyModeEnabled ? (
                 <>
+                  <div className="mt-3 flex min-w-0 items-center justify-between gap-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-bg)_46%,transparent)] px-3 py-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="min-w-0 truncate text-[14px] font-black text-[color:var(--client-text)]">隐藏名称和资料</p>
+                      <InfoTooltipTrigger
+                        content={hideMemberProfilesInfo}
+                        label="查看隐藏名称和资料说明"
+                        panelMode="tooltip"
+                        variant="client"
+                      />
+                    </div>
+                    <ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="sm" />
+                  </div>
                   <div className="mt-3 grid grid-cols-4 gap-2">
                     {groupPrivacyCountdownLabels.map(({ field, label }) => (
                       <label className="min-w-0" key={field}>
