@@ -31,7 +31,7 @@ import {
   SocialSidebarSection
 } from "../components/SocialUi";
 import { profileKey } from "../utils";
-import type { SocialPortalScope, SocialProfile, SocialProfileTab, SocialTimelineFilterTab } from "../types";
+import type { SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialTimelineFilterTab } from "../types";
 
 type TimelinePanelStatus = "idle" | "loading" | "ready" | "error";
 
@@ -43,13 +43,21 @@ type TimelinePanelState = {
   visibleCountByTab: Record<SocialProfileTab, number>;
 };
 
-function SocialTimelineHeaderSearch({ to }: { to: string }) {
+type SocialTimelineHeaderSearchProps = {
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+};
+
+function SocialTimelineHeaderSearch({ value, onChange, onSubmit }: SocialTimelineHeaderSearchProps) {
   return (
     <FloatingHeaderSearchBar
       actionAriaLabel="开始搜索动态"
       fieldAriaLabel="搜索动态内容"
+      onChange={onChange}
+      onSubmit={onSubmit}
       placeholder="搜索 @用户、#话题、动态内容"
-      to={to}
+      value={value}
     />
   );
 }
@@ -75,6 +83,43 @@ function createVisibleCountByTab(): Record<SocialProfileTab, number> {
     media: 10,
     likes: 10
   };
+}
+
+function normalizeTimelineSearchQuery(value: string) {
+  return value.trim().replace(/^[#＃@]+/, "").toLowerCase();
+}
+
+function getTimelinePostAuthor(post: SocialPost, profiles: Record<string, SocialProfile>) {
+  return profiles[`${post.authorType}:${post.authorId}`];
+}
+
+export function filterSocialTimelinePostsByQuery(posts: SocialPost[], profiles: Record<string, SocialProfile>, query: string) {
+  const normalized = normalizeTimelineSearchQuery(query);
+
+  if (!normalized) {
+    return posts;
+  }
+
+  return posts.filter((post) => {
+    const author = getTimelinePostAuthor(post, profiles);
+    const searchableText = [
+      post.text,
+      post.locationLabel,
+      ...post.hashtags,
+      ...post.hashtags.map((tag) => `#${tag}`),
+      ...post.mentions,
+      ...post.mentions.map((mention) => mention.replace(/^@+/, "")),
+      author?.displayName,
+      author?.handle,
+      author?.bio,
+      author?.location
+    ]
+      .filter(Boolean)
+      .join("\n")
+      .toLowerCase();
+
+    return searchableText.includes(normalized);
+  });
 }
 
 function createInitialTimelinePanels(nearbyPanel?: Pick<TimelinePanelState, "note" | "locationContext">): Record<SocialTimelineFilterTab, TimelinePanelState> {
@@ -249,10 +294,14 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   );
   const [timelineFilter, setTimelineFilter] = useState<SocialTimelineFilterTab>(() => readStoredTimelineFilter(scope));
   const [panelStates, setPanelStates] = useState<Record<SocialTimelineFilterTab, TimelinePanelState>>(() => createInitialTimelinePanels(homeNearbyPanel));
+  const [timelineSearchInput, setTimelineSearchInput] = useState("");
+  const [timelineSearchQuery, setTimelineSearchQuery] = useState("");
   const [pullDistance, setPullDistance] = useState(0);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const touchStartRef = useRef<number | null>(null);
   const currentPanel = panelStates[timelineFilter];
+  const normalizedTimelineSearchQuery = normalizeTimelineSearchQuery(timelineSearchQuery);
+  const isTimelineSearchActive = normalizedTimelineSearchQuery.length > 0;
   const filteredTimelinePosts = useMemo(() => {
     if (timelineFilter === "nearby" && currentPanel.status !== "ready") {
       return [];
@@ -261,8 +310,15 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
     return getTimelineFeed(timelineFilter, actorKey, timelineFilter === "nearby" ? currentPanel.locationContext : undefined);
   }, [actorKey, currentPanel.locationContext, currentPanel.status, getTimelineFeed, timelineFilter]);
   const rawTimelinePosts = useMemo(() => filteredTimelinePosts.filter((post) => !post.replyToPostId), [filteredTimelinePosts]);
-  const pinnedPost = timelineFilter === "mine" && actor?.pinnedPostId ? getPostById(actor.pinnedPostId, actorKey) : undefined;
-  const renderedPosts = useMemo(() => (pinnedPost ? rawTimelinePosts.filter((post) => post.id !== pinnedPost.id) : rawTimelinePosts), [pinnedPost, rawTimelinePosts]);
+  const searchedTimelinePosts = useMemo(
+    () => filterSocialTimelinePostsByQuery(rawTimelinePosts, profiles, timelineSearchQuery),
+    [profiles, rawTimelinePosts, timelineSearchQuery]
+  );
+  const pinnedPost = !isTimelineSearchActive && timelineFilter === "mine" && actor?.pinnedPostId ? getPostById(actor.pinnedPostId, actorKey) : undefined;
+  const renderedPosts = useMemo(
+    () => (pinnedPost ? searchedTimelinePosts.filter((post) => post.id !== pinnedPost.id) : searchedTimelinePosts),
+    [pinnedPost, searchedTimelinePosts]
+  );
   const visibleCount = currentPanel.visibleCountByTab.posts;
   const visiblePosts = renderedPosts.slice(0, visibleCount);
   const trendingTags = getTrendingTags().slice(0, 6);
@@ -294,6 +350,8 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
   useEffect(() => {
     setTimelineFilter(readStoredTimelineFilter(scope));
     setPanelStates(createInitialTimelinePanels(homeNearbyPanel));
+    setTimelineSearchInput("");
+    setTimelineSearchQuery("");
   }, [scope]);
 
   useEffect(() => {
@@ -406,11 +464,49 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
     }));
   };
 
+  const resetVisiblePostsForCurrentFilter = () => {
+    setPanelStates((current) => ({
+      ...current,
+      [timelineFilter]: {
+        ...current[timelineFilter],
+        visibleCountByTab: {
+          ...current[timelineFilter].visibleCountByTab,
+          posts: 10
+        }
+      }
+    }));
+  };
+
   const handleTimelineFilterChange = (nextFilter: SocialTimelineFilterTab) => {
     setTimelineFilter(nextFilter);
   };
 
-  const emptyStateCopy = getEmptyStateCopy(timelineFilter, "posts", currentPanel);
+  const handleTimelineSearchChange = (value: string) => {
+    setTimelineSearchInput(value);
+
+    if (!value.trim() && isTimelineSearchActive) {
+      setTimelineSearchQuery("");
+      resetVisiblePostsForCurrentFilter();
+    }
+  };
+
+  const handleTimelineSearchSubmit = () => {
+    setTimelineSearchQuery(timelineSearchInput.trim());
+    resetVisiblePostsForCurrentFilter();
+  };
+
+  const handleTimelineSearchClear = () => {
+    setTimelineSearchInput("");
+    setTimelineSearchQuery("");
+    resetVisiblePostsForCurrentFilter();
+  };
+
+  const emptyStateCopy = isTimelineSearchActive
+    ? {
+        title: "暂无搜索结果",
+        description: `没有找到与“${timelineSearchQuery.trim()}”相关的动态。`
+      }
+    : getEmptyStateCopy(timelineFilter, "posts", currentPanel);
   const isTimelineLoading = timelineFilter === "nearby" && (currentPanel.status === "idle" || currentPanel.status === "loading");
   const hasTimelineError = timelineFilter === "nearby" && currentPanel.status === "error";
 
@@ -440,7 +536,11 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
                 settingsTo={portalConfig.settingsPath}
               />
               <div className="mt-3">
-                <SocialTimelineHeaderSearch to={socialPaths.search(scope)} />
+                <SocialTimelineHeaderSearch
+                  onChange={handleTimelineSearchChange}
+                  onSubmit={handleTimelineSearchSubmit}
+                  value={timelineSearchInput}
+                />
               </div>
             </div>
           </div>
@@ -532,7 +632,13 @@ export function SocialTimelinePage({ embedded = false }: { embedded?: boolean } 
               ) : (
                 <div className="p-4">
                   <SocialEmptyState
-                    action={<PrimaryButton to={socialPaths.compose(scope)}>发表动态</PrimaryButton>}
+                    action={
+                      isTimelineSearchActive ? (
+                        <PrimaryButton onClick={handleTimelineSearchClear}>清除搜索</PrimaryButton>
+                      ) : (
+                        <PrimaryButton to={socialPaths.compose(scope)}>发表动态</PrimaryButton>
+                      )
+                    }
                     description={emptyStateCopy.description}
                     title={emptyStateCopy.title}
                   />

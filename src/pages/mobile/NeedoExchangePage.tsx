@@ -2,6 +2,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
 import { FeatureSegmentedTabs } from "../../components/client-ui/AppScaffold";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
+import { FloatingHeaderSearchBar } from "../../components/mobile/FloatingHeaderSearchBar";
 import { FloatingHomeHeader } from "../../components/mobile/FloatingHomeHeader";
 import { MobileBottomActionBar } from "../../components/mobile/MobileBottomActionBar";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
@@ -891,6 +892,41 @@ function getNeedoCardRoleLabel(post: ExchangePost) {
   return post.type === "demand" ? "需求" : "情报";
 }
 
+function normalizeNeedoExchangeSearchValue(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getNeedoExchangeSearchTokens(value: string) {
+  const normalizedValue = normalizeNeedoExchangeSearchValue(value);
+
+  return normalizedValue ? normalizedValue.split(" ") : [];
+}
+
+function buildNeedoExchangeSearchText(post: ExchangePost) {
+  return normalizeNeedoExchangeSearchValue([
+    post.title,
+    post.detail,
+    post.area,
+    post.time,
+    post.author,
+    post.role,
+    post.tags.join(" "),
+    post.budgetLabel ?? yen(post.budget),
+    getNeedoCardRoleLabel(post),
+    getExchangeServiceLabel(post)
+  ].filter(Boolean).join(" "));
+}
+
+function matchesNeedoExchangeSearch(post: ExchangePost, tokens: string[]) {
+  if (tokens.length === 0) {
+    return true;
+  }
+
+  const searchText = buildNeedoExchangeSearchText(post);
+
+  return tokens.every((token) => searchText.includes(token));
+}
+
 export function formatCountdown(ms: number, language: Language) {
   if (ms <= 0) {
     return {
@@ -1231,6 +1267,8 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   const [publishSuccess, setPublishSuccess] = useState<PublishSuccessState | null>(null);
   const [sharePost, setSharePost] = useState<ExchangePost | null>(null);
   const [sharedContact, setSharedContact] = useState<ForwardContact | null>(null);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [appliedSearchQuery, setAppliedSearchQuery] = useState("");
   const [likedPostIds, setLikedPostIds] = useState<string[]>([]);
   const [translatedPostIds, setTranslatedPostIds] = useState<string[]>([]);
   const [blockedPostIds, setBlockedPostIds] = useState<string[]>([]);
@@ -1247,7 +1285,16 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
     stores[0].cover
   ]);
   const blockedPostIdSet = useMemo(() => new Set(blockedPostIds), [blockedPostIds]);
-  const visiblePosts = posts.filter((post) => (activeType === "all" || post.type === activeType) && !blockedPostIdSet.has(post.id));
+  const appliedSearchTokens = useMemo(() => getNeedoExchangeSearchTokens(appliedSearchQuery), [appliedSearchQuery]);
+  const visiblePosts = useMemo(
+    () =>
+      posts.filter((post) =>
+        (activeType === "all" || post.type === activeType) &&
+        !blockedPostIdSet.has(post.id) &&
+        matchesNeedoExchangeSearch(post, appliedSearchTokens)
+      ),
+    [activeType, appliedSearchTokens, blockedPostIdSet, posts]
+  );
   const composerType = getComposerTypeByContext(context);
   const canComposeOnActiveTab = activeType === "all" || activeType === composerType;
   const forwardContacts = getForwardContacts(context);
@@ -1459,6 +1506,14 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
         frameClassName="z-40"
         panelClassName="relative overflow-hidden"
       >
+        <FloatingHeaderSearchBar
+          actionAriaLabel="搜索需要的服务"
+          fieldAriaLabel="搜索需要的服务"
+          onChange={setSearchDraft}
+          onSubmit={() => setAppliedSearchQuery(searchDraft.trim())}
+          placeholder="搜索需要的服务"
+          value={searchDraft}
+        />
         <FeatureSegmentedTabs
           items={[
             { label: "全部", value: "all" },
