@@ -632,26 +632,35 @@ export function HomePage() {
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
   const homeRecommendationsQuery = useCoreReadQuery(() => coreReadApi.getHomeRecommendations({ limit: 20 }), []);
   const apiServices = useMemo(
-    () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? [],
+    () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? legacyServices,
     [homeRecommendationsQuery.data]
   );
   const apiStores = useMemo(
-    () => homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? [],
-    [homeRecommendationsQuery.data]
+    () => homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? legacyStores,
+    [homeRecommendationsQuery.data, entityRevision, legacyStores]
   );
   const apiTechnicians = useMemo(
-    () => homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? [],
-    [homeRecommendationsQuery.data]
+    () => homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? legacyTechnicians,
+    [homeRecommendationsQuery.data, entityRevision, legacyTechnicians]
   );
   const serviceByTechnicianId = useMemo(
     () => {
-      const entries = (homeRecommendationsQuery.data?.services ?? [])
+      const apiEntries = (homeRecommendationsQuery.data?.services ?? [])
         .filter((service) => Boolean(service.technician))
         .map((service) => [String(service.technician?.id), mapCoreServiceToServiceItem(service)] as const);
 
-      return new Map(entries);
+      if (apiEntries.length > 0) {
+        return new Map(apiEntries);
+      }
+
+      const fallbackEntries = legacyTechnicians.map((technician, index) => [
+        technician.id,
+        legacyServices[index % legacyServices.length] ?? legacyServices[0]
+      ] as const).filter((entry): entry is readonly [string, ServiceItem] => Boolean(entry[1]));
+
+      return new Map(fallbackEntries);
     },
-    [homeRecommendationsQuery.data]
+    [entityRevision, homeRecommendationsQuery.data, legacyTechnicians]
   );
   const [recommendationTab, setRecommendationTab] = useState<HomeRecommendationTabKey>(config.recommendation.defaultTab);
   const [now, setNow] = useState(() => new Date());
@@ -920,8 +929,9 @@ export function HomePage() {
   );
 
   const performanceMetrics = config.platformMetrics.filter((item) => item.enabled);
-  const homeCoreLoading = homeRecommendationsQuery.loading;
-  const homeCoreError = homeRecommendationsQuery.error;
+  const hasStaticHomeContent = apiServices.length > 0 || apiStores.length > 0 || apiTechnicians.length > 0;
+  const homeCoreLoading = homeRecommendationsQuery.loading && !hasStaticHomeContent;
+  const homeCoreError = hasStaticHomeContent ? null : homeRecommendationsQuery.error;
 
   return (
     <MobileShell>

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { AppTopBar, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
+import { AppIcon, floatingHeaderControlButtonClassName, PageScaffold, PrimaryButton, SurfacePanel } from "../../../components/client-ui/AppScaffold";
 import { FloatingHeaderSearchBar } from "../../../components/mobile/FloatingHeaderSearchBar";
+import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../../components/mobile/FloatingHomeHeader";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { getLocationAreaHints } from "../../../lib/location";
+import { cn } from "../../../lib/utils";
 import { useHomeLayoutStore } from "../../../state/homeLayoutStore";
 import { useHomeLocationPreference } from "../../../state/homeLocationStore";
 import { useSocial } from "../context";
@@ -13,8 +15,7 @@ import {
   navItemsForSocialScope,
   SearchTabs,
   SocialEmptyState,
-  SocialPostItem,
-  SocialTopActions
+  SocialPostItem
 } from "../components/SocialUi";
 import { profileKey, sortPostsByNewest } from "../utils";
 import type { SocialPost, SocialSearchTab } from "../types";
@@ -31,8 +32,7 @@ export function SocialSearchPage() {
     getTagFeed,
     getTimeline,
     getTimelineFeed,
-    getProfilePosts,
-    getUnreadNotificationCount
+    getProfilePosts
   } = useSocial();
   const actorKey = getActorForScope(scope);
   const { config: homeLocationConfig } = useHomeLayoutStore();
@@ -100,43 +100,62 @@ export function SocialSearchPage() {
     return feed;
   }, [friendsFeed, followingFeed, isTagPage, mergedSearchPosts, nearbyFeed, q, tab, tagFeed]);
 
+  const handleSearchSubmit = () => {
+    const next = input.trim();
+
+    if (!next) {
+      setSearchParams({});
+      navigate(socialPaths.search(scope));
+      setTab("nearby");
+      return;
+    }
+
+    if (next.startsWith("#")) {
+      navigate(socialPaths.hashtag(scope, next.slice(1)));
+      setTab("latest");
+      return;
+    }
+
+    navigate(socialPaths.search(scope, next));
+    setTab("nearby");
+  };
+
   return (
-    <PageScaffold contentClassName="pb-28" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
-      <AppTopBar
-        actions={<SocialTopActions hideSearch scope={scope} unreadCount={getUnreadNotificationCount(actorKey)} />}
-        info="只能搜索 3 公里以内陌生人的公开动态、关注中账号和朋友的动态。"
-        title="动态搜索"
-      />
-
-      <SurfacePanel className="-mt-6 space-y-2 rounded-[28px] !p-2">
-        <FloatingHeaderSearchBar
-          actionAriaLabel="开始搜索动态"
-          fieldAriaLabel="搜索动态内容"
-          onChange={setInput}
-          onSubmit={() => {
-            const next = input.trim();
-
-            if (!next) {
-              setSearchParams({});
-              navigate(socialPaths.search(scope));
-              setTab("nearby");
-              return;
-            }
-
-            if (next.startsWith("#")) {
-              navigate(socialPaths.hashtag(scope, next.slice(1)));
-              setTab("latest");
-              return;
-            }
-
-            navigate(socialPaths.search(scope, next));
-            setTab("nearby");
-          }}
-          placeholder="搜索 @用户、#话题、动态内容"
-          value={input}
-        />
-        <SearchTabs onChange={setTab} value={tab} />
-      </SurfacePanel>
+    <PageScaffold contentClassName="pb-28 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
+      <FloatingHomeHeader
+        className="gap-0"
+        frameClassName="z-40"
+        maxWidth="1600px"
+        panelClassName={cn(floatingHeaderGlassPanelClassName, "text-[color:var(--client-text)]")}
+        spacerGapPx={0}
+        stacked
+      >
+        <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
+          <div className="mx-auto w-full max-w-[1480px] space-y-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <button
+                aria-label="返回"
+                className={cn(floatingHeaderControlButtonClassName, "h-10 w-10 shrink-0")}
+                onClick={() => navigate(-1)}
+                type="button"
+              >
+                <AppIcon className="h-5 w-5" name="back" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <FloatingHeaderSearchBar
+                  actionAriaLabel="开始搜索动态"
+                  fieldAriaLabel="搜索动态内容"
+                  onChange={setInput}
+                  onSubmit={handleSearchSubmit}
+                  placeholder="搜索 @用户、#话题、动态内容"
+                  value={input}
+                />
+              </div>
+            </div>
+            <SearchTabs onChange={setTab} value={tab} />
+          </div>
+        </div>
+      </FloatingHomeHeader>
 
       {isTagPage ? (
         <SurfacePanel className="mt-4 space-y-3 rounded-[28px] p-4">

@@ -19,4 +19,11 @@ describe("HomePage technician recommendations", () => {
     expect(homePageSource).toContain("TechnicianShowcaseCard");
     expect(homePageSource).toContain("getTechnicianDynamicPath(technician)");
   });
+
+  it("keeps static home content visible when core-read data is unavailable", () => {
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? legacyServices");
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? legacyStores");
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? legacyTechnicians");
+    expect(homePageSource).toContain("hasStaticHomeContent ? null : homeRecommendationsQuery.error");
+  });
 });
