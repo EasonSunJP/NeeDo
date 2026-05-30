@@ -1,11 +1,20 @@
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
+import { renderToString } from "react-dom/server";
 import {
   resolveInitialLanguageState,
   resolveRuntimeTranslationSource,
   resolveSupportedLanguage,
-  resolveSystemLanguage
+  resolveSystemLanguage,
+  useOptionalI18n
 } from "./I18nProvider";
 import { translateText } from "./translations";
+
+function OptionalLanguageProbe() {
+  const { language } = useOptionalI18n();
+
+  return createElement("span", null, language);
+}
 
 describe("i18n language detection", () => {
   it("maps supported locale prefixes to app languages", () => {
@@ -91,5 +100,9 @@ describe("i18n language detection", () => {
     expect(resolveRuntimeTranslationSource(translated, source, "zh")).toBe(source);
     expect(resolveRuntimeTranslationSource("2026年5月7日", "2026年5月6日", "zh")).toBe("2026年5月7日");
     expect(resolveRuntimeTranslationSource("后一周", "后一天", "zh")).toBe("后一周");
+  });
+
+  it("allows global decorative components to read a fallback language before the provider is available", () => {
+    expect(renderToString(createElement(OptionalLanguageProbe))).toContain(">zh<");
   });
 });

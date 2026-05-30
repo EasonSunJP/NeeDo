@@ -33,7 +33,7 @@ export interface AdminSeedConfig {
   password: string;
 }
 
-interface SeedUserInput {
+export interface SeedUserInput {
   email: string;
   username: string;
   phone?: string;
@@ -1062,6 +1062,14 @@ const createSeedPrismaClient = (): PrismaClient =>
     log: SEED_PRISMA_LOG_LEVELS
   });
 
+export const buildSeedUserUpdateData = (input: SeedUserInput, passwordHash: string) => ({
+  phone: input.phone ?? null,
+  passwordHash,
+  username: input.username,
+  isActive: true,
+  deletedAt: null
+});
+
 const upsertSeedUser = (tx: Prisma.TransactionClient, input: SeedUserInput, passwordHash: string) =>
   tx.user.upsert({
     where: { email: input.email },
@@ -1072,12 +1080,7 @@ const upsertSeedUser = (tx: Prisma.TransactionClient, input: SeedUserInput, pass
       username: input.username,
       isActive: true
     },
-    update: {
-      phone: input.phone ?? null,
-      username: input.username,
-      isActive: true,
-      deletedAt: null
-    }
+    update: buildSeedUserUpdateData(input, passwordHash)
   });
 
 const upsertSeedIdentity = async (

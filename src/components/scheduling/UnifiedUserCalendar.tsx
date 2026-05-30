@@ -19,6 +19,7 @@ import { cn } from "../../lib/utils";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { japaneseHolidaySeeds } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
+import { getScheduleOrderDetailRoute, type ScheduleDetailTargetType } from "../../lib/scheduleDetailTarget";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -111,6 +112,8 @@ export type UnifiedCalendarEvent = {
   badge: string;
   readOnly: boolean;
   orderId?: string;
+  detailTargetType?: ScheduleDetailTargetType;
+  detailTargetId?: string;
   location?: string;
   note?: string;
   images?: CalendarAttachment[];
@@ -656,6 +659,14 @@ function getCalendarBookingTitle(orderId: string | undefined, fallbackTitle: str
   return getNeedoAppBookingTitle(orderId, fallbackTitle) ?? fallbackTitle;
 }
 
+function getCalendarAppointmentDetailId(event: UnifiedCalendarEvent) {
+  if (event.detailTargetType === "none" || event.detailTargetType === "attendance_detail") {
+    return null;
+  }
+
+  return event.detailTargetId ?? event.orderId ?? null;
+}
+
 function getTechnicianEvents(
   currentCustomer: Customer,
   relevantTechnicianIds: Set<string>,
@@ -679,6 +690,8 @@ function getTechnicianEvents(
       badge: getBookingBadge(booking.eventType),
       readOnly: true,
       orderId: booking.orderId,
+      detailTargetType: booking.detailTargetType,
+      detailTargetId: booking.detailTargetId,
       participants: dedupeCalendarParticipants([
         getCustomerParticipant(currentCustomer, "user", "参加者"),
         getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "user", "参加者")
@@ -750,6 +763,8 @@ function getTechnicianEventsForTechnician(
       badge: getBookingBadge(booking.eventType),
       readOnly: true,
       orderId: booking.orderId,
+      detailTargetType: booking.detailTargetType,
+      detailTargetId: booking.detailTargetId,
       participants: dedupeCalendarParticipants([
         getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "technician", "参加者"),
         getNamedParticipant(booking.customerName, "参加者", "顾客")
@@ -819,6 +834,8 @@ function getMerchantEvents(
       badge: arrangement.status === "inService" ? "服务中" : arrangement.status === "pending" ? "待确认" : "商户安排",
       readOnly: true,
       orderId: arrangement.orderId,
+      detailTargetType: "order_detail",
+      detailTargetId: arrangement.orderId,
       location: arrangement.address,
       participants: dedupeCalendarParticipants([
         getCustomerParticipant(currentCustomer, "user", "参加者"),
@@ -845,6 +862,8 @@ function getMerchantEvents(
         badge: getMerchantScheduleBadge(schedule),
         readOnly: true,
         orderId: schedule.orderId,
+        detailTargetType: schedule.detailTargetType,
+        detailTargetId: schedule.detailTargetId,
         participants: dedupeCalendarParticipants([
           getTechnicianParticipant(technician, "user", "参加者"),
           getCustomerParticipant(currentCustomer, "user", "参加者")
@@ -869,6 +888,8 @@ function getMerchantEvents(
       badge: booking.eventType === "extension" ? "商户加钟" : booking.eventType === "reschedule" ? "商户改期" : "商户确认",
       readOnly: true,
       orderId: booking.orderId,
+      detailTargetType: booking.detailTargetType,
+      detailTargetId: booking.detailTargetId,
       participants: dedupeCalendarParticipants([
         getCustomerParticipant(currentCustomer, "user", "参加者"),
         getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "user", "参加者")
@@ -915,6 +936,8 @@ function getMerchantEventsForTechnician(
       badge: getArrangementStatusBadge(arrangement.status),
       readOnly: true,
       orderId: arrangement.orderId,
+      detailTargetType: "order_detail",
+      detailTargetId: arrangement.orderId,
       location: arrangement.address,
       participants: dedupeCalendarParticipants([
         getTechnicianParticipant(technicians.find((item) => item.id === technicianId), "technician", "参加者"),
@@ -939,6 +962,8 @@ function getMerchantEventsForTechnician(
       badge: getMerchantScheduleBadge(schedule),
       readOnly: true,
       orderId: schedule.orderId,
+      detailTargetType: schedule.detailTargetType,
+      detailTargetId: schedule.detailTargetId,
       participants: dedupeCalendarParticipants([
         getTechnicianParticipant(technicians.find((item) => item.id === schedule.staffId), "technician", "参加者"),
         getStoreParticipant(technician ? stores.find((item) => item.id === technician.storeId) : undefined, "technician", "创建者")
@@ -1013,6 +1038,8 @@ function getMerchantEventsForStore(
       badge: getArrangementStatusBadge(arrangement.status),
       readOnly: true,
       orderId: arrangement.orderId,
+      detailTargetType: "order_detail",
+      detailTargetId: arrangement.orderId,
       location: arrangement.address,
       participants: dedupeCalendarParticipants([
         getCustomerParticipant(customers.find((item) => item.id === arrangement.customerId), "merchant", "参加者"),
@@ -1037,6 +1064,8 @@ function getMerchantEventsForStore(
       badge: getMerchantScheduleBadge(schedule),
       readOnly: true,
       orderId: schedule.orderId,
+      detailTargetType: schedule.detailTargetType,
+      detailTargetId: schedule.detailTargetId,
       participants: dedupeCalendarParticipants([
         getTechnicianParticipant(technicians.find((item) => item.id === schedule.staffId), "merchant", "参加者"),
         getStoreParticipant(currentStore, "merchant", "创建者")
@@ -1064,6 +1093,8 @@ function getMerchantEventsForStore(
           badge: booking.eventType === "extension" ? "加钟" : booking.eventType === "reschedule" ? "改期" : "已排预约",
           readOnly: true,
           orderId: booking.orderId,
+          detailTargetType: booking.detailTargetType,
+          detailTargetId: booking.detailTargetId,
           participants: dedupeCalendarParticipants([
             getNamedParticipant(booking.customerName, "参加者", "顾客"),
             getTechnicianParticipant(technicians.find((item) => item.id === booking.technicianId), "merchant", "参加者"),
@@ -3827,7 +3858,7 @@ function EventDetailField({
 }
 
 function isNeedoAppointmentEvent(event: UnifiedCalendarEvent) {
-  return Boolean(getNeedoAppBookingTitle(event.orderId, event.title));
+  return Boolean(getCalendarAppointmentDetailId(event) && (event.sourceId === "user" || event.sourceId === "technician" || event.sourceId === "merchant"));
 }
 
 export function UnifiedCalendarEventDetailPage({
@@ -3860,7 +3891,7 @@ export function UnifiedCalendarEventDetailPage({
   const contactCreatorLabel = `${translateText("联系创建者", language)}：${creatorLabel}`;
   const canEdit = Boolean(onEdit);
   const canDelete = Boolean(onDelete);
-  const canOpenAppointmentDetail = isNeedoAppointmentEvent(event) && Boolean(event.orderId && onOpenAppointmentDetail);
+  const canOpenAppointmentDetail = isNeedoAppointmentEvent(event) && Boolean(onOpenAppointmentDetail);
   const headerTitle = detailMode === "participants" ? "参加者" : "行程详情";
 
   const closeActionSheet = () => setActionSheetOpen(false);
@@ -3987,8 +4018,8 @@ export function UnifiedCalendarEventDetailPage({
             type="button"
           >
             <span className="min-w-0">
-              <span className="block text-[11px] font-black opacity-75">ND预约</span>
-              <span className="mt-1 block truncate text-sm font-black">预约详细确认</span>
+              <span className="block text-[11px] font-black opacity-75">{translateText("预约详情页", language)}</span>
+              <span className="mt-1 block truncate text-sm font-black">{translateText("预约详情", language)}</span>
             </span>
             <AppIcon className="h-5 w-5 shrink-0" name="calendar" />
           </button>
@@ -5209,31 +5240,14 @@ export function UnifiedUserCalendar({
           onDelete={displayActiveEvent.readOnly ? undefined : deleteEvent}
           onEdit={displayActiveEvent.readOnly ? undefined : openEdit}
           onOpenAppointmentDetail={(event) => {
-            if (!event.orderId) {
+            const appointmentDetailId = getCalendarAppointmentDetailId(event);
+
+            if (!appointmentDetailId) {
               return;
             }
 
-            const encodedOrderId = encodeURIComponent(event.orderId);
-            const detailPath = activeScope === "user"
-              ? `/orders/${encodedOrderId}`
-              : activeScope === "technician"
-                ? `/technician/orders/${encodedOrderId}`
-                : (() => {
-                    const hasArrangementDetail = Boolean(
-                      currentStore &&
-                        dispatchSnapshot.arrangements.some(
-                          (arrangement) =>
-                            arrangement.storeId === currentStore.id &&
-                            arrangement.orderId === event.orderId &&
-                            arrangement.status !== "cancelled"
-                        )
-                    );
-
-                    return hasArrangementDetail ? `/merchant/schedule/arrangements/${encodedOrderId}` : `/merchant/orders/${encodedOrderId}`;
-                  })();
-
             setActiveEvent(null);
-            navigate(detailPath);
+            navigate(getScheduleOrderDetailRoute(appointmentDetailId, activeScope));
           }}
           onSync={(event) => {
             setActiveEvent(null);

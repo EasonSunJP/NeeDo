@@ -1,6 +1,11 @@
 import { useSyncExternalStore } from "react";
 import { customers, orders, stores, technicians } from "../data/mock";
-import { buildDemoTechnicianScheduleSeeds, demoAppointmentSeedStoreId } from "../data/demoAppointmentSeeds";
+import {
+  buildDemoTechnicianScheduleSeeds,
+  buildPublicAvailabilityDemoTechnicianScheduleSeeds,
+  demoAppointmentSeedStoreId,
+  publicAvailabilityDemoBookingIdPrefix
+} from "../data/demoAppointmentSeeds";
 import type {
   TechnicianDutyShift,
   TechnicianScheduleBooking,
@@ -40,29 +45,6 @@ export type TechnicianScheduleTransferResponseResult = {
 };
 
 const storageKey = "needo.technician-schedule.v1";
-const publicAvailabilityDemoDate = "2026-05-26";
-const publicAvailabilityDemoTechnicianId = "tech-1";
-const publicAvailabilityDemoShiftId = `duty-public-availability-demo-${publicAvailabilityDemoTechnicianId}-${publicAvailabilityDemoDate}`;
-const publicAvailabilityDemoBookingId = `booking-public-availability-demo-${publicAvailabilityDemoTechnicianId}-${publicAvailabilityDemoDate}`;
-const publicAvailabilityDemoWeekStartDate = "2026-05-25";
-const publicAvailabilityDemoDates = Array.from({ length: 7 }, (_, index) => addDays(publicAvailabilityDemoWeekStartDate, index));
-const publicAvailabilityDemoShiftStarts = ["08:00", "09:00", "10:00"] as const;
-const publicAvailabilityDemoShiftEnds = ["19:00", "20:00", "21:00", "22:00"] as const;
-const publicAvailabilityDemoFirstBookingWindows = [
-  ["11:00", "12:30"],
-  ["11:30", "13:00"],
-  ["12:00", "13:30"]
-] as const;
-const publicAvailabilityDemoSecondBookingWindows = [
-  ["15:00", "16:30"],
-  ["16:00", "17:30"],
-  ["17:00", "18:30"]
-] as const;
-const publicAvailabilityDemoBlockingWindows = [
-  ["13:30", "14:00", "休息整理", "rest"],
-  ["14:00", "14:45", "移动缓冲", "travel"],
-  ["18:30", "19:15", "锁定安排", "locked"]
-] as const;
 const listeners = new Set<() => void>();
 
 let hydrated = false;
@@ -70,105 +52,6 @@ let revision = 0;
 let cachedSnapshot: TechnicianScheduleSnapshot | null = null;
 
 const state: TechnicianScheduleStoreState = buildSeedState();
-
-function buildPublicAvailabilityDemoSeedRows(store: typeof stores[number] | null | undefined) {
-  const fallbackStore = store ?? stores[0] ?? null;
-  const dutyShifts: TechnicianDutyShift[] = [];
-  const bookings: TechnicianScheduleBooking[] = [];
-  const customEvents: TechnicianScheduleCustomEvent[] = [];
-
-  technicians.forEach((technician, technicianIndex) => {
-    const homeStore = stores.find((item) => item.id === technician.storeId) ?? fallbackStore;
-
-    if (!homeStore) {
-      return;
-    }
-
-    publicAvailabilityDemoDates.forEach((date, dateIndex) => {
-      const isReferenceScenario = technician.id === publicAvailabilityDemoTechnicianId && date === publicAvailabilityDemoDate;
-      const firstBookingWindow = publicAvailabilityDemoFirstBookingWindows[(technicianIndex + dateIndex) % publicAvailabilityDemoFirstBookingWindows.length];
-      const secondBookingWindow = publicAvailabilityDemoSecondBookingWindows[(technicianIndex + dateIndex) % publicAvailabilityDemoSecondBookingWindows.length];
-      const blockingWindow = publicAvailabilityDemoBlockingWindows[(technicianIndex + dateIndex) % publicAvailabilityDemoBlockingWindows.length];
-
-      dutyShifts.push({
-        id: isReferenceScenario ? publicAvailabilityDemoShiftId : `duty-public-availability-demo-${technician.id}-${date}`,
-        technicianId: technician.id,
-        storeId: homeStore.id,
-        date,
-        startTime: isReferenceScenario ? "08:00" : publicAvailabilityDemoShiftStarts[(technicianIndex + dateIndex) % publicAvailabilityDemoShiftStarts.length],
-        endTime: isReferenceScenario ? "22:00" : publicAvailabilityDemoShiftEnds[(technicianIndex * 2 + dateIndex) % publicAvailabilityDemoShiftEnds.length],
-        title: `${homeStore.name} 公开可预约演示排班`,
-        shiftLabel: isReferenceScenario ? "公开可约" : "演示可约"
-      });
-
-      if (isReferenceScenario) {
-        bookings.push({
-          id: publicAvailabilityDemoBookingId,
-          technicianId: technician.id,
-          storeId: homeStore.id,
-          date,
-          startTime: "10:00",
-          endTime: "18:00",
-          title: "公开日程测试：已排满工作",
-          customerName: "测试顾客",
-          eventType: "booking",
-          note: "用于用户端技师公开日程页，只展示扣除已预约与缓冲后的可预约空档。"
-        });
-        return;
-      }
-
-      bookings.push(
-        {
-          id: `booking-public-availability-demo-${technician.id}-${date}-first`,
-          technicianId: technician.id,
-          storeId: homeStore.id,
-          date,
-          startTime: firstBookingWindow[0],
-          endTime: firstBookingWindow[1],
-          title: "演示预约：已确认服务",
-          customerName: customers[(technicianIndex + dateIndex) % customers.length]?.name ?? "演示顾客",
-          eventType: "booking",
-          note: "用于用户端公开班表演示，计算可预约空档时会自动扣除。"
-        },
-        {
-          id: `booking-public-availability-demo-${technician.id}-${date}-second`,
-          technicianId: technician.id,
-          storeId: homeStore.id,
-          date,
-          startTime: secondBookingWindow[0],
-          endTime: secondBookingWindow[1],
-          title: "演示预约：店铺确认",
-          customerName: customers[(technicianIndex + dateIndex + 3) % customers.length]?.name ?? "演示顾客",
-          eventType: "booking",
-          note: "用于演示同一天多个占用段后的剩余可约时间。"
-        }
-      );
-
-      if ((technicianIndex + dateIndex) % 2 === 0) {
-        customEvents.push({
-          id: `event-public-availability-demo-${technician.id}-${date}`,
-          technicianId: technician.id,
-          storeId: homeStore.id,
-          date,
-          startTime: blockingWindow[0],
-          endTime: blockingWindow[1],
-          title: blockingWindow[2],
-          kind: blockingWindow[3],
-          note: "公开班表演示用阻塞事项，会从用户可预约时间中扣除。",
-          syncTargets: [],
-          createdAt: `${date}T08:00:00`,
-          updatedAt: `${date}T08:00:00`
-        });
-      }
-    });
-  });
-
-  return {
-    dutyShifts,
-    bookings,
-    customEvents
-  };
-}
 
 function buildSeedState(): TechnicianScheduleStoreState {
   const fallbackTechnician = technicians[0];
@@ -461,7 +344,12 @@ function buildSeedState(): TechnicianScheduleStoreState {
     });
   }
 
-  const publicAvailabilityDemoSeeds = buildPublicAvailabilityDemoSeedRows(homeStore);
+  const publicAvailabilityDemoSeeds = buildPublicAvailabilityDemoTechnicianScheduleSeeds({
+    customers,
+    store: homeStore,
+    stores,
+    technicians
+  });
   dutyShifts.push(...publicAvailabilityDemoSeeds.dutyShifts);
   bookings.push(...publicAvailabilityDemoSeeds.bookings);
   customEvents.push(...publicAvailabilityDemoSeeds.customEvents);
@@ -534,9 +422,49 @@ function appendMissingSeedRows<T extends { id: string }>(target: T[], seedRows: 
   return true;
 }
 
+function mergePublicAvailabilityDemoBookingTargets(target: TechnicianScheduleBooking[], seedRows: TechnicianScheduleBooking[]) {
+  const seedById = new Map(seedRows.map((booking) => [booking.id, booking]));
+  let changed = false;
+
+  target.forEach((booking, index) => {
+    if (!booking.id.startsWith(publicAvailabilityDemoBookingIdPrefix)) {
+      return;
+    }
+
+    const seed = seedById.get(booking.id);
+    if (!seed?.orderId) {
+      return;
+    }
+
+    if (
+      booking.orderId === seed.orderId &&
+      booking.detailTargetType === seed.detailTargetType &&
+      booking.detailTargetId === seed.detailTargetId
+    ) {
+      return;
+    }
+
+    target[index] = {
+      ...booking,
+      amount: booking.amount ?? seed.amount,
+      orderId: seed.orderId,
+      detailTargetType: seed.detailTargetType,
+      detailTargetId: seed.detailTargetId
+    };
+    changed = true;
+  });
+
+  return changed;
+}
+
 function ensureDemoTechnicianScheduleSeedData() {
   const seedStore = stores.find((store) => store.id === demoAppointmentSeedStoreId) ?? stores[0] ?? null;
-  const publicAvailabilityDemoSeeds = buildPublicAvailabilityDemoSeedRows(seedStore);
+  const publicAvailabilityDemoSeeds = buildPublicAvailabilityDemoTechnicianScheduleSeeds({
+    customers,
+    store: seedStore,
+    stores,
+    technicians
+  });
   const demoSeeds = buildDemoTechnicianScheduleSeeds({
     customers,
     store: seedStore,
@@ -550,12 +478,13 @@ function ensureDemoTechnicianScheduleSeedData() {
     ...publicAvailabilityDemoSeeds.bookings,
     ...demoSeeds.bookings
   ]);
+  const bookingTargetChanged = mergePublicAvailabilityDemoBookingTargets(state.bookings, publicAvailabilityDemoSeeds.bookings);
   const eventChanged = appendMissingSeedRows(state.customEvents, [
     ...publicAvailabilityDemoSeeds.customEvents,
     ...demoSeeds.customEvents
   ]);
 
-  return dutyChanged || bookingChanged || eventChanged;
+  return dutyChanged || bookingChanged || bookingTargetChanged || eventChanged;
 }
 
 function cloneState(nextState: TechnicianScheduleStoreState) {

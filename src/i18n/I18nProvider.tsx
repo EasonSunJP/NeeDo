@@ -14,6 +14,7 @@ const storageModeKey = "needo.language.mode";
 const textNodeSources = new WeakMap<Text, string>();
 const translatedAttributes = ["placeholder", "title", "aria-label", "alt"];
 const runtimeTranslationPortals: TranslationPortalContext[] = ["user", "technician", "merchant", "business", "admin"];
+const noopSetLanguage = () => undefined;
 
 type LanguagePreferenceSource = "manual" | "system";
 
@@ -357,4 +358,14 @@ export function useI18n() {
   }
 
   return context;
+}
+
+export function useOptionalI18n() {
+  const context = useContext(I18nContext);
+  const fallbackLanguage = useMemo(() => getInitialLanguageState().language, []);
+
+  return context ?? {
+    language: fallbackLanguage,
+    setLanguage: noopSetLanguage
+  };
 }

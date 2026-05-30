@@ -7,7 +7,7 @@ import {
   REQUIRED_TEST_ACCOUNT_EMAILS,
   TEST_USER_ACCOUNTS
 } from "../src/constants/test-login.constants";
-import { getAdminSeedConfig, getTestUserSeedPassword, shouldSeedRequiredTestAccounts } from "../prisma/seed";
+import { buildSeedUserUpdateData, getAdminSeedConfig, getTestUserSeedPassword, shouldSeedRequiredTestAccounts } from "../prisma/seed";
 
 describe("user management seed contract", () => {
   it("defines the Step 04 system roles in the required order", () => {
@@ -128,6 +128,15 @@ describe("user management seed contract", () => {
     expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "development", DEPLOY_ENV: "local" })).toBe(true);
     expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "staging" })).toBe(true);
     expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "prod" })).toBe(false);
+  });
+
+  it("refreshes existing seed user passwords when the configured test password changes", () => {
+    expect(buildSeedUserUpdateData({ email: "merchant@example.com", username: "Merchant" }, "next-password-hash")).toMatchObject({
+      passwordHash: "next-password-hash",
+      username: "Merchant",
+      isActive: true,
+      deletedAt: null
+    });
   });
 
   it("seeds the portal menu permissions expected by frontend guards", () => {

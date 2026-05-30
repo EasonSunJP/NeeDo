@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
+import type { PortalScope } from "../../auth/demoAccount";
 import { useAuth } from "../../auth/AuthProvider";
 import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
@@ -54,6 +55,7 @@ type BackendLoginCopy = {
   codeError: string;
   qrError: string;
   requiredError: string;
+  portalMismatchError: string;
   copyright: string;
 };
 
@@ -106,6 +108,7 @@ const adminLoginCopy = {
     codeError: "验证码不正确或已过期，请确认后再试。",
     qrError: "二维码登录暂未接入真实接口，请使用邮箱或验证码登录。",
     requiredError: "请先填写登录信息。",
+    portalMismatchError: "当前账号没有这个后台的访问权限，请使用对应后台账号登录。",
     copyright: adminLoginCopyrightText
   },
   "zh-Hant": {
@@ -154,6 +157,7 @@ const adminLoginCopy = {
     codeError: "驗證碼不正確或已過期，請確認後再試。",
     qrError: "QR 登入尚未接入真實接口，請使用信箱或驗證碼登入。",
     requiredError: "請先填寫登入資訊。",
+    portalMismatchError: "目前帳號沒有此後台的存取權限，請使用對應後台帳號登入。",
     copyright: adminLoginCopyrightText
   },
   ja: {
@@ -202,6 +206,7 @@ const adminLoginCopy = {
     codeError: "認証コードが違うか期限切れです。内容を確認してください。",
     qrError: "QRログインはまだ正式 API に接続されていません。メールまたは認証コードでログインしてください。",
     requiredError: "ログイン情報を入力してください。",
+    portalMismatchError: "このアカウントにはこの管理画面へのアクセス権がありません。対応する管理アカウントでログインしてください。",
     copyright: adminLoginCopyrightText
   },
   en: {
@@ -250,6 +255,7 @@ const adminLoginCopy = {
     codeError: "The code is incorrect or expired. Please check and try again.",
     qrError: "QR login is not connected to the real API yet. Use email or code login.",
     requiredError: "Fill in the login information first.",
+    portalMismatchError: "This account does not have access to this admin area. Sign in with the matching admin account.",
     copyright: adminLoginCopyrightText
   },
   ko: {
@@ -298,14 +304,27 @@ const adminLoginCopy = {
     codeError: "인증코드가 올바르지 않거나 만료되었습니다. 확인 후 다시 시도하세요.",
     qrError: "QR 로그인은 아직 실제 API에 연결되지 않았습니다. 이메일 또는 인증코드로 로그인하세요.",
     requiredError: "먼저 로그인 정보를 입력하세요.",
+    portalMismatchError: "현재 계정은 이 관리자 화면에 접근할 수 없습니다. 해당 관리자 계정으로 로그인하세요.",
     copyright: adminLoginCopyrightText
   }
 } satisfies Record<Language, BackendLoginCopy>;
 
+const backendDefaultLoginEmails = {
+  admin: "admin",
+  "merchant-admin": "merchant@example.com",
+  "afirieito-admin": "affiliate@example.com"
+} as const satisfies Record<AdminLoginPortal, string>;
+
+const backendPortalAccountAliases = {
+  admin: ["admin", "admin@example.com", "admin@needo.jp"],
+  "merchant-admin": ["merchant@example.com", "merchant-owner@example.com", "store-admin", "store-admin@needo.jp"],
+  "afirieito-admin": ["affiliate@example.com", "afirieito", "afirieito@needo.jp"]
+} as const satisfies Record<AdminLoginPortal, readonly string[]>;
+
 const backendLoginConfig = {
   admin: {
     authPortal: getAdminLoginPortalScope("admin"),
-    defaultEmail: "admin@example.com",
+    defaultEmail: backendDefaultLoginEmails.admin,
     gmailEmail: "needo.ops@gmail.com",
     entryPath: "/admin",
     background: backendManagementSystemBgUrl,
@@ -319,7 +338,7 @@ const backendLoginConfig = {
   },
   "merchant-admin": {
     authPortal: getAdminLoginPortalScope("merchant-admin"),
-    defaultEmail: "merchant-owner@example.com",
+    defaultEmail: backendDefaultLoginEmails["merchant-admin"],
     gmailEmail: "needo.store@gmail.com",
     entryPath: "/merchant-admin",
     background: backendManagementSystemBgUrl,
@@ -333,7 +352,7 @@ const backendLoginConfig = {
   },
   "afirieito-admin": {
     authPortal: getAdminLoginPortalScope("afirieito-admin"),
-    defaultEmail: "affiliate@example.com",
+    defaultEmail: backendDefaultLoginEmails["afirieito-admin"],
     gmailEmail: "needo.afirieito@gmail.com",
     entryPath: "/NDA-admin",
     background: backendManagementSystemBgUrl,
@@ -358,6 +377,27 @@ type AdminTestCredentialEnv = {
   VITE_TEST_LOGIN_BUSINESS_PASSWORD?: string;
 };
 
+function normalizeCredentialValue(value: string | undefined) {
+  return value?.trim() ?? "";
+}
+
+function normalizeAccountAlias(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export function isBackendAccountForAnotherPortal(portal: AdminLoginPortal, account: string) {
+  const normalizedAccount = normalizeAccountAlias(account);
+
+  if (!normalizedAccount) {
+    return false;
+  }
+
+  return (Object.entries(backendPortalAccountAliases) as Array<[AdminLoginPortal, readonly string[]]>).some(
+    ([aliasPortal, aliases]) =>
+      aliasPortal !== portal && aliases.map(normalizeAccountAlias).includes(normalizedAccount)
+  );
+}
+
 export function resolveAdminTestLoginCredentials(env: AdminTestCredentialEnv, portal: AdminLoginPortal) {
   const portalCredentials =
     portal === "admin"
@@ -374,11 +414,17 @@ export function resolveAdminTestLoginCredentials(env: AdminTestCredentialEnv, po
             email: env.VITE_TEST_LOGIN_BUSINESS_EMAIL,
             password: env.VITE_TEST_LOGIN_BUSINESS_PASSWORD
           };
-  const email = portalCredentials.email?.trim() || (portal === "admin" ? env.VITE_TEST_LOGIN_EMAIL?.trim() : "");
-  const password = portalCredentials.password?.trim() || (portal === "admin" ? env.VITE_TEST_LOGIN_PASSWORD?.trim() : "");
+  const portalEmail = normalizeCredentialValue(portalCredentials.email);
+  const portalPassword = normalizeCredentialValue(portalCredentials.password);
+  const email = portalEmail || (portal === "admin" ? normalizeCredentialValue(env.VITE_TEST_LOGIN_EMAIL) : "");
+  const password = portalPassword || (portal === "admin" ? normalizeCredentialValue(env.VITE_TEST_LOGIN_PASSWORD) : "");
 
   if (!email || !password) {
     return null;
+  }
+
+  if (portal !== "admin" && isBackendAccountForAnotherPortal(portal, email)) {
+    return { email: backendDefaultLoginEmails[portal], password };
   }
 
   return { email, password };
@@ -390,11 +436,19 @@ export function resolveAdminDefaultCredentials(
   fallbackEmail: string
 ) {
   const testCredentials = resolveAdminTestLoginCredentials(env, portal);
+  const fallbackDefaultEmail = fallbackEmail.trim();
+  const emailFallback = isBackendAccountForAnotherPortal(portal, fallbackDefaultEmail)
+    ? backendDefaultLoginEmails[portal]
+    : fallbackDefaultEmail;
 
   return {
-    email: testCredentials?.email ?? fallbackEmail.trim(),
+    email: testCredentials?.email ?? emailFallback,
     password: testCredentials?.password ?? ""
   };
+}
+
+export function resolveBackendLoginTarget(sessionPortal: PortalScope, requestedPortal: PortalScope, nextPath: string) {
+  return sessionPortal === requestedPortal ? nextPath : null;
 }
 
 const qrCells = new Set([
@@ -491,6 +545,19 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     () => resolveAdminTestLoginCredentials(import.meta.env as AdminTestCredentialEnv, portal),
     [portal]
   );
+  const navigateToBackendSession = useCallback(
+    (sessionPortal: PortalScope) => {
+      const target = resolveBackendLoginTarget(sessionPortal, config.authPortal, nextPath);
+
+      if (!target) {
+        setError(copy.portalMismatchError);
+        return;
+      }
+
+      navigate(target, { replace: true });
+    },
+    [config.authPortal, copy.portalMismatchError, navigate, nextPath]
+  );
 
   useEffect(() => {
     setMode(requestedMode);
@@ -499,16 +566,21 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   useEffect(() => {
     const remembered = readRememberedCredentials(rememberCredentialsScope);
     const hasRememberedCredentials = remembered.enabled && Boolean(remembered.account.trim() || remembered.password.trim());
+    const rememberedAccountBelongsToAnotherPortal =
+      hasRememberedCredentials && remembered.account.trim()
+        ? isBackendAccountForAnotherPortal(portal, remembered.account)
+        : false;
+    const canUseRememberedCredentials = hasRememberedCredentials && !rememberedAccountBelongsToAnotherPortal;
 
-    if (remembered.enabled && !hasRememberedCredentials) {
+    if (remembered.enabled && (!hasRememberedCredentials || rememberedAccountBelongsToAnotherPortal)) {
       clearRememberedCredentials(rememberCredentialsScope);
     }
 
-    setRememberCredentials(hasRememberedCredentials);
-    setAccount(hasRememberedCredentials && remembered.account.trim() ? remembered.account : defaultCredentials.email);
-    setPassword(hasRememberedCredentials && remembered.password.trim() ? remembered.password : defaultCredentials.password);
+    setRememberCredentials(canUseRememberedCredentials);
+    setAccount(canUseRememberedCredentials && remembered.account.trim() ? remembered.account : defaultCredentials.email);
+    setPassword(canUseRememberedCredentials && remembered.password.trim() ? remembered.password : defaultCredentials.password);
     setCodeEmail(defaultCredentials.email);
-  }, [defaultCredentials.email, defaultCredentials.password, rememberCredentialsScope]);
+  }, [defaultCredentials.email, defaultCredentials.password, portal, rememberCredentialsScope]);
 
   useEffect(() => {
     if (!rememberCredentials) {
@@ -530,9 +602,9 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       }
 
       setNotice(copy.qrApproved);
-      navigate(nextPath, { replace: true });
+      navigateToBackendSession(result.session.portal);
     });
-  }, [config.authPortal, copy.qrApproved, copy.qrError, loginWithQr, navigate, nextPath, qrParam, qrToken, scanStatus]);
+  }, [config.authPortal, copy.qrApproved, copy.qrError, loginWithQr, navigateToBackendSession, qrParam, qrToken, scanStatus]);
 
   const modeButtons = useMemo<Array<{ mode: LoginMode; label: string }>>(
     () => [
@@ -558,7 +630,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
+    navigateToBackendSession(result.session.portal);
   };
 
   const continueWithTestCredentials = async () => {
@@ -574,7 +646,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
+    navigateToBackendSession(result.session.portal);
   };
 
   const toggleRememberCredentials = (checked: boolean) => {
@@ -603,7 +675,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    navigate(result.session.portal === config.authPortal ? nextPath : "/admin", { replace: true });
+    navigateToBackendSession(result.session.portal);
   };
 
   const approveQrLogin = async () => {
@@ -616,7 +688,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     }
 
     setNotice(copy.qrApproved);
-    navigate(nextPath, { replace: true });
+    navigateToBackendSession(result.session.portal);
   };
 
   const continueWithGmail = async () => {
@@ -628,7 +700,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
-    navigate(nextPath, { replace: true });
+    navigateToBackendSession(result.session.portal);
   };
 
   const requestCode = async () => {

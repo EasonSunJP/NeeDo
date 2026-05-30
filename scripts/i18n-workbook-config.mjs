@@ -155,6 +155,7 @@ export function compareFeatureKeys(left, right) {
 export const workbookLanguageHeaders = workbookColumns.map((item) => item.header);
 export const workbookUsageHeader = "使用位置";
 export const workbookDisplayByteLimitHeader = "最多显示字节数（UTF-8）";
-export const workbookHeaders = [...workbookLanguageHeaders, workbookUsageHeader, workbookDisplayByteLimitHeader];
+export const workbookManualEditHeader = "手动修改过";
+export const workbookHeaders = [...workbookLanguageHeaders, workbookUsageHeader, workbookDisplayByteLimitHeader, workbookManualEditHeader];
 export const workbookLanguageColumns = workbookColumns;
 export const workbookFeatureSheets = featureSheetDefinitions;

@@ -17,13 +17,55 @@ export const demoAppointmentArrangementIdPrefix = "arrangement-demo-appt-";
 export const demoTechnicianBookingIdPrefix = "booking-demo-appt-";
 export const demoTechnicianDutyShiftIdPrefix = "duty-demo-appt-";
 export const demoTechnicianCustomEventIdPrefix = "event-demo-appt-";
+export const publicAvailabilityDemoOrderIdPrefix = "ord-public-availability-demo-";
+export const publicAvailabilityDemoBookingIdPrefix = "booking-public-availability-demo-";
+export const publicAvailabilityDemoDutyShiftIdPrefix = "duty-public-availability-demo-";
+export const publicAvailabilityDemoCustomEventIdPrefix = "event-public-availability-demo-";
 
 const demoAppointmentReferenceDate = "2026-05-24";
+const publicAvailabilityDemoDate = "2026-05-26";
+const publicAvailabilityDemoTechnicianId = "tech-1";
+const publicAvailabilityDemoWeekStartDate = "2026-05-25";
+const publicAvailabilityDemoWeekEndDate = "2026-05-31";
+const publicAvailabilityDemoShiftStarts = ["08:00", "09:00", "10:00"] as const;
+const publicAvailabilityDemoShiftEnds = ["19:00", "20:00", "21:00", "22:00"] as const;
+const publicAvailabilityDemoFirstBookingWindows = [
+  ["11:00", "12:30"],
+  ["11:30", "13:00"],
+  ["12:00", "13:30"]
+] as const;
+const publicAvailabilityDemoSecondBookingWindows = [
+  ["15:00", "16:30"],
+  ["16:00", "17:30"],
+  ["17:00", "18:30"]
+] as const;
+const publicAvailabilityDemoBlockingWindows = [
+  ["13:30", "14:00", "休息整理", "rest"],
+  ["14:00", "14:45", "移动缓冲", "travel"],
+  ["18:30", "19:15", "锁定安排", "locked"]
+] as const;
 
 type DemoAppointmentSeedInput = {
   customers: Customer[];
   store?: Store | null;
+  stores?: Store[];
   technicians: Technician[];
+};
+
+type PublicAvailabilityDemoBookingSlot = {
+  amount: number;
+  bookingId: string;
+  customerId: string;
+  customerName: string;
+  date: string;
+  endTime: string;
+  eventType: TechnicianScheduleBooking["eventType"];
+  note: string;
+  orderId: string;
+  startTime: string;
+  store: Store;
+  technician: Technician;
+  title: string;
 };
 
 type DemoAppointmentSpec = {
@@ -209,6 +251,215 @@ function getSeedTechnicians(store: Store, technicians: Technician[]) {
   return {
     demoTechnician,
     storeTechnicians: storeTechnicians.length > 0 ? storeTechnicians : demoTechnician ? [demoTechnician] : []
+  };
+}
+
+function getPublicAvailabilityHomeStore(input: DemoAppointmentSeedInput, technician: Technician) {
+  return input.stores?.find((store) => store.id === technician.storeId) ?? input.store ?? getSeedStore(input.store);
+}
+
+function getPublicAvailabilityOrderId(technicianId: string, date: string, slotId: string) {
+  return `${publicAvailabilityDemoOrderIdPrefix}${technicianId}-${date}${slotId ? `-${slotId}` : ""}`;
+}
+
+function getPublicAvailabilityBookingId(technicianId: string, date: string, slotId: string) {
+  return `${publicAvailabilityDemoBookingIdPrefix}${technicianId}-${date}${slotId ? `-${slotId}` : ""}`;
+}
+
+function createPublicAvailabilityBookingSlot({
+  amount,
+  customer,
+  customerName,
+  date,
+  endTime,
+  eventType,
+  note,
+  slotId,
+  startTime,
+  store,
+  technician,
+  title
+}: {
+  amount: number;
+  customer?: Customer;
+  customerName?: string;
+  date: string;
+  endTime: string;
+  eventType: TechnicianScheduleBooking["eventType"];
+  note: string;
+  slotId: string;
+  startTime: string;
+  store: Store;
+  technician: Technician;
+  title: string;
+}): PublicAvailabilityDemoBookingSlot {
+  const bookingId = getPublicAvailabilityBookingId(technician.id, date, slotId);
+  const orderId = getPublicAvailabilityOrderId(technician.id, date, slotId);
+
+  return {
+    amount,
+    bookingId,
+    customerId: customer?.id ?? demoAppointmentSeedCustomerId,
+    customerName: customer?.name ?? customerName ?? "演示顾客",
+    date,
+    endTime,
+    eventType,
+    note,
+    orderId,
+    startTime,
+    store,
+    technician,
+    title
+  };
+}
+
+function buildPublicAvailabilityDemoBookingSlots(input: DemoAppointmentSeedInput) {
+  const { demoCustomer, pool: customerPool } = getSeedCustomers(input.customers);
+  const fallbackCustomer = demoCustomer ?? customerPool[0];
+  const slots: PublicAvailabilityDemoBookingSlot[] = [];
+
+  input.technicians.forEach((technician, technicianIndex) => {
+    const homeStore = getPublicAvailabilityHomeStore(input, technician);
+
+    enumerateDateKeys(publicAvailabilityDemoWeekStartDate, publicAvailabilityDemoWeekEndDate).forEach((date, dateIndex) => {
+      const isReferenceScenario = technician.id === publicAvailabilityDemoTechnicianId && date === publicAvailabilityDemoDate;
+      const firstBookingWindow = publicAvailabilityDemoFirstBookingWindows[(technicianIndex + dateIndex) % publicAvailabilityDemoFirstBookingWindows.length];
+      const secondBookingWindow = publicAvailabilityDemoSecondBookingWindows[(technicianIndex + dateIndex) % publicAvailabilityDemoSecondBookingWindows.length];
+
+      if (isReferenceScenario) {
+        slots.push(createPublicAvailabilityBookingSlot({
+          amount: 12800,
+          customer: demoCustomer,
+          customerName: "测试顾客",
+          date,
+          endTime: "18:00",
+          eventType: "booking",
+          note: "用于用户端技师公开日程页，只展示扣除已预约与缓冲后的可预约空档。",
+          slotId: "",
+          startTime: "10:00",
+          store: homeStore,
+          technician,
+          title: "公开日程测试：已排满工作"
+        }));
+        return;
+      }
+
+      slots.push(
+        createPublicAvailabilityBookingSlot({
+          amount: 9800 + ((technicianIndex + dateIndex) % 4) * 700,
+          date,
+          endTime: firstBookingWindow[1],
+          eventType: "booking",
+          note: "用于用户端公开班表演示，计算可预约空档时会自动扣除。",
+          slotId: "first",
+          startTime: firstBookingWindow[0],
+          store: homeStore,
+          technician,
+          title: "演示预约：已确认服务",
+          customer: fallbackCustomer ? pickItem(customerPool, technicianIndex + dateIndex, fallbackCustomer) : undefined
+        }),
+        createPublicAvailabilityBookingSlot({
+          amount: 11800 + ((technicianIndex + dateIndex + 1) % 4) * 700,
+          date,
+          endTime: secondBookingWindow[1],
+          eventType: "booking",
+          note: "用于演示同一天多个占用段后的剩余可约时间。",
+          slotId: "second",
+          startTime: secondBookingWindow[0],
+          store: homeStore,
+          technician,
+          title: "演示预约：店铺确认",
+          customer: fallbackCustomer ? pickItem(customerPool, technicianIndex + dateIndex + 3, fallbackCustomer) : undefined
+        })
+      );
+    });
+  });
+
+  return slots;
+}
+
+export function buildPublicAvailabilityDemoTestOrders(input: DemoAppointmentSeedInput): Order[] {
+  return buildPublicAvailabilityDemoBookingSlots(input).map((slot, index): Order => ({
+    id: slot.orderId,
+    orderNo: `ND${slot.date.replace(/-/g, "")}${padNumber(88000 + index, 5)}`,
+    mode: slot.store.mode,
+    status: "scheduled",
+    customerId: slot.customerId,
+    customerName: slot.customerName,
+    itemName: slot.title,
+    storeName: slot.store.name,
+    technicianName: slot.technician.name,
+    city: "东京",
+    area: slot.store.area,
+    amount: slot.amount,
+    paymentStatus: "paid",
+    bookedAt: `${slot.date} ${slot.startTime}`,
+    createdAt: `${slot.date} ${addMinutesToTime(slot.startTime, -90)}`,
+    source: "app",
+    remark: slot.note
+  }));
+}
+
+export function buildPublicAvailabilityDemoTechnicianScheduleSeeds(input: DemoAppointmentSeedInput) {
+  const dutyShifts: TechnicianDutyShift[] = [];
+  const customEvents: TechnicianScheduleCustomEvent[] = [];
+
+  input.technicians.forEach((technician, technicianIndex) => {
+    const homeStore = getPublicAvailabilityHomeStore(input, technician);
+
+    enumerateDateKeys(publicAvailabilityDemoWeekStartDate, publicAvailabilityDemoWeekEndDate).forEach((date, dateIndex) => {
+      const isReferenceScenario = technician.id === publicAvailabilityDemoTechnicianId && date === publicAvailabilityDemoDate;
+      const blockingWindow = publicAvailabilityDemoBlockingWindows[(technicianIndex + dateIndex) % publicAvailabilityDemoBlockingWindows.length];
+
+      dutyShifts.push({
+        id: isReferenceScenario ? `${publicAvailabilityDemoDutyShiftIdPrefix}${publicAvailabilityDemoTechnicianId}-${publicAvailabilityDemoDate}` : `${publicAvailabilityDemoDutyShiftIdPrefix}${technician.id}-${date}`,
+        technicianId: technician.id,
+        storeId: homeStore.id,
+        date,
+        startTime: isReferenceScenario ? "08:00" : publicAvailabilityDemoShiftStarts[(technicianIndex + dateIndex) % publicAvailabilityDemoShiftStarts.length],
+        endTime: isReferenceScenario ? "22:00" : publicAvailabilityDemoShiftEnds[(technicianIndex * 2 + dateIndex) % publicAvailabilityDemoShiftEnds.length],
+        title: `${homeStore.name} 公开可预约演示排班`,
+        shiftLabel: isReferenceScenario ? "公开可约" : "演示可约"
+      });
+
+      if (!isReferenceScenario && (technicianIndex + dateIndex) % 2 === 0) {
+        customEvents.push({
+          id: `${publicAvailabilityDemoCustomEventIdPrefix}${technician.id}-${date}`,
+          technicianId: technician.id,
+          storeId: homeStore.id,
+          date,
+          startTime: blockingWindow[0],
+          endTime: blockingWindow[1],
+          title: blockingWindow[2],
+          kind: blockingWindow[3] as TechnicianScheduleCustomEvent["kind"],
+          note: "用于公开日程演示，模拟休息、移动或锁定安排。",
+          syncTargets: [],
+          createdAt: `${date}T08:00:00`,
+          updatedAt: `${date}T08:00:00`
+        });
+      }
+    });
+  });
+
+  return {
+    dutyShifts,
+    bookings: buildPublicAvailabilityDemoBookingSlots(input).map((slot): TechnicianScheduleBooking => ({
+      id: slot.bookingId,
+      technicianId: slot.technician.id,
+      storeId: slot.store.id,
+      date: slot.date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      title: slot.title,
+      customerName: slot.customerName,
+      amount: slot.amount,
+      orderId: slot.orderId,
+      eventType: slot.eventType,
+      detailTargetType: "order_detail",
+      detailTargetId: slot.orderId,
+      note: slot.note
+    })),
+    customEvents
   };
 }
 

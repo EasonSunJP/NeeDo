@@ -5,7 +5,7 @@ import type { ImRoleType } from "../../features/im/model";
 import { useImStore } from "../../features/im/store";
 import { useSocial } from "../../features/social/context";
 import type { SocialPortalScope } from "../../features/social/types";
-import { useI18n } from "../../i18n/I18nProvider";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { readNeedoExternalInfoPosts, subscribeNeedoExternalInfoPosts, type NeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { cn } from "../../lib/utils";
 import { setNeedoPetEnabled, setNeedoPetFreeRoam, useNeedoPetSettings } from "../../state/needoPetSettings";
@@ -866,7 +866,7 @@ function CareMeter({ label, value }: { label: string; value: number }) {
 
 export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const { isAuthenticated, session } = useAuth();
-  const { language } = useI18n();
+  const { language } = useOptionalI18n();
   const { theme } = useClientTheme();
   const petSettings = useNeedoPetSettings();
   const location = useLocation();

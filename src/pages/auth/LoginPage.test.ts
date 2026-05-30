@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAdminDefaultCredentials } from "./AdminLoginPage";
+import { isBackendAccountForAnotherPortal, resolveAdminDefaultCredentials, resolveAdminTestLoginCredentials, resolveBackendLoginTarget } from "./AdminLoginPage";
 import { getPostLoginRoute, getPublicTestLoginPortal, resolveLoginErrorMessage, resolveLoginFeedbackMessage, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
 import appSource from "../../App.tsx?raw";
 import adminLoginPageSource from "./AdminLoginPage.tsx?raw";
@@ -123,6 +123,13 @@ describe("LoginPage real-account login", () => {
     expect(adminLoginPageSource).not.toContain("login(config.authPortal");
   });
 
+  it("keeps backend login pages scoped to the selected backend", () => {
+    expect(resolveBackendLoginTarget("merchant", "merchant", "/merchant-admin")).toBe("/merchant-admin");
+    expect(resolveBackendLoginTarget("admin", "merchant", "/merchant-admin")).toBeNull();
+    expect(adminLoginPageSource).toContain("portalMismatchError");
+    expect(adminLoginPageSource).not.toContain('nextPath : "/admin"');
+  });
+
   it("prefills operations admin login fields from configured test credentials", () => {
     expect(
       resolveAdminDefaultCredentials(
@@ -137,6 +144,49 @@ describe("LoginPage real-account login", () => {
       email: "admin",
       password: "Admin.2026"
     });
+  });
+
+  it("keeps backend test credentials portal-specific even when env files still contain the shared admin account", () => {
+    const staleSharedEnv = {
+      VITE_TEST_LOGIN_EMAIL: "admin",
+      VITE_TEST_LOGIN_PASSWORD: "Admin.2026",
+      VITE_TEST_LOGIN_MERCHANT_EMAIL: "admin",
+      VITE_TEST_LOGIN_MERCHANT_PASSWORD: "Admin.2026",
+      VITE_TEST_LOGIN_BUSINESS_EMAIL: "admin",
+      VITE_TEST_LOGIN_BUSINESS_PASSWORD: "Admin.2026"
+    };
+
+    expect(resolveAdminTestLoginCredentials(staleSharedEnv, "merchant-admin")).toEqual({
+      email: "merchant@example.com",
+      password: "Admin.2026"
+    });
+    expect(resolveAdminTestLoginCredentials(staleSharedEnv, "afirieito-admin")).toEqual({
+      email: "affiliate@example.com",
+      password: "Admin.2026"
+    });
+    expect(resolveAdminDefaultCredentials(staleSharedEnv, "merchant-admin", "merchant-owner@example.com")).toEqual({
+      email: "merchant@example.com",
+      password: "Admin.2026"
+    });
+  });
+
+  it("honors explicitly configured portal credentials and rejects remembered accounts from another backend", () => {
+    expect(
+      resolveAdminTestLoginCredentials(
+        {
+          VITE_TEST_LOGIN_MERCHANT_EMAIL: "custom-merchant@example.com",
+          VITE_TEST_LOGIN_MERCHANT_PASSWORD: "Merchant.2026"
+        },
+        "merchant-admin"
+      )
+    ).toEqual({
+      email: "custom-merchant@example.com",
+      password: "Merchant.2026"
+    });
+    expect(isBackendAccountForAnotherPortal("merchant-admin", "admin")).toBe(true);
+    expect(isBackendAccountForAnotherPortal("merchant-admin", "admin@example.com")).toBe(true);
+    expect(isBackendAccountForAnotherPortal("merchant-admin", "merchant@example.com")).toBe(false);
+    expect(isBackendAccountForAnotherPortal("admin", "merchant@example.com")).toBe(true);
   });
 
   it("ignores redirects that belong to a different portal after login", () => {

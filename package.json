@@ -17,6 +17,7 @@
     "i18n:audit": "node scripts/i18n-audit.mjs",
     "i18n:quality": "node scripts/i18n-quality-audit.mjs",
     "i18n:export": "node scripts/export-i18n-workbook.mjs",
+    "i18n:glossary": "node scripts/export-i18n-glossary-workbook.mjs",
     "i18n:import": "node scripts/import-i18n-workbook.mjs exports/i18n/needo-localization-workbook.xlsx",
     "i18n:screenshots": "node scripts/i18n-page-screenshot-audit.mjs",
     "verify:social-mine": "node scripts/verify-social-mine-route.mjs",

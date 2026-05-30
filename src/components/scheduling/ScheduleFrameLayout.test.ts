@@ -129,6 +129,13 @@ describe("shared schedule frame layout", () => {
     expect(unifiedCalendarSource).not.toContain("bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)] shadow-[12px_0_18px_rgba(0,0,0,0.10)]");
   });
 
+  it("opens cycle calendar appointment details through the merchant order detail route", () => {
+    expect(cycleBoardSource).toContain("getScheduleOrderDetailRoute");
+    expect(cycleBoardSource).toContain("const appointmentDetailId = event.detailTargetId ?? event.orderId;");
+    expect(cycleBoardSource).toContain('navigate(getScheduleOrderDetailRoute(appointmentDetailId, "merchant"));');
+    expect(cycleBoardSource).not.toContain('navigate(`/merchant/schedule/arrangements/${encodeURIComponent(event.orderId)}`)');
+  });
+
   it("uses the shared floating header search contract with a right search action", () => {
     expect(scheduleSearchFieldSource).toContain("floatingHeaderSearchRowClassName");
     expect(scheduleSearchFieldSource).toContain("floatingHeaderSearchFieldClassName");

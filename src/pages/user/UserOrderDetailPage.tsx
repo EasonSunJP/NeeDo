@@ -394,7 +394,10 @@ export function UserOrderDetailPage() {
     `/orders/${order.id}`
   );
   const closeDetail = () => {
-    navigate("/orders", { replace: true });
+    navigate("/", { replace: true });
+  };
+  const handleBack = () => {
+    navigate(-1);
   };
 
   useEffect(() => {
@@ -517,7 +520,7 @@ export function UserOrderDetailPage() {
         }
         closeLabel="关闭预约详情"
         controlButtonClassName="border-transparent bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,var(--client-bg)_18%)]"
-        hideBackButton
+        onBack={handleBack}
         onClose={closeDetail}
         title="预约详情"
       />

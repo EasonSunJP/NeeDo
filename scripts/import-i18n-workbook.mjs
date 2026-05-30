@@ -256,7 +256,7 @@ function buildTranslationBlock(entries) {
     .map((entry) => {
       const parts = [];
 
-      if (entry["zh-Hant"] && entry["zh-Hant"] !== entry.zh) {
+      if (entry["zh-Hant"]) {
         parts.push(`"zh-Hant": ${JSON.stringify(entry["zh-Hant"])}`);
       }
 
@@ -365,16 +365,17 @@ async function main() {
 
   const block = buildTranslationBlock(workbook.entries);
   const source = await fs.readFile(sourceFile, "utf8");
-  const updated = source.replace(
-    /export const translations: TranslationMap = \{[\s\S]*?\n\};\n\nexport function getTranslationLookupCandidates/u,
-    `${block}\n\nexport function getTranslationLookupCandidates`
-  );
+  const translationBlockPattern = /export const translations: TranslationMap = \{[\s\S]*?\n\};\n\nexport function getTranslationLookupCandidates/u;
 
-  if (updated === source) {
+  if (!translationBlockPattern.test(source)) {
     throw new Error("未能替换 src/i18n/translations.ts 中的 translations 区块。");
   }
 
-  await fs.writeFile(sourceFile, updated, "utf8");
+  const updated = source.replace(translationBlockPattern, `${block}\n\nexport function getTranslationLookupCandidates`);
+
+  if (updated !== source) {
+    await fs.writeFile(sourceFile, updated, "utf8");
+  }
 
   console.log(
     JSON.stringify(

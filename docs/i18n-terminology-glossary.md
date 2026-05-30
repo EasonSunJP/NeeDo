@@ -14,9 +14,9 @@
 
 | 简体中文 | 繁体中文 | 日语 | English | 한국어 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| 用户端 | 用戶端 | ユーザー側 | User App | 사용자 앱 | 面向普通用户的移动端 |
+| 用户端 | 用戶端 | ユーザーアプリ | User App | 사용자 앱 | 面向普通用户的移动端 |
 | 商户端 | 商戶端 | 店舗側 | Merchant App | 사업자 앱 | 手机端商户入口 |
-| 技师端 | 技師端 | スタッフ側 | Technician App | 기사 앱 | 手机端技师入口 |
+| 技师端 | 技師端 | スタッフアプリ | Technician App | 기사 앱 | 手机端技师入口 |
 | 平台后台 | 平台後台 | プラットフォーム管理画面 | Platform Admin | 플랫폼 관리자 | 总后台 |
 | 商户后台 | 商戶後台 | 店舗管理画面 | Business Management | 사업자 관리 화면 | PC 商户后台 |
 | 调度中心 | 調度中心 | 管理センター | Management Center | 관리 센터 | 商户后台排班调度总入口 |
@@ -36,12 +36,12 @@
 | 排班 | 排班 | シフト | Shift | 근무표 | 班表或排班动作 |
 | 班次 | 班次 | シフト | Shift | 근무 | 单个班次 |
 | 群（聊天/隐私） | 群組 | グループ | Group | 그룹 | 聊天群、隐私群，不用日文汉字「群」 |
-| 上班时间 | 上班時間 | 出勤時間 | Work hours | 근무 시간 | 技师可工作时间 |
+| 上班时间 | 上班時間 | 勤務時間 | Work hours | 근무 시간 | 技师可工作时间 |
 | 周期 | 週期 | 周期 | Cycle | 주기 | 排班周期 |
 | 当前周期确认 | 目前週期確認 | 現状確認 | Current Cycle Confirmation | 현재 주기 확인 | 排班确认节点 |
 | 最终确认 | 最終確認 | 最終確認 | Final Confirmation | 최종 확인 | 进入 confirmed slots 前 |
 | confirmed slots | confirmed slots | confirmed slots | confirmed slots | confirmed slots | 技术/数据状态名保留英文 |
-| 派单 | 派單 | 配車/割当 | Dispatch | 배정 | 调度语境优先用 Dispatch |
+| 派单 | 派單 | 割当 | Dispatch | 배정 | 调度语境优先用 Dispatch |
 | 候补 | 候補 | 候補 | Standby | 대기 | 候补技师/候补队列 |
 | 冲突 | 衝突 | 重複 | Conflict | 충돌 | 排班冲突 |
 | 缓冲 | 緩衝 | バッファ | Buffer | 버퍼 | 时间缓冲 |
@@ -53,19 +53,19 @@
 | 退勤 | 退勤 | 退勤 | Off duty | 퇴근 | 状态按钮 |
 | 申请 | 申請 | 申請 | Application | 신청 | 名词 |
 | 申请更改 | 申請更改 | 変更申請 | Request changes | 변경 신청 | 技师端改班入口 |
-| 确认收到 | 確認收到 | 受領確認 | Acknowledge | 수신 확인 | 技师端确认入口 |
+| 确认收到 | 確認收到 | 受取確認 | Acknowledge | 수신 확인 | 技师端确认入口 |
 | 处理 | 處理 | 対応 | Handling | 처리 | 异常、工单、申请处理 |
 | 人工处理 | 人工處理 | 手動対応 | Manual handling | 수동 처리 | 与智能处理区分 |
-| 自动处理 | 自動處理 | 自動処理 | Automated handling | 자동 처리 | 系统自动处理 |
+| 自动处理 | 自動處理 | 自動対応 | Automated handling | 자동 처리 | 系统自动处理 |
 | 智能排班 | 智能排班 | スマートシフト | Smart scheduling | 스마트 근무표 | 不使用 AI Scheduling |
 | 预测 | 預測 | 予測 | Forecast | 예측 | 数据预测 |
 | 异常队列 | 異常佇列 | 例外キュー | Exception queue | 예외 대기열 | 排班异常 |
 | 质量评分 | 品質評分 | 品質スコア | Quality score | 품질 점수 | 排班质量 |
-| 规则 | 規則 | ルール | Rule | 규칙 | 排班/商户规则 |
-| 模板 | 範本 | テンプレート | Template | 템플릿 | 排班模板 |
+| 规则 | 規則 | 規則 | Rule | 규칙 | 排班/商户规则 |
+| 模板 | 範本 | テンプレ | Template | 템플릿 | 排班模板 |
 | 通知 | 通知 | 通知 | Notification | 알림 | 系统通知 |
 | 资料 | 資料 | プロフィール | Profile | 프로필 | 用户/技师资料 |
-| 头图 | 頭圖 | ヘッダー画像 | Header image | 헤더 이미지 | 资料页顶部图 |
+| 头图 | 頭圖 | カバー画像 | Header image | 헤더 이미지 | 资料页顶部图 |
 | 关注 | 關注 | フォロー | Follow | 팔로우 | 社交关系 |
 | 已关注 | 已關注 | フォロー中 | Following | 팔로우 중 | 社交关系 |
 | 推荐关注 | 推薦關注 | おすすめフォロー | Suggested follows | 추천 팔로우 | 社交推荐 |
@@ -74,7 +74,7 @@
 | 需求 | 需求 | 需要 | Need | 필요 | NeeDo 需求 |
 | 利用政策 | 利用政策 | 利用規約 | Terms of Use | 이용약관 | 设置/法务 |
 | 隐私政策 | 隱私政策 | 個人情報保護方針 | Privacy Policy | 개인정보 처리방침 | 设置/法务 |
-| 注销账号 | 註銷帳號 | 退会 | Delete account | 계정 탈퇴 | 设置 |
+| 注销账号 | 註銷帳號 | 退会 | Delete account | 계정 삭제 | 设置 |
 
 ## 截图复查规则
 

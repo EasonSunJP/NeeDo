@@ -33,6 +33,7 @@ import {
   type DispatchScheduleGridData
 } from "../../features/dispatch-center/store";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
+import { getScheduleOrderDetailRoute } from "../../lib/scheduleDetailTarget";
 import { cn } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import type { Customer, Store, Technician } from "../../types/domain";
@@ -482,6 +483,8 @@ function buildCycleCalendarData(
           id: eventId,
           location: context.stores.find((item) => item.id === context.storeId)?.address,
           orderId: representativeCell.orderId,
+          detailTargetType: representativeCell.detailTargetType,
+          detailTargetId: representativeCell.detailTargetId,
           participants: getCycleEventParticipants(representativeCell, row, context),
           readOnly: true,
           reminder: "5 分前",
@@ -1032,12 +1035,14 @@ export function ScheduleCycleCalendarBoard({
             onOpenCell(cell);
           }}
           onOpenAppointmentDetail={(event) => {
-            if (!event.orderId) {
+            const appointmentDetailId = event.detailTargetId ?? event.orderId;
+
+            if (!appointmentDetailId) {
               return;
             }
 
             setActiveDetail(null);
-            navigate(`/merchant/schedule/arrangements/${encodeURIComponent(event.orderId)}`);
+            navigate(getScheduleOrderDetailRoute(appointmentDetailId, "merchant"));
           }}
         />
       ) : null}

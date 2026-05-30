@@ -19,7 +19,12 @@ const workbookFile = path.join(outputDir, "needo-localization-workbook.xlsx");
 const sourceDirectories = [path.join(workspaceRoot, "src"), path.join(workspaceRoot, "scripts")];
 
 const codeFileExtensions = new Set([".ts", ".tsx", ".mjs"]);
-const excludedFilePatterns = [/src\/i18n\/translations\.ts$/u, /\.test\.(ts|tsx)$/u, /scripts\/export-i18n-workbook\.mjs$/u];
+const excludedFilePatterns = [
+  /src\/i18n\/translations\.ts$/u,
+  /\.test\.(ts|tsx)$/u,
+  /scripts\/export-i18n-workbook\.mjs$/u,
+  /scripts\/export-i18n-glossary-workbook\.mjs$/u
+];
 const usageExampleLimit = 6;
 const manuallyReviewedJapaneseSourceTexts = new Set([
   "信用",
@@ -225,6 +230,10 @@ function looksLikeLocalizableText(value) {
     return false;
   }
 
+  if (looksLikeCodeOrMarkupSnippet(text)) {
+    return false;
+  }
+
   if (!containsCjk(text) && !containsKana(text) && !containsHangul(text)) {
     return false;
   }
@@ -245,6 +254,53 @@ function looksLikeLocalizableText(value) {
   }
 
   return true;
+}
+
+function shouldKeepExistingTranslationKey(value) {
+  const text = normalizeText(value);
+
+  if (!text) {
+    return false;
+  }
+
+  if (text.length < 2 && !containsCjk(text) && !containsKana(text) && !containsHangul(text)) {
+    return false;
+  }
+
+  if (looksLikeCodeOrMarkupSnippet(text)) {
+    return false;
+  }
+
+  return true;
+}
+
+function looksLikeCodeOrMarkupSnippet(value) {
+  const text = value.trim();
+
+  if (/^<!doctype\s+html\b/iu.test(text) || /<script\b/iu.test(text)) {
+    return true;
+  }
+
+  if (/(xlsx|approved overrides|docs\/i18n-terminology-glossary\.md|主多语言表|订正入口|订正后的|不要删除|人工锁定|锁定级别|订正状态|现行锁定|待订正确认)/iu.test(text)) {
+    return true;
+  }
+
+  if (/^\(?\(\)\s*=>/u.test(text)) {
+    return true;
+  }
+
+  if (/^\[[A-Za-z0-9_-]+\]/u.test(text)) {
+    return true;
+  }
+
+  if (
+    text.length > 80 &&
+    /(document\.|window\.|querySelector|NodeFilter|getComputedStyle|console\.|process\.|JSON\.stringify|=>|;\s*(const|let|var)\s)/u.test(text)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function classifySourceText(value) {
@@ -620,7 +676,8 @@ function estimateDisplayByteLimit(sourceText, usageDescription) {
 
 function buildSheetRows(translations, occurrenceIndex) {
   const grouped = new Map();
-  const sourceTexts = Array.from(new Set([...Object.keys(translations), ...occurrenceIndex.keys()])).sort((left, right) => left.localeCompare(right, "zh-Hans-CN"));
+  const sourceTexts = Array.from(new Set([...Object.keys(translations).filter((sourceText) => shouldKeepExistingTranslationKey(sourceText)), ...occurrenceIndex.keys()]))
+    .sort((left, right) => left.localeCompare(right, "zh-Hans-CN"));
 
   for (const sourceText of sourceTexts) {
     const values = translations[sourceText] ?? {};
@@ -633,7 +690,8 @@ function buildSheetRows(translations, occurrenceIndex) {
       normalizeWorkbookTranslationCell(values.en),
       normalizeWorkbookTranslationCell(values.ko),
       usageDescription,
-      estimateDisplayByteLimit(sourceText, usageDescription)
+      estimateDisplayByteLimit(sourceText, usageDescription),
+      ""
     ];
 
     grouped.set(featureKey, [...(grouped.get(featureKey) ?? []), row]);
@@ -645,7 +703,9 @@ function buildSheetRows(translations, occurrenceIndex) {
 async function buildWorkbook(groupedRows) {
   const workbook = Workbook.create();
   const createdSheets = [];
-  const usageColumn = getExcelColumnName(workbookHeaders.length - 2);
+  const usageColumn = getExcelColumnName(5);
+  const displayByteLimitColumn = getExcelColumnName(6);
+  const manualEditColumn = getExcelColumnName(7);
   const lastColumn = getExcelColumnName(workbookHeaders.length - 1);
 
   for (const feature of workbookFeatureSheets) {
@@ -669,8 +729,10 @@ async function buildWorkbook(groupedRows) {
     sheet.getRange(`A1:A${rows.length + 1}`).format.columnWidthPx = 320;
     sheet.getRange(`B1:E${rows.length + 1}`).format.columnWidthPx = 280;
     sheet.getRange(`${usageColumn}1:${usageColumn}${rows.length + 1}`).format.columnWidthPx = 560;
-    sheet.getRange(`${lastColumn}1:${lastColumn}${rows.length + 1}`).format.columnWidthPx = 150;
-    sheet.getRange(`${lastColumn}2:${lastColumn}${rows.length + 1}`).format.horizontalAlignment = "center";
+    sheet.getRange(`${displayByteLimitColumn}1:${displayByteLimitColumn}${rows.length + 1}`).format.columnWidthPx = 150;
+    sheet.getRange(`${displayByteLimitColumn}2:${displayByteLimitColumn}${rows.length + 1}`).format.horizontalAlignment = "center";
+    sheet.getRange(`${manualEditColumn}1:${manualEditColumn}${rows.length + 1}`).format.columnWidthPx = 150;
+    sheet.getRange(`${manualEditColumn}2:${manualEditColumn}${rows.length + 1}`).format.horizontalAlignment = "center";
 
     for (const [rowIndex, row] of rows.entries()) {
       if (manuallyReviewedJapaneseSourceTexts.has(row[0])) {
