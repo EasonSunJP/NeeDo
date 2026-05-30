@@ -27,3 +27,13 @@ describe("HomePage technician recommendations", () => {
     expect(homePageSource).toContain("hasStaticHomeContent ? null : homeRecommendationsQuery.error");
   });
 });
+
+describe("HomePage quick action icon theme colors", () => {
+  it("uses client theme tokens instead of a hard-coded green", () => {
+    expect(homePageSource).toContain("function getQuickActionIconClassName");
+    expect(homePageSource).toContain("Record<ClientTheme, string>");
+    expect(homePageSource).toContain("text-[color:var(--client-accent-text)]");
+    expect(homePageSource).toContain("getQuickActionIconClassName(theme)");
+    expect(homePageSource).not.toContain("text-[#3c887e]");
+  });
+});

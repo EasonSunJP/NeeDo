@@ -250,6 +250,120 @@ export const approvedI18nTranslationOverrides = [
     "我的日程",
     { "zh-Hant": "我的行程", ja: "スケジュール", en: "My schedule", ko: "내 일정" }
   ],
+  // Manual terminology lock: store detail map/profile copy uses Store,
+  // Reservation, and treatment-seat wording consistently across imports.
+  [
+    "预约・营业补充",
+    { "zh-Hant": "預約・營業補充", ja: "予約・営業時間の補足", en: "Reservation and hours details", ko: "예약 및 영업시간 보충 정보" }
+  ],
+  [
+    "席位・服务补充",
+    { "zh-Hant": "席位・服務補充", ja: "席・サービスの補足", en: "Seating and service details", ko: "좌석 및 서비스 상세 정보" }
+  ],
+  [
+    "营业规则",
+    { "zh-Hant": "營業規則", ja: "営業時間・予約ルール", en: "Hours and reservation rules", ko: "영업시간 및 예약 규칙" }
+  ],
+  [
+    "营业与说明",
+    { "zh-Hant": "營業與說明", ja: "営業時間・来店案内", en: "Hours and arrival notes", ko: "영업시간 및 방문 안내" }
+  ],
+  [
+    "空间与服务",
+    { "zh-Hant": "空間與服務", ja: "空間とサービス", en: "Space and services", ko: "공간 및 서비스" }
+  ],
+  [
+    "席位信息",
+    { "zh-Hant": "席位資訊", ja: "席情報", en: "Seat information", ko: "좌석 정보" }
+  ],
+  [
+    "店铺基础信息",
+    { "zh-Hant": "店鋪基礎資訊", ja: "店舗基本情報", en: "Basic store information", ko: "매장 기본 정보" }
+  ],
+  [
+    "预约・咨询",
+    { "zh-Hant": "預約・諮詢", ja: "予約・問い合わせ", en: "Reservations and inquiries", ko: "예약 및 문의" }
+  ],
+  [
+    "预约可否",
+    { "zh-Hant": "可否預約", ja: "予約可否", en: "Reservation availability", ko: "예약 가능 여부" }
+  ],
+  [
+    "最大预约人数",
+    { "zh-Hant": "最大預約人數", ja: "最大予約人数", en: "Maximum reservation size", ko: "최대 예약 인원" }
+  ],
+  [
+    "特点・相关信息",
+    { "zh-Hant": "特色・相關資訊", ja: "特徴・関連情報", en: "Features and related information", ko: "특징 및 관련 정보" }
+  ],
+  [
+    "利用场景",
+    { "zh-Hant": "使用場景", ja: "利用シーン", en: "Best for", ko: "추천 상황" }
+  ],
+  [
+    "位置氛围",
+    { "zh-Hant": "位置氛圍", ja: "ロケーション・雰囲気", en: "Location and atmosphere", ko: "위치 및 분위기" }
+  ],
+  [
+    "服务支持",
+    { "zh-Hant": "服務支援", ja: "対応サービス", en: "Supported services", ko: "지원 서비스" }
+  ],
+  [
+    "官方联系",
+    { "zh-Hant": "官方聯絡", ja: "公式連絡先", en: "Official contact details", ko: "공식 연락처" }
+  ],
+  [
+    "可立即预约",
+    { "zh-Hant": "可立即預約", ja: "すぐ予約可", en: "Reserve now", ko: "즉시 예약 가능" }
+  ],
+  [
+    "需确认时段",
+    { "zh-Hant": "需確認時段", ja: "時間帯の確認が必要", en: "Time slot confirmation required", ko: "시간대 확인 필요" }
+  ],
+  [
+    "约会准备",
+    { "zh-Hant": "約會準備", ja: "お出かけ前の準備", en: "Pre-outing prep", ko: "외출 전 준비" }
+  ],
+  [
+    "平台聊天咨询 / 立即预约",
+    { "zh-Hant": "平台聊天諮詢 / 立即預約", ja: "プラットフォームチャット / 今すぐ予約", en: "Platform chat / Reserve now", ko: "플랫폼 채팅 / 즉시 예약" }
+  ],
+  [
+    "电话咨询请以预约确认短信内联系方式为准。",
+    { "zh-Hant": "電話諮詢請以預約確認簡訊內聯絡方式為準。", ja: "電話でのお問い合わせは、予約確認SMS内の連絡先を基準としてください。", en: "For phone inquiries, use the contact details in the reservation confirmation SMS.", ko: "전화 문의는 예약 확인 문자에 포함된 연락처를 기준으로 해 주세요." }
+  ],
+  [
+    "平台预约确认后保留时段；延长、指名和房型追加费用以店铺确认为准。",
+    { "zh-Hant": "平台預約確認後會保留時段；延長、指名和房型追加費用以店鋪確認為準。", ja: "プラットフォームで予約確定後に枠を確保します。延長、指名、部屋タイプの追加料金は店舗確認を基準とします。", en: "The time slot is held after platform confirmation; extensions, staff requests, and room surcharges are confirmed by the store.", ko: "플랫폼 예약 확정 후 시간대가 보류됩니다. 연장, 지명, 객실 추가 요금은 매장 확인 기준입니다." }
+  ],
+  [
+    "平台预约确认后保留时段；追加设计、卸除和特殊材料费用以店铺确认为准。",
+    { "zh-Hant": "平台預約確認後會保留時段；追加設計、卸除和特殊材料費用以店鋪確認為準。", ja: "プラットフォームで予約確定後に枠を確保します。追加デザイン、オフ、特殊材料費は店舗確認を基準とします。", en: "The time slot is held after platform confirmation; add-on design, removal, and special material fees are confirmed by the store.", ko: "플랫폼 예약 확정 후 시간대가 보류됩니다. 추가 디자인, 제거, 특수 재료 비용은 매장 확인 기준입니다." }
+  ],
+  [
+    "可咨询。安静时段和团体护理请以店铺确认结果为准。",
+    { "zh-Hant": "可諮詢。安靜時段和團體護理請以店鋪確認結果為準。", ja: "相談可。静かな時間帯やグループ施術は店舗確認を基準としてください。", en: "Available on request. Quiet slots and group treatments depend on store confirmation.", ko: "상담 가능합니다. 조용한 시간대와 단체 케어는 매장 확인 기준입니다." }
+  ],
+  [
+    "可咨询。作品拍摄和多人护理请以店铺确认结果为准。",
+    { "zh-Hant": "可諮詢。作品拍攝和多人護理請以店鋪確認結果為準。", ja: "相談可。作品撮影や複数名施術は店舗確認を基準としてください。", en: "Available on request. Photo shoots and group treatments depend on store confirmation.", ko: "상담 가능합니다. 작품 촬영과 다인 케어는 매장 확인 기준입니다." }
+  ],
+  [
+    "到店后会确认作品相册、颜色样本和护理位准备情况。",
+    { "zh-Hant": "到店後會確認作品相冊、顏色樣本和護理位準備情況。", ja: "来店後、作品アルバム、カラーサンプル、施術席の準備状況を確認します。", en: "After arrival, the portfolio, color samples, and treatment-seat readiness are confirmed.", ko: "도착 후 작품 앨범, 색상 샘플, 시술 좌석 준비 상태를 확인합니다." }
+  ],
+  [
+    "单人护理位为主，适合午休补妆、下班整理和周末预约。",
+    { "zh-Hant": "以單人護理位為主，適合午休補妝、下班整理和週末預約。", ja: "1名用の施術席が中心で、昼休みのメイク直し、仕事帰りのケア、週末予約に適しています。", en: "Mostly single treatment seats, suited for lunch touch-ups, after-work prep, and weekend reservations.", ko: "1인 시술 좌석 중심이며 점심시간 보정, 퇴근 후 정리, 주말 예약에 적합합니다." }
+  ],
+  [
+    "套餐、畅饮和多人席可预约。",
+    { "zh-Hant": "套餐、暢飲和多人席可預約。", ja: "コース、飲み放題、複数名席を予約できます。", en: "Courses, all-you-can-drink, and group seats can be reserved.", ko: "코스, 무제한 음료, 단체석 예약 가능." }
+  ],
+  [
+    "隐秘感餐厅，适合朋友小聚和商务会食。",
+    { "zh-Hant": "隱秘感餐廳，適合朋友小聚和商務會食。", ja: "隠れ家レストランで、友人との集まりやビジネス会食に適しています。", en: "A hideaway restaurant suited for friends and business dining.", ko: "숨은 맛집 분위기의 레스토랑으로 친구 모임과 비즈니스 회식에 적합합니다." }
+  ],
   [
     "随时可约",
     { "zh-Hant": "隨時可約", ja: "いつでも予約可能", en: "Book anytime", ko: "언제든 예약 가능" }

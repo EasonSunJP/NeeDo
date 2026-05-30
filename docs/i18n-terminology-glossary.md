@@ -76,6 +76,28 @@
 | 隐私政策 | 隱私政策 | 個人情報保護方針 | Privacy Policy | 개인정보 처리방침 | 设置/法务 |
 | 注销账号 | 註銷帳號 | 退会 | Delete account | 계정 삭제 | 设置 |
 
+## 店铺详情页术语
+
+| 简体中文 | 繁体中文 | 日语 | English | 한국어 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| 店铺信息 | 店鋪資訊 | 店舗情報 | Store information | 매장 정보 | 地图 / 店铺详情信息区总标题 |
+| 店铺基础信息 | 店鋪基礎資訊 | 店舗基本情報 | Basic store information | 매장 기본 정보 | 店名、地址、交通手段等 |
+| 店铺详细信息 | 店鋪詳細資訊 | 店舗詳細情報 | Store details | 매장 상세 정보 | 预约、营业、预算、费用等 |
+| 预约・咨询 | 預約・諮詢 | 予約・問い合わせ | Reservations and inquiries | 예약 및 문의 | 详情页信息行；英语不用 Booking |
+| 预约可否 | 可否預約 | 予約可否 | Reservation availability | 예약 가능 여부 | 预约状态说明 |
+| 最大预约人数 | 最大預約人數 | 最大予約人数 | Maximum reservation size | 최대 예약 인원 | 店铺可承接人数 |
+| 席・设备 | 席・設備 | 席・設備 | Seats and equipment | 좌석 및 장비 | 座席与空间设备区 |
+| 服务费・其他费用 | 服務費・其他費用 | サービス料・その他費用 | Service and other fees | 서비스 및 기타 요금 | 费用说明行 |
+| 利用场景 | 使用場景 | 利用シーン | Best for | 추천 상황 | 不写 Use cases，避免产品后台口吻 |
+| 位置氛围 | 位置氛圍 | ロケーション・雰囲気 | Location and atmosphere | 위치 및 분위기 | 店铺氛围说明 |
+| 服务支持 | 服務支援 | 対応サービス | Supported services | 지원 서비스 | 可提供服务能力 |
+| 官方联系 | 官方聯絡 | 公式連絡先 | Official contact details | 공식 연락처 | 平台聊天、短信、电话等 |
+| 立即预约 | 立即預約 | 今すぐ予約 | Reserve now | 즉시 예약 | CTA 语境；避免 Book now 回流 |
+| 护理位 | 護理位 | 施術席 | Treatment seat | 시술 좌석 | 美容 / 美甲 / 美睫语境 |
+| 护理房 | 護理房 | ケアルーム | Treatment room | 케어룸 | 按摩 / 护理房间 |
+| 套餐、畅饮和多人席可预约。 | 套餐、暢飲和多人席可預約。 | コース、飲み放題、複数名席を予約できます。 | Courses, all-you-can-drink, and group seats can be reserved. | 코스, 무제한 음료, 단체석 예약 가능. | 简中源文案不得混入日语 `飲み放題` |
+| 隐秘感餐厅 | 隱秘感餐廳 | 隠れ家レストラン | Hideaway restaurant | 숨은 맛집 분위기의 레스토랑 | 简中源文案不得混入日语 `隠れ家` |
+
 ## 截图复查规则
 
 - 每个主入口至少检查 `简中`、`日本語`、`English`、`한국어` 四种状态；繁中优先通过表格检查和关键页面抽检。

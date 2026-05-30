@@ -229,6 +229,68 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(basicEditorSource).not.toContain("{ description: event.target.value }");
   });
 
+  it("keeps the map tab details ordered like the reference restaurant profile", () => {
+    const mapSectionSource = pageSource.slice(pageSource.indexOf('{activeTab === "map" ?'), pageSource.indexOf("{renderActiveInlineEditor(\"map-guide\")}", pageSource.indexOf('{activeTab === "map" ?')));
+    const expectedOrder = [
+      'title="店铺基础信息"',
+      'label="店名"',
+      'label="地址"',
+      'label="交通手段"',
+      'label="分类"',
+      'title="店铺详细信息"',
+      'label="预约・咨询"',
+      'label="预约可否"',
+      'label="营业时间"',
+      'label="预算"',
+      'label="支付方式"',
+      'label="服务费・其他费用"',
+      'title="席・设备"',
+      'label="席数"',
+      'label="最大预约人数"',
+      'label="个室"',
+      'label="包场"',
+      'label="禁烟・吸烟"',
+      'label="停车场"',
+      'label="空间・设备"',
+      'title="菜单"',
+      'label="套餐"',
+      'label="饮品"',
+      'label="服务内容"',
+      'title="特点・相关信息"',
+      'label="利用场景"',
+      'label="位置氛围"',
+      'label="服务"',
+      'label="儿童同行"',
+      'label="官方账号"',
+      'label="电话咨询"'
+    ];
+
+    expect(pageSource).toContain("function StoreMapInfoRow");
+    expect(pageSource).toContain("function StoreMapTagList");
+    expect(mapSectionSource).toContain('title="店铺信息"');
+    expect(mapSectionSource).not.toContain('title="到店信息"');
+    expect(mapSectionSource).toContain("storeBookingCtaButtonClassName");
+    expect(pageSource).toContain("平台聊天咨询优先");
+    expect(mapSectionSource.match(/label="地址"/g)).toHaveLength(1);
+    expect(mapSectionSource.match(/label="交通手段"/g)).toHaveLength(1);
+    expect(mapSectionSource.match(/label="店名"/g)).toHaveLength(1);
+    expect(mapSectionSource.match(/label="分类"/g)).toHaveLength(1);
+    expectedOrder.reduce((previousIndex, label) => {
+      const nextIndex = mapSectionSource.indexOf(label, previousIndex + 1);
+      expect(nextIndex).toBeGreaterThan(previousIndex);
+      return nextIndex;
+    }, -1);
+    expect(pageSource).not.toContain("type StoreMapDetailGroup");
+    expect(pageSource).not.toContain("buildStoreMapDetailGroups");
+    expect(pageSource).not.toContain("mapDetailGroups.map");
+    expect(pageSource).not.toContain("预约・营业补充");
+    expect(pageSource).not.toContain("席位・服务补充");
+    expect(pageSource).toContain("套餐、畅饮和多人席可预约。");
+    expect(pageSource).toContain("隐秘感餐厅，适合朋友小聚和商务会食。");
+    expect(pageSource).not.toContain("饮み放题");
+    expect(pageSource).not.toContain("隐れ家餐厅");
+  });
+
   it("uses the shared icon metric action for favorite and share controls", () => {
     expect(pageSource).toContain("IconMetricAction");
     expect(pageSource).not.toContain("function TopMetricAction");

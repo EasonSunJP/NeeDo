@@ -544,21 +544,49 @@ function KycVerifiedMark({ verified }: { verified?: boolean }) {
   return <KycVerifiedBadge />;
 }
 
-function getSocialProfileMiniTagToneClassName(tone: SocialProfileMiniTagTone = "neutral", onCover = false) {
+function getSocialProfileMiniTagToneClassName(tone: SocialProfileMiniTagTone = "neutral", onCover = false, coverDark = true) {
+  if (onCover) {
+    if (!coverDark) {
+      if (tone === "green") {
+        return "border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] text-[#176344]";
+      }
+
+      if (tone === "yellow") {
+        return "border border-[#d49b24]/34 bg-[#f3cf78]/22 text-[#7b560f]";
+      }
+
+      if (tone === "purple") {
+        return "border border-[#9a86ff]/32 bg-[#7662e8]/16 text-[#4b3ca5]";
+      }
+
+      return "border border-black/10 bg-white/34 text-[#3d424a]";
+    }
+
+    if (tone === "green") {
+      return "border border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] text-[color:var(--client-primary)]";
+    }
+
+    if (tone === "yellow") {
+      return "border border-[#f3cf78]/34 bg-[#f3cf78]/16 text-[#ffe5a4]";
+    }
+
+    if (tone === "purple") {
+      return "border border-[#9a86ff]/36 bg-[#7662e8]/20 text-[#ddd6ff]";
+    }
+
+    return "bg-white/[0.12] text-white/88";
+  }
+
   if (tone === "green") {
     return "border border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] text-[color:var(--client-primary)]";
   }
 
   if (tone === "yellow") {
-    return "border border-[#f3cf78]/34 bg-[#f3cf78]/16 text-[#ffe5a4]";
+    return "border border-[#d49b24]/30 bg-[#fff4d4] text-[#7b560f]";
   }
 
   if (tone === "purple") {
-    return "border border-[#9a86ff]/36 bg-[#7662e8]/20 text-[#ddd6ff]";
-  }
-
-  if (onCover) {
-    return "bg-white/[0.12] text-white/74";
+    return "border border-[#9a86ff]/30 bg-[#f0edff] text-[#4b3ca5]";
   }
 
   return "bg-white/[0.08] text-[color:var(--client-muted)]";
@@ -574,39 +602,51 @@ function normalizeSocialProfileMiniTopTags(tags?: SocialProfileMiniTopTag[]) {
 function SocialProfileMiniTag({
   children,
   className,
+  coverDark,
   onCover,
   tone
 }: {
   children: ReactNode;
   className?: string;
+  coverDark?: boolean;
   onCover?: boolean;
   tone?: SocialProfileMiniTagTone;
 }) {
   return (
-    <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-black leading-3", getSocialProfileMiniTagToneClassName(tone, onCover), className)}>
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-black leading-3",
+        getSocialProfileMiniTagToneClassName(tone, onCover, coverDark),
+        className
+      )}
+    >
       {children}
     </span>
   );
 }
 
-function EntityTypeTag({ data, onCover }: { data: SocialProfileMiniData; onCover?: boolean }) {
+function EntityTypeTag({ coverDark, data, onCover }: { coverDark?: boolean; data: SocialProfileMiniData; onCover?: boolean }) {
   if (data.entityType === "user") {
     return null;
   }
 
-  return <SocialProfileMiniTag onCover={onCover}>{data.primaryLabel}</SocialProfileMiniTag>;
+  return <SocialProfileMiniTag coverDark={coverDark} onCover={onCover}>{data.primaryLabel}</SocialProfileMiniTag>;
 }
 
-function InlineLevelLabel({ children, onCover }: { children: ReactNode; onCover?: boolean }) {
-  return <strong className={cn("shrink-0 text-[11px] font-black leading-4", onCover ? "text-white/72" : "text-[color:var(--client-muted)]")}>{children}</strong>;
+function InlineLevelLabel({ children, coverDark, onCover }: { children: ReactNode; coverDark?: boolean; onCover?: boolean }) {
+  return (
+    <strong className={cn("shrink-0 text-[11px] font-black leading-4", onCover ? (coverDark ? "text-white/72" : "text-[#3d424a]") : "text-[color:var(--client-muted)]")}>
+      {children}
+    </strong>
+  );
 }
 
-function InlineIdentityMeta({ data, onCover }: { data: SocialProfileMiniData; onCover?: boolean }) {
+function InlineIdentityMeta({ coverDark, data, onCover }: { coverDark?: boolean; data: SocialProfileMiniData; onCover?: boolean }) {
   if (data.entityType === "user") {
     return (
       <>
         {data.membershipKind ? <CustomerMembershipIcon className="-my-1" imageClassName="h-7 w-7" kind={data.membershipKind} /> : null}
-        <InlineLevelLabel onCover={onCover}>{data.levelLabel}</InlineLevelLabel>
+        <InlineLevelLabel coverDark={coverDark} onCover={onCover}>{data.levelLabel}</InlineLevelLabel>
       </>
     );
   }
@@ -614,13 +654,17 @@ function InlineIdentityMeta({ data, onCover }: { data: SocialProfileMiniData; on
   if (data.entityType === "technician") {
     return (
       <>
-        <EntityTypeTag data={data} onCover={onCover} />
-        <InlineLevelLabel onCover={onCover}>{data.levelLabel}</InlineLevelLabel>
+        <EntityTypeTag coverDark={coverDark} data={data} onCover={onCover} />
+        <InlineLevelLabel coverDark={coverDark} onCover={onCover}>{data.levelLabel}</InlineLevelLabel>
       </>
     );
   }
 
-  return <EntityTypeTag data={data} onCover={onCover} />;
+  if (data.entityType === "service") {
+    return null;
+  }
+
+  return <EntityTypeTag coverDark={coverDark} data={data} onCover={onCover} />;
 }
 
 function KindLevelValue({ data }: { data: SocialProfileMiniData }) {
@@ -766,15 +810,15 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
         {visibleTopTags.length > 0 ? (
           <div className={cn("absolute left-3.5 top-3 z-20 flex max-h-7 flex-wrap items-center gap-1 overflow-hidden", hasAction ? "right-[92px]" : "right-3.5")}>
             {visibleTopTags.map((tag) => (
-              <SocialProfileMiniTag key={tag.label} onCover tone={tag.tone}>{tag.label}</SocialProfileMiniTag>
+              <SocialProfileMiniTag coverDark={coverDark} key={tag.label} onCover tone={tag.tone}>{tag.label}</SocialProfileMiniTag>
             ))}
           </div>
         ) : null}
         <InteractiveArea className="focus-ring absolute bottom-2.5 left-[166px] right-3.5 z-20 block min-w-0 text-left" detailTo={resolvedDetailTo} onOpenDetails={onOpenDetails}>
-          <h3 className="flex min-w-0 items-center gap-1.5 text-[18px] font-black leading-6 text-white">
-            <span className={cn("min-w-0 truncate", data.entityType === "shop" || data.entityType === "service" ? "max-w-[calc(100%-48px)]" : "max-w-[calc(100%-92px)]")}>{data.displayName}</span>
+          <h3 className={cn("flex min-w-0 items-center gap-1.5 text-[18px] font-black leading-6", coverDark ? "text-white [text-shadow:0_1px_5px_rgba(0,0,0,0.74)]" : "text-[#25282d] [text-shadow:0_1px_0_rgba(255,255,255,0.72)]")}>
+            <span className={cn("min-w-0 truncate", data.entityType === "shop" ? "max-w-[calc(100%-48px)]" : data.entityType === "service" ? "max-w-full" : "max-w-[calc(100%-92px)]")}>{data.displayName}</span>
             {data.entityType !== "shop" && data.entityType !== "service" ? <KycVerifiedMark verified={data.kycVerified ?? true} /> : null}
-            <InlineIdentityMeta data={data} onCover />
+            <InlineIdentityMeta coverDark={coverDark} data={data} onCover />
           </h3>
         </InteractiveArea>
       </div>

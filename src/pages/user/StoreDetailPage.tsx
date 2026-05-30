@@ -96,6 +96,27 @@ type MenuCard = StoreMenuConfig;
 
 type OfferCard = StoreOfferConfig;
 type StoreProfileConfig = StorePresentationConfig;
+type StoreMapDetailCopy = {
+  bookingRule: string;
+  buyout: string;
+  chargeNote: string;
+  childrenPolicy: string;
+  courseInfo: string;
+  drinkInfo: string;
+  equipmentNote: string;
+  genre: string;
+  locationInfo: string;
+  maxReservationPeople: string;
+  menuInfo: string;
+  officialAccount: string;
+  officialContact: string;
+  phoneContact: string;
+  privateRoom: string;
+  seatInfo: string;
+  seatCount: string;
+  serviceSupport: string;
+  smokingPolicy: string;
+};
 
 const baseBookingDate = new Date(2026, 3, 22);
 const storeBookingCtaButtonClassName = "h-[52px] min-w-[176px] justify-center gap-2 px-7 text-center text-sm";
@@ -209,6 +230,93 @@ function textToList(value: string) {
     .map((item) => item.trim())
     .filter(Boolean);
 }
+
+const storeMapDetailCopyByIndustry: Record<StoreIndustry, StoreMapDetailCopy> = {
+  massage: {
+    bookingRule: "预约可。建议提前 10 分钟到店，20 分钟以上未联系的迟到可能取消。",
+    buyout: "可咨询。安静时段和团体护理请以店铺确认结果为准。",
+    chargeNote: "平台预约确认后保留时段；延长、指名和房型追加费用以店铺确认为准。",
+    childrenPolicy: "儿童同行请提前咨询，护理区以安静环境为主。",
+    courseInfo: "60 / 90 / 120 分钟护理套餐，可预约担当。",
+    drinkInfo: "温热水、养生茶可到店确认。",
+    equipmentNote: "到店后会再次确认清洁、换气和护理房准备情况。",
+    genre: "身体护理、按摩、放松调理",
+    locationInfo: "隐私护理空间，靠近车站，晚间到店也容易找到。",
+    maxReservationPeople: "到店同时 6 人，双人同行需提前确认。",
+    menuInfo: "肩颈、腰背、全身放松和深夜恢复护理。",
+    officialAccount: "NeeDo 店铺页 / 平台聊天",
+    officialContact: "平台聊天咨询优先，预约确认短信会附楼层、门禁和紧急联系说明。",
+    phoneContact: "电话咨询请以预约确认短信内联系方式为准。",
+    privateRoom: "有。单人护理房、双人护理房可提前确认。",
+    seatInfo: "独立护理房为主，支持单人护理、双人同行和安静休息需求。",
+    seatCount: "护理房 4 间 / 接待位 2 席。",
+    serviceSupport: "适合下班后恢复、运动后调整、深夜放松和女性用户到店。",
+    smokingPolicy: "全室禁烟，护理前后请在指定区域等候。"
+  },
+  beauty: {
+    bookingRule: "预约可。设计款和连续护理建议提前预约，迟到超过 15 分钟需重新确认可用时段。",
+    buyout: "可咨询。作品拍摄和多人护理请以店铺确认结果为准。",
+    chargeNote: "平台预约确认后保留时段；追加设计、卸除和特殊材料费用以店铺确认为准。",
+    childrenPolicy: "儿童同行请提前咨询，护理位周边以安静操作为主。",
+    courseInfo: "单色、设计款、连续护理套餐可预约。",
+    drinkInfo: "饮品提供以店铺当天说明为准。",
+    equipmentNote: "到店后会确认作品相册、颜色样本和护理位准备情况。",
+    genre: "美容、美甲、美睫、护理",
+    locationInfo: "通勤区护理空间，适合活动前准备和周末预约。",
+    maxReservationPeople: "到店同时 4 人，并排护理需提前确认。",
+    menuInfo: "美甲、美睫、卸除和自然风格咨询。",
+    officialAccount: "NeeDo 店铺页 / 平台聊天",
+    officialContact: "平台聊天咨询优先，预约确认短信会附楼层、门铃和作品图沟通说明。",
+    phoneContact: "电话咨询请以预约确认短信内联系方式为准。",
+    privateRoom: "有。单人护理位和并排护理位可确认。",
+    seatInfo: "单人护理位为主，适合午休补妆、下班整理和周末预约。",
+    seatCount: "护理位 6 席。",
+    serviceSupport: "适合通勤护理、活动前准备、自然风格咨询和女性用户到店。",
+    smokingPolicy: "店内禁烟，护理前后请在等候区确认作品和注意事项。"
+  },
+  dining: {
+    bookingRule: "预约可。包间和多人席建议提前预约，迟到超过 15 分钟需重新确认保留时间。",
+    buyout: "可。50 人以上和包场会食请提前咨询。",
+    chargeNote: "平台订金用于保留席位；套餐变更、饮品追加和服务费以店铺确认为准。",
+    childrenPolicy: "儿童可，婴儿车入店和儿童椅请提前确认。",
+    courseInfo: "套餐、畅饮和多人席可预约。",
+    drinkInfo: "日本酒、烧酎、葡萄酒、鸡尾酒可确认。",
+    equipmentNote: "到店后会确认席位、菜单说明和多人用餐准备情况。",
+    genre: "居酒屋、日本料理、会食",
+    locationInfo: "隐秘感餐厅，适合朋友小聚和商务会食。",
+    maxReservationPeople: "着席 52 人。",
+    menuInfo: "野菜料理、鱼料理和健康美容菜单可确认。",
+    officialAccount: "NeeDo 店铺页 / 平台聊天",
+    officialContact: "平台聊天咨询优先，预约确认短信会附楼层、入口和人数变更说明。",
+    phoneContact: "电话咨询请以预约确认短信内联系方式为准。",
+    privateRoom: "有。4 人、6 人、8 人席可确认。",
+    seatInfo: "吧台、双人桌和包间可选，适合朋友小聚、家族用餐和商务会食。",
+    seatCount: "50 席（桌席、吧台）。",
+    serviceSupport: "支持饮品说明、多人预约、纪念日备注和多语言菜单确认。",
+    smokingPolicy: "店内禁烟区域优先，吸烟规则请以店铺确认为准。"
+  },
+  cleaning: {
+    bookingRule: "预约可。到店咨询和上门确认都需提前预约，迟到超过 15 分钟需重新确认可用时段。",
+    buyout: "可咨询。企业维护和周期预约请以报价单为准。",
+    chargeNote: "平台预约确认后保留咨询时段；材料费、加急费和现场追加以报价单为准。",
+    childrenPolicy: "儿童同行请提前咨询，器材展示区需由成人陪同。",
+    courseInfo: "到店咨询、上门确认和周期维护可预约。",
+    drinkInfo: "咨询区饮品以服务中心当天说明为准。",
+    equipmentNote: "到店后会确认器材展示、报价单和照片验收说明。",
+    genre: "家庭清洁、企业维护、修水管",
+    locationInfo: "服务中心和器材展示区，适合先确认范围、报价和上门时间。",
+    maxReservationPeople: "咨询同时 6 人，上门团队人数以报价单为准。",
+    menuInfo: "家庭保洁、企业清扫、修水管和照片验收。",
+    officialAccount: "NeeDo 店铺页 / 平台聊天",
+    officialContact: "平台聊天咨询优先，预约确认短信会附入口、担当和上门前确认事项。",
+    phoneContact: "电话咨询请以预约确认短信内联系方式为准。",
+    privateRoom: "有。咨询桌和企业洽谈位可确认。",
+    seatInfo: "到店咨询桌和器材展示区为主，适合先确认范围、报价和上门时间。",
+    seatCount: "咨询位 4 席 / 器材展示区。",
+    serviceSupport: "适合家庭清洁、企业维护、修水管咨询和周期预约。",
+    smokingPolicy: "咨询区禁烟，上门作业规则请以担当确认内容为准。"
+  }
+};
 
 function openStatusCopy(status: "open" | "resting" | "closed") {
   if (status === "open") {
@@ -874,6 +982,47 @@ function InfoRow({
     <div className="border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] pb-2.5 last:border-b-0 last:pb-0">
       <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--client-muted)]">{label}</p>
       {children ?? <p className="mt-1.5 text-sm font-semibold leading-6 text-[color:var(--client-text)]">{value}</p>}
+    </div>
+  );
+}
+
+function StoreMapInfoRow({
+  children,
+  label,
+  value
+}: {
+  children?: ReactNode;
+  label: string;
+  value?: ReactNode;
+}) {
+  return (
+    <div className="grid gap-1.5 border-b border-[color:color-mix(in_srgb,var(--client-line)_50%,transparent)] pb-3 text-left last:border-b-0 last:pb-0 sm:grid-cols-[132px,minmax(0,1fr)] sm:gap-4">
+      <p className="text-left text-[11px] font-black tracking-[0.12em] text-[color:var(--client-muted)]">{label}</p>
+      <div className="min-w-0 text-left text-[13px] font-semibold leading-6 text-[color:var(--client-text)]">{children ?? value}</div>
+    </div>
+  );
+}
+
+function StoreMapSectionHeading({ caption, title }: { caption?: string; title: string }) {
+  return (
+    <div className="min-w-0">
+      {caption ? <p className="text-[11px] font-black tracking-[0.16em] text-[color:var(--client-primary)]">{caption}</p> : null}
+      <h4 className="mt-1 text-[17px] font-black leading-6 text-[color:var(--client-text)]">{title}</h4>
+    </div>
+  );
+}
+
+function StoreMapTagList({ items }: { items: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((item) => (
+        <span
+          className="inline-flex min-h-[30px] items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_58%,transparent)] px-3 py-1 text-[11px] font-bold leading-4 text-[color:var(--client-muted)]"
+          key={item}
+        >
+          {item}
+        </span>
+      ))}
     </div>
   );
 }
@@ -2248,6 +2397,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
+  const mapDetailCopy = storeMapDetailCopyByIndustry[industry];
   const relevantReviews = useMemo(() => buildRelevantReviews(store, storeTechnicians), [store, storeTechnicians]);
   const socialPosts = useMemo(() => {
     const authorKeys = [profileKey({ entityType: "shop", id: store.id })];
@@ -3234,125 +3384,160 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
       {activeTab === "map" ? (
         <div className="space-y-4">
           <section>
-            <SectionTitle caption="地址、交通和到店提示一屏看完" title="到店信息" />
+            <SectionTitle caption="地址、交通和到店提示一屏看完" title="店铺信息" />
             <div className="mt-3 grid gap-3">
-              <div className="relative">
-              <UnifiedListItem
-                className={cn("lg:grid-cols-[148px,1fr,auto]", isMerchantEditable && "pr-14")}
-                description={
-                  <div className="space-y-2">
+              <FlatCard className={cn("space-y-4", isMerchantEditable && "pr-14")} editor={isMerchantEditable ? renderMerchantEditor("basic", "编辑位置", undefined, "default", "map-location") : undefined}>
+                <div className="relative h-40 overflow-hidden rounded-[22px] bg-[linear-gradient(135deg,#151717,#1d2422_54%,#0f1514)]">
+                  <img alt={`${store.name} 地图预览`} className="absolute inset-0 h-full w-full scale-[1.035] object-cover opacity-30" src={getGeneratedImageThumbnailUrl(store.cover)} />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,color-mix(in_srgb,var(--client-primary)_28%,transparent),transparent_42%),radial-gradient(circle_at_80%_78%,color-mix(in_srgb,var(--client-warm)_18%,transparent),transparent_36%)]" />
+                  <div className="absolute left-3 top-3 rounded-full bg-black/50 px-2 py-1 text-[10px] font-black text-white">地图预览</div>
+                </div>
+                <StoreMapSectionHeading title="店铺基础信息" />
+                <div className="grid gap-3">
+                  <StoreMapInfoRow label="店名" value={store.name} />
+                  <StoreMapInfoRow label="地址">
                     <InlineEditableText
-                      className="block text-sm font-semibold leading-6 text-[color:var(--client-muted)]"
+                      className="block text-[13px] font-semibold leading-6 text-[color:var(--client-text)]"
                       editing={mapLocationEditing}
                       onChange={(value) => updateBasicStoreField("address", value)}
                       value={store.address}
                     />
-                    <InlineEditableText
-                      className="block text-xs font-semibold leading-5 text-[color:var(--client-muted)]"
-                      editing={mapLocationEditing}
-                      multiline
-                      onChange={(value) => updatePresentationField("access", value)}
-                      rows={2}
-                      value={config.access}
-                    />
-                  </div>
-                }
-                media={
-                  <div className="relative h-28 w-32 overflow-hidden rounded-[22px] bg-[linear-gradient(135deg,#151717,#1d2422_54%,#0f1514)]">
-                    <img alt={`${store.name} 地图预览`} className="absolute inset-0 h-full w-full scale-[1.035] object-cover opacity-30" src={getGeneratedImageThumbnailUrl(store.cover)} />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,color-mix(in_srgb,var(--client-primary)_28%,transparent),transparent_42%),radial-gradient(circle_at_80%_78%,color-mix(in_srgb,var(--client-warm)_18%,transparent),transparent_36%)]" />
-                    <div className="absolute left-3 top-3 rounded-full bg-black/50 px-2 py-1 text-[10px] font-black text-white">地图预览</div>
-                  </div>
-                }
-                meta={
-                  <>
-                    <InlineEditableText
-                      className="block w-32 text-xs font-bold text-[color:var(--client-muted)]"
-                      editing={mapLocationEditing}
-                      onChange={(value) => updatePresentationField("station", value)}
-                      value={config.station}
-                    />
-                    <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{config.distance}</p>
-                  </>
-                }
-                subtitle="路线与地址"
-                tags={[store.businessHours, config.parking]}
-                title="门店位置"
-                trailing={
-                  isMerchantEditable ? undefined : (
-                    <PrimaryButton className="gap-2 px-5" to={bookingHref}>
+                  </StoreMapInfoRow>
+                  <StoreMapInfoRow label="交通手段">
+                    <div className="space-y-1.5">
+                      <InlineEditableText
+                        className="block text-[13px] font-semibold leading-6 text-[color:var(--client-text)]"
+                        editing={mapLocationEditing}
+                        onChange={(value) => updatePresentationField("station", value)}
+                        value={config.station}
+                      />
+                      <p className="text-[13px] font-semibold leading-6 text-[color:var(--client-muted)]">{config.distance}</p>
+                      <InlineEditableText
+                        className="block text-[13px] font-semibold leading-6 text-[color:var(--client-muted)]"
+                        editing={mapLocationEditing}
+                        multiline
+                        onChange={(value) => updatePresentationField("access", value)}
+                        rows={2}
+                        value={config.access}
+                      />
+                    </div>
+                  </StoreMapInfoRow>
+                  <StoreMapInfoRow label="分类" value={mapDetailCopy.genre} />
+                </div>
+                <StoreMapTagList items={[config.distance, config.parking, store.openStatus === "open" ? "可预约" : "需确认时段"]} />
+                {isMerchantEditable ? null : (
+                  <div className="flex justify-center border-t border-[color:color-mix(in_srgb,var(--client-line)_50%,transparent)] pt-3">
+                    <PrimaryButton className={storeBookingCtaButtonClassName} to={bookingHref}>
                       <AppIcon className="h-4 w-4" name="calendar" />
                       <span>立即预约</span>
                     </PrimaryButton>
-                  )
-                }
-              />
-              {isMerchantEditable ? (
-                <div className="absolute right-3 top-3 z-10">
-                  {renderMerchantEditor("basic", "编辑位置", undefined, "default", "map-location")}
-                </div>
-              ) : null}
-              </div>
-              {renderActiveInlineEditor("map-location")}
-              <div className="relative">
-              <UnifiedListItem
-                className={cn(isMerchantEditable && "pr-14")}
-                description={
-                  <div className="space-y-2 text-sm leading-6 text-[color:var(--client-muted)]">
-                    <div>
-                      <span>支付方式：</span>
-                      <InlineEditableText
-                        className="mt-1 block text-sm font-semibold leading-6 text-[color:var(--client-muted)]"
-                        editing={mapGuideEditing}
-                        multiline
-                        onChange={(value) => updatePresentationField("paymentMethods", textToList(value))}
-                        rows={2}
-                        value={config.paymentMethods.join(" / ")}
-                      />
-                    </div>
-                    <div>
-                      <span>设备信息：</span>
-                      <InlineEditableText
-                        className="mt-1 block text-sm font-semibold leading-6 text-[color:var(--client-muted)]"
-                        editing={mapGuideEditing}
-                        multiline
-                        onChange={(value) => updatePresentationField("equipment", textToList(value))}
-                        rows={2}
-                        value={config.equipment.join(" / ")}
-                      />
-                    </div>
-                    <div>
-                      <span>到店提示：</span>
-                      <InlineEditableText
-                        className="mt-1 block text-sm font-semibold leading-6 text-[color:var(--client-muted)]"
-                        editing={mapGuideEditing}
-                        multiline
-                        onChange={(value) => updatePresentationField("routeGuide", value)}
-                        rows={2}
-                        value={config.routeGuide}
-                      />
-                    </div>
                   </div>
-                }
-                meta={
-                  mapGuideEditing ? (
-                    <div className="w-48">
-                      <BusinessHoursRangePicker onChange={(value) => updateBasicStoreField("businessHours", value)} value={store.businessHours} />
+                )}
+              </FlatCard>
+              {renderActiveInlineEditor("map-location")}
+
+              <FlatCard
+                className={cn("space-y-4", isMerchantEditable && "pr-14")}
+                editor={isMerchantEditable ? renderMerchantEditor("presentation", "编辑说明", undefined, "default", "map-guide") : undefined}
+              >
+                <StoreMapSectionHeading title="店铺详细信息" />
+                <div className="grid gap-3">
+                  <StoreMapInfoRow label="预约・咨询" value="平台聊天咨询 / 立即预约" />
+                  <StoreMapInfoRow label="预约可否">
+                    <div className="space-y-1.5">
+                      <p>{store.openStatus === "open" ? "可预约" : "需确认时段"}</p>
+                      <p className="text-[13px] font-semibold leading-6 text-[color:var(--client-muted)]">{mapDetailCopy.bookingRule}</p>
                     </div>
-                  ) : (
-                    <p>{store.businessHours}</p>
-                  )
-                }
-                subtitle="营业与设备"
-                tags={[config.station, config.distance]}
-                title="到店前说明"
-              />
-              {isMerchantEditable ? (
-                <div className="absolute right-3 top-3 z-10">
-                  {renderMerchantEditor("presentation", "编辑说明", undefined, "default", "map-guide")}
+                  </StoreMapInfoRow>
+                  <StoreMapInfoRow label="营业时间">
+                    {mapGuideEditing ? (
+                      <BusinessHoursRangePicker onChange={(value) => updateBasicStoreField("businessHours", value)} value={store.businessHours} />
+                    ) : (
+                      store.businessHours
+                    )}
+                  </StoreMapInfoRow>
+                  <StoreMapInfoRow label="预算" value={displayedBudgetLabel} />
+                  <StoreMapInfoRow label="支付方式">
+                    <InlineEditableText
+                      className="block text-[13px] font-semibold leading-6 text-[color:var(--client-text)]"
+                      editing={mapGuideEditing}
+                      multiline
+                      onChange={(value) => updatePresentationField("paymentMethods", textToList(value))}
+                      rows={2}
+                      value={config.paymentMethods.join(" / ")}
+                    />
+                  </StoreMapInfoRow>
+                  <StoreMapInfoRow label="服务费・其他费用" value={mapDetailCopy.chargeNote} />
                 </div>
-              ) : null}
-              </div>
+              </FlatCard>
+
+              <FlatCard className="space-y-4">
+                <StoreMapSectionHeading title="席・设备" />
+                <div className="grid gap-3">
+                  <StoreMapInfoRow label="席数" value={mapDetailCopy.seatCount} />
+                  <StoreMapInfoRow label="最大预约人数" value={mapDetailCopy.maxReservationPeople} />
+                  <StoreMapInfoRow label="个室" value={mapDetailCopy.privateRoom} />
+                  <StoreMapInfoRow label="包场" value={mapDetailCopy.buyout} />
+                  <StoreMapInfoRow label="禁烟・吸烟" value={mapDetailCopy.smokingPolicy} />
+                  <StoreMapInfoRow label="停车场" value={config.parking} />
+                  <StoreMapInfoRow label="空间・设备">
+                    <div className="space-y-1.5">
+                      <p>{mapDetailCopy.seatInfo}</p>
+                      {mapGuideEditing || config.equipment.length > 0 ? (
+                        <InlineEditableText
+                          className="block text-[13px] font-semibold leading-6 text-[color:var(--client-muted)]"
+                          editing={mapGuideEditing}
+                          multiline
+                          onChange={(value) => updatePresentationField("equipment", textToList(value))}
+                          rows={2}
+                          value={config.equipment.join(" / ")}
+                        />
+                      ) : null}
+                      <p className="text-[13px] font-semibold leading-6 text-[color:var(--client-muted)]">{mapDetailCopy.equipmentNote}</p>
+                    </div>
+                  </StoreMapInfoRow>
+                </div>
+              </FlatCard>
+
+              <FlatCard className="space-y-4">
+                <StoreMapSectionHeading title="菜单" />
+                <div className="grid gap-3">
+                  <StoreMapInfoRow label="套餐">
+                    <div className="space-y-1.5">
+                      <p>{mapDetailCopy.courseInfo}</p>
+                      {menuCards.length > 0 ? (
+                        <p className="text-[13px] font-semibold leading-6 text-[color:var(--client-muted)]">
+                          {menuCards.map((item) => item.name).slice(0, 3).join(" / ")}
+                        </p>
+                      ) : null}
+                    </div>
+                  </StoreMapInfoRow>
+                  <StoreMapInfoRow label="饮品" value={mapDetailCopy.drinkInfo} />
+                  <StoreMapInfoRow label="服务内容" value={mapDetailCopy.menuInfo} />
+                </div>
+              </FlatCard>
+
+              <FlatCard className="space-y-4">
+                <StoreMapSectionHeading title="特点・相关信息" />
+                <div className="grid gap-3">
+                  <StoreMapInfoRow label="利用场景" value={mapDetailCopy.serviceSupport} />
+                  <StoreMapInfoRow label="位置氛围" value={mapDetailCopy.locationInfo} />
+                  <StoreMapInfoRow label="服务" value={mapDetailCopy.officialContact} />
+                  <StoreMapInfoRow label="儿童同行" value={mapDetailCopy.childrenPolicy} />
+                  <StoreMapInfoRow label="官方账号" value={mapDetailCopy.officialAccount} />
+                  <StoreMapInfoRow label="电话咨询" value={mapDetailCopy.phoneContact} />
+                  <StoreMapInfoRow label="到店提示">
+                    <InlineEditableText
+                      className="block text-[13px] font-semibold leading-6 text-[color:var(--client-text)]"
+                      editing={mapGuideEditing}
+                      multiline
+                      onChange={(value) => updatePresentationField("routeGuide", value)}
+                      rows={2}
+                      value={config.routeGuide}
+                    />
+                  </StoreMapInfoRow>
+                </div>
+              </FlatCard>
               {renderActiveInlineEditor("map-guide")}
             </div>
           </section>

@@ -1049,7 +1049,7 @@ export function UnifiedListItem({
           <h4 className="min-w-0 text-[18px] font-black leading-6 tracking-[-0.02em] text-[color:var(--client-text)]">{title}</h4>
           {meta ? <div className="shrink-0 text-right text-xs font-bold text-[color:var(--client-muted)]">{meta}</div> : null}
         </div>
-        {description ? <p className="mt-2 text-sm leading-6 text-[color:var(--client-muted)]">{description}</p> : null}
+        {description ? <div className="mt-2 text-sm leading-6 text-[color:var(--client-muted)]">{description}</div> : null}
         {tags?.length ? <div className="mt-3"><TagList items={tags} /></div> : null}
       </div>
       {trailing ? <div className="flex items-center lg:justify-end">{trailing}</div> : null}

@@ -16,7 +16,6 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { ClientActionDialog } from "../../components/ui/ClientActionDialog";
-import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { customers, imageBank, orders, stores, technicians } from "../../data/mock";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -139,8 +138,47 @@ const reverseBookingsStorageKeyPrefix = "needo.exchange.reverse-bookings.v1";
 const reverseBookingsChangedEventName = "needo:reverse-bookings-changed";
 const viewedPostsStorageKeyPrefix = "needo.exchange.viewed-posts.v1";
 const viewedPostsChangedEventName = "needo:viewed-posts-changed";
+const needoRemarkTagPattern = /#([^\s，,]+)/gu;
 const fullscreenHeaderClassName =
   "";
+
+function normalizeNeedoRemarkTag(value: string) {
+  return value.replace(/^#+/u, "").trim();
+}
+
+export function extractNeedoRemarkTags(text: string) {
+  const tags: string[] = [];
+
+  for (const match of text.matchAll(needoRemarkTagPattern)) {
+    const tag = normalizeNeedoRemarkTag(match[1] ?? "");
+
+    if (tag && !tags.includes(tag)) {
+      tags.push(tag);
+    }
+  }
+
+  return tags;
+}
+
+export function stripNeedoRemarkTags(text: string) {
+  return text
+    .replace(needoRemarkTagPattern, "")
+    .replace(/[^\S\r\n]{2,}/gu, " ")
+    .replace(/[^\S\r\n]+([，,。；;！？!?])/gu, "$1")
+    .replace(/([，,])[^\S\r\n]+/gu, "$1")
+    .replace(/[，,]{2,}/gu, "，")
+    .replace(/\n{3,}/gu, "\n\n")
+    .replace(/^[，,\s]+|[，,\s]+$/gu, "")
+    .trim();
+}
+
+export function buildNeedoPostTags(_baseTags: string[], _title: string, detail: string) {
+  const normalizedTags = extractNeedoRemarkTags(detail)
+    .map(normalizeNeedoRemarkTag)
+    .filter((tag) => tag.length > 0);
+
+  return Array.from(new Set(normalizedTags));
+}
 
 function getComposedPostsStorageKey(context: MessageCenterContext) {
   return `${composedPostsStorageKeyPrefix}.${context}`;
@@ -846,7 +884,7 @@ function getExtraPosts() {
       detail: demand
         ? "希望响应快、评价高，能提前确认交通和到达时间。接受平台担保和加急费用。"
         : "当前有空闲时段，可接近距离订单，支持平台内通话确认后快速锁定。",
-      tags: demand ? ["急单", "评价优先", "平台担保"] : ["空闲", "限时价", "可沟通"],
+      tags: demand ? ["急单", "评价优先", "预算可谈"] : ["空闲", "限时价", "可沟通"],
       offers: 3 + (index % 18),
       image: demand ? imageBank.home : index % 3 === 0 ? stores[index % stores.length].cover : technicians[index % technicians.length].avatar,
       publishedAt: toIso(publishOffset),
@@ -1201,6 +1239,37 @@ function NeedoUploadTile({
   );
 }
 
+function NeedoRemarkTagChips({ tags }: { tags: string[] }) {
+  if (tags.length === 0) {
+    return null;
+  }
+
+  return (
+    <div aria-label="标签" className="mt-2 flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <Badge className="rounded-full px-2.5 py-1 text-[11px] font-black leading-none" key={tag} tone="blue">
+          {tag}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function NeedoRemarkPreview({ text, tags }: { text: string; tags: string[] }) {
+  const trimmedText = text.trim();
+
+  return (
+    <div>
+      {trimmedText ? (
+        <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-ink">{trimmedText}</p>
+      ) : tags.length === 0 ? (
+        <p className="text-sm font-semibold leading-6 text-ink">未填写备注</p>
+      ) : null}
+      <NeedoRemarkTagChips tags={tags} />
+    </div>
+  );
+}
+
 function NeedoExchangeCardActionMenu({
   translated,
   onTranslate,
@@ -1316,6 +1385,10 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   const composerTypeLabel = composerType === "demand" ? "需求" : "情报";
   const demandTimeLabel = formatComposerDateRange(draft.startDate, draft.startTime, draft.endDate, draft.endTime);
   const demandBudgetLabel = formatDemandBudgetRange(draft);
+  const demandRemarkTags = extractNeedoRemarkTags(draft.detail);
+  const demandRemarkText = stripNeedoRemarkTags(draft.detail);
+  const infoRemarkTags = extractNeedoRemarkTags(infoDraft.detail);
+  const infoRemarkText = stripNeedoRemarkTags(infoDraft.detail);
   const appliedDemandPostIdSet = useMemo(() => new Set(appliedDemandPostIds), [appliedDemandPostIds]);
   const bookedReversePostIdSet = useMemo(() => new Set(bookedReversePostIds), [bookedReversePostIds]);
   const viewedPostIdSet = useMemo(() => new Set(viewedPostIds), [viewedPostIds]);
@@ -1449,18 +1522,21 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
     const demandBudgetValue = getDemandBudgetValue(normalizedDemandDraft);
     const publishedDurationHours = nextPostType === "demand" ? getDemandDurationHours(normalizedDemandDraft) : 6;
     const ndpCost = getPublishNdpCost(nextPostType, nextPostType === "demand" ? demandBudgetValue : Number(infoDraft.campaignPrice) || 0);
+    const nextPostTitle = nextPostType === "demand" ? normalizedDemandDraft.title : infoDraft.title;
+    const nextPostDetailSource = nextPostType === "demand" ? normalizedDemandDraft.detail : infoDraft.detail;
+    const nextPostDetail = stripNeedoRemarkTags(nextPostDetailSource);
     const createdPost: ExchangePost = {
       id: `exchange-${Date.now()}`,
       type: nextPostType,
       author: copy.author,
       role: getComposerRoleByContext(context),
-      title: nextPostType === "demand" ? normalizedDemandDraft.title : infoDraft.title,
+      title: nextPostTitle,
       time: nextPostType === "demand" ? formatComposerDateRange(normalizedDemandDraft.startDate, normalizedDemandDraft.startTime, normalizedDemandDraft.endDate, normalizedDemandDraft.endTime) : formatComposerDateRange(infoDraft.startDate, infoDraft.startTime, infoDraft.endDate, infoDraft.endTime),
       area: nextPostType === "demand" ? normalizedDemandDraft.area : infoDraft.serviceMode === "store" ? infoDraft.address : infoDraft.serviceAreas,
       budget: nextPostType === "demand" ? demandBudgetValue : Number(infoDraft.campaignPrice) || 0,
       budgetLabel: nextPostType === "demand" ? formatDemandBudgetRange(normalizedDemandDraft) : undefined,
-      detail: nextPostType === "demand" ? normalizedDemandDraft.detail : infoDraft.detail,
-      tags: nextPostType === "demand" ? ["新需求", "等待抢单", "平台担保"] : ["情报", "空档", "可立即约"],
+      detail: nextPostDetail,
+      tags: buildNeedoPostTags([], nextPostTitle, nextPostDetailSource),
       offers: 0,
       image:
         nextPostType === "reverse"
@@ -1679,7 +1755,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                     <div className="mt-3 rounded-lg bg-paper p-3">
                       <p className="text-[11px] font-bold text-ink/45">备注</p>
                       <div className="mt-2">
-                        <HighlightedTagText className="text-sm font-semibold leading-6 text-ink" text={draft.detail || "未填写备注"} />
+                        <NeedoRemarkPreview tags={demandRemarkTags} text={demandRemarkText} />
                       </div>
                     </div>
                   </section>
@@ -1965,7 +2041,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                       </div>
                     </div>
                     <div className="mt-3">
-                      <HighlightedTagText className="text-sm font-semibold leading-6 text-ink" text={infoDraft.detail} />
+                      <NeedoRemarkPreview tags={infoRemarkTags} text={infoRemarkText} />
                     </div>
                   </section>
 
@@ -2047,7 +2123,6 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
 
         <section className="space-y-3">
           {visiblePosts.map((post) => {
-            const serviceLabel = getExchangeServiceLabel(post);
             const isApplied = post.type === "demand" && appliedDemandPostIdSet.has(post.id);
             const isBooked = post.type === "reverse" && bookedReversePostIdSet.has(post.id);
             const isNew = nowMs - new Date(post.publishedAt).getTime() <= 24 * 60 * 60 * 1000 && !viewedPostIdSet.has(post.id);
@@ -2124,7 +2199,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                         )
                       }
                       noteValue={post.detail}
-                      titlePrefix={serviceLabel ? `#${serviceLabel}` : undefined}
+                      tags={post.tags}
                       titleBadge={titleBadge}
                       title={post.title}
                     />
@@ -2183,7 +2258,7 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
                       }
                       eyebrow={<span className={budgetDisplayClassName}>{budgetDisplay}</span>}
                       noteValue={post.detail}
-                      titlePrefix={serviceLabel ? `#${serviceLabel}` : undefined}
+                      tags={post.tags}
                       titleBadge={titleBadge}
                       title={post.title}
                       tone="demand"

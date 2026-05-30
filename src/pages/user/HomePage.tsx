@@ -28,7 +28,7 @@ import { cn } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import { getResolvedCarouselSlides, resolveCarouselTargetPath, useCarouselStore } from "../../state/homeCarouselStore";
 import { useNeedoPetSettings } from "../../state/needoPetSettings";
-import { useClientTheme } from "../../theme/ClientThemeProvider";
+import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
 import { useUserOrders } from "../../state/userOrderStore";
 import { SocialProfileMiniCard, TechnicianShowcaseCard, buildServiceMiniCardData, getTechnicianDynamicPath } from "../../shared/profile-card";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
@@ -170,6 +170,19 @@ function getQuickActionTitleClassName(title: string) {
   }
 
   return "line-clamp-2";
+}
+
+const quickActionIconClassNames: Record<ClientTheme, string> = {
+  "light-green": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "dark-green": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "black-gold": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "vital-mono": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "cool-black-gray": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]",
+  "neon-pink": "bg-[color:var(--client-primary-soft)] text-[color:var(--client-accent-text)]"
+};
+
+function getQuickActionIconClassName(theme: ClientTheme) {
+  return quickActionIconClassNames[theme];
 }
 
 function getQuickActionTitle(id: string, sourceTitle: string, language: Language) {
@@ -620,7 +633,7 @@ function resolveServiceForOrder(order: Order) {
 
 export function HomePage() {
   const userPortalConfig = roleBasedTabConfig.user;
-  const { isNight } = useClientTheme();
+  const { theme } = useClientTheme();
   const { language } = useI18n();
   const { session } = useAuth();
   const { config } = useHomeLayoutStore();
@@ -990,7 +1003,7 @@ export function HomePage() {
                   <span
                     className={cn(
                       "inline-flex h-[34px] w-[34px] items-center justify-center rounded-[13px]",
-                      isNight ? "bg-white/10 text-white" : "bg-[color:var(--client-primary-soft)] text-[#3c887e]"
+                      getQuickActionIconClassName(theme)
                     )}
                   >
                     <AppIcon className="h-[18px] w-[18px]" name={item.icon} />

@@ -1,5 +1,4 @@
 import type { MouseEvent, ReactNode } from "react";
-import { HighlightedTagText } from "../ui/HighlightedTagText";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
 import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
@@ -238,6 +237,16 @@ const demandToneClassesByTheme: Record<ClientTheme, OfferToneClasses> = {
   }
 };
 
+function normalizeOfferInfoTags(tags: string[]) {
+  return Array.from(
+    new Set(
+      tags
+        .map((tag) => tag.replace(/^#+/u, "").trim())
+        .filter((tag) => tag.length > 0)
+    )
+  );
+}
+
 export function OfferInfoCard({
   image,
   imageAlt,
@@ -247,6 +256,7 @@ export function OfferInfoCard({
   titlePrefix,
   title,
   titleBadge,
+  tags = [],
   fields,
   noteLabel = "备注",
   noteValue,
@@ -269,6 +279,7 @@ export function OfferInfoCard({
   titlePrefix?: ReactNode;
   title: ReactNode;
   titleBadge?: ReactNode;
+  tags?: string[];
   fields: OfferInfoField[];
   noteLabel?: ReactNode;
   noteValue?: ReactNode;
@@ -290,6 +301,7 @@ export function OfferInfoCard({
   const hasTopRightBadges = useCornerTitleBadge || Boolean(cornerBadge);
   const hasTopRightMeta = hasTopRightBadges || Boolean(topRightAction);
   const toneClasses = tone === "demand" ? demandToneClassesByTheme[theme] : infoToneClassesByTheme[theme];
+  const normalizedTags = normalizeOfferInfoTags(tags);
 
   return (
     <div
@@ -301,13 +313,14 @@ export function OfferInfoCard({
     >
       {hasTopRightMeta ? (
         <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
-          {topRightAction ? <div className="pointer-events-auto">{topRightAction}</div> : null}
-
           {useCornerTitleBadge ? (
-            <div className="pointer-events-none inline-flex min-h-6 items-center rounded-full bg-[#ff5a32] px-2.5 py-0.5 text-[10px] font-black leading-none tracking-[0.08em] text-white shadow-[0_10px_24px_rgba(255,90,50,0.24)]">
-              {titleBadgeText}
-            </div>
+            <span
+              aria-label="新内容"
+              className="pointer-events-none h-3 w-3 rounded-full bg-[#ff5a5a] shadow-[0_0_0_3px_rgba(255,90,90,0.16),0_6px_16px_rgba(255,90,90,0.34)]"
+            />
           ) : null}
+
+          {topRightAction ? <div className="pointer-events-auto">{topRightAction}</div> : null}
 
           {cornerBadge
             ? onCornerBadgeClick
@@ -390,18 +403,32 @@ export function OfferInfoCard({
         </div>
       ) : null}
 
-      {noteValue ? (
+      {noteValue || normalizedTags.length > 0 ? (
         <div className={cn("mt-3 rounded-[18px] px-3.5 py-3", toneClasses.noteSurface)}>
           <div className={cn("text-[11px] font-black", toneClasses.noteLabel)}>{noteLabel}</div>
-          {typeof noteValue === "string" ? (
-            <HighlightedTagText
-              className={cn("mt-2 text-[13px] font-semibold leading-6", toneClasses.noteValue)}
-              tagClassName={toneClasses.noteTag}
-              text={noteValue}
-            />
-          ) : (
-            <div className={cn("mt-2 text-[13px] font-semibold leading-6", toneClasses.noteValue)}>{noteValue}</div>
-          )}
+          {noteValue ? (
+            typeof noteValue === "string" ? (
+              <p className={cn("mt-2 whitespace-pre-wrap break-words text-[13px] font-semibold leading-6", toneClasses.noteValue)}>{noteValue}</p>
+            ) : (
+              <div className={cn("mt-2 text-[13px] font-semibold leading-6", toneClasses.noteValue)}>{noteValue}</div>
+            )
+          ) : null}
+          {normalizedTags.length > 0 ? (
+            <div aria-label="标签" className="mt-2 flex flex-wrap gap-1.5">
+              {normalizedTags.map((tag) => (
+                <span
+                  className={cn(
+                    "ui-badge inline-flex max-w-full items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-2.5 py-1 text-[11px] font-black leading-none shadow-[0_4px_12px_rgba(0,0,0,0.04)]",
+                    toneClasses.chip
+                  )}
+                  key={tag}
+                  title={tag}
+                >
+                  <span className="min-w-0 truncate">{tag}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

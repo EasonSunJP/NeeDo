@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { useClientTheme } from "../../theme/ClientThemeProvider";
+import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
 import { cn } from "../../lib/utils";
 
 interface CategoryIconProps {
@@ -30,7 +30,7 @@ const sizes = {
   lg: "h-16 w-16"
 };
 
-const dayPalette: CategoryPalette = {
+const lightGreenPalette: CategoryPalette = {
   badgeBg: "radial-gradient(circle at 30% 24%, #ffffff 0%, #eef7f5 42%, #dbece8 100%)",
   badgeBorder: "rgba(60, 136, 126, 0.18)",
   badgeShadow: "0 10px 20px rgba(60, 136, 126, 0.2), inset 0 1px 0 rgba(255,255,255,0.82)",
@@ -45,7 +45,22 @@ const dayPalette: CategoryPalette = {
   glow: "rgba(117, 178, 169, 0.4)"
 };
 
-const nightPalette: CategoryPalette = {
+const darkGreenPalette: CategoryPalette = {
+  badgeBg: "radial-gradient(circle at 30% 24%, #19301e 0%, #0f1c17 58%, #07100d 100%)",
+  badgeBorder: "rgba(186, 255, 67, 0.28)",
+  badgeShadow: "0 12px 22px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(220, 255, 134, 0.16)",
+  primary: "#baff43",
+  primaryDark: "#75a927",
+  secondary: "#72ff8b",
+  secondaryDark: "#43b864",
+  surface: "#f3ffd8",
+  surfaceShade: "#23391f",
+  outline: "#dcff86",
+  shadow: "rgba(0, 0, 0, 0.32)",
+  glow: "rgba(186, 255, 67, 0.3)"
+};
+
+const blackGoldPalette: CategoryPalette = {
   badgeBg: "radial-gradient(circle at 30% 24%, #2f291e 0%, #1c1712 56%, #100d09 100%)",
   badgeBorder: "rgba(232, 196, 108, 0.26)",
   badgeShadow: "0 12px 22px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 239, 188, 0.16)",
@@ -58,6 +73,60 @@ const nightPalette: CategoryPalette = {
   outline: "#5e4313",
   shadow: "rgba(0, 0, 0, 0.32)",
   glow: "rgba(243, 212, 127, 0.28)"
+};
+
+const vitalMonoPalette: CategoryPalette = {
+  badgeBg: "radial-gradient(circle at 30% 24%, #ffffff 0%, #f0f5f8 46%, #e1e9ee 100%)",
+  badgeBorder: "rgba(8, 123, 184, 0.18)",
+  badgeShadow: "0 10px 20px rgba(20, 184, 255, 0.16), inset 0 1px 0 rgba(255,255,255,0.88)",
+  primary: "#087bb8",
+  primaryDark: "#075e8c",
+  secondary: "#14b8ff",
+  secondaryDark: "#0b8cc7",
+  surface: "#ffffff",
+  surfaceShade: "#d7e8f2",
+  outline: "#0b5f8a",
+  shadow: "rgba(20, 21, 23, 0.14)",
+  glow: "rgba(20, 184, 255, 0.32)"
+};
+
+const coolBlackGrayPalette: CategoryPalette = {
+  badgeBg: "radial-gradient(circle at 30% 24%, #203038 0%, #131b20 58%, #080d10 100%)",
+  badgeBorder: "rgba(110, 234, 255, 0.24)",
+  badgeShadow: "0 12px 22px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(121, 240, 255, 0.16)",
+  primary: "#18d2f0",
+  primaryDark: "#0d8fb4",
+  secondary: "#79f0ff",
+  secondaryDark: "#19a9c6",
+  surface: "#f3f8fb",
+  surfaceShade: "#1c3a43",
+  outline: "#6eeaff",
+  shadow: "rgba(0, 0, 0, 0.32)",
+  glow: "rgba(24, 210, 240, 0.28)"
+};
+
+const neonPinkPalette: CategoryPalette = {
+  badgeBg: "radial-gradient(circle at 30% 24%, #33245d 0%, #1e1b42 56%, #0d0f22 100%)",
+  badgeBorder: "rgba(199, 177, 255, 0.24)",
+  badgeShadow: "0 12px 22px rgba(2, 4, 16, 0.5), inset 0 1px 0 rgba(255, 219, 248, 0.16)",
+  primary: "#c7b1ff",
+  primaryDark: "#8a75ff",
+  secondary: "#ff6fae",
+  secondaryDark: "#c85289",
+  surface: "#fff0fb",
+  surfaceShade: "#33245d",
+  outline: "#f0d9ff",
+  shadow: "rgba(0, 0, 0, 0.3)",
+  glow: "rgba(255, 111, 174, 0.28)"
+};
+
+const categoryPalettes: Record<ClientTheme, CategoryPalette> = {
+  "light-green": lightGreenPalette,
+  "dark-green": darkGreenPalette,
+  "black-gold": blackGoldPalette,
+  "vital-mono": vitalMonoPalette,
+  "cool-black-gray": coolBlackGrayPalette,
+  "neon-pink": neonPinkPalette
 };
 
 function IconSvg({ children, label }: { children: ReactNode; label?: string }) {
@@ -376,8 +445,8 @@ function renderIcon(id: string, palette: CategoryPalette) {
 }
 
 export function CategoryIcon({ id, label, size = "md", className }: CategoryIconProps) {
-  const { isNight } = useClientTheme();
-  const palette = isNight ? nightPalette : dayPalette;
+  const { theme } = useClientTheme();
+  const palette = categoryPalettes[theme];
   const style = {
     "--category-icon-bg": palette.badgeBg,
     "--category-icon-border": palette.badgeBorder,

@@ -1819,10 +1819,6 @@ export function CheckoutPage() {
             className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-3 shadow-[0_14px_28px_rgba(0,0,0,0.06)]"
             onClick={() => remarkInputRef.current?.focus()}
           >
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-black text-[color:var(--client-text)]">特殊需求</p>
-              <p className="text-xs font-semibold text-[color:var(--client-muted)]">{bookingRemark.trim() ? `已填写 ${bookingRemark.trim().length} 字` : "可选填写"}</p>
-            </div>
             <textarea
               className="min-h-[156px] w-full rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3.5 text-sm leading-6 outline-none"
               onChange={(event) => setBookingRemark(event.target.value)}
