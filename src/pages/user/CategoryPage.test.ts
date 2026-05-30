@@ -28,4 +28,11 @@ describe("CategoryPage technician showcase card", () => {
     expect(categoryPageSource).toContain('const searchCategoryId = entityFilter === "technician" && !hasExplicitCategoryScope ? undefined : apiCategoryId;');
     expect(categoryPageSource).toContain("getTechnicianDynamicPath(item.technician)");
   });
+
+  it("keeps static category content visible when core-read data is unavailable", () => {
+    expect(categoryPageSource).toContain("searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? legacyServices");
+    expect(categoryPageSource).toContain("return legacyStores;");
+    expect(categoryPageSource).toContain("return legacyTechnicians;");
+    expect(categoryPageSource).toContain("hasStaticSearchContent ? null : categoryQuery.error ?? searchQuery.error");
+  });
 });
