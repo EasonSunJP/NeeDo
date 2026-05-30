@@ -81,6 +81,18 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).not.toContain("demoAuthAccount.password");
   });
 
+  it("labels the public test credential action as skip verification login", () => {
+    expect(loginPageSource).toContain('testCredentialLogin: "跳过验证登录"');
+  });
+
+  it("lets the public test credential action bypass the captcha requirement", () => {
+    const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+
+    expect(testCredentialAction).toContain("await login(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password)");
+    expect(testCredentialAction).not.toContain("captchaRequiredError");
+    expect(testCredentialAction).not.toContain("normalizedCaptchaCode");
+  });
+
   it("does not point production login failures back to the formal /api/v1 backend path", () => {
     expect(loginPageSource).toContain("登录 / 注册路径");
     expect(loginPageSource).not.toContain("真实 /api/v1 后端");

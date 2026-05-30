@@ -208,7 +208,7 @@ const loginCopy = {
     gmailLogin: "使用 Google 登录",
     accountLogin: "使用邮箱登录",
     testCredentialFill: "填入测试账号",
-    testCredentialLogin: "测试账号登录",
+    testCredentialLogin: "跳过验证登录",
     createAccount: "新建账号",
     createNotice: "新建账号流程正在准备中，请先使用已发行邮箱登录。",
     useAccountTitle: "账号登录",
@@ -277,7 +277,7 @@ const loginCopy = {
     gmailLogin: "使用 Google 登入",
     accountLogin: "使用信箱登入",
     testCredentialFill: "填入測試帳號",
-    testCredentialLogin: "測試帳號登入",
+    testCredentialLogin: "跳過驗證登入",
     createAccount: "建立帳號",
     createNotice: "建立帳號流程正在準備中，請先使用已發行信箱登入。",
     useAccountTitle: "帳號登入",
@@ -346,7 +346,7 @@ const loginCopy = {
     gmailLogin: "Googleでログイン",
     accountLogin: "メールでログイン",
     testCredentialFill: "テストアカウントを入力",
-    testCredentialLogin: "テストアカウントでログイン",
+    testCredentialLogin: "認証をスキップしてログイン",
     createAccount: "新規登録",
     createNotice: "新規登録フローは準備中です。発行済みメールでログインしてください。",
     useAccountTitle: "アカウントログイン",
@@ -415,7 +415,7 @@ const loginCopy = {
     gmailLogin: "Continue with Google",
     accountLogin: "Log in with email",
     testCredentialFill: "Fill test account",
-    testCredentialLogin: "Test account login",
+    testCredentialLogin: "Skip verification login",
     createAccount: "Create account",
     createNotice: "Account creation is being prepared. Use an issued email for now.",
     useAccountTitle: "Account login",
@@ -484,7 +484,7 @@ const loginCopy = {
     gmailLogin: "Google로 로그인",
     accountLogin: "이메일로 로그인",
     testCredentialFill: "테스트 계정 입력",
-    testCredentialLogin: "테스트 계정 로그인",
+    testCredentialLogin: "인증 건너뛰고 로그인",
     createAccount: "새 계정 만들기",
     createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 발급된 이메일로 로그인하세요.",
     useAccountTitle: "계정 로그인",
@@ -731,12 +731,12 @@ export function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (hasActiveAccess || (panelMode !== "account" && !testCredentials)) {
+    if (hasActiveAccess || panelMode !== "account") {
       return;
     }
 
     void loadCaptcha();
-  }, [hasActiveAccess, loadCaptcha, panelMode, testCredentials]);
+  }, [hasActiveAccess, loadCaptcha, panelMode]);
 
   const enterPortal = useCallback(() => {
     if (isAuthenticated && canAccess(activePortal)) {
@@ -803,20 +803,12 @@ export function LoginPage() {
     }
 
     clearFeedback();
-    const normalizedCaptchaCode = captchaCode.trim();
-
-    if (!normalizedCaptchaCode) {
-      setFeedback({ key: "captchaRequiredError", tone: "error", type: "localized" });
-      return;
-    }
-
     setIsLoginPending(true);
 
     try {
-      const result = await login(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password, normalizedCaptchaCode);
+      const result = await login(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
-        void loadCaptcha();
         return;
       }
 
@@ -976,7 +968,6 @@ export function LoginPage() {
                 </button>
                 {testCredentials ? (
                   <div className="space-y-3">
-                    {captchaControl}
                     <button
                       className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"
                       disabled={isLoginPending}
