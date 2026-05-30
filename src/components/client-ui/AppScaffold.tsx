@@ -867,17 +867,22 @@ export function ScheduleViewSegmentedTabs({
   );
 }
 
-export function getAdaptiveTabLabelClass(label: ReactNode, options: { relaxed?: boolean; roomy?: boolean } = {}) {
+export function getAdaptiveTabLabelClass(label: ReactNode, options: { dense?: boolean; relaxed?: boolean; roomy?: boolean } = {}) {
   if (typeof label !== "string") {
     return "inline-flex min-w-0 max-w-full items-center justify-center";
   }
 
   const length = Array.from(label.replace(/\s/g, "")).length;
+  const dense = Boolean(options.dense);
   const relaxed = Boolean(options.relaxed);
   const roomy = Boolean(options.roomy);
 
   if (length <= 3 || (relaxed && length <= 5) || (roomy && length <= 8)) {
     return "inline-block max-w-full whitespace-nowrap";
+  }
+
+  if (dense && length <= 4) {
+    return "inline-block w-[122%] max-w-[122%] -mx-[11%] whitespace-nowrap [transform:scaleX(0.82)] [transform-origin:center]";
   }
 
   if (length <= 4) {
@@ -916,6 +921,7 @@ export function FeatureSegmentedTabs<T extends string>({
   const isHeaderVariant = variant === "header";
   const isCompactTabGroup = items.length <= 3;
   const hasRoomyLabels = items.length <= 2;
+  const isDenseTabGroup = items.length >= 5;
 
   return (
     <div
@@ -947,7 +953,7 @@ export function FeatureSegmentedTabs<T extends string>({
             onClick={() => onChange(item.value)}
             type="button"
           >
-            <span className={cn("overflow-hidden", getAdaptiveTabLabelClass(label, { relaxed: isHeaderVariant, roomy: hasRoomyLabels }))}>{label}</span>
+            <span className={cn("overflow-hidden", getAdaptiveTabLabelClass(label, { dense: isDenseTabGroup, relaxed: isHeaderVariant, roomy: hasRoomyLabels }))}>{label}</span>
           </button>
         );
       })}

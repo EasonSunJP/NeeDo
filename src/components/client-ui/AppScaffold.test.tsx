@@ -5,6 +5,8 @@ import { getAdaptiveTabLabelClass } from "./AppScaffold";
 describe("FeatureSegmentedTabs adaptive labels", () => {
   it("lightly compresses dense four-character labels without touching short labels", () => {
     expect(getAdaptiveTabLabelClass("メニュー")).toContain("[transform:scaleX(0.9)]");
+    expect(getAdaptiveTabLabelClass("メニュー", { dense: true })).toContain("[transform:scaleX(0.82)]");
+    expect(getAdaptiveTabLabelClass("フィード", { dense: true })).toContain("[transform:scaleX(0.82)]");
     expect(getAdaptiveTabLabelClass("情報")).not.toContain("scaleX");
     expect(getAdaptiveTabLabelClass("メニュー", { relaxed: true })).not.toContain("scaleX");
   });
