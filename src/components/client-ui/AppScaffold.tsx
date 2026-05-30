@@ -671,10 +671,12 @@ export function HeroHeader({
 }
 
 export function MetaPill({
+  className,
   icon,
   label,
   tone = "neutral"
 }: {
+  className?: string;
   icon?: IconName;
   label: ReactNode;
   tone?: "neutral" | "accent" | "primary";
@@ -687,11 +689,12 @@ export function MetaPill({
           ? "border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
           : tone === "accent"
             ? "border-[color:color-mix(in_srgb,var(--client-warm)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-warm)_18%,transparent)] text-[color:color-mix(in_srgb,var(--client-warm)_74%,var(--client-text))]"
-            : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] text-[color:var(--client-muted)]"
+            : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] text-[color:var(--client-muted)]",
+        className
       )}
     >
       {icon ? <AppIcon className="h-4 w-4" name={icon} /> : null}
-      <span>{label}</span>
+      <span className="min-w-0">{label}</span>
     </span>
   );
 }
@@ -864,7 +867,7 @@ export function ScheduleViewSegmentedTabs({
   );
 }
 
-function getAdaptiveTabLabelClass(label: ReactNode, options: { relaxed?: boolean; roomy?: boolean } = {}) {
+export function getAdaptiveTabLabelClass(label: ReactNode, options: { relaxed?: boolean; roomy?: boolean } = {}) {
   if (typeof label !== "string") {
     return "inline-flex min-w-0 max-w-full items-center justify-center";
   }
@@ -873,8 +876,12 @@ function getAdaptiveTabLabelClass(label: ReactNode, options: { relaxed?: boolean
   const relaxed = Boolean(options.relaxed);
   const roomy = Boolean(options.roomy);
 
-  if (length <= 4 || (relaxed && length <= 5) || (roomy && length <= 8)) {
+  if (length <= 3 || (relaxed && length <= 5) || (roomy && length <= 8)) {
     return "inline-block max-w-full whitespace-nowrap";
+  }
+
+  if (length <= 4) {
+    return "inline-block w-[112%] max-w-[112%] -mx-[6%] whitespace-nowrap [transform:scaleX(0.9)] [transform-origin:center]";
   }
 
   if (relaxed && length <= 8) {

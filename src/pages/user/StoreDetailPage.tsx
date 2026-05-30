@@ -7,7 +7,6 @@ import {
   EmptyStatePanel,
   FeatureSegmentedTabs,
   IconMetricAction,
-  MetaPill,
   PageScaffold,
   PrimaryButton,
   SecondaryButton,
@@ -48,7 +47,7 @@ import {
   type StorePresentationIndustry
 } from "../../lib/storePresentation";
 import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUiDecoration } from "../../lib/storeUiDecoration";
-import { cn, shortNumber, yen } from "../../lib/utils";
+import { cn, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
 import { TechnicianShowcaseCard } from "../../shared/profile-card";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
@@ -126,6 +125,8 @@ const storeHeroGalleryFrameWidth = 390;
 const storeHeroGalleryAspectRatio = storeHeroGalleryFrameWidth / storeHeroGalleryCardHeight;
 const storeHeroGalleryEditorFrameWidth = 344;
 const storeHeroGalleryRadiusClassName = "rounded-[28px]";
+const storeCompactMetricPillClassName =
+  "inline-flex h-[38px] w-full min-w-0 items-center justify-center gap-1.5 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-2 text-[12px] font-normal text-[color:var(--client-muted)] transition";
 const storeBasicEditorFields = [
   { label: "店铺名称", key: "name" },
   { label: "首页角标", key: "rankLabel" },
@@ -1291,31 +1292,131 @@ function buildTransportEstimates(distanceText: string): TransportEstimate[] {
   ];
 }
 
-function TransportEstimatePill({ distanceText }: { distanceText: string }) {
+function formatStoreCompactCount(value: number) {
+  const safeValue = Math.max(0, Math.floor(value));
+
+  if (safeValue >= 1000) {
+    const compactValue = Math.floor(safeValue / 100) / 10;
+
+    return `${compactValue.toFixed(1).replace(/\.0$/, "")}k`;
+  }
+
+  return `${safeValue}`;
+}
+
+function formatStoreDetailedCount(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(Math.max(0, Math.floor(value)));
+}
+
+function StoreMetricDetailButton({
+  active,
+  ariaLabel,
+  icon,
+  label,
+  metric,
+  onClick,
+  primary
+}: {
+  active: boolean;
+  ariaLabel: string;
+  icon: IconName;
+  label: ReactNode;
+  metric: "rating" | "favorite";
+  onClick: () => void;
+  primary?: boolean;
+}) {
+  return (
+    <button
+      aria-expanded={active}
+      aria-label={ariaLabel}
+      className={cn(
+        storeCompactMetricPillClassName,
+        "focus-ring",
+        primary && "text-[color:var(--client-primary)]",
+        active && "border-[color:color-mix(in_srgb,var(--client-primary)_56%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-surface))] text-[color:var(--client-primary)]"
+      )}
+      data-page-drag-ignore="true"
+      data-scroll-drag-ignore="true"
+      data-store-metric-detail={metric}
+      onClick={onClick}
+      type="button"
+    >
+      <AppIcon className="h-4 w-4 shrink-0" name={icon} />
+      <span className="min-w-0 truncate">{label}</span>
+    </button>
+  );
+}
+
+function TransportEstimatePill({ className, distanceText }: { className?: string; distanceText: string }) {
   const [selectedMode, setSelectedMode] = useState<TransportModeId>("train");
+  const [menuOpen, setMenuOpen] = useState(false);
   const estimates = useMemo(() => buildTransportEstimates(distanceText), [distanceText]);
   const selectedEstimate = estimates.find((estimate) => estimate.id === selectedMode) ?? estimates[0];
 
   return (
-    <label
-      className="focus-within:ring-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-3.5 py-2 text-[12px] font-bold text-[color:var(--client-muted)] transition focus-within:ring-2"
+    <div
+      className="relative min-w-0"
       data-page-drag-ignore="true"
       data-scroll-drag-ignore="true"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setMenuOpen(false);
+        }
+      }}
     >
-      <AppIcon className="h-4 w-4" name="map" />
-      <select
-        aria-label="交通方式"
-        className="max-w-[112px] appearance-none bg-transparent text-[12px] font-bold text-[color:var(--client-muted)] outline-none"
-        onChange={(event) => setSelectedMode(event.target.value as TransportModeId)}
-        value={selectedEstimate.id}
+      <button
+        aria-expanded={menuOpen}
+        aria-haspopup="listbox"
+        aria-label="选择移动方式"
+        className={cn(
+          storeCompactMetricPillClassName,
+          "client-transport-estimate-trigger focus-ring text-[12px] font-normal text-[color:var(--client-muted)]",
+          menuOpen && "border-[color:color-mix(in_srgb,var(--client-primary)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_10%,var(--client-surface))]",
+          className
+        )}
+        onClick={() => setMenuOpen((current) => !current)}
+        type="button"
       >
-        {estimates.map((estimate) => (
-          <option key={estimate.id} value={estimate.id}>
-            {estimate.label} {estimate.minutes} 分钟
-          </option>
-        ))}
-      </select>
-    </label>
+        <AppIcon className="h-4 w-4 shrink-0" name="map" />
+        <span className="min-w-0 truncate">
+          {selectedEstimate.label} {selectedEstimate.minutes} 分钟
+        </span>
+      </button>
+      {menuOpen ? (
+        <div
+          className="client-transport-estimate-menu absolute right-0 top-[calc(100%+6px)] z-50 w-[156px] rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,black_8%)] p-1.5 shadow-[0_16px_34px_rgba(0,0,0,0.34)] backdrop-blur-xl"
+          role="listbox"
+        >
+          {estimates.map((estimate) => {
+            const selected = estimate.id === selectedEstimate.id;
+
+            return (
+              <button
+                aria-selected={selected}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-[14px] px-3 py-2 text-left text-[12px] font-normal text-[color:var(--client-text)] transition",
+                  selected
+                    ? "bg-[color:var(--client-primary)] text-[color:var(--client-bg)]"
+                    : "text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_10%,transparent)] hover:text-[color:var(--client-text)]"
+                )}
+                key={estimate.id}
+                onClick={() => {
+                  setSelectedMode(estimate.id);
+                  setMenuOpen(false);
+                }}
+                role="option"
+                type="button"
+              >
+                <span className="w-4 text-center">{selected ? "✓" : ""}</span>
+                <span>
+                  {estimate.label} {estimate.minutes} 分钟
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -2146,6 +2247,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const baseMenuCards = useMemo(() => buildMenuCards(store, industry), [industry, store]);
   const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
+  const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
   const relevantReviews = useMemo(() => buildRelevantReviews(store, storeTechnicians), [store, storeTechnicians]);
   const socialPosts = useMemo(() => {
     const authorKeys = [profileKey({ entityType: "shop", id: store.id })];
@@ -2213,6 +2315,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   const regularSocialPosts = pinnedSocialPost ? socialPosts.filter((post) => post.id !== pinnedSocialPost.id) : socialPosts;
 
   const [isFavorite, setIsFavorite] = useState(false);
+  const [activeMetricDetail, setActiveMetricDetail] = useState<"rating" | "favorite" | null>(null);
   const [activeTab, setActiveTab] = useState<StoreTab>("home");
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedVisitDate, setSelectedVisitDate] = useState(() => routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
@@ -2233,6 +2336,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
 
   useEffect(() => {
     setActiveTab("home");
+    setActiveMetricDetail(null);
     setActiveImageIndex(0);
     setSelectedVisitDate(routeVisitDate ?? getInitialSelectedDate(store.nextSlot, store.alwaysBookable));
     setSelectedPeople(industry === "dining" ? "2名" : "1名");
@@ -2633,25 +2737,45 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
               </div>
             ) : null}
 
-            <FlatCard className="space-y-3 bg-[color:color-mix(in_srgb,var(--client-bg)_58%,var(--client-surface)_42%)] p-4 pr-14 shadow-[0_18px_42px_rgba(0,0,0,0.26)]" editor={renderMerchantEditor("basic", "编辑资料", undefined, "default", "basic-card")}>
-              <div className="flex flex-wrap gap-2">
-                <MetaPill
-                  label={
-                    <span className="inline-flex items-center gap-2 font-black text-[color:var(--client-primary)]">
-                      <AppIcon className="h-4 w-4" name="star" />
-                      {store.rating.toFixed(1)} · {shortNumber(store.reviewCount)} 评价
-                    </span>
-                  }
+            <FlatCard className={cn("store-basic-info-block space-y-3 !rounded-none !border-0 !bg-transparent !p-0 !shadow-none", isMerchantEditable && "pr-14")} editor={renderMerchantEditor("basic", "编辑资料", undefined, "default", "basic-card")}>
+              <div className="grid grid-cols-3 gap-2">
+                <StoreMetricDetailButton
+                  active={activeMetricDetail === "rating"}
+                  ariaLabel="查看评价件数"
+                  icon="star"
+                  label={store.rating.toFixed(1)}
+                  metric="rating"
+                  onClick={() => setActiveMetricDetail((current) => (current === "rating" ? null : "rating"))}
+                  primary
                 />
-                <MetaPill icon="heart" label={`${shortNumber(favoriteCount)} 收藏`} />
-                <TransportEstimatePill distanceText={config.distance} />
-                <MetaPill
-                  label={<span className="font-black text-[color:color-mix(in_srgb,var(--client-warm)_86%,white)]">{servicePriceRangeLabel}</span>}
-                  tone="accent"
+                <StoreMetricDetailButton
+                  active={activeMetricDetail === "favorite"}
+                  ariaLabel="查看收藏详细数字"
+                  icon="heart"
+                  label={formatStoreCompactCount(favoriteCount)}
+                  metric="favorite"
+                  onClick={() => setActiveMetricDetail((current) => (current === "favorite" ? null : "favorite"))}
                 />
+                <TransportEstimatePill className="w-full min-w-0 justify-center gap-1.5 px-2 text-[12px] !font-normal" distanceText={config.distance} />
               </div>
+              {activeMetricDetail ? (
+                <div className="inline-flex w-full items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_48%,transparent)] px-3 py-2 text-[12px] font-normal text-[color:var(--client-muted)]">
+                  {activeMetricDetail === "rating" ? (
+                    <span>
+                      评价件数 {formatStoreDetailedCount(store.reviewCount)}
+                    </span>
+                  ) : (
+                    <span>
+                      收藏人数 {formatStoreDetailedCount(favoriteCount)}
+                    </span>
+                  )}
+                </div>
+              ) : null}
 
               <div className="grid gap-x-4 gap-y-3 border-y border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] py-3 sm:grid-cols-2">
+                <InfoRow label="预算">
+                  <p className="mt-1.5 text-sm font-normal leading-6 text-[color:var(--client-text)]">{displayedBudgetLabel}</p>
+                </InfoRow>
                 <InfoRow label="地址">
                   <InlineEditableText
                     className="mt-1.5 block text-sm font-semibold leading-6"

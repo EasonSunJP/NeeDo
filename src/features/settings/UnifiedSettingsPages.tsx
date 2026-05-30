@@ -50,6 +50,7 @@ import { formatCustomerCreditScore } from "../../shared/profile-card/customerPro
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import { selectHomeLocationManually } from "../../state/homeLocationStore";
 import { updateHomeLayoutConfig, useHomeLayoutStore, type HomeLocationOption } from "../../state/homeLayoutStore";
+import { getNeedoPetAssetProgress, preloadNeedoPetAssets, useNeedoPetAssetReadiness, type NeedoPetAssetReadiness } from "../../state/needoPetAssets";
 import { setNeedoPetEnabled, useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useProfileCardBackgroundSettings } from "../../state/profileCardBackgroundStore";
 import type { Customer, InfoCardVisibilityMode, InfoCardVisibilitySettings, Store, StorePresentationConfig, Technician } from "../../types/domain";
@@ -916,13 +917,15 @@ function SettingsToggleRow({
   badge,
   description,
   checked,
-  onChange
+  onChange,
+  trailing
 }: {
   title: string;
   badge?: string;
   description: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  trailing?: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-3.5">
@@ -937,7 +940,38 @@ function SettingsToggleRow({
         </p>
         <p className="mt-1 text-[12px] leading-5 text-[color:var(--client-muted)]">{description}</p>
       </div>
-      <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} />
+      {trailing ?? <ToggleSwitch ariaLabel={title} checked={checked} onChange={onChange} />}
+    </div>
+  );
+}
+
+function SettingsPetAssetProgress({
+  readiness,
+  label
+}: {
+  readiness: NeedoPetAssetReadiness;
+  label: string;
+}) {
+  const progress = getNeedoPetAssetProgress(readiness);
+
+  return (
+    <div
+      aria-label={label}
+      aria-valuemax={100}
+      aria-valuemin={0}
+      aria-valuenow={progress}
+      className="w-20 shrink-0"
+      role="progressbar"
+    >
+      <div className="h-2 overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]">
+        <span
+          className="block h-full rounded-full bg-[color:var(--client-primary)] transition-[width] duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <div className="mt-1 text-right text-[10px] font-black leading-none text-[color:var(--client-muted)]">
+        {progress}%
+      </div>
     </div>
   );
 }
@@ -1410,6 +1444,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const { language } = useI18n();
   const { theme } = useClientTheme();
   const petSettings = useNeedoPetSettings();
+  const petAssetReadiness = useNeedoPetAssetReadiness();
   const [portalSettings] = usePortalSettingsState(portal);
   const profileCardBackgroundSettings = useProfileCardBackgroundSettings();
   const { customers, technicians, stores } = useEntityStore();
@@ -1427,6 +1462,17 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
   const pwaInstall = usePwaInstallPrompt();
   const [pwaInstallDialogOpen, setPwaInstallDialogOpen] = useState(false);
   const [pwaInstallDialogStatus, setPwaInstallDialogStatus] = useState<PwaInstallDialogStatus>("guide");
+  useEffect(() => {
+    if (petAssetReadiness.ready || petAssetReadiness.status === "loading") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void preloadNeedoPetAssets({ force: petAssetReadiness.status === "error" });
+    }, petAssetReadiness.status === "error" ? 8_000 : 0);
+
+    return () => window.clearTimeout(timer);
+  }, [petAssetReadiness.ready, petAssetReadiness.status]);
   const handlePwaInstallRequest = async () => {
     if (pwaInstall.hasNativePrompt) {
       setPwaInstallDialogStatus("prompting");
@@ -1523,9 +1569,16 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           <SettingsToggleRow
             badge="TEST"
             checked={petSettings.enabled}
-            description={t("开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。")}
+            description={t(petAssetReadiness.ready ? "开启后由屏幕宠物承接提醒气泡，首页右下角预约悬浮按钮会自动隐藏。" : "正在下载小白资源，完成后才能开启。")}
             onChange={setNeedoPetEnabled}
             title={t("电子宠物")}
+            trailing={
+              petAssetReadiness.ready ? (
+                undefined
+              ) : (
+                <SettingsPetAssetProgress label={t("小白资源下载进度")} readiness={petAssetReadiness} />
+              )
+            }
           />
         </SettingsSection>
 

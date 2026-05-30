@@ -70,3 +70,16 @@ describe("UnifiedSettingsPortalPage", () => {
     ).toBe(true);
   });
 });
+
+describe("UnifiedSettingsPage Xiaobai asset gate", () => {
+  const settingsHomeSource = source.slice(
+    source.indexOf("export function UnifiedSettingsPage"),
+    source.indexOf("export function UnifiedSettingsThemePage")
+  );
+
+  it("uses the switch slot for download progress until Xiaobai assets are ready", () => {
+    expect(settingsHomeSource).toContain("petAssetReadiness.ready ? (");
+    expect(settingsHomeSource).toContain("<SettingsPetAssetProgress");
+    expect(settingsHomeSource).not.toContain("disabled={!petAssetReadiness.ready}");
+  });
+});

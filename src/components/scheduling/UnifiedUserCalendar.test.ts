@@ -48,7 +48,7 @@ describe("UnifiedUserCalendar event editor page", () => {
   it("keeps native date and time inputs constrained on mobile WebKit", () => {
     expect(source).toContain('const temporalInputClass = "calendar-event-editor__temporal-input mt-1 text-center";');
     expect(source).toContain('type="date"');
-    expect(source).toContain('type="time"');
+    expect(source).toContain('type="datetime-local"');
     expect(source.match(/cn\(inputClass, temporalInputClass\)/g)).toHaveLength(3);
     expect(styles).toContain(".client-shell .calendar-event-editor__temporal-input");
     expect(styles).toContain(".client-shell .calendar-event-editor__temporal-input::-webkit-date-and-time-value");
@@ -56,6 +56,30 @@ describe("UnifiedUserCalendar event editor page", () => {
     expect(styles).toContain("max-width: 100%;");
     expect(styles).toContain("max-inline-size: 100%;");
     expect(styles).toContain("-webkit-appearance: none;");
+  });
+
+  it("shows all-day, repeat, date-time, and URL controls in the itinerary editor", () => {
+    expect(source).toContain("allDay: boolean;");
+    expect(source).toContain("repeatRule: CalendarRepeatRule;");
+    expect(source).toContain("url: string;");
+    expect(source).toContain('const repeatOptions: Array<{ value: CalendarRepeatRule; label: string }> =');
+    expect(source).toContain("formatCalendarEditorDateTimeInputValue(draft.date, draft.startTime)");
+    expect(source).toContain("applyCalendarEditorDateTimeChange(draft, event.target.value, \"start\")");
+    expect(source).toContain("applyCalendarEditorDateTimeChange(draft, event.target.value, \"end\")");
+    expect(source).toContain("终日");
+    expect(source).toContain("重复");
+    expect(source).toContain("每日");
+    expect(source).toContain("每周");
+    expect(source).toContain("每月");
+    expect(source).toContain("每年");
+    expect(source).toContain('placeholder="URL"');
+    expect(source).toContain('type="url"');
+  });
+
+  it("labels the sync-contact picker as participants without the common-contact hint", () => {
+    expect(source).toContain('<span className="text-[12px] font-black text-[color:var(--client-text)]">参加者</span>');
+    expect(source).not.toContain("选择同步联系人");
+    expect(source).not.toContain("最近联系多的通讯录中的人");
   });
 });
 

@@ -65,7 +65,7 @@ describe("IM pages", () => {
     expect(componentSource).toContain("im-conversation-wallpaper pointer-events-none absolute inset-0");
   });
 
-  it("only shows the hide member profiles switch after privacy mode is enabled", () => {
+  it("keeps the hide member profiles switch independent from privacy mode in group creation", () => {
     const componentStart = pagesSource.indexOf("export function ImNewConversationPage");
     const componentEnd = pagesSource.length;
     const componentSource = pagesSource.slice(componentStart, componentEnd);
@@ -73,6 +73,11 @@ describe("IM pages", () => {
     const hideProfilesSwitchIndex = componentSource.indexOf("是否隐藏成员名称和资料");
 
     expect(privacyConditionIndex).toBeGreaterThan(-1);
-    expect(hideProfilesSwitchIndex).toBeGreaterThan(privacyConditionIndex);
+    expect(hideProfilesSwitchIndex).toBeGreaterThan(-1);
+    expect(hideProfilesSwitchIndex).toBeLessThan(privacyConditionIndex);
+    expect(componentSource).not.toContain("setHideMemberProfilesEnabled(false)");
+    expect(componentSource).not.toContain("rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-bg)_46%,transparent)] px-3 py-3");
+    expect(componentSource).toContain('<ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="md" />');
+    expect(componentSource).toContain("privacyModeEnabled || hideMemberProfilesEnabled");
   });
 });

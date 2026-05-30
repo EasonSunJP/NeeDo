@@ -135,6 +135,7 @@ import { NeedoPet, NeedoPetRunningSprite } from "./components/ui/NeedoPet";
 import { clearNeedoStorage } from "./lib/browserStorage";
 import { isNonFatalBrowserRuntimeError } from "./lib/share";
 import { useEntityStore } from "./state/entityStore";
+import { preloadNeedoPetAssets } from "./state/needoPetAssets";
 import {
   DineInBillPage,
   DineInCustomerMenuPage,
@@ -484,6 +485,46 @@ function ScrollToTop() {
 
 function EntityStoreBootstrap() {
   useEntityStore();
+
+  return null;
+}
+
+function NeedoPetAssetBootstrap() {
+  useEffect(() => {
+    let cancelled = false;
+    let startTimer: number | null = null;
+    let retryTimer: number | null = null;
+
+    const startPreload = (force = false) => {
+      if (cancelled) {
+        return;
+      }
+
+      void preloadNeedoPetAssets({ force }).then((readiness) => {
+        if (cancelled || readiness.ready) {
+          return;
+        }
+
+        retryTimer = window.setTimeout(() => {
+          startPreload(true);
+        }, 8_000);
+      });
+    };
+
+    startTimer = window.setTimeout(startPreload, 450);
+
+    return () => {
+      cancelled = true;
+
+      if (startTimer !== null) {
+        window.clearTimeout(startTimer);
+      }
+
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, []);
 
   return null;
 }
@@ -921,6 +962,7 @@ export default function App() {
           <ClientThemeProvider>
             <I18nRuntime>
               <EntityStoreBootstrap />
+              <NeedoPetAssetBootstrap />
               <SocialProvider>
                 {splashPortal ? <SplashScreen onDone={completeSplash} portal={splashPortal} /> : null}
                 <ScrollToTop />

@@ -303,6 +303,21 @@ describe("im model", () => {
     expect(hidden?.hideMemberProfiles).toBe(true);
   });
 
+  it("creates groups with hidden member profiles without enabling disappearing privacy mode", () => {
+    const database = cloneImDatabase(makeSeedImDatabase());
+    const conversation = createConversationMutation(database, ["im-friend-daisuke", "im-friend-emi"], "隐藏资料群", {
+      forceGroup: true,
+      privacyModeEnabled: false,
+      hideMemberProfiles: true
+    });
+
+    expect(conversation.type).toBe("group");
+    expect(conversation.privacyModeEnabled).not.toBe(true);
+    expect(conversation.hideMemberProfiles).toBe(true);
+    expect(conversation.disappearingCountdown).toBeUndefined();
+    expect(conversation.disappearingStartMode).toBeUndefined();
+  });
+
   it("labels hidden group members from user A through AA and AB", () => {
     const memberIds = Array.from({ length: 28 }, (_, index) => `member-${index}`);
     const conversation = { memberIds };

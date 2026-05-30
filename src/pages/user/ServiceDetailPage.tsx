@@ -11,6 +11,7 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
+import { services as legacyServices } from "../../data/mock";
 import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
@@ -119,9 +120,13 @@ function ServiceDetailContent() {
     () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
     [apiId]
   );
+  const legacyService = useMemo(
+    () => (!apiId && id ? legacyServices.find((item) => item.id === id) ?? null : null),
+    [apiId, id]
+  );
   const service = useMemo(
-    () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null),
-    [serviceQuery.data]
+    () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : legacyService),
+    [legacyService, serviceQuery.data]
   );
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const [liked, setLiked] = useState(false);
@@ -145,15 +150,11 @@ function ServiceDetailContent() {
   );
   const checkoutHref = service && selectedPackage ? `/checkout/${service.id}?package=${selectedPackage.id}` : service ? `/checkout/${service.id}` : "/categories";
 
-  if (!apiId) {
-    return <ServiceDetailStatus description="这个服务链接还停留在旧 demo ID，第一批去 Mock 后请从首页或分类页重新进入真实 API 服务。" title="服务链接不可用" />;
-  }
-
-  if (serviceQuery.loading) {
+  if (apiId && serviceQuery.loading) {
     return <ServiceDetailStatus description="正在从 /api/v1/services 读取服务资料。" title="正在载入服务" />;
   }
 
-  if (serviceQuery.error) {
+  if (apiId && serviceQuery.error) {
     return <ServiceDetailStatus description={serviceQuery.error} title="服务读取失败" />;
   }
 

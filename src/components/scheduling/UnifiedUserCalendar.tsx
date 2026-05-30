@@ -58,6 +58,7 @@ type UnifiedCalendarScope = "user" | "technician" | "merchant";
 type UnifiedCalendarDisplayMode = "personal" | "parallel";
 type MerchantCalendarLaneMode = "technician" | "appointmentStatus";
 export type UnifiedCalendarSourceId = "user" | "technician" | "merchant" | "todo" | "birthday" | "holiday";
+type CalendarRepeatRule = "none" | "daily" | "weekly" | "monthly" | "yearly";
 
 type CalendarAttachment = {
   id: string;
@@ -105,6 +106,7 @@ export type UnifiedCalendarEvent = {
   calendarId?: string;
   calendarLabel?: string;
   date: string;
+  endDate?: string;
   startTime: string;
   endTime: string;
   title: string;
@@ -116,8 +118,11 @@ export type UnifiedCalendarEvent = {
   detailTargetId?: string;
   location?: string;
   note?: string;
+  url?: string;
   images?: CalendarAttachment[];
   reminder?: string;
+  allDay?: boolean;
+  repeatRule?: CalendarRepeatRule;
   syncContactLabels?: string[];
   visibility?: string;
   birthdayContactId?: string;
@@ -135,13 +140,17 @@ type LocalCalendarEvent = {
   calendarId: string;
   calendarLabel: string;
   date: string;
+  endDate: string;
   startTime: string;
   endTime: string;
   title: string;
   location: string;
   note: string;
+  url: string;
   images: CalendarAttachment[];
   reminder: string;
+  allDay: boolean;
+  repeatRule: CalendarRepeatRule;
   syncContactIds: string[];
   visibility: string;
   googleEventId?: string;
@@ -152,7 +161,7 @@ type LocalCalendarEvent = {
 
 type GoogleCalendarApiEventPayload = Pick<
   UnifiedCalendarEvent,
-  "id" | "sourceId" | "calendarId" | "calendarLabel" | "date" | "startTime" | "endTime" | "title" | "subtitle" | "location" | "note"
+  "id" | "sourceId" | "calendarId" | "calendarLabel" | "date" | "endDate" | "startTime" | "endTime" | "title" | "subtitle" | "location" | "note" | "url" | "allDay" | "repeatRule"
 >;
 
 type CalendarEditorDraft = Omit<LocalCalendarEvent, "createdAt" | "updatedAt">;
@@ -304,6 +313,14 @@ const viewOptions: Array<{ value: Exclude<UnifiedCalendarView, "agenda">; label:
   { value: "month", label: "月" }
 ];
 
+const repeatOptions: Array<{ value: CalendarRepeatRule; label: string }> = [
+  { value: "none", label: "不重复" },
+  { value: "daily", label: "每日" },
+  { value: "weekly", label: "每周" },
+  { value: "monthly", label: "每月" },
+  { value: "yearly", label: "每年" }
+];
+
 const merchantAppointmentStatusFilterOptions: Array<{ value: MerchantAppointmentStatusFilter; label: string }> = [
   { value: "all", label: "全预约" },
   { value: "assigned", label: "已排预约" },
@@ -332,6 +349,59 @@ function addMinutesToTime(time: string, minutes: number) {
   return minutesToTime(timeToMinutes(time) + minutes);
 }
 
+function normalizeCalendarRepeatRule(value: string | undefined): CalendarRepeatRule {
+  return repeatOptions.some((option) => option.value === value) ? (value as CalendarRepeatRule) : "none";
+}
+
+function formatCalendarEditorDateTimeInputValue(date: string, time: string) {
+  return date && time ? `${date}T${time}` : "";
+}
+
+function parseCalendarEditorDateTimeInputValue(value: string) {
+  const [date, timeValue] = value.split("T");
+  const time = timeValue?.slice(0, 5);
+
+  if (!date || !time) {
+    return null;
+  }
+
+  return { date, time };
+}
+
+function applyCalendarEditorDateTimeChange(draft: CalendarEditorDraft, value: string, target: "start" | "end"): CalendarEditorDraft {
+  const parsed = parseCalendarEditorDateTimeInputValue(value);
+
+  if (!parsed) {
+    return draft;
+  }
+
+  if (target === "start") {
+    const endDateTracksStartDate = !draft.endDate || draft.endDate === draft.date;
+    return {
+      ...draft,
+      date: parsed.date,
+      endDate: endDateTracksStartDate ? parsed.date : draft.endDate,
+      startTime: parsed.time
+    };
+  }
+
+  return {
+    ...draft,
+    endDate: parsed.date,
+    endTime: parsed.time
+  };
+}
+
+function applyCalendarAllDayChange(draft: CalendarEditorDraft, allDay: boolean): CalendarEditorDraft {
+  return {
+    ...draft,
+    allDay,
+    startTime: allDay ? "00:00" : draft.startTime,
+    endTime: allDay ? "23:59" : draft.endTime,
+    endDate: draft.endDate || draft.date
+  };
+}
+
 function getGoogleCalendarSettingsPath(scope: UnifiedCalendarScope) {
   if (scope === "merchant") {
     return "/merchant/settings/account?section=google-account";
@@ -351,12 +421,16 @@ function toGoogleCalendarApiPayload(event: UnifiedCalendarEvent): GoogleCalendar
     calendarId: event.calendarId,
     calendarLabel: event.calendarLabel,
     date: event.date,
+    endDate: event.endDate,
     startTime: event.startTime,
     endTime: event.endTime,
     title: event.title,
     subtitle: event.subtitle,
     location: event.location,
-    note: event.note
+    note: event.note,
+    url: event.url,
+    allDay: event.allDay,
+    repeatRule: event.repeatRule
   };
 }
 
@@ -408,8 +482,11 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
     readOnly: false,
     location: event.location,
     note: event.note,
+    url: event.url,
     images: event.images,
     reminder: event.reminder,
+    allDay: event.allDay,
+    repeatRule: event.repeatRule,
     syncContactLabels: getSyncContactLabels(event.syncContactIds, syncContactOptions),
     visibility: getSyncContactLabels(event.syncContactIds, syncContactOptions).join("、") || "未同步",
     participants: event.syncContactIds
@@ -1537,6 +1614,7 @@ function getCalendarSearchFields(event: UnifiedCalendarEvent, view: UnifiedCalen
       event.title,
       event.startTime,
       event.endTime,
+      event.url,
       `${event.startTime} - ${event.endTime}`,
       sourceConfigs[event.sourceId].label
     ].filter((field): field is string => Boolean(field && field.trim()));
@@ -1547,6 +1625,7 @@ function getCalendarSearchFields(event: UnifiedCalendarEvent, view: UnifiedCalen
     event.subtitle,
     event.badge,
     event.date,
+    event.url,
     event.date.replaceAll("-", "/"),
     formatLongDate(event.date),
     formatShortDate(event.date),
@@ -1789,13 +1868,17 @@ function normalizeLocalCalendarEvent(event: Partial<LocalCalendarEvent> & { visi
     calendarId: event.calendarId ?? "user:me",
     calendarLabel: event.calendarLabel ?? "我的行程",
     date: event.date,
+    endDate: event.endDate ?? event.date,
     startTime: event.startTime,
     endTime: event.endTime,
     title: event.title ?? "",
     location: event.location ?? "",
     note: event.note ?? "",
+    url: event.url ?? "",
     images,
     reminder: normalizeCalendarReminderLabel(event.reminder ?? "30 分钟前"),
+    allDay: Boolean(event.allDay),
+    repeatRule: normalizeCalendarRepeatRule(event.repeatRule),
     syncContactIds: Array.isArray(event.syncContactIds) ? event.syncContactIds.filter((contactId): contactId is string => typeof contactId === "string") : legacySyncContactIds,
     visibility: event.visibility ?? "未同步",
     createdAt: event.createdAt ?? new Date().toISOString(),
@@ -3836,7 +3919,7 @@ function EventDetailField({
   label,
   value
 }: {
-  icon: "calendar" | "map" | "manager" | "bell" | "clock";
+  icon: "calendar" | "map" | "manager" | "bell" | "clock" | "globe";
   label: string;
   value?: ReactNode;
 }) {
@@ -3893,6 +3976,13 @@ export function UnifiedCalendarEventDetailPage({
   const canDelete = Boolean(onDelete);
   const canOpenAppointmentDetail = isNeedoAppointmentEvent(event) && Boolean(onOpenAppointmentDetail);
   const headerTitle = detailMode === "participants" ? "参加者" : "行程详情";
+  const repeatLabel = repeatOptions.find((option) => option.value === event.repeatRule)?.label;
+  const eventEndDate = event.endDate || event.date;
+  const dateTimeLabel = event.allDay
+    ? `${formatLongDate(event.date)} 终日`
+    : eventEndDate !== event.date
+      ? `${formatLongDate(event.date)} ${event.startTime} - ${formatLongDate(eventEndDate)} ${event.endTime}`
+      : `${formatLongDate(event.date)} ${event.startTime} - ${event.endTime}`;
 
   const closeActionSheet = () => setActionSheetOpen(false);
   const closeStatusSheet = () => setStatusSheetOpen(false);
@@ -3974,8 +4064,13 @@ export function UnifiedCalendarEventDetailPage({
       </section>
 
       <div className="space-y-3">
-        <EventDetailField icon="calendar" label="日期时间" value={`${formatLongDate(event.date)} ${event.startTime} - ${event.endTime}`} />
+        <EventDetailField icon="calendar" label="日期时间" value={dateTimeLabel} />
         <EventDetailField icon="map" label="地址" value={event.location || event.subtitle} />
+        <EventDetailField
+          icon="globe"
+          label="URL"
+          value={event.url ? <a className="break-all text-[color:var(--client-primary)]" href={event.url} rel="noreferrer" target="_blank">{event.url}</a> : undefined}
+        />
         <EventDetailField
           icon="manager"
           label={translateText("创建者", language)}
@@ -4011,6 +4106,7 @@ export function UnifiedCalendarEventDetailPage({
           <EventParticipantStack participants={participants} />
         </button>
         <EventDetailField icon="bell" label="提醒时间" value={event.reminder ?? "5 分前"} />
+        <EventDetailField icon="clock" label="重复" value={repeatLabel && repeatLabel !== "不重复" ? repeatLabel : undefined} />
         {canOpenAppointmentDetail ? (
           <button
             className="focus-ring flex w-full items-center justify-between gap-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:var(--client-primary-soft)] px-4 py-3 text-left text-[color:var(--client-primary-strong)] shadow-[0_14px_34px_color-mix(in_srgb,var(--client-primary)_12%,transparent)] transition active:scale-[0.99]"
@@ -4146,7 +4242,7 @@ function CalendarEventEditorPage({
 }) {
   const [syncContactFilterMode, setSyncContactFilterMode] = useState<SyncContactFilterMode>("common");
   const syncFilterOptions: Array<{ value: SyncContactFilterMode; label: string; detail: string; emptyCaption: string }> = [
-    { value: "common", label: "常用", detail: "最近联系多的通讯录中的人", emptyCaption: "当前没有常用联系人，保存后仅自己可见。" },
+    { value: "common", label: "常用", detail: "", emptyCaption: "当前没有常用联系人，保存后仅自己可见。" },
     { value: "tags", label: "标签", detail: "调用通讯录标签，把当前行程同步给某类标签的人", emptyCaption: "当前通讯录没有可同步标签。" },
     { value: "groups", label: "群组", detail: "从群组列表中选择同步群组", emptyCaption: "当前没有可同步群组。" }
   ];
@@ -4219,11 +4315,47 @@ function CalendarEventEditorPage({
           placeholder="新增标题"
           value={draft.title}
         />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3">
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             日期
-            <input className={cn(inputClass, temporalInputClass)} onChange={(event) => onChange({ ...draft, date: event.target.value })} type="date" value={draft.date} />
+            <input
+              className={cn(inputClass, temporalInputClass)}
+              onChange={(event) =>
+                onChange({
+                  ...draft,
+                  date: event.target.value,
+                  endDate: !draft.endDate || draft.endDate === draft.date ? event.target.value : draft.endDate
+                })
+              }
+              type="date"
+              value={draft.date}
+            />
           </label>
+          <label className="focus-within:ring-focus mb-px flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3 text-[12px] font-black text-[color:var(--client-text)]">
+            <span>终日</span>
+            <input
+              checked={draft.allDay}
+              className="sr-only"
+              onChange={(event) => onChange(applyCalendarAllDayChange(draft, event.target.checked))}
+              type="checkbox"
+            />
+            <span
+              aria-hidden="true"
+              className={cn(
+                "relative h-5 w-9 rounded-full transition",
+                draft.allDay ? "bg-[color:var(--client-primary)]" : "bg-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)]"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-4 w-4 rounded-full bg-[color:var(--client-primary-contrast)] shadow transition",
+                  draft.allDay ? "left-[18px]" : "left-0.5"
+                )}
+              />
+            </span>
+          </label>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             提醒
             <select className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, reminder: event.target.value })} value={normalizeCalendarReminderLabel(draft.reminder)}>
@@ -4233,15 +4365,33 @@ function CalendarEventEditorPage({
               <option value="不提醒">不提醒</option>
             </select>
           </label>
+          <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
+            重复
+            <select className={cn(inputClass, "mt-1")} onChange={(event) => onChange({ ...draft, repeatRule: normalizeCalendarRepeatRule(event.target.value) })} value={draft.repeatRule}>
+              {repeatOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             开始
-            <input className={cn(inputClass, temporalInputClass)} onChange={(event) => onChange({ ...draft, startTime: event.target.value })} type="time" value={draft.startTime} />
+            <input
+              className={cn(inputClass, temporalInputClass)}
+              onChange={(event) => onChange(applyCalendarEditorDateTimeChange(draft, event.target.value, "start"))}
+              type="datetime-local"
+              value={formatCalendarEditorDateTimeInputValue(draft.date, draft.startTime)}
+            />
           </label>
           <label className="block min-w-0 text-[11px] font-black text-[color:var(--client-muted)]">
             结束
-            <input className={cn(inputClass, temporalInputClass)} onChange={(event) => onChange({ ...draft, endTime: event.target.value })} type="time" value={draft.endTime} />
+            <input
+              className={cn(inputClass, temporalInputClass)}
+              onChange={(event) => onChange(applyCalendarEditorDateTimeChange(draft, event.target.value, "end"))}
+              type="datetime-local"
+              value={formatCalendarEditorDateTimeInputValue(draft.endDate || draft.date, draft.endTime)}
+            />
           </label>
         </div>
         <input
@@ -4249,6 +4399,13 @@ function CalendarEventEditorPage({
           onChange={(event) => onChange({ ...draft, location: event.target.value })}
           placeholder="地点"
           value={draft.location}
+        />
+        <input
+          className={inputClass}
+          onChange={(event) => onChange({ ...draft, url: event.target.value })}
+          placeholder="URL"
+          type="url"
+          value={draft.url}
         />
         <textarea
           className={cn(inputClass, "h-24 resize-none py-3 leading-5")}
@@ -4284,7 +4441,7 @@ function CalendarEventEditorPage({
         </section>
         <section className={cn(scheduleInsetClass, "space-y-2 px-3 py-3")}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] font-black text-[color:var(--client-text)]">选择同步联系人</span>
+            <span className="text-[12px] font-black text-[color:var(--client-text)]">参加者</span>
             <span className="text-[10px] font-black text-[color:var(--client-muted)]">{draft.syncContactIds.length} 个</span>
           </div>
           <div className="grid grid-cols-3 gap-1 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_40%,transparent)] p-1">
@@ -4308,7 +4465,9 @@ function CalendarEventEditorPage({
               );
             })}
           </div>
-          <p className="text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">{activeSyncFilter.detail}</p>
+          {activeSyncFilter.detail ? (
+            <p className="text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">{activeSyncFilter.detail}</p>
+          ) : null}
           {visibleSyncContactOptions.length > 0 ? (
             <div className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {visibleSyncContactOptions.map((option) => {
@@ -4914,13 +5073,17 @@ export function UnifiedUserCalendar({
       calendarId,
       calendarLabel,
       date,
+      endDate: date,
       startTime: minutesToTime(defaultRange.start),
       endTime: minutesToTime(defaultRange.end),
       title: "",
       location: calendarId === "user:me" ? "" : calendarLabel,
       note: "",
+      url: "",
       images: [],
       reminder: "30 分钟前",
+      allDay: false,
+      repeatRule: "none",
       syncContactIds: [],
       visibility: "未同步"
     });
@@ -4932,22 +5095,32 @@ export function UnifiedUserCalendar({
     }
 
     const now = new Date().toISOString();
-    const normalizedStart = editorDraft.startTime || "10:00";
-    const normalizedEnd =
-      timeToMinutes(editorDraft.endTime || "") > timeToMinutes(normalizedStart)
-        ? editorDraft.endTime
-        : addMinutesToTime(normalizedStart, 60);
+    const normalizedDate = editorDraft.date || getTodayDateKey();
+    const normalizedStart = editorDraft.allDay ? "00:00" : editorDraft.startTime || "10:00";
+    let normalizedEndDate = editorDraft.allDay ? normalizedDate : editorDraft.endDate || normalizedDate;
+    let normalizedEnd = editorDraft.allDay ? "23:59" : editorDraft.endTime || "";
+
+    if (`${normalizedEndDate}T${normalizedEnd}` <= `${normalizedDate}T${normalizedStart}`) {
+      normalizedEndDate = normalizedDate;
+      normalizedEnd = addMinutesToTime(normalizedStart, 60);
+    }
+
     const syncContactLabels = getSyncContactLabels(editorDraft.syncContactIds, syncContactOptions);
     const normalized: LocalCalendarEvent = {
       ...editorDraft,
       id: editorDraft.id || `user-local-${Date.now()}`,
       calendarId: editorDraft.calendarId,
       calendarLabel: editorDraft.calendarLabel,
+      date: normalizedDate,
+      endDate: normalizedEndDate,
       title: editorDraft.title.trim() || "（无标题）",
       note: editorDraft.note.trim(),
+      url: editorDraft.url.trim(),
       images: editorDraft.images,
       startTime: normalizedStart,
       endTime: normalizedEnd,
+      allDay: editorDraft.allDay,
+      repeatRule: normalizeCalendarRepeatRule(editorDraft.repeatRule),
       syncContactIds: editorDraft.syncContactIds,
       visibility: syncContactLabels.join("、") || "未同步",
       createdAt: localEvents.find((event) => event.id === editorDraft.id)?.createdAt ?? now,
@@ -4976,13 +5149,17 @@ export function UnifiedUserCalendar({
       calendarId: localEvent.calendarId,
       calendarLabel: localEvent.calendarLabel,
       date: localEvent.date,
+      endDate: localEvent.endDate || localEvent.date,
       startTime: localEvent.startTime,
       endTime: localEvent.endTime,
       title: localEvent.title,
       location: localEvent.location,
       note: localEvent.note,
+      url: localEvent.url,
       images: localEvent.images,
       reminder: normalizeCalendarReminderLabel(localEvent.reminder),
+      allDay: localEvent.allDay,
+      repeatRule: normalizeCalendarRepeatRule(localEvent.repeatRule),
       syncContactIds: localEvent.syncContactIds,
       visibility: localEvent.visibility
     });
@@ -5053,7 +5230,9 @@ export function UnifiedUserCalendar({
         maxResults: 120
       })
     });
-    const importedEvents = response.events ?? [];
+    const importedEvents = (response.events ?? [])
+      .map(normalizeLocalCalendarEvent)
+      .filter((event): event is LocalCalendarEvent => Boolean(event));
 
     if (importedEvents.length > 0) {
       setLocalEvents((current) => {

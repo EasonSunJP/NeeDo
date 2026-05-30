@@ -7048,10 +7048,6 @@ export function ImNewConversationPage() {
 
   const togglePrivacyMode = (enabled: boolean) => {
     setPrivacyModeEnabled(enabled);
-
-    if (!enabled) {
-      setHideMemberProfilesEnabled(false);
-    }
   };
 
   const addFriendAndOpen = async (userId: string) => {
@@ -7130,17 +7126,24 @@ export function ImNewConversationPage() {
 
     stabilizeImMobileViewport();
 
-    const conversation = await store.createGroupConversation(
-      selectedIds,
-      groupTitle.trim() || undefined,
-      privacyModeEnabled
+    const privacyOptions = privacyModeEnabled || hideMemberProfilesEnabled
+      ? privacyModeEnabled
         ? {
-            privacyModeEnabled,
+            privacyModeEnabled: true,
             hideMemberProfiles: hideMemberProfilesEnabled,
             disappearingCountdown: privacyCountdown,
             disappearingStartMode: privacyStartMode
           }
-        : undefined
+        : {
+            privacyModeEnabled: false,
+            hideMemberProfiles: true
+          }
+      : undefined;
+
+    const conversation = await store.createGroupConversation(
+      selectedIds,
+      groupTitle.trim() || undefined,
+      privacyOptions
     );
     stabilizeImMobileViewport();
     navigate(config.routes.conversation(conversation.id));
@@ -7148,9 +7151,9 @@ export function ImNewConversationPage() {
 
   const groupContentBottomPaddingClassName = privacyModeEnabled
     ? "pb-[calc(444px+env(safe-area-inset-bottom))]"
-    : "pb-[calc(248px+env(safe-area-inset-bottom))]";
-  const groupIndexBottom = privacyModeEnabled ? "calc(26.75rem + env(safe-area-inset-bottom))" : "calc(15.25rem + env(safe-area-inset-bottom))";
-  const groupIndexGutter = privacyModeEnabled ? "calc(26rem + env(safe-area-inset-bottom))" : "calc(14.5rem + env(safe-area-inset-bottom))";
+    : "pb-[calc(312px+env(safe-area-inset-bottom))]";
+  const groupIndexBottom = privacyModeEnabled ? "calc(26.75rem + env(safe-area-inset-bottom))" : "calc(19.25rem + env(safe-area-inset-bottom))";
+  const groupIndexGutter = privacyModeEnabled ? "calc(26rem + env(safe-area-inset-bottom))" : "calc(18.5rem + env(safe-area-inset-bottom))";
 
   return (
     <ImStandaloneShell>
@@ -7171,7 +7174,7 @@ export function ImNewConversationPage() {
                 <input
                   className="min-w-0 flex-1 bg-transparent text-[15px] font-semibold text-[color:var(--client-text)] outline-none placeholder:text-[color:color-mix(in_srgb,var(--client-muted)_72%,transparent)]"
                   onChange={(event) => setGroupTitle(event.target.value)}
-                  placeholder="可选：自定义群名称"
+                  placeholder="自定义群名称"
                   value={groupTitle}
                 />
               </div>
@@ -7446,7 +7449,7 @@ export function ImNewConversationPage() {
             aria-hidden="true"
             className={cn(
               "absolute inset-x-0 bottom-0 bg-[linear-gradient(180deg,transparent_0%,color-mix(in_srgb,var(--client-bg)_86%,transparent)_38%,var(--client-bg)_100%)]",
-              privacyModeEnabled ? "h-[436px]" : "h-[252px]"
+              privacyModeEnabled ? "h-[436px]" : "h-[316px]"
             )}
           />
           <div className="pointer-events-auto relative mx-auto w-full min-w-0 max-w-[880px] space-y-3 overflow-x-hidden [overflow-x:clip]">
@@ -7464,20 +7467,21 @@ export function ImNewConversationPage() {
                 <ToggleSwitch ariaLabel="是否开启隐私模式" checked={privacyModeEnabled} onChange={togglePrivacyMode} size="md" />
               </div>
 
+              <div className="mt-3 flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <p className="min-w-0 truncate text-[15px] font-black text-[color:var(--client-text)]">隐藏名称和资料</p>
+                  <InfoTooltipTrigger
+                    content={hideMemberProfilesInfo}
+                    label="查看隐藏名称和资料说明"
+                    panelMode="tooltip"
+                    variant="client"
+                  />
+                </div>
+                <ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="md" />
+              </div>
+
               {privacyModeEnabled ? (
                 <>
-                  <div className="mt-3 flex min-w-0 items-center justify-between gap-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-bg)_46%,transparent)] px-3 py-3">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <p className="min-w-0 truncate text-[14px] font-black text-[color:var(--client-text)]">隐藏名称和资料</p>
-                      <InfoTooltipTrigger
-                        content={hideMemberProfilesInfo}
-                        label="查看隐藏名称和资料说明"
-                        panelMode="tooltip"
-                        variant="client"
-                      />
-                    </div>
-                    <ToggleSwitch ariaLabel="是否隐藏成员名称和资料" checked={hideMemberProfilesEnabled} onChange={setHideMemberProfilesEnabled} size="sm" />
-                  </div>
                   <div className="mt-3 grid grid-cols-4 gap-2">
                     {groupPrivacyCountdownLabels.map(({ field, label }) => (
                       <label className="min-w-0" key={field}>

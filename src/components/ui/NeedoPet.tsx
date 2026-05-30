@@ -8,6 +8,16 @@ import type { SocialPortalScope } from "../../features/social/types";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { readNeedoExternalInfoPosts, subscribeNeedoExternalInfoPosts, type NeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { cn } from "../../lib/utils";
+import {
+  petSpriteSrc,
+  useNeedoPetAssetReadiness,
+  xiaobaiIdleClips,
+  xiaobaiOneShotClips,
+  xiaobaiRunningClips,
+  type NeedoPetMotionClip,
+  type XiaobaiPetOneShotSpriteKey,
+  type XiaobaiPetSpriteKey
+} from "../../state/needoPetAssets";
 import { setNeedoPetEnabled, setNeedoPetFreeRoam, useNeedoPetSettings } from "../../state/needoPetSettings";
 import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { NotificationBadge } from "./NotificationBadge";
@@ -28,25 +38,8 @@ type PetAnimationState = "dying" | "entering" | "exiting" | "failed" | "grave" |
 type PetFacing = "left" | "right";
 type PetExpression = "happy" | "notice" | "tired" | "sad" | "dead";
 type PetTransitionState = "death" | "enter" | "exit" | "revive" | null;
-type PetSpriteKey =
-  | "angry"
-  | "death"
-  | "enter"
-  | "exit"
-  | "failed"
-  | "happy"
-  | "grave"
-  | "hungry"
-  | "idle"
-  | "jumping"
-  | "notice"
-  | "phone"
-  | "revive"
-  | "running"
-  | "sleeping"
-  | "waiting"
-  | "waving";
-type PetOneShotSpriteKey = "death" | "enter" | "exit" | "revive";
+type PetSpriteKey = XiaobaiPetSpriteKey;
+type PetOneShotSpriteKey = XiaobaiPetOneShotSpriteKey;
 
 type ReminderItem = {
   count: number;
@@ -72,10 +65,7 @@ type PetBubble = {
   tone: "care" | "danger" | "happy" | "notice";
 };
 
-type PetMotionClip = {
-  durationMs: number;
-  src: string;
-};
+type PetMotionClip = NeedoPetMotionClip;
 
 type MotionPosition = {
   x: number;
@@ -582,53 +572,6 @@ function getPetSpriteKey({
   return "idle";
 }
 
-const xiaobaiPetAssetVersion = "20260521h";
-
-function getVersionedPetAsset(src: string) {
-  return `${src}?v=${xiaobaiPetAssetVersion}`;
-}
-
-const petSpriteSrc: Record<PetSpriteKey, string> = {
-  angry: getVersionedPetAsset("/images/needo-pet/xiao-bai-angry.png"),
-  death: getVersionedPetAsset("/images/needo-pet/xiao-bai-death.png"),
-  enter: getVersionedPetAsset("/images/needo-pet/xiao-bai-enter.png"),
-  exit: getVersionedPetAsset("/images/needo-pet/xiao-bai-exit.png"),
-  failed: getVersionedPetAsset("/images/needo-pet/xiao-bai-failed.png"),
-  happy: getVersionedPetAsset("/images/needo-pet/xiao-bai-happy.png"),
-  grave: getVersionedPetAsset("/images/needo-pet/xiao-bai-grave.png"),
-  hungry: getVersionedPetAsset("/images/needo-pet/xiao-bai-hungry.png"),
-  idle: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle.png"),
-  jumping: getVersionedPetAsset("/images/needo-pet/xiao-bai-jumping.png"),
-  notice: getVersionedPetAsset("/images/needo-pet/xiao-bai-notice.png"),
-  phone: getVersionedPetAsset("/images/needo-pet/xiao-bai-phone.png"),
-  revive: getVersionedPetAsset("/images/needo-pet/xiao-bai-revive.png"),
-  running: getVersionedPetAsset("/images/needo-pet/xiao-bai-running.png"),
-  sleeping: getVersionedPetAsset("/images/needo-pet/xiao-bai-sleeping.png"),
-  waiting: getVersionedPetAsset("/images/needo-pet/xiao-bai-waiting.png"),
-  waving: getVersionedPetAsset("/images/needo-pet/xiao-bai-waving.png")
-};
-
-const xiaobaiIdleClips = [
-  { durationMs: 6_600, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-question-cheer.png") },
-  { durationMs: 3_600, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-sparkle.png") },
-  { durationMs: 6_600, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-heart-thanks.png") },
-  { durationMs: 4_950, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-angry.png") },
-  { durationMs: 5_850, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-sad.png") },
-  { durationMs: 5_200, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-sleepy.png") },
-  { durationMs: 6_350, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-excited.png") },
-  { durationMs: 5_000, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-idle-thinking.png") }
-] as const;
-const xiaobaiRunningClips = [
-  { durationMs: 6_400, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-dash.png") },
-  { durationMs: 8_400, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-run-sprint.png") }
-] as const;
-const xiaobaiOneShotClips: Record<PetOneShotSpriteKey, PetMotionClip> = {
-  death: { durationMs: 7_450, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-death.png") },
-  enter: { durationMs: 3_000, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-enter.png") },
-  exit: { durationMs: 4_800, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-exit.png") },
-  revive: { durationMs: 6_550, src: getVersionedPetAsset("/images/needo-pet/xiao-bai-revive.png") }
-};
-
 function isOneShotSprite(sprite: PetSpriteKey): sprite is PetOneShotSpriteKey {
   return sprite === "death" || sprite === "enter" || sprite === "exit" || sprite === "revive";
 }
@@ -740,6 +683,12 @@ function NeedoPetSprite({ runId, sprite }: { runId: number; sprite: PetSpriteKey
 }
 
 export function NeedoPetRunningSprite() {
+  const assetReadiness = useNeedoPetAssetReadiness();
+
+  if (!assetReadiness.ready) {
+    return null;
+  }
+
   return <NeedoPetMotionSequence key="running" clips={xiaobaiRunningClips} sprite="running" />;
 }
 
@@ -869,6 +818,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const { language } = useOptionalI18n();
   const { theme } = useClientTheme();
   const petSettings = useNeedoPetSettings();
+  const petAssetReadiness = useNeedoPetAssetReadiness();
   const location = useLocation();
   const navigate = useNavigate();
   const social = useSocial();
@@ -910,7 +860,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const lastAppliedPositionRef = useRef<MotionPosition | null>(null);
   const settledRef = useRef(settled);
   const hasShownEntryRef = useRef(false);
-  const petDisabled = disabled || !petSettings.enabled;
+  const petDisabled = disabled || !petSettings.enabled || !petAssetReadiness.ready;
 
   const readAnchorPosition = (time = typeof performance === "undefined" ? Date.now() : performance.now(), force = false) => {
     if (force || !anchorPositionRef.current || time - anchorPositionUpdatedAtRef.current > 1_000) {
