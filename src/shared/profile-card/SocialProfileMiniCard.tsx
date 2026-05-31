@@ -527,7 +527,7 @@ function ActionControl({
         icon="heart"
         label={label}
         onClick={onAction}
-        size="sm"
+        size="compactLg"
       />
     );
   }

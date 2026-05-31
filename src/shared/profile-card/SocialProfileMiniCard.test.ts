@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
 import cardSource from "./SocialProfileMiniCard.tsx?raw";
 
 describe("SocialProfileMiniCard cover readability", () => {
@@ -20,8 +21,10 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(cardSource).toContain("<IconMetricAction");
     expect(cardSource).toContain('icon="heart"');
     expect(cardSource).toContain("count={count}");
-    expect(cardSource).toContain('size="sm"');
+    expect(cardSource).toContain('size="compactLg"');
     expect(cardSource).toContain("absolute right-2 top-2 z-20");
+    expect(cardSource).not.toContain("scale-[1.3]");
+    expect(appScaffoldSource).toContain('compactLg: {\n    count: "top-[32px] w-10 text-[10px]"');
     expect(cardSource).not.toContain('label === "关注"');
   });
 });

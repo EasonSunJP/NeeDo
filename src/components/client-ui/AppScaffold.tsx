@@ -279,7 +279,7 @@ export function IconButton({
   );
 }
 
-type IconMetricActionSize = "sm" | "md";
+type IconMetricActionSize = "sm" | "compactLg" | "md";
 
 const iconMetricActionSizeClassName: Record<
   IconMetricActionSize,
@@ -295,6 +295,12 @@ const iconMetricActionSizeClassName: Record<
     icon: "h-5 w-5",
     root: "h-[54px] w-11",
     shell: "h-11 w-11"
+  },
+  compactLg: {
+    count: "top-[32px] w-10 text-[10px]",
+    icon: "h-[14px] w-[14px]",
+    root: "h-[46px] w-[42px]",
+    shell: "h-[29px] w-[29px]"
   },
   sm: {
     count: "top-[25px] w-10 text-[10px]",
