@@ -1216,7 +1216,182 @@ export const approvedI18nTranslationOverrides = [
   ],
   [
     "NeeDo 用户端",
-    { "zh-Hant": "NeeDo 用戶端", ja: "NeeDo", en: "NeeDo", ko: "NeeDo" }
+    { "zh-Hant": "NeeDo 用戶端", ja: "NeeDo ユーザーアプリ", en: "NeeDo User App", ko: "NeeDo 사용자 앱" }
+  ],
+  [
+    "NeeDo 用戶端",
+    { "zh-Hant": "NeeDo 用戶端", ja: "NeeDo ユーザーアプリ", en: "NeeDo User App", ko: "NeeDo 사용자 앱" }
+  ],
+  [
+    "NeeDo 商户端",
+    { "zh-Hant": "NeeDo 商戶端", ja: "NeeDo 店舗側", en: "NeeDo Merchant App", ko: "NeeDo 사업자 앱" }
+  ],
+  [
+    "NeeDo 店铺端",
+    { "zh-Hant": "NeeDo 店鋪端", ja: "NeeDo 店舗側", en: "NeeDo Merchant App", ko: "NeeDo 사업자 앱" }
+  ],
+  [
+    "NeeDo 店鋪端",
+    { "zh-Hant": "NeeDo 店鋪端", ja: "NeeDo 店舗側", en: "NeeDo Merchant App", ko: "NeeDo 사업자 앱" }
+  ],
+  [
+    "NeeDo 技师端",
+    { "zh-Hant": "NeeDo 技師端", ja: "NeeDo スタッフアプリ", en: "NeeDo Technician App", ko: "NeeDo 기사 앱" }
+  ],
+  [
+    "NeeDo 技师支持",
+    { "zh-Hant": "NeeDo 技師支援", ja: "NeeDo スタッフサポート", en: "NeeDo Technician Support", ko: "NeeDo 기사 지원" }
+  ],
+  [
+    "NeeDo 商户后台",
+    { "zh-Hant": "NeeDo 商戶後台", ja: "NeeDo 店舗管理画面", en: "NeeDo Business Management", ko: "NeeDo 사업자 관리 화면" }
+  ],
+  [
+    "NeeDo 员工端",
+    { "zh-Hant": "NeeDo 員工端", ja: "NeeDo スタッフアプリ", en: "NeeDo Staff App", ko: "NeeDo 스태프 앱" }
+  ],
+  [
+    "NeeDo 員工端",
+    { "zh-Hant": "NeeDo 員工端", ja: "NeeDo スタッフアプリ", en: "NeeDo Staff App", ko: "NeeDo 스태프 앱" }
+  ],
+  [
+    "进入 NeeDo 用户端",
+    { "zh-Hant": "進入 NeeDo 用戶端", ja: "NeeDo ユーザーアプリに入る", en: "Enter NeeDo User App", ko: "NeeDo 사용자 앱으로 이동" }
+  ],
+  [
+    "进入 NeeDo 商户端",
+    { "zh-Hant": "進入 NeeDo 商戶端", ja: "NeeDo 店舗側に入る", en: "Enter NeeDo Merchant App", ko: "NeeDo 사업자 앱으로 이동" }
+  ],
+  [
+    "进入 NeeDo 技师端",
+    { "zh-Hant": "進入 NeeDo 技師端", ja: "NeeDo スタッフアプリに入る", en: "Enter NeeDo Technician App", ko: "NeeDo 기사 앱으로 이동" }
+  ],
+  [
+    "新需求",
+    { "zh-Hant": "新需求", ja: "新しい需要", en: "New Need", ko: "새 필요" }
+  ],
+  [
+    "新用户预约需求",
+    { "zh-Hant": "新用戶預約需求", ja: "新規ユーザーの予約需要", en: "New user reservation Need", ko: "신규 사용자 예약 필요" }
+  ],
+  [
+    "预约需求",
+    { "zh-Hant": "預約需求", ja: "予約需要", en: "Reservation Need", ko: "예약 필요" }
+  ],
+  [
+    "新增需求",
+    { "zh-Hant": "新增需求", ja: "需要を追加", en: "Add Need", ko: "필요 추가" }
+  ],
+  [
+    "返回需求",
+    { "zh-Hant": "返回需求", ja: "需要に戻る", en: "Back to Need", ko: "필요로 돌아가기" }
+  ],
+  [
+    "需求编号",
+    { "zh-Hant": "需求編號", ja: "需要番号", en: "Need ID", ko: "필요 번호" }
+  ],
+  [
+    "需求编号、服务名、联系人...",
+    { "zh-Hant": "需求編號、服務名、聯絡人...", ja: "需要番号／サービス名／連絡先...", en: "Need ID, service name, contact...", ko: "필요 번호, 서비스명, 연락처..." }
+  ],
+  [
+    "需求大厅",
+    { "zh-Hant": "需求大廳", ja: "需要ホール", en: "Need Hall", ko: "필요 홀" }
+  ],
+  [
+    "需求发布",
+    { "zh-Hant": "需求發布", ja: "需要投稿", en: "Publish Need", ko: "필요 게시" }
+  ],
+  [
+    "需求发出人",
+    { "zh-Hant": "需求發出人", ja: "需要投稿者", en: "Need poster", ko: "필요 게시자" }
+  ],
+  [
+    "需求发出人动态",
+    { "zh-Hant": "需求發出人動態", ja: "需要投稿者のフィード", en: "Need poster feed", ko: "필요 게시자 피드" }
+  ],
+  [
+    "需求沟通",
+    { "zh-Hant": "需求溝通", ja: "需要の相談", en: "Need discussion", ko: "필요 상담" }
+  ],
+  [
+    "需求流 / 可抢单列表",
+    { "zh-Hant": "需求流 / 可搶單列表", ja: "需要フィード／受付可能リスト", en: "Need feed / Claimable list", ko: "필요 피드 / 수주 가능 목록" }
+  ],
+  [
+    "需求确认",
+    { "zh-Hant": "需求確認", ja: "需要確認", en: "Need confirmation", ko: "필요 확인" }
+  ],
+  [
+    "需求预测",
+    { "zh-Hant": "需求預測", ja: "需要予測", en: "Need forecast", ko: "필요 예측" }
+  ],
+  [
+    "需求中心",
+    { "zh-Hant": "需求中心", ja: "需要センター", en: "Need Center", ko: "필요 센터" }
+  ],
+  [
+    "用户需求",
+    { "zh-Hant": "用戶需求", ja: "ユーザー需要", en: "User Need", ko: "사용자 필요" }
+  ],
+  [
+    "暂无匹配的需求",
+    { "zh-Hant": "暫無匹配的需求", ja: "一致する需要はありません", en: "No matching Needs", ko: "일치하는 필요 없음" }
+  ],
+  [
+    "用户提交的新需求，等待平台审核后进入需求流。",
+    {
+      "zh-Hant": "用戶提交的新需求，等待平台審核後進入需求流。",
+      ja: "ユーザーが投稿した新しい需要です。プラットフォーム審査後に需要フィードへ入ります。",
+      en: "A new Need submitted by a user. It enters the Need feed after platform review.",
+      ko: "사용자가 제출한 새 필요입니다. 플랫폼 심사 후 필요 피드에 들어갑니다."
+    }
+  ],
+  ["编辑情报展示", { "zh-Hant": "編輯情報展示", ja: "オファー表示を編集", en: "Edit Info display", ko: "정보 표시 편집" }],
+  ["付费转发到 NeeDo 情报页", { "zh-Hant": "付費轉發到 NeeDo 情報頁", ja: "NeeDo オファーページへ有料シェア", en: "Paid forwarding to NeeDo Info page", ko: "NeeDo 정보 페이지로 유료 전달" }],
+  ["情报编号", { "zh-Hant": "情報編號", ja: "オファー番号", en: "Info ID", ko: "정보 번호" }],
+  ["情报编号、服务名、发布方...", { "zh-Hant": "情報編號、服務名、發布方...", ja: "オファー番号／サービス名／投稿者...", en: "Info ID, service name, publisher...", ko: "정보 번호, 서비스명, 게시자..." }],
+  ["情报大厅", { "zh-Hant": "情報大廳", ja: "オファーホール", en: "Info Hall", ko: "정보 홀" }],
+  ["情报发布", { "zh-Hant": "情報發布", ja: "オファー投稿", en: "Publish Info", ko: "정보 게시" }],
+  ["情报流 / 可预约列表", { "zh-Hant": "情報流 / 可預約列表", ja: "オファーフィード／予約可能リスト", en: "Info feed / Bookable list", ko: "정보 피드 / 예약 가능 목록" }],
+  ["情报详情", { "zh-Hant": "情報詳情", ja: "オファー詳細", en: "Info details", ko: "정보 상세" }],
+  ["情报预览", { "zh-Hant": "情報預覽", ja: "オファープレビュー", en: "Info preview", ko: "정보 미리보기" }],
+  ["情报中心", { "zh-Hant": "情報中心", ja: "オファーセンター", en: "Info Center", ko: "정보 센터" }],
+  ["商户情报", { "zh-Hant": "商戶情報", ja: "店舗オファー", en: "Business Info", ko: "사업자 정보" }],
+  ["新情报", { "zh-Hant": "新情報", ja: "新しいオファー", en: "New Info", ko: "새 정보" }],
+  ["新增情报", { "zh-Hant": "新增情報", ja: "オファーを追加", en: "Add Info", ko: "정보 추가" }],
+  ["最新情报", { "zh-Hant": "最新情報", ja: "最新オファー", en: "Latest Info", ko: "최신 정보" }],
+  ["最新情报：", { "zh-Hant": "最新情報：", ja: "最新オファー：", en: "Latest Info:", ko: "최신 정보:" }],
+  ["当前积分不足 1000 point，暂时无法发送到 NeeDo 情报页。", { "zh-Hant": "目前積分不足 1000 point，暫時無法發送到 NeeDo 情報頁。", ja: "現在のポイントが1000ポイント未満のため、NeeDo オファーページへ送信できません。", en: "The current point balance is below 1000, so this cannot be sent to the NeeDo Info page yet.", ko: "현재 포인트가 1000점 미만이어서 아직 NeeDo 정보 페이지로 보낼 수 없습니다." }],
+  ["发布你的情报", { "zh-Hant": "發佈你的情報", ja: "あなたのオファーを投稿", en: "Publish your Info", ko: "내 정보 게시" }],
+  ["发送情报", { "zh-Hant": "發送情報", ja: "オファーを送信", en: "Send Info", ko: "정보 보내기" }],
+  ["这条需求或情报暂时无法打开，返回 NeeDo 列表后可以继续浏览其他内容。", { "zh-Hant": "這條需求或情報暫時無法打開，返回 NeeDo 清單後可以繼續瀏覽其他內容。", ja: "この需要またはオファーは現在開けません。NeeDoリストに戻ると、他の内容を引き続き閲覧できます。", en: "This Need or Info item cannot be opened right now. Return to the NeeDo list to keep browsing other content.", ko: "이 필요 또는 정보 항목은 현재 열 수 없습니다. NeeDo 목록으로 돌아가 다른 내용을 계속 볼 수 있습니다." }],
+  ["更新记录：后台需求 / 情报中心和共享表格继续增强横向拖拽、筛选排序与可读列宽", { "zh-Hant": "更新記錄：後台需求 / 情報中心和共享表格繼續增強橫向拖拽、篩選排序與可讀列寬", ja: "更新記録：管理画面の需要／オファーセンターと共通テーブルで横ドラッグ、絞り込み排序、読みやすい列幅を強化", en: "Update: Backend Need / Info centers and shared tables now improve horizontal drag, filtering, sorting, and readable column widths", ko: "업데이트: 백엔드 필요 / 정보 센터와 공통 테이블의 가로 드래그, 필터, 정렬, 읽기 쉬운 열 너비를 개선했습니다." }],
+  ["更新记录：NeeDo 术语已进一步统一为情报", { "zh-Hant": "更新記錄：NeeDo 術語已進一步統一為情報", ja: "更新記録：NeeDoの用語をオファーに統一", en: "Update: NeeDo terminology has been unified as Info", ko: "업데이트: NeeDo 용어를 정보로 통일했습니다." }],
+  ["更新记录：NeeDo 需求与情报卡片已加入前台倒计时与过期态", { "zh-Hant": "更新記錄：NeeDo 需求與情報卡已加入前台倒數計時與過期態", ja: "更新記録：NeeDoの需要／オファーカードにカウントダウンと期限切れ状態を追加", en: "Update: NeeDo Need and Info cards now include countdowns and expired states", ko: "업데이트: NeeDo 필요 및 정보 카드에 카운트다운과 만료 상태를 추가했습니다." }],
+  ["需求中心、情报中心和共享 DataTable 继续优化表格列宽、横向拖拽滚动、表头筛选排序和详情入口，长字段在后台表格里更容易阅读。", { "zh-Hant": "需求中心、情報中心和共享 DataTable 繼續優化表格列寬、橫向拖拽滾動、表頭篩選排序和詳情入口，長字段在後台表格裡更容易閱讀。", ja: "需要センター、オファーセンター、共通 DataTable で列幅、横ドラッグスクロール、表頭の絞り込み排序、詳細入口を引き続き改善し、長い項目も管理画面の表で読みやすくしました。", en: "Need Center, Info Center, and the shared DataTable continue to improve column widths, horizontal drag scrolling, header filtering and sorting, and detail entry points so long fields are easier to read in backend tables.", ko: "필요 센터, 정보 센터와 공통 DataTable의 열 너비, 가로 드래그 스크롤, 표 헤더 필터와 정렬, 상세 진입을 계속 개선해 백엔드 표의 긴 항목을 더 쉽게 읽을 수 있습니다." }],
+  ["需求中心、情报中心和同类运营后台表格已统一固定底部操作区，表头筛选排序不再挤压字段文字，点击列表信息可按同一方式打开详情。", { "zh-Hant": "需求中心、情報中心和同類營運後台表格已統一固定底部操作區，表頭篩選排序不再擠壓字段文字，點擊列表資訊可按同一方式打開詳情。", ja: "需要センター、オファーセンター、同系統の運営管理画面テーブルで底部操作エリアを統一して固定し、表頭の絞り込み排序が項目名を圧迫しないようにしました。リストオファーをクリックすると同じ方法で詳細を開けます。", en: "Need Center, Info Center, and similar operations backend tables now share a fixed bottom action area. Header filtering and sorting no longer squeeze field text, and clicking list info opens details in the same way.", ko: "필요 센터, 정보 센터와 같은 운영 백엔드 표는 하단 작업 영역을 고정하도록 통일했습니다. 표 헤더 필터와 정렬이 항목 문구를 누르지 않으며, 목록 정보를 클릭하면 같은 방식으로 상세를 열 수 있습니다." }],
+  ["商户或技师提交的新情报，等待平台审核后进入情报流。", { "zh-Hant": "商戶或技師提交的新情報，等待平台審核後進入情報流。", ja: "店舗またはスタッフが投稿した新しいオファーです。プラットフォーム審査後にオファーフィードへ入ります。", en: "New Info submitted by a merchant or technician. It enters the Info feed after platform review.", ko: "사업자 또는 기사가 제출한 새 정보입니다. 플랫폼 심사 후 정보 피드에 들어갑니다." }],
+  ["更新记录：NeeDo 发布权限已按端口锁定，客户端只能发送需求，技师端和店铺端只能发送情报", { "zh-Hant": "更新記錄：NeeDo 發布權限已依端口鎖定，用戶端只能發送需求，技師端和店鋪端只能發送情報", ja: "更新記録：NeeDoの投稿権限をポータル別に固定。ユーザーアプリは需要のみ、スタッフアプリと店舗側はオファーのみ送信できます。", en: "Update: NeeDo publishing permissions are locked by portal. The User App can only send Need posts, while the Technician App and Merchant App can only send Info posts.", ko: "업데이트: NeeDo 게시 권한이 포털별로 고정되었습니다. 사용자 앱은 필요만, 기사 앱과 사업자 앱은 정보만 보낼 수 있습니다." }],
+  [
+    "更新记录：NeeDo 默认筛选已按端口区分，客户端默认全部，技师端和店铺端默认需求",
+    {
+      "zh-Hant": "更新記錄：NeeDo 預設篩選已依端口區分，用戶端預設全部，技師端和店鋪端預設需求",
+      ja: "更新記録：NeeDoの初期フィルターをポータル別に調整。ユーザーアプリはすべて、スタッフアプリと店舗側は需要を初期表示",
+      en: "Update: NeeDo default filters now differ by portal; User App defaults to All, Technician App and Merchant App default to Need",
+      ko: "업데이트: NeeDo 기본 필터가 포털별로 구분됩니다. 사용자 앱은 전체, 기사 앱과 사업자 앱은 필요를 기본으로 표시합니다."
+    }
+  ],
+  ["NeeDo 前台里的需求与情报现已显示剩余有效时间，详情页也会同步展示截止时间；过期内容会自动切换为已过期状态并禁用主要操作按钮。", { "zh-Hant": "NeeDo 前台裡的需求與情報現已顯示剩餘有效時間，詳情頁也會同步顯示截止時間；過期內容會自動切換為已過期狀態並停用主要操作按鈕。", ja: "NeeDoのユーザー画面では、需要とオファーに残り有効時間を表示し、詳細ページにも締切時刻を同期して表示します。期限切れの内容は自動で期限切れ状態に切り替わり、主要操作ボタンは無効になります。", en: "Need and Info items in the NeeDo user-facing app now show remaining validity time, and the detail page also shows the deadline. Expired content automatically switches to the expired state and disables the primary action button.", ko: "NeeDo 사용자 화면의 필요와 정보에는 남은 유효 시간이 표시되고, 상세 페이지에도 마감 시간이 함께 표시됩니다. 만료된 내용은 자동으로 만료 상태로 전환되며 주요 작업 버튼은 비활성화됩니다." }],
+  ["NeeDo 页的发布链路这次补成了显式限制，不再只是依赖页面文案。现在客户端新发内容只会落成需求，技师端和店铺端新发内容只会落成情报。", { "zh-Hant": "NeeDo 頁面的發布流程這次補上明確限制，不再只依賴頁面文案。現在用戶端新發內容只會成為需求，技師端和店鋪端新發內容只會成為情報。", ja: "NeeDoページの投稿フローに明示的な制限を追加しました。ページ文言だけには依存しません。ユーザーアプリで新規投稿した内容は需要として、スタッフアプリと店舗側で新規投稿した内容はオファーとして扱います。", en: "The NeeDo page publishing flow now has explicit restrictions instead of relying only on page copy. New posts from the User App become Need items, and new posts from the Technician App or Merchant App become Info items.", ko: "NeeDo 페이지의 게시 흐름에 명시적 제한을 추가해 더 이상 페이지 문구에만 의존하지 않습니다. 사용자 앱에서 새로 올린 내용은 필요로, 기사 앱과 사업자 앱에서 새로 올린 내용은 정보로 처리됩니다." }],
+  [
+    "NeeDo 页面现在会按端口默认落到不同筛选：客户端打开默认显示全部，技师端和店铺端默认优先显示需求。",
+    {
+      "zh-Hant": "NeeDo 頁面現在會依端口預設套用不同篩選：用戶端開啟時預設顯示全部，技師端和店鋪端預設優先顯示需求。",
+      ja: "NeeDoページはポータルごとに初期フィルターを切り替えます。ユーザーアプリでは初期表示がすべて、スタッフアプリと店舗側では需要を優先表示します。",
+      en: "The NeeDo page now applies different default filters by portal: the User App defaults to All, while the Technician App and Merchant App prioritize Need.",
+      ko: "NeeDo 페이지는 포털별로 기본 필터를 다르게 적용합니다. 사용자 앱은 기본으로 전체를 표시하고, 기사 앱과 사업자 앱은 필요를 우선 표시합니다."
+    }
   ],
   [
     "搜索服务、联系店铺、查看订单与继续聊天。",
@@ -2083,5 +2258,123 @@ export const approvedI18nTranslationOverrides = [
   [
     "审计日志",
     { "zh-Hant": "審計日誌", ja: "監査ログ", en: "Audit log", ko: "감사 로그" }
-  ]
+  ],
+  // Synced from exports/i18n/needo-terminology-glossary.xlsx. Keep this block at the end so workbook terms win.
+  ["班次", { "zh-Hant": "班次", ja: "シフト", en: "Shift", ko: "근무" }],
+  ["备注", { ja: "メモ" }],
+  ["备注：", { ja: "メモ：" }],
+  ["备注(浏览时)", { ja: "メモ" }],
+  ["备注(输入时)", { ja: "メモを入力" }],
+  ["编辑情报展示", { "zh-Hant": "編輯情報展示", ja: "オファー表示を編集", en: "Edit Info display", ko: "정보 표시 편집" }],
+  ["标签", { ja: "タグ" }],
+  ["参加者", { ja: "参加者" }],
+  ["查看", { ja: "もっと見る" }],
+  ["查找服务", { "zh-Hant": "查找服務", ja: "サービス探し", en: "Find services", ko: "서비스 찾기" }],
+  ["冲突", { "zh-Hant": "衝突", ja: "重複", en: "Conflict", ko: "충돌" }],
+  ["出勤", { "zh-Hant": "出勤", ja: "出勤", en: "On duty", ko: "출근" }],
+  ["处理", { "zh-Hant": "處理", ja: "対応", en: "Handling", ko: "처리" }],
+  ["当前周期确认", { "zh-Hant": "目前週期確認", ja: "現状確認", en: "Current Cycle Confirmation", ko: "현재 주기 확인" }],
+  ["到店服务", { ja: "店内サービス" }],
+  ["到店信息", { ja: "店舗情報" }],
+  ["地址", { ja: "住所を入力" }],
+  ["电子宠物", { ja: "ニードペット" }],
+  ["店内照片墙", { ja: "店内環境" }],
+  ["店铺", { "zh-Hant": "店鋪", ja: "店舗", en: "Store", ko: "매장" }],
+  ["店铺情报", { "zh-Hant": "店鋪情報", ja: "店舗オファー", en: "Info", ko: "정보" }],
+  ["店铺预约", { "zh-Hant": "店家預約", ja: "店舗予約", en: "Store Reservation", ko: "매장 예약" }],
+  ["调度中心", { "zh-Hant": "調度中心", ja: "管理センター", en: "Management Center", ko: "관리 센터" }],
+  ["发布你的情报", { "zh-Hant": "發佈你的情報", ja: "あなたのオファーを投稿", en: "Publish your Info", ko: "내 정보 게시" }],
+  ["发送情报", { "zh-Hant": "發送情報", ja: "オファーを送信", en: "Send Info", ko: "정보 보내기" }],
+  ["服务方式", { ja: "サービス提供方法" }],
+  ["服务号", { ja: "サービス" }],
+  ["服务套餐菜单", { ja: "サービスメニュー" }],
+  ["服务中", { "zh-Hant": "服務中", ja: "サービス中", en: "In service", ko: "서비스 중" }],
+  ["付费转发到 NeeDo 情报页", { "zh-Hant": "付費轉發到 NeeDo 情報頁", ja: "NeeDo オファーページへ有料シェア", en: "Paid forwarding to NeeDo Info page", ko: "NeeDo 정보 페이지로 유료 전달" }],
+  ["附近的技师", { ja: "付近のスタッフ" }],
+  ["附近技师", { "zh-Hant": "附近技師", ja: "スタッフ探し", en: "Find staff", ko: "주변 기사 찾기" }],
+  ["个人情报", { "zh-Hant": "個人情報", ja: "個人オファー", en: "Info", ko: "정보" }],
+  ["更多技师", { ja: "もっと見る" }],
+  ["公告", { ja: "告知" }],
+  ["关注", { "zh-Hant": "關注", ja: "フォロー", en: "Follow", ko: "팔로우" }],
+  ["管理中心", { "zh-Hant": "管理中心", ja: "管理センター", en: "Management Center", ko: "관리 센터" }],
+  ["规则", { "zh-Hant": "規則", ja: "規則", en: "Rule", ko: "규칙" }],
+  ["候补", { "zh-Hant": "候補", ja: "候補", en: "Standby", ko: "대기" }],
+  ["缓冲", { "zh-Hant": "緩衝", ja: "バッファ", en: "Buffer", ko: "버퍼" }],
+  ["技师", { "zh-Hant": "技師", ja: "スタッフ", en: "Technician", ko: "기사" }],
+  ["技师端", { "zh-Hant": "技師端", ja: "スタッフアプリ", en: "Technician App", ko: "기사 앱" }],
+  ["结束", { ja: "終了" }],
+  ["开始", { ja: "開始" }],
+  ["可预约", { "zh-Hant": "可預約", ja: "予約可能", en: "Bookable", ko: "예약 가능" }],
+  ["空闲", { "zh-Hant": "空閒", ja: "待機中", en: "Standby", ko: "대기 중" }],
+  ["利用政策", { "zh-Hant": "利用政策", ja: "利用規約", en: "Terms of Use", ko: "이용약관" }],
+  ["模板", { "zh-Hant": "範本", ja: "テンプレ", en: "Template", ko: "템플릿" }],
+  ["排班", { "zh-Hant": "排班", ja: "シフト", en: "Shift", ko: "근무표" }],
+  ["派单", { "zh-Hant": "派單", ja: "割当", en: "Dispatch", ko: "배정" }],
+  ["平台后台", { "zh-Hant": "平台後台", ja: "プラットフォーム管理画面", en: "Platform Admin", ko: "플랫폼 관리자" }],
+  ["情报", { "zh-Hant": "情報", ja: "オファー", en: "Info", ko: "정보" }],
+  ["情报编号", { "zh-Hant": "情報編號", ja: "オファー番号", en: "Info ID", ko: "정보 번호" }],
+  ["情报编号、服务名、发布方...", { "zh-Hant": "情報編號、服務名、發布方...", ja: "オファー番号／サービス名／投稿者...", en: "Info ID, service name, publisher...", ko: "정보 번호, 서비스명, 게시자..." }],
+  ["情报大厅", { "zh-Hant": "情報大廳", ja: "オファーホール", en: "Info Hall", ko: "정보 홀" }],
+  ["情报发布", { "zh-Hant": "情報發布", ja: "オファー投稿", en: "Publish Info", ko: "정보 게시" }],
+  ["情报流 / 可预约列表", { "zh-Hant": "情報流 / 可預約列表", ja: "オファーフィード／予約可能リスト", en: "Info feed / Bookable list", ko: "정보 피드 / 예약 가능 목록" }],
+  ["情报详情", { "zh-Hant": "情報詳情", ja: "オファー詳細", en: "Info details", ko: "정보 상세" }],
+  ["情报预览", { "zh-Hant": "情報預覽", ja: "オファープレビュー", en: "Info preview", ko: "정보 미리보기" }],
+  ["情报中心", { "zh-Hant": "情報中心", ja: "オファーセンター", en: "Info Center", ko: "정보 센터" }],
+  ["取消政策", { ja: "キャンセルポリシー" }],
+  ["确认收到", { "zh-Hant": "確認收到", ja: "受取確認", en: "Acknowledge", ko: "수신 확인" }],
+  ["群", { "zh-Hant": "群組", ja: "グループ", en: "Group", ko: "그룹" }],
+  ["群（聊天/隐私）", { "zh-Hant": "群組", ja: "グループ", en: "Group", ko: "그룹" }],
+  ["人工处理", { "zh-Hant": "人工處理", ja: "手動対応", en: "Manual handling", ko: "수동 처리" }],
+  ["日程 / 行程（技师端、商户端）", { "zh-Hant": "行程", ja: "シフト", en: "Shift", ko: "근무표" }],
+  ["日程 / 行程（用户端）", { "zh-Hant": "行程", ja: "スケジュール", en: "Schedule", ko: "일정" }],
+  ["商户", { "zh-Hant": "商戶", ja: "店舗", en: "Business", ko: "사업자" }],
+  ["商户端", { "zh-Hant": "商戶端", ja: "店舗側", en: "Merchant App", ko: "사업자 앱" }],
+  ["商户后台", { "zh-Hant": "商戶後台", ja: "店舗管理画面", en: "Business Management", ko: "사업자 관리 화면" }],
+  ["商户或技师提交的新情报，等待平台审核后进入情报流。", { "zh-Hant": "商戶或技師提交的新情報，等待平台審核後進入情報流。", ja: "店舗またはスタッフが投稿した新しいオファーです。プラットフォーム審査後にオファーフィードへ入ります。", en: "New Info submitted by a merchant or technician. It enters the Info feed after platform review.", ko: "사업자 또는 기사가 제출한 새 정보입니다. 플랫폼 심사 후 정보 피드에 들어갑니다." }],
+  ["商户情报", { "zh-Hant": "商戶情報", ja: "店舗オファー", en: "Business Info", ko: "사업자 정보" }],
+  ["上班时间", { "zh-Hant": "上班時間", ja: "勤務時間", en: "Work hours", ko: "근무 시간" }],
+  ["上门保洁", { ja: "家事代行" }],
+  ["上门服务", { ja: "デリバリサービス" }],
+  ["申请", { "zh-Hant": "申請", ja: "申請", en: "Application", ko: "신청" }],
+  ["申请更改", { "zh-Hant": "申請更改", ja: "変更申請", en: "Request changes", ko: "변경 신청" }],
+  ["套餐", { ja: "サービス" }],
+  ["提醒", { ja: "リマインダー" }],
+  ["通知", { "zh-Hant": "通知", ja: "通知", en: "Notification", ko: "알림" }],
+  ["头图", { "zh-Hant": "頭圖", ja: "カバー画像", en: "Header image", ko: "헤더 이미지" }],
+  ["推荐关注", { "zh-Hant": "推薦關注", ja: "おすすめフォロー", en: "Suggested follows", ko: "추천 팔로우" }],
+  ["退勤", { "zh-Hant": "退勤", ja: "退勤", en: "Off duty", ko: "퇴근" }],
+  ["我的日程", { "zh-Hant": "我的行程", ja: "スケジュール", en: "My schedule", ko: "내 일정" }],
+  ["显示", { ja: "表示モード" }],
+  ["新情报", { "zh-Hant": "新情報", ja: "新しいオファー", en: "New Info", ko: "새 정보" }],
+  ["新增情报", { "zh-Hant": "新增情報", ja: "オファーを追加", en: "Add Info", ko: "정보 추가" }],
+  ["信用值", { "zh-Hant": "信用值", ja: "信用度", en: "Credit level", ko: "신용도" }],
+  ["休息", { "zh-Hant": "休息", ja: "休憩中", en: "On Break", ko: "휴식 중" }],
+  ["需求", { "zh-Hant": "需求", ja: "需要", en: "Need", ko: "필요" }],
+  ["需要", { ja: "リクエスト" }],
+  ["移动中", { "zh-Hant": "移動中", ja: "移動中", en: "In transit", ko: "이동 중" }],
+  ["已关注", { "zh-Hant": "已關注", ja: "フォロー中", en: "Following", ko: "팔로우 중" }],
+  ["已选", { ja: "選択済" }],
+  ["异常队列", { "zh-Hant": "異常佇列", ja: "例外キュー", en: "Exception queue", ko: "예외 대기열" }],
+  ["隐私政策", { "zh-Hant": "隱私政策", ja: "個人情報保護方針", en: "Privacy Policy", ko: "개인정보 처리방침" }],
+  ["用户端", { "zh-Hant": "用戶端", ja: "ユーザーアプリ", en: "User App", ko: "사용자 앱" }],
+  ["预测", { "zh-Hant": "預測", ja: "予測", en: "Forecast", ko: "예측" }],
+  ["预约", { "zh-Hant": "預約", ja: "予約", en: "Reservation", ko: "예약" }],
+  ["员工", { "zh-Hant": "員工", ja: "スタッフ", en: "Staff", ko: "스태프" }],
+  ["这条需求或情报暂时无法打开，返回 NeeDo 列表后可以继续浏览其他内容。", { "zh-Hant": "這條需求或情報暫時無法打開，返回 NeeDo 清單後可以繼續瀏覽其他內容。", ja: "この需要またはオファーは現在開けません。NeeDoリストに戻ると、他の内容を引き続き閲覧できます。", en: "This Need or Info item cannot be opened right now. Return to the NeeDo list to keep browsing other content.", ko: "이 필요 또는 정보 항목은 현재 열 수 없습니다. NeeDo 목록으로 돌아가 다른 내용을 계속 볼 수 있습니다." }],
+  ["质量评分", { "zh-Hant": "品質評分", ja: "品質スコア", en: "Quality score", ko: "품질 점수" }],
+  ["智能排班", { "zh-Hant": "智能排班", ja: "スマートシフト", en: "Smart scheduling", ko: "스마트 근무표" }],
+  ["周期", { "zh-Hant": "週期", ja: "周期", en: "Cycle", ko: "주기" }],
+  ["注销账号", { "zh-Hant": "註銷帳號", ja: "退会", en: "Delete account", ko: "계정 삭제" }],
+  ["转发", { ja: "シェア" }],
+  ["资料", { "zh-Hant": "資料", ja: "プロフィール", en: "Profile", ko: "프로필" }],
+  ["自定义群名", { ja: "グループ名入力" }],
+  ["自动处理", { "zh-Hant": "自動處理", ja: "自動対応", en: "Automated handling", ko: "자동 처리" }],
+  ["最新情报", { "zh-Hant": "最新情報", ja: "最新オファー", en: "Latest Info", ko: "최신 정보" }],
+  ["最新情报：", { "zh-Hant": "最新情報：", ja: "最新オファー：", en: "Latest Info:", ko: "최신 정보:" }],
+  ["最终确认", { "zh-Hant": "最終確認", ja: "最終確認", en: "Final Confirmation", ko: "최종 확인" }],
+  ["confirmed slots", { "zh-Hant": "confirmed slots", ja: "confirmed slots", en: "confirmed slots", ko: "confirmed slots" }],
+  ["NeeDo 前台里的需求与情报现已显示剩余有效时间，详情页也会同步展示截止时间；过期内容会自动切换为已过期状态并禁用主要操作按钮。", { "zh-Hant": "NeeDo 前台裡的需求與情報現已顯示剩餘有效時間，詳情頁也會同步顯示截止時間；過期內容會自動切換為已過期狀態並停用主要操作按鈕。", ja: "NeeDoのユーザー画面では、需要とオファーに残り有効時間を表示し、詳細ページにも締切時刻を同期して表示します。期限切れの内容は自動で期限切れ状態に切り替わり、主要操作ボタンは無効になります。", en: "Need and Info items in the NeeDo user-facing app now show remaining validity time, and the detail page also shows the deadline. Expired content automatically switches to the expired state and disables the primary action button.", ko: "NeeDo 사용자 화면의 필요와 정보에는 남은 유효 시간이 표시되고, 상세 페이지에도 마감 시간이 함께 표시됩니다. 만료된 내용은 자동으로 만료 상태로 전환되며 주요 작업 버튼은 비활성화됩니다." }],
+  ["NeeDo 页的发布链路这次补成了显式限制，不再只是依赖页面文案。现在客户端新发内容只会落成需求，技师端和店铺端新发内容只会落成情报。", { "zh-Hant": "NeeDo 頁面的發布流程這次補上明確限制，不再只依賴頁面文案。現在用戶端新發內容只會成為需求，技師端和店鋪端新發內容只會成為情報。", ja: "NeeDoページの投稿フローに明示的な制限を追加しました。ページ文言だけには依存しません。ユーザーアプリで新規投稿した内容は需要として、スタッフアプリと店舗側で新規投稿した内容はオファーとして扱います。", en: "The NeeDo page publishing flow now has explicit restrictions instead of relying only on page copy. New posts from the User App become Need items, and new posts from the Technician App or Merchant App become Info items.", ko: "NeeDo 페이지의 게시 흐름에 명시적 제한을 추가해 더 이상 페이지 문구에만 의존하지 않습니다. 사용자 앱에서 새로 올린 내용은 필요로, 기사 앱과 사업자 앱에서 새로 올린 내용은 정보로 처리됩니다." }],
+  ["URL", { ja: "URLを入力" }],
+  // End synced xlsx glossary terms.
 ];

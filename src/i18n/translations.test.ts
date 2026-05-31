@@ -383,6 +383,94 @@ describe("translations", () => {
     expect(translateText("需求详情", "ko")).toBe("필요 상세");
   });
 
+  it("applies glossary terminology to NeeDo app names and publishing copy", () => {
+    expect(translateText("NeeDo 用户端", "ja")).toBe("NeeDo ユーザーアプリ");
+    expect(translateText("NeeDo 用户端", "en")).toBe("NeeDo User App");
+    expect(translateText("NeeDo 用户端", "ko")).toBe("NeeDo 사용자 앱");
+
+    expect(translateText("NeeDo 商户端", "ja")).toBe("NeeDo 店舗側");
+    expect(translateText("NeeDo 商户端", "en")).toBe("NeeDo Merchant App");
+    expect(translateText("NeeDo 商户端", "ko")).toBe("NeeDo 사업자 앱");
+
+    expect(translateText("NeeDo 技师端", "ja")).toBe("NeeDo スタッフアプリ");
+    expect(translateText("NeeDo 技师端", "en")).toBe("NeeDo Technician App");
+    expect(translateText("NeeDo 技师端", "ko")).toBe("NeeDo 기사 앱");
+
+    expect(translateText("NeeDo 商户后台", "ja")).toBe("NeeDo 店舗管理画面");
+    expect(translateText("NeeDo 商户后台", "en")).toBe("NeeDo Business Management");
+    expect(translateText("NeeDo 商户后台", "ko")).toBe("NeeDo 사업자 관리 화면");
+
+    expect(
+      translateText(
+        "NeeDo 前台里的需求与情报现已显示剩余有效时间，详情页也会同步展示截止时间；过期内容会自动切换为已过期状态并禁用主要操作按钮。",
+        "ja"
+      )
+    ).toContain("需要とオファー");
+    expect(
+      translateText(
+        "NeeDo 页的发布链路这次补成了显式限制，不再只是依赖页面文案。现在客户端新发内容只会落成需求，技师端和店铺端新发内容只会落成情报。",
+        "en"
+      )
+    ).toContain("User App");
+
+    expect(translateText("进入 NeeDo 用户端", "ja")).toBe("NeeDo ユーザーアプリに入る");
+    expect(translateText("新需求", "en")).toBe("New Need");
+    expect(translateText("预约需求", "ja")).toBe("予約需要");
+    expect(translateText("需求中心", "en")).toBe("Need Center");
+    expect(translateText("需求流 / 可抢单列表", "ko")).toBe("필요 피드 / 수주 가능 목록");
+    expect(translateText("用户提交的新需求，等待平台审核后进入需求流。", "ja")).toContain("新しい需要");
+
+    expect(translateText("情报详情", "ja")).toBe("オファー詳細");
+    expect(translateText("情报详情", "en")).toBe("Info details");
+    expect(translateText("情报中心", "ko")).toBe("정보 센터");
+    expect(translateText("商户情报", "ja")).toBe("店舗オファー");
+    expect(translateText("新情报", "en")).toBe("New Info");
+    expect(translateText("付费转发到 NeeDo 情报页", "ja")).toBe("NeeDo オファーページへ有料シェア");
+    expect(translateText("技师详情", "en")).toBe("Technician Details");
+    expect(translateText("发布你的情报", "en")).toBe("Publish your Info");
+  });
+
+  it("uses the manual Japanese terms from the xlsx glossary", () => {
+    const manualJapaneseTerms: Array<[string, string]> = [
+      ["电子宠物", "ニードペット"],
+      ["更多技师", "もっと見る"],
+      ["附近的技师", "付近のスタッフ"],
+      ["查看", "もっと見る"],
+      ["上门保洁", "家事代行"],
+      ["需要", "リクエスト"],
+      ["情报", "オファー"],
+      ["转发", "シェア"],
+      ["已选", "選択済"],
+      ["自定义群名", "グループ名入力"],
+      ["标签", "タグ"],
+      ["公告", "告知"],
+      ["显示", "表示モード"],
+      ["提醒", "リマインダー"],
+      ["开始", "開始"],
+      ["结束", "終了"],
+      ["地址", "住所を入力"],
+      ["URL", "URLを入力"],
+      ["备注", "メモ"],
+      ["备注：", "メモ："],
+      ["备注(输入时)", "メモを入力"],
+      ["备注(浏览时)", "メモ"],
+      ["参加者", "参加者"],
+      ["服务套餐菜单", "サービスメニュー"],
+      ["店内照片墙", "店内環境"],
+      ["到店信息", "店舗情報"],
+      ["套餐", "サービス"],
+      ["服务方式", "サービス提供方法"],
+      ["到店服务", "店内サービス"],
+      ["上门服务", "デリバリサービス"],
+      ["取消政策", "キャンセルポリシー"],
+      ["服务号", "サービス"]
+    ];
+
+    for (const [source, expected] of manualJapaneseTerms) {
+      expect(translateText(source, "ja")).toBe(expected);
+    }
+  });
+
   it("translates NeeDo detail content used by the translate action", () => {
     expect(translateText("临时预约", "ja")).toBe("臨時予約");
     expect(translateText("期限", "en")).toBe("Deadline");
@@ -427,13 +515,13 @@ describe("translations", () => {
     expect(translateText("数据", "en")).toBe("Data");
     expect(translateText("数据", "ko")).toBe("데이터");
 
-    expect(translateText("情报", "ja")).toBe("情報");
+    expect(translateText("情报", "ja")).toBe("オファー");
     expect(translateText("情报", "en")).toBe("Info");
     expect(translateText("情报", "ko")).toBe("정보");
-    expect(translateText("个人情报", "ja")).toBe("情報");
+    expect(translateText("个人情报", "ja")).toBe("個人オファー");
     expect(translateText("个人情报", "en")).toBe("Info");
     expect(translateText("个人情报", "ko")).toBe("정보");
-    expect(translateText("店铺情报", "ja")).toBe("情報");
+    expect(translateText("店铺情报", "ja")).toBe("店舗オファー");
     expect(translateText("店铺情报", "en")).toBe("Info");
     expect(translateText("店铺情报", "ko")).toBe("정보");
 
