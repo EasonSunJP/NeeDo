@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { FileBlob, SpreadsheetFile } from "@oai/artifact-tool";
-import { approvedI18nTranslationOverrides } from "./i18n-approved-overrides.mjs";
+import { approvedI18nSourceKeyReplacements, approvedI18nTranslationOverrides } from "./i18n-approved-overrides.mjs";
 import { workbookFeatureSheets, workbookLanguageHeaders } from "./i18n-workbook-config.mjs";
 
 const workspaceRoot = "/Users/eason/Documents/New project";
@@ -62,6 +62,7 @@ const approvedTranslationOverrides = new Map([
   ["最近的店铺工作会归档在这里，方便核对排班和收入记录。", { ko: "최근 매장 업무는 여기에 보관되어 근무표와 수입 기록을 쉽게 확인할 수 있습니다." }],
   ...approvedI18nTranslationOverrides
 ]);
+const approvedSourceKeyReplacements = new Map(approvedI18nSourceKeyReplacements);
 
 function normalizeCell(value) {
   const normalized = normalizeSpreadsheetValue(String(value ?? "").replace(/\r\n/g, "\n").trim());
@@ -217,23 +218,33 @@ function assertHeaders(actualRow, sheetName) {
 }
 
 function extractSheetEntries(rows, sheetName) {
-  const seen = new Set();
+  const seen = new Map();
   const duplicates = [];
   const entries = [];
 
   for (const row of rows.slice(1)) {
-    const zh = normalizeCell(row[0]);
+    const rawZh = normalizeCell(row[0]);
+    const zh = approvedSourceKeyReplacements.get(rawZh) ?? rawZh;
+    const fromReplacement = rawZh !== zh;
 
     if (!zh) {
       continue;
     }
 
-    if (seen.has(zh)) {
-      duplicates.push(zh);
-      continue;
+    const previous = seen.get(zh);
+    const replacementIndex = previous?.fromReplacement && !fromReplacement ? previous.index : null;
+
+    if (previous) {
+      if (fromReplacement) {
+        continue;
+      }
+
+      if (!previous.fromReplacement) {
+        duplicates.push(zh);
+        continue;
+      }
     }
 
-    seen.add(zh);
     const entry = {
       sheetName,
       zh,
@@ -243,8 +254,15 @@ function extractSheetEntries(rows, sheetName) {
       ko: normalizeCell(row[4])
     };
     const override = approvedTranslationOverrides.get(zh);
+    const finalEntry = override ? { ...entry, ...override } : entry;
 
-    entries.push(override ? { ...entry, ...override } : entry);
+    if (replacementIndex === null) {
+      entries.push(finalEntry);
+      seen.set(zh, { index: entries.length - 1, fromReplacement });
+    } else {
+      entries[replacementIndex] = finalEntry;
+      seen.set(zh, { index: replacementIndex, fromReplacement });
+    }
   }
 
   return { entries, duplicates };

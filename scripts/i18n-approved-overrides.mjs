@@ -1,3 +1,9 @@
+export const approvedI18nSourceKeyReplacements = [
+  ["可固定阿姨", "可长期"],
+  ["修水管重点", "下水道维修"],
+  ["覆盖修水管重点污渍与收纳归位。", "覆盖下水道周边重点污渍与收纳归位。"]
+];
+
 export const approvedI18nTranslationOverrides = [
   // Manual terminology lock: the product UI uses 店舗 for 商户 / 商家 in Japanese.
   // Keep these overrides so workbook imports cannot revert this wording to 事業者,
@@ -16,15 +22,19 @@ export const approvedI18nTranslationOverrides = [
   ],
   [
     "商户后台",
-    { ja: "店舗管理画面" }
+    { "zh-Hant": "商戶後台", ja: "店舗管理画面", en: "Business Management", ko: "사업자 관리 화면" }
   ],
   [
     "商家后台",
-    { ja: "店舗管理画面" }
+    { "zh-Hant": "商家後台", ja: "店舗管理画面", en: "Business Management", ko: "사업자 관리 화면" }
   ],
   [
     "商户后台导航",
-    { ja: "店舗管理画面ナビゲーション" }
+    { "zh-Hant": "商戶後台導航", ja: "店舗管理画面ナビゲーション", en: "Business management navigation", ko: "사업자 관리 화면 내비게이션" }
+  ],
+  [
+    "技师详情",
+    { "zh-Hant": "技師詳情", ja: "スタッフ詳細", en: "Technician Details", ko: "기사 상세" }
   ],
   // Manual terminology lock: default/user-facing schedule labels use スケジュール.
   // Technician and merchant surfaces are context-locked to シフト in translations.ts.
@@ -69,6 +79,14 @@ export const approvedI18nTranslationOverrides = [
   [
     "保存隐私设置",
     { ja: "設定を保存" }
+  ],
+  [
+    "备注",
+    { "zh-Hant": "備註", ja: "メモ", en: "Note", ko: "메모" }
+  ],
+  [
+    "备注：",
+    { "zh-Hant": "備註：", ja: "メモ：", en: "Note:", ko: "메모:" }
   ],
   // Manual terminology lock: IM disappearing conversations use プライベートモード.
   [
@@ -302,8 +320,20 @@ export const approvedI18nTranslationOverrides = [
     { "zh-Hant": "席位資訊", ja: "席情報", en: "Seat information", ko: "좌석 정보" }
   ],
   [
+    "席位・设备",
+    { "zh-Hant": "席位・設備", ja: "席・設備", en: "Seats and equipment", ko: "좌석 및 장비" }
+  ],
+  [
     "店铺基础信息",
     { "zh-Hant": "店鋪基礎資訊", ja: "店舗基本情報", en: "Basic store information", ko: "매장 기본 정보" }
+  ],
+  [
+    "店铺信息",
+    { "zh-Hant": "店鋪資訊", ja: "店舗情報", en: "Store information", ko: "매장 정보" }
+  ],
+  [
+    "店铺详细信息",
+    { "zh-Hant": "店鋪詳細資訊", ja: "店舗詳細情報", en: "Store details", ko: "매장 상세 정보" }
   ],
   [
     "预约・咨询",
@@ -316,6 +346,14 @@ export const approvedI18nTranslationOverrides = [
   [
     "最大预约人数",
     { "zh-Hant": "最大預約人數", ja: "最大予約人数", en: "Maximum reservation size", ko: "최대 예약 인원" }
+  ],
+  [
+    "服务费・其他费用",
+    { "zh-Hant": "服務費・其他費用", ja: "サービス料・その他費用", en: "Service and other fees", ko: "서비스 및 기타 요금" }
+  ],
+  [
+    "费用说明",
+    { "zh-Hant": "費用說明", ja: "料金詳細", en: "Fee details", ko: "요금 상세" }
   ],
   [
     "特点・相关信息",
@@ -1471,12 +1509,102 @@ export const approvedI18nTranslationOverrides = [
     }
   ],
   [
-    "覆盖修水管重点污渍与收纳归位。",
+    "覆盖下水道周边重点污渍与收纳归位。",
     {
-      "zh-Hant": "涵蓋水管周邊重點污漬與收納復位。",
-      ja: "水回りの重点汚れと収納の片付けまで対応。",
-      en: "Covers key plumbing-area stains and putting storage back in order.",
-      ko: "배관 주변 주요 오염과 수납 정리까지 처리합니다."
+      "zh-Hant": "涵蓋下水道周邊重點污漬與收納復位。",
+      ja: "排水口まわりの重点汚れと収納の片付けまで対応。",
+      en: "Covers key stains around drain areas and putting storage back in order.",
+      ko: "하수구 주변 주요 오염과 수납 정리까지 처리합니다."
+    }
+  ],
+  [
+    "本周开放 20:30 后预约，护理、按摩和美甲项目都可以提前锁定担当者。",
+    {
+      "zh-Hant": "本週開放 20:30 後預約，護理、按摩和美甲項目都可以提前鎖定擔當者。",
+      ja: "今週は20:30以降の予約も受付中。ケア、マッサージ、ネイルデザインの担当者を事前に確保できます。",
+      en: "Appointments after 20:30 are open this week. You can reserve your preferred provider in advance for care, massage, and nail design.",
+      ko: "이번 주에는 20:30 이후 예약도 가능합니다. 케어, 마사지, 네일 디자인 담당자를 미리 지정할 수 있습니다."
+    }
+  ],
+  [
+    "单色/跳色美甲",
+    {
+      "zh-Hant": "單色/跳色美甲",
+      ja: "単色／差し色ネイルデザイン",
+      en: "Solid color/accent-color nail design",
+      ko: "단색/포인트 컬러 네일 디자인"
+    }
+  ],
+  [
+    "单色美甲 / 自然款美睫",
+    {
+      "zh-Hant": "單色美甲 / 自然款美睫",
+      ja: "単色ネイルデザイン／ナチュラルまつ毛美容",
+      en: "Single-color nail design / Natural lash beauty",
+      ko: "단색 네일 디자인 / 내추럴 속눈썹 미용"
+    }
+  ],
+  [
+    "美甲、美睫、上门护理",
+    {
+      "zh-Hant": "美甲、美睫、上門護理",
+      ja: "ネイルデザイン、まつ毛美容、訪問ケア",
+      en: "Nail design, lash beauty, in-home care",
+      ko: "네일 디자인, 속눈썹 미용, 방문 케어"
+    }
+  ],
+  [
+    "美甲、美睫、妆发、上门护理",
+    {
+      "zh-Hant": "美甲、美睫、妝髮、上門護理",
+      ja: "ネイルデザイン、まつ毛美容、ヘアメイク、訪問ケア",
+      en: "Nail design, lash beauty, hair and makeup, in-home care",
+      ko: "네일 디자인, 속눈썹 미용, 헤어 메이크업, 방문 케어"
+    }
+  ],
+  [
+    "美甲、美睫和上门美业咨询响应快，适合通勤和短期活动前预约。",
+    {
+      "zh-Hant": "美甲、美睫和上門美業諮詢反應快，適合通勤和短期活動前預約。",
+      ja: "ネイルデザイン、まつ毛美容、訪問美容相談は返信が早く、通勤前後や短期イベント前の予約に適しています。",
+      en: "Nail design, lash beauty, and in-home beauty consultations respond quickly, making them suitable before commuting or short events.",
+      ko: "네일 디자인, 속눈썹 미용, 방문 뷰티 상담은 응답이 빨라 출퇴근 전후나 짧은 행사 전 예약에 적합합니다."
+    }
+  ],
+  [
+    "美甲美睫",
+    {
+      "zh-Hant": "美甲美睫",
+      ja: "ネイルデザイン・まつ毛美容",
+      en: "Nail design and lash beauty",
+      ko: "네일 디자인과 속눈썹 미용"
+    }
+  ],
+  [
+    "美睫自然款",
+    {
+      "zh-Hant": "美睫自然款",
+      ja: "ナチュラルまつ毛美容",
+      en: "Natural lash beauty",
+      ko: "내추럴 속눈썹 미용"
+    }
+  ],
+  [
+    "美容美甲",
+    {
+      "zh-Hant": "美容美甲",
+      ja: "美容・ネイルデザイン",
+      en: "Beauty and nail design",
+      ko: "뷰티 및 네일 디자인"
+    }
+  ],
+  [
+    "自然款美睫",
+    {
+      "zh-Hant": "自然款美睫",
+      ja: "ナチュラルまつ毛美容",
+      en: "Natural lash beauty",
+      ko: "내추럴 속눈썹 미용"
     }
   ],
   [
@@ -2285,121 +2413,103 @@ export const approvedI18nTranslationOverrides = [
     { "zh-Hant": "審計日誌", ja: "監査ログ", en: "Audit log", ko: "감사 로그" }
   ],
   // Synced from exports/i18n/needo-terminology-glossary.xlsx. Keep this block at the end so workbook terms win.
-  ["班次", { "zh-Hant": "班次", ja: "シフト", en: "Shift", ko: "근무" }],
-  ["备注", { ja: "メモ" }],
-  ["备注：", { ja: "メモ：" }],
-  ["备注(浏览时)", { ja: "メモ" }],
-  ["备注(输入时)", { ja: "メモを入力" }],
-  ["编辑情报展示", { "zh-Hant": "編輯情報展示", ja: "オファー表示を編集", en: "Edit Info display", ko: "정보 표시 편집" }],
-  ["标签", { ja: "タグ" }],
-  ["参加者", { ja: "参加者" }],
-  ["查看", { ja: "もっと見る" }],
-  ["查找服务", { "zh-Hant": "查找服務", ja: "サービス探し", en: "Find services", ko: "서비스 찾기" }],
-  ["冲突", { "zh-Hant": "衝突", ja: "重複", en: "Conflict", ko: "충돌" }],
-  ["出勤", { "zh-Hant": "出勤", ja: "出勤", en: "On duty", ko: "출근" }],
-  ["处理", { "zh-Hant": "處理", ja: "対応", en: "Handling", ko: "처리" }],
-  ["当前周期确认", { "zh-Hant": "目前週期確認", ja: "現状確認", en: "Current Cycle Confirmation", ko: "현재 주기 확인" }],
-  ["到店服务", { ja: "店内サービス" }],
-  ["到店信息", { ja: "店舗情報" }],
-  ["地址", { ja: "住所を入力" }],
-  ["电子宠物", { ja: "ニードペット" }],
-  ["店内照片墙", { ja: "店内環境" }],
-  ["店铺", { "zh-Hant": "店鋪", ja: "店舗", en: "Store", ko: "매장" }],
-  ["店铺情报", { "zh-Hant": "店鋪情報", ja: "店舗オファー", en: "Info", ko: "정보" }],
-  ["店铺预约", { "zh-Hant": "店家預約", ja: "店舗予約", en: "Store Reservation", ko: "매장 예약" }],
-  ["调度中心", { "zh-Hant": "調度中心", ja: "管理センター", en: "Management Center", ko: "관리 센터" }],
-  ["发布你的情报", { "zh-Hant": "發佈你的情報", ja: "あなたのオファーを投稿", en: "Publish your Info", ko: "내 정보 게시" }],
-  ["发送情报", { "zh-Hant": "發送情報", ja: "オファーを送信", en: "Send Info", ko: "정보 보내기" }],
-  ["服务方式", { ja: "サービス提供方法" }],
-  ["服务号", { ja: "サービス" }],
-  ["服务套餐菜单", { ja: "サービスメニュー" }],
-  ["服务中", { "zh-Hant": "服務中", ja: "サービス中", en: "In service", ko: "서비스 중" }],
-  ["付费转发到 NeeDo 情报页", { "zh-Hant": "付費轉發到 NeeDo 情報頁", ja: "NeeDo オファーページへ有料シェア", en: "Paid forwarding to NeeDo Info page", ko: "NeeDo 정보 페이지로 유료 전달" }],
-  ["附近的技师", { ja: "付近のスタッフ" }],
-  ["附近技师", { "zh-Hant": "附近技師", ja: "スタッフ探し", en: "Find staff", ko: "주변 기사 찾기" }],
-  ["个人情报", { "zh-Hant": "個人情報", ja: "個人オファー", en: "Info", ko: "정보" }],
-  ["更多技师", { ja: "もっと見る" }],
-  ["公告", { ja: "告知" }],
-  ["关注", { "zh-Hant": "關注", ja: "フォロー", en: "Follow", ko: "팔로우" }],
-  ["管理中心", { "zh-Hant": "管理中心", ja: "管理センター", en: "Management Center", ko: "관리 센터" }],
-  ["规则", { "zh-Hant": "規則", ja: "規則", en: "Rule", ko: "규칙" }],
-  ["候补", { "zh-Hant": "候補", ja: "候補", en: "Standby", ko: "대기" }],
-  ["缓冲", { "zh-Hant": "緩衝", ja: "バッファ", en: "Buffer", ko: "버퍼" }],
-  ["技师", { "zh-Hant": "技師", ja: "スタッフ", en: "Technician", ko: "기사" }],
-  ["技师端", { "zh-Hant": "技師端", ja: "スタッフアプリ", en: "Technician App", ko: "기사 앱" }],
-  ["结束", { ja: "終了" }],
-  ["开始", { ja: "開始" }],
-  ["可预约", { "zh-Hant": "可預約", ja: "予約可能", en: "Bookable", ko: "예약 가능" }],
-  ["空闲", { "zh-Hant": "空閒", ja: "待機中", en: "Standby", ko: "대기 중" }],
-  ["利用政策", { "zh-Hant": "利用政策", ja: "利用規約", en: "Terms of Use", ko: "이용약관" }],
-  ["模板", { "zh-Hant": "範本", ja: "テンプレ", en: "Template", ko: "템플릿" }],
-  ["排班", { "zh-Hant": "排班", ja: "シフト", en: "Shift", ko: "근무표" }],
-  ["派单", { "zh-Hant": "派單", ja: "割当", en: "Dispatch", ko: "배정" }],
-  ["平台后台", { "zh-Hant": "平台後台", ja: "プラットフォーム管理画面", en: "Platform Admin", ko: "플랫폼 관리자" }],
-  ["情报", { "zh-Hant": "情報", ja: "オファー", en: "Info", ko: "정보" }],
-  ["情报编号", { "zh-Hant": "情報編號", ja: "オファー番号", en: "Info ID", ko: "정보 번호" }],
-  ["情报编号、服务名、发布方...", { "zh-Hant": "情報編號、服務名、發布方...", ja: "オファー番号／サービス名／投稿者...", en: "Info ID, service name, publisher...", ko: "정보 번호, 서비스명, 게시자..." }],
-  ["情报大厅", { "zh-Hant": "情報大廳", ja: "オファーホール", en: "Info Hall", ko: "정보 홀" }],
-  ["情报发布", { "zh-Hant": "情報發布", ja: "オファー投稿", en: "Publish Info", ko: "정보 게시" }],
-  ["情报流 / 可预约列表", { "zh-Hant": "情報流 / 可預約列表", ja: "オファーフィード／予約可能リスト", en: "Info feed / Bookable list", ko: "정보 피드 / 예약 가능 목록" }],
-  ["情报详情", { "zh-Hant": "情報詳情", ja: "オファー詳細", en: "Info details", ko: "정보 상세" }],
-  ["情报预览", { "zh-Hant": "情報預覽", ja: "オファープレビュー", en: "Info preview", ko: "정보 미리보기" }],
-  ["情报中心", { "zh-Hant": "情報中心", ja: "オファーセンター", en: "Info Center", ko: "정보 센터" }],
-  ["取消政策", { ja: "キャンセルポリシー" }],
-  ["确认收到", { "zh-Hant": "確認收到", ja: "受取確認", en: "Acknowledge", ko: "수신 확인" }],
-  ["群", { "zh-Hant": "群組", ja: "グループ", en: "Group", ko: "그룹" }],
-  ["群（聊天/隐私）", { "zh-Hant": "群組", ja: "グループ", en: "Group", ko: "그룹" }],
-  ["人工处理", { "zh-Hant": "人工處理", ja: "手動対応", en: "Manual handling", ko: "수동 처리" }],
-  ["日程 / 行程（技师端、商户端）", { "zh-Hant": "行程", ja: "シフト", en: "Shift", ko: "근무표" }],
-  ["日程 / 行程（用户端）", { "zh-Hant": "行程", ja: "スケジュール", en: "Schedule", ko: "일정" }],
-  ["商户", { "zh-Hant": "商戶", ja: "店舗", en: "Business", ko: "사업자" }],
-  ["商户端", { "zh-Hant": "商戶端", ja: "店舗側", en: "Merchant App", ko: "사업자 앱" }],
-  ["商户后台", { "zh-Hant": "商戶後台", ja: "店舗管理画面", en: "Business Management", ko: "사업자 관리 화면" }],
-  ["商户或技师提交的新情报，等待平台审核后进入情报流。", { "zh-Hant": "商戶或技師提交的新情報，等待平台審核後進入情報流。", ja: "店舗またはスタッフが投稿した新しいオファーです。プラットフォーム審査後にオファーフィードへ入ります。", en: "New Info submitted by a merchant or technician. It enters the Info feed after platform review.", ko: "사업자 또는 기사가 제출한 새 정보입니다. 플랫폼 심사 후 정보 피드에 들어갑니다." }],
-  ["商户情报", { "zh-Hant": "商戶情報", ja: "店舗オファー", en: "Business Info", ko: "사업자 정보" }],
-  ["上班时间", { "zh-Hant": "上班時間", ja: "勤務時間", en: "Work hours", ko: "근무 시간" }],
-  ["上门保洁", { ja: "家事代行" }],
-  ["上门服务", { ja: "デリバリサービス" }],
-  ["申请", { "zh-Hant": "申請", ja: "申請", en: "Application", ko: "신청" }],
-  ["申请更改", { "zh-Hant": "申請更改", ja: "変更申請", en: "Request changes", ko: "변경 신청" }],
-  ["套餐", { ja: "サービス" }],
-  ["提醒", { ja: "リマインダー" }],
-  ["通知", { "zh-Hant": "通知", ja: "通知", en: "Notification", ko: "알림" }],
-  ["头图", { "zh-Hant": "頭圖", ja: "カバー画像", en: "Header image", ko: "헤더 이미지" }],
-  ["推荐关注", { "zh-Hant": "推薦關注", ja: "おすすめフォロー", en: "Suggested follows", ko: "추천 팔로우" }],
-  ["退勤", { "zh-Hant": "退勤", ja: "退勤", en: "Off duty", ko: "퇴근" }],
-  ["我的日程", { "zh-Hant": "我的行程", ja: "スケジュール", en: "My schedule", ko: "내 일정" }],
-  ["显示", { ja: "表示モード" }],
-  ["新情报", { "zh-Hant": "新情報", ja: "新しいオファー", en: "New Info", ko: "새 정보" }],
-  ["新增情报", { "zh-Hant": "新增情報", ja: "オファーを追加", en: "Add Info", ko: "정보 추가" }],
-  ["信用值", { "zh-Hant": "信用值", ja: "信用度", en: "Credit level", ko: "신용도" }],
-  ["休息", { "zh-Hant": "休息", ja: "休憩中", en: "On Break", ko: "휴식 중" }],
-  ["需求", { "zh-Hant": "需求", ja: "需要", en: "Need", ko: "필요" }],
-  ["需要", { ja: "リクエスト" }],
-  ["移动中", { "zh-Hant": "移動中", ja: "移動中", en: "In transit", ko: "이동 중" }],
-  ["已关注", { "zh-Hant": "已關注", ja: "フォロー中", en: "Following", ko: "팔로우 중" }],
-  ["已选", { ja: "選択済" }],
-  ["异常队列", { "zh-Hant": "異常佇列", ja: "例外キュー", en: "Exception queue", ko: "예외 대기열" }],
-  ["隐私政策", { "zh-Hant": "隱私政策", ja: "個人情報保護方針", en: "Privacy Policy", ko: "개인정보 처리방침" }],
-  ["用户端", { "zh-Hant": "用戶端", ja: "ユーザーアプリ", en: "User App", ko: "사용자 앱" }],
-  ["预测", { "zh-Hant": "預測", ja: "予測", en: "Forecast", ko: "예측" }],
-  ["预约", { "zh-Hant": "預約", ja: "予約", en: "Reservation", ko: "예약" }],
-  ["员工", { "zh-Hant": "員工", ja: "スタッフ", en: "Staff", ko: "스태프" }],
-  ["这条需求或情报暂时无法打开，返回 NeeDo 列表后可以继续浏览其他内容。", { "zh-Hant": "這條需求或情報暫時無法打開，返回 NeeDo 清單後可以繼續瀏覽其他內容。", ja: "この需要またはオファーは現在開けません。NeeDoリストに戻ると、他の内容を引き続き閲覧できます。", en: "This Need or Info item cannot be opened right now. Return to the NeeDo list to keep browsing other content.", ko: "이 필요 또는 정보 항목은 현재 열 수 없습니다. NeeDo 목록으로 돌아가 다른 내용을 계속 볼 수 있습니다." }],
-  ["质量评分", { "zh-Hant": "品質評分", ja: "品質スコア", en: "Quality score", ko: "품질 점수" }],
-  ["智能排班", { "zh-Hant": "智能排班", ja: "スマートシフト", en: "Smart scheduling", ko: "스마트 근무표" }],
-  ["周期", { "zh-Hant": "週期", ja: "周期", en: "Cycle", ko: "주기" }],
-  ["注销账号", { "zh-Hant": "註銷帳號", ja: "退会", en: "Delete account", ko: "계정 삭제" }],
-  ["转发", { ja: "シェア" }],
-  ["资料", { "zh-Hant": "資料", ja: "プロフィール", en: "Profile", ko: "프로필" }],
-  ["自定义群名", { ja: "グループ名入力" }],
-  ["自动处理", { "zh-Hant": "自動處理", ja: "自動対応", en: "Automated handling", ko: "자동 처리" }],
-  ["最新情报", { "zh-Hant": "最新情報", ja: "最新オファー", en: "Latest Info", ko: "최신 정보" }],
-  ["最新情报：", { "zh-Hant": "最新情報：", ja: "最新オファー：", en: "Latest Info:", ko: "최신 정보:" }],
-  ["最终确认", { "zh-Hant": "最終確認", ja: "最終確認", en: "Final Confirmation", ko: "최종 확인" }],
-  ["confirmed slots", { "zh-Hant": "confirmed slots", ja: "confirmed slots", en: "confirmed slots", ko: "confirmed slots" }],
-  ["NeeDo 前台里的需求与情报现已显示剩余有效时间，详情页也会同步展示截止时间；过期内容会自动切换为已过期状态并禁用主要操作按钮。", { "zh-Hant": "NeeDo 前台裡的需求與情報現已顯示剩餘有效時間，詳情頁也會同步顯示截止時間；過期內容會自動切換為已過期狀態並停用主要操作按鈕。", ja: "NeeDoのユーザー画面では、需要とオファーに残り有効時間を表示し、詳細ページにも締切時刻を同期して表示します。期限切れの内容は自動で期限切れ状態に切り替わり、主要操作ボタンは無効になります。", en: "Need and Info items in the NeeDo user-facing app now show remaining validity time, and the detail page also shows the deadline. Expired content automatically switches to the expired state and disables the primary action button.", ko: "NeeDo 사용자 화면의 필요와 정보에는 남은 유효 시간이 표시되고, 상세 페이지에도 마감 시간이 함께 표시됩니다. 만료된 내용은 자동으로 만료 상태로 전환되며 주요 작업 버튼은 비활성화됩니다." }],
-  ["NeeDo 页的发布链路这次补成了显式限制，不再只是依赖页面文案。现在客户端新发内容只会落成需求，技师端和店铺端新发内容只会落成情报。", { "zh-Hant": "NeeDo 頁面的發布流程這次補上明確限制，不再只依賴頁面文案。現在用戶端新發內容只會成為需求，技師端和店鋪端新發內容只會成為情報。", ja: "NeeDoページの投稿フローに明示的な制限を追加しました。ページ文言だけには依存しません。ユーザーアプリで新規投稿した内容は需要として、スタッフアプリと店舗側で新規投稿した内容はオファーとして扱います。", en: "The NeeDo page publishing flow now has explicit restrictions instead of relying only on page copy. New posts from the User App become Need items, and new posts from the Technician App or Merchant App become Info items.", ko: "NeeDo 페이지의 게시 흐름에 명시적 제한을 추가해 더 이상 페이지 문구에만 의존하지 않습니다. 사용자 앱에서 새로 올린 내용은 필요로, 기사 앱과 사업자 앱에서 새로 올린 내용은 정보로 처리됩니다." }],
-  ["URL", { ja: "URLを入力" }],
+  ["用户端", { "zh-Hant": "用戶端", "ja": "ユーザーアプリ", "en": "User App", "ko": "사용자 앱" }],
+  ["商户端", { "zh-Hant": "商戶端", "ja": "店舗側", "en": "Merchant App", "ko": "사업자 앱" }],
+  ["技师端", { "zh-Hant": "技師端", "ja": "スタッフアプリ", "en": "Technician App", "ko": "기사 앱" }],
+  ["平台后台", { "zh-Hant": "平台後台", "ja": "プラットフォーム管理画面", "en": "Platform Admin", "ko": "플랫폼 관리자" }],
+  ["商户后台", { "zh-Hant": "商戶後台", "ja": "店舗管理画面", "en": "Business Management", "ko": "사업자 관리 화면" }],
+  ["调度中心", { "zh-Hant": "調度中心", "ja": "管理センター", "en": "Management Center", "ko": "관리 센터" }],
+  ["管理中心", { "zh-Hant": "管理中心", "ja": "管理センター", "en": "Management Center", "ko": "관리 센터" }],
+  ["技师", { "zh-Hant": "技師", "ja": "スタッフ", "en": "Technician", "ko": "기사" }],
+  ["员工", { "zh-Hant": "員工", "ja": "スタッフ", "en": "Staff", "ko": "스태프" }],
+  ["店铺", { "zh-Hant": "店鋪", "ja": "店舗", "en": "Store", "ko": "매장" }],
+  ["商户", { "zh-Hant": "商戶", "ja": "店舗", "en": "Business", "ko": "사업자" }],
+  ["预约", { "zh-Hant": "預約", "ja": "予約", "en": "Reservation", "ko": "예약" }],
+  ["店铺预约", { "zh-Hant": "店家預約", "ja": "店舗予約", "en": "Store Reservation", "ko": "매장 예약" }],
+  ["附近技师", { "zh-Hant": "附近技師", "ja": "スタッフ探し", "en": "Find staff", "ko": "주변 기사 찾기" }],
+  ["查找服务", { "zh-Hant": "查找服務", "ja": "サービス探し", "en": "Find services", "ko": "서비스 찾기" }],
+  ["我的日程", { "zh-Hant": "我的行程", "ja": "スケジュール", "en": "My schedule", "ko": "내 일정" }],
+  ["可预约", { "zh-Hant": "可預約", "ja": "予約可能", "en": "Bookable", "ko": "예약 가능" }],
+  ["日程 / 行程（用户端）", { "zh-Hant": "行程", "ja": "スケジュール", "en": "Schedule", "ko": "일정" }],
+  ["日程 / 行程（技师端、商户端）", { "zh-Hant": "行程", "ja": "シフト", "en": "Shift", "ko": "근무표" }],
+  ["排班", { "zh-Hant": "排班", "ja": "シフト", "en": "Shift", "ko": "근무표" }],
+  ["班次", { "zh-Hant": "班次", "ja": "シフト", "en": "Shift", "ko": "근무" }],
+  ["群（聊天/隐私）", { "zh-Hant": "群組", "ja": "グループ", "en": "Group", "ko": "그룹" }],
+  ["上班时间", { "zh-Hant": "上班時間", "ja": "勤務時間", "en": "Work hours", "ko": "근무 시간" }],
+  ["周期", { "zh-Hant": "週期", "ja": "周期", "en": "Cycle", "ko": "주기" }],
+  ["当前周期确认", { "zh-Hant": "目前週期確認", "ja": "現状確認", "en": "Current Cycle Confirmation", "ko": "현재 주기 확인" }],
+  ["最终确认", { "zh-Hant": "最終確認", "ja": "最終確認", "en": "Final Confirmation", "ko": "최종 확인" }],
+  ["confirmed slots", { "zh-Hant": "confirmed slots", "ja": "confirmed slots", "en": "confirmed slots", "ko": "confirmed slots" }],
+  ["派单", { "zh-Hant": "派單", "ja": "割当", "en": "Dispatch", "ko": "배정" }],
+  ["候补", { "zh-Hant": "候補", "ja": "候補", "en": "Standby", "ko": "대기" }],
+  ["冲突", { "zh-Hant": "衝突", "ja": "重複", "en": "Conflict", "ko": "충돌" }],
+  ["缓冲", { "zh-Hant": "緩衝", "ja": "バッファ", "en": "Buffer", "ko": "버퍼" }],
+  ["休息", { "zh-Hant": "休息", "ja": "休憩中", "en": "On Break", "ko": "휴식 중" }],
+  ["空闲", { "zh-Hant": "空閒", "ja": "待機中", "en": "Standby", "ko": "대기 중" }],
+  ["出勤", { "zh-Hant": "出勤", "ja": "出勤", "en": "On duty", "ko": "출근" }],
+  ["移动中", { "zh-Hant": "移動中", "ja": "移動中", "en": "In transit", "ko": "이동 중" }],
+  ["服务中", { "zh-Hant": "服務中", "ja": "サービス中", "en": "In service", "ko": "서비스 중" }],
+  ["退勤", { "zh-Hant": "退勤", "ja": "退勤", "en": "Off duty", "ko": "퇴근" }],
+  ["申请", { "zh-Hant": "申請", "ja": "申請", "en": "Application", "ko": "신청" }],
+  ["申请更改", { "zh-Hant": "申請更改", "ja": "変更申請", "en": "Request changes", "ko": "변경 신청" }],
+  ["确认收到", { "zh-Hant": "確認收到", "ja": "受取確認", "en": "Acknowledge", "ko": "수신 확인" }],
+  ["处理", { "zh-Hant": "處理", "ja": "対応", "en": "Handling", "ko": "처리" }],
+  ["人工处理", { "zh-Hant": "人工處理", "ja": "手動対応", "en": "Manual handling", "ko": "수동 처리" }],
+  ["自动处理", { "zh-Hant": "自動處理", "ja": "自動対応", "en": "Automated handling", "ko": "자동 처리" }],
+  ["智能排班", { "zh-Hant": "智能排班", "ja": "スマートシフト", "en": "Smart scheduling", "ko": "스마트 근무표" }],
+  ["预测", { "zh-Hant": "預測", "ja": "予測", "en": "Forecast", "ko": "예측" }],
+  ["异常队列", { "zh-Hant": "異常佇列", "ja": "例外キュー", "en": "Exception queue", "ko": "예외 대기열" }],
+  ["质量评分", { "zh-Hant": "品質評分", "ja": "品質スコア", "en": "Quality score", "ko": "품질 점수" }],
+  ["规则", { "zh-Hant": "規則", "ja": "規則", "en": "Rule", "ko": "규칙" }],
+  ["模板", { "zh-Hant": "範本", "ja": "テンプレ", "en": "Template", "ko": "템플릿" }],
+  ["通知", { "zh-Hant": "通知", "ja": "通知", "en": "Notification", "ko": "알림" }],
+  ["资料", { "zh-Hant": "資料", "ja": "プロフィール", "en": "Profile", "ko": "프로필" }],
+  ["头图", { "zh-Hant": "頭圖", "ja": "カバー画像", "en": "Header image", "ko": "헤더 이미지" }],
+  ["关注", { "zh-Hant": "關注", "ja": "フォロー", "en": "Follow", "ko": "팔로우" }],
+  ["已关注", { "zh-Hant": "已關注", "ja": "フォロー中", "en": "Following", "ko": "팔로우 중" }],
+  ["推荐关注", { "zh-Hant": "推薦關注", "ja": "おすすめフォロー", "en": "Suggested follows", "ko": "추천 팔로우" }],
+  ["信用值", { "zh-Hant": "信用值", "ja": "信用度", "en": "Credit level", "ko": "신용도" }],
+  ["情报", { "zh-Hant": "情報", "ja": "オファー", "en": "Info", "ko": "정보" }],
+  ["需求", { "zh-Hant": "需求", "ja": "需要", "en": "Need", "ko": "필요" }],
+  ["利用政策", { "zh-Hant": "利用政策", "ja": "利用規約", "en": "Terms of Use", "ko": "이용약관" }],
+  ["隐私政策", { "zh-Hant": "隱私政策", "ja": "個人情報保護方針", "en": "Privacy Policy", "ko": "개인정보 처리방침" }],
+  ["注销账号", { "zh-Hant": "註銷帳號", "ja": "退会", "en": "Delete account", "ko": "계정 삭제" }],
+  ["电子宠物", { "zh-Hant": "電子寵物", "ja": "ニードペット", "en": "NeeDo Pet", "ko": "니도 펫" }],
+  ["更多技师", { "zh-Hant": "更多技師", "ja": "もっと見る", "en": "More technicians", "ko": "더 많은 기사" }],
+  ["附近的技师", { "zh-Hant": "附近的技師", "ja": "付近のスタッフ", "en": "Nearby technicians", "ko": "주변 기사" }],
+  ["查看", { "zh-Hant": "查看", "ja": "もっと見る", "en": "View", "ko": "보기" }],
+  ["上门保洁", { "zh-Hant": "上門清潔", "ja": "家事代行", "en": "In-home cleaning", "ko": "방문 청소" }],
+  ["需要", { "zh-Hant": "需要", "ja": "リクエスト", "en": "Request", "ko": "요청" }],
+  ["转发", { "zh-Hant": "轉發", "ja": "シェア", "en": "Share", "ko": "공유" }],
+  ["已选", { "zh-Hant": "已選", "ja": "選択済", "en": "Selected", "ko": "선택됨" }],
+  ["自定义群名", { "zh-Hant": "自訂群組名稱", "ja": "グループ名入力", "en": "Custom group name", "ko": "사용자 지정 그룹명" }],
+  ["标签", { "zh-Hant": "標籤", "ja": "タグ", "en": "Tag", "ko": "태그" }],
+  ["公告", { "zh-Hant": "公告", "ja": "告知", "en": "Notice", "ko": "공지" }],
+  ["显示", { "zh-Hant": "顯示", "ja": "表示モード", "en": "Display mode", "ko": "표시 모드" }],
+  ["提醒", { "zh-Hant": "提醒", "ja": "リマインダー", "en": "Reminder", "ko": "리마인더" }],
+  ["开始", { "zh-Hant": "開始", "ja": "開始", "en": "Start", "ko": "시작" }],
+  ["结束", { "zh-Hant": "結束", "ja": "終了", "en": "End", "ko": "종료" }],
+  ["地址", { "zh-Hant": "輸入地址", "ja": "住所を入力", "en": "Enter address", "ko": "주소 입력" }],
+  ["URL", { "zh-Hant": "輸入 URL", "ja": "URLを入力", "en": "Enter URL", "ko": "URL 입력" }],
+  ["备注(输入时)", { "zh-Hant": "輸入備註", "ja": "メモを入力", "en": "Enter note", "ko": "메모 입력" }],
+  ["参加者", { "zh-Hant": "參加者", "ja": "参加者", "en": "Participants", "ko": "참가자" }],
+  ["服务套餐菜单", { "zh-Hant": "服務菜單", "ja": "サービスメニュー", "en": "Service menu", "ko": "서비스 메뉴" }],
+  ["店内照片墙", { "zh-Hant": "店內照片牆", "ja": "店内環境", "en": "Store gallery", "ko": "매장 사진 갤러리" }],
+  ["到店信息", { "zh-Hant": "到店資訊", "ja": "店舗情報", "en": "Store visit information", "ko": "매장 방문 정보" }],
+  ["套餐", { "zh-Hant": "服務套餐", "ja": "サービス", "en": "Service", "ko": "서비스" }],
+  ["服务方式", { "zh-Hant": "服務方式", "ja": "サービス提供方法", "en": "Service method", "ko": "서비스 방식" }],
+  ["到店服务", { "zh-Hant": "到店服務", "ja": "店内サービス", "en": "In-store service", "ko": "매장 서비스" }],
+  ["上门服务", { "zh-Hant": "上門服務", "ja": "デリバリサービス", "en": "Home service", "ko": "방문 서비스" }],
+  ["取消政策", { "zh-Hant": "取消政策", "ja": "キャンセルポリシー", "en": "Cancellation policy", "ko": "취소 정책" }],
+  ["服务号", { "zh-Hant": "服務號", "ja": "サービス", "en": "Service account", "ko": "서비스 계정" }],
+  ["备注(浏览时)", { "zh-Hant": "備註", "ja": "メモ", "en": "Note", "ko": "메모" }],
+  ["（￥000,000）起", { "zh-Hant": "（￥000,000）起", "ja": "（￥000,000）~", "en": "From ￥000,000", "ko": "￥000,000부터" }],
+  ["家政", { "zh-Hant": "家政", "ja": "家事代行", "en": "Housekeeping", "ko": "가사 서비스" }],
+  ["最快（00）分钟", { "zh-Hant": "最快（00）分鐘", "ja": "最速（00）分", "en": "As fast as 00 min", "ko": "최단 00분" }],
+  ["可长期", { "zh-Hant": "可長期", "ja": "長期可", "en": "Long-term available", "ko": "장기 가능" }],
+  ["下水道维修", { "zh-Hant": "下水道維修", "ja": "水回り修理", "en": "Drain repair", "ko": "하수도 수리" }],
+  ["美甲", { "zh-Hant": "美甲", "ja": "ネイルデザイン", "en": "Nail design", "ko": "네일 디자인" }],
+  ["美睫", { "zh-Hant": "美睫", "ja": "まつ毛美容", "en": "Lash beauty", "ko": "속눈썹 미용" }],
+  ["当日可约", { "zh-Hant": "當日可約", "ja": "当日予約可", "en": "Same-day booking available", "ko": "당일 예약 가능" }],
   // End synced xlsx glossary terms.
 ];

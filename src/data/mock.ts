@@ -621,7 +621,7 @@ export const services: ServiceItem[] = [
         name: "深度 3 小时",
         price: 9800,
         durationMinutes: 180,
-        description: "覆盖修水管重点污渍与收纳归位。",
+        description: "覆盖下水道周边重点污渍与收纳归位。",
         includes: ["油污清理", "浴室水垢", "柜面擦拭", "阳台地面"]
       }
     ],
@@ -740,7 +740,7 @@ const serviceExpansionSeeds = [
     categoryId: "cleaning",
     name: "家政保洁",
     summary: "覆盖日常保洁、修水管、退房清扫和固定周期维护，适合长期居住家庭。",
-    tags: ["可固定阿姨", "修水管重点", "中文沟通"],
+    tags: ["可长期", "下水道维修", "中文沟通"],
     cover: imageBank.cleaning,
     basePrice: 6200,
     duration: 120,
