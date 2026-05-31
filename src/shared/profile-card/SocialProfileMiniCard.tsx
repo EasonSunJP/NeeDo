@@ -3,12 +3,14 @@ import { Link } from "react-router-dom";
 import { IconMetricAction } from "../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
+import { shareContent } from "../../lib/share";
 import { cn } from "../../lib/utils";
 import { findStoreById } from "../../state/entityStore";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Customer, ServiceItem, Store, Technician } from "../../types/domain";
 import type { InfoCardData } from "../info-card";
 import { CustomerMembershipIcon } from "./CustomerMembershipIcon";
+import { SimpleRatingBadge } from "./SimpleRatingBadge";
 import { getCustomerLevelLabel, resolveCustomerMembership, type SocialProfileMiniMembershipKind } from "./customerMembership";
 
 export type SocialProfileMiniActionLabel = "关注" | "关注中" | "好友";
@@ -36,6 +38,7 @@ export type SocialProfileMiniData = {
   scoreValue: string;
   followerCount: number;
   followingCount: number;
+  shareCount?: number;
   usageCount?: number;
   actionLabel?: SocialProfileMiniActionLabel;
   detailPath?: string;
@@ -76,8 +79,11 @@ type CommonSocialProfileMiniCardProps = {
   detailTo?: string;
   onOpenDetails?: () => void;
   onAction?: () => void;
+  onShare?: () => void;
   actionSlot?: ReactNode;
   showAction?: boolean;
+  showShareAction?: boolean;
+  shareCount?: number;
   topTags?: SocialProfileMiniTopTag[];
 };
 
@@ -766,7 +772,7 @@ function ScoreMetricBadge({
 }
 
 export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
-  const { className, dark = false, detailTo, onOpenDetails, onAction, actionSlot, showAction = true, topTags } = props;
+  const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showShareAction = false, shareCount, topTags } = props;
   const { isNight, theme } = useClientTheme();
   const data = buildSocialProfileMiniCardData(
     "data" in props ? props.data : "customer" in props ? props.customer : "technician" in props ? props.technician : props.store,
@@ -779,8 +785,13 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
   const resolvedDetailTo = detailTo ?? data.detailPath;
   const scoreParts = splitScoreValue(data.scoreValue);
   const isService = data.entityType === "service";
-  const shouldOverlayScoreOnAvatar = data.entityType === "user" || data.entityType === "shop" || data.entityType === "technician";
-  const hasAction = showAction && Boolean(actionSlot || data.actionLabel);
+  const usesSimpleScorePill = data.scoreLabel === "服务评价";
+  const shouldOverlayScoreOnAvatar = (data.entityType === "user" || data.entityType === "shop" || data.entityType === "technician") && !usesSimpleScorePill;
+  const hasPrimaryAction = Boolean(actionSlot || data.actionLabel);
+  const hasShareAction = showAction && showShareAction;
+  const hasAction = showAction && Boolean(hasPrimaryAction || showShareAction);
+  const topTagRightClassName = hasShareAction && hasPrimaryAction ? "right-[102px]" : hasAction ? "right-14" : "right-3.5";
+  const resolvedShareCount = Math.max(0, Math.floor(shareCount ?? data.shareCount ?? 0));
   const visibleTopTags = normalizeSocialProfileMiniTopTags(topTags);
   const coverDark = dark || isNight;
   const addressLabel = data.addressLabel?.trim();
@@ -790,6 +801,19 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
     : "border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:var(--client-surface)] text-[color:var(--client-text)]";
   const mutedClassName = dark ? "text-white/58" : "text-[color:var(--client-muted)]";
   const metricClassName = dark ? "bg-white/[0.06]" : "bg-[color:color-mix(in_srgb,var(--client-elevated)_78%,transparent)]";
+  const handleShare = () => {
+    if (onShare) {
+      onShare();
+      return;
+    }
+
+    void shareContent({
+      title: `${data.displayName} | NeeDo`,
+      text: data.regionLabel ? `${data.displayName} · ${data.regionLabel}` : data.displayName,
+      url: resolvedDetailTo,
+      copiedMessage: "链接已复制，可以转发给联系人"
+    });
+  };
 
   return (
     <article className={cn("overflow-hidden rounded-[24px] border shadow-panel", cardClassName, className)}>
@@ -816,13 +840,23 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
             ) : null}
           </div>
         </InteractiveArea>
+        {usesSimpleScorePill ? <SimpleRatingBadge className="absolute left-3.5 top-2 z-20" value={scoreParts.score} /> : null}
         {hasAction ? (
-          <div className="absolute right-2 top-2 z-20">
-            {actionSlot ?? <ActionControl count={data.followerCount} dark={coverDark} label={data.actionLabel} onAction={onAction} />}
+          <div className="absolute right-[1.5px] top-2 z-20 flex items-start -space-x-[5.5px]">
+            {hasPrimaryAction ? actionSlot ?? <ActionControl count={data.followerCount} dark={coverDark} label={data.actionLabel} onAction={onAction} /> : null}
+            {hasShareAction ? (
+              <IconMetricAction
+                count={resolvedShareCount}
+                icon="share"
+                label="转发"
+                onClick={handleShare}
+                size="compactLg"
+              />
+            ) : null}
           </div>
         ) : null}
         {visibleTopTags.length > 0 ? (
-          <div className={cn("absolute left-3.5 top-3 z-20 flex max-h-7 flex-wrap items-center gap-1 overflow-hidden", hasAction ? "right-14" : "right-3.5")}>
+          <div className={cn("absolute top-3 z-20 flex max-h-7 flex-wrap items-center gap-1 overflow-hidden", usesSimpleScorePill ? "left-[72px]" : "left-3.5", topTagRightClassName)}>
             {visibleTopTags.map((tag) => (
               <SocialProfileMiniTag coverDark={coverDark} key={tag.label} onCover tone={tag.tone}>{tag.label}</SocialProfileMiniTag>
             ))}
@@ -864,7 +898,7 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
                   <KindLevelValue data={data} />
                 </div>
               </div>
-              {isService || shouldOverlayScoreOnAvatar ? null : (
+              {isService || shouldOverlayScoreOnAvatar || usesSimpleScorePill ? null : (
                 <ScoreMetricBadge metricClassName={metricClassName} mutedClassName={mutedClassName} scoreLabel={data.scoreLabel} scoreParts={scoreParts} />
               )}
             </div>

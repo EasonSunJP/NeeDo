@@ -286,7 +286,7 @@ function NearbyTechnicianCard({
 }) {
   return (
     <TechnicianShowcaseCard
-      className="w-[180px] min-w-[180px]"
+      className="nearby-technician-card-elevation w-[180px] min-w-[180px]"
       detailTo={getTechnicianDynamicPath(technician)}
       directService={directService}
       fallbackServices={fallbackServices}
@@ -353,11 +353,11 @@ function ServiceModule({
 
 function RecommendationCard({ data }: { data: RecommendationCardData }) {
   if (data.kind === "store") {
-    return <SocialProfileMiniCard detailTo={data.to} store={data.store} />;
+    return <SocialProfileMiniCard detailTo={data.to} showShareAction store={data.store} />;
   }
 
   if (data.kind === "technician") {
-    return <SocialProfileMiniCard detailTo={data.to} technician={data.technician} />;
+    return <SocialProfileMiniCard detailTo={data.to} showShareAction technician={data.technician} />;
   }
 
   return <SocialProfileMiniCard data={buildServiceMiniCardData(data.service, data.provider)} detailTo={data.to} />;

@@ -366,7 +366,7 @@ function DineInCustomerMenuRow({
             ) : null}
             <p className="whitespace-nowrap text-[17px] font-black text-[#d64242]">
               {yen(getTaxIncludedPrice(item))}
-              <span className="ml-1 text-[11px] text-[color:var(--client-text)]">(税込)</span>
+              <span className="ml-1 text-[11px] text-[color:var(--client-text)]">(含税)</span>
             </p>
             <p className="mt-0.5 text-[11px] font-bold text-[color:var(--client-muted)]">
               {item.productionArea === "BAR" ? "吧台" : item.productionArea === "KITCHEN" ? "厨房" : "服务"}
@@ -638,7 +638,7 @@ export function DineInCustomerMenuPage() {
                   ) : null}
                   <p className="mt-1 whitespace-nowrap text-sm font-black text-[#d64242]">
                     {yen(getTaxIncludedPrice(item))}
-                    <span className="ml-1 text-[11px] text-[color:var(--client-text)]">(税込)</span>
+                    <span className="ml-1 text-[11px] text-[color:var(--client-text)]">(含税)</span>
                   </p>
                 </div>
                 <DineInQuantityControl
@@ -653,7 +653,7 @@ export function DineInCustomerMenuPage() {
         </section>
         <section className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] p-4 shadow-[0_16px_38px_color-mix(in_srgb,var(--client-shadow)_12%,transparent)]">
           <div className="space-y-2 text-sm font-bold text-[color:var(--client-muted)]">
-            <div className="flex justify-between gap-3"><span>商品小计（税込）</span><strong className="text-[color:var(--client-text)]">{yen(cartSubtotal)}</strong></div>
+            <div className="flex justify-between gap-3"><span>商品小计（含税）</span><strong className="text-[color:var(--client-text)]">{yen(cartSubtotal)}</strong></div>
             <div className="flex justify-between gap-3"><span>服务费</span><strong className="text-[color:var(--client-text)]">{yen(serviceFee)}</strong></div>
             {facilityFee > 0 ? <div className="flex justify-between gap-3"><span>席位费</span><strong className="text-[color:var(--client-text)]">{yen(facilityFee)}</strong></div> : null}
           </div>
@@ -733,7 +733,7 @@ export function DineInCustomerMenuPage() {
               {activeCategory ? (
                 <div className="rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-4 py-3">
                   <h2 className="text-xl font-black">{getLocalizedName(activeCategory.name)}</h2>
-                  <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">价格均以税込显示，可用加减按钮一次选择多个同一菜品。</p>
+                  <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">价格均以含税显示，可用加减按钮一次选择多个同一菜品。</p>
                 </div>
               ) : null}
               {renderItemRows(menuItemsForActiveCategory)}
@@ -931,7 +931,7 @@ export function DineInItemDetailPage() {
               {item.specialOffer?.label ?? "特价"}
             </p>
           ) : null}
-          <strong className="block text-2xl">{yen(getTaxIncludedPrice(item))}<span className="ml-1 text-xs">(税込)</span></strong>
+          <strong className="block text-2xl">{yen(getTaxIncludedPrice(item))}<span className="ml-1 text-xs">(含税)</span></strong>
           {getMenuItemMinimumOrderQuantity(item) > 1 ? (
             <p className="mt-1 text-xs font-bold text-ink/45">{getMenuItemMinimumOrderQuantity(item)} 个起售</p>
           ) : null}

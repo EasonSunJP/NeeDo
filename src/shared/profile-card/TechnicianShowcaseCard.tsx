@@ -4,6 +4,7 @@ import { translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
+import { SimpleRatingBadge } from "./SimpleRatingBadge";
 
 type TechnicianShowcaseCardProps = {
   "aria-label"?: string;
@@ -102,7 +103,7 @@ function getTechnicianCardCopy(language: Language) {
       minuteSuffix: "分鐘",
       pricePending: "價格待確認",
       share: "分享",
-      taxSuffix: "稅後",
+      taxSuffix: "含稅",
       tokyo: "東京"
     };
   }
@@ -162,7 +163,7 @@ function getTechnicianCardCopy(language: Language) {
       minuteSuffix: "분",
       pricePending: "가격 확인 중",
       share: "공유",
-      taxSuffix: "세후",
+      taxSuffix: "세금 포함",
       tokyo: "도쿄"
     };
   }
@@ -181,7 +182,7 @@ function getTechnicianCardCopy(language: Language) {
     minuteSuffix: "分钟",
     pricePending: "价格待确认",
     share: "分享",
-    taxSuffix: "税后",
+    taxSuffix: "含税",
     tokyo: "东京"
   };
 }
@@ -363,43 +364,31 @@ export function TechnicianShowcaseCard({
       <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
       <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
 
-      <div className="absolute left-2 top-2 flex max-w-[calc(100%-62px)] flex-col items-start gap-2" data-no-i18n>
-        {topBadges.map((badge) => (
-          <TechnicianCardBadgeView badge={badge} key={badge.id} />
-        ))}
-        <div className="-ml-[5px] flex flex-col items-center gap-2">
-          <IconMetricAction
-            count={favoriteCount}
-            countClassName="text-[color:var(--client-primary)]"
-            countStyle={{
-              textShadow:
-                "0 1px 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), 1px 0 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), 0 -1px 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), -1px 0 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), 0 0 6px color-mix(in_srgb,var(--client-surface)_82%,transparent)"
-            }}
-            icon="heart"
-            label={`${copy.favorite} ${favoriteCount}`}
-            shellClassName="border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-primary)] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-bg)_28%,transparent)]"
-            size="sm"
-          />
-          <IconMetricAction
-            count={shareCount}
-            countClassName="text-[color:var(--client-primary)]"
-            countStyle={{
-              textShadow:
-                "0 1px 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), 1px 0 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), 0 -1px 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), -1px 0 0 color-mix(in_srgb,var(--client-surface)_98%,transparent), 0 0 6px color-mix(in_srgb,var(--client-surface)_82%,transparent)"
-            }}
-            icon="share"
-            label={`${copy.share} ${shareCount}`}
-            shellClassName="border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-primary)] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-bg)_28%,transparent)]"
-            size="sm"
-          />
-        </div>
-      </div>
+      <SimpleRatingBadge className="absolute left-2 top-2 z-20" value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
 
-      <div className="absolute right-2 top-2 inline-flex h-8 min-w-12 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-2 text-[12px] font-black leading-none text-[color:var(--client-primary-contrast)] shadow-[0_8px_18px_color-mix(in_srgb,var(--client-primary)_30%,transparent)]">
-        ★{formatTechnicianCardRating(technician.rating).toFixed(1)}
+      <div className="absolute right-[1.5px] top-2 z-20 flex items-start -space-x-[5.5px]">
+        <IconMetricAction
+          count={favoriteCount}
+          icon="heart"
+          label={`${copy.favorite} ${favoriteCount}`}
+          size="compactLg"
+        />
+        <IconMetricAction
+          count={shareCount}
+          icon="share"
+          label={`${copy.share} ${shareCount}`}
+          size="compactLg"
+        />
       </div>
 
       <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
+        {topBadges.length > 0 ? (
+          <div className="-ml-1 mb-2 flex items-center gap-1" data-no-i18n>
+            {topBadges.map((badge) => (
+              <TechnicianCardBadgeView badge={badge} key={badge.id} />
+            ))}
+          </div>
+        ) : null}
         <h3 className="flex min-w-0 items-center text-[17px] font-black leading-6">
           {showBeginnerIcon ? (
             <img

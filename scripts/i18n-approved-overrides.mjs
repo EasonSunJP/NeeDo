@@ -208,6 +208,31 @@ export const approvedI18nTranslationOverrides = [
     "推荐关注",
     { "zh-Hant": "推薦關注", ja: "おすすめフォロー", en: "Suggested follows", ko: "추천 팔로우" }
   ],
+  // Manual terminology lock: 税込 means tax included for displayed prices, not after-tax income.
+  [
+    "含税",
+    { "zh-Hant": "含稅", ja: "税込", en: "tax included", ko: "세금 포함" }
+  ],
+  [
+    "(含税)",
+    { "zh-Hant": "(含稅)", ja: "(税込)", en: "(tax included)", ko: "(세금 포함)" }
+  ],
+  [
+    "税込",
+    { "zh-Hant": "含稅", ja: "税込", en: "tax included", ko: "세금 포함" }
+  ],
+  [
+    "商品小计（含税）",
+    { "zh-Hant": "商品小計（含稅）", ja: "商品小計（税込）", en: "Item subtotal (tax included)", ko: "상품 소계(세금 포함)" }
+  ],
+  [
+    "价格均以含税显示，可用加减按钮一次选择多个同一菜品。",
+    { "zh-Hant": "價格均以含稅顯示，可用加減按鈕一次選擇多個同一菜品。", ja: "価格はすべて税込表示です。加減ボタンで同じ料理を複数選択できます。", en: "Prices are shown tax included. Use the plus and minus buttons to choose multiple quantities of the same item.", ko: "가격은 모두 세금 포함으로 표시됩니다. 더하기/빼기 버튼으로 같은 메뉴를 여러 개 선택할 수 있습니다." }
+  ],
+  [
+    "税后",
+    { "zh-Hant": "稅後", ja: "税引後", en: "after tax", ko: "세후" }
+  ],
   [
     "关注关系",
     { "zh-Hant": "關注關係", ja: "フォロー関係", en: "Follow relationships", ko: "팔로우 관계" }

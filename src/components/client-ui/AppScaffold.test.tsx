@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import storeDetailSource from "../../pages/user/StoreDetailPage.tsx?raw";
+import appScaffoldSource from "./AppScaffold.tsx?raw";
 import { getAdaptiveTabLabelClass } from "./AppScaffold";
 
 describe("FeatureSegmentedTabs adaptive labels", () => {
@@ -67,5 +68,12 @@ describe("StoreDetailPage compact metrics", () => {
     expect(storeDetailSource).toContain("!rounded-none !border-0 !bg-transparent !p-0 !shadow-none");
     expect(storeDetailSource).toContain("!p-0");
     expect(storeDetailSource).not.toContain("!shadow-none p-4");
+  });
+});
+
+describe("IconMetricAction shared shell", () => {
+  it("uses an opaque shared shell color so heart icons do not shift across card backgrounds", () => {
+    expect(appScaffoldSource).toContain("bg-[color:color-mix(in_srgb,var(--client-primary)_8%,white_92%)]");
+    expect(appScaffoldSource).toContain("border-[color:color-mix(in_srgb,var(--client-primary)_18%,white_82%)]");
   });
 });

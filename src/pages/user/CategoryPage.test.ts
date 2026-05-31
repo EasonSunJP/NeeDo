@@ -12,7 +12,10 @@ describe("CategoryPage technician showcase card", () => {
   it("uses localized Simplified Chinese labels instead of Japanese card UI copy", () => {
     expect(technicianShowcaseCardSource).toContain('recommended: "推荐"');
     expect(technicianShowcaseCardSource).toContain('recommendedService: "推荐服务"');
-    expect(technicianShowcaseCardSource).toContain('taxSuffix: "税后"');
+    expect(technicianShowcaseCardSource).toContain('taxSuffix: "含税"');
+    expect(technicianShowcaseCardSource).toContain('taxSuffix: "세금 포함"');
+    expect(technicianShowcaseCardSource).not.toContain('taxSuffix: "税后"');
+    expect(technicianShowcaseCardSource).not.toContain('taxSuffix: "세후"');
     expect(categoryPageSource).toContain("language={language}");
     expect(technicianShowcaseCardSource).toContain("{duration}{copy.minuteSuffix}({copy.taxSuffix})");
   });

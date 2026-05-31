@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
 import { getTechnicianCardRankBadge, shouldShowTechnicianBeginnerIcon } from "./TechnicianShowcaseCard";
 import cardSource from "./TechnicianShowcaseCard.tsx?raw";
+import simpleRatingBadgeSource from "./SimpleRatingBadge.tsx?raw";
 
 describe("TechnicianShowcaseCard selectable behavior", () => {
   it("keeps the card linked to the technician dynamic page while selection is handled by the corner icon", () => {
@@ -53,17 +54,28 @@ describe("TechnicianShowcaseCard engagement metrics", () => {
     expect(cardSource).toContain("IconMetricAction");
     expect(cardSource).toContain('icon="heart"');
     expect(cardSource).toContain('icon="share"');
-    expect(cardSource).toContain("textShadow");
+    expect(cardSource).toContain("absolute right-[1.5px] top-2 z-20 flex items-start -space-x-[5.5px]");
+    expect(cardSource).toContain('size="compactLg"');
     expect(cardSource).not.toContain("WebkitTextStroke");
     expect(cardSource).not.toContain("ShareNetworkIcon");
   });
 
-  it("aligns compact metric icons with the rank badge left edge and keeps counts below the circle", () => {
-    expect(cardSource).toContain('className="-ml-[5px] flex flex-col items-center gap-2"');
-    expect(appScaffoldSource).toContain('count: "top-[25px] w-10 text-[10px]"');
-    expect(appScaffoldSource).toContain('icon: "h-[11px] w-[11px]"');
-    expect(appScaffoldSource).toContain('root: "h-[39px] w-8"');
-    expect(appScaffoldSource).toContain('shell: "h-[22px] w-[22px]"');
+  it("matches the mini-card top-right metric action size and keeps counts below the circles", () => {
+    expect(appScaffoldSource).toContain('compactLg: {');
+    expect(appScaffoldSource).toContain('count: "top-[32px] w-10 text-[10px]"');
+    expect(appScaffoldSource).toContain('icon: "h-[14px] w-[14px]"');
+    expect(appScaffoldSource).toContain('root: "h-[46px] w-[42px]"');
+    expect(appScaffoldSource).toContain('shell: "h-[29px] w-[29px]"');
+    expect(cardSource).not.toContain('className="-ml-[5px] flex flex-col items-center gap-2"');
+  });
+
+  it("places the rating score in the top-left without a star and moves rank badges above the name", () => {
+    expect(cardSource).toContain('import { SimpleRatingBadge } from "./SimpleRatingBadge"');
+    expect(cardSource).toContain('<SimpleRatingBadge className="absolute left-2 top-2 z-20" value={formatTechnicianCardRating(technician.rating).toFixed(1)} />');
+    expect(simpleRatingBadgeSource).toContain("inline-flex h-[29px] min-w-12");
+    expect(cardSource).toContain('className="-ml-1 mb-2 flex items-center gap-1"');
+    expect(cardSource).not.toContain("★{formatTechnicianCardRating");
+    expect(cardSource).not.toContain('absolute left-2 top-2 flex max-w-[calc(100%-62px)]');
   });
 
   it("renders the beginner mark before stable 20% test technician names", () => {

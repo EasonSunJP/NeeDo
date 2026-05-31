@@ -196,6 +196,22 @@ img {
   box-shadow: none !important;
 }
 
+.nearby-technician-card-elevation {
+  box-shadow:
+    0 1px 2px rgba(21, 57, 51, 0.1),
+    0 0 0 1px color-mix(in srgb, var(--client-line) 36%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -12px 18px color-mix(in srgb, var(--client-primary) 5%, transparent) !important;
+}
+
+.client-theme-night .nearby-technician-card-elevation {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.26),
+    0 0 0 1px color-mix(in srgb, var(--client-line) 48%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -12px 18px rgba(0, 0, 0, 0.14) !important;
+}
+
 .focus-ring {
   outline: 2px solid transparent;
   outline-offset: 2px;

@@ -37,6 +37,18 @@ describe("translations", () => {
     expect(translateText("开始聊天", "ko")).toBe("채팅 시작");
   });
 
+  it("uses tax-included wording for 税込 instead of after-tax wording", () => {
+    expect(translateText("含税", "zh-Hant")).toBe("含稅");
+    expect(translateText("含税", "ja")).toBe("税込");
+    expect(translateText("含税", "en")).toBe("tax included");
+    expect(translateText("含税", "ko")).toBe("세금 포함");
+    expect(translateText("税込", "zh-Hant")).toBe("含稅");
+    expect(translateText("税込", "en")).toBe("tax included");
+    expect(translateText("税込", "ko")).toBe("세금 포함");
+    expect(translateText("税后", "ja")).toBe("税引後");
+    expect(translateText("税后", "en")).toBe("after tax");
+  });
+
   it("ignores spreadsheet error placeholders and falls back safely", () => {
     expect(translateText("保存", "en")).not.toBe("#NAME?");
     expect(translateText("保存", "ko")).not.toBe("#VALUE!");
