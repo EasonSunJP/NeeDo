@@ -197,16 +197,16 @@ function OrderProviderInfoCard({
 
   return (
     <div className="relative">
+      {provider.type === "store" ? (
+        <SocialProfileMiniCard showShareAction store={provider.store} {...sharedProps} />
+      ) : (
+        <SocialProfileMiniCard showShareAction technician={provider.technician} {...sharedProps} />
+      )}
       {orderNo ? (
-        <span className="pointer-events-none absolute left-4 top-3 z-30 max-w-[calc(100%-8rem)] truncate text-[11px] font-normal leading-none text-white/72">
+        <span className="pointer-events-none absolute left-3.5 bottom-3 z-30 max-w-36 truncate text-[9px] font-normal leading-none text-[color:var(--client-muted)]">
           {orderNo}
         </span>
       ) : null}
-      {provider.type === "store" ? (
-        <SocialProfileMiniCard store={provider.store} {...sharedProps} />
-      ) : (
-        <SocialProfileMiniCard technician={provider.technician} {...sharedProps} />
-      )}
     </div>
   );
 }
@@ -260,11 +260,13 @@ export function UserOrdersPage() {
   const [reviewingOrderId, setReviewingOrderId] = useState<string | null>(null);
   const localOrders = useUserOrders();
   const [apiOrders, setApiOrders] = useState<Order[] | null>(null);
-  const orders = apiOrders ?? localOrders;
+  const shouldUseLegacyOrderFallback = import.meta.env.DEV || import.meta.env.VITE_NEEDO_STATIC_DEMO === "true";
+  const orders = apiOrders && (apiOrders.length > 0 || !shouldUseLegacyOrderFallback) ? apiOrders : localOrders;
   const scrollRootRef = useRef<HTMLElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
   const deletingOrderIdSetRef = useRef<Set<string>>(new Set());
   const deleteTimerIdsRef = useRef<number[]>([]);
+  const hasDeletedOrderInSessionRef = useRef(false);
   const deletedOrderIdSet = useMemo(() => new Set(deletedOrderIds), [deletedOrderIds]);
   const visibleOrders = useMemo(() => sortOrdersNewestFirst(orders.filter((order) => !deletedOrderIdSet.has(order.id))), [deletedOrderIdSet, orders]);
   const renderedOrders = useMemo(
@@ -304,6 +306,16 @@ export function UserOrdersPage() {
   useEffect(() => {
     setRenderedOrderLimit((current) => Math.min(Math.max(current, initialOrderRenderCount), Math.max(visibleOrders.length, initialOrderRenderCount)));
   }, [visibleOrders.length]);
+
+  useEffect(() => {
+    const hasNoVisibleOrders = visibleOrders.length === 0;
+
+    if (hasDeletedOrderInSessionRef.current || deletedOrderIds.length === 0 || orders.length === 0 || !hasNoVisibleOrders) {
+      return;
+    }
+
+    setDeletedOrderIds([]);
+  }, [deletedOrderIds.length, orders.length, visibleOrders.length]);
 
   useEffect(() => {
     const trigger = loadMoreTriggerRef.current;
@@ -360,6 +372,7 @@ export function UserOrdersPage() {
       return;
     }
 
+    hasDeletedOrderInSessionRef.current = true;
     deletingOrderIdSetRef.current.add(orderId);
     setDeletingOrderIds((current) => [...current, orderId]);
 
