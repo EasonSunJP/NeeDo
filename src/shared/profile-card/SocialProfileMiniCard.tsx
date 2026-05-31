@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { IconMetricAction } from "../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { cn } from "../../lib/utils";
@@ -504,10 +505,12 @@ function SystemCoverBackdrop({ dark, seed, theme }: { dark: boolean; seed: strin
 }
 
 function ActionControl({
+  count,
   dark,
   label,
   onAction
 }: {
+  count: number;
   dark: boolean;
   label?: SocialProfileMiniActionLabel;
   onAction?: () => void;
@@ -516,13 +519,24 @@ function ActionControl({
     return null;
   }
 
+  if (["关注", "关注中"].includes(label)) {
+    return (
+      <IconMetricAction
+        active={label === "关注中"}
+        count={count}
+        icon="heart"
+        label={label}
+        onClick={onAction}
+        size="sm"
+      />
+    );
+  }
+
   const className = cn(
     "shrink-0 rounded-[14px] px-3 py-2 text-xs font-black shadow-panel transition",
-    label === "关注"
-      ? "bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)]"
-      : dark
-        ? "bg-white/10 text-white"
-        : "bg-paper text-ink"
+    dark
+      ? "bg-white/10 text-white"
+      : "bg-paper text-ink"
   );
 
   if (onAction) {
@@ -803,12 +817,12 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
           </div>
         </InteractiveArea>
         {hasAction ? (
-          <div className="absolute right-3.5 top-3.5 z-20">
-            {actionSlot ?? <ActionControl dark={coverDark} label={data.actionLabel} onAction={onAction} />}
+          <div className="absolute right-2 top-2 z-20">
+            {actionSlot ?? <ActionControl count={data.followerCount} dark={coverDark} label={data.actionLabel} onAction={onAction} />}
           </div>
         ) : null}
         {visibleTopTags.length > 0 ? (
-          <div className={cn("absolute left-3.5 top-3 z-20 flex max-h-7 flex-wrap items-center gap-1 overflow-hidden", hasAction ? "right-[92px]" : "right-3.5")}>
+          <div className={cn("absolute left-3.5 top-3 z-20 flex max-h-7 flex-wrap items-center gap-1 overflow-hidden", hasAction ? "right-14" : "right-3.5")}>
             {visibleTopTags.map((tag) => (
               <SocialProfileMiniTag coverDark={coverDark} key={tag.label} onCover tone={tag.tone}>{tag.label}</SocialProfileMiniTag>
             ))}

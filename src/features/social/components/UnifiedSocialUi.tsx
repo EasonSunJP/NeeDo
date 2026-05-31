@@ -6,6 +6,7 @@ import {
   FloatingBackButton,
   FloatingTopRightControl,
   IconButton,
+  IconMetricAction,
   MetaPill,
   PrimaryButton,
   SecondaryButton,
@@ -1908,16 +1909,25 @@ export function SocialProfileRow({
 }
 
 export function SocialProfileTopBar({
+  actorKey,
   profile,
   scope,
   postCount,
-  onClose
+  onBack
 }: {
+  actorKey: string;
   profile: SocialProfile;
   scope: SocialPortalScope;
   postCount: number;
-  onClose: () => void;
+  onBack: () => void;
 }) {
+  const { profiles, state, toggleFollow } = useSocial();
+  const profilePath = socialPaths.profile(scope, profile);
+  const targetKey = profileKey(profile);
+  const following = state.follows[actorKey]?.includes(targetKey) ?? false;
+  const profileInContext = Boolean(profiles[targetKey]);
+  const followerMetricCount = profile.followerCount + (!profileInContext && following ? 1 : 0);
+
   return (
     <FloatingHomeHeader
       className="gap-0"
@@ -1928,6 +1938,7 @@ export function SocialProfileTopBar({
     >
       <div className={cn(floatingHeaderInnerClassName, "sm:px-4 lg:px-5")}>
         <div className="mx-auto flex min-h-[60px] w-full items-center gap-3">
+          <IconButton icon="back" label="返回资料页" onClick={onBack} />
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <AvatarImage
               alt={profile.displayName}
@@ -1945,7 +1956,30 @@ export function SocialProfileTopBar({
               </p>
             </div>
           </div>
-          <IconButton icon="close" label="关闭资料页" onClick={onClose} />
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            {actorKey !== targetKey ? (
+              <IconMetricAction
+                active={following}
+                count={followerMetricCount}
+                icon="heart"
+                label={following ? "已关注" : "关注"}
+                onClick={() => toggleFollow(actorKey, targetKey)}
+              />
+            ) : null}
+            <IconMetricAction
+              count={0}
+              icon="share"
+              label="转发资料页"
+              onClick={() => {
+                void shareContent({
+                  title: `${profile.displayName} | NeeDo`,
+                  text: `在 NeeDo 查看${getEntityLabel(profile.entityType)}动态`,
+                  url: buildAbsoluteUrl(profilePath),
+                  copiedMessage: "资料链接已复制，可以转发给联系人"
+                });
+              }}
+            />
+          </div>
         </div>
       </div>
     </FloatingHomeHeader>

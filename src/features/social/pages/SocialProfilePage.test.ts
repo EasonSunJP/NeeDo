@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import unifiedSocialUiSource from "../components/UnifiedSocialUi.tsx?raw";
 import socialProfilePageSource from "./SocialProfilePage.tsx?raw";
 
 describe("SocialProfilePage core-read technician fallback", () => {
@@ -16,5 +17,16 @@ describe("SocialProfilePage core-read technician fallback", () => {
     expect(socialProfilePageSource).not.toContain("CoreTechnicianActivityCard");
     expect(socialProfilePageSource).not.toContain('title="技师动态"');
     expect(socialProfilePageSource).not.toContain("真实 API 数据源");
+  });
+});
+
+describe("SocialProfileTopBar shared controls", () => {
+  it("uses the shared back and metric action controls without a close action", () => {
+    expect(unifiedSocialUiSource).toContain('label="返回资料页"');
+    expect(unifiedSocialUiSource).toContain("<IconMetricAction");
+    expect(unifiedSocialUiSource).toContain('icon="heart"');
+    expect(unifiedSocialUiSource).toContain('icon="share"');
+    expect(unifiedSocialUiSource).toContain("shareContent({");
+    expect(unifiedSocialUiSource).not.toContain('label="关闭资料页"');
   });
 });

@@ -260,7 +260,7 @@ function CoreReadTechnicianSocialProfileScene({
   return (
     <PageScaffold contentClassName="space-y-0 pb-32 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
       <div className="-mx-4 sm:-mx-6 lg:-mx-8">
-        <SocialProfileTopBar onClose={onClose} postCount={postCount} profile={profile} scope={scope} />
+        <SocialProfileTopBar actorKey={actorKey} onBack={onClose} postCount={postCount} profile={profile} scope={scope} />
       </div>
 
       <div>
@@ -395,7 +395,7 @@ function SocialProfileScene({
   return (
     <PageScaffold contentClassName="space-y-0 pb-32 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
       <div className="-mx-4 sm:-mx-6 lg:-mx-8">
-        <SocialProfileTopBar onClose={onClose} postCount={postCount} profile={profile} scope={scope} />
+        <SocialProfileTopBar actorKey={actorKey} onBack={onClose} postCount={postCount} profile={profile} scope={scope} />
       </div>
 
       <div>

@@ -15,4 +15,13 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(cardSource).toContain("return null;");
     expect(cardSource).toContain('data.entityType === "service" ? "max-w-full"');
   });
+
+  it("uses the shared circle heart metric action for follow controls", () => {
+    expect(cardSource).toContain("<IconMetricAction");
+    expect(cardSource).toContain('icon="heart"');
+    expect(cardSource).toContain("count={count}");
+    expect(cardSource).toContain('size="sm"');
+    expect(cardSource).toContain("absolute right-2 top-2 z-20");
+    expect(cardSource).not.toContain('label === "关注"');
+  });
 });
