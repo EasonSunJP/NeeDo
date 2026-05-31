@@ -35,7 +35,6 @@ type TranslationMap = Record<string, TranslationEntry>;
 export const translations: TranslationMap = {
   "“复制上一天 / 上一周”都会复制整行 24 小时状态，适合快速排固定班型。": { "zh-Hant": "「複製上一天 / 上一週」都會複製整行 24 小時狀態，適合快速排固定班型。", ja: "「前日／前週をコピー」オプションを選択すると、24時間分のステータス全体がコピーされるため、固定シフトを迅速にスケジュールするのに適しています。", en: "The \"Copy previous day / previous week\" option will copy the entire 24-hour status, which is suitable for quickly scheduling fixed shifts.", ko: "\"전날/전주 복사\" 옵션을 선택하면 24시간 전체의 현황이 복사되므로 고정 근무조를 신속하게 편성하는 데 적합합니다." },
   "“用户”是指使用本服务预约、发单、咨询、评价或浏览内容的人；“服务提供者”是指通过本服务接受预约、提供服务或发布资料的人，包括技师、工作人员及独立服务者；“店铺”是指使用本服务的 SaaS 后台管理服务提供者或订单的法人、个体经营者或组织；“经纪人/介绍人”是指根据本服务规则协助管理、招募或介绍服务提供者的人。上述各方统称为“用户等”。": { "zh-Hant": "「使用者」係指使用本服務進行預約、發單、諮詢、評價或瀏覽內容之人；「服務提供者」係指透過本服務接受預約、提供服務或發布資料之人，包括技師、工作人員及獨立服務者；「店鋪」係指使用本服務之 SaaS 後台管理服務提供者或訂單之法人、個體經營者或組織；「經紀人/介紹人」係指依本服務規則協助管理、招募或介紹服務提供者之人。上述各方統稱為「使用者等」。", ja: "「ユーザー」とは、本サービスを利用して予約、リクエスト、問い合わせ、レビュー又はコンテンツ閲覧を行う者をいいます。「サービス提供者」とは、本サービスを通じて予約を受け、サービスを提供し、又は情報を掲載する者をいい、キャスト、スタッフ及び独立サービス提供者を含みます。「店舗」とは、本サービスの SaaS 管理画面を利用してサービス提供者又は注文を管理する法人、個人事業主又は組織をいいます。「ブローカー/スカウト」とは、本サービスの規則に従い、サービス提供者の管理、募集又は紹介を支援する者をいいます。これらを総称して「ユーザー等」といいます。", en: "“User” means a person who uses the Service to make reservations, post requests, make inquiries, submit reviews, or view content. “Service provider” means a person who accepts reservations, provides services, or posts information through the Service, including casts, staff members, and independent service providers. “Shop” means a corporation, sole proprietor, or organization that uses the SaaS dashboard of the Service to manage service providers or orders. “Broker/scout” means a person who supports management, recruitment, or introduction of service providers under the rules of the Service. These parties are collectively referred to as “Users, etc.”", ko: "“이용자”란 본 서비스를 이용하여 예약, 요청, 문의, 리뷰 또는 콘텐츠 열람을 하는 자를 말합니다. “서비스 제공자”란 본 서비스를 통해 예약을 받고 서비스를 제공하거나 정보를 게시하는 자를 말하며, 캐스트, 직원 및 독립 서비스 제공자를 포함합니다. “상점”이란 본 서비스의 SaaS 관리 화면을 이용하여 서비스 제공자 또는 주문을 관리하는 법인, 개인가맹점 또는 조직을 말합니다. “브로커/스카우트”란 본 서비스의 규칙에 따라 서비스 제공자의 관리, 모집 또는 소개를 지원하는 자를 말합니다. 위 각 당사자를 총칭하여 “이용자 등”이라 합니다." },
-  "（￥000,000）起": { "zh-Hant": "（￥000,000）起", ja: "（￥000,000）~", en: "From ￥000,000", ko: "￥000,000부터" },
   "（当前生效）": { "zh-Hant": "（當前生效）", ja: "（即日発効）", en: "（Effective immediately）", ko: "（즉시 효력 발생）" },
   "(二)": { "zh-Hant": "(二)", ja: "(火)", en: "(Tue)", ko: "(화)" },
   "(含税)": { "zh-Hant": "(含稅)", ja: "(税込)", en: "(tax included)", ko: "(세금 포함)" },
@@ -107,10 +106,11 @@ export const translations: TranslationMap = {
   "🫶 沟通细致": { "zh-Hant": "🫶 溝通細緻", ja: "🫶 詳細なコミュニケーション", en: "🫶 Detailed communication", ko: "🫶 상세한 의사소통" },
   "😊 治愈系": { "zh-Hant": "😊 治癒系", ja: "😊 ヒーリング", en: "😊 Healing", ko: "😊 치유" },
   "🛌 睡眠放松": { "zh-Hant": "🛌 睡眠放鬆", ja: "🛌 睡眠リラクゼーション", en: "🛌 Sleep Relaxation", ko: "🛌 수면 휴식" },
-  "¥18,000 起": { "zh-Hant": "¥18,000 起", ja: "18,000円から", en: "Starting from ¥18,000", ko: "가격은 18,000엔부터 시작합니다." },
-  "¥6,500 起": { "zh-Hant": "¥6,500 起", ja: "6,500円から", en: "From ¥6,500", ko: "6,500엔부터" },
-  "¥6,800 起": { "zh-Hant": "¥6,800 起", ja: "6,800円から", en: "From ¥6,800", ko: "6,800엔부터" },
-  "¥8,000 起": { "zh-Hant": "¥8,000 起", ja: "8,000円から", en: "From ¥8,000", ko: "8,000엔부터" },
+  "￥000,000 起": { "zh-Hant": "￥000,000 起", ja: "￥000,000〜", en: "From ￥000,000", ko: "￥000,000부터" },
+  "¥18,000 起": { "zh-Hant": "¥18,000 起", ja: "¥18,000〜", en: "From ¥18,000", ko: "¥18,000부터" },
+  "¥6,500 起": { "zh-Hant": "¥6,500 起", ja: "¥6,500〜", en: "From ¥6,500", ko: "¥6,500부터" },
+  "¥6,800 起": { "zh-Hant": "¥6,800 起", ja: "¥6,800〜", en: "From ¥6,800", ko: "¥6,800부터" },
+  "¥8,000 起": { "zh-Hant": "¥8,000 起", ja: "¥8,000〜", en: "From ¥8,000", ko: "¥8,000부터" },
   "¥9,800 / 2 位": { "zh-Hant": "¥9,800 / 2 位", ja: "9,800円／2名", en: "¥9,800 / 2 people", ko: "9,800엔 / 2인" },
   "0 次": { "zh-Hant": "0 次", ja: "0回", en: "0 times", ko: "0회" },
   "0 张": { "zh-Hant": "0 張", ja: "0件", en: "0 items", ko: "0건" },
@@ -12965,9 +12965,9 @@ export const translations: TranslationMap = {
   "最近预约门店": { "zh-Hant": "最近預約門市", ja: "最近予約された店舗", en: "Recently booked stores", ko: "최근 예약된 매장" },
   "最近预约与售后沟通都在这里。": { "zh-Hant": "最近預約與售後溝通都在這裡。", ja: "最近では、予約受付やアフターサービスに関する連絡はすべてこちらで対応しています。", en: "Recently, appointments and after-sales communication have all been handled here.", ko: "최근에는 예약 및 사후 관리 관련 모든 업무를 이곳에서 처리하고 있습니다." },
   "最近咨询过": { "zh-Hant": "最近諮詢過", ja: "最近相談しました", en: "I recently consulted", ko: "저는 최근에 컨설팅을 받았습니다." },
-  "最快 45 分钟": { "zh-Hant": "最快 45 分鐘", ja: "最速の45分", en: "Fastest 45 minutes", ko: "가장 빠른 45분" },
+  "最快 00 分钟": { "zh-Hant": "最快 00 分鐘", ja: "最短00分", en: "As fast as 00 min", ko: "최단 00분" },
+  "最快 45 分钟": { "zh-Hant": "最快 45 分鐘", ja: "最短45分", en: "As fast as 45 min", ko: "최단 45분" },
   "最快 45 分钟到达": { "zh-Hant": "最快 45 分鐘到達", ja: "最短45分で到着", en: "Arrive in as little as 45 minutes", ko: "45분 만에 도착하세요" },
-  "最快（00）分钟": { "zh-Hant": "最快（00）分鐘", ja: "最速（00）分", en: "As fast as 00 min", ko: "최단 00분" },
   "最快到达": { "zh-Hant": "最快到達", ja: "最速到着", en: "Fastest arrival", ko: "가장 빠른 도착" },
   "最快上门": { "zh-Hant": "最快上門", ja: "最速のオンサイ…", en: "Fastest on-site service", ko: "가장 빠른 현장 …" },
   "最少休息天 / 周": { "zh-Hant": "最少休息天 / 週", ja: "週あたりの最低休息日数", en: "Minimum number of rest days per week", ko: "주당 최소 휴식일 수" },
@@ -13783,6 +13783,63 @@ function translateDynamicDateLabel(core: string, language: Language): string | n
   return null;
 }
 
+function translateDynamicPriceFromLabel(core: string, language: Language): string | null {
+  const match = core.match(/^([¥￥])\s*(\d[\d,]*)\s*起$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, currency, amount] = match;
+  const price = `${currency}${amount}`;
+
+  if (language === "zh-Hant") {
+    return `${price} 起`;
+  }
+
+  if (language === "ja") {
+    return `${price}〜`;
+  }
+
+  if (language === "en") {
+    return `From ${price}`;
+  }
+
+  if (language === "ko") {
+    return `${price}부터`;
+  }
+
+  return null;
+}
+
+function translateDynamicFastestMinutesLabel(core: string, language: Language): string | null {
+  const match = core.match(/^最快\s*(?:（)?(\d[\d,]*)(?:）)?\s*分钟$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, minutes] = match;
+
+  if (language === "zh-Hant") {
+    return `最快 ${minutes} 分鐘`;
+  }
+
+  if (language === "ja") {
+    return `最短${minutes}分`;
+  }
+
+  if (language === "en") {
+    return `As fast as ${minutes} min`;
+  }
+
+  if (language === "ko") {
+    return `최단 ${minutes}분`;
+  }
+
+  return null;
+}
+
 function translateDynamicCountLabel(core: string, language: Language): string | null {
   const match = core.match(/^(\d[\d,]*)(?:\/(\d[\d,]*))?\s*(天|单|件|人|格|个|条|张|家|套|项|类|笔|次|位|名)$/);
 
@@ -14084,6 +14141,8 @@ const runtimeTranslationCleanup: Partial<Record<TargetLanguage, Array<[string | 
     ["可随时予約", "すぐ予約可"],
     ["Tonight hasGap", "今夜空きあり"],
     ["去スキャン", "再スキャン"],
+    [/([¥￥]\s*\d[\d,]*)\s*上昇/gu, "$1〜"],
+    [/最速の(\d[\d,]*)分/gu, "最短$1分"],
     [/(\d+)\s*个コンボ/gu, "$1件のプラン"],
     [/(\d+)\s*号コンボ/gu, "$1番プラン"],
     [/(\d+)\s*条/gu, "$1件"],
@@ -14565,6 +14624,18 @@ export function translateText(source: string, language: Language): string {
 
   if (language === "zh") {
     return source;
+  }
+
+  const dynamicPriceFromLabel: string | null = translateDynamicPriceFromLabel(core, language);
+
+  if (dynamicPriceFromLabel) {
+    return `${leading}${cleanupRuntimeTranslation(dynamicPriceFromLabel, language)}${trailing}`;
+  }
+
+  const dynamicFastestMinutesLabel: string | null = translateDynamicFastestMinutesLabel(core, language);
+
+  if (dynamicFastestMinutesLabel) {
+    return `${leading}${cleanupRuntimeTranslation(dynamicFastestMinutesLabel, language)}${trailing}`;
   }
 
   const exact = resolveTranslationEntry(translations[core], language);

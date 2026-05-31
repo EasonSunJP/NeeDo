@@ -216,10 +216,14 @@ describe("translations", () => {
     expect(translateText("自然款美睫", "en")).toBe("Natural lash beauty");
     expect(translateText("当日可约", "ja")).toBe("当日予約可");
     expect(translateText("当日可约", "en")).toBe("Same-day booking available");
-    expect(translateText("最快（00）分钟", "ja")).toBe("最速（00）分");
-    expect(translateText("最快（00）分钟", "en")).toBe("As fast as 00 min");
-    expect(translateText("（￥000,000）起", "ja")).toBe("（￥000,000）~");
-    expect(translateText("（￥000,000）起", "en")).toBe("From ￥000,000");
+    expect(translateText("最快 00 分钟", "ja")).toBe("最短00分");
+    expect(translateText("最快 00 分钟", "en")).toBe("As fast as 00 min");
+    expect(translateText("最快 45 分钟", "ja")).toBe("最短45分");
+    expect(translateText("最快（45）分钟", "ja")).toBe("最短45分");
+    expect(translateText("￥000,000 起", "ja")).toBe("￥000,000〜");
+    expect(translateText("￥000,000 起", "en")).toBe("From ￥000,000");
+    expect(translateText("￥6,800 起", "ja")).toBe("￥6,800〜");
+    expect(translateText("¥6,800 起", "ja")).toBe("¥6,800〜");
     expect(translateText("修水管", "zh")).toBe("修水管");
     expect(translateText("修水管", "ja")).toBe("水回り");
   });
