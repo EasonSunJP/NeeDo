@@ -72,8 +72,13 @@ describe("StoreDetailPage compact metrics", () => {
 });
 
 describe("IconMetricAction shared shell", () => {
-  it("uses an opaque shared shell color so heart icons do not shift across card backgrounds", () => {
-    expect(appScaffoldSource).toContain("bg-[color:color-mix(in_srgb,var(--client-primary)_8%,white_92%)]");
-    expect(appScaffoldSource).toContain("border-[color:color-mix(in_srgb,var(--client-primary)_18%,white_82%)]");
+  it("uses theme tokens for metric shells so heart and share icons follow the active UI theme", () => {
+    expect(appScaffoldSource).toContain(
+      "bg-[color:color-mix(in_srgb,var(--client-primary-soft)_72%,var(--client-surface)_28%)]"
+    );
+    expect(appScaffoldSource).toContain("border-[color:color-mix(in_srgb,var(--client-primary)_30%,transparent)]");
+    expect(appScaffoldSource).toContain("text-[color:var(--client-primary)]");
+    expect(appScaffoldSource).not.toContain("white_92%");
+    expect(appScaffoldSource).not.toContain("white_82%");
   });
 });

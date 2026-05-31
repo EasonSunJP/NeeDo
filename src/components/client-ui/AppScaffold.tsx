@@ -368,7 +368,7 @@ export function IconMetricAction({
     >
       <span
         className={cn(
-          "inline-flex items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_18%,white_82%)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,white_92%)] text-[color:var(--client-primary)] shadow-[0_18px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl transition",
+          "inline-flex items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-primary)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary-soft)_72%,var(--client-surface)_28%)] text-[color:var(--client-primary)] shadow-[0_18px_36px_rgba(0,0,0,0.14)] backdrop-blur-xl transition",
           sizeClassName.shell,
           active
             ? "border-[color:color-mix(in_srgb,var(--client-primary)_40%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary)]"
