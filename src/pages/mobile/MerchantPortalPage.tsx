@@ -35,7 +35,8 @@ import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCale
 import { Badge } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
-import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { imageBank, orders, settlements } from "../../data/mock";
 import { DispatchOverviewWorkspace } from "../../features/dispatch-center/components/OverviewWorkspace";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages";
@@ -105,6 +106,26 @@ type MerchantIncomeTrendPoint = {
 type MerchantPendingStaffDelete =
   | { type: "manual"; id: string; name: string }
   | { type: "technician"; id: string; name: string };
+type MerchantStorePrivacyVisibility = "privateAll" | "limited" | "network";
+
+const merchantStorePrivacyOptions = [
+  {
+    value: "privateAll",
+    label: "对所有人不可见",
+    description: "仅本人可见"
+  },
+  {
+    value: "limited",
+    label: "对好友可见",
+    description: "仅好友可以看到该账号信息"
+  },
+  {
+    value: "network",
+    label: "对好友以及关联人可见",
+    description: "仅好友以及关联店铺和介绍关系中的关联人可见"
+  }
+] as const satisfies ReadonlyArray<{ value: MerchantStorePrivacyVisibility; label: string; description: string }>;
+
 const merchantDetachedTechnicianStoreId = "unassigned";
 const merchantInitialManualEmployees: MerchantManualEmployee[] = [
   {
@@ -1139,6 +1160,119 @@ function MerchantOrdersHeader({
   );
 }
 
+function getMerchantStorePrivacyLabel(visibility: MerchantStorePrivacyVisibility) {
+  switch (visibility) {
+    case "limited":
+      return "对好友可见";
+    case "network":
+      return "对好友以及关联人可见";
+    case "privateAll":
+    default:
+      return "对所有人不可见";
+  }
+}
+
+function getMerchantStorePrivacySummary(enabled: boolean, visibility: MerchantStorePrivacyVisibility) {
+  return enabled ? getMerchantStorePrivacyLabel(visibility) : "公开可见";
+}
+
+function MerchantStorePrivacyInfoButton({ content }: { content: string }) {
+  return (
+    <InfoTooltipTrigger
+      className="h-4 w-4 border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_78%,transparent)] text-[10px] text-[color:var(--client-muted)] hover:text-[color:var(--client-text)]"
+      content={content}
+      label="查看隐私范围说明"
+      panelMode="tooltip"
+    />
+  );
+}
+
+function MerchantStorePrivacyControl({
+  enabled,
+  menuOpen,
+  onEnabledChange,
+  onMenuOpenChange,
+  onVisibilityChange,
+  visibility
+}: {
+  enabled: boolean;
+  menuOpen: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  onMenuOpenChange: (open: boolean) => void;
+  onVisibilityChange: (visibility: MerchantStorePrivacyVisibility) => void;
+  visibility: MerchantStorePrivacyVisibility;
+}) {
+  return (
+    <div className="relative z-[70] w-[176px]" data-testid="merchant-store-privacy-control">
+      <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            aria-expanded={enabled ? menuOpen : undefined}
+            className="min-w-0 flex-1 text-left disabled:cursor-default"
+            disabled={!enabled}
+            onClick={() => onMenuOpenChange(!menuOpen)}
+            type="button"
+          >
+            <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">隐私模式</span>
+            <strong className="mt-0.5 block truncate text-[11px] font-black text-[color:var(--client-text)]">
+              {getMerchantStorePrivacySummary(enabled, visibility)}
+            </strong>
+          </button>
+          <ToggleSwitch ariaLabel="开启店铺隐私模式" checked={enabled} onChange={onEnabledChange} />
+        </div>
+      </div>
+      {enabled && menuOpen ? (
+        <div
+          className="absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_94%,var(--client-surface)_6%)] p-2 text-[color:var(--client-text)] shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl"
+          data-testid="merchant-store-privacy-options"
+        >
+          {merchantStorePrivacyOptions.map((option) => {
+            const checked = visibility === option.value;
+
+            return (
+              <div
+                className={cn(
+                  "rounded-[18px] border px-3 py-3 text-left transition",
+                  checked
+                    ? "border-[color:color-mix(in_srgb,var(--client-primary)_74%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_18%,var(--client-surface)_82%)]"
+                    : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)]"
+                )}
+                key={option.value}
+              >
+                <div className="flex items-center gap-3">
+                  <button
+                    aria-label={`选择${option.label}`}
+                    className={cn(
+                      "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
+                      checked
+                        ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]"
+                        : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent"
+                    )}
+                    onClick={() => onVisibilityChange(option.value)}
+                    type="button"
+                  >
+                    ✓
+                  </button>
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <button
+                      className="min-w-0 truncate text-left text-sm font-black"
+                      onClick={() => onVisibilityChange(option.value)}
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                    <MerchantStorePrivacyInfoButton content={option.description} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function MerchantPortalPage() {
   const merchantPortalConfig = roleBasedTabConfig.merchant;
   const { view } = useParams();
@@ -1175,6 +1309,9 @@ export function MerchantPortalPage() {
   const [merchantOrderEndDate, setMerchantOrderEndDate] = useState("");
   const [followedStaffIds, setFollowedStaffIds] = useState<string[]>(["tech-1"]);
   const [followedCustomerIds, setFollowedCustomerIds] = useState<string[]>(["cus-1", "cus-3"]);
+  const [storePrivacyEnabled, setStorePrivacyEnabled] = useState(false);
+  const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantStorePrivacyVisibility>("privateAll");
+  const [storePrivacyMenuOpen, setStorePrivacyMenuOpen] = useState(false);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
   const [contactLog, setContactLog] = useState("暂无联系记录");
   const [homeContactStatusFilter, setHomeContactStatusFilter] = useState<MerchantContactStatusFilter>("active");
@@ -1731,7 +1868,28 @@ export function MerchantPortalPage() {
     setSearchParams(nextParams);
   };
 
+  const updateStorePrivacyEnabled = (enabled: boolean) => {
+    setStorePrivacyEnabled(enabled);
+    setStorePrivacyMenuOpen(enabled);
+  };
+
+  const updateStorePrivacyVisibility = (visibility: MerchantStorePrivacyVisibility) => {
+    setStorePrivacyEnabled(true);
+    setStorePrivacyVisibility(visibility);
+    setStorePrivacyMenuOpen(false);
+  };
+
   const isMerchantDataCenterView = activeView === "me" && activeMeTab === "data";
+  const storePrivacyControl = (
+    <MerchantStorePrivacyControl
+      enabled={storePrivacyEnabled}
+      menuOpen={storePrivacyMenuOpen}
+      onEnabledChange={updateStorePrivacyEnabled}
+      onMenuOpenChange={setStorePrivacyMenuOpen}
+      onVisibilityChange={updateStorePrivacyVisibility}
+      visibility={storePrivacyVisibility}
+    />
+  );
 
   return (
     <MobileShell
@@ -2130,6 +2288,7 @@ export function MerchantPortalPage() {
               {activeMeTab === "service" ? (
                 <StoreDetailExperience
                   embedded
+                  privacyControl={storePrivacyControl}
                   scope="merchant"
                   store={store}
                 />

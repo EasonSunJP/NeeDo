@@ -47,6 +47,11 @@ describe("UnifiedSettingsServiceRangePage", () => {
 });
 
 describe("UnifiedSettingsPortalPage", () => {
+  const portalPageSource = source.slice(
+    source.indexOf("export function UnifiedSettingsPortalPage"),
+    source.indexOf("function UserProfileSettingsPage")
+  );
+
   it("uses the current settings route as the selected frontend identity", () => {
     expect(resolveSettingsSelectedPortal("technician", "user")).toBe("technician");
     expect(resolveSettingsSelectedPortal("merchant", "user")).toBe("merchant");
@@ -68,6 +73,16 @@ describe("UnifiedSettingsPortalPage", () => {
         routePortal: "merchant"
       })
     ).toBe(true);
+  });
+
+  it("moves portal helper captions behind inline info triggers", () => {
+    expect(source).toContain("function SettingsPortalActionRow");
+    expect(source).toContain('className="h-4 w-4 text-[10px]"');
+    expect(portalPageSource).toContain("info={t(compactPortalLabels[item].caption)}");
+    expect(portalPageSource).toContain("info={t(entry.subtitle)}");
+    expect(portalPageSource).toContain("trailing={<SettingsArrow />}");
+    expect(portalPageSource).not.toContain("{t(compactPortalLabels[item].caption)}</p>");
+    expect(portalPageSource).not.toContain("subtitle={t(entry.subtitle)}");
   });
 });
 

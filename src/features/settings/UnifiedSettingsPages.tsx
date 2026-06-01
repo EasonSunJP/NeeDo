@@ -10,11 +10,12 @@ import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreen
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
-import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { businessCpsPromoters } from "../business-cps/model";
 import {
   SettingsDetailPage,
+  SettingsArrow,
   SettingsHomePage,
   SettingsListItem,
   SettingsRadioListPage,
@@ -197,6 +198,65 @@ function SettingsPortalSelectionIndicator({ active }: { active: boolean }) {
         <path d="m2.5 6 2.2 2.2L9.5 3.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
       </svg>
     </span>
+  );
+}
+
+function SettingsPortalInfoTrigger({ content, label }: { content: ReactNode; label: string }) {
+  return (
+    <InfoTooltipTrigger
+      className="h-4 w-4 text-[10px]"
+      content={content}
+      label={label}
+      panelMode="tooltip"
+      panelClassName="font-medium"
+    />
+  );
+}
+
+function SettingsPortalActionRow({
+  active = false,
+  actionLabel,
+  info,
+  infoLabel,
+  onClick,
+  title,
+  trailing
+}: {
+  active?: boolean;
+  actionLabel: string;
+  info: ReactNode;
+  infoLabel: string;
+  onClick: () => void;
+  title: ReactNode;
+  trailing: ReactNode;
+}) {
+  return (
+    <div
+      aria-label={actionLabel}
+      className={cn(
+        "group relative flex min-h-[60px] w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition before:pointer-events-none before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition focus:outline-none focus-visible:before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] focus-within:before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+        active
+          ? "before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
+          : "hover:before:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
+      )}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="relative z-10 min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[15px] font-black text-[color:var(--client-text)]">{title}</span>
+          <SettingsPortalInfoTrigger content={info} label={infoLabel} />
+        </div>
+      </div>
+      <div className="relative z-10 flex shrink-0 items-center gap-2">{trailing}</div>
+    </div>
   );
 }
 
@@ -1736,23 +1796,16 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
             const active = item === selectedPortal;
 
             return (
-              <button
-                className={cn(
-                  "relative flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition focus:outline-none",
-                  active
-                    ? "before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
-                    : "hover:before:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
-                )}
+              <SettingsPortalActionRow
+                active={active}
+                actionLabel={`${t("切换身份")}：${t(compactPortalLabels[item].label)}`}
+                info={t(compactPortalLabels[item].caption)}
+                infoLabel={t("查看身份说明")}
                 key={item}
                 onClick={() => selectPortal(item)}
-                type="button"
-              >
-                <div className="relative z-10 min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-black text-[color:var(--client-text)]">{t(compactPortalLabels[item].label)}</p>
-                  <p className="mt-0.5 truncate text-[12px] text-[color:var(--client-muted)]">{t(compactPortalLabels[item].caption)}</p>
-                </div>
-                <SettingsPortalSelectionIndicator active={active} />
-              </button>
+                title={t(compactPortalLabels[item].label)}
+                trailing={<SettingsPortalSelectionIndicator active={active} />}
+              />
             );
           })}
         </SettingsSection>
@@ -1763,11 +1816,14 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
           title={t("后台入口")}
         >
           {backendSettingsPortalEntries.map((entry) => (
-            <SettingsListItem
+            <SettingsPortalActionRow
+              actionLabel={`${t("进入后台")}：${t(entry.title)}`}
+              info={t(entry.subtitle)}
+              infoLabel={t("查看后台入口说明")}
               key={entry.id}
               onClick={() => openBackendPortal(entry.href)}
-              subtitle={t(entry.subtitle)}
               title={t(entry.title)}
+              trailing={<SettingsArrow />}
             />
           ))}
         </SettingsSection>

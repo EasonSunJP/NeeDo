@@ -3,11 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import { IconButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
-import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { userNavItems } from "../../components/mobile/navItems";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
+import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { reviews, stores } from "../../data/mock";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
@@ -53,6 +54,7 @@ const userProfileGenderOptions: Array<{ label: string; value: NonNullable<Custom
   { label: "女", value: "female" },
   { label: "男", value: "male" }
 ];
+type UserProfileVisibility = "privateAll" | "limited" | "network";
 type UserProfileDraft = {
   avatar: string;
   nickname: string;
@@ -62,6 +64,23 @@ type UserProfileDraft = {
   languages: string[];
   bio: string;
 };
+const userProfilePrivacyOptions = [
+  {
+    value: "privateAll",
+    label: "对所有人不可见",
+    description: "仅本人可见"
+  },
+  {
+    value: "limited",
+    label: "对好友可见",
+    description: "仅好友可以看到该账号信息"
+  },
+  {
+    value: "network",
+    label: "对好友以及关联人可见",
+    description: "仅好友以及关联店铺和介绍关系中的关联人可见"
+  }
+] as const satisfies ReadonlyArray<{ value: UserProfileVisibility; label: string; description: string }>;
 type AvatarCropDrag = {
   pointerId: number;
   startX: number;
@@ -230,6 +249,33 @@ function normalizeUserHeightForStorage(value: string) {
   return /^\d+(?:\.\d+)?$/.test(height) ? `${height}cm` : height;
 }
 
+function getUserProfilePrivacyLabel(visibility: UserProfileVisibility) {
+  switch (visibility) {
+    case "limited":
+      return "对好友可见";
+    case "network":
+      return "对好友以及关联人可见";
+    case "privateAll":
+    default:
+      return "对所有人不可见";
+  }
+}
+
+function getUserProfilePrivacySummary(enabled: boolean, visibility: UserProfileVisibility) {
+  return enabled ? getUserProfilePrivacyLabel(visibility) : "公开可见";
+}
+
+function UserProfilePrivacyInfoButton({ content }: { content: string }) {
+  return (
+    <InfoTooltipTrigger
+      className="h-4 w-4 text-[10px]"
+      content={content}
+      label="查看隐私范围说明"
+      panelMode="tooltip"
+    />
+  );
+}
+
 function buildUserProfileDraft(customer: Customer, linkedTechnician?: Technician): UserProfileDraft {
   const profile = buildUserProfile(customer, linkedTechnician);
 
@@ -386,6 +432,9 @@ export function UserCenterPage() {
   const [profileDraft, setProfileDraft] = useState<UserProfileDraft | null>(null);
   const [savedProfilePreview, setSavedProfilePreview] = useState<UserProfileDraft | null>(null);
   const [profileNameOverride, setProfileNameOverride] = useState("");
+  const [profilePrivacyEnabled, setProfilePrivacyEnabled] = useState(false);
+  const [profilePrivacyVisibility, setProfilePrivacyVisibility] = useState<UserProfileVisibility>("privateAll");
+  const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [profileToastMessage, setProfileToastMessage] = useState("");
   const visibleProfile = profileDraft
@@ -417,6 +466,7 @@ export function UserCenterPage() {
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
   const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
   const membershipSurface = getThemeProfileSurfaceClassNames();
+  const profilePrivacySummary = getUserProfilePrivacySummary(profilePrivacyEnabled, profilePrivacyVisibility);
   const nicknameInputRef = useRef<HTMLTextAreaElement>(null);
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
@@ -470,6 +520,15 @@ export function UserCenterPage() {
 
       return { ...current, languages: languages.length > 0 ? languages : [language] };
     });
+  };
+  const updateProfilePrivacyEnabled = (enabled: boolean) => {
+    setProfilePrivacyEnabled(enabled);
+    setProfilePrivacyMenuOpen(enabled);
+  };
+  const updateProfilePrivacyVisibility = (visibility: UserProfileVisibility) => {
+    setProfilePrivacyEnabled(true);
+    setProfilePrivacyVisibility(visibility);
+    setProfilePrivacyMenuOpen(false);
   };
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -561,11 +620,8 @@ export function UserCenterPage() {
   };
 
   return (
-    <MobileShell navPanelStyle="plain" showTopEdgeMask={false}>
-      <MobileFullscreenPage
-        className="!z-20"
-        innerClassName="bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]"
-      >
+    <MobileShell navItems={userNavItems} navPanelStyle="plain" showTopEdgeMask={false}>
+      <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
           action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
           info="账号资料、订单入口与服务权益都统一收在这里。"
@@ -583,7 +639,7 @@ export function UserCenterPage() {
             </div>
           ) : null}
           <div className="space-y-4">
-            <section className={cn("overflow-hidden rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
+            <section className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
               <div className="relative">
                 <IconButton
                   className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
@@ -615,7 +671,7 @@ export function UserCenterPage() {
                       ) : null}
                     </div>
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="flex h-36 min-w-0 flex-1 flex-col">
                     <div className="min-w-0 max-w-[calc(100%-44px)]">
                       {isEditingProfile && profileDraft ? (
                         <div className="flex min-w-0 items-start gap-1.5">
@@ -655,6 +711,73 @@ export function UserCenterPage() {
                       </span>
                     </div>
                     <p className={cn("truncate text-xs font-bold", membershipSurface.muted)}>ID {currentCustomer.systemId}</p>
+                    <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", membershipSurface.panel)} data-testid="user-profile-privacy-control">
+                      <div className="flex items-center justify-between gap-3">
+                        <button
+                          aria-expanded={profilePrivacyEnabled ? profilePrivacyMenuOpen : undefined}
+                          className="min-w-0 flex-1 text-left disabled:cursor-default"
+                          disabled={!profilePrivacyEnabled}
+                          onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
+                          type="button"
+                        >
+                          <p className={cn("text-xs font-bold", membershipSurface.label)}>隐私模式</p>
+                          <strong className="mt-1 block truncate text-sm">{profilePrivacySummary}</strong>
+                        </button>
+                        <ToggleSwitch
+                          ariaLabel="开启隐私模式"
+                          checked={profilePrivacyEnabled}
+                          onChange={updateProfilePrivacyEnabled}
+                          size="md"
+                        />
+                      </div>
+                      {profilePrivacyEnabled && profilePrivacyMenuOpen ? (
+                        <div
+                          className={cn(
+                            "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl",
+                            membershipSurface.shell
+                          )}
+                          data-testid="user-profile-privacy-options"
+                        >
+                          {userProfilePrivacyOptions.map((option) => {
+                            const checked = profilePrivacyVisibility === option.value;
+
+                            return (
+                              <div
+                                className={cn(
+                                  "rounded-[18px] border px-3 py-3 text-left transition",
+                                  checked ? membershipSurface.chip : membershipSurface.panel
+                                )}
+                                key={option.value}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    aria-label={`选择${option.label}`}
+                                    className={cn(
+                                      "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
+                                      checked ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]" : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent"
+                                    )}
+                                    onClick={() => updateProfilePrivacyVisibility(option.value)}
+                                    type="button"
+                                  >
+                                    ✓
+                                  </button>
+                                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                    <button
+                                      className="min-w-0 truncate text-left text-sm font-black"
+                                      onClick={() => updateProfilePrivacyVisibility(option.value)}
+                                      type="button"
+                                    >
+                                      {option.label}
+                                    </button>
+                                    <UserProfilePrivacyInfoButton content={option.description} />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 
@@ -867,7 +990,7 @@ export function UserCenterPage() {
             </section>
           </div>
         </main>
-      </MobileFullscreenPage>
+      </div>
     </MobileShell>
   );
 }

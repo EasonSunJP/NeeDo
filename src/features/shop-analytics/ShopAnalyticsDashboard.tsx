@@ -295,15 +295,15 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 const analyticsControlActiveClassName =
-  "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]";
+  "shop-analytics-control-active border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)] shadow-[0_10px_24px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]";
 const analyticsControlInactiveClassName =
-  "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_74%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:var(--client-primary-soft)] hover:text-[color:var(--client-primary-strong)]";
+  "shop-analytics-control-inactive border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_74%,transparent)] text-[color:var(--client-muted)] hover:bg-[color:var(--client-primary-soft)] hover:text-[color:var(--client-primary-strong)]";
 const analyticsPanelToneClassName =
-  "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] text-[color:var(--client-text)] shadow-panel";
+  "shop-analytics-panel border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,transparent)] text-[color:var(--client-text)] shadow-panel";
 const analyticsTileToneClassName =
-  "bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-text)]";
+  "shop-analytics-tile bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-text)]";
 const analyticsTrackToneClassName =
-  "bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_8%)]";
+  "shop-analytics-track bg-[color:color-mix(in_srgb,var(--client-bg)_72%,var(--client-primary)_8%)]";
 
 function DownloadTrayIcon({ className }: { className?: string }) {
   return (
@@ -652,7 +652,7 @@ function TrendBars({
 
 function MiniLegend({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-[16px] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] px-3 py-2">
+    <div className="shop-analytics-mini-legend min-w-0 rounded-[16px] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] px-3 py-2">
       <p className="truncate text-[10px] font-bold text-[color:var(--client-soft-muted)]">{label}</p>
       <strong className="mt-1 block truncate text-xs font-black text-[color:var(--client-text)]">{value}</strong>
     </div>
@@ -818,7 +818,7 @@ function MetricLineChart({
   };
 
   return (
-    <div className="overflow-visible rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_88%,transparent),color-mix(in_srgb,var(--client-bg)_92%,var(--client-primary)_8%))] p-3 text-[color:var(--client-text)] shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
+    <div className="shop-analytics-chart-panel overflow-visible rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_88%,transparent),color-mix(in_srgb,var(--client-bg)_92%,var(--client-primary)_8%))] p-3 text-[color:var(--client-text)] shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
       <div className="mb-3 grid grid-cols-2 gap-2">
         <MiniLegend label="当前周期" value={formatMetricValue(metric)} />
         <MiniLegend label="前一周期" value={compareEnabled ? formatMetricValue(getSummaryMetric(compareOverview, metricKey)) : "未开启"} />
@@ -2391,11 +2391,11 @@ export function ShopAnalyticsDashboard({
   };
 
   return (
-    <div className={cn(shellClassName, className)}>
-      <section className="overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-panel">
+    <div className={cn("shop-analytics-dashboard", shellClassName, className)}>
+      <section className="shop-analytics-hero overflow-hidden rounded-[30px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] shadow-panel">
         <div className="relative min-h-[220px] p-4 text-white sm:p-5">
           <img alt={store.name} className="absolute inset-0 h-full w-full object-cover" src={store.cover} />
-          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(8,17,28,0.88),rgba(25,52,61,0.68),rgba(23,109,88,0.42))]" />
+          <div className="shop-analytics-hero-overlay absolute inset-0 bg-[linear-gradient(135deg,rgba(8,17,28,0.88),rgba(25,52,61,0.68),rgba(23,109,88,0.42))]" />
           <div className="relative flex min-h-[188px] flex-col justify-between gap-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -2406,15 +2406,15 @@ export function ShopAnalyticsDashboard({
               <Badge className="shrink-0 border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_24%,transparent)] text-white" tone="neutral">Asia/Tokyo</Badge>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
+              <div className="shop-analytics-hero-metric rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
                 <p className="text-[11px] font-bold text-white/55">营业额</p>
                 <strong className="mt-1 block truncate text-sm font-black text-white">{formatMetricValue(overview.summary.grossRevenue)}</strong>
               </div>
-              <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
+              <div className="shop-analytics-hero-metric rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
                 <p className="text-[11px] font-bold text-white/55">完单率</p>
                 <strong className="mt-1 block truncate text-sm font-black text-white">{formatMetricValue(overview.summary.completionRate)}</strong>
               </div>
-              <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
+              <div className="shop-analytics-hero-metric rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
                 <p className="text-[11px] font-bold text-white/55">风险</p>
                 <strong className="mt-1 block truncate text-sm font-black text-white">{overview.alerts.length} 件</strong>
               </div>
@@ -2425,7 +2425,7 @@ export function ShopAnalyticsDashboard({
 
       <AnalyticsSegmentedControl dark items={tabOptions} onChange={setActiveTab} value={activeTab} />
 
-      <section className="sticky top-[calc(env(safe-area-inset-top,0px)+10px)] z-30 rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_90%,transparent),color-mix(in_srgb,var(--client-bg)_86%,var(--client-primary)_10%))] p-3 text-[color:var(--client-text)] shadow-[0_18px_42px_rgba(0,0,0,0.24)] backdrop-blur-xl">
+      <section className="shop-analytics-filter-panel sticky top-[calc(env(safe-area-inset-top,0px)+10px)] z-30 rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_90%,transparent),color-mix(in_srgb,var(--client-bg)_86%,var(--client-primary)_10%))] p-3 text-[color:var(--client-text)] shadow-[0_18px_42px_rgba(0,0,0,0.24)] backdrop-blur-xl">
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_40px] items-center gap-2">
           <div className="grid min-w-0 grid-cols-5 gap-2">
             {presetOptions.map((item) => (

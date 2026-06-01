@@ -32,6 +32,24 @@ describe("UserCenterPage", () => {
     expect(source).toContain("<InfoTooltipTrigger");
   });
 
+  it("keeps the user center on the main bottom navigation", () => {
+    expect(source).toContain("navItems={userNavItems}");
+    expect(source).not.toContain("<MobileFullscreenPage");
+    expect(source).toContain("pb-[calc(132px+env(safe-area-inset-bottom))]");
+  });
+
+  it("shows the personal privacy switch with floating options", () => {
+    expect(source).toContain("userProfilePrivacyOptions");
+    expect(source).toContain('data-testid="user-profile-privacy-control"');
+    expect(source).toContain('data-testid="user-profile-privacy-options"');
+    expect(source).toContain('ariaLabel="开启隐私模式"');
+    expect(source).toContain("absolute right-0 top-[calc(100%+8px)]");
+    expect(source).toContain("flex h-36 min-w-0 flex-1 flex-col");
+    expect(source).toContain("mt-auto rounded-[18px]");
+    expect(source).toContain("z-[90]");
+    expect(source).toContain("UserProfilePrivacyInfoButton");
+  });
+
   it("keeps the personal profile card colors tied to the active UI theme instead of membership kind", () => {
     expect(source).toContain("getThemeProfileSurfaceClassNames()");
     expect(source).not.toContain("getMembershipSurfaceClassNames(membership.kind)");

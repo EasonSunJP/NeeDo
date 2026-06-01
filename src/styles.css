@@ -1779,12 +1779,46 @@ body:has(.client-theme-noir-gold),
 }
 
 .client-shell.merchant-analytics-clean-shell {
+  --client-shadow: 0 18px 38px rgba(0, 0, 0, 0.24);
+}
+
+.client-shell.client-theme-night.merchant-analytics-clean-shell {
   --client-bg: #05060f;
   --client-edge-mask-rgb: 5 6 15;
   --client-shadow: 0 18px 38px rgba(0, 0, 0, 0.34);
   background: #05060f !important;
   background-image: none !important;
   background-size: auto !important;
+}
+
+.client-shell.client-theme-day.merchant-analytics-clean-shell {
+  --client-shadow: 0 18px 38px rgba(24, 42, 39, 0.14);
+  background: var(--shop-analytics-page-bg, var(--client-bg)) !important;
+  background-image: none !important;
+  background-size: auto !important;
+}
+
+.client-shell.client-theme-light-green.merchant-analytics-clean-shell,
+.client-shell.client-theme-jade-light.merchant-analytics-clean-shell {
+  --shop-analytics-page-bg: #f6fbf8;
+  --shop-analytics-panel-bg: rgba(255, 255, 255, 0.96);
+  --shop-analytics-panel-border: rgba(54, 122, 113, 0.18);
+  --shop-analytics-panel-shadow: 0 18px 36px rgba(37, 88, 79, 0.12);
+  --shop-analytics-tile-bg: rgba(255, 255, 255, 0.92);
+  --shop-analytics-track-bg: rgba(54, 122, 113, 0.08);
+  --shop-analytics-control-bg: rgba(255, 255, 255, 0.9);
+  --shop-analytics-hero-overlay: linear-gradient(135deg, rgba(19, 48, 43, 0.76), rgba(45, 118, 106, 0.48), rgba(246, 251, 248, 0.22));
+}
+
+.client-shell.client-theme-vital-mono.merchant-analytics-clean-shell {
+  --shop-analytics-page-bg: #f7f7f8;
+  --shop-analytics-panel-bg: rgba(255, 255, 255, 0.94);
+  --shop-analytics-panel-border: rgba(32, 33, 36, 0.16);
+  --shop-analytics-panel-shadow: 0 18px 36px rgba(20, 21, 23, 0.12);
+  --shop-analytics-tile-bg: rgba(255, 255, 255, 0.9);
+  --shop-analytics-track-bg: rgba(32, 33, 36, 0.08);
+  --shop-analytics-control-bg: rgba(255, 255, 255, 0.88);
+  --shop-analytics-hero-overlay: linear-gradient(135deg, rgba(20, 21, 24, 0.74), rgba(72, 78, 84, 0.42), rgba(247, 247, 248, 0.2));
 }
 
 .client-shell.shop-analytics-filter-page {
@@ -1795,21 +1829,70 @@ body:has(.client-theme-noir-gold),
   min-height: 100dvh !important;
 }
 
-.client-shell.merchant-analytics-clean-shell main,
-.client-shell.merchant-analytics-clean-shell .merchant-analytics-clean-content {
+.client-shell.client-theme-night.merchant-analytics-clean-shell main,
+.client-shell.client-theme-night.merchant-analytics-clean-shell .merchant-analytics-clean-content {
   background: #05060f !important;
   background-image: none !important;
 }
 
-.client-shell.merchant-analytics-clean-shell .merchant-analytics-clean-content [class*="shadow-["] {
+.client-shell.client-theme-day.merchant-analytics-clean-shell main,
+.client-shell.client-theme-day.merchant-analytics-clean-shell .merchant-analytics-clean-content {
+  background: var(--shop-analytics-page-bg, var(--client-bg)) !important;
+  background-image: none !important;
+}
+
+.client-shell.client-theme-night.merchant-analytics-clean-shell .merchant-analytics-clean-content [class*="shadow-["] {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.32) !important;
 }
 
-html:has(.merchant-analytics-clean-shell),
-body:has(.merchant-analytics-clean-shell),
-#root:has(.merchant-analytics-clean-shell) {
+html:has(.client-theme-night.merchant-analytics-clean-shell),
+body:has(.client-theme-night.merchant-analytics-clean-shell),
+#root:has(.client-theme-night.merchant-analytics-clean-shell) {
   background: #05060f !important;
   background-image: none !important;
+}
+
+html:has(.client-theme-light-green.merchant-analytics-clean-shell),
+html:has(.client-theme-jade-light.merchant-analytics-clean-shell),
+body:has(.client-theme-light-green.merchant-analytics-clean-shell),
+body:has(.client-theme-jade-light.merchant-analytics-clean-shell),
+#root:has(.client-theme-light-green.merchant-analytics-clean-shell),
+#root:has(.client-theme-jade-light.merchant-analytics-clean-shell) {
+  background: #f6fbf8 !important;
+  background-image: none !important;
+}
+
+html:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
+body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
+#root:has(.client-theme-vital-mono.merchant-analytics-clean-shell) {
+  background: #f7f7f8 !important;
+  background-image: none !important;
+}
+
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-panel,
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-filter-panel,
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-chart-panel,
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-hero {
+  border-color: var(--shop-analytics-panel-border, color-mix(in srgb, var(--client-line) 78%, transparent)) !important;
+  background: var(--shop-analytics-panel-bg, color-mix(in srgb, var(--client-surface) 96%, var(--client-bg) 4%)) !important;
+  box-shadow: var(--shop-analytics-panel-shadow, 0 18px 36px rgba(20, 21, 23, 0.12)) !important;
+}
+
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-tile,
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-mini-legend {
+  background: var(--shop-analytics-tile-bg, rgba(255, 255, 255, 0.9)) !important;
+}
+
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-track {
+  background: var(--shop-analytics-track-bg, color-mix(in srgb, var(--client-primary) 8%, var(--client-bg) 92%)) !important;
+}
+
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-control-inactive {
+  background: var(--shop-analytics-control-bg, rgba(255, 255, 255, 0.9)) !important;
+}
+
+.client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-hero-overlay {
+  background: var(--shop-analytics-hero-overlay) !important;
 }
 
 .client-shell main {

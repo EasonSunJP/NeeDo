@@ -16,7 +16,7 @@ import {
   useCustomContactCategories
 } from "../../components/mobile/ContactDirectory";
 import { AppIcon, AppTopBar, FeatureSegmentedTabs, IconButton, PageScaffold, ScheduleViewSegmentedTabs } from "../../components/client-ui/AppScaffold";
-import { FeatureCarousel, type FeatureCarouselSlide } from "../../components/client-ui/FeatureCarousel";
+import { FeatureCarousel } from "../../components/client-ui/FeatureCarousel";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
@@ -42,8 +42,10 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
 import { ChartPointerTooltip, resolveChartPointerState, type ChartPointerState } from "../../components/ui/ChartPointerTooltip";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
+import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
-import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { fieldJobs, orders } from "../../data/mock";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages";
 import { ImScopeProvider } from "../../features/im/scope";
@@ -171,6 +173,8 @@ type TechnicianProfile = {
   paymentMethods: TechnicianPaymentOption[];
 };
 
+type TechnicianProfileVisibility = "privateAll" | "limited" | "network";
+
 type TechnicianProfileDraft = {
   nickname: string;
   avatar: string;
@@ -191,7 +195,8 @@ type TechnicianProfileDraft = {
   bidBudgetMin: string;
   bidBudgetMax: string;
   paymentMethods: TechnicianPaymentOption[];
-  visibility: "privateAll" | "limited" | "network";
+  privacyEnabled: boolean;
+  visibility: TechnicianProfileVisibility;
 };
 
 type TechnicianKycDraft = {
@@ -866,6 +871,23 @@ const paymentOptionLabels: Record<TechnicianPaymentOption, string> = {
 };
 const paymentOptions: TechnicianPaymentOption[] = ["platform", "offline", "cash", "prepay", "paypay", "paypal", "wechatpay", "alipay"];
 const languageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
+const profilePrivacyOptions = [
+  {
+    value: "privateAll",
+    label: "对所有人不可见",
+    description: "仅本人可见"
+  },
+  {
+    value: "limited",
+    label: "对好友可见",
+    description: "仅好友可以看到该账号信息"
+  },
+  {
+    value: "network",
+    label: "对好友以及关联人可见",
+    description: "仅好友以及关联店铺和介绍关系中的关联人可见"
+  }
+] as const satisfies ReadonlyArray<{ value: TechnicianProfileVisibility; label: string; description: string }>;
 const serviceAreaCatalog = {
   日本: {
     東京都: ["銀座", "新宿", "渋谷", "池袋", "六本木"],
@@ -2218,7 +2240,8 @@ function buildTechnicianProfile(baseTech: TechnicianProfileSource, storeName: st
 
 function buildTechnicianProfileDraft(
   profile: TechnicianProfile,
-  visibility: "privateAll" | "limited" | "network",
+  privacyEnabled: boolean,
+  visibility: TechnicianProfileVisibility,
   defaultAreaSelection: { country: string; prefecture: string; area: string },
   defaultLineSelection: { line: string; stations: string[] }
 ): TechnicianProfileDraft {
@@ -2242,19 +2265,71 @@ function buildTechnicianProfileDraft(
     bidBudgetMin: profile.bidBudgetMin,
     bidBudgetMax: profile.bidBudgetMax,
     paymentMethods: [...profile.paymentMethods],
+    privacyEnabled,
     visibility
   };
 }
 
-function getVisibilityLabel(visibility: TechnicianProfileDraft["visibility"]) {
+function getVisibilityLabel(visibility: TechnicianProfileVisibility) {
   switch (visibility) {
     case "limited":
-      return "仅对指定对象可见";
+      return "对好友可见";
     case "network":
-      return "仅对指定对象及关联可见";
+      return "对好友以及关联人可见";
     default:
-      return "完全隐私模式";
+      return "对所有人不可见";
   }
+}
+
+function getProfilePrivacySummary(privacyEnabled: boolean, visibility: TechnicianProfileVisibility) {
+  return privacyEnabled ? getVisibilityLabel(visibility) : "公开可见";
+}
+
+function getTechnicianProfileSurfaceClassNames() {
+  return {
+    shell: "border-[color:color-mix(in_srgb,var(--client-primary)_30%,var(--client-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_22%,transparent),transparent_34%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_94%,black))] text-[color:var(--client-text)]",
+    panel: "border-[color:color-mix(in_srgb,var(--client-line)_72%,var(--client-primary)_14%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_58%,var(--client-bg)_42%)]",
+    metric: "border-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_16%)] bg-[color:color-mix(in_srgb,var(--client-elevated)_50%,transparent)]",
+    chip: "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]",
+    avatar: "border-[color:color-mix(in_srgb,var(--client-primary)_48%,var(--client-line))] ring-1 ring-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)]",
+    muted: "text-[color:var(--client-muted)]",
+    label: "text-[color:var(--client-soft-muted)]",
+    accent: "text-[color:var(--client-primary-strong)]",
+    divider: "bg-[color:color-mix(in_srgb,var(--client-line)_70%,var(--client-primary)_18%)]"
+  };
+}
+
+function formatTechnicianHeightValue(value: string) {
+  return value.trim().replace(/\s*(cm|厘米|センチ|㎝)$/i, "").trim();
+}
+
+function formatTechnicianRating(value: number) {
+  return Number.isFinite(value) ? value.toFixed(1) : "5.0";
+}
+
+function formatTechnicianCompactYen(value: number) {
+  if (!Number.isFinite(value)) {
+    return yen(0);
+  }
+
+  if (Math.abs(value) >= 100_000) {
+    const manYen = value / 10_000;
+
+    return `￥${Number.isInteger(manYen) ? manYen.toFixed(0) : manYen.toFixed(1)}万`;
+  }
+
+  return yen(value);
+}
+
+function ProfilePrivacyInfoButton({ content, className }: { content: string; className?: string }) {
+  return (
+    <InfoTooltipTrigger
+      className={cn("h-4 w-4 text-[10px]", className)}
+      content={content}
+      label="查看隐私范围说明"
+      panelMode="tooltip"
+    />
+  );
 }
 
 function buildTechnicianKycDraft(profile: TechnicianProfile): TechnicianKycDraft {
@@ -2558,12 +2633,15 @@ export function TechnicianPortalPage() {
   const [scheduleScope, setScheduleScope] = useState<ScheduleScope>("day");
   const [scheduleAnchorDate, setScheduleAnchorDate] = useState(todayDate);
   const [scheduleSelectedDate, setScheduleSelectedDate] = useState<string | null>(todayDate);
-  const [profileVisibility, setProfileVisibility] = useState<TechnicianProfileDraft["visibility"]>("privateAll");
+  const [profilePrivacyEnabled, setProfilePrivacyEnabled] = useState(false);
+  const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
+  const [profileVisibility, setProfileVisibility] = useState<TechnicianProfileVisibility>("privateAll");
+  const [profileDraftPrivacyMenuOpen, setProfileDraftPrivacyMenuOpen] = useState(false);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [documentUploadOpen, setDocumentUploadOpen] = useState(false);
   const [techProfile, setTechProfile] = useState<TechnicianProfile>(() => buildTechnicianProfile(baseTech, store.name));
   const [profileDraft, setProfileDraft] = useState<TechnicianProfileDraft>(() =>
-    buildTechnicianProfileDraft(buildTechnicianProfile(baseTech, store.name), "privateAll", defaultAreaSelection, defaultLineSelection)
+    buildTechnicianProfileDraft(buildTechnicianProfile(baseTech, store.name), false, "privateAll", defaultAreaSelection, defaultLineSelection)
   );
   const [kycDraft, setKycDraft] = useState<TechnicianKycDraft>(() => buildTechnicianKycDraft(buildTechnicianProfile(baseTech, store.name)));
   const [jobShareOpen, setJobShareOpen] = useState(false);
@@ -3135,6 +3213,15 @@ export function TechnicianPortalPage() {
     .filter((event) => event.status === "booked" || event.status === "free" || event.planType)
     .sort((left, right) => `${right.date} ${right.startTime}`.localeCompare(`${left.date} ${left.startTime}`))
     .slice(0, 6);
+  const technicianProfileSurface = getTechnicianProfileSurfaceClassNames();
+  const profilePrivacySummary = getProfilePrivacySummary(profilePrivacyEnabled, profileVisibility);
+  const technicianRating = formatTechnicianRating(baseTech.rating);
+  const technicianInfoTags = Array.from(new Set([...techProfile.tags, ...techProfile.languages])).slice(0, 12);
+  const technicianMetricCards = [
+    { label: "本月收入", value: formatTechnicianCompactYen(baseTech.income) },
+    { label: "完成订单", value: baseTech.orderCount.toLocaleString("en-US") },
+    { label: "服务评分", value: technicianRating, suffix: "/5", helper: `${baseTech.reviewCount} 人评价` }
+  ];
   const { categories: customDirectoryCategories, setCategories: setCustomDirectoryCategories } = useCustomContactCategories("technician");
   const [editingDirectoryCategoryId, setEditingDirectoryCategoryId] = useState<string | null>(null);
   const technicianContacts: Array<DirectoryContactItem & { followed: boolean }> = [
@@ -3359,9 +3446,9 @@ export function TechnicianPortalPage() {
     setTechProfile(nextProfile);
 
     if (!profileEditorOpen) {
-      setProfileDraft(buildTechnicianProfileDraft(nextProfile, profileVisibility, defaultAreaSelection, defaultLineSelection));
+      setProfileDraft(buildTechnicianProfileDraft(nextProfile, profilePrivacyEnabled, profileVisibility, defaultAreaSelection, defaultLineSelection));
     }
-  }, [baseTech, defaultAreaSelection, defaultLineSelection, profileEditorOpen, profileVisibility, store.name]);
+  }, [baseTech, defaultAreaSelection, defaultLineSelection, profileEditorOpen, profilePrivacyEnabled, profileVisibility, store.name]);
 
   useEffect(() => {
     if (scheduleScope === "day") {
@@ -3447,6 +3534,19 @@ export function TechnicianPortalPage() {
     navigate("/technician/settings/profile");
   };
 
+  const updateProfilePrivacyEnabled = (enabled: boolean) => {
+    setProfilePrivacyEnabled(enabled);
+    setProfilePrivacyMenuOpen(enabled);
+    setProfileDraft((current) => ({ ...current, privacyEnabled: enabled }));
+  };
+
+  const updateProfileVisibility = (visibility: TechnicianProfileVisibility) => {
+    setProfilePrivacyEnabled(true);
+    setProfilePrivacyMenuOpen(false);
+    setProfileVisibility(visibility);
+    setProfileDraft((current) => ({ ...current, privacyEnabled: true, visibility }));
+  };
+
   const openDocumentUpload = () => {
     setKycDraft((current) => ({
       ...buildTechnicianKycDraft(techProfile),
@@ -3519,6 +3619,9 @@ export function TechnicianPortalPage() {
       });
     }
 
+    setProfilePrivacyEnabled(profileDraft.privacyEnabled);
+    setProfilePrivacyMenuOpen(false);
+    setProfileDraftPrivacyMenuOpen(false);
     setProfileVisibility(profileDraft.visibility);
     setProfileEditorOpen(false);
     setContactLog("技师资料已保存，信息卡与分享资料已同步更新。");
@@ -4269,18 +4372,6 @@ export function TechnicianPortalPage() {
     );
   }
 
-  const technicianInfoCardSlides = useMemo<FeatureCarouselSlide[]>(
-    () =>
-      Array.from(new Set((techProfile.gallery.length > 0 ? techProfile.gallery : [techProfile.avatar]).filter(Boolean)))
-        .slice(0, 5)
-        .map((image, index) => ({
-          id: `technician-info-${index + 1}`,
-          image,
-          title: techProfile.nickname,
-          cta: "查看大图"
-        })),
-    [techProfile.avatar, techProfile.gallery, techProfile.nickname]
-  );
   const scheduleTopTabs: Array<{ label: ReactNode; value: "mySchedule" | "planning" }> = [
     { label: "我的排班", value: "mySchedule" },
     {
@@ -4924,64 +5015,165 @@ export function TechnicianPortalPage() {
             <div className="space-y-4 px-4 pb-32">
               {activeMeTab === "info" && (
                 <>
-                  <section className="overflow-hidden rounded-[28px] border border-line bg-white shadow-panel">
+                  <section
+                    className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", technicianProfileSurface.shell)}
+                    data-testid="technician-info-card"
+                  >
                     <div className="relative">
-                      <FeatureCarousel cardHeightClassName="h-[248px]" slides={technicianInfoCardSlides} />
-                    </div>
-                    <div className="-mt-12 px-4 pb-5">
-                      <div className="flex flex-wrap items-end justify-between gap-3">
-                        <AvatarImage alt={techProfile.nickname} className="h-24 w-24 border-4 border-white shadow-soft" src={techProfile.avatar} />
-                        <div className="flex flex-wrap gap-2">
-                          <Button to={`/technician/profiles/technician/${baseTech.id}`} variant="secondary">
-                            查看公开主页
-                          </Button>
-                          <Button onClick={openProfileEditor}>编辑信息卡</Button>
+                      <IconButton
+                        className={cn("absolute right-0 top-0 z-10 shadow-[0_14px_30px_rgba(0,0,0,0.22)]", technicianProfileSurface.metric)}
+                        icon="edit"
+                        label="编辑信息卡"
+                        onClick={openProfileEditor}
+                      />
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="shrink-0">
+                          <AvatarImage
+                            alt={techProfile.nickname}
+                            className={cn("h-36 w-36 rounded-[28px] border-[3px] shadow-[0_18px_36px_rgba(0,0,0,0.28)]", technicianProfileSurface.avatar)}
+                            src={techProfile.avatar}
+                          />
+                        </div>
+                        <div className="flex h-36 min-w-0 flex-1 flex-col">
+                          <h2 className="max-w-[calc(100%-44px)] overflow-hidden break-all text-[21px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
+                            {techProfile.nickname}
+                            <KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" />
+                          </h2>
+                          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                            <span className={cn("inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-[11px] font-black", technicianProfileSurface.chip)}>
+                              {techProfile.identityLabel}
+                            </span>
+                          </div>
+                          <p className={cn("truncate text-xs font-bold", technicianProfileSurface.muted)}>ID：{baseTech.systemId}</p>
+                          <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                            <div className="flex items-center justify-between gap-3">
+                              <button
+                                aria-expanded={profilePrivacyEnabled ? profilePrivacyMenuOpen : undefined}
+                                className="min-w-0 flex-1 text-left disabled:cursor-default"
+                                disabled={!profilePrivacyEnabled}
+                                onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
+                                type="button"
+                              >
+                                <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>隐私模式</p>
+                                <strong className="mt-1 block truncate text-sm">{profilePrivacySummary}</strong>
+                              </button>
+                              <ToggleSwitch
+                                ariaLabel="开启隐私模式"
+                                checked={profilePrivacyEnabled}
+                                onChange={updateProfilePrivacyEnabled}
+                                size="md"
+                              />
+                            </div>
+                            {profilePrivacyEnabled && profilePrivacyMenuOpen ? (
+                              <div
+                                className={cn(
+                                  "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl",
+                                  technicianProfileSurface.shell
+                                )}
+                                data-testid="technician-privacy-options"
+                              >
+                                {profilePrivacyOptions.map((option) => {
+                                  const checked = profileVisibility === option.value;
+
+                                  return (
+                                    <div
+                                      className={cn(
+                                        "rounded-[18px] border px-3 py-3 text-left transition",
+                                        checked ? technicianProfileSurface.chip : technicianProfileSurface.panel
+                                      )}
+                                      key={option.value}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <button
+                                          aria-label={`选择${option.label}`}
+                                          className={cn(
+                                            "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
+                                            checked ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]" : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent"
+                                          )}
+                                          onClick={() => updateProfileVisibility(option.value)}
+                                          type="button"
+                                        >
+                                          ✓
+                                        </button>
+                                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                          <button
+                                            className="min-w-0 truncate text-left text-sm font-black"
+                                            onClick={() => updateProfileVisibility(option.value)}
+                                            type="button"
+                                          >
+                                            {option.label}
+                                          </button>
+                                          <ProfilePrivacyInfoButton content={option.description} />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
 
-                      <div className="mt-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-[30px] font-black tracking-[-0.04em] text-ink">{techProfile.nickname}</h2>
-                          <Badge tone="green">已认证</Badge>
-                          <Badge tone="yellow">{techProfile.identityLabel}</Badge>
-                        </div>
-                        <p className="mt-2 text-sm font-semibold text-moss">ID：{baseTech.systemId}</p>
-                        <p className="mt-3 text-sm leading-7 text-ink/70">{techProfile.bio}</p>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {techProfile.tags.concat(techProfile.languages).slice(0, 10).map((tag: string) => (
-                          <span className="rounded-full bg-paper px-3 py-1.5 text-xs font-bold text-ink/65" key={tag}>
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        {[
-                          ["身高", techProfile.height],
-                          ["年龄", techProfile.age],
-                          ["状态", status],
-                          ["语言", techProfile.languages.slice(0, 2).join(" / ")]
-                        ].map(([label, value]) => (
-                          <div className="min-w-0 rounded-[18px] bg-paper p-3" key={label}>
-                            <p className="text-[11px] text-ink/45">{label}</p>
-                            <strong className="mt-1 block break-words text-sm">{value}</strong>
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        {technicianMetricCards.map((item) => (
+                          <div className={cn("rounded-[18px] border p-2.5", technicianProfileSurface.metric)} key={item.label}>
+                            <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>{item.label}</p>
+                            <div className="mt-1 flex min-w-0 items-end gap-1">
+                              <strong className={cn("block truncate text-[20px] leading-none", item.label === "服务评分" ? technicianProfileSurface.accent : "")}>
+                                {item.value}
+                              </strong>
+                              {item.suffix ? <span className={cn("pb-0.5 text-xs font-black leading-none", technicianProfileSurface.muted)}>{item.suffix}</span> : null}
+                            </div>
+                            {item.helper ? <p className={cn("mt-2 truncate text-[10px] font-black leading-none", technicianProfileSurface.muted)}>{item.helper}</p> : null}
                           </div>
                         ))}
                       </div>
+
+                      <div className={cn("my-4 h-px", technicianProfileSurface.divider)} />
+
+                      <div>
+                        <h2 className="text-lg font-black">基础信息</h2>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          {[
+                            ["身份", techProfile.identityLabel],
+                            ["年龄", techProfile.age || "未设置"],
+                            ["身高（cm）", formatTechnicianHeightValue(techProfile.height) || "未设置"]
+                          ].map(([label, value]) => (
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)} key={label}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>{label}</p>
+                              <strong className="mt-1 block truncate text-sm">{value}</strong>
+                            </div>
+                          ))}
+                        </div>
+                        <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                          <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>语言能力</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {techProfile.languages.map((language) => (
+                              <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", technicianProfileSurface.chip)} key={language}>
+                                {language}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", technicianProfileSurface.panel)}>
+                          <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>自我介绍</p>
+                          <p className={cn("mt-2 text-sm leading-6", technicianProfileSurface.muted)}>{techProfile.bio}</p>
+                        </div>
+                        <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)} data-testid="technician-info-tags">
+                          <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>标签</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {technicianInfoTags.map((tag) => (
+                              <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", technicianProfileSurface.chip)} key={tag}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </section>
 
-                  <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-                    <SectionTitle caption="编辑时仍然使用当前全屏编辑模式，这里只负责预览和进入编辑。轮播图会跟公开主页顶部头图同步。" title="信息卡设置">
-                      <Badge tone="green">{Math.max(techProfile.gallery.length, 1)} 张轮播图</Badge>
-                    </SectionTitle>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                      <Button onClick={openProfileEditor}>打开编辑模式</Button>
-                      <Button to="/technician/settings/profile" variant="secondary">进入设置页补充资料</Button>
-                    </div>
-                  </section>
                 </>
               )}
 
@@ -5131,8 +5323,8 @@ export function TechnicianPortalPage() {
                         {profileDraft.identityLabel} · {profileDraft.canServeForeigners ? "服务外国人" : "不服务外国人"}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Badge tone={profileDraft.visibility === "privateAll" ? "neutral" : "yellow"}>
-                          {getVisibilityLabel(profileDraft.visibility)}
+                        <Badge tone={!profileDraft.privacyEnabled || profileDraft.visibility === "privateAll" ? "neutral" : "yellow"}>
+                          {getProfilePrivacySummary(profileDraft.privacyEnabled, profileDraft.visibility)}
                         </Badge>
                         <Badge tone="yellow">★ {baseTech.rating}</Badge>
                         <Badge tone="green">{Math.max(profileDraft.gallery.length, 1)} 张轮播图</Badge>
@@ -5188,47 +5380,85 @@ export function TechnicianPortalPage() {
                           <option value="店铺所属技师">店铺所属技师</option>
                           <option value="个人技师">个人技师</option>
                         </select>
-                      </label>
-                      <div className="col-span-2">
-                        <span className="mb-1 block text-xs font-bold text-ink/45">隐私模式</span>
-                        <div className="grid gap-2">
-                          {([
-                            ["privateAll", "完全隐私模式", "除本人、平台审核与必要安全场景外，不对前台其他人显示。"],
-                            ["limited", "仅对指定人 / 分类 / 群组可见", "仅你手动选择的对象可见，不向其关联联系人扩散。"],
-                            ["network", "仅对指定人 / 分类 / 群组以及关联联系人可见", "允许指定对象及其关联联系人看到资料。"]
-                          ] as const).map(([value, label, description]) => {
-                            const checked = profileDraft.visibility === value;
-
-                            return (
+                        </label>
+                        <div className="col-span-2">
+                          <div className="relative z-20 rounded-lg border border-line bg-paper p-3">
+                            <div className="flex items-center justify-between gap-3">
                               <button
-                                className={cn(
-                                  "rounded-lg border px-3 py-3 text-left transition",
-                                  checked ? "border-lemon bg-lemon/10" : "border-line bg-paper"
-                                )}
-                                key={value}
-                                onClick={() => setProfileDraft((current) => ({ ...current, visibility: value }))}
+                                aria-expanded={profileDraft.privacyEnabled ? profileDraftPrivacyMenuOpen : undefined}
+                                className="min-w-0 flex-1 text-left disabled:cursor-default"
+                                disabled={!profileDraft.privacyEnabled}
+                                onClick={() => setProfileDraftPrivacyMenuOpen((current) => !current)}
                                 type="button"
                               >
-                                <div className="flex items-start gap-3">
-                                  <span
-                                    className={cn(
-                                      "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
-                                      checked ? "border-lemon bg-lemon text-[#5b4300]" : "border-line text-transparent"
-                                    )}
-                                  >
-                                    ●
-                                  </span>
-                                  <div>
-                                    <p className="text-sm font-black text-ink">{label}</p>
-                                    <p className="mt-1 text-xs leading-5 text-ink/50">{description}</p>
-                                  </div>
-                                </div>
+                                <span className="block text-xs font-bold text-ink/45">隐私模式</span>
+                                <strong className="mt-1 block truncate text-sm text-ink">
+                                  {getProfilePrivacySummary(profileDraft.privacyEnabled, profileDraft.visibility)}
+                                </strong>
                               </button>
-                            );
-                          })}
+                              <ToggleSwitch
+                                ariaLabel="是否开启隐私模式"
+                                checked={profileDraft.privacyEnabled}
+                                onChange={(checked) => {
+                                  setProfileDraftPrivacyMenuOpen(checked);
+                                  setProfileDraft((current) => ({ ...current, privacyEnabled: checked }));
+                                }}
+                                size="md"
+                              />
+                            </div>
+                            {profileDraft.privacyEnabled && profileDraftPrivacyMenuOpen ? (
+                              <div className="absolute right-0 top-[calc(100%+8px)] z-50 grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border border-line bg-white p-2 shadow-panel">
+                                {profilePrivacyOptions.map((option) => {
+                                  const checked = profileDraft.visibility === option.value;
+
+                                  return (
+                                    <div
+                                      className={cn(
+                                        "rounded-lg border px-3 py-3 text-left transition",
+                                        checked ? "border-lemon bg-lemon/10" : "border-line bg-white"
+                                      )}
+                                      key={option.value}
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <button
+                                          aria-label={`选择${option.label}`}
+                                          className={cn(
+                                            "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
+                                            checked ? "border-lemon bg-lemon text-[#5b4300]" : "border-line text-transparent"
+                                          )}
+                                          onClick={() => {
+                                            setProfileDraftPrivacyMenuOpen(false);
+                                            setProfileDraft((current) => ({ ...current, privacyEnabled: true, visibility: option.value }));
+                                          }}
+                                          type="button"
+                                        >
+                                          ✓
+                                        </button>
+                                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                          <button
+                                            className="min-w-0 truncate text-left text-sm font-black text-ink"
+                                            onClick={() => {
+                                              setProfileDraftPrivacyMenuOpen(false);
+                                              setProfileDraft((current) => ({ ...current, privacyEnabled: true, visibility: option.value }));
+                                            }}
+                                            type="button"
+                                          >
+                                            {option.label}
+                                          </button>
+                                          <ProfilePrivacyInfoButton
+                                            className="border-line bg-white text-ink/45 hover:text-ink/80"
+                                            content={option.description}
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         className={cn(

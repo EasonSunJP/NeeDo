@@ -75,6 +75,7 @@ type PendingStoreImageEdit = {
 type StoreDetailExperienceProps = {
   embedded?: boolean;
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
+  privacyControl?: ReactNode;
   scope?: "user" | "merchant";
   store: Store;
   techniciansOverride?: Technician[];
@@ -2356,7 +2357,7 @@ function EnvironmentGalleryCard({
   );
 }
 
-export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
+export function StoreDetailExperience({ embedded = false, onEditFocus, privacyControl, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { session } = useAuth();
@@ -3617,20 +3618,23 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, scope = "
   ) : null;
 
   if (embedded) {
+    const hasPrivacyControl = Boolean(privacyControl);
+
     return (
       <div className="space-y-4 pb-6">
-        <section className="relative space-y-4">
+        <section className="relative z-50 space-y-3 overflow-visible">
           {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0", "default", "header-basic")}
-          <div className="flex flex-wrap items-start justify-between gap-3 pr-12">
+          <div className={cn("relative pr-12", hasPrivacyControl && "min-h-[112px]")}>
             <div className="min-w-0">
               <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
               <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
             </div>
+            {hasPrivacyControl ? <div className="absolute right-0 top-12 z-20">{privacyControl}</div> : null}
           </div>
           <div className="-mx-1">{tabSwitcher}</div>
           {renderActiveInlineEditor("header-basic")}
         </section>
-        {content}
+        <div className="relative z-0">{content}</div>
         {lightbox}
         {fullscreenEditor}
         {storeImageEditor}
