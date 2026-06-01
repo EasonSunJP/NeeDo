@@ -10,24 +10,35 @@ const isoDateSchema = z.coerce.date();
 export const availabilityListQuerySchema = z
   .object({
     ...paginationQuerySchema,
-    serviceId: z.coerce.number().int().positive(),
+    serviceId: z.coerce.number().int().positive().optional(),
+    technicianServiceId: z.coerce.number().int().positive().optional(),
     shopId: z.coerce.number().int().positive().optional(),
     technicianId: z.coerce.number().int().positive().optional(),
     from: isoDateSchema,
     to: isoDateSchema
+  })
+  .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
+    message: "Exactly one of serviceId or technicianServiceId is required",
+    path: ["serviceId"]
   })
   .refine((value) => value.from.getTime() < value.to.getTime(), {
     message: "from must be earlier than to",
     path: ["to"]
   });
 
-export const bookingCreateBodySchema = z.object({
-  serviceId: z.coerce.number().int().positive(),
-  scheduleSlotId: z.coerce.number().int().positive(),
-  orderType: z.literal("booking").optional(),
-  fulfillmentMode: z.enum(["home", "store"]),
-  note: z.string().trim().max(500).optional()
-});
+export const bookingCreateBodySchema = z
+  .object({
+    serviceId: z.coerce.number().int().positive().optional(),
+    technicianServiceId: z.coerce.number().int().positive().optional(),
+    scheduleSlotId: z.coerce.number().int().positive(),
+    orderType: z.literal("booking").optional(),
+    fulfillmentMode: z.enum(["home", "store"]),
+    note: z.string().trim().max(500).optional()
+  })
+  .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
+    message: "Exactly one of serviceId or technicianServiceId is required",
+    path: ["serviceId"]
+  });
 
 export const orderIdParamSchema = z.object({
   id: z.coerce.number().int().positive()

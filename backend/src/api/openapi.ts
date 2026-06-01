@@ -190,6 +190,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           expiresIn: { type: "integer", enum: [900] }
         }
       },
+      SwitchIdentityResponse: {
+        type: "object",
+        required: ["accessToken", "refreshToken", "expiresIn", "me"],
+        properties: {
+          accessToken: { type: "string" },
+          refreshToken: { type: "string" },
+          expiresIn: { type: "integer", enum: [900] },
+          me: { $ref: "#/components/schemas/AuthMe" }
+        }
+      },
       RefreshTokenResponse: {
         type: "object",
         required: ["accessToken", "expiresIn"],
@@ -1195,6 +1205,49 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/auth/switch-identity`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Switch current user identity and rotate the token pair",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["refreshToken", "identityId"],
+                properties: {
+                  refreshToken: { type: "string" },
+                  identityId: { type: "integer", minimum: 1 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "New token pair scoped to the requested identity",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/SwitchIdentityResponse" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { description: "Access or refresh token invalid, expired, or blacklisted" },
+          "403": { description: "Missing auth me permission" },
+          "404": { description: "Requested identity does not belong to the current user" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/auth/logout`]: {
       post: {
         tags: ["Auth"],
@@ -1797,6 +1850,121 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/shops/{shopId}/pricing-mode`]: {
+      get: {
+        tags: ["Pricing Mode"],
+        summary: "Read merchant shop pricing mode",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "shopId", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "200": { description: "Shop pricing mode" },
+          "403": { description: "Actor is outside the shop scope" }
+        }
+      },
+      put: {
+        tags: ["Pricing Mode"],
+        summary: "Switch merchant shop pricing mode",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "shopId", in: "path", required: true, schema: { type: "integer" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["pricingMode"],
+                properties: {
+                  pricingMode: { type: "string", enum: ["merchant", "technician"] }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated shop pricing mode" },
+          "403": { description: "Actor is outside the shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/shops/{shopId}/booking-navigation`]: {
+      get: {
+        tags: ["Pricing Mode"],
+        summary: "Resolve shop booking entry by pricing mode",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Booking entry with services or technicians" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/shops/{shopId}/technicians/{technicianId}/services`]: {
+      get: {
+        tags: ["Pricing Mode"],
+        summary: "Public technician service list for a shop",
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer" } },
+          { name: "technicianId", in: "path", required: true, schema: { type: "integer" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated active technician services" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technicians/me/shops/{shopId}/services`]: {
+      get: {
+        tags: ["Pricing Mode"],
+        summary: "Technician owned service list",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated technician services" }
+        }
+      },
+      post: {
+        tags: ["Pricing Mode"],
+        summary: "Create technician owned service",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "shopId", in: "path", required: true, schema: { type: "integer" } }],
+        responses: {
+          "201": { description: "Technician service created" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technicians/me/shops/{shopId}/services/{serviceId}`]: {
+      put: {
+        tags: ["Pricing Mode"],
+        summary: "Update technician owned service",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer" } },
+          { name: "serviceId", in: "path", required: true, schema: { type: "integer" } }
+        ],
+        responses: {
+          "200": { description: "Technician service updated" }
+        }
+      },
+      delete: {
+        tags: ["Pricing Mode"],
+        summary: "Soft delete technician owned service",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer" } },
+          { name: "serviceId", in: "path", required: true, schema: { type: "integer" } }
+        ],
+        responses: {
+          "200": { description: "Technician service soft deleted" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/technicians/{id}`]: {
       get: {
         tags: ["Core Read"],
@@ -1827,9 +1995,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             name: "serviceId",
             in: "query",
-            required: true,
             schema: { type: "integer", minimum: 1 }
           },
+          { name: "technicianServiceId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "technicianId", in: "query", schema: { type: "integer", minimum: 1 } },
           {
@@ -1890,9 +2058,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             "application/json": {
               schema: {
                 type: "object",
-                required: ["serviceId", "scheduleSlotId", "fulfillmentMode"],
+                required: ["scheduleSlotId", "fulfillmentMode"],
                 properties: {
                   serviceId: { type: "integer", minimum: 1 },
+                  technicianServiceId: { type: "integer", minimum: 1 },
                   scheduleSlotId: { type: "integer", minimum: 1 },
                   orderType: { type: "string", enum: ["booking"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },

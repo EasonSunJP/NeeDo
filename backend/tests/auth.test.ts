@@ -246,7 +246,60 @@ const createAuthFixture = async () => {
       }
     ]
   };
-  const users = [passwordUser, customerUser, disabledUser, noPermissionUser];
+  const multiPortalUser = {
+    ...passwordUser,
+    id: 5,
+    email: "multi@example.com",
+    username: "Multi Portal User",
+    identities: [
+      {
+        id: 50,
+        userId: 5,
+        type: "customer",
+        scopeType: "customer_profile",
+        scopeId: 5,
+        displayName: "Multi Customer",
+        isDefault: true,
+        isActive: true,
+        deletedAt: null
+      },
+      {
+        id: 51,
+        userId: 5,
+        type: "technician",
+        scopeType: "technician_profile",
+        scopeId: 3,
+        displayName: "Multi Technician",
+        isDefault: false,
+        isActive: true,
+        deletedAt: null
+      }
+    ],
+    userRoles: [
+      {
+        role: {
+          code: "technician",
+          deletedAt: null,
+          rolePermissions: [
+            "auth:me",
+            "auth:logout",
+            "menu:technician-app",
+            "technician:services:list",
+            "technician:services:write"
+          ].map((code) => ({
+            deletedAt: null,
+            permission: {
+              code,
+              type: code.startsWith("menu:") ? "menu" : "api",
+              deletedAt: null
+            }
+          }))
+        },
+        deletedAt: null
+      }
+    ]
+  };
+  const users = [passwordUser, customerUser, disabledUser, noPermissionUser, multiPortalUser];
 
   const repository = {
     findUserByEmail: jest.fn(async (email: string) =>
@@ -295,7 +348,8 @@ const createAuthFixture = async () => {
     user: passwordUser,
     customerUser,
     disabledUser,
-    noPermissionUser
+    noPermissionUser,
+    multiPortalUser
   };
 };
 
@@ -613,6 +667,90 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       .expect(401)
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.TOKEN_BLACKLISTED);
+      });
+  });
+
+  it("switches the current identity and rotates tokens for the same user", async () => {
+    const fixture = await createAuthFixture();
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ email: "multi@example.com", password: "Abcd@1234" })
+      .expect(200);
+    const { accessToken, refreshToken } = loginResponse.body.data;
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.currentIdentity).toMatchObject({
+          id: 50,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: 5
+        });
+      });
+
+    const switchResponse = await request(fixture.app)
+      .post("/api/v1/auth/switch-identity")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ refreshToken, identityId: 51 })
+      .expect(200);
+
+    expect(switchResponse.body.data).toMatchObject({
+      accessToken: expect.any(String),
+      refreshToken: expect.any(String),
+      expiresIn: expect.any(Number),
+      me: {
+        currentIdentity: {
+          id: 51,
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 3
+        },
+        permissions: expect.arrayContaining(["auth:me", "technician:services:write"])
+      }
+    });
+    expect(switchResponse.body.data.refreshToken).not.toBe(refreshToken);
+    expect(fixture.sessionStore.refreshTokens.size).toBe(1);
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorId: 5,
+          action: "auth.identity.switch",
+          targetType: "UserIdentity",
+          targetId: 51
+        })
+      ])
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(401)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.TOKEN_BLACKLISTED);
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/refresh")
+      .send({ refreshToken })
+      .expect(401)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.TOKEN_INVALID);
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${switchResponse.body.data.accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.currentIdentity).toMatchObject({
+          id: 51,
+          type: "technician",
+          scopeType: "technician_profile",
+          scopeId: 3
+        });
       });
   });
 

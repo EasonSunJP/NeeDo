@@ -18,11 +18,19 @@ const makeOrder = (status: BookingOrderPayload["status"]): BookingOrderPayload =
   paymentStatus: "unpaid",
   customerUserId: 1,
   serviceId: 1,
+  technicianServiceId: null,
   shopId: 1,
   technicianProfileId: 1,
   scheduleSlotId: 11,
   fulfillmentMode: "store",
   serviceName: "Shiatsu Recovery",
+  pricingModeSnapshot: "merchant",
+  serviceOwnerType: "shop",
+  serviceOwnerId: 1,
+  serviceNameSnapshot: "Shiatsu Recovery",
+  servicePriceSnapshot: "8800.00",
+  serviceDurationSnapshot: 60,
+  serviceSnapshot: null,
   shopName: "Aoyama Care Studio",
   technicianName: "Mika Tanaka",
   priceAmount: "8800.00",
@@ -94,6 +102,25 @@ describe("BookingService state machine", () => {
     ).rejects.toMatchObject({
       code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
       message: "error.booking.slot_unavailable"
+    });
+  });
+
+  it("passes technician service booking requests to the repository", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+
+    await service.createBooking(actor, {
+      technicianServiceId: 21,
+      scheduleSlotId: 11,
+      fulfillmentMode: "store"
+    });
+
+    expect(repository.createBooking).toHaveBeenCalledWith({
+      customerUserId: 1,
+      technicianServiceId: 21,
+      scheduleSlotId: 11,
+      fulfillmentMode: "store",
+      note: undefined
     });
   });
 

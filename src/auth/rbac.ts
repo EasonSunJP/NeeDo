@@ -77,6 +77,10 @@ function resolvePortalFromIdentity(identity: AuthIdentityPayload): PortalScope |
   return identityPortalMap[identity.type] ?? null;
 }
 
+export function findIdentityForPortal(identities: AuthIdentityPayload[], portal: PortalScope) {
+  return identities.find((identity) => resolvePortalFromIdentity(identity) === portal) ?? null;
+}
+
 function resolvePortalsFromRoles(roles: string[]) {
   const portals: PortalScope[] = [];
 

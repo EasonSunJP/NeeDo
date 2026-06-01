@@ -10,7 +10,8 @@ import {
   logoutBodySchema,
   otpSendBodySchema,
   otpVerifyBodySchema,
-  refreshBodySchema
+  refreshBodySchema,
+  switchIdentityBodySchema
 } from "../validators/auth.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -35,6 +36,13 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
     controller.verifyOtp
   );
   router.post("/auth/refresh", validateRequest({ body: refreshBodySchema }), controller.refresh);
+  router.post(
+    "/auth/switch-identity",
+    validateRequest({ body: switchIdentityBodySchema }),
+    authenticate(),
+    authorize(AUTH_ROUTE_PERMISSIONS.me),
+    controller.switchIdentity
+  );
   router.post(
     "/auth/logout",
     validateRequest({ body: logoutBodySchema }),

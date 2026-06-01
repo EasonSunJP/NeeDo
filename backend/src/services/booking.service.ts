@@ -64,6 +64,7 @@ export class BookingService {
     const order = await this.repository.createBooking({
       customerUserId: actor.userId,
       serviceId: input.serviceId,
+      technicianServiceId: input.technicianServiceId,
       scheduleSlotId: input.scheduleSlotId,
       fulfillmentMode: input.fulfillmentMode,
       note: input.note

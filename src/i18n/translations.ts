@@ -840,6 +840,7 @@ export const translations: TranslationMap = {
   "保存自动派单规则": { "zh-Hant": "儲存自動派單規則", ja: "自動割当ルールを保存", en: "Save automatic order dispatch rules", ko: "자동 주문 발송 규칙을 …" },
   "保底补差": { "zh-Hant": "保底補差", ja: "保底补差", en: "minimum guarantee top-up", ko: "최저 보장 차액 보전" },
   "保底工资不足时补差": { "zh-Hant": "保底工資不足時補差", ja: "最低保証給与・差額補填", en: "Minimum Guaranteed Pay Top-Up Difference", ko: "최저 보장 급여 차액 보전" },
+  "基础工资": { "zh-Hant": "基礎工資", ja: "基本給", en: "Base salary", ko: "기본급" },
   "保护施工": { "zh-Hant": "保護施工", ja: "建設工事を保護する", en: "Protect construction", ko: "건설 현장을 보호하세요" },
   "保洁": { "zh-Hant": "潔淨", ja: "クリーニング", en: "Cleaning", ko: "청소" },
   "保洁、按摩、回收、宠物服务已覆盖东京核心区域。": { "zh-Hant": "清潔、按摩、回收、寵物服務已涵蓋東京核心區域。", ja: "東京の中心部を対象に、清掃、マッサージ、リサイクル、ペット関連サービスが導入された。", en: "Cleaning, massage, recycling, and pet services have been introduced to cover the core areas of Tokyo.", ko: "도쿄의 핵심 지역을 대상으로 청소, 마사지, 재활용 및 반려동물 서비스가 도입되었습니다." },

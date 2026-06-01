@@ -7,6 +7,7 @@ import { MobileShell } from "../../components/mobile/MobileShell";
 import { userNavItems } from "../../components/mobile/navItems";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
+import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { reviews, stores } from "../../data/mock";
@@ -435,6 +436,7 @@ export function UserCenterPage() {
   const [profilePrivacyEnabled, setProfilePrivacyEnabled] = useState(false);
   const [profilePrivacyVisibility, setProfilePrivacyVisibility] = useState<UserProfileVisibility>("privateAll");
   const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
+  const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] = useState(false);
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [profileToastMessage, setProfileToastMessage] = useState("");
   const visibleProfile = profileDraft
@@ -522,8 +524,19 @@ export function UserCenterPage() {
     });
   };
   const updateProfilePrivacyEnabled = (enabled: boolean) => {
+    if (enabled) {
+      setProfilePrivacyConfirmOpen(true);
+      return;
+    }
+
     setProfilePrivacyEnabled(enabled);
-    setProfilePrivacyMenuOpen(enabled);
+    setProfilePrivacyMenuOpen(false);
+    setProfilePrivacyConfirmOpen(false);
+  };
+  const confirmProfilePrivacyEnabled = () => {
+    setProfilePrivacyConfirmOpen(false);
+    setProfilePrivacyEnabled(true);
+    setProfilePrivacyMenuOpen(true);
   };
   const updateProfilePrivacyVisibility = (visibility: UserProfileVisibility) => {
     setProfilePrivacyEnabled(true);
@@ -730,6 +743,11 @@ export function UserCenterPage() {
                           size="md"
                         />
                       </div>
+                      <PrivacyModeConfirmDialog
+                        onCancel={() => setProfilePrivacyConfirmOpen(false)}
+                        onConfirm={confirmProfilePrivacyEnabled}
+                        open={profilePrivacyConfirmOpen}
+                      />
                       {profilePrivacyEnabled && profilePrivacyMenuOpen ? (
                         <div
                           className={cn(

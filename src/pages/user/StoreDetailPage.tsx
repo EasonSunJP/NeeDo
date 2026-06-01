@@ -31,6 +31,7 @@ import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { customers, reviews, services } from "../../data/mock";
 import { coreReadApi, coreReadIdFromRoute, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
@@ -76,11 +77,31 @@ type StoreDetailExperienceProps = {
   embedded?: boolean;
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
   pricingControl?: ReactNode;
+  pricingMode?: "store" | "technician";
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
   store: Store;
   techniciansOverride?: Technician[];
 };
+
+function storeDetailRouteEntityIdToApiId(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }
+
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const direct = coreReadIdFromRoute(normalized);
+  if (direct) {
+    return direct;
+  }
+
+  const suffix = normalized.match(/(\d+)$/)?.[1];
+  return suffix ? Number(suffix) : null;
+}
 
 type SeatCard = {
   id: string;
@@ -1081,6 +1102,7 @@ function StoreTechnicianSelectableCard({
   language,
   onSelect,
   rankIndex,
+  serviceListTo,
   technician,
   technicianVisible = true
 }: {
@@ -1090,6 +1112,7 @@ function StoreTechnicianSelectableCard({
   language: Language;
   onSelect: () => void;
   rankIndex: number;
+  serviceListTo?: string;
   technician: Technician;
   technicianVisible?: boolean;
 }) {
@@ -1105,6 +1128,7 @@ function StoreTechnicianSelectableCard({
       selectionActiveIcon={isMerchantEditable ? "eye" : "check"}
       selectionAriaLabel={isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
       selectionInactiveIcon={isMerchantEditable ? "eyeOff" : "plus"}
+      serviceListTo={serviceListTo}
       technician={technician}
     />
   );
@@ -1234,6 +1258,20 @@ function MerchantAddServiceButton({ onAdd }: { onAdd: () => void }) {
       <AppIcon className="h-4 w-4 text-[color:var(--client-primary)]" name="plus" />
       添加服务
     </button>
+  );
+}
+
+function MerchantServiceHiddenWarning() {
+  return (
+    <div className="flex items-center gap-2 rounded-[18px] border border-[#ff4d5e] bg-[#ff314f]/12 px-3 py-2 text-[11px] font-black leading-5 text-[#ff9aa5] shadow-[0_12px_28px_rgba(255,49,79,0.16)]">
+      <span
+        aria-hidden="true"
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-full border-[3px] border-[#ff4d5e] bg-[#ff314f]/18 text-[15px] font-black leading-none text-[#ff4d5e]"
+      >
+        !
+      </span>
+      <span className="min-w-0">技师定价已开启，店铺服务项目已隐藏，不会被用户看到或搜索到。</span>
+    </div>
   );
 }
 
@@ -2358,13 +2396,15 @@ function EnvironmentGalleryCard({
   );
 }
 
-export function StoreDetailExperience({ embedded = false, onEditFocus, pricingControl, privacyControl, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
+export function StoreDetailExperience({ embedded = false, onEditFocus, pricingControl, pricingMode = "store", privacyControl, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { session } = useAuth();
   const { language } = useI18n();
   const { customers, technicians } = useEntityStore();
   const displayedTechnicians = techniciansOverride ?? technicians;
+  const storeApiId = useMemo(() => storeDetailRouteEntityIdToApiId(store.id), [store.id]);
+  const [bookingNavigation, setBookingNavigation] = useState<BookingNavigationResponse | null>(null);
   const { getActorForScope, getProfilePosts } = useSocial();
   const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
   const industry = detectStoreIndustry(store);
@@ -2375,16 +2415,45 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
   const isMerchantEditable = Boolean(
     onEditFocus || scope === "merchant" || (isMerchantOwnedStore && (session?.portal === "merchant" || isMerchantShell))
   );
+  const isMerchantServiceHidden = isMerchantEditable && pricingMode === "technician";
+  const isTechnicianPricingEntry =
+    !isMerchantEditable && bookingNavigation?.pricingMode === "technician";
   const heroBlock = useMemo(() => getStoreDecorationBlockConfig(store, "hero"), [store.id, store.uiDecoration]);
   const bookingBlock = useMemo(() => getStoreDecorationBlockConfig(store, "booking"), [store.id, store.uiDecoration]);
   const menuBlock = useMemo(() => getStoreDecorationBlockConfig(store, "menu"), [store.id, store.uiDecoration]);
   const technicianBlock = useMemo(() => getStoreDecorationBlockConfig(store, "technicians"), [store.id, store.uiDecoration]);
   const galleryBlock = useMemo(() => getStoreDecorationBlockConfig(store, "gallery"), [store.id, store.uiDecoration]);
+  const shouldRenderServiceMenu = menuBlock.visible && !isTechnicianPricingEntry;
   const blockOrderMap = useMemo(
     () => Object.fromEntries(getStoreUiDecoration(store).blocks.map((block, index) => [block.id, index])),
     [store.id, store.uiDecoration]
   ) as Record<string, number>;
   const packageCardUi = useMemo(() => getStoreCardDecorationConfig(store, "package"), [store.id, store.uiDecoration]);
+
+  useEffect(() => {
+    if (!storeApiId || isMerchantEditable) {
+      setBookingNavigation(null);
+      return;
+    }
+
+    let mounted = true;
+    pricingModeApi
+      .getBookingNavigation(storeApiId, { page: 1, pageSize: 20 })
+      .then((result) => {
+        if (mounted) {
+          setBookingNavigation(result);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setBookingNavigation(null);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isMerchantEditable, storeApiId]);
 
   const storeTechnicians = useMemo(
     () =>
@@ -2761,12 +2830,12 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
     () => [
       { label: "首页", value: "home" },
       ...(galleryBlock.visible ? [{ label: "环境", value: "seats" as const }] : []),
-      ...(menuBlock.visible ? [{ label: "菜单", value: "menu" as const }] : []),
+      ...(shouldRenderServiceMenu ? [{ label: "菜单", value: "menu" as const }] : []),
       { label: "动态", value: "moments" },
       { label: "情报", value: "offers" },
       { label: "地图", value: "map" }
     ],
-    [galleryBlock.visible, menuBlock.visible]
+    [galleryBlock.visible, shouldRenderServiceMenu]
   );
 
   useEffect(() => {
@@ -3008,7 +3077,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
             </section>
           ) : null}
 
-          {menuBlock.visible ? (
+          {shouldRenderServiceMenu ? (
             <section style={blockOrderStyle("menu")}>
               <SectionTitle caption="先看当前最受欢迎的预约菜单" title={menuBlock.name}>
                 <CollapsibleSectionButton
@@ -3019,6 +3088,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
               </SectionTitle>
               {!serviceMenuCollapsed ? (
               <div className="mt-3 grid gap-2.5">
+                  {isMerchantServiceHidden ? <MerchantServiceHiddenWarning /> : null}
                   {(isMerchantEditable ? menuCards : menuCards.slice(0, 3)).map((item, index) => {
                     const editorTarget = `home-menu-${item.id}`;
                     const active = selectedCheckoutTarget === item.sourceServiceId;
@@ -3089,6 +3159,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
                             setSelectedTechnicianId(active ? "" : technician.id);
                           }}
                           rankIndex={index}
+                          serviceListTo={isTechnicianPricingEntry ? `/stores/${store.id}/technicians/${technician.id}/services` : undefined}
                           technician={technician}
                           technicianVisible={technicianVisible}
                         />
@@ -3143,7 +3214,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
         </div>
       ) : null}
 
-      {activeTab === "menu" && menuBlock.visible ? (
+      {activeTab === "menu" && shouldRenderServiceMenu ? (
         <div className="space-y-4">
           <section>
             <SectionTitle caption="按价格、时长和适合人群快速查看" title={menuBlock.name}>
@@ -3155,6 +3226,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
             </SectionTitle>
             {!serviceMenuCollapsed ? (
               <div className="mt-3 grid gap-2.5">
+                {isMerchantServiceHidden ? <MerchantServiceHiddenWarning /> : null}
                 {menuCards.map((item, index) => {
                   const editorTarget = `menu-${item.id}`;
                   const active = selectedCheckoutTarget === item.sourceServiceId;
@@ -3223,8 +3295,9 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
 
                             setSelectedTechnicianId(active ? "" : technician.id);
                           }}
-                          rankIndex={index}
-                          technician={technician}
+                        rankIndex={index}
+                        serviceListTo={isTechnicianPricingEntry ? `/stores/${store.id}/technicians/${technician.id}/services` : undefined}
+                        technician={technician}
                           technicianVisible={technicianVisible}
                         />
                       );

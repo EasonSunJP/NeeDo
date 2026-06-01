@@ -19,6 +19,7 @@ type TechnicianShowcaseCardProps = {
   selectionActiveIcon?: IconName;
   selectionAriaLabel?: string;
   selectionInactiveIcon?: IconName;
+  serviceListTo?: string;
   technician: Technician;
 };
 
@@ -51,7 +52,7 @@ function getTechnicianDisplayName(technician: Technician) {
 }
 
 function getTechnicianPhoto(technician: Technician) {
-  return technician.gallery?.[0] || technician.avatar;
+  return technician.avatar || technician.gallery?.[0];
 }
 
 function getTechnicianCardFavoriteCount(technician: Technician) {
@@ -327,6 +328,7 @@ export function TechnicianShowcaseCard({
   selectionActiveIcon = "check",
   selectionAriaLabel,
   selectionInactiveIcon = "plus",
+  serviceListTo,
   technician
 }: TechnicianShowcaseCardProps) {
   const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
@@ -342,6 +344,7 @@ export function TechnicianShowcaseCard({
   const priceLabel = Number.isFinite(price) && price > 0 ? formatCardYen(price) : copy.pricePending;
   const serviceName = localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
   const detailHref = detailTo ?? getTechnicianDynamicPath(technician);
+  const serviceHref = serviceListTo ?? detailHref;
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
   const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon;
   const favoriteCount = getTechnicianCardFavoriteCount(technician);
@@ -453,7 +456,16 @@ export function TechnicianShowcaseCard({
           </button>
         ) : null}
       </div>
+      <Link aria-label={`查看${displayName}服务`} className="block active:scale-[0.99]" to={serviceHref}>
+        {detailContent}
+      </Link>
+    </div>
+  ) : serviceListTo ? (
+    <div className={cardClassName}>
       <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+        {photoContent}
+      </Link>
+      <Link aria-label={`查看${displayName}服务`} className="block active:scale-[0.99]" to={serviceListTo}>
         {detailContent}
       </Link>
     </div>

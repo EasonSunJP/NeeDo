@@ -849,11 +849,19 @@ function bookingOrder(index: number, patch: Partial<BookingOrder> = {}): Booking
     paymentStatus: "unpaid",
     customerUserId: numberFromText(order.customerId, 1),
     serviceId: index + 1,
+    technicianServiceId: null,
     shopId: numberFromText(store.id, index + 1),
     technicianProfileId: numberFromText(technician.id, index + 1),
     scheduleSlotId: index + 1,
     fulfillmentMode: order.mode,
     serviceName: service.name,
+    pricingModeSnapshot: "merchant",
+    serviceOwnerType: "shop",
+    serviceOwnerId: index + 1,
+    serviceNameSnapshot: service.name,
+    servicePriceSnapshot: service.priceFrom.toFixed(2),
+    serviceDurationSnapshot: service.packages[0]?.durationMinutes ?? 60,
+    serviceSnapshot: null,
     shopName: store.name,
     technicianName: technician.name,
     priceAmount: service.priceFrom.toFixed(2),
@@ -887,6 +895,7 @@ function bookingSlot(index: number): BookingScheduleSlot {
   return {
     id: index + 1,
     serviceId: index + 1,
+    technicianServiceId: null,
     shopId: numberFromText(store.id, index + 1),
     technicianProfileId: numberFromText(technician.id, index + 1),
     startsAt: staticTimestamp,
@@ -943,6 +952,77 @@ function handleBooking<TData>(path: string, options: HttpClientRequestOptions): 
 function handleCoreRead<TData>(path: string, options: HttpClientRequestOptions): StaticDemoResult<TData> {
   if (path === "/categories") {
     return { handled: true, data: clone(paginate(staticCoreCategories, options)) as TData };
+  }
+
+  const pricingModeMatch = path.match(/^\/shops\/(\d+)\/pricing-mode$/);
+  if (pricingModeMatch) {
+    const body = options.body as { pricingMode?: "merchant" | "technician" } | undefined;
+    return {
+      handled: true,
+      data: clone({
+        shopId: Number(pricingModeMatch[1]),
+        pricingMode: body?.pricingMode ?? "merchant",
+        updatedAt: new Date().toISOString(),
+        updatedBy: 1
+      }) as TData
+    };
+  }
+
+  const bookingNavigationMatch = path.match(/^\/shops\/(\d+)\/booking-navigation$/);
+  if (bookingNavigationMatch) {
+    return {
+      handled: true,
+      data: clone({
+        shopId: Number(bookingNavigationMatch[1]),
+        pricingMode: "merchant",
+        entry: "service_menu",
+        services: paginate(services.slice(0, 6).map((_, index) => ({
+          id: index + 1,
+          name: services[index]?.name ?? "服务",
+          priceAmount: String(services[index]?.priceFrom ?? 0),
+          currency: "JPY",
+          durationMinutes: services[index]?.packages[0]?.durationMinutes ?? 60,
+          coverUrl: services[index]?.cover ?? null
+        })), options)
+      }) as TData
+    };
+  }
+
+  const publicTechnicianServicesMatch = path.match(/^\/shops\/(\d+)\/technicians\/(\d+)\/services$/);
+  if (publicTechnicianServicesMatch || path.match(/^\/technicians\/me\/shops\/(\d+)\/services(?:\/\d+)?$/)) {
+    const technician = technicians[(Number(publicTechnicianServicesMatch?.[2] ?? 1) - 1) % technicians.length] ?? technicians[0]!;
+    const service = services[0]!;
+    const list = [
+      {
+        id: 1,
+        shopId: Number(publicTechnicianServicesMatch?.[1] ?? 1),
+        technicianId: Number(publicTechnicianServicesMatch?.[2] ?? 1),
+        sourceShopServiceId: null,
+        name: service.name,
+        description: `${technician.name} · ${service.summary}`,
+        categoryId: 1,
+        priceAmount: service.priceFrom,
+        currency: "JPY",
+        durationMinutes: service.packages[0]?.durationMinutes ?? 60,
+        coverImageUrl: service.cover,
+        images: [service.cover],
+        tags: technician.skills.slice(0, 3),
+        isActive: true,
+        isBookable: true,
+        isRecommended: true,
+        sortOrder: 0,
+        reviewStatus: "approved",
+        rejectionReason: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    ];
+
+    if ((options.method ?? "GET") === "GET") {
+      return { handled: true, data: clone(paginate(list, options)) as TData };
+    }
+
+    return { handled: true, data: clone(list[0]) as TData };
   }
 
   if (path === "/services" || path === "/search") {

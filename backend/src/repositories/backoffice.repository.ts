@@ -523,7 +523,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       customerUserId: order.customerUserId,
       customerName: order.customer.username || order.customer.email,
       serviceId: order.serviceId,
-      serviceName: order.service.name,
+      serviceName: order.serviceNameSnapshot ?? order.service?.name ?? "Unknown service",
       shopId: order.shopId,
       shopName: order.shop.name,
       technicianProfileId: order.technicianProfileId,
@@ -544,7 +544,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       id: slot.id,
       serviceId: slot.serviceId,
-      serviceName: slot.service.name,
+      serviceName: slot.service?.name ?? "Unknown service",
       shopId: slot.shopId,
       shopName: slot.shop.name,
       technicianProfileId: slot.technicianProfileId,

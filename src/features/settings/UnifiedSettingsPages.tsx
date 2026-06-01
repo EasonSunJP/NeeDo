@@ -1766,7 +1766,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
       return;
     }
 
-    switchPortal(nextPortal);
+    void switchPortal(nextPortal);
     navigate(getPortalEntry(nextPortal), {
       replace: true,
       state: {

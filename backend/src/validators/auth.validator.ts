@@ -51,6 +51,11 @@ export const refreshBodySchema = z.object({
   refreshToken: z.string().min(1)
 });
 
+export const switchIdentityBodySchema = z.object({
+  refreshToken: z.string().min(1),
+  identityId: z.number().int().positive()
+});
+
 export const logoutBodySchema = z.object({
   refreshToken: z.string().min(1)
 });
@@ -59,4 +64,5 @@ export type LoginBody = z.infer<typeof loginBodySchema>;
 export type OtpSendBody = z.infer<typeof otpSendBodySchema>;
 export type OtpVerifyBody = z.infer<typeof otpVerifyBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
+export type SwitchIdentityBody = z.infer<typeof switchIdentityBodySchema>;
 export type LogoutBody = z.infer<typeof logoutBodySchema>;

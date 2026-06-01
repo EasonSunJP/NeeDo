@@ -5,7 +5,8 @@ export type BookingOrderStatus = "pending" | "confirmed" | "inService" | "comple
 
 export type BookingScheduleSlot = {
   id: number;
-  serviceId: number;
+  serviceId: number | null;
+  technicianServiceId: number | null;
   shopId: number;
   technicianProfileId: number | null;
   startsAt: string;
@@ -28,12 +29,20 @@ export type BookingOrder = {
   status: BookingOrderStatus;
   paymentStatus: "unpaid";
   customerUserId: number;
-  serviceId: number;
+  serviceId: number | null;
+  technicianServiceId: number | null;
   shopId: number;
   technicianProfileId: number | null;
   scheduleSlotId: number;
   fulfillmentMode: FulfillmentMode;
   serviceName: string;
+  pricingModeSnapshot?: "merchant" | "technician";
+  serviceOwnerType?: "shop" | "technician";
+  serviceOwnerId?: number | null;
+  serviceNameSnapshot?: string | null;
+  servicePriceSnapshot?: string | null;
+  serviceDurationSnapshot?: number | null;
+  serviceSnapshot?: unknown;
   shopName: string;
   technicianName: string | null;
   priceAmount: string;
@@ -66,7 +75,8 @@ export type AvailabilityQuery = {
   from: string;
   page?: number;
   pageSize?: number;
-  serviceId: number;
+  serviceId?: number;
+  technicianServiceId?: number;
   shopId?: number;
   technicianId?: number;
   to: string;
@@ -76,8 +86,7 @@ export type CreateBookingInput = {
   fulfillmentMode: FulfillmentMode;
   note?: string;
   scheduleSlotId: number;
-  serviceId: number;
-};
+} & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
 
 export function isBookingApiId(value: string | number | null | undefined) {
   return typeof value === "number" ? Number.isInteger(value) && value > 0 : Boolean(value && /^[1-9]\d*$/.test(value));

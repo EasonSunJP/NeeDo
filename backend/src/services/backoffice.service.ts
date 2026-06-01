@@ -30,7 +30,7 @@ export interface BackofficeOrderPayload {
   paymentStatus: "unpaid";
   customerUserId: number;
   customerName: string;
-  serviceId: number;
+  serviceId: number | null;
   serviceName: string;
   shopId: number;
   shopName: string;
@@ -49,7 +49,7 @@ export interface BackofficeOrderPayload {
 
 export interface BackofficeScheduleSlotPayload {
   id: number;
-  serviceId: number;
+  serviceId: number | null;
   serviceName: string;
   shopId: number;
   shopName: string;

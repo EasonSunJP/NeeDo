@@ -1,7 +1,8 @@
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "../../auth/AuthProvider";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth, type AuthSession } from "../../auth/AuthProvider";
+import { ApiClientError } from "../../api/httpClient";
 import {
   createCustomContactCategoryDraft,
   CustomContactCategoryEditor,
@@ -44,11 +45,13 @@ import { ChartPointerTooltip, resolveChartPointerState, type ChartPointerState }
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { NotificationBadge } from "../../components/ui/NotificationBadge";
+import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { fieldJobs, orders } from "../../data/mock";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages";
 import { ImScopeProvider } from "../../features/im/scope";
+import { pricingModeApi, type ShopPricingMode, type TechnicianServicePayload } from "../../features/pricing-mode/api";
 import { useSocial } from "../../features/social/context";
 import { IdentityBadge, VerificationBadge } from "../../features/social/components/SocialUi";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -101,7 +104,10 @@ type TechnicianView = "tasks" | "schedule" | "moments" | "contacts" | "messages"
 type WorkStatus = "出勤" | "移动中" | "服务中" | "休息" | "退勤";
 type TechnicianTasksPanelTab = "schedule" | "orders";
 type TechnicianTaskOrderTab = "pending" | "active" | "done";
-type TechnicianMeTab = "info" | "data";
+type TechnicianMeTab = "info" | "services" | "data";
+type TechnicianStorePricingMode = "store" | "technician";
+type TechnicianServiceEditorId = number | "default" | "draft";
+type TechnicianServiceCardItem = TechnicianServicePayload | "default" | "draft";
 type ScheduleScope = "day" | "week" | "month";
 type ScheduleDisplayMode = ScheduleScope | "list";
 type TechWorkMode = "store" | "personal";
@@ -155,6 +161,8 @@ const technicianCustomerReviewTags: ServiceReviewTag[] = [
   { label: "守规则", count: 3, kind: "chip" },
   { label: "会再接", count: 2, kind: "chip" }
 ];
+const maxTechnicianServiceCount = 5;
+const technicianServiceLoginRedirectPath = "/technician/me?meTab=services";
 
 type TechnicianProfile = {
   nickname: string;
@@ -2181,11 +2189,37 @@ function getRouteWorkMode(_value?: string | null): TechWorkMode {
 }
 
 function getTechnicianMeTab(value?: string | null): TechnicianMeTab {
+  if (value === "services") {
+    return value;
+  }
+
   if (value === "data") {
     return value;
   }
 
   return "info";
+}
+
+function getTechnicianPortalApiId(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }
+
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^[1-9]\d*$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  const suffix = normalized.match(/(\d+)$/)?.[1];
+  return suffix ? Number(suffix) : null;
+}
+
+function technicianStorePricingModeFromApi(mode: ShopPricingMode): TechnicianStorePricingMode {
+  return mode === "technician" ? "technician" : "store";
 }
 
 function getRouteWorkDetailScope(value?: string | null): WorkDetailScope {
@@ -2333,6 +2367,114 @@ function ProfilePrivacyInfoButton({ content, className }: { content: string; cla
       panelMode="tooltip"
     />
   );
+}
+
+function TechnicianPricingModeReadonlySwitch({
+  loading,
+  mode
+}: {
+  loading?: boolean;
+  mode: TechnicianStorePricingMode;
+}) {
+  const [blockedDialogOpen, setBlockedDialogOpen] = useState(false);
+  const technicianPricing = mode === "technician";
+  const statusLabel = technicianPricing ? "当前服务列表已生效" : "当前服务列表未启用";
+  const blockedMessage = technicianPricing ? "无法关闭，详情请联系所属店铺的担当者" : "无法开启，详情请联系所属店铺的担当者";
+  const showBlockedMessage = () => {
+    setBlockedDialogOpen(true);
+  };
+
+  return (
+    <>
+      <div
+        className="min-w-[166px] rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-1.5 shadow-[0_10px_22px_rgba(0,0,0,0.16)] backdrop-blur-xl"
+        data-testid="technician-service-pricing-mode-display"
+      >
+        <div className="flex items-center justify-between gap-1.5">
+          <span className="min-w-0 text-left">
+            <strong className="block truncate text-[10px] font-black text-[color:var(--client-text)]">
+              {loading ? "同步中" : statusLabel}
+            </strong>
+          </span>
+          <ToggleSwitch
+            ariaLabel={blockedMessage}
+            checked={technicianPricing}
+            onChange={showBlockedMessage}
+          />
+        </div>
+      </div>
+      <PrivacyModeConfirmDialog
+        cancelLabel="知道了"
+        message={blockedMessage}
+        onCancel={() => setBlockedDialogOpen(false)}
+        open={blockedDialogOpen}
+        showConfirmAction={false}
+      />
+    </>
+  );
+}
+
+function isTechnicianServiceIdentity(session: AuthSession | null) {
+  return Boolean(
+    session &&
+    session.currentIdentity.type === "technician" &&
+    session.currentIdentity.scopeType === "technician_profile"
+  );
+}
+
+function hasTechnicianProfileIdentity(session: AuthSession | null) {
+  return Boolean(
+    session?.identities.some(
+      (identity) => identity.type === "technician" && identity.scopeType === "technician_profile"
+    )
+  );
+}
+
+function getTechnicianServiceAccessIssue(session: AuthSession | null, actionLabel: string) {
+  if (!session) {
+    return `需要先登录技师账号后才能${actionLabel}服务。`;
+  }
+
+  if (!isTechnicianServiceIdentity(session)) {
+    return `当前登录身份不是技师身份，请切换或重新登录技师账号后再${actionLabel}服务。`;
+  }
+
+  if (!session.permissions.includes("technician:services:write")) {
+    return `当前技师账号没有服务维护权限，请联系所属店铺的担当者后再${actionLabel}服务。`;
+  }
+
+  return null;
+}
+
+function canSyncTechnicianServiceIdentity(session: AuthSession | null) {
+  if (!session || isTechnicianServiceIdentity(session)) {
+    return false;
+  }
+
+  return hasTechnicianProfileIdentity(session);
+}
+
+function shouldCreateDefaultTechnicianServiceBeforeDraftSave(
+  editingId: TechnicianServiceEditorId | null,
+  savedServiceCount: number
+) {
+  return editingId === "draft" && savedServiceCount === 0;
+}
+
+function getTechnicianServiceMutationFailureMessage(error: unknown, actionLabel: string) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) {
+      return `登录状态已失效，请重新登录技师账号后再${actionLabel}服务。`;
+    }
+
+    if (error.status === 403) {
+      return `当前账号无法${actionLabel}该店铺的技师服务，请切换到所属店铺的技师账号。`;
+    }
+
+    return `服务信息${actionLabel}失败（${error.message}），请稍后重试。`;
+  }
+
+  return `服务信息${actionLabel}失败，请稍后重试。`;
 }
 
 function buildTechnicianKycDraft(profile: TechnicianProfile): TechnicianKycDraft {
@@ -2605,7 +2747,7 @@ export function TechnicianPortalPage() {
   const { profiles, getActorForScope } = useSocial();
   const activeView = getTechnicianView(view);
   const activeMeTab = getTechnicianMeTab(searchParams.get("meTab"));
-  const { session } = useAuth();
+  const { session, switchPortal, logout } = useAuth();
   const { isNight } = useClientTheme();
   const { language } = useI18n();
   const { customers, stores, technicians } = useEntityStore();
@@ -2638,11 +2780,28 @@ export function TechnicianPortalPage() {
   const [scheduleSelectedDate, setScheduleSelectedDate] = useState<string | null>(todayDate);
   const [profilePrivacyEnabled, setProfilePrivacyEnabled] = useState(false);
   const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
+  const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] = useState(false);
   const [profileVisibility, setProfileVisibility] = useState<TechnicianProfileVisibility>("privateAll");
   const [profileDraftPrivacyMenuOpen, setProfileDraftPrivacyMenuOpen] = useState(false);
+  const [profileDraftPrivacyConfirmOpen, setProfileDraftPrivacyConfirmOpen] = useState(false);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [documentUploadOpen, setDocumentUploadOpen] = useState(false);
   const [techProfile, setTechProfile] = useState<TechnicianProfile>(() => buildTechnicianProfile(baseTech, store.name));
+  const technicianShopApiId = getTechnicianPortalApiId(store.id);
+  const defaultTechnicianServiceDraft = {
+    name: baseTech.skills[0] ?? "指名服务",
+    priceAmount: "8800",
+    durationMinutes: "60",
+    description: ""
+  };
+  const [technicianServices, setTechnicianServices] = useState<TechnicianServicePayload[]>([]);
+  const [technicianServiceSaving, setTechnicianServiceSaving] = useState(false);
+  const [technicianServiceEditingId, setTechnicianServiceEditingId] = useState<TechnicianServiceEditorId | null>(null);
+  const [technicianServiceDraft, setTechnicianServiceDraft] = useState(defaultTechnicianServiceDraft);
+  const [technicianServiceCancelConfirmOpen, setTechnicianServiceCancelConfirmOpen] = useState(false);
+  const [technicianServiceDeleteConfirmOpen, setTechnicianServiceDeleteConfirmOpen] = useState(false);
+  const [technicianStorePricingMode, setTechnicianStorePricingMode] = useState<TechnicianStorePricingMode>("store");
+  const [technicianPricingModeLoading, setTechnicianPricingModeLoading] = useState(false);
   const [profileDraft, setProfileDraft] = useState<TechnicianProfileDraft>(() =>
     buildTechnicianProfileDraft(buildTechnicianProfile(baseTech, store.name), false, "privateAll", defaultAreaSelection, defaultLineSelection)
   );
@@ -2662,6 +2821,9 @@ export function TechnicianPortalPage() {
   const [dayScheduleEditor, setDayScheduleEditor] = useState<DayScheduleEditorState | null>(null);
   const [nextCustomerCardOpen, setNextCustomerCardOpen] = useState(false);
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
+  const technicianServiceLoginRedirectingRef = useRef(false);
+  const technicianServiceIdentitySyncInFlightRef = useRef(false);
+  const technicianServiceEditingCardRef = useRef<HTMLElement | null>(null);
   const setContactLog = (message: string, options: TechnicianStatusLogOptions = {}) => {
     setStatusTimelineRecords((current) => {
       const meta = getTechnicianStatusTimelineMeta(message);
@@ -2681,6 +2843,317 @@ export function TechnicianPortalPage() {
         }
       ].slice(-24);
     });
+  };
+
+  const redirectToTechnicianServiceLogin = useCallback(async () => {
+    if (technicianServiceLoginRedirectingRef.current) {
+      return;
+    }
+
+    technicianServiceLoginRedirectingRef.current = true;
+    await logout();
+    navigate(`/login/technician?redirect=${encodeURIComponent(technicianServiceLoginRedirectPath)}`, { replace: true });
+  }, [logout, navigate]);
+
+  useEffect(() => {
+    if (activeView !== "me" || activeMeTab !== "services" || !session || isTechnicianServiceIdentity(session)) {
+      return;
+    }
+
+    if (!canSyncTechnicianServiceIdentity(session)) {
+      void redirectToTechnicianServiceLogin();
+      return;
+    }
+
+    if (technicianServiceIdentitySyncInFlightRef.current) {
+      return;
+    }
+
+    technicianServiceIdentitySyncInFlightRef.current = true;
+    void switchPortal("technician")
+      .then((result) => {
+        const switchedSession = result.ok ? result.session ?? null : null;
+        if (!result.ok || !isTechnicianServiceIdentity(switchedSession)) {
+          void redirectToTechnicianServiceLogin();
+        }
+      })
+      .finally(() => {
+        technicianServiceIdentitySyncInFlightRef.current = false;
+      });
+  }, [activeMeTab, activeView, redirectToTechnicianServiceLogin, session, switchPortal]);
+
+  useEffect(() => {
+    if (!technicianShopApiId || activeView !== "me" || activeMeTab !== "services") {
+      return;
+    }
+
+    let mounted = true;
+    pricingModeApi
+      .listTechnicianServices(technicianShopApiId, { page: 1, pageSize: 20 })
+      .then((result) => {
+        if (mounted) {
+          setTechnicianServices(result.list);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setTechnicianServices([]);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeMeTab, activeView, technicianShopApiId]);
+
+  useEffect(() => {
+    if (!technicianShopApiId || activeView !== "me" || activeMeTab !== "services") {
+      return;
+    }
+
+    let mounted = true;
+    setTechnicianPricingModeLoading(true);
+    pricingModeApi.getShopPricingMode(technicianShopApiId)
+      .then((result) => {
+        if (mounted) {
+          setTechnicianStorePricingMode(technicianStorePricingModeFromApi(result.pricingMode));
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setTechnicianStorePricingMode("store");
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setTechnicianPricingModeLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeMeTab, activeView, technicianShopApiId]);
+
+  const updateTechnicianServiceDraft = (
+    key: keyof typeof technicianServiceDraft,
+    value: string
+  ) => {
+    setTechnicianServiceDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const openTechnicianServiceEditor = (service?: TechnicianServicePayload) => {
+    if (service) {
+      setTechnicianServiceDraft({
+        name: service.name,
+        priceAmount: String(service.priceAmount),
+        durationMinutes: String(service.durationMinutes),
+        description: service.description ?? ""
+      });
+      setTechnicianServiceEditingId(service.id);
+      return;
+    }
+
+    setTechnicianServiceDraft(defaultTechnicianServiceDraft);
+    setTechnicianServiceEditingId("default");
+  };
+
+  const openNewTechnicianServiceEditor = () => {
+    setTechnicianServiceDraft(defaultTechnicianServiceDraft);
+    setTechnicianServiceEditingId("draft");
+  };
+
+  const cancelTechnicianServiceEdit = () => {
+    setTechnicianServiceEditingId(null);
+    setTechnicianServiceDraft(defaultTechnicianServiceDraft);
+    setTechnicianServiceCancelConfirmOpen(false);
+    setTechnicianServiceDeleteConfirmOpen(false);
+  };
+
+  useEffect(() => {
+    if (technicianServiceEditingId === null || technicianServiceCancelConfirmOpen || technicianServiceDeleteConfirmOpen) {
+      return;
+    }
+
+    const handleTechnicianServiceOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (technicianServiceEditingCardRef.current?.contains(target)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setTechnicianServiceCancelConfirmOpen(true);
+    };
+
+    document.addEventListener("pointerdown", handleTechnicianServiceOutsidePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handleTechnicianServiceOutsidePointerDown, true);
+    };
+  }, [technicianServiceCancelConfirmOpen, technicianServiceDeleteConfirmOpen, technicianServiceEditingId]);
+
+  const requestDeleteEditingTechnicianService = () => {
+    if (technicianServiceSaving) {
+      return;
+    }
+
+    setTechnicianServiceDeleteConfirmOpen(true);
+  };
+
+  const requestCancelTechnicianServiceEdit = () => {
+    if (technicianServiceSaving) {
+      return;
+    }
+
+    setTechnicianServiceCancelConfirmOpen(true);
+  };
+
+  const ensureTechnicianServiceMutationAccess = async (actionLabel: string) => {
+    const accessIssue = getTechnicianServiceAccessIssue(session, actionLabel);
+    if (!accessIssue) {
+      return null;
+    }
+
+    if (!canSyncTechnicianServiceIdentity(session)) {
+      if (session && !hasTechnicianProfileIdentity(session)) {
+        await redirectToTechnicianServiceLogin();
+      }
+
+      return accessIssue;
+    }
+
+    const switched = await switchPortal("technician");
+    if (!switched.ok) {
+      return `当前技师身份同步失败，请重新登录技师账号后再${actionLabel}服务。`;
+    }
+
+    const switchedAccessIssue = getTechnicianServiceAccessIssue(switched.session ?? null, actionLabel);
+    if (switchedAccessIssue) {
+      if (!isTechnicianServiceIdentity(switched.session ?? null)) {
+        await redirectToTechnicianServiceLogin();
+      }
+
+      return switchedAccessIssue;
+    }
+
+    return null;
+  };
+
+  const deleteEditingTechnicianService = async () => {
+    if (technicianServiceEditingId === null || technicianServiceEditingId === "default" || technicianServiceSaving) {
+      return;
+    }
+
+    if (technicianServiceEditingId === "draft") {
+      cancelTechnicianServiceEdit();
+      return;
+    }
+
+    if (!technicianShopApiId) {
+      return;
+    }
+
+    const accessIssue = await ensureTechnicianServiceMutationAccess("删除");
+    if (accessIssue) {
+      setContactLog(accessIssue);
+      return;
+    }
+
+    setTechnicianServiceSaving(true);
+    try {
+      const serviceId = technicianServiceEditingId;
+      await pricingModeApi.deleteTechnicianService(technicianShopApiId, serviceId);
+      setTechnicianServices((current) => current.filter((item) => item.id !== serviceId));
+      setTechnicianServiceEditingId(null);
+      setTechnicianServiceDraft(defaultTechnicianServiceDraft);
+      setTechnicianServiceDeleteConfirmOpen(false);
+      setContactLog("服务信息已删除。");
+    } catch (error) {
+      setTechnicianServiceDeleteConfirmOpen(false);
+      setContactLog(getTechnicianServiceMutationFailureMessage(error, "删除"));
+    } finally {
+      setTechnicianServiceSaving(false);
+    }
+  };
+
+  const saveTechnicianServiceDraft = async () => {
+    if (!technicianShopApiId || technicianServiceSaving || technicianServiceEditingId === null) {
+      return;
+    }
+
+    const editingId = technicianServiceEditingId;
+    const savedServiceCount = technicianServices.length;
+    const shouldCreateDefaultService = shouldCreateDefaultTechnicianServiceBeforeDraftSave(
+      editingId,
+      savedServiceCount
+    );
+    const priceAmount = Number.parseInt(technicianServiceDraft.priceAmount.replace(/[^\d]/g, ""), 10);
+    const durationMinutes = Number.parseInt(technicianServiceDraft.durationMinutes.replace(/[^\d]/g, ""), 10);
+
+    if (!technicianServiceDraft.name.trim() || !Number.isFinite(priceAmount) || !Number.isFinite(durationMinutes)) {
+      setContactLog("服务信息需要填写名称、价格和时长。");
+      return;
+    }
+
+    const accessIssue = await ensureTechnicianServiceMutationAccess("保存");
+    if (accessIssue) {
+      setContactLog(accessIssue);
+      return;
+    }
+
+    setTechnicianServiceSaving(true);
+    try {
+      const buildPayload = (
+        draft: typeof technicianServiceDraft,
+        sortOrder?: number
+      ) => ({
+        name: draft.name.trim(),
+        description: draft.description.trim() || null,
+        categoryId: 1,
+        priceAmount: Number.parseInt(draft.priceAmount.replace(/[^\d]/g, ""), 10),
+        currency: "JPY",
+        durationMinutes: Number.parseInt(draft.durationMinutes.replace(/[^\d]/g, ""), 10),
+        ...(typeof sortOrder === "number" ? { sortOrder } : {}),
+        tags: baseTech.skills.slice(0, 3)
+      });
+      const payload = buildPayload(
+        technicianServiceDraft,
+        typeof editingId === "number" ? undefined : shouldCreateDefaultService ? 1 : savedServiceCount
+      );
+      const savedDefaultService = shouldCreateDefaultService
+        ? await pricingModeApi.createTechnicianService(technicianShopApiId, buildPayload(defaultTechnicianServiceDraft, 0))
+        : null;
+      const createdServices = savedDefaultService ? [savedDefaultService] : [];
+      const saved = typeof editingId === "number"
+        ? await pricingModeApi.updateTechnicianService(technicianShopApiId, editingId, payload)
+        : await pricingModeApi.createTechnicianService(technicianShopApiId, payload);
+      setTechnicianServices((current) => {
+        if (current.length === 0 && createdServices.length > 0) {
+          return [...createdServices, saved];
+        }
+
+        const exists = current.some((item) => item.id === saved.id);
+
+        if (exists) {
+          return current.map((item) => (item.id === saved.id ? saved : item));
+        }
+
+        return [...current, ...createdServices, saved];
+      });
+      setTechnicianServiceEditingId(null);
+      setTechnicianServiceDraft(defaultTechnicianServiceDraft);
+      setContactLog("服务信息已保存。");
+    } catch (error) {
+      setContactLog(getTechnicianServiceMutationFailureMessage(error, "保存"));
+    } finally {
+      setTechnicianServiceSaving(false);
+    }
   };
   const setOrderContactLog = (
     prefix: string,
@@ -3191,11 +3664,13 @@ export function TechnicianPortalPage() {
   const dataCenterNextEvent = dataCenterFutureEvents.find((event) => event.status !== "blocked");
   const dataCenterTrendPoints = getWorkTrendPoints(getWorkDetailEvents(dataCenterWorkEvents, "week", todayDate), "week", todayDate);
   const dataCenterIncome = dataCenterCompletedEvents.reduce((sum, event) => sum + event.amount, 0);
+  const dataCenterBaseSalaryAmount = Math.max(dataCenterIncome, baseTech.income);
+  const dataCenterBaseSalaryBadge = `基础工资：¥${dataCenterBaseSalaryAmount.toLocaleString("en-US")}`;
   const dataCenterWorkProfile = {
     title: workModeLabels[dataCenterWorkMode],
     caption: `${store.name} 的固定排班、培训和门店预约`,
     settlement: "店铺月结 / 含指名奖励",
-    income: yen(Math.max(dataCenterIncome, baseTech.income)),
+    income: yen(dataCenterBaseSalaryAmount),
     completed: dataCenterCompletedEvents.length,
     future: dataCenterFutureEvents.length,
     next: dataCenterNextEvent ? `${dataCenterNextEvent.date} ${dataCenterNextEvent.startTime} · ${dataCenterNextEvent.title}` : "暂无未来安排",
@@ -3542,13 +4017,27 @@ export function TechnicianPortalPage() {
   const cancelProfileEdit = () => {
     setProfileDraft(buildTechnicianProfileDraft(techProfile, profilePrivacyEnabled, profileVisibility, defaultAreaSelection, defaultLineSelection));
     setProfilePrivacyMenuOpen(false);
+    setProfilePrivacyConfirmOpen(false);
+    setProfileDraftPrivacyConfirmOpen(false);
     setProfileEditorOpen(false);
   };
 
   const updateProfilePrivacyEnabled = (enabled: boolean) => {
+    if (enabled) {
+      setProfilePrivacyConfirmOpen(true);
+      return;
+    }
+
     setProfilePrivacyEnabled(enabled);
-    setProfilePrivacyMenuOpen(enabled);
+    setProfilePrivacyMenuOpen(false);
+    setProfilePrivacyConfirmOpen(false);
     setProfileDraft((current) => ({ ...current, privacyEnabled: enabled }));
+  };
+  const confirmProfilePrivacyEnabled = () => {
+    setProfilePrivacyConfirmOpen(false);
+    setProfilePrivacyEnabled(true);
+    setProfilePrivacyMenuOpen(true);
+    setProfileDraft((current) => ({ ...current, privacyEnabled: true }));
   };
 
   const updateProfileVisibility = (visibility: TechnicianProfileVisibility) => {
@@ -4480,6 +4969,11 @@ export function TechnicianPortalPage() {
       </ol>
     </section>
   );
+  const technicianServiceCardItems: TechnicianServiceCardItem[] =
+    technicianServices.length > 0
+      ? technicianServiceEditingId === "draft" ? [...technicianServices, "draft"] : technicianServices
+      : technicianServiceEditingId === "draft" ? ["default", "draft"] : ["default"];
+  const currentTechnicianServiceDisplayCount = technicianServiceCardItems.length;
 
   return (
     <MobileShell
@@ -4539,6 +5033,7 @@ export function TechnicianPortalPage() {
           <FeatureSegmentedTabs
             items={[
               { label: "信息卡", value: "info" },
+              { label: "服务信息", value: "services" },
               { label: "数据中心", value: "data" }
             ]}
             onChange={(value) => updateTechnicianMeTab(value as TechnicianMeTab)}
@@ -5113,6 +5608,11 @@ export function TechnicianPortalPage() {
                                 size="md"
                               />
                             </div>
+                            <PrivacyModeConfirmDialog
+                              onCancel={() => setProfilePrivacyConfirmOpen(false)}
+                              onConfirm={confirmProfilePrivacyEnabled}
+                              open={profilePrivacyConfirmOpen}
+                            />
                             {profilePrivacyEnabled && profilePrivacyMenuOpen ? (
                               <div
                                 className={cn(
@@ -5411,11 +5911,163 @@ export function TechnicianPortalPage() {
                 </>
               )}
 
+              {activeMeTab === "services" && (
+                <>
+                  <section>
+                    <SectionTitle caption={`${store.name} 的技师定价服务由本人维护。`} title="服务信息">
+                      <TechnicianPricingModeReadonlySwitch
+                        loading={technicianPricingModeLoading}
+                        mode={technicianStorePricingMode}
+                      />
+                    </SectionTitle>
+                    <div className="mt-2 grid gap-2">
+                      {technicianServiceCardItems.map((service, serviceIndex) => {
+                        const serviceRecord = typeof service === "string" ? null : service;
+                        const editing = serviceRecord ? technicianServiceEditingId === serviceRecord.id : technicianServiceEditingId === service;
+                        const canDeleteEditingService = editing && serviceIndex > 0;
+                        const serviceName = serviceRecord?.name ?? defaultTechnicianServiceDraft.name;
+                        const servicePrice = serviceRecord?.priceAmount ?? Number.parseInt(defaultTechnicianServiceDraft.priceAmount, 10);
+                        const serviceDuration = serviceRecord?.durationMinutes ?? Number.parseInt(defaultTechnicianServiceDraft.durationMinutes, 10);
+                        const serviceDescription = serviceRecord?.description ?? defaultTechnicianServiceDraft.description;
+                        const serviceCardKey = typeof service === "string" ? service : service.id;
+
+                        return (
+                          <article
+                            className={cn("relative rounded-[20px] border p-3 shadow-panel", technicianProfileSurface.panel)}
+                            data-testid="technician-service-card"
+                            key={serviceCardKey}
+                            ref={editing ? technicianServiceEditingCardRef : null}
+                          >
+                            {editing ? (
+                              <div className="grid gap-2.5">
+                                <label className={cn("grid gap-1 text-[11px] font-bold", technicianProfileSurface.label)}>
+                                  服务名称
+                                  <input
+                                    className={cn("h-10 w-full min-w-0 rounded-[14px] border bg-transparent px-3 text-sm font-black outline-none focus:border-[color:var(--client-primary)]", technicianProfileSurface.metric)}
+                                    onChange={(event) => updateTechnicianServiceDraft("name", event.currentTarget.value)}
+                                    value={technicianServiceDraft.name}
+                                  />
+                                </label>
+                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2.5">
+                                  <label className={cn("grid min-w-0 gap-1 text-[11px] font-bold", technicianProfileSurface.label)}>
+                                    价格
+                                    <input
+                                      className={cn("h-10 w-full min-w-0 rounded-[14px] border bg-transparent px-3 text-sm font-black outline-none focus:border-[color:var(--client-primary)]", technicianProfileSurface.metric)}
+                                      inputMode="numeric"
+                                      onChange={(event) => updateTechnicianServiceDraft("priceAmount", event.currentTarget.value)}
+                                      value={technicianServiceDraft.priceAmount}
+                                    />
+                                  </label>
+                                  <label className={cn("grid min-w-0 gap-1 text-[11px] font-bold", technicianProfileSurface.label)}>
+                                    时长
+                                    <input
+                                      className={cn("h-10 w-full min-w-0 rounded-[14px] border bg-transparent px-3 text-sm font-black outline-none focus:border-[color:var(--client-primary)]", technicianProfileSurface.metric)}
+                                      inputMode="numeric"
+                                      onChange={(event) => updateTechnicianServiceDraft("durationMinutes", event.currentTarget.value)}
+                                      value={technicianServiceDraft.durationMinutes}
+                                    />
+                                  </label>
+                                </div>
+                                <label className={cn("grid gap-1 text-[11px] font-bold", technicianProfileSurface.label)}>
+                                  描述
+                                  <textarea
+                                    className={cn("min-h-20 w-full min-w-0 resize-none rounded-[14px] border bg-transparent px-3 py-2.5 text-sm font-bold outline-none focus:border-[color:var(--client-primary)]", technicianProfileSurface.metric)}
+                                    onChange={(event) => updateTechnicianServiceDraft("description", event.currentTarget.value)}
+                                    value={technicianServiceDraft.description}
+                                  />
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <button className={cn("rounded-[18px] border px-3 py-2.5 text-sm font-black", technicianProfileSurface.metric)} onClick={requestCancelTechnicianServiceEdit} type="button">
+                                    取消
+                                  </button>
+                                  <button className={cn("rounded-[18px] border px-3 py-2.5 text-sm font-black", technicianProfileSurface.chip)} disabled={technicianServiceSaving} onClick={() => void saveTechnicianServiceDraft()} type="button">
+                                    保存
+                                  </button>
+                                </div>
+                                {canDeleteEditingService ? (
+                                  <button
+                                    className="rounded-[18px] border border-[#ff5f6e]/55 bg-[#ff314f]/12 px-3 py-2.5 text-sm font-black text-[#ff6f7b]"
+                                    disabled={technicianServiceSaving}
+                                    onClick={requestDeleteEditingTechnicianService}
+                                    type="button"
+                                  >
+                                    删除该服务
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <>
+                                <IconButton
+                                  className={cn("absolute right-2.5 top-2.5 z-10 h-9 w-9 shadow-[0_12px_24px_rgba(0,0,0,0.18)]", technicianProfileSurface.metric)}
+                                  icon="edit"
+                                  label="编辑服务"
+                                  onClick={() => serviceRecord ? openTechnicianServiceEditor(serviceRecord) : openTechnicianServiceEditor()}
+                                />
+                                <div className="pr-11">
+                                  <p className={cn("text-[11px] font-bold", technicianProfileSurface.label)}>服务名称</p>
+                                  <h3 className="mt-1.5 text-[17px] font-black text-[color:var(--client-text)]">{serviceName}</h3>
+                                </div>
+                                <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2.5">
+                                  <div className={cn("rounded-[16px] border p-2.5", technicianProfileSurface.metric)}>
+                                    <p className={cn("text-[11px] font-bold", technicianProfileSurface.label)}>价格</p>
+                                    <strong className="mt-1.5 block truncate text-[17px] font-black text-[color:var(--client-text)]">{yen(servicePrice)}</strong>
+                                  </div>
+                                  <div className={cn("rounded-[16px] border p-2.5", technicianProfileSurface.metric)}>
+                                    <p className={cn("text-[11px] font-bold", technicianProfileSurface.label)}>时长</p>
+                                    <strong className="mt-1.5 block truncate text-[17px] font-black text-[color:var(--client-text)]">{serviceDuration}</strong>
+                                  </div>
+                                </div>
+                                <div className={cn("mt-3 rounded-[16px] border p-2.5", technicianProfileSurface.metric)}>
+                                  <p className={cn("text-[11px] font-bold", technicianProfileSurface.label)}>描述</p>
+                                  <p className={cn("mt-1.5 min-h-10 text-[13px] font-bold leading-5", technicianProfileSurface.muted)}>
+                                    {serviceDescription || "未填写描述"}
+                                  </p>
+                                </div>
+                              </>
+                            )}
+                          </article>
+                        );
+                      })}
+                      {currentTechnicianServiceDisplayCount < maxTechnicianServiceCount ? (
+                        <button
+                          className={cn("inline-flex h-11 items-center justify-center gap-2 rounded-[18px] border px-3 py-2.5 text-sm font-black", technicianProfileSurface.chip)}
+                          disabled={technicianServiceSaving || technicianServiceEditingId !== null}
+                          onClick={openNewTechnicianServiceEditor}
+                          type="button"
+                        >
+                          <AppIcon className="h-4 w-4" name="plus" />
+                          添加服务
+                          <span className="text-[11px] font-black opacity-70">
+                            {currentTechnicianServiceDisplayCount}/{maxTechnicianServiceCount}
+                          </span>
+                        </button>
+                      ) : null}
+                      <PrivacyModeConfirmDialog
+                        cancelLabel="继续编辑"
+                        confirmLabel="取消编辑"
+                        message="是否取消编辑服务信息？未保存的修改将不会保留。"
+                        onCancel={() => setTechnicianServiceCancelConfirmOpen(false)}
+                        onConfirm={cancelTechnicianServiceEdit}
+                        open={technicianServiceCancelConfirmOpen}
+                      />
+                      <PrivacyModeConfirmDialog
+                        cancelLabel="继续编辑"
+                        confirmLabel="删除服务"
+                        message="是否要删除该服务项目？当前内容将不会被保存。"
+                        onCancel={() => setTechnicianServiceDeleteConfirmOpen(false)}
+                        onConfirm={() => void deleteEditingTechnicianService()}
+                        open={technicianServiceDeleteConfirmOpen}
+                      />
+                    </div>
+                  </section>
+                </>
+              )}
+
               {activeMeTab === "data" && (
                 <>
-                  <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+                  <section>
                     <SectionTitle caption="集中查看店铺工作的趋势、结算和下一单安排。" title="收入趋势">
-                      <Badge tone="green">{workModeLabels[dataCenterWorkMode]}</Badge>
+                      <Badge tone="green">{dataCenterBaseSalaryBadge}</Badge>
                     </SectionTitle>
                     <div className={cn("mt-4 rounded-[24px] border p-4", activeIncomeTrendShellClass)}>
                       <div className="flex items-start justify-between gap-3">
@@ -5452,10 +6104,8 @@ export function TechnicianPortalPage() {
                     </div>
                   </section>
 
-                  <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-                    <SectionTitle caption="店铺工作的核心数据会显示在这里，点卡片进入完整详细页。" title="数据统计">
-                      <Badge tone="green">{workModeLabels[dataCenterWorkMode]}</Badge>
-                    </SectionTitle>
+                  <section>
+                    <SectionTitle caption="店铺工作的核心数据会显示在这里，点卡片进入完整详细页。" title="数据统计" />
                     <div className="mt-3 grid gap-3">
                       {([dataCenterWorkMode] as TechWorkMode[]).map((mode) => {
                         const events = workAnalyticsEvents.filter((event) => event.workMode === mode);
@@ -5634,12 +6284,27 @@ export function TechnicianPortalPage() {
                                 ariaLabel="是否开启隐私模式"
                                 checked={profileDraft.privacyEnabled}
                                 onChange={(checked) => {
-                                  setProfileDraftPrivacyMenuOpen(checked);
-                                  setProfileDraft((current) => ({ ...current, privacyEnabled: checked }));
+                                  if (checked) {
+                                    setProfileDraftPrivacyConfirmOpen(true);
+                                    return;
+                                  }
+
+                                  setProfileDraftPrivacyConfirmOpen(false);
+                                  setProfileDraftPrivacyMenuOpen(false);
+                                  setProfileDraft((current) => ({ ...current, privacyEnabled: false }));
                                 }}
                                 size="md"
                               />
                             </div>
+                            <PrivacyModeConfirmDialog
+                              onCancel={() => setProfileDraftPrivacyConfirmOpen(false)}
+                              onConfirm={() => {
+                                setProfileDraftPrivacyConfirmOpen(false);
+                                setProfileDraftPrivacyMenuOpen(true);
+                                setProfileDraft((current) => ({ ...current, privacyEnabled: true }));
+                              }}
+                              open={profileDraftPrivacyConfirmOpen}
+                            />
                             {profileDraft.privacyEnabled && profileDraftPrivacyMenuOpen ? (
                               <div className="absolute right-0 top-[calc(100%+8px)] z-50 grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border border-line bg-white p-2 shadow-panel">
                                 {profilePrivacyOptions.map((option) => {

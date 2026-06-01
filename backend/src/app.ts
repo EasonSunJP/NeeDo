@@ -22,6 +22,7 @@ import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
 import type { LedgerRepositoryPort } from "./services/ledger.service";
 import type { PermissionRepositoryPort } from "./repositories/permission.repository";
+import type { PricingModeRepositoryPort } from "./services/pricing-mode.service";
 import {
   RealtimeRepository,
   type RealtimeRepositoryPort
@@ -36,6 +37,7 @@ import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createObservabilityRoutes } from "./routes/observability.routes";
 import { createPermissionRoutes } from "./routes/permission.routes";
+import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
@@ -60,6 +62,7 @@ export interface AppDependencies {
   otpDeliveryClient?: OtpDeliveryClient;
   auditLogRepository?: AuditLogRepositoryPort;
   permissionRepository?: PermissionRepositoryPort;
+  pricingModeRepository?: PricingModeRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
@@ -119,6 +122,7 @@ export const createApp = (
   apiRouter.use(createRoleRoutes(config, resolvedDependencies));
   apiRouter.use(createUserRoutes(config, resolvedDependencies));
   apiRouter.use(createCoreReadRoutes(resolvedDependencies));
+  apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));

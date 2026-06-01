@@ -30,7 +30,7 @@ describe("StoreDetailPage routed booking defaults", () => {
   it("uses one consistent edit button size and avoids duplicate menu card edit actions", () => {
     const inlineEditSource = pageSource.slice(pageSource.indexOf("function StoreInlineEditLink"), pageSource.indexOf("const inlineTextEditorClassName"));
     const compactMenuSource = pageSource.slice(pageSource.indexOf("function CompactMenuCard"), pageSource.indexOf("function EnvironmentGalleryCard"));
-    const menuSectionSource = pageSource.slice(pageSource.indexOf("{menuBlock.visible ?"), pageSource.indexOf("{technicianBlock.visible ?"));
+    const menuSectionSource = pageSource.slice(pageSource.indexOf("{shouldRenderServiceMenu ?"), pageSource.indexOf("{technicianBlock.visible ?"));
 
     expect(pageSource).toContain('const storeInlineEditButtonSizeClassName = "h-10 w-10";');
     expect(pageSource).toContain('const storeInlineEditIconSizeClassName = "h-4 w-4";');
@@ -47,7 +47,7 @@ describe("StoreDetailPage routed booking defaults", () => {
   });
 
   it("shows a merchant-only add service action between menu and technicians", () => {
-    const homeMenuToTechnicianSource = pageSource.slice(pageSource.indexOf("{menuBlock.visible ?"), pageSource.indexOf("{technicianBlock.visible ?"));
+    const homeMenuToTechnicianSource = pageSource.slice(pageSource.indexOf("{shouldRenderServiceMenu ?"), pageSource.indexOf("{technicianBlock.visible ?"));
 
     expect(pageSource).toContain("function MerchantAddServiceButton");
     expect(pageSource).toContain("function buildNextStoreMenuCard");
@@ -60,8 +60,22 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("target: nextMenuCardEditorTarget");
   });
 
+  it("warns merchants that store service menu items are hidden under technician pricing", () => {
+    expect(pageSource).toContain("const isMerchantServiceHidden = isMerchantEditable && pricingMode === \"technician\";");
+    expect(pageSource).toContain("function MerchantServiceHiddenWarning");
+    expect(pageSource).toContain("技师定价已开启，店铺服务项目已隐藏，不会被用户看到或搜索到。");
+    expect(pageSource).toContain("border-[#ff4d5e]");
+    expect(pageSource).toContain("bg-[#ff314f]/12");
+    expect(pageSource).toContain("rounded-full border-[3px] border-[#ff4d5e]");
+    expect(pageSource).toMatch(/>\s*!\s*<\/span>/);
+    expect(pageSource).toContain("isMerchantEditable ? (");
+    expect(pageSource).not.toContain("isMerchantServiceHidden && focus === \"menu\"");
+    expect(pageSource).not.toContain("店铺服务项目为只读");
+    expect(pageSource).not.toContain("isMerchantServiceReadOnly");
+  });
+
   it("labels the booking calendar as appointment time selection with a merchant schedule edit action", () => {
-    const bookingSectionSource = pageSource.slice(pageSource.indexOf("{bookingBlock.visible ?"), pageSource.indexOf("{menuBlock.visible ?"));
+    const bookingSectionSource = pageSource.slice(pageSource.indexOf("{bookingBlock.visible ?"), pageSource.indexOf("{shouldRenderServiceMenu ?"));
 
     expect(pageSource).toContain('const merchantScheduleEditorHref = "/merchant/schedule?tab=planning";');
     expect(bookingSectionSource).toContain('title="选择预约时间"');

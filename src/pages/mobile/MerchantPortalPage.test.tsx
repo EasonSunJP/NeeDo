@@ -9,6 +9,9 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("function MerchantStorePrivacyControl");
     expect(merchantSource).toContain('data-testid="merchant-store-privacy-control"');
     expect(merchantSource).toContain('data-testid="merchant-store-privacy-options"');
+    expect(merchantSource).toContain("PrivacyModeConfirmDialog");
+    expect(merchantSource).toContain("storePrivacyConfirmOpen");
+    expect(merchantSource).toContain("confirmStorePrivacyEnabled");
     expect(merchantSource).toContain('className="relative z-[70] w-full" data-testid="merchant-store-privacy-control"');
     expect(merchantSource).toContain("absolute right-0 top-[calc(100%+8px)]");
     expect(merchantSource).toContain("z-[90]");
@@ -31,6 +34,22 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("function MerchantStorePricingModeControl");
     expect(merchantSource).toContain('data-testid="merchant-store-pricing-mode-control"');
     expect(merchantSource).toContain('"切换为技师定价"');
+    expect(merchantSource).toContain("storePricingRatioMenuOpen");
+    expect(merchantSource).toContain("updateStorePricingRatioMenuOpen");
+    expect(merchantSource).toContain("updateStorePrivacyMenuOpen");
+    expect(merchantSource).toContain("technicianPricingRatioPercent");
+    expect(merchantSource).toContain('data-testid="merchant-pricing-ratio-menu"');
+    expect(merchantSource).toContain("店铺报价与技师定价的比例");
+    expect(merchantSource).toContain("默认 100%，每次调整 10%。");
+    expect(merchantSource).toContain("updateTechnicianPricingRatio(10)");
+    expect(merchantSource).toContain("updateTechnicianPricingRatio(-10)");
+    expect(merchantSource).toContain('document.addEventListener("pointerdown", closeOnOutsidePointerDown)');
+    expect(merchantSource).toContain("setStorePrivacyMenuOpen(false)");
+    expect(merchantSource).toContain("setStorePricingRatioMenuOpen(false)");
+    expect(merchantSource).toContain('aria-label="增加比例"');
+    expect(merchantSource).toContain('aria-label="减少比例"');
+    expect(merchantSource).toContain("确认开启");
+    expect(merchantSource).not.toContain("window.confirm");
     expect(merchantSource).toContain("pricingControl={storePricingModeControl}");
 
     expect(storeDetailSource).toContain("pricingControl?: ReactNode");

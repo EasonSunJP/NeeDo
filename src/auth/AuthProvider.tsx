@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { authApi } from "../api/auth";
-import { clearAuthTokens, getStoredRefreshToken, setAuthExpiredHandler } from "../api/httpClient";
+import { clearAuthTokens, getAccessToken, getStoredRefreshToken, setAuthExpiredHandler } from "../api/httpClient";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { demoAuthAccount, type PortalScope } from "./demoAccount";
 import type { FeaturePermission } from "./featurePermissions";
@@ -11,6 +11,7 @@ import {
   canAccessMenuFromSession,
   canAccessPortalFromSession,
   canUseUserSessionForClientPortal,
+  findIdentityForPortal,
   hasAnyPermissionInSession,
   hasPermissionInSession,
   normalizeAuthSessionEntityIds,
@@ -38,7 +39,7 @@ type AuthContextValue = {
   loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => Promise<AuthActionResult>;
   loginWithQr: (portal: PortalScope, token: string) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
-  switchPortal: (portal: PortalScope) => void;
+  switchPortal: (portal: PortalScope) => Promise<AuthActionResult>;
   canAccess: (portal: PortalScope) => boolean;
   canEnterPortal: (portal: PortalScope) => boolean;
   canAccessFeature: (portal: PortalScope, permission: FeaturePermission | string) => boolean;
@@ -102,7 +103,7 @@ function normalizeApiError(error: unknown) {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(() => readStoredAuthSession());
-  const [isRestoring, setIsRestoring] = useState(() => !readStoredAuthSession() && Boolean(getStoredRefreshToken()));
+  const [isRestoring, setIsRestoring] = useState(() => Boolean(getStoredRefreshToken()) && !getAccessToken());
 
   const clearSession = useCallback(() => {
     clearAuthTokens();
@@ -111,14 +112,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     removeBrowserStorage(legacySessionStorageKey, { silent: true });
   }, []);
 
+  const persistSession = useCallback((nextSession: AuthSession) => {
+    setSession(nextSession);
+    writeBrowserStorage(portalStorageKey, nextSession.portal, { silent: true });
+    writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), { silent: true });
+  }, []);
+
   const completeAuthenticatedSession = useCallback(
     async (requestedPortal: PortalScope, loginMethod: LoginMethod, providedMe?: AuthMePayload): Promise<AuthActionResult> => {
       try {
         const me = providedMe ?? (await authApi.me());
         const nextSession = buildAuthSessionFromMe(me, requestedPortal, loginMethod);
-        setSession(nextSession);
-        writeBrowserStorage(portalStorageKey, nextSession.portal, { silent: true });
-        writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), { silent: true });
+        persistSession(nextSession);
 
         return { ok: true, session: nextSession };
       } catch (error) {
@@ -127,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: normalizeApiError(error) };
       }
     },
-    [clearSession]
+    [clearSession, persistSession]
   );
 
   useEffect(() => {
@@ -140,19 +145,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     const restoreSession = async () => {
-      if (session) {
+      const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();
+
+      if (session && !shouldRefreshAccessToken) {
         setIsRestoring(false);
         return;
       }
 
       if (!getStoredRefreshToken()) {
+        if (session && !getAccessToken()) {
+          clearSession();
+        }
         setIsRestoring(false);
         return;
       }
 
       try {
+        setIsRestoring(true);
         await authApi.refresh();
-        const restored = await completeAuthenticatedSession(readStoredPortal(), "password");
+        const restorePortal = session?.portal ?? readStoredPortal();
+        const restored = await completeAuthenticatedSession(restorePortal, "password");
         if (!active || !restored.ok) {
           return;
         }
@@ -244,25 +256,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
   }, [clearSession]);
 
-  const switchPortal = useCallback((portal: PortalScope) => {
-    setSession((current) => {
-      if (!current || !canAccessPortalFromSession(current, portal)) {
-        return current;
-      }
+  const switchPortal = useCallback(async (portal: PortalScope): Promise<AuthActionResult> => {
+    if (!session || !canAccessPortalFromSession(session, portal)) {
+      return { ok: false, message: "error.auth.portal_forbidden" };
+    }
 
-      if (current.portal === portal) {
-        return current;
-      }
+    const portalIdentity = findIdentityForPortal(session.identities, portal);
+    const nextLocalSession = {
+      ...session,
+      portal
+    };
+    const needsBackendIdentitySwitch =
+      Boolean(portalIdentity) &&
+      portalIdentity?.id !== session.currentIdentity.id &&
+      Boolean(getAccessToken()) &&
+      Boolean(getStoredRefreshToken());
 
-      const nextSession = {
-        ...current,
-        portal
-      };
-      writeBrowserStorage(portalStorageKey, portal, { silent: true });
+    if (!needsBackendIdentitySwitch || !portalIdentity) {
+      persistSession(nextLocalSession);
+      return { ok: true, session: nextLocalSession };
+    }
 
-      return nextSession;
-    });
-  }, []);
+    try {
+      const switched = await authApi.switchIdentity(portalIdentity.id);
+      const nextSession = buildAuthSessionFromMe(switched.me, portal, session.loginMethod);
+      persistSession(nextSession);
+
+      return { ok: true, session: nextSession };
+    } catch (error) {
+      return { ok: false, message: normalizeApiError(error) };
+    }
+  }, [persistSession, session]);
 
   const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);
   const hasAnyPermission = useCallback((permissions: string[]) => hasAnyPermissionInSession(session, permissions), [session]);
@@ -326,8 +350,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+export function useOptionalAuth() {
+  return useContext(AuthContext);
+}
+
 export function useAuth() {
-  const context = useContext(AuthContext);
+  const context = useOptionalAuth();
 
   if (!context) {
     throw new Error("useAuth must be used within AuthProvider");

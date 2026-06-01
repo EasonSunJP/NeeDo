@@ -28,6 +28,10 @@ export interface RefreshPayload {
   expiresIn: number;
 }
 
+export interface SwitchIdentityPayload extends TokenPairPayload {
+  me: AuthMePayload;
+}
+
 export interface OtpSendPayload {
   expiresIn: number;
   cooldownSeconds: number;
@@ -233,6 +237,73 @@ export class AuthService {
     };
   }
 
+  public async switchIdentity(
+    auth: AuthenticatedAccessContext,
+    refreshToken: string,
+    identityId: number,
+    context: AuthRequestContext
+  ): Promise<SwitchIdentityPayload> {
+    const refreshPayload = this.tokenService.verifyRefreshToken(refreshToken);
+    const refreshUserId = this.getUserIdFromToken(refreshPayload);
+
+    if (refreshUserId !== auth.userId) {
+      throw new AppError({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: "error.auth.token_invalid",
+        statusCode: 401
+      });
+    }
+
+    if (!(await this.sessionStore.hasRefreshToken(refreshUserId, refreshPayload.jti))) {
+      throw new AppError({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: "error.auth.token_invalid",
+        statusCode: 401
+      });
+    }
+
+    const user = await this.repository.findUserById(refreshUserId);
+    this.assertActiveUser(user);
+    const me = this.buildMePayloadForIdentity(user, identityId);
+    const subject: AuthTokenSubject = {
+      id: user.id,
+      email: user.email,
+      currentIdentityId: me.currentIdentity.id
+    };
+    const nextAccessToken = this.tokenService.issueAccessToken(subject);
+    const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
+
+    await this.sessionStore.revokeRefreshToken(refreshUserId, refreshPayload.jti);
+    await this.sessionStore.storeRefreshToken(
+      user.id,
+      nextRefreshToken.jti,
+      this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+    );
+    await this.sessionStore.blacklistAccessToken(
+      auth.accessTokenJti,
+      auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
+    );
+    await this.repository.createAuditLog({
+      actorId: auth.userId,
+      action: "auth.identity.switch",
+      targetType: "UserIdentity",
+      targetId: identityId,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      metadata: {
+        previousIdentityId: auth.currentIdentityId ?? null,
+        nextIdentityId: identityId
+      }
+    });
+
+    return {
+      accessToken: nextAccessToken.token,
+      refreshToken: nextRefreshToken.token,
+      expiresIn: nextAccessToken.expiresIn,
+      me
+    };
+  }
+
   public async logout(
     auth: AuthenticatedAccessContext,
     refreshToken: string,
@@ -398,6 +469,22 @@ export class AuthService {
       message: "error.auth.invalid_credentials",
       statusCode: 401
     });
+  }
+
+  private buildMePayloadForIdentity(user: AuthUserRecord, identityId: number): AuthMePayload {
+    const identity = user.identities.find(
+      (item) => item.id === identityId && item.deletedAt === null && item.isActive
+    );
+
+    if (!identity) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_NOT_FOUND,
+        message: "error.auth.identity_not_found",
+        statusCode: 404
+      });
+    }
+
+    return this.buildMePayload(user, identityId);
   }
 
   private buildMePayload(user: AuthUserRecord, currentIdentityId?: number): AuthMePayload {

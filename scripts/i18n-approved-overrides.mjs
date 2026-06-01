@@ -247,6 +247,11 @@ export const approvedI18nTranslationOverrides = [
     "价格均以含税显示，可用加减按钮一次选择多个同一菜品。",
     { "zh-Hant": "價格均以含稅顯示，可用加減按鈕一次選擇多個同一菜品。", ja: "価格はすべて税込表示です。加減ボタンで同じ料理を複数選択できます。", en: "Prices are shown tax included. Use the plus and minus buttons to choose multiple quantities of the same item.", ko: "가격은 모두 세금 포함으로 표시됩니다. 더하기/빼기 버튼으로 같은 메뉴를 여러 개 선택할 수 있습니다." }
   ],
+  // Manual terminology lock: technician data center salary chip uses 基本給 in Japanese.
+  [
+    "基础工资",
+    { "zh-Hant": "基礎工資", ja: "基本給", en: "Base salary", ko: "기본급" }
+  ],
   [
     "税后",
     { "zh-Hant": "稅後", ja: "税引後", en: "after tax", ko: "세후" }

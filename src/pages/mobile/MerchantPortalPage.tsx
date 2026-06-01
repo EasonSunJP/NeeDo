@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useAuth } from "../../auth/AuthProvider";
 import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
@@ -35,6 +35,7 @@ import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCale
 import { Badge } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
+import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { imageBank, orders, settlements } from "../../data/mock";
@@ -43,6 +44,7 @@ import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages
 import { ImScopeProvider } from "../../features/im/scope";
 import { useImStore } from "../../features/im/store";
 import { MerchantPrimaryNavCarousel } from "../../features/merchant-navigation/MerchantPrimaryNavCarousel";
+import { pricingModeApi, type ShopPricingMode } from "../../features/pricing-mode/api";
 import { AutomationWizard } from "../../features/scheduling/automation/AutomationWizard";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
@@ -108,6 +110,32 @@ type MerchantPendingStaffDelete =
   | { type: "technician"; id: string; name: string };
 type MerchantStorePricingMode = "store" | "technician";
 type MerchantStorePrivacyVisibility = "privateAll" | "limited" | "network";
+
+function merchantStorePricingModeToApi(mode: MerchantStorePricingMode): ShopPricingMode {
+  return mode === "technician" ? "technician" : "merchant";
+}
+
+function merchantStorePricingModeFromApi(mode: ShopPricingMode): MerchantStorePricingMode {
+  return mode === "technician" ? "technician" : "store";
+}
+
+function getMerchantStoreApiId(storeId: string | number | null | undefined) {
+  if (typeof storeId === "number") {
+    return Number.isInteger(storeId) && storeId > 0 ? storeId : null;
+  }
+
+  const normalized = storeId?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (/^[1-9]\d*$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  const legacyMatch = /^store-(\d+)$/.exec(normalized);
+  return legacyMatch ? Number(legacyMatch[1]) : null;
+}
 
 const merchantStorePrivacyOptions = [
   {
@@ -1178,23 +1206,73 @@ function getMerchantStorePrivacySummary(enabled: boolean, visibility: MerchantSt
 }
 
 function MerchantStorePricingModeControl({
+  menuOpen,
   mode,
-  onModeChange
+  onMenuOpenChange,
+  onModeChange,
+  pending
 }: {
+  menuOpen: boolean;
   mode: MerchantStorePricingMode;
+  onMenuOpenChange: (open: boolean) => void;
   onModeChange: (mode: MerchantStorePricingMode) => void;
+  pending?: boolean;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [technicianPricingRatioPercent, setTechnicianPricingRatioPercent] = useState(100);
   const technicianPricing = mode === "technician";
   const nextMode = technicianPricing ? "store" : "technician";
+  const requestModeChange = (targetMode: MerchantStorePricingMode) => {
+    if (pending || targetMode === mode) {
+      return;
+    }
+
+    if (targetMode === "technician") {
+      onMenuOpenChange(true);
+      return;
+    }
+
+    onModeChange(targetMode);
+  };
+  const updateTechnicianPricingRatio = (delta: number) => {
+    setTechnicianPricingRatioPercent((current) => Math.min(200, Math.max(10, current + delta)));
+  };
+  const confirmTechnicianPricing = () => {
+    onMenuOpenChange(false);
+    onModeChange("technician");
+  };
+
+  useEffect(() => {
+    onMenuOpenChange(false);
+  }, [mode, onMenuOpenChange]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      onMenuOpenChange(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [menuOpen, onMenuOpenChange]);
 
   return (
-    <div className="relative z-[70] w-full" data-testid="merchant-store-pricing-mode-control">
+    <div className="relative z-[70] w-full" data-testid="merchant-store-pricing-mode-control" ref={rootRef}>
       <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-2">
           <button
             aria-pressed={technicianPricing}
-            className="min-w-0 flex-1 text-left"
-            onClick={() => onModeChange(nextMode)}
+            className="min-w-0 flex-1 text-left disabled:opacity-60"
+            disabled={pending}
+            onClick={() => requestModeChange(nextMode)}
             type="button"
           >
             <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">定价模式</span>
@@ -1205,10 +1283,61 @@ function MerchantStorePricingModeControl({
           <ToggleSwitch
             ariaLabel={technicianPricing ? "切换为店铺定价" : "切换为技师定价"}
             checked={technicianPricing}
-            onChange={(checked) => onModeChange(checked ? "technician" : "store")}
+            disabled={pending}
+            onChange={(checked) => requestModeChange(checked ? "technician" : "store")}
           />
         </div>
       </div>
+      {menuOpen ? (
+        <div
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-[95] rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_36%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-surface)_96%,var(--client-bg))] p-2.5 shadow-[0_18px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+          data-testid="merchant-pricing-ratio-menu"
+        >
+          <p className="text-[11px] font-black leading-4 text-[color:var(--client-text)]">店铺报价与技师定价的比例</p>
+          <p className="mt-1 text-[10px] font-bold leading-4 text-[color:var(--client-muted)]">默认 100%，每次调整 10%。</p>
+          <div className="mt-2 grid grid-cols-[38px_minmax(0,1fr)_38px] items-center gap-2">
+            <button
+              aria-label="增加比例"
+              className="grid h-9 place-items-center rounded-full bg-[color:var(--client-primary)] text-lg font-black text-black disabled:opacity-60"
+              disabled={pending || technicianPricingRatioPercent >= 200}
+              onClick={() => updateTechnicianPricingRatio(10)}
+              type="button"
+            >
+              +
+            </button>
+            <div className="min-w-0 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,transparent)] px-3 py-2 text-center">
+              <strong className="block text-lg font-black text-[color:var(--client-text)]">{technicianPricingRatioPercent}%</strong>
+            </div>
+            <button
+              aria-label="减少比例"
+              className="grid h-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] text-lg font-black text-[color:var(--client-text)] disabled:opacity-45"
+              disabled={pending || technicianPricingRatioPercent <= 10}
+              onClick={() => updateTechnicianPricingRatio(-10)}
+              type="button"
+            >
+              -
+            </button>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <button
+              className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] px-2 py-1.5 text-[11px] font-black text-[color:var(--client-muted)]"
+              disabled={pending}
+              onClick={() => onMenuOpenChange(false)}
+              type="button"
+            >
+              取消
+            </button>
+            <button
+              className="rounded-full bg-[color:var(--client-primary)] px-2 py-1.5 text-[11px] font-black text-black disabled:opacity-60"
+              disabled={pending}
+              onClick={confirmTechnicianPricing}
+              type="button"
+            >
+              确认开启
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1239,8 +1368,28 @@ function MerchantStorePrivacyControl({
   onVisibilityChange: (visibility: MerchantStorePrivacyVisibility) => void;
   visibility: MerchantStorePrivacyVisibility;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      onMenuOpenChange(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [menuOpen, onMenuOpenChange]);
+
   return (
-    <div className="relative z-[70] w-full" data-testid="merchant-store-privacy-control">
+    <div className="relative z-[70] w-full" data-testid="merchant-store-privacy-control" ref={rootRef}>
       <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-2">
           <button
@@ -1321,6 +1470,7 @@ export function MerchantPortalPage() {
   const activeView = getMerchantView(view);
   const activeMeTab = getMerchantMeTab(searchParams.get("meTab"));
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+  const storeApiId = getMerchantStoreApiId(store.id);
   const storeTechnicians = useMemo(() => {
     return technicians.filter((tech) => tech.storeId === store.id);
   }, [entityRevision, store.id, technicians]);
@@ -1347,9 +1497,12 @@ export function MerchantPortalPage() {
   const [followedStaffIds, setFollowedStaffIds] = useState<string[]>(["tech-1"]);
   const [followedCustomerIds, setFollowedCustomerIds] = useState<string[]>(["cus-1", "cus-3"]);
   const [storePricingMode, setStorePricingMode] = useState<MerchantStorePricingMode>("store");
+  const [storePricingModeSaving, setStorePricingModeSaving] = useState(false);
+  const [storePricingRatioMenuOpen, setStorePricingRatioMenuOpen] = useState(false);
   const [storePrivacyEnabled, setStorePrivacyEnabled] = useState(false);
   const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantStorePrivacyVisibility>("privateAll");
   const [storePrivacyMenuOpen, setStorePrivacyMenuOpen] = useState(false);
+  const [storePrivacyConfirmOpen, setStorePrivacyConfirmOpen] = useState(false);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
   const [contactLog, setContactLog] = useState("暂无联系记录");
   const [homeContactStatusFilter, setHomeContactStatusFilter] = useState<MerchantContactStatusFilter>("active");
@@ -1465,6 +1618,30 @@ export function MerchantPortalPage() {
   useEffect(() => {
     writeBrowserStorage(merchantStaffRoleLabelStorageKey, JSON.stringify(staffRoleNameOverrides), { silent: true });
   }, [staffRoleNameOverrides]);
+
+  useEffect(() => {
+    if (!storeApiId) {
+      return;
+    }
+
+    let mounted = true;
+    pricingModeApi
+      .getShopPricingMode(storeApiId)
+      .then((result) => {
+        if (mounted) {
+          setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setStorePricingMode("store");
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [storeApiId]);
 
   useEffect(() => {
     if (activeView !== "staff" || !staffIdParam) {
@@ -1906,9 +2083,38 @@ export function MerchantPortalPage() {
     setSearchParams(nextParams);
   };
 
+  const updateStorePricingRatioMenuOpen = useCallback((open: boolean) => {
+    setStorePricingRatioMenuOpen(open);
+
+    if (open) {
+      setStorePrivacyMenuOpen(false);
+    }
+  }, []);
+
+  const updateStorePrivacyMenuOpen = useCallback((open: boolean) => {
+    setStorePrivacyMenuOpen(open);
+
+    if (open) {
+      setStorePricingRatioMenuOpen(false);
+    }
+  }, []);
+
   const updateStorePrivacyEnabled = (enabled: boolean) => {
+    if (enabled) {
+      setStorePrivacyConfirmOpen(true);
+      return;
+    }
+
     setStorePrivacyEnabled(enabled);
-    setStorePrivacyMenuOpen(enabled);
+    setStorePrivacyMenuOpen(false);
+    setStorePrivacyConfirmOpen(false);
+  };
+
+  const confirmStorePrivacyEnabled = () => {
+    setStorePrivacyConfirmOpen(false);
+    setStorePrivacyEnabled(true);
+    setStorePrivacyMenuOpen(true);
+    setStorePricingRatioMenuOpen(false);
   };
 
   const updateStorePrivacyVisibility = (visibility: MerchantStorePrivacyVisibility) => {
@@ -1917,22 +2123,58 @@ export function MerchantPortalPage() {
     setStorePrivacyMenuOpen(false);
   };
 
+  const updateStorePricingMode = async (nextMode: MerchantStorePricingMode) => {
+    if (nextMode === storePricingMode || storePricingModeSaving) {
+      return;
+    }
+
+    if (!storeApiId) {
+      setStorePricingMode(nextMode);
+      setContactLog("当前店铺资料尚未绑定正式店铺 ID，已仅更新本地展示。");
+      return;
+    }
+
+    setStorePricingModeSaving(true);
+    try {
+      const result = await pricingModeApi.updateShopPricingMode(
+        storeApiId,
+        merchantStorePricingModeToApi(nextMode)
+      );
+      setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
+      setContactLog(nextMode === "technician" ? "已切换为技师定价。" : "已切换为店铺定价。");
+    } catch {
+      setContactLog("定价模式保存失败，请稍后重试。");
+    } finally {
+      setStorePricingModeSaving(false);
+    }
+  };
+
   const isMerchantDataCenterView = activeView === "me" && activeMeTab === "data";
   const storePricingModeControl = (
     <MerchantStorePricingModeControl
+      menuOpen={storePricingRatioMenuOpen}
       mode={storePricingMode}
-      onModeChange={setStorePricingMode}
+      onMenuOpenChange={updateStorePricingRatioMenuOpen}
+      onModeChange={updateStorePricingMode}
+      pending={storePricingModeSaving}
     />
   );
   const storePrivacyControl = (
-    <MerchantStorePrivacyControl
-      enabled={storePrivacyEnabled}
-      menuOpen={storePrivacyMenuOpen}
-      onEnabledChange={updateStorePrivacyEnabled}
-      onMenuOpenChange={setStorePrivacyMenuOpen}
-      onVisibilityChange={updateStorePrivacyVisibility}
-      visibility={storePrivacyVisibility}
-    />
+    <>
+      <MerchantStorePrivacyControl
+        enabled={storePrivacyEnabled}
+        menuOpen={storePrivacyMenuOpen}
+        onEnabledChange={updateStorePrivacyEnabled}
+        onMenuOpenChange={updateStorePrivacyMenuOpen}
+        onVisibilityChange={updateStorePrivacyVisibility}
+        visibility={storePrivacyVisibility}
+      />
+      <PrivacyModeConfirmDialog
+        onCancel={() => setStorePrivacyConfirmOpen(false)}
+        onConfirm={confirmStorePrivacyEnabled}
+        open={storePrivacyConfirmOpen}
+      />
+    </>
   );
 
   return (
@@ -2333,6 +2575,7 @@ export function MerchantPortalPage() {
                 <StoreDetailExperience
                   embedded
                   pricingControl={storePricingModeControl}
+                  pricingMode={storePricingMode}
                   privacyControl={storePrivacyControl}
                   scope="merchant"
                   store={store}

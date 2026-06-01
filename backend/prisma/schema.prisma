@@ -31,6 +31,29 @@ enum ScheduleSlotStatus {
   @@map("schedule_slot_status")
 }
 
+enum ShopPricingMode {
+  MERCHANT   @map("merchant")
+  TECHNICIAN @map("technician")
+
+  @@map("shop_pricing_mode")
+}
+
+enum ServiceOwnerType {
+  SHOP       @map("shop")
+  TECHNICIAN @map("technician")
+
+  @@map("service_owner_type")
+}
+
+enum TechnicianServiceReviewStatus {
+  DRAFT    @map("draft")
+  PENDING  @map("pending")
+  APPROVED @map("approved")
+  REJECTED @map("rejected")
+
+  @@map("technician_service_review_status")
+}
+
 enum WalletOwnerType {
   USER     @map("user")
   SHOP     @map("shop")
@@ -124,28 +147,31 @@ model User {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  identities         UserIdentity[]
-  userRoles          UserRole[]
-  loginLogs          LoginLog[]           @relation("LoginLogUser")
-  auditLogs          AuditLog[]           @relation("AuditLogActor")
-  ledgerTransactions LedgerTransaction[]  @relation("LedgerTransactionActor")
-  ownedShops         Shop[]               @relation("ShopOwner")
-  technicianProfile  TechnicianProfile?
-  customerProfile    CustomerProfile?
-  bookingOrders      BookingOrder[]       @relation("BookingOrderCustomer")
-  orderHistories     OrderStatusHistory[] @relation("OrderStatusHistoryActor")
-  createdConversations Conversation[]       @relation("ConversationCreator")
-  conversationParticipants ConversationParticipant[]
-  sentMessages      Message[]             @relation("MessageSender")
-  ownedContacts     Contact[]             @relation("ContactOwner")
-  contactEntries    Contact[]             @relation("ContactUser")
-  sentFriendRequests FriendRequest[]       @relation("FriendRequestRequester")
-  receivedFriendRequests FriendRequest[]   @relation("FriendRequestTarget")
-  socialPosts       SocialPost[]          @relation("SocialPostAuthor")
-  following         Follow[]              @relation("FollowFollower")
-  followers         Follow[]              @relation("FollowFollowing")
-  receivedNotifications Notification[]     @relation("NotificationRecipient")
-  actedNotifications Notification[]        @relation("NotificationActor")
+  identities                UserIdentity[]
+  userRoles                 UserRole[]
+  loginLogs                 LoginLog[]                @relation("LoginLogUser")
+  auditLogs                 AuditLog[]                @relation("AuditLogActor")
+  ledgerTransactions        LedgerTransaction[]       @relation("LedgerTransactionActor")
+  ownedShops                Shop[]                    @relation("ShopOwner")
+  technicianProfile         TechnicianProfile?
+  customerProfile           CustomerProfile?
+  bookingOrders             BookingOrder[]            @relation("BookingOrderCustomer")
+  orderHistories            OrderStatusHistory[]      @relation("OrderStatusHistoryActor")
+  pricingModeUpdates        Shop[]                    @relation("ShopPricingModeUpdatedBy")
+  createdTechnicianServices TechnicianService[]       @relation("TechnicianServiceCreatedBy")
+  updatedTechnicianServices TechnicianService[]       @relation("TechnicianServiceUpdatedBy")
+  createdConversations      Conversation[]            @relation("ConversationCreator")
+  conversationParticipants  ConversationParticipant[]
+  sentMessages              Message[]                 @relation("MessageSender")
+  ownedContacts             Contact[]                 @relation("ContactOwner")
+  contactEntries            Contact[]                 @relation("ContactUser")
+  sentFriendRequests        FriendRequest[]           @relation("FriendRequestRequester")
+  receivedFriendRequests    FriendRequest[]           @relation("FriendRequestTarget")
+  socialPosts               SocialPost[]              @relation("SocialPostAuthor")
+  following                 Follow[]                  @relation("FollowFollower")
+  followers                 Follow[]                  @relation("FollowFollowing")
+  receivedNotifications     Notification[]            @relation("NotificationRecipient")
+  actedNotifications        Notification[]            @relation("NotificationActor")
 
   @@index([email])
   @@index([phone])
@@ -168,10 +194,11 @@ model Category {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  parent      Category?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
-  children    Category[]   @relation("CategoryTree")
-  services    Service[]
-  mediaAssets MediaAsset[]
+  parent             Category?           @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children           Category[]          @relation("CategoryTree")
+  services           Service[]
+  technicianServices TechnicianService[]
+  mediaAssets        MediaAsset[]
 
   @@index([parentId])
   @@index([sortOrder])
@@ -181,34 +208,41 @@ model Category {
 }
 
 model Shop {
-  id            Int       @id @default(autoincrement())
-  ownerUserId   Int?      @map("owner_user_id")
-  name          String    @db.VarChar(160)
-  description   String?   @db.Text
-  city          String    @db.VarChar(100)
-  address       String    @db.VarChar(255)
-  latitude      Decimal?  @db.Decimal(10, 7)
-  longitude     Decimal?  @db.Decimal(10, 7)
-  phone         String?   @db.VarChar(32)
-  status        String    @default("published") @db.VarChar(50)
-  isRecommended Boolean   @default(false) @map("is_recommended")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  deletedAt     DateTime? @map("deleted_at")
+  id                   Int             @id @default(autoincrement())
+  ownerUserId          Int?            @map("owner_user_id")
+  name                 String          @db.VarChar(160)
+  description          String?         @db.Text
+  city                 String          @db.VarChar(100)
+  address              String          @db.VarChar(255)
+  latitude             Decimal?        @db.Decimal(10, 7)
+  longitude            Decimal?        @db.Decimal(10, 7)
+  phone                String?         @db.VarChar(32)
+  status               String          @default("published") @db.VarChar(50)
+  isRecommended        Boolean         @default(false) @map("is_recommended")
+  pricingMode          ShopPricingMode @default(MERCHANT) @map("pricing_mode")
+  pricingModeUpdatedAt DateTime?       @map("pricing_mode_updated_at")
+  pricingModeUpdatedBy Int?            @map("pricing_mode_updated_by")
+  createdAt            DateTime        @default(now()) @map("created_at")
+  updatedAt            DateTime        @updatedAt @map("updated_at")
+  deletedAt            DateTime?       @map("deleted_at")
 
-  owner          User?               @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  services       Service[]
-  technicians    TechnicianProfile[]
-  mediaAssets    MediaAsset[]
-  reviewSummary  ReviewSummary?
-  availabilities Availability[]
-  scheduleSlots  ScheduleSlot[]
-  bookingOrders  BookingOrder[]
+  owner              User?               @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  pricingModeUpdater User?               @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
+  services           Service[]
+  technicianServices TechnicianService[]
+  technicians        TechnicianProfile[]
+  mediaAssets        MediaAsset[]
+  reviewSummary      ReviewSummary?
+  availabilities     Availability[]
+  scheduleSlots      ScheduleSlot[]
+  bookingOrders      BookingOrder[]
 
   @@index([ownerUserId])
   @@index([city])
   @@index([status])
   @@index([isRecommended])
+  @@index([pricingMode])
+  @@index([pricingModeUpdatedBy])
   @@index([deletedAt])
   @@map("shops")
 }
@@ -229,14 +263,15 @@ model TechnicianProfile {
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  shop           Shop?          @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  services       Service[]
-  mediaAssets    MediaAsset[]
-  reviewSummary  ReviewSummary?
-  availabilities Availability[]
-  scheduleSlots  ScheduleSlot[]
-  bookingOrders  BookingOrder[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shop               Shop?               @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  services           Service[]
+  technicianServices TechnicianService[]
+  mediaAssets        MediaAsset[]
+  reviewSummary      ReviewSummary?
+  availabilities     Availability[]
+  scheduleSlots      ScheduleSlot[]
+  bookingOrders      BookingOrder[]
 
   @@index([shopId])
   @@index([city])
@@ -287,13 +322,14 @@ model Service {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  category          Category           @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  mediaAssets       MediaAsset[]
-  reviewSummary     ReviewSummary?
-  scheduleSlots     ScheduleSlot[]
-  bookingOrders     BookingOrder[]
+  category           Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  shop               Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile  TechnicianProfile?  @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  mediaAssets        MediaAsset[]
+  reviewSummary      ReviewSummary?
+  scheduleSlots      ScheduleSlot[]
+  bookingOrders      BookingOrder[]
+  technicianServices TechnicianService[] @relation("TechnicianServiceSourceShopService")
 
   @@index([categoryId])
   @@index([shopId])
@@ -304,6 +340,54 @@ model Service {
   @@index([priceAmount])
   @@index([deletedAt])
   @@map("services")
+}
+
+model TechnicianService {
+  id                  Int                           @id @default(autoincrement())
+  shopId              Int                           @map("shop_id")
+  technicianId        Int                           @map("technician_id")
+  sourceShopServiceId Int?                          @map("source_shop_service_id")
+  name                String                        @db.VarChar(160)
+  description         String?                       @db.Text
+  categoryId          Int                           @map("category_id")
+  priceAmount         Int                           @map("price_amount")
+  currency            String                        @default("JPY") @db.VarChar(3)
+  durationMinutes     Int                           @map("duration_minutes")
+  coverImageUrl       String?                       @map("cover_image_url") @db.VarChar(500)
+  imagesJson          Json?                         @map("images_json")
+  tagsJson            Json?                         @map("tags_json")
+  isActive            Boolean                       @default(true) @map("is_active")
+  isBookable          Boolean                       @default(true) @map("is_bookable")
+  isRecommended       Boolean                       @default(false) @map("is_recommended")
+  sortOrder           Int                           @default(0) @map("sort_order")
+  reviewStatus        TechnicianServiceReviewStatus @default(APPROVED) @map("review_status")
+  rejectionReason     String?                       @map("rejection_reason") @db.VarChar(500)
+  createdBy           Int?                          @map("created_by")
+  updatedBy           Int?                          @map("updated_by")
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @updatedAt @map("updated_at")
+  deletedAt           DateTime?                     @map("deleted_at")
+
+  shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  sourceShopService Service?          @relation("TechnicianServiceSourceShopService", fields: [sourceShopServiceId], references: [id], onDelete: SetNull)
+  category          Category          @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  creator           User?             @relation("TechnicianServiceCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updater           User?             @relation("TechnicianServiceUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  scheduleSlots     ScheduleSlot[]
+  bookingOrders     BookingOrder[]
+
+  @@index([shopId, technicianId, isActive, deletedAt])
+  @@index([shopId, isRecommended, isActive, deletedAt])
+  @@index([sourceShopServiceId])
+  @@index([categoryId])
+  @@index([createdBy])
+  @@index([updatedBy])
+  @@index([reviewStatus])
+  @@index([isBookable])
+  @@index([sortOrder])
+  @@index([deletedAt])
+  @@map("technician_services")
 }
 
 model MediaAsset {
@@ -402,7 +486,8 @@ model Availability {
 model ScheduleSlot {
   id                  Int                @id @default(autoincrement())
   availabilityId      Int?               @map("availability_id")
-  serviceId           Int                @map("service_id")
+  serviceId           Int?               @map("service_id")
+  technicianServiceId Int?               @map("technician_service_id")
   shopId              Int                @map("shop_id")
   technicianProfileId Int?               @map("technician_profile_id")
   startsAt            DateTime           @map("starts_at")
@@ -415,13 +500,15 @@ model ScheduleSlot {
   deletedAt           DateTime?          @map("deleted_at")
 
   availability      Availability?      @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
-  service           Service            @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  service           Service?           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService TechnicianService? @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
   shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   bookingOrders     BookingOrder[]
 
   @@index([availabilityId])
   @@index([serviceId])
+  @@index([technicianServiceId])
   @@index([shopId])
   @@index([technicianProfileId])
   @@index([startsAt, endsAt])
@@ -431,28 +518,37 @@ model ScheduleSlot {
 }
 
 model BookingOrder {
-  id                  Int                @id @default(autoincrement())
-  orderNo             String             @unique @map("order_no") @db.VarChar(40)
-  orderType           OrderType          @default(BOOKING) @map("order_type")
-  customerUserId      Int                @map("customer_user_id")
-  serviceId           Int                @map("service_id")
-  shopId              Int                @map("shop_id")
-  technicianProfileId Int?               @map("technician_profile_id")
-  scheduleSlotId      Int                @map("schedule_slot_id")
-  status              BookingOrderStatus @default(PENDING)
-  fulfillmentMode     String             @default("store") @map("fulfillment_mode") @db.VarChar(50)
-  priceAmount         Decimal            @map("price_amount") @db.Decimal(10, 2)
-  currency            String             @default("JPY") @db.VarChar(3)
-  startsAt            DateTime           @map("starts_at")
-  endsAt              DateTime           @map("ends_at")
-  note                String?            @db.VarChar(500)
-  cancelReason        String?            @map("cancel_reason") @db.VarChar(500)
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
-  deletedAt           DateTime?          @map("deleted_at")
+  id                      Int                @id @default(autoincrement())
+  orderNo                 String             @unique @map("order_no") @db.VarChar(40)
+  orderType               OrderType          @default(BOOKING) @map("order_type")
+  customerUserId          Int                @map("customer_user_id")
+  serviceId               Int?               @map("service_id")
+  technicianServiceId     Int?               @map("technician_service_id")
+  shopId                  Int                @map("shop_id")
+  technicianProfileId     Int?               @map("technician_profile_id")
+  scheduleSlotId          Int                @map("schedule_slot_id")
+  status                  BookingOrderStatus @default(PENDING)
+  fulfillmentMode         String             @default("store") @map("fulfillment_mode") @db.VarChar(50)
+  priceAmount             Decimal            @map("price_amount") @db.Decimal(10, 2)
+  currency                String             @default("JPY") @db.VarChar(3)
+  pricingModeSnapshot     ShopPricingMode    @default(MERCHANT) @map("pricing_mode_snapshot")
+  serviceOwnerType        ServiceOwnerType   @default(SHOP) @map("service_owner_type")
+  serviceOwnerId          Int?               @map("service_owner_id")
+  serviceNameSnapshot     String?            @map("service_name_snapshot") @db.VarChar(160)
+  servicePriceSnapshot    Decimal?           @map("service_price_snapshot") @db.Decimal(10, 2)
+  serviceDurationSnapshot Int?               @map("service_duration_snapshot")
+  serviceSnapshotJson     Json?              @map("service_snapshot_json")
+  startsAt                DateTime           @map("starts_at")
+  endsAt                  DateTime           @map("ends_at")
+  note                    String?            @db.VarChar(500)
+  cancelReason            String?            @map("cancel_reason") @db.VarChar(500)
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
+  deletedAt               DateTime?          @map("deleted_at")
 
   customer          User                 @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
-  service           Service              @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  service           Service?             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService TechnicianService?   @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
   shop              Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile?   @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   scheduleSlot      ScheduleSlot         @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
@@ -460,11 +556,14 @@ model BookingOrder {
 
   @@index([customerUserId])
   @@index([serviceId])
+  @@index([technicianServiceId])
   @@index([shopId])
   @@index([technicianProfileId])
   @@index([scheduleSlotId])
   @@index([status])
   @@index([orderType])
+  @@index([pricingModeSnapshot])
+  @@index([serviceOwnerType, serviceOwnerId])
   @@index([startsAt, endsAt])
   @@index([deletedAt])
   @@map("booking_orders")

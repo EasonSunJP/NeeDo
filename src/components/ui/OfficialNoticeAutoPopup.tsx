@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useAuth } from "../../auth/AuthProvider";
+import { useOptionalAuth, type AuthSession } from "../../auth/AuthProvider";
 import {
   readStoredOfficialNotices,
   type AdminNotice,
@@ -105,7 +105,7 @@ function getHomepageTarget(pathname: string): HomepageTarget | null {
   return "Business";
 }
 
-function getMatchedSessionAccountIds(session: ReturnType<typeof useAuth>["session"], type: TargetAccountType) {
+function getMatchedSessionAccountIds(session: AuthSession | null, type: TargetAccountType) {
   if (!session) {
     return [];
   }
@@ -124,7 +124,7 @@ function getMatchedSessionAccountIds(session: ReturnType<typeof useAuth>["sessio
 function doesAccountTargetMatchHomepage(
   notice: AdminNotice,
   homepageTarget: HomepageTarget,
-  session: ReturnType<typeof useAuth>["session"]
+  session: AuthSession | null
 ) {
   const account = notice.targetAccount;
   if (!account) {
@@ -160,7 +160,7 @@ function doesSegmentTargetMatchHomepage(notice: AdminNotice, homepageTarget: Hom
 function doesNoticeMatchHomepage(
   notice: AdminNotice,
   homepageTarget: HomepageTarget,
-  session: ReturnType<typeof useAuth>["session"]
+  session: AuthSession | null
 ) {
   if (notice.targetMode === "account") {
     return doesAccountTargetMatchHomepage(notice, homepageTarget, session);
@@ -289,7 +289,8 @@ function NoticeBlockView({ block, index }: { block: OfficialNoticeBlock; index: 
 
 export function OfficialNoticeAutoPopup({ disabled = false }: OfficialNoticeAutoPopupProps) {
   const location = useLocation();
-  const { session } = useAuth();
+  const auth = useOptionalAuth();
+  const session = auth?.session ?? null;
   const [dismissedIds, setDismissedIds] = useState(readDismissedNoticeIds);
   const [refreshKey, setRefreshKey] = useState(0);
   const homepageTarget = getHomepageTarget(location.pathname);

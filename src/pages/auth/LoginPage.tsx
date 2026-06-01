@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { authApi } from "../../api/auth";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
@@ -114,6 +114,12 @@ type TestCredentialEnv = {
   VITE_TEST_LOGIN_TECHNICIAN_PASSWORD?: string;
 };
 
+const defaultPublicTestLoginEmail: Partial<Record<PortalScope, string>> = {
+  merchant: "merchant@example.com",
+  technician: "seed.technician@needo.local",
+  business: "affiliate@example.com"
+};
+
 function getPortalTestLoginCredentials(env: TestCredentialEnv, portal: PortalScope) {
   if (portal === "admin") {
     return {
@@ -158,7 +164,14 @@ function getPortalTestLoginCredentials(env: TestCredentialEnv, portal: PortalSco
 
 export function resolveTestLoginCredentials(env: TestCredentialEnv, portal: PortalScope) {
   const portalCredentials = getPortalTestLoginCredentials(env, portal);
-  const email = portalCredentials.email?.trim() || env.VITE_TEST_LOGIN_EMAIL?.trim();
+  const sharedEmail = env.VITE_TEST_LOGIN_EMAIL?.trim();
+  const portalEmail = portalCredentials.email?.trim();
+  const defaultPortalEmail = defaultPublicTestLoginEmail[portal];
+  const email = portal === "user"
+    ? portalEmail || sharedEmail
+    : !portalEmail || portalEmail === sharedEmail
+      ? defaultPortalEmail
+      : portalEmail;
   const password = portalCredentials.password?.trim() || env.VITE_TEST_LOGIN_PASSWORD?.trim();
 
   if (!email || !password) {
@@ -641,7 +654,7 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
   const { theme, isNight } = useClientTheme();
-  const { canAccess, canEnterPortal, isAuthenticated, login, loginWithProvider, logout, session, switchPortal: switchSessionPortal } = useAuth();
+  const { canAccess, isAuthenticated, login, loginWithFormalPassword, loginWithProvider, logout, session, switchPortal: switchSessionPortal } = useAuth();
   const requestedPortal = normalizePortal(portal);
   const redirectPath = searchParams.get("redirect");
   const [activePortal, setActivePortal] = useState<PortalScope>(requestedPortal);
@@ -654,6 +667,7 @@ export function LoginPage() {
   const [captchaCode, setCaptchaCode] = useState("");
   const [isCaptchaPending, setIsCaptchaPending] = useState(false);
   const [rememberCredentials, setRememberCredentials] = useState(false);
+  const navigationInFlightRef = useRef(false);
 
   useEffect(() => {
     setActivePortal(requestedPortal);
@@ -667,10 +681,14 @@ export function LoginPage() {
     () => resolveTestLoginCredentials(import.meta.env as TestCredentialEnv, activePortal),
     [activePortal]
   );
-  const hasActiveAccess = isAuthenticated && canEnterPortal(activePortal);
+  const hasActiveAccess = isAuthenticated && canAccess(activePortal);
   const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
   const error = feedback?.tone === "error" ? feedbackMessage : "";
   const notice = feedback?.tone === "notice" ? feedbackMessage : "";
+
+  useEffect(() => {
+    navigationInFlightRef.current = false;
+  }, [activePortal, nextPath]);
 
   useEffect(() => {
     if (searchParams.get("googleAccount") !== "connected" || searchParams.get("googleAccountMode") !== "login") {
@@ -738,9 +756,21 @@ export function LoginPage() {
     void loadCaptcha();
   }, [hasActiveAccess, loadCaptcha, panelMode]);
 
-  const enterPortal = useCallback(() => {
+  const enterPortal = useCallback(async () => {
+    if (navigationInFlightRef.current) {
+      return;
+    }
+
+    navigationInFlightRef.current = true;
+
     if (isAuthenticated && canAccess(activePortal)) {
-      switchSessionPortal(activePortal);
+      const switched = await switchSessionPortal(activePortal);
+
+      if (!switched.ok) {
+        navigationInFlightRef.current = false;
+        setFeedback({ message: switched.message, tone: "error", type: "custom" });
+        return;
+      }
     }
 
     openPortalEntry(activePortal, nextPath);
@@ -751,7 +781,7 @@ export function LoginPage() {
       return;
     }
 
-    enterPortal();
+    void enterPortal();
   }, [enterPortal, hasActiveAccess, isLoginPending]);
 
   const toggleRememberCredentials = (checked: boolean) => {
@@ -806,7 +836,7 @@ export function LoginPage() {
     setIsLoginPending(true);
 
     try {
-      const result = await login(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password);
+      const result = await loginWithFormalPassword(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
         return;

@@ -365,6 +365,7 @@ describe("translations", () => {
 
   it("localizes the store-only technician data center copy", () => {
     expect(translateText("店铺工作", "ja")).toBe("店舗業務");
+    expect(translateText("基础工资：¥684,000", "ja")).toBe("基本給：¥684,000");
     expect(translateText("集中查看店铺工作的趋势、结算和下一单安排。", "en")).toBe("View store-work trends, settlement, and the next assignment in one place.");
     expect(translateText("仅展示店铺工作的统计卡片，便于核对门店收入、排班和履约表现。", "ja")).toBe("店舗業務の統計カードのみを表示し、店舗収入、シフト、履行状況を確認しやすくします。");
     expect(translateText("最近的店铺工作会归档在这里，方便核对排班和收入记录。", "ko")).toContain("근무표");

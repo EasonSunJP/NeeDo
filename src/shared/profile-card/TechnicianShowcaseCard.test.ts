@@ -1,8 +1,43 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
-import { getTechnicianCardRankBadge, shouldShowTechnicianBeginnerIcon } from "./TechnicianShowcaseCard";
+import type { Technician } from "../../types/domain";
+import { getTechnicianCardRankBadge, shouldShowTechnicianBeginnerIcon, TechnicianShowcaseCard } from "./TechnicianShowcaseCard";
 import cardSource from "./TechnicianShowcaseCard.tsx?raw";
 import simpleRatingBadgeSource from "./SimpleRatingBadge.tsx?raw";
+
+describe("TechnicianShowcaseCard photo source", () => {
+  it("uses the generated technician avatar before service or store gallery photos", () => {
+    const technician: Technician = {
+      id: "tech-avatar-priority",
+      systemId: "B-999",
+      name: "Avatar Priority",
+      storeId: "store-1",
+      role: "therapist",
+      status: "available",
+      rating: 4.9,
+      orderCount: 12,
+      income: 0,
+      skills: ["Body care"],
+      serviceAreas: ["Tokyo"],
+      acceptRate: 95,
+      cancelRate: 0,
+      reviewCount: 8,
+      languages: ["ja"],
+      avatar: "/images/generated/profiles/profile-11.jpg",
+      gallery: ["/images/generated/stores/store-clean-base.jpg"]
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(TechnicianShowcaseCard, { language: "ja", rankIndex: 0, technician }))
+    );
+
+    expect(markup).toContain("/images/generated/thumbnails/profiles/profile-11.jpg");
+    expect(markup).not.toContain("/images/generated/thumbnails/stores/store-clean-base.jpg");
+  });
+});
 
 describe("TechnicianShowcaseCard selectable behavior", () => {
   it("keeps the card linked to the technician dynamic page while selection is handled by the corner icon", () => {

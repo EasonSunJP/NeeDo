@@ -31,12 +31,17 @@ type AuthLoginPayload = TokenPairPayload & {
   me?: AuthMePayload;
 };
 
+type SwitchIdentityPayload = TokenPairPayload & {
+  me: AuthMePayload;
+};
+
 export const authEndpointPaths = {
   captcha: "/captcha",
   login: "/login",
   formalLogin: "/auth/login",
   register: "/reg",
   refresh: "/auth/refresh",
+  switchIdentity: "/auth/switch-identity",
   logout: "/auth/logout",
   me: "/auth/me",
   otpSend: "/auth/otp/send",
@@ -246,6 +251,25 @@ export const authApi = {
       retryOnUnauthorized: false
     });
     setAccessToken(tokens.accessToken);
+
+    return tokens;
+  },
+
+  async switchIdentity(identityId: number) {
+    const refreshToken = getStoredRefreshToken();
+    if (!refreshToken) {
+      throw new Error("error.auth.refresh_missing");
+    }
+
+    const tokens = await httpClient.request<SwitchIdentityPayload>(authEndpointPaths.switchIdentity, {
+      body: { refreshToken, identityId },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+    setAuthTokens({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken
+    });
 
     return tokens;
   },

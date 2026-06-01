@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
@@ -87,6 +87,7 @@ import { MessagesPage } from "./pages/user/MessagesPage";
 import { ProfileDetailPage } from "./pages/user/ProfileDetailPage";
 import { ServiceDetailPage } from "./pages/user/ServiceDetailPage";
 import { StoreDetailPage } from "./pages/user/StoreDetailPage";
+import { TechnicianServicesPage } from "./pages/user/TechnicianServicesPage";
 import { SupportPage } from "./pages/user/SupportPage";
 import { UserCenterPage } from "./pages/user/UserCenterPage";
 import { UserOrdersPage } from "./pages/user/UserOrdersPage";
@@ -808,16 +809,24 @@ function RequirePortalAuth({
     portal === "admin" ||
     (portal === "merchant" && location.pathname.startsWith("/merchant-admin")) ||
     (portal === "business" && isBusinessAdminPath(location.pathname));
-  const hasAccess = hasDirectAccess || (!isBackendPortalRoute && canEnterPortal(portal));
+  const requiresDirectPortalAccess = isBackendPortalRoute || portal === "merchant" || portal === "technician" || portal === "business";
+  const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));
   const needsPortalSync = isAuthenticated && hasDirectAccess && session?.portal !== portal;
+  const syncedPortalRef = useRef<PortalScope | null>(null);
 
   useEffect(() => {
     if (!needsPortalSync) {
+      syncedPortalRef.current = null;
       return;
     }
 
+    if (syncedPortalRef.current === portal) {
+      return;
+    }
+
+    syncedPortalRef.current = portal;
     // Keep the active session portal aligned with the matched route.
-    switchPortal(portal);
+    void switchPortal(portal);
   }, [needsPortalSync, portal, switchPortal]);
 
   if (isRestoring) {
@@ -987,6 +996,7 @@ export default function App() {
               <Route path="/services/:id" element={protect("user", <ServiceDetailPage />)} />
               <Route path="/stores" element={protect("user", <CategoryListRedirect type="store" />)} />
               <Route path="/stores/:id" element={protect("user", <StoreDetailPage />)} />
+              <Route path="/stores/:shopId/technicians/:technicianId/services" element={protect("user", <TechnicianServicesPage />)} />
               <Route path="/profiles/:entityType/:id/followers" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id/following" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />

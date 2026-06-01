@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isBackendAccountForAnotherPortal, resolveAdminDefaultCredentials, resolveAdminTestLoginCredentials, resolveBackendLoginTarget } from "./AdminLoginPage";
-import { getPostLoginRoute, getPublicTestLoginPortal, resolveLoginErrorMessage, resolveLoginFeedbackMessage, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
+import { getPostLoginRoute, getPublicTestLoginPortal, resolveLoginErrorMessage, resolveLoginFeedbackMessage, resolveTestLoginCredentials, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
 import appSource from "../../App.tsx?raw";
 import adminLoginPageSource from "./AdminLoginPage.tsx?raw";
 import loginPageSource from "./LoginPage.tsx?raw";
@@ -65,6 +65,7 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).toContain("VITE_TEST_LOGIN_EMAIL");
     expect(loginPageSource).toContain("VITE_TEST_LOGIN_PASSWORD");
     expect(loginPageSource).toContain("VITE_TEST_LOGIN_CUSTOMER_EMAIL");
+    expect(loginPageSource).toContain("VITE_TEST_LOGIN_TECHNICIAN_EMAIL");
     expect(loginPageSource).toContain("fillTestCredentials");
     expect(loginPageSource).toContain("continueWithTestCredentials");
     expect(loginPageSource).toContain("authApi.fetchCaptcha");
@@ -88,7 +89,7 @@ describe("LoginPage real-account login", () => {
   it("lets the public test credential action bypass the captcha requirement", () => {
     const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
 
-    expect(testCredentialAction).toContain("await login(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password)");
+    expect(testCredentialAction).toContain("await loginWithFormalPassword(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password)");
     expect(testCredentialAction).not.toContain("captchaRequiredError");
     expect(testCredentialAction).not.toContain("normalizedCaptchaCode");
   });
@@ -212,12 +213,27 @@ describe("LoginPage real-account login", () => {
   it("keeps the public test-account shortcut inside the current frontend portal", () => {
     expect(getPublicTestLoginPortal("user")).toBe("user");
     expect(getPublicTestLoginPortal("business")).toBe("business");
-    expect(loginPageSource).toContain("login(getPublicTestLoginPortal(activePortal)");
+    expect(loginPageSource).toContain("loginWithFormalPassword(getPublicTestLoginPortal(activePortal)");
   });
 
-  it("skips the account form when an existing user session can enter another frontend portal", () => {
-    expect(loginPageSource).toContain("canEnterPortal(activePortal)");
+  it("falls back to formal seeded frontend test accounts when stale env still points to admin", () => {
+    const staleSharedEnv = {
+      VITE_TEST_LOGIN_EMAIL: "admin",
+      VITE_TEST_LOGIN_PASSWORD: "Admin.2026",
+      VITE_TEST_LOGIN_TECHNICIAN_EMAIL: "admin",
+      VITE_TEST_LOGIN_TECHNICIAN_PASSWORD: "Admin.2026"
+    };
+
+    expect(resolveTestLoginCredentials(staleSharedEnv, "technician")).toEqual({
+      email: "seed.technician@needo.local",
+      password: "Admin.2026"
+    });
+  });
+
+  it("shows continue only when the current session has the requested portal identity", () => {
+    expect(loginPageSource).toContain("canAccess(activePortal)");
     expect(loginPageSource).toContain("hasActiveAccess");
-    expect(loginPageSource).toContain("enterPortal();");
+    expect(loginPageSource).toContain("void enterPortal();");
+    expect(loginPageSource).not.toContain("canEnterPortal(activePortal)");
   });
 });

@@ -15,7 +15,8 @@ export type ScheduleSlotStatusPayload = "available" | "booked" | "blocked";
 export type BookingFulfillmentMode = "home" | "store";
 
 export interface AvailabilityListInput extends PaginationInput {
-  serviceId: number;
+  serviceId?: number;
+  technicianServiceId?: number;
   shopId?: number;
   technicianId?: number;
   from: Date;
@@ -24,7 +25,8 @@ export interface AvailabilityListInput extends PaginationInput {
 
 export interface BookingCreateRepositoryInput {
   customerUserId: number;
-  serviceId: number;
+  serviceId?: number;
+  technicianServiceId?: number;
   scheduleSlotId: number;
   fulfillmentMode: BookingFulfillmentMode;
   note?: string | null;
@@ -54,7 +56,8 @@ export interface OrderTransitionRepositoryOptions {
 
 export interface ScheduleSlotPayload {
   id: number;
-  serviceId: number;
+  serviceId: number | null;
+  technicianServiceId: number | null;
   shopId: number;
   technicianProfileId: number | null;
   startsAt: Date;
@@ -87,12 +90,20 @@ export interface BookingOrderPayload {
   status: BookingOrderStatusPayload;
   paymentStatus: "unpaid";
   customerUserId: number;
-  serviceId: number;
+  serviceId: number | null;
+  technicianServiceId: number | null;
   shopId: number;
   technicianProfileId: number | null;
   scheduleSlotId: number;
   fulfillmentMode: BookingFulfillmentMode;
   serviceName: string;
+  pricingModeSnapshot: "merchant" | "technician";
+  serviceOwnerType: "shop" | "technician";
+  serviceOwnerId: number | null;
+  serviceNameSnapshot: string | null;
+  servicePriceSnapshot: string | null;
+  serviceDurationSnapshot: number | null;
+  serviceSnapshot: unknown;
   shopName: string;
   technicianName: string | null;
   priceAmount: string;
@@ -127,6 +138,7 @@ type DecimalLike = {
 type SlotRecord = Prisma.ScheduleSlotGetPayload<{
   include: {
     service: true;
+    technicianService: true;
     shop: true;
     technicianProfile: true;
   };
@@ -135,6 +147,7 @@ type SlotRecord = Prisma.ScheduleSlotGetPayload<{
 type OrderRecord = Prisma.BookingOrderGetPayload<{
   include: {
     service: true;
+    technicianService: true;
     shop: true;
     technicianProfile: true;
     statusHistory: {
@@ -157,13 +170,27 @@ export class BookingRepository implements BookingRepositoryPort {
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
       status: "AVAILABLE",
-      serviceId: input.serviceId,
+      ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+      ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
       startsAt: { gte: input.from },
       endsAt: { lte: input.to },
-      service: {
-        deletedAt: null,
-        status: "published"
-      },
+      ...(input.serviceId
+        ? {
+            service: {
+              deletedAt: null,
+              status: "published"
+            }
+          }
+        : {}),
+      ...(input.technicianServiceId
+        ? {
+            technicianService: {
+              deletedAt: null,
+              isActive: true,
+              isBookable: true
+            }
+          }
+        : {}),
       shop: {
         deletedAt: null,
         status: "published"
@@ -196,13 +223,27 @@ export class BookingRepository implements BookingRepositoryPort {
       const slot = await tx.scheduleSlot.findFirst({
         where: {
           id: input.scheduleSlotId,
-          serviceId: input.serviceId,
+          ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+          ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
           deletedAt: null,
           status: "AVAILABLE",
-          service: {
-            deletedAt: null,
-            status: "published"
-          },
+          ...(input.serviceId
+            ? {
+                service: {
+                  deletedAt: null,
+                  status: "published"
+                }
+              }
+            : {}),
+          ...(input.technicianServiceId
+            ? {
+                technicianService: {
+                  deletedAt: null,
+                  isActive: true,
+                  isBookable: true
+                }
+              }
+            : {}),
           shop: {
             deletedAt: null,
             status: "published"
@@ -212,6 +253,16 @@ export class BookingRepository implements BookingRepositoryPort {
       });
 
       if (!slot || slot.bookedCount >= slot.capacity) {
+        return null;
+      }
+
+      const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
+      const serviceSource =
+        pricingMode === "technician"
+          ? this.createTechnicianServiceSource(slot, input.technicianServiceId)
+          : this.createShopServiceSource(slot, input.serviceId);
+
+      if (!serviceSource) {
         return null;
       }
 
@@ -262,14 +313,22 @@ export class BookingRepository implements BookingRepositoryPort {
           orderNo: this.createOrderNo(),
           orderType: "BOOKING",
           customerUserId: input.customerUserId,
-          serviceId: slot.serviceId,
+          serviceId: serviceSource.serviceId,
+          technicianServiceId: serviceSource.technicianServiceId,
           shopId: slot.shopId,
           technicianProfileId: slot.technicianProfileId,
           scheduleSlotId: slot.id,
           status: "PENDING",
           fulfillmentMode: input.fulfillmentMode,
-          priceAmount: slot.service.priceAmount,
-          currency: slot.service.currency,
+          priceAmount: serviceSource.priceAmount,
+          currency: serviceSource.currency,
+          pricingModeSnapshot: pricingMode === "technician" ? "TECHNICIAN" : "MERCHANT",
+          serviceOwnerType: serviceSource.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
+          serviceOwnerId: serviceSource.ownerId,
+          serviceNameSnapshot: serviceSource.name,
+          servicePriceSnapshot: serviceSource.priceAmount,
+          serviceDurationSnapshot: serviceSource.durationMinutes,
+          serviceSnapshotJson: serviceSource.snapshot,
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
           note: input.note?.trim() || null,
@@ -403,6 +462,7 @@ export class BookingRepository implements BookingRepositoryPort {
   private slotInclude() {
     return {
       service: true,
+      technicianService: true,
       shop: true,
       technicianProfile: true
     };
@@ -411,6 +471,7 @@ export class BookingRepository implements BookingRepositoryPort {
   private orderInclude() {
     return {
       service: true,
+      technicianService: true,
       shop: true,
       technicianProfile: true,
       statusHistory: {
@@ -421,9 +482,16 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   private mapSlot(slot: SlotRecord): ScheduleSlotPayload {
+    const serviceName = slot.service?.name ?? slot.technicianService?.name ?? "Unknown service";
+    const priceAmount = slot.service?.priceAmount ?? slot.technicianService?.priceAmount ?? 0;
+    const currency = slot.service?.currency ?? slot.technicianService?.currency ?? "JPY";
+    const durationMinutes =
+      slot.service?.durationMinutes ?? slot.technicianService?.durationMinutes ?? 0;
+
     return {
       id: slot.id,
       serviceId: slot.serviceId,
+      technicianServiceId: slot.technicianServiceId,
       shopId: slot.shopId,
       technicianProfileId: slot.technicianProfileId,
       startsAt: slot.startsAt,
@@ -431,16 +499,22 @@ export class BookingRepository implements BookingRepositoryPort {
       capacity: slot.capacity,
       bookedCount: slot.bookedCount,
       status: this.slotStatusFromDb(slot.status),
-      serviceName: slot.service.name,
+      serviceName,
       shopName: slot.shop.name,
       technicianName: slot.technicianProfile?.displayName ?? null,
-      priceAmount: this.formatDecimal(slot.service.priceAmount, 2),
-      currency: slot.service.currency,
-      durationMinutes: slot.service.durationMinutes
+      priceAmount: this.formatDecimal(priceAmount, 2),
+      currency,
+      durationMinutes
     };
   }
 
   private mapOrder(order: OrderRecord): BookingOrderPayload {
+    const serviceName =
+      order.serviceNameSnapshot ??
+      order.service?.name ??
+      order.technicianService?.name ??
+      "Unknown service";
+
     return {
       id: order.id,
       orderNo: order.orderNo,
@@ -449,11 +523,21 @@ export class BookingRepository implements BookingRepositoryPort {
       paymentStatus: "unpaid",
       customerUserId: order.customerUserId,
       serviceId: order.serviceId,
+      technicianServiceId: order.technicianServiceId,
       shopId: order.shopId,
       technicianProfileId: order.technicianProfileId,
       scheduleSlotId: order.scheduleSlotId,
       fulfillmentMode: order.fulfillmentMode === "home" ? "home" : "store",
-      serviceName: order.service.name,
+      serviceName,
+      pricingModeSnapshot: this.pricingModeFromDb(order.pricingModeSnapshot),
+      serviceOwnerType: this.serviceOwnerTypeFromDb(order.serviceOwnerType),
+      serviceOwnerId: order.serviceOwnerId,
+      serviceNameSnapshot: order.serviceNameSnapshot,
+      servicePriceSnapshot: order.servicePriceSnapshot
+        ? this.formatDecimal(order.servicePriceSnapshot, 2)
+        : null,
+      serviceDurationSnapshot: order.serviceDurationSnapshot,
+      serviceSnapshot: order.serviceSnapshotJson,
       shopName: order.shop.name,
       technicianName: order.technicianProfile?.displayName ?? null,
       priceAmount: this.formatDecimal(order.priceAmount, 2),
@@ -473,6 +557,64 @@ export class BookingRepository implements BookingRepositoryPort {
         reason: history.reason,
         createdAt: history.createdAt
       }))
+    };
+  }
+
+  private createShopServiceSource(slot: SlotRecord, requestedServiceId?: number) {
+    if (!requestedServiceId || !slot.service || slot.serviceId !== requestedServiceId) {
+      return null;
+    }
+
+    return {
+      serviceId: slot.serviceId,
+      technicianServiceId: null,
+      ownerType: "shop" as const,
+      ownerId: slot.serviceId,
+      name: slot.service.name,
+      priceAmount: slot.service.priceAmount,
+      currency: slot.service.currency,
+      durationMinutes: slot.service.durationMinutes,
+      snapshot: {
+        serviceId: slot.serviceId,
+        name: slot.service.name,
+        description: slot.service.description,
+        priceAmount: this.formatDecimal(slot.service.priceAmount, 2),
+        currency: slot.service.currency,
+        durationMinutes: slot.service.durationMinutes
+      }
+    };
+  }
+
+  private createTechnicianServiceSource(
+    slot: SlotRecord,
+    requestedTechnicianServiceId?: number
+  ) {
+    if (
+      !requestedTechnicianServiceId ||
+      !slot.technicianService ||
+      slot.technicianServiceId !== requestedTechnicianServiceId
+    ) {
+      return null;
+    }
+
+    return {
+      serviceId: null,
+      technicianServiceId: slot.technicianServiceId,
+      ownerType: "technician" as const,
+      ownerId: slot.technicianService.technicianId,
+      name: slot.technicianService.name,
+      priceAmount: slot.technicianService.priceAmount,
+      currency: slot.technicianService.currency,
+      durationMinutes: slot.technicianService.durationMinutes,
+      snapshot: {
+        technicianServiceId: slot.technicianServiceId,
+        name: slot.technicianService.name,
+        description: slot.technicianService.description,
+        priceAmount: slot.technicianService.priceAmount,
+        currency: slot.technicianService.currency,
+        durationMinutes: slot.technicianService.durationMinutes,
+        technicianId: slot.technicianService.technicianId
+      }
     };
   }
 
@@ -523,6 +665,14 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private orderTypeFromDb(orderType: string): BookingOrderTypePayload {
     return orderType === "REQUEST" ? "request" : "booking";
+  }
+
+  private pricingModeFromDb(value: string): "merchant" | "technician" {
+    return value === "TECHNICIAN" ? "technician" : "merchant";
+  }
+
+  private serviceOwnerTypeFromDb(value: string): "shop" | "technician" {
+    return value === "TECHNICIAN" ? "technician" : "shop";
   }
 
   private createOrderNo(): string {

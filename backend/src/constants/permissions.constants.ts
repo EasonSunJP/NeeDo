@@ -335,6 +335,34 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-admin",
     "读取当前店铺资料"
   ),
+  createPermission(
+    "merchant-admin:shop:pricing-mode:read",
+    "商户定价模式读取",
+    "api",
+    "merchant-admin",
+    "读取当前店铺定价模式"
+  ),
+  createPermission(
+    "merchant-admin:shop:pricing-mode:update",
+    "商户定价模式切换",
+    "api",
+    "merchant-admin",
+    "切换店铺定价或技师定价模式"
+  ),
+  createPermission(
+    "technician:services:list",
+    "技师服务列表",
+    "api",
+    "technician",
+    "分页读取本人服务信息"
+  ),
+  createPermission(
+    "technician:services:write",
+    "技师服务维护",
+    "api",
+    "technician",
+    "创建、更新和下架本人服务信息"
+  ),
 
   createPermission("menu:dashboard", "仪表盘菜单", "menu", "menu", "显示仪表盘菜单"),
   createPermission("page:dashboard", "仪表盘页面", "page", "dashboard", "访问仪表盘页面"),
@@ -474,6 +502,8 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:finance:export",
   "merchant-admin:technicians:list",
   "merchant-admin:shop:read",
+  "merchant-admin:shop:pricing-mode:read",
+  "merchant-admin:shop:pricing-mode:update",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -527,7 +557,9 @@ export const buildRolePermissionAssignments = (): Record<
     "menu:technician-app",
     "menu:technician-schedule",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
-    ...REALTIME_USER_PERMISSION_CODES
+    ...REALTIME_USER_PERMISSION_CODES,
+    "technician:services:list",
+    "technician:services:write"
   ],
   customer: [...CUSTOMER_BOOKING_PERMISSION_CODES, ...REALTIME_USER_PERMISSION_CODES],
   broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],

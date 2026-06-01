@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authApi, authEndpointPaths } from "./auth";
-import { httpClient, setAuthTokens } from "./httpClient";
+import { getStoredRefreshToken, httpClient, setAuthTokens } from "./httpClient";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 
 vi.mock("./httpClient", () => ({
@@ -79,6 +79,42 @@ describe("authApi endpoint paths", () => {
     expect(setAuthTokens).toHaveBeenCalledWith({
       accessToken: "access-token",
       refreshToken: "refresh-token"
+    });
+  });
+
+  it("switches identity with the stored refresh token and persists the rotated token pair", async () => {
+    vi.mocked(getStoredRefreshToken).mockReturnValueOnce("stored-refresh-token");
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      accessToken: "next-access-token",
+      refreshToken: "next-refresh-token",
+      expiresIn: 900,
+      me: {
+        id: 5,
+        email: "multi@example.com",
+        username: "multi",
+        avatarUrl: null,
+        isActive: true,
+        currentIdentity: { id: 51, type: "technician", scopeType: "technician_profile", scopeId: 3 },
+        identities: [{ id: 51, type: "technician", scopeType: "technician_profile", scopeId: 3 }],
+        roles: ["technician"],
+        permissions: ["auth:me", "technician:services:write"],
+        menus: ["menu:technician-app"]
+      }
+    });
+
+    await authApi.switchIdentity(51);
+
+    expect(httpClient.request).toHaveBeenCalledWith(authEndpointPaths.switchIdentity, expect.objectContaining({
+      body: {
+        refreshToken: "stored-refresh-token",
+        identityId: 51
+      },
+      method: "POST",
+      retryOnUnauthorized: false
+    }));
+    expect(setAuthTokens).toHaveBeenCalledWith({
+      accessToken: "next-access-token",
+      refreshToken: "next-refresh-token"
     });
   });
 

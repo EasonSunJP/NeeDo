@@ -8,7 +8,8 @@ import type {
   LogoutBody,
   OtpSendBody,
   OtpVerifyBody,
-  RefreshBody
+  RefreshBody,
+  SwitchIdentityBody
 } from "../validators/auth.validator";
 
 type BodyRequest<TBody> = Request<Record<string, string>, unknown, TBody>;
@@ -75,6 +76,29 @@ export class AuthController {
       response
         .status(200)
         .json(successResponse(await this.authService.refresh(request.body.refreshToken)));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public switchIdentity = async (
+    request: BodyRequest<SwitchIdentityBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.switchIdentity(
+              this.getAuthenticatedAccess(response),
+              request.body.refreshToken,
+              request.body.identityId,
+              this.getContext(request)
+            )
+          )
+        );
     } catch (error) {
       next(error);
     }

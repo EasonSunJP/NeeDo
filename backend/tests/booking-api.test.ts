@@ -204,6 +204,7 @@ const createFixture = async () => {
   const slot = {
     id: 11,
     serviceId: 1,
+    technicianServiceId: null,
     shopId: 1,
     technicianProfileId: 1,
     startsAt: slotStart,
@@ -226,12 +227,20 @@ const createFixture = async () => {
         status: string;
         paymentStatus: "unpaid";
         customerUserId: number;
-        serviceId: number;
+        serviceId: number | null;
+        technicianServiceId: number | null;
         shopId: number;
         technicianProfileId: number | null;
         scheduleSlotId: number;
         fulfillmentMode: string;
         serviceName: string;
+        pricingModeSnapshot: "merchant" | "technician";
+        serviceOwnerType: "shop" | "technician";
+        serviceOwnerId: number | null;
+        serviceNameSnapshot: string | null;
+        servicePriceSnapshot: string | null;
+        serviceDurationSnapshot: number | null;
+        serviceSnapshot: unknown;
         shopName: string;
         technicianName: string | null;
         priceAmount: string;
@@ -276,11 +285,19 @@ const createFixture = async () => {
         paymentStatus: "unpaid",
         customerUserId: input.customerUserId,
         serviceId: slot.serviceId,
+        technicianServiceId: slot.technicianServiceId,
         shopId: slot.shopId,
         technicianProfileId: slot.technicianProfileId,
         scheduleSlotId: slot.id,
         fulfillmentMode: "store",
         serviceName: slot.serviceName,
+        pricingModeSnapshot: "merchant",
+        serviceOwnerType: "shop",
+        serviceOwnerId: slot.serviceId,
+        serviceNameSnapshot: slot.serviceName,
+        servicePriceSnapshot: slot.priceAmount,
+        serviceDurationSnapshot: slot.durationMinutes,
+        serviceSnapshot: null,
         shopName: slot.shopName,
         technicianName: slot.technicianName,
         priceAmount: slot.priceAmount,
