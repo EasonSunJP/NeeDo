@@ -5,6 +5,7 @@ export type ShopPricingMode = "merchant" | "technician";
 export type ShopPricingModeResponse = {
   shopId: number;
   pricingMode: ShopPricingMode;
+  technicianPricingRatePercent: number;
   updatedAt: string | null;
   updatedBy: number | null;
 };
@@ -61,6 +62,7 @@ export type BookingNavigationResponse =
   | {
       shopId: number;
       pricingMode: "merchant";
+      technicianPricingRatePercent: number;
       entry: "service_menu";
       services: PaginatedPricingData<BookingNavigationService>;
       technicians?: undefined;
@@ -68,6 +70,7 @@ export type BookingNavigationResponse =
   | {
       shopId: number;
       pricingMode: "technician";
+      technicianPricingRatePercent: number;
       entry: "technician_list";
       technicians: PaginatedPricingData<BookingNavigationTechnician>;
       services?: undefined;
@@ -95,9 +98,9 @@ export const pricingModeApi = {
     return httpClient.request<ShopPricingModeResponse>(`/shops/${shopId}/pricing-mode`);
   },
 
-  updateShopPricingMode(shopId: number, pricingMode: ShopPricingMode) {
+  updateShopPricingMode(shopId: number, pricingMode: ShopPricingMode, technicianPricingRatePercent?: number) {
     return httpClient.request<ShopPricingModeResponse>(`/shops/${shopId}/pricing-mode`, {
-      body: { pricingMode },
+      body: { pricingMode, ...(typeof technicianPricingRatePercent === "number" ? { technicianPricingRatePercent } : {}) },
       method: "PUT"
     });
   },

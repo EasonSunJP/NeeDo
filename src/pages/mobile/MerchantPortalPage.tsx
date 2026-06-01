@@ -1208,18 +1208,24 @@ function getMerchantStorePrivacySummary(enabled: boolean, visibility: MerchantSt
 function MerchantStorePricingModeControl({
   menuOpen,
   mode,
+  onTechnicianPricingConfirmRequest,
   onMenuOpenChange,
   onModeChange,
-  pending
+  onRatePercentChange,
+  pending,
+  ratePercent
 }: {
   menuOpen: boolean;
   mode: MerchantStorePricingMode;
+  onTechnicianPricingConfirmRequest: () => void;
   onMenuOpenChange: (open: boolean) => void;
-  onModeChange: (mode: MerchantStorePricingMode) => void;
+  onModeChange: (mode: MerchantStorePricingMode, ratePercent?: number) => void;
+  onRatePercentChange: (ratePercent: number) => void;
   pending?: boolean;
+  ratePercent: number;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [technicianPricingRatioPercent, setTechnicianPricingRatioPercent] = useState(100);
+  const [technicianPricingRatioPercent, setTechnicianPricingRatioPercent] = useState(ratePercent);
   const technicianPricing = mode === "technician";
   const nextMode = technicianPricing ? "store" : "technician";
   const requestModeChange = (targetMode: MerchantStorePricingMode) => {
@@ -1228,7 +1234,7 @@ function MerchantStorePricingModeControl({
     }
 
     if (targetMode === "technician") {
-      onMenuOpenChange(true);
+      onTechnicianPricingConfirmRequest();
       return;
     }
 
@@ -1238,13 +1244,20 @@ function MerchantStorePricingModeControl({
     setTechnicianPricingRatioPercent((current) => Math.min(200, Math.max(10, current + delta)));
   };
   const confirmTechnicianPricing = () => {
+    onRatePercentChange(technicianPricingRatioPercent);
     onMenuOpenChange(false);
-    onModeChange("technician");
+    onModeChange("technician", technicianPricingRatioPercent);
   };
 
   useEffect(() => {
     onMenuOpenChange(false);
   }, [mode, onMenuOpenChange]);
+
+  useEffect(() => {
+    if (menuOpen) {
+      setTechnicianPricingRatioPercent(ratePercent);
+    }
+  }, [menuOpen, ratePercent]);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -1276,8 +1289,8 @@ function MerchantStorePricingModeControl({
             type="button"
           >
             <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">定价模式</span>
-            <strong className="mt-0.5 block truncate text-[11px] font-black text-[color:var(--client-text)]">
-              {technicianPricing ? "技师定价" : "店铺定价"}
+            <strong className="mt-0.5 block text-[11px] font-black leading-4 text-[color:var(--client-text)]">
+              {technicianPricing ? <>技师定价（{ratePercent}%）</> : "店铺定价"}
             </strong>
           </button>
           <ToggleSwitch
@@ -1497,8 +1510,10 @@ export function MerchantPortalPage() {
   const [followedStaffIds, setFollowedStaffIds] = useState<string[]>(["tech-1"]);
   const [followedCustomerIds, setFollowedCustomerIds] = useState<string[]>(["cus-1", "cus-3"]);
   const [storePricingMode, setStorePricingMode] = useState<MerchantStorePricingMode>("store");
+  const [storeTechnicianPricingRatePercent, setStoreTechnicianPricingRatePercent] = useState(100);
   const [storePricingModeSaving, setStorePricingModeSaving] = useState(false);
   const [storePricingRatioMenuOpen, setStorePricingRatioMenuOpen] = useState(false);
+  const [storePricingModeConfirmOpen, setStorePricingModeConfirmOpen] = useState(false);
   const [storePrivacyEnabled, setStorePrivacyEnabled] = useState(false);
   const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantStorePrivacyVisibility>("privateAll");
   const [storePrivacyMenuOpen, setStorePrivacyMenuOpen] = useState(false);
@@ -1630,6 +1645,7 @@ export function MerchantPortalPage() {
       .then((result) => {
         if (mounted) {
           setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
+          setStoreTechnicianPricingRatePercent(result.technicianPricingRatePercent);
         }
       })
       .catch(() => {
@@ -2123,13 +2139,17 @@ export function MerchantPortalPage() {
     setStorePrivacyMenuOpen(false);
   };
 
-  const updateStorePricingMode = async (nextMode: MerchantStorePricingMode) => {
-    if (nextMode === storePricingMode || storePricingModeSaving) {
+  const updateStorePricingMode = async (nextMode: MerchantStorePricingMode, nextRatePercent = storeTechnicianPricingRatePercent) => {
+    const pricingModeChanged = nextMode !== storePricingMode;
+    const pricingRateChanged = nextRatePercent !== storeTechnicianPricingRatePercent;
+
+    if ((!pricingModeChanged && !pricingRateChanged) || storePricingModeSaving) {
       return;
     }
 
     if (!storeApiId) {
       setStorePricingMode(nextMode);
+      setStoreTechnicianPricingRatePercent(nextRatePercent);
       setContactLog("当前店铺资料尚未绑定正式店铺 ID，已仅更新本地展示。");
       return;
     }
@@ -2138,10 +2158,12 @@ export function MerchantPortalPage() {
     try {
       const result = await pricingModeApi.updateShopPricingMode(
         storeApiId,
-        merchantStorePricingModeToApi(nextMode)
+        merchantStorePricingModeToApi(nextMode),
+        nextRatePercent
       );
       setStorePricingMode(merchantStorePricingModeFromApi(result.pricingMode));
-      setContactLog(nextMode === "technician" ? "已切换为技师定价。" : "已切换为店铺定价。");
+      setStoreTechnicianPricingRatePercent(result.technicianPricingRatePercent);
+      setContactLog(nextMode === "technician" ? `已切换为技师定价，店铺报价比例 ${result.technicianPricingRatePercent}%。` : "已切换为店铺定价。");
     } catch {
       setContactLog("定价模式保存失败，请稍后重试。");
     } finally {
@@ -2149,15 +2171,39 @@ export function MerchantPortalPage() {
     }
   };
 
+  const requestTechnicianPricingConfirm = () => {
+    setStorePricingRatioMenuOpen(false);
+    setStorePrivacyMenuOpen(false);
+    setStorePricingModeConfirmOpen(true);
+  };
+
+  const confirmTechnicianPricingMode = () => {
+    setStorePricingModeConfirmOpen(false);
+    setStorePricingRatioMenuOpen(true);
+    setStorePrivacyMenuOpen(false);
+  };
+
   const isMerchantDataCenterView = activeView === "me" && activeMeTab === "data";
   const storePricingModeControl = (
-    <MerchantStorePricingModeControl
-      menuOpen={storePricingRatioMenuOpen}
-      mode={storePricingMode}
-      onMenuOpenChange={updateStorePricingRatioMenuOpen}
-      onModeChange={updateStorePricingMode}
-      pending={storePricingModeSaving}
-    />
+    <>
+      <MerchantStorePricingModeControl
+        menuOpen={storePricingRatioMenuOpen}
+        mode={storePricingMode}
+        onMenuOpenChange={updateStorePricingRatioMenuOpen}
+        onModeChange={updateStorePricingMode}
+        onRatePercentChange={setStoreTechnicianPricingRatePercent}
+        onTechnicianPricingConfirmRequest={requestTechnicianPricingConfirm}
+        pending={storePricingModeSaving}
+        ratePercent={storeTechnicianPricingRatePercent}
+      />
+      <PrivacyModeConfirmDialog
+        confirmLabel="确定开启"
+        message="开启技师定价后，店铺的服务列表将被隐藏，是否确定开启？"
+        onCancel={() => setStorePricingModeConfirmOpen(false)}
+        onConfirm={confirmTechnicianPricingMode}
+        open={storePricingModeConfirmOpen}
+      />
+    </>
   );
   const storePrivacyControl = (
     <>
@@ -2579,6 +2625,7 @@ export function MerchantPortalPage() {
                   privacyControl={storePrivacyControl}
                   scope="merchant"
                   store={store}
+                  technicianPricingRatePercent={storeTechnicianPricingRatePercent}
                 />
               ) : null}
 

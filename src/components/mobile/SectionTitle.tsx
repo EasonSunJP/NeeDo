@@ -6,24 +6,30 @@ export function SectionTitle({
   title,
   caption,
   to,
-  children
+  children,
+  showInfo = true
 }: {
   title: string;
   caption?: string;
   to?: string;
   children?: ReactNode;
+  showInfo?: boolean;
 }) {
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-3">
-        <TitleWithInfo
-          as="h2"
-          info={caption ?? `${title}板块用于汇总当前页面里的相关信息与操作。`}
-          label={`${title} 简介`}
-          title={title}
-          titleClassName="text-lg font-bold"
-          variant="paper"
-        />
+        {showInfo ? (
+          <TitleWithInfo
+            as="h2"
+            info={caption ?? `${title}板块用于汇总当前页面里的相关信息与操作。`}
+            label={`${title} 简介`}
+            title={title}
+            titleClassName="text-lg font-bold"
+            variant="paper"
+          />
+        ) : (
+          <h2 className="min-w-0 text-lg font-bold text-[color:var(--client-text)]">{title}</h2>
+        )}
         <div className="flex items-center gap-2">
           {children}
           {to && (

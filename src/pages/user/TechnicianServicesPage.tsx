@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { AppTopBar, PageScaffold, PrimaryButton } from "../../components/client-ui/AppScaffold";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { PageScaffold, PrimaryButton } from "../../components/client-ui/AppScaffold";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
 import { pricingModeApi, type TechnicianServicePayload } from "../../features/pricing-mode/api";
+import { navItemsForSocialScope, SocialProfileHeader, SocialProfileTopBar } from "../../features/social/components/UnifiedSocialUi";
+import { useSocial } from "../../features/social/context";
+import type { SocialPortalScope, SocialProfile } from "../../features/social/types";
+import { profileKey } from "../../features/social/utils";
 import { cn, yen } from "../../lib/utils";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import { useEntityStore } from "../../state/entityStore";
+import type { Technician } from "../../types/domain";
 
 function routeEntityIdToApiId(value: string | undefined) {
   if (!value) {
@@ -19,13 +25,55 @@ function routeEntityIdToApiId(value: string | undefined) {
   return suffix ? Number(suffix) : null;
 }
 
-export function TechnicianServicesPage() {
+function buildTechnicianServiceSocialProfile(technician: Technician): SocialProfile {
+  const displayName = technician.nickname?.trim() || technician.name;
+  const coverImages = [...(technician.gallery ?? []), technician.avatar].filter(Boolean);
+
+  return {
+    id: technician.id,
+    entityType: "technician",
+    displayName,
+    handle: displayName,
+    avatar: technician.avatar,
+    coverImage: coverImages[0] ?? technician.avatar,
+    coverImages,
+    bio: technician.bio || "公开同步服务记录、空档更新和专业建议，让预约前的判断更轻松。",
+    location: technician.serviceAreas[0] ? `${technician.serviceAreas[0]} · 东京` : "东京",
+    birthday: technician.age ? `${Math.max(1, 2026 - Number.parseInt(technician.age, 10) || 28)}-05-01` : undefined,
+    joinedAt: new Date(2021, 0, 1).toISOString(),
+    verifiedStatus: "verified",
+    followerCount: Math.max(0, technician.orderCount),
+    followingCount: 0,
+    extraProfileFields: {
+      bookingAction: "可预约服务",
+      languages: technician.languages,
+      nextAvailability: technician.status === "available" ? "今天可约" : technician.status === "busy" ? "稍后可约" : "离线中",
+      serviceFocus: technician.skills.slice(0, 4),
+      serviceTags: [...(technician.profileTags ?? []), ...technician.skills].slice(0, 4)
+    },
+    headline: technician.identityLabel ?? "认证技师"
+  };
+}
+
+function getTechnicianServiceFallbackPath(scope: SocialPortalScope) {
+  return scope === "user" ? "/stores" : `/${scope}`;
+}
+
+export function TechnicianServicesPage({ scope = "user" }: { scope?: SocialPortalScope } = {}) {
   const { shopId, technicianId } = useParams();
+  const navigate = useNavigate();
   const apiShopId = routeEntityIdToApiId(shopId);
   const apiTechnicianId = routeEntityIdToApiId(technicianId);
   const { stores, technicians } = useEntityStore();
+  const { getActorForScope, profiles } = useSocial();
   const store = stores.find((item) => item.id === shopId) ?? stores[0];
   const technician = technicians.find((item) => item.id === technicianId) ?? technicians[0];
+  const actorKey = getActorForScope(scope);
+  const technicianProfileKey = technician ? profileKey({ entityType: "technician", id: technician.id }) : "";
+  const technicianProfile = useMemo(
+    () => (technician ? profiles[technicianProfileKey] ?? buildTechnicianServiceSocialProfile(technician) : null),
+    [profiles, technician, technicianProfileKey]
+  );
   const [services, setServices] = useState<TechnicianServicePayload[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -62,12 +110,26 @@ export function TechnicianServicesPage() {
   }, [apiShopId, apiTechnicianId]);
 
   return (
-    <PageScaffold contentClassName="px-0 pt-0">
-      <AppTopBar title="技师服务" />
-      <section className="space-y-4 px-4 pb-28 pt-3">
+    <PageScaffold contentClassName="space-y-0 pb-32 pt-0" navItems={navItemsForSocialScope(scope)} showTopEdgeMask={false}>
+      {technicianProfile ? (
+        <>
+          <div className="-mx-4 sm:-mx-6 lg:-mx-8">
+            <SocialProfileTopBar
+              actorKey={actorKey}
+              onBack={() => navigate(-1)}
+              postCount={services.length}
+              profile={technicianProfile}
+              scope={scope}
+            />
+          </div>
+          <SocialProfileHeader actorKey={actorKey} profile={technicianProfile} scope={scope} />
+        </>
+      ) : null}
+
+      <section className="space-y-4 border-t border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] px-4 py-4">
         <SectionTitle
           caption={store ? `${store.name} · ${technician?.name ?? "技师"}` : "技师可预约服务"}
-          title="服务信息"
+          title="服务内容"
         />
         {failed ? (
           <div className="rounded-[18px] border border-line bg-white p-4 text-sm font-bold text-ink/58">
@@ -104,12 +166,14 @@ export function TechnicianServicesPage() {
                   </span>
                 ))}
               </div>
-              <PrimaryButton
-                className="mt-4 w-full"
-                to={`/checkout/${service.id > 0 ? `technician-service-${service.id}` : "svc-fallback"}`}
-              >
-                预约这个服务
-              </PrimaryButton>
+              {scope === "user" ? (
+                <PrimaryButton
+                  className="mt-4 w-full"
+                  to={`/checkout/${service.id > 0 ? `technician-service-${service.id}` : "svc-fallback"}`}
+                >
+                  预约这个服务
+                </PrimaryButton>
+              ) : null}
             </article>
           )) : (
             <div className="rounded-[18px] border border-line bg-white p-4 text-sm font-bold text-ink/58">
@@ -117,7 +181,10 @@ export function TechnicianServicesPage() {
             </div>
           )}
         </div>
-        <Link className="block text-center text-xs font-bold text-[color:var(--client-muted)]" to={technician ? `/profiles/technician/${technician.id}` : "/stores"}>
+        <Link
+          className="block text-center text-xs font-bold text-[color:var(--client-muted)]"
+          to={technician ? getScopedProfileDetailPath(scope, "technician", technician.id) : getTechnicianServiceFallbackPath(scope)}
+        >
           查看技师动态
         </Link>
       </section>

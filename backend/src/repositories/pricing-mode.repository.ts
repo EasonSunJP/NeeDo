@@ -18,6 +18,16 @@ type DecimalLike = {
   toFixed: (decimalPlaces?: number) => string;
 };
 
+type ShopPricingModeRecord = {
+  id: number;
+  pricingMode: string;
+  technicianPricingRatePercent?: number;
+  pricingModeUpdatedAt: Date | null;
+  pricingModeUpdatedBy: number | null;
+};
+
+const legacyShopTechnicianPricingRatePercent = new Map<number, number>();
+
 type TechnicianServiceRecord = Prisma.TechnicianServiceGetPayload<Record<string, never>>;
 
 type ShopServiceRecord = Prisma.ServiceGetPayload<{
@@ -37,52 +47,44 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findShopPricingMode(shopId: number): Promise<ShopPricingModePayload | null> {
-    const shop = await this.client.shop.findFirst({
-      where: { id: shopId, deletedAt: null },
-      select: {
-        id: true,
-        pricingMode: true,
-        pricingModeUpdatedAt: true,
-        pricingModeUpdatedBy: true
+    try {
+      return this.mapShopPricingMode(await this.findShopPricingModeWithRate(shopId));
+    } catch (error) {
+      if (!this.isMissingTechnicianPricingRateColumn(error)) {
+        throw error;
       }
-    });
 
-    return shop
-      ? {
-          shopId: shop.id,
-          pricingMode: this.pricingModeFromDb(shop.pricingMode),
-          updatedAt: shop.pricingModeUpdatedAt,
-          updatedBy: shop.pricingModeUpdatedBy
-        }
-      : null;
+      return this.mapShopPricingMode(
+        await this.findShopPricingModeWithoutRate(shopId),
+        legacyShopTechnicianPricingRatePercent.get(shopId)
+      );
+    }
   }
 
   public async updateShopPricingMode(
     shopId: number,
     pricingMode: PricingModePayload,
+    technicianPricingRatePercent: number,
     actorUserId: number
   ): Promise<ShopPricingModePayload> {
-    const shop = await this.client.shop.update({
-      where: { id: shopId },
-      data: {
-        pricingMode: this.pricingModeToDb(pricingMode),
-        pricingModeUpdatedAt: new Date(),
-        pricingModeUpdatedBy: actorUserId
-      },
-      select: {
-        id: true,
-        pricingMode: true,
-        pricingModeUpdatedAt: true,
-        pricingModeUpdatedBy: true
+    try {
+      return this.mapShopPricingMode(
+        await this.updateShopPricingModeWithRate(shopId, pricingMode, technicianPricingRatePercent, actorUserId)
+      ) as ShopPricingModePayload;
+    } catch (error) {
+      if (!this.isMissingTechnicianPricingRateColumn(error)) {
+        throw error;
       }
-    });
 
-    return {
-      shopId: shop.id,
-      pricingMode: this.pricingModeFromDb(shop.pricingMode),
-      updatedAt: shop.pricingModeUpdatedAt,
-      updatedBy: shop.pricingModeUpdatedBy
-    };
+      const shop = await this.updateShopPricingModeWithoutRate(shopId, pricingMode, actorUserId);
+      legacyShopTechnicianPricingRatePercent.set(shopId, technicianPricingRatePercent);
+      return {
+        ...(this.mapShopPricingMode(
+          shop,
+          technicianPricingRatePercent
+        ) as ShopPricingModePayload)
+      };
+    }
   }
 
   public async findTechnicianShopScope(
@@ -346,6 +348,110 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
           }
         : null
     };
+  }
+
+  private async findShopPricingModeWithRate(shopId: number): Promise<ShopPricingModeRecord | null> {
+    return this.client.shop.findFirst({
+      where: { id: shopId, deletedAt: null },
+      select: {
+        id: true,
+        pricingMode: true,
+        technicianPricingRatePercent: true,
+        pricingModeUpdatedAt: true,
+        pricingModeUpdatedBy: true
+      }
+    });
+  }
+
+  private async findShopPricingModeWithoutRate(shopId: number): Promise<ShopPricingModeRecord | null> {
+    return this.client.shop.findFirst({
+      where: { id: shopId, deletedAt: null },
+      select: {
+        id: true,
+        pricingMode: true,
+        pricingModeUpdatedAt: true,
+        pricingModeUpdatedBy: true
+      }
+    });
+  }
+
+  private async updateShopPricingModeWithRate(
+    shopId: number,
+    pricingMode: PricingModePayload,
+    technicianPricingRatePercent: number,
+    actorUserId: number
+  ): Promise<ShopPricingModeRecord> {
+    return this.client.shop.update({
+      where: { id: shopId },
+      data: {
+        pricingMode: this.pricingModeToDb(pricingMode),
+        technicianPricingRatePercent,
+        pricingModeUpdatedAt: new Date(),
+        pricingModeUpdatedBy: actorUserId
+      },
+      select: {
+        id: true,
+        pricingMode: true,
+        technicianPricingRatePercent: true,
+        pricingModeUpdatedAt: true,
+        pricingModeUpdatedBy: true
+      }
+    });
+  }
+
+  private async updateShopPricingModeWithoutRate(
+    shopId: number,
+    pricingMode: PricingModePayload,
+    actorUserId: number
+  ): Promise<ShopPricingModeRecord> {
+    return this.client.shop.update({
+      where: { id: shopId },
+      data: {
+        pricingMode: this.pricingModeToDb(pricingMode),
+        pricingModeUpdatedAt: new Date(),
+        pricingModeUpdatedBy: actorUserId
+      },
+      select: {
+        id: true,
+        pricingMode: true,
+        pricingModeUpdatedAt: true,
+        pricingModeUpdatedBy: true
+      }
+    });
+  }
+
+  private mapShopPricingMode(shop: ShopPricingModeRecord | null, fallbackRatePercent = 100): ShopPricingModePayload | null {
+    return shop
+      ? {
+          shopId: shop.id,
+          pricingMode: this.pricingModeFromDb(shop.pricingMode),
+          technicianPricingRatePercent: shop.technicianPricingRatePercent ?? fallbackRatePercent,
+          updatedAt: shop.pricingModeUpdatedAt,
+          updatedBy: shop.pricingModeUpdatedBy
+        }
+      : null;
+  }
+
+  private isMissingTechnicianPricingRateColumn(error: unknown): boolean {
+    if (!error || typeof error !== "object") {
+      return false;
+    }
+
+    const issue = error as { code?: unknown; message?: unknown; meta?: Record<string, unknown> };
+    const evidence = [
+      issue.message,
+      issue.meta?.column,
+      issue.meta?.target,
+      issue.meta?.modelName
+    ]
+      .map((value) => String(value ?? ""))
+      .join(" ");
+
+    return (
+      issue.code === "P2022" &&
+      (evidence.includes("technician_pricing_rate_percent") ||
+        evidence.includes("technicianPricingRatePercent"))
+    );
   }
 
   private pricingModeFromDb(value: string): PricingModePayload {

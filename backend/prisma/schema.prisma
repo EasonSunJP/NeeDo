@@ -220,6 +220,7 @@ model Shop {
   status               String          @default("published") @db.VarChar(50)
   isRecommended        Boolean         @default(false) @map("is_recommended")
   pricingMode          ShopPricingMode @default(MERCHANT) @map("pricing_mode")
+  technicianPricingRatePercent Int     @default(100) @map("technician_pricing_rate_percent")
   pricingModeUpdatedAt DateTime?       @map("pricing_mode_updated_at")
   pricingModeUpdatedBy Int?            @map("pricing_mode_updated_by")
   createdAt            DateTime        @default(now()) @map("created_at")

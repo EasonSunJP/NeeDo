@@ -35,14 +35,23 @@ Tables:
 - `schedule_slots`: concrete service slots with capacity, booked count, and available/booked/blocked status.
 - `booking_orders`: formal Booking order records, including reserved `order_type`.
 - `order_status_histories`: append-only status audit trail.
+- `shops.technician_pricing_rate_percent`: store-facing technician pricing rate. The default is `100`; public technician service quotes use `technician_service.price_amount * technician_pricing_rate_percent / 100` when the shop is in technician pricing mode.
 
 All Step 10 tables include `id`, `created_at`, `updated_at`, and `deleted_at`.
+
+Additional pricing-mode migration:
+
+```text
+backend/prisma/migrations/20260602103000_shop_technician_pricing_rate/migration.sql
+```
 
 ## APIs
 
 Public:
 
 - `GET /api/v1/schedule/availability`
+- `GET /api/v1/shops/:shopId/booking-navigation`
+- `GET /api/v1/shops/:shopId/technicians/:technicianId/services`
 
 Authenticated:
 
@@ -53,6 +62,8 @@ Authenticated:
 - `POST /api/v1/orders/:id/cancel`
 - `POST /api/v1/orders/:id/start`
 - `POST /api/v1/orders/:id/complete`
+- `GET /api/v1/shops/:shopId/pricing-mode`
+- `PUT /api/v1/shops/:shopId/pricing-mode`
 
 Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:start`, and `order:complete`.
 

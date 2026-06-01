@@ -11,6 +11,7 @@ export type BookingNavigationEntry = "service_menu" | "technician_list";
 export interface ShopPricingModePayload {
   shopId: number;
   pricingMode: PricingModePayload;
+  technicianPricingRatePercent: number;
   updatedAt: Date | string | null;
   updatedBy: number | null;
 }
@@ -64,6 +65,7 @@ export interface BookingNavigationTechnicianPayload {
 export interface BookingNavigationPayload {
   shopId: number;
   pricingMode: PricingModePayload;
+  technicianPricingRatePercent: number;
   entry: BookingNavigationEntry;
   services?: PaginatedResponse<BookingNavigationServicePayload | TechnicianServicePayload>;
   technicians?: PaginatedResponse<BookingNavigationTechnicianPayload>;
@@ -87,6 +89,7 @@ export interface PricingModeRepositoryPort {
   updateShopPricingMode: (
     shopId: number,
     pricingMode: PricingModePayload,
+    technicianPricingRatePercent: number,
     actorUserId: number
   ) => Promise<ShopPricingModePayload>;
   findTechnicianShopScope: (technicianId: number) => Promise<TechnicianShopScopePayload | null>;
@@ -139,14 +142,25 @@ export class PricingModeService {
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
     shopId: number,
-    pricingMode: PricingModePayload
+    pricingMode: PricingModePayload,
+    technicianPricingRatePercent?: number
   ): Promise<ShopPricingModePayload> {
     this.assertMerchantShopScope(actor, shopId);
     const current = await this.getExistingShopPricingMode(shopId);
-    const next = await this.repository.updateShopPricingMode(shopId, pricingMode, actor.userId);
+    const nextTechnicianPricingRatePercent = this.normalizeTechnicianPricingRatePercent(
+      technicianPricingRatePercent ?? current.technicianPricingRatePercent
+    );
+    const next = await this.repository.updateShopPricingMode(
+      shopId,
+      pricingMode,
+      nextTechnicianPricingRatePercent,
+      actor.userId
+    );
     await this.record(actor, context, "merchant_admin.shop.pricing_mode.update", shopId, {
       previousPricingMode: current.pricingMode,
-      nextPricingMode: pricingMode
+      nextPricingMode: pricingMode,
+      previousTechnicianPricingRatePercent: current.technicianPricingRatePercent,
+      nextTechnicianPricingRatePercent
     });
 
     return next;
@@ -255,6 +269,7 @@ export class PricingModeService {
       return {
         shopId,
         pricingMode: "technician",
+        technicianPricingRatePercent: pricingMode.technicianPricingRatePercent,
         entry: "technician_list",
         technicians: await this.repository.listBookingNavigationTechnicians({ ...input, shopId })
       };
@@ -263,17 +278,42 @@ export class PricingModeService {
     return {
       shopId,
       pricingMode: "merchant",
+      technicianPricingRatePercent: pricingMode.technicianPricingRatePercent,
       entry: "service_menu",
       services: await this.repository.listBookingNavigationShopServices({ ...input, shopId })
     };
   }
 
-  public listPublicTechnicianServices(
+  public async listPublicTechnicianServices(
     shopId: number,
     technicianId: number,
     input: PaginationInput
   ): Promise<PaginatedResponse<TechnicianServicePayload>> {
-    return this.repository.listPublicTechnicianServices({ ...input, shopId, technicianId });
+    const pricingMode = await this.getExistingShopPricingMode(shopId);
+    const services = await this.repository.listPublicTechnicianServices({ ...input, shopId, technicianId });
+    const ratePercent = pricingMode.pricingMode === "technician"
+      ? this.normalizeTechnicianPricingRatePercent(pricingMode.technicianPricingRatePercent)
+      : 100;
+
+    if (ratePercent === 100) {
+      return services;
+    }
+
+    return {
+      ...services,
+      list: services.list.map((service) => ({
+        ...service,
+        priceAmount: Math.round((service.priceAmount * ratePercent) / 100)
+      }))
+    };
+  }
+
+  private normalizeTechnicianPricingRatePercent(value: number): number {
+    if (!Number.isFinite(value)) {
+      return 100;
+    }
+
+    return Math.min(200, Math.max(10, Math.round(value)));
   }
 
   private async getExistingShopPricingMode(shopId: number): Promise<ShopPricingModePayload> {

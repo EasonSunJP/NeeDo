@@ -1,4 +1,4 @@
-import { Component, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Component, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
@@ -802,7 +802,7 @@ function RequirePortalAuth({
   portal: PortalScope;
   children: ReactElement;
 }) {
-  const { isAuthenticated, isRestoring, canAccess, canEnterPortal, session, switchPortal } = useAuth();
+  const { isAuthenticated, isRestoring, canAccess, canEnterPortal } = useAuth();
   const location = useLocation();
   const hasDirectAccess = canAccess(portal);
   const isBackendPortalRoute =
@@ -811,23 +811,6 @@ function RequirePortalAuth({
     (portal === "business" && isBusinessAdminPath(location.pathname));
   const requiresDirectPortalAccess = isBackendPortalRoute || portal === "merchant" || portal === "technician" || portal === "business";
   const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));
-  const needsPortalSync = isAuthenticated && hasDirectAccess && session?.portal !== portal;
-  const syncedPortalRef = useRef<PortalScope | null>(null);
-
-  useEffect(() => {
-    if (!needsPortalSync) {
-      syncedPortalRef.current = null;
-      return;
-    }
-
-    if (syncedPortalRef.current === portal) {
-      return;
-    }
-
-    syncedPortalRef.current = portal;
-    // Keep the active session portal aligned with the matched route.
-    void switchPortal(portal);
-  }, [needsPortalSync, portal, switchPortal]);
 
   if (isRestoring) {
     return null;
@@ -844,10 +827,6 @@ function RequirePortalAuth({
         : `/login/${portal}`;
 
     return <Navigate replace to={`${loginPath}?redirect=${encodeURIComponent(redirect)}`} />;
-  }
-
-  if (needsPortalSync) {
-    return null;
   }
 
   return children;
@@ -996,7 +975,7 @@ export default function App() {
               <Route path="/services/:id" element={protect("user", <ServiceDetailPage />)} />
               <Route path="/stores" element={protect("user", <CategoryListRedirect type="store" />)} />
               <Route path="/stores/:id" element={protect("user", <StoreDetailPage />)} />
-              <Route path="/stores/:shopId/technicians/:technicianId/services" element={protect("user", <TechnicianServicesPage />)} />
+              <Route path="/stores/:shopId/technicians/:technicianId/services" element={protect("user", <TechnicianServicesPage scope="user" />)} />
               <Route path="/profiles/:entityType/:id/followers" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id/following" element={protect("user", <SocialRelationshipsPage />)} />
               <Route path="/profiles/:entityType/:id" element={protect("user", <ProfileDetailPage />)} />
@@ -1152,6 +1131,7 @@ export default function App() {
               <Route path="/merchant/profiles/:entityType/:id/following" element={protect("merchant", <SocialRelationshipsPage />)} />
               <Route path="/merchant/profiles/:entityType/:id" element={protect("merchant", <ProfileDetailPage />)} />
               <Route path="/merchant/stores/:id" element={protect("merchant", <StoreDetailPage scope="merchant" />)} />
+              <Route path="/merchant/stores/:shopId/technicians/:technicianId/services" element={protect("merchant", <TechnicianServicesPage scope="merchant" />)} />
               <Route path="/merchant/settings" element={protect("merchant", <UnifiedSettingsPage portal="merchant" />)} />
               <Route path="/merchant/settings/theme" element={protect("merchant", <UnifiedSettingsThemePage portal="merchant" />)} />
               <Route path="/merchant/settings/language" element={protect("merchant", <UnifiedSettingsLanguagePage portal="merchant" />)} />
@@ -1251,6 +1231,7 @@ export default function App() {
               <Route path="/technician/profiles/:entityType/:id/followers" element={protect("technician", <SocialRelationshipsPage />)} />
               <Route path="/technician/profiles/:entityType/:id/following" element={protect("technician", <SocialRelationshipsPage />)} />
               <Route path="/technician/profiles/:entityType/:id" element={protect("technician", <ProfileDetailPage />)} />
+              <Route path="/technician/stores/:shopId/technicians/:technicianId/services" element={protect("technician", <TechnicianServicesPage scope="technician" />)} />
               <Route path="/technician/settings" element={protect("technician", <UnifiedSettingsPage portal="technician" />)} />
               <Route path="/technician/settings/theme" element={protect("technician", <UnifiedSettingsThemePage portal="technician" />)} />
               <Route path="/technician/settings/language" element={protect("technician", <UnifiedSettingsLanguagePage portal="technician" />)} />

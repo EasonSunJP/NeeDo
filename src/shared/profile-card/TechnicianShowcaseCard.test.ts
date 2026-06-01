@@ -45,6 +45,9 @@ describe("TechnicianShowcaseCard selectable behavior", () => {
     expect(cardSource).toContain("to={detailHref}");
     expect(cardSource).toContain("event.stopPropagation()");
     expect(cardSource).toContain("onClick={(event) => {");
+    expect(cardSource).not.toContain("onServiceSelect");
+    expect(cardSource).not.toContain("handleServiceSelect");
+    expect(cardSource).not.toContain("查看店铺服务项目");
     expect(cardSource).not.toContain("if (onSelect)");
   });
 
@@ -55,6 +58,18 @@ describe("TechnicianShowcaseCard selectable behavior", () => {
     expect(cardSource).toContain("name={selectionIconName}");
     expect(appScaffoldSource).toContain('case "eye":');
     expect(appScaffoldSource).toContain('case "eyeOff":');
+  });
+
+  it("can render unavailable selectable cards with a disabled x action", () => {
+    expect(cardSource).toContain("selectionDisabled?: boolean");
+    expect(cardSource).toContain("selectionDisabled = false");
+    expect(cardSource).toContain("disabled={selectionDisabled}");
+    expect(cardSource).toContain("aria-disabled={selectionDisabled}");
+    expect(cardSource).toContain("\"border-white/46 bg-black/42 text-[#ff5f6e] shadow-[0_8px_20px_rgba(0,0,0,0.22)]\"");
+    expect(cardSource).toContain("if (selectionDisabled) {");
+    expect(cardSource).toContain("return;");
+    expect(appScaffoldSource).toContain('| "x"');
+    expect(appScaffoldSource).toContain('case "x":');
   });
 });
 
@@ -89,13 +104,22 @@ describe("TechnicianShowcaseCard engagement metrics", () => {
     expect(cardSource).toContain("IconMetricAction");
     expect(cardSource).toContain('icon="heart"');
     expect(cardSource).toContain('icon="share"');
-    expect(cardSource).toContain("absolute right-[1.5px] top-2 z-20 flex items-start -space-x-[5.5px]");
-    expect(cardSource).toContain('size="compactLg"');
+    expect(cardSource).toContain('metricLayout = "cluster"');
+    expect(cardSource).toContain('metricLayout === "split"');
+    expect(cardSource).toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
+    expect(cardSource).toContain('className="flex shrink-0 items-start -space-x-[4px]"');
+    expect(cardSource).toContain("absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]");
+    expect(cardSource).toContain('size="cluster"');
     expect(cardSource).not.toContain("WebkitTextStroke");
     expect(cardSource).not.toContain("ShareNetworkIcon");
   });
 
   it("matches the mini-card top-right metric action size and keeps counts below the circles", () => {
+    expect(appScaffoldSource).toContain('cluster: {');
+    expect(appScaffoldSource).toContain('count: "top-[24px] w-7 text-[10px]"');
+    expect(appScaffoldSource).toContain('icon: "h-[11px] w-[11px]"');
+    expect(appScaffoldSource).toContain('root: "h-[37px] w-[29px]"');
+    expect(appScaffoldSource).toContain('shell: "h-[23px] w-[23px]"');
     expect(appScaffoldSource).toContain('compactLg: {');
     expect(appScaffoldSource).toContain('count: "top-[32px] w-10 text-[10px]"');
     expect(appScaffoldSource).toContain('icon: "h-[14px] w-[14px]"');
@@ -106,8 +130,12 @@ describe("TechnicianShowcaseCard engagement metrics", () => {
 
   it("places the rating score in the top-left without a star and moves rank badges above the name", () => {
     expect(cardSource).toContain('import { SimpleRatingBadge } from "./SimpleRatingBadge"');
-    expect(cardSource).toContain('<SimpleRatingBadge className="absolute left-2 top-2 z-20" value={formatTechnicianCardRating(technician.rating).toFixed(1)} />');
-    expect(simpleRatingBadgeSource).toContain("inline-flex h-[29px] min-w-12");
+    expect(cardSource).toContain('<SimpleRatingBadge compact value={formatTechnicianCardRating(technician.rating).toFixed(1)} />');
+    expect(simpleRatingBadgeSource).toContain("compact ? \"h-[25px] min-w-[38px] px-1.5 text-[11px]\" : \"h-[29px] min-w-12 px-2 text-[12px]\"");
+    expect(cardSource).toContain("const ageLabel =");
+    expect(cardSource).toContain('[ageLabel, technician.height ?? "", primarySkill, areaLabel]');
+    expect(cardSource).not.toContain('`${technician.height}cm`');
+    expect(cardSource).not.toContain("({technician.age})");
     expect(cardSource).toContain('className="-ml-1 mb-2 flex items-center gap-1"');
     expect(cardSource).not.toContain("★{formatTechnicianCardRating");
     expect(cardSource).not.toContain('absolute left-2 top-2 flex max-w-[calc(100%-62px)]');

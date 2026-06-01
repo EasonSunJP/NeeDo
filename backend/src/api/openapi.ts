@@ -1874,7 +1874,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 type: "object",
                 required: ["pricingMode"],
                 properties: {
-                  pricingMode: { type: "string", enum: ["merchant", "technician"] }
+                  pricingMode: { type: "string", enum: ["merchant", "technician"] },
+                  technicianPricingRatePercent: {
+                    type: "integer",
+                    minimum: 10,
+                    maximum: 200,
+                    description: "Shop-facing price rate applied to technician service prices."
+                  }
                 }
               }
             }

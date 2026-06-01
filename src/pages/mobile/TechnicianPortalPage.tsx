@@ -2430,12 +2430,20 @@ function hasTechnicianProfileIdentity(session: AuthSession | null) {
   );
 }
 
+function needsTechnicianServiceSettingsSwitch(session: AuthSession | null) {
+  return Boolean(session && !isTechnicianServiceIdentity(session) && hasTechnicianProfileIdentity(session));
+}
+
 function getTechnicianServiceAccessIssue(session: AuthSession | null, actionLabel: string) {
   if (!session) {
     return `需要先登录技师账号后才能${actionLabel}服务。`;
   }
 
   if (!isTechnicianServiceIdentity(session)) {
+    if (needsTechnicianServiceSettingsSwitch(session)) {
+      return `请先到设置 > 身份切换切换到技师身份后再${actionLabel}服务。`;
+    }
+
     return `当前登录身份不是技师身份，请切换或重新登录技师账号后再${actionLabel}服务。`;
   }
 
@@ -2444,14 +2452,6 @@ function getTechnicianServiceAccessIssue(session: AuthSession | null, actionLabe
   }
 
   return null;
-}
-
-function canSyncTechnicianServiceIdentity(session: AuthSession | null) {
-  if (!session || isTechnicianServiceIdentity(session)) {
-    return false;
-  }
-
-  return hasTechnicianProfileIdentity(session);
 }
 
 function shouldCreateDefaultTechnicianServiceBeforeDraftSave(
@@ -2747,7 +2747,7 @@ export function TechnicianPortalPage() {
   const { profiles, getActorForScope } = useSocial();
   const activeView = getTechnicianView(view);
   const activeMeTab = getTechnicianMeTab(searchParams.get("meTab"));
-  const { session, switchPortal, logout } = useAuth();
+  const { session, logout } = useAuth();
   const { isNight } = useClientTheme();
   const { language } = useI18n();
   const { customers, stores, technicians } = useEntityStore();
@@ -2822,7 +2822,6 @@ export function TechnicianPortalPage() {
   const [nextCustomerCardOpen, setNextCustomerCardOpen] = useState(false);
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
   const technicianServiceLoginRedirectingRef = useRef(false);
-  const technicianServiceIdentitySyncInFlightRef = useRef(false);
   const technicianServiceEditingCardRef = useRef<HTMLElement | null>(null);
   const setContactLog = (message: string, options: TechnicianStatusLogOptions = {}) => {
     setStatusTimelineRecords((current) => {
@@ -2860,27 +2859,10 @@ export function TechnicianPortalPage() {
       return;
     }
 
-    if (!canSyncTechnicianServiceIdentity(session)) {
+    if (!hasTechnicianProfileIdentity(session)) {
       void redirectToTechnicianServiceLogin();
-      return;
     }
-
-    if (technicianServiceIdentitySyncInFlightRef.current) {
-      return;
-    }
-
-    technicianServiceIdentitySyncInFlightRef.current = true;
-    void switchPortal("technician")
-      .then((result) => {
-        const switchedSession = result.ok ? result.session ?? null : null;
-        if (!result.ok || !isTechnicianServiceIdentity(switchedSession)) {
-          void redirectToTechnicianServiceLogin();
-        }
-      })
-      .finally(() => {
-        technicianServiceIdentitySyncInFlightRef.current = false;
-      });
-  }, [activeMeTab, activeView, redirectToTechnicianServiceLogin, session, switchPortal]);
+  }, [activeMeTab, activeView, redirectToTechnicianServiceLogin, session]);
 
   useEffect(() => {
     if (!technicianShopApiId || activeView !== "me" || activeMeTab !== "services") {
@@ -3020,7 +3002,7 @@ export function TechnicianPortalPage() {
       return null;
     }
 
-    if (!canSyncTechnicianServiceIdentity(session)) {
+    if (!needsTechnicianServiceSettingsSwitch(session)) {
       if (session && !hasTechnicianProfileIdentity(session)) {
         await redirectToTechnicianServiceLogin();
       }
@@ -3028,21 +3010,7 @@ export function TechnicianPortalPage() {
       return accessIssue;
     }
 
-    const switched = await switchPortal("technician");
-    if (!switched.ok) {
-      return `当前技师身份同步失败，请重新登录技师账号后再${actionLabel}服务。`;
-    }
-
-    const switchedAccessIssue = getTechnicianServiceAccessIssue(switched.session ?? null, actionLabel);
-    if (switchedAccessIssue) {
-      if (!isTechnicianServiceIdentity(switched.session ?? null)) {
-        await redirectToTechnicianServiceLogin();
-      }
-
-      return switchedAccessIssue;
-    }
-
-    return null;
+    return accessIssue;
   };
 
   const deleteEditingTechnicianService = async () => {

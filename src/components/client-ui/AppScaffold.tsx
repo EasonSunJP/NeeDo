@@ -51,6 +51,7 @@ function iconPath(name: IconName) {
     case "back":
       return <path d="m14.5 6.5-5 5 5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />;
     case "close":
+    case "x":
       return <path d="M7 7 17 17M17 7 7 17" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" />;
     case "search":
       return (
@@ -178,6 +179,14 @@ function iconPath(name: IconName) {
           <path d="m12 4 1.1 3.4L16.5 8l-3.4 1.1L12 12.5l-1.1-3.4L7.5 8l3.4-1.1L12 4ZM18.5 14l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7.7-2.1ZM6 14l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7L6 14Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.6" />
         </>
       );
+    case "info":
+      return (
+        <>
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.9" />
+          <path d="M12 10.8v5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+          <circle cx="12" cy="7.7" fill="currentColor" r="1.2" />
+        </>
+      );
     case "share":
       return <ShareNetworkIconPath />;
     case "sync":
@@ -216,6 +225,7 @@ function iconPath(name: IconName) {
 export type IconName =
   | "back"
   | "close"
+  | "x"
   | "search"
   | "plus"
   | "minus"
@@ -237,6 +247,7 @@ export type IconName =
   | "shield"
   | "bell"
   | "sparkles"
+  | "info"
   | "share"
   | "sync"
   | "more"
@@ -279,7 +290,7 @@ export function IconButton({
   );
 }
 
-type IconMetricActionSize = "sm" | "compactLg" | "md";
+type IconMetricActionSize = "sm" | "cluster" | "compactLg" | "md";
 
 const iconMetricActionSizeClassName: Record<
   IconMetricActionSize,
@@ -301,6 +312,12 @@ const iconMetricActionSizeClassName: Record<
     icon: "h-[14px] w-[14px]",
     root: "h-[46px] w-[42px]",
     shell: "h-[29px] w-[29px]"
+  },
+  cluster: {
+    count: "top-[24px] w-7 text-[10px]",
+    icon: "h-[11px] w-[11px]",
+    root: "h-[37px] w-[29px]",
+    shell: "h-[23px] w-[23px]"
   },
   sm: {
     count: "top-[25px] w-10 text-[10px]",

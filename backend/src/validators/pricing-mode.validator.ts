@@ -18,7 +18,8 @@ export const publicTechnicianServicesParamSchema = shopIdParamSchema.extend({
 });
 
 export const pricingModeBodySchema = z.object({
-  pricingMode: z.enum(["merchant", "technician"])
+  pricingMode: z.enum(["merchant", "technician"]),
+  technicianPricingRatePercent: z.number().int().min(10).max(200).optional()
 });
 
 export const technicianServiceListQuerySchema = z.object({

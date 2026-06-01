@@ -28,7 +28,7 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ImageAdjustmentEditor } from "../../components/ui/ImageAdjustmentEditor";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
-import { customers, reviews, services } from "../../data/mock";
+import { customers, orders, reviews, services } from "../../data/mock";
 import { coreReadApi, coreReadIdFromRoute, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
@@ -51,9 +51,11 @@ import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUi
 import { cn, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
 import { TechnicianShowcaseCard } from "../../shared/profile-card";
+import { SimpleRatingBadge } from "../../shared/profile-card/SimpleRatingBadge";
+import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
-import type { Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
+import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
 
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
@@ -78,6 +80,7 @@ type StoreDetailExperienceProps = {
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
   pricingControl?: ReactNode;
   pricingMode?: "store" | "technician";
+  technicianPricingRatePercent?: number;
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
   store: Store;
@@ -927,6 +930,87 @@ function normalizeStoreBookingTimeParam(value: string | null) {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(normalized) ? normalized : null;
 }
 
+const confirmedTechnicianBookingStatuses = new Set<OrderStatus>(["confirmed", "scheduled", "inService"]);
+
+function normalizeBookingMatchText(value: string | undefined) {
+  return (value ?? "").toLowerCase().replace(/\s+/g, "").trim();
+}
+
+function parseBookingDurationMinutes(value: string | undefined) {
+  const match = value?.match(/(\d+)\s*(?:分钟|分)/);
+  const duration = match ? Number(match[1]) : Number.NaN;
+
+  return Number.isFinite(duration) && duration > 0 ? duration : 60;
+}
+
+function parseBookingDateTime(date: string, time: string) {
+  const timestamp = new Date(`${date}T${time}:00`).getTime();
+
+  return Number.isFinite(timestamp) ? timestamp : Number.NaN;
+}
+
+function parseOrderBookingStart(order: Order) {
+  const [date = "", time = ""] = order.bookedAt.split(" ");
+
+  return parseBookingDateTime(date, time);
+}
+
+function doBookingWindowsOverlap(startAt: number, durationMinutes: number, otherStartAt: number, otherDurationMinutes: number) {
+  if (!Number.isFinite(startAt) || !Number.isFinite(otherStartAt)) {
+    return false;
+  }
+
+  const endAt = startAt + durationMinutes * 60_000;
+  const otherEndAt = otherStartAt + otherDurationMinutes * 60_000;
+
+  return startAt < otherEndAt && otherStartAt < endAt;
+}
+
+function isTechnicianUnavailableForSelectedTime({
+  bookingDurationMinutes,
+  selectedDate,
+  selectedTime,
+  store,
+  technician
+}: {
+  bookingDurationMinutes: number;
+  selectedDate: Date;
+  selectedTime: string;
+  store: Store;
+  technician: Technician;
+}) {
+  const technicianName = normalizeBookingMatchText(technician.name);
+  const technicianNickname = normalizeBookingMatchText(technician.nickname);
+  const storeName = normalizeBookingMatchText(store.name);
+  const selectedStartAt = parseBookingDateTime(formatDateParam(selectedDate), selectedTime);
+
+  return orders.some((order) => {
+    if (!confirmedTechnicianBookingStatuses.has(order.status)) {
+      return false;
+    }
+
+    const orderTechnicianName = normalizeBookingMatchText(order.technicianName);
+    const orderStoreName = normalizeBookingMatchText(order.storeName);
+    const sameTechnician = Boolean(
+      orderTechnicianName &&
+        (orderTechnicianName === technicianName ||
+          orderTechnicianName === technicianNickname)
+    );
+    const sameStoreOrCrossStoreBooking = !orderStoreName || orderStoreName === storeName;
+
+    return (
+      sameTechnician &&
+      sameStoreOrCrossStoreBooking &&
+      doBookingWindowsOverlap(
+        selectedStartAt,
+        bookingDurationMinutes,
+        parseOrderBookingStart(order),
+        parseBookingDurationMinutes(order.itemName)
+      )
+    );
+  });
+}
+
 function parsePriceNumber(value: string) {
   const match = value.match(/\d[\d,]*/);
 
@@ -1101,36 +1185,204 @@ function StoreTechnicianSelectableCard({
   isMerchantEditable = false,
   language,
   onSelect,
+  profileTo,
   rankIndex,
-  serviceListTo,
   technician,
-  technicianVisible = true
+  technicianVisible = true,
+  unavailable = false
 }: {
   active: boolean;
   fallbackServices: ServiceItem[];
   isMerchantEditable?: boolean;
   language: Language;
   onSelect: () => void;
+  profileTo?: string;
   rankIndex: number;
-  serviceListTo?: string;
   technician: Technician;
   technicianVisible?: boolean;
+  unavailable?: boolean;
 }) {
   return (
     <TechnicianShowcaseCard
-      aria-label={active ? "已选技师" : "待选技师"}
-      className={cn("h-full w-full", isMerchantEditable && !technicianVisible && "opacity-70 saturate-[0.72]")}
+      aria-label={unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}
+      className={cn(
+        "h-full w-full",
+        isMerchantEditable && !technicianVisible && "opacity-70 saturate-[0.72]",
+        !isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"
+      )}
+      detailTo={profileTo}
       fallbackServices={fallbackServices}
       language={language}
+      metricLayout="split"
       onSelect={onSelect}
       rankIndex={rankIndex}
-      selected={isMerchantEditable ? technicianVisible : active}
+      selected={isMerchantEditable ? technicianVisible : unavailable ? false : active}
       selectionActiveIcon={isMerchantEditable ? "eye" : "check"}
-      selectionAriaLabel={isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
-      selectionInactiveIcon={isMerchantEditable ? "eyeOff" : "plus"}
-      serviceListTo={serviceListTo}
+      selectionAriaLabel={unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}
+      selectionDisabled={unavailable}
+      selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}
       technician={technician}
     />
+  );
+}
+
+function getStoreTechnicianDisplayName(technician: Technician) {
+  return technician.nickname?.trim() || technician.name;
+}
+
+function getStoreTechnicianPhoto(technician: Technician) {
+  return technician.avatar || technician.gallery?.[0] || "";
+}
+
+function formatStoreTechnicianRating(value: number) {
+  const normalized = Number.isFinite(value) && value > 0 ? value : 0;
+
+  return normalized > 5 ? normalized / 2 : normalized;
+}
+
+function normalizeStoreTechnicianMatchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function scoreStoreServiceForTechnician(service: ServiceItem, technician: Technician) {
+  const serviceText = normalizeStoreTechnicianMatchText([service.name, service.summary, ...service.tags, ...service.serviceAreas].join(" "));
+  const targets = [technician.name, technician.nickname ?? "", ...technician.skills, ...(technician.profileTags ?? []), ...technician.serviceAreas]
+    .map(normalizeStoreTechnicianMatchText)
+    .filter(Boolean);
+
+  return targets.reduce((total, target) => total + Number(Boolean(target && serviceText.includes(target))), 0);
+}
+
+function getStoreRecommendedServiceForTechnician(technician: Technician, fallbackServices: ServiceItem[]) {
+  return [...fallbackServices].sort((left, right) => scoreStoreServiceForTechnician(right, technician) - scoreStoreServiceForTechnician(left, technician))[0] ?? null;
+}
+
+function StoreTechnicianServiceListRow({
+  fallbackServices,
+  isMerchantEditable = false,
+  onSelect,
+  onToggleVisibility,
+  profileTo,
+  quoteRatePercent = 100,
+  selected,
+  serviceListTo,
+  technician,
+  technicianVisible = true,
+  unavailable = false
+}: {
+  fallbackServices: ServiceItem[];
+  isMerchantEditable?: boolean;
+  onSelect?: () => void;
+  onToggleVisibility?: () => void;
+  profileTo: string;
+  quoteRatePercent?: number;
+  selected?: boolean;
+  serviceListTo: string;
+  technician: Technician;
+  technicianVisible?: boolean;
+  unavailable?: boolean;
+}) {
+  const displayName = getStoreTechnicianDisplayName(technician);
+  const recommendedService = getStoreRecommendedServiceForTechnician(technician, fallbackServices);
+  const packageInfo = recommendedService?.packages[0];
+  const price = packageInfo?.price ?? recommendedService?.priceFrom ?? Number.parseInt(technician.bidBudgetMin ?? "", 10);
+  const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;
+  const duration = packageInfo?.durationMinutes ?? 60;
+  const priceLabel = Number.isFinite(displayedPrice) && displayedPrice > 0 ? yen(displayedPrice) : "预约确认";
+  const serviceName = recommendedService?.name ?? technician.skills[0] ?? "预约服务";
+  const favoriteCount = Math.max(0, technician.orderCount);
+  const shareCount = 0;
+  const statusLabel = technician.status === "available" ? "可预约" : technician.status === "busy" ? "预约确认中" : "休息中";
+  const headline = [technician.age ? `${technician.age}岁` : "", technician.height ?? "", technician.skills[0], technician.serviceAreas[0]]
+    .filter(Boolean)
+    .join(" / ");
+  const showSelectionAction = !isMerchantEditable && typeof selected === "boolean" && Boolean(onSelect);
+
+  return (
+    <article
+      className={cn(
+        "relative grid grid-cols-[118px_minmax(0,1fr)] gap-3 overflow-hidden rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,transparent)] p-2.5 shadow-[0_14px_28px_rgba(0,0,0,0.14)]",
+        isMerchantEditable && !technicianVisible && "opacity-70 saturate-[0.72]",
+        !isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"
+      )}
+    >
+      {isMerchantEditable && onToggleVisibility ? (
+        <StoreSelectionIconButton
+          active={technicianVisible}
+          activeIcon="eye"
+          className="absolute right-2 top-2 z-30 h-11 w-11"
+          inactiveIcon="eyeOff"
+          label={technicianVisible ? "隐藏技师" : "显示技师"}
+          onSelect={onToggleVisibility}
+        />
+      ) : null}
+      {showSelectionAction && onSelect ? (
+        <StoreSelectionIconButton
+          active={Boolean(selected) && !unavailable}
+          activeIcon="check"
+          className="absolute right-2 top-2 z-30 h-11 w-11"
+          disabled={unavailable}
+          inactiveIcon={unavailable ? "x" : "plus"}
+          label={unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}
+          onSelect={onSelect}
+        />
+      ) : null}
+      <Link
+        aria-label={`查看${displayName}动态`}
+        className="group relative min-h-[158px] overflow-hidden rounded-[14px] bg-black active:scale-[0.99]"
+        title="查看技师动态"
+        to={profileTo}
+      >
+        <img
+          alt={displayName}
+          className="absolute inset-0 h-full w-full scale-[1.035] object-cover transition duration-300 group-hover:scale-[1.06]"
+          src={getGeneratedImageThumbnailUrl(getStoreTechnicianPhoto(technician))}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/32" />
+        <div className="absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1">
+          <SimpleRatingBadge compact value={formatStoreTechnicianRating(technician.rating).toFixed(1)} />
+          <div className="flex shrink-0 items-start -space-x-[4px]">
+            <IconMetricAction count={favoriteCount} icon="heart" label={`关注 ${favoriteCount}`} size="cluster" />
+            <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
+          </div>
+        </div>
+      </Link>
+
+      <Link
+        aria-label={`查看技师服务列表 ${displayName}`}
+        className="flex min-w-0 flex-col justify-between rounded-[14px] py-1 pl-1.5 pr-1.5 text-left active:scale-[0.99]"
+        title="查看技师服务列表"
+        to={serviceListTo}
+      >
+        <div className={cn("min-w-0", (isMerchantEditable || showSelectionAction) && "pr-12")}>
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="min-w-0 truncate text-[18px] font-black leading-6 text-[color:var(--client-text)]">{displayName}</h3>
+          </div>
+          {headline ? <p className="mt-1 line-clamp-1 text-[12px] font-semibold text-[color:var(--client-muted)]">{headline}</p> : null}
+          <p className="mt-2 text-[12px] font-black text-[color:var(--client-text)]">
+            {statusLabel} · 接单率 {technician.acceptRate}%
+          </p>
+        </div>
+
+        <div className="relative mt-3 rounded-[13px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] py-2 pl-3 pr-11">
+          <span
+            aria-hidden="true"
+            className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary-soft)_58%,transparent)] text-[color:var(--client-primary)]"
+          >
+            <AppIcon className="h-4 w-4" name="info" />
+          </span>
+          <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]">推荐服务</p>
+          <h4 className="mt-1.5 line-clamp-2 text-[14px] font-black leading-5 text-[color:var(--client-text)]">{serviceName}</h4>
+          <p className="mt-1 flex min-w-0 items-baseline gap-1 text-[12px] font-semibold text-[color:var(--client-muted)]">
+            <strong className="text-[17px] font-black text-[color:var(--client-text)]">{priceLabel}</strong>
+            <span className="min-w-0 truncate">/ {duration}分钟(含税)</span>
+          </p>
+        </div>
+      </Link>
+    </article>
   );
 }
 
@@ -1138,6 +1390,7 @@ function StoreSelectionIconButton({
   active,
   activeIcon = "check",
   className,
+  disabled = false,
   inactiveIcon = "plus",
   label,
   onSelect
@@ -1145,21 +1398,26 @@ function StoreSelectionIconButton({
   active: boolean;
   activeIcon?: IconName;
   className?: string;
+  disabled?: boolean;
   inactiveIcon?: IconName;
   label: string;
   onSelect: () => void;
 }) {
   return (
     <button
+      aria-disabled={disabled}
       aria-label={label}
       aria-pressed={active}
       className={cn(
         "focus-ring inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95",
-        active
-          ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_36%,transparent)]"
-          : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_42%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_24px_rgba(0,0,0,0.18)]",
+        disabled
+          ? "border-[#ff5f6e]/80 bg-black/44 text-[#ff5f6e] shadow-[0_10px_24px_rgba(0,0,0,0.22)]"
+          : active
+            ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_14px_30px_color-mix(in_srgb,var(--client-primary)_36%,transparent)]"
+            : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_42%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_24px_rgba(0,0,0,0.18)]",
         className
       )}
+      disabled={disabled}
       onClick={onSelect}
       type="button"
     >
@@ -1261,7 +1519,7 @@ function MerchantAddServiceButton({ onAdd }: { onAdd: () => void }) {
   );
 }
 
-function MerchantServiceHiddenWarning() {
+function PricingModeHiddenWarning({ message }: { message: string }) {
   return (
     <div className="flex items-center gap-2 rounded-[18px] border border-[#ff4d5e] bg-[#ff314f]/12 px-3 py-2 text-[11px] font-black leading-5 text-[#ff9aa5] shadow-[0_12px_28px_rgba(255,49,79,0.16)]">
       <span
@@ -1270,7 +1528,7 @@ function MerchantServiceHiddenWarning() {
       >
         !
       </span>
-      <span className="min-w-0">技师定价已开启，店铺服务项目已隐藏，不会被用户看到或搜索到。</span>
+      <span className="min-w-0">{message}</span>
     </div>
   );
 }
@@ -2396,7 +2654,17 @@ function EnvironmentGalleryCard({
   );
 }
 
-export function StoreDetailExperience({ embedded = false, onEditFocus, pricingControl, pricingMode = "store", privacyControl, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
+export function StoreDetailExperience({
+  embedded = false,
+  onEditFocus,
+  pricingControl,
+  pricingMode = "store",
+  privacyControl,
+  scope = "user",
+  store,
+  technicianPricingRatePercent,
+  techniciansOverride
+}: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { session } = useAuth();
@@ -2415,15 +2683,23 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
   const isMerchantEditable = Boolean(
     onEditFocus || scope === "merchant" || (isMerchantOwnedStore && (session?.portal === "merchant" || isMerchantShell))
   );
-  const isMerchantServiceHidden = isMerchantEditable && pricingMode === "technician";
   const isTechnicianPricingEntry =
     !isMerchantEditable && bookingNavigation?.pricingMode === "technician";
+  const isTechnicianPricingActive = isMerchantEditable ? pricingMode === "technician" : isTechnicianPricingEntry;
+  const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive
+    ? technicianPricingRatePercent ?? bookingNavigation?.technicianPricingRatePercent ?? 100
+    : 100;
   const heroBlock = useMemo(() => getStoreDecorationBlockConfig(store, "hero"), [store.id, store.uiDecoration]);
   const bookingBlock = useMemo(() => getStoreDecorationBlockConfig(store, "booking"), [store.id, store.uiDecoration]);
   const menuBlock = useMemo(() => getStoreDecorationBlockConfig(store, "menu"), [store.id, store.uiDecoration]);
   const technicianBlock = useMemo(() => getStoreDecorationBlockConfig(store, "technicians"), [store.id, store.uiDecoration]);
   const galleryBlock = useMemo(() => getStoreDecorationBlockConfig(store, "gallery"), [store.id, store.uiDecoration]);
-  const shouldRenderServiceMenu = menuBlock.visible && !isTechnicianPricingEntry;
+  const shouldRenderServiceMenu = menuBlock.visible;
+  const shouldRenderHomeServiceMenu = menuBlock.visible && (isMerchantEditable || !isTechnicianPricingActive);
+  const serviceMenuTabLabel = isTechnicianPricingActive ? "技师" : "菜单";
+  const shouldRenderTechnicianShowcase = technicianBlock.visible;
+  const shouldShowServicePackagesInMenu = isMerchantEditable || !isTechnicianPricingActive;
+  const shouldShowTechniciansInMenu = isMerchantEditable || isTechnicianPricingActive;
   const blockOrderMap = useMemo(
     () => Object.fromEntries(getStoreUiDecoration(store).blocks.map((block, index) => [block.id, index])),
     [store.id, store.uiDecoration]
@@ -2545,6 +2821,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
   const [selectedMenuCardId, setSelectedMenuCardId] = useState(primaryCheckoutTarget);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState(routeTechnicianId);
   const [serviceMenuCollapsed, setServiceMenuCollapsed] = useState(false);
+  const [servicePackageMenuCollapsed, setServicePackageMenuCollapsed] = useState(false);
   const [technicianListCollapsed, setTechnicianListCollapsed] = useState(false);
   const [shareBoost, setShareBoost] = useState(0);
   const [offersNowMs, setOffersNowMs] = useState(() => Date.now());
@@ -2565,6 +2842,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
     setSelectedMenuCardId(primaryCheckoutTarget);
     setSelectedTechnicianId(routeTechnicianId);
     setServiceMenuCollapsed(false);
+    setServicePackageMenuCollapsed(false);
     setTechnicianListCollapsed(false);
     setShareBoost(0);
     setLikedOfferIds([]);
@@ -2622,18 +2900,55 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
 
   const favoriteCount = config.favoriteCount + (isFavorite ? 1 : 0);
   const shareCount = baseShareCount + shareBoost;
+  const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
+  const selectedBookingDurationMinutes = useMemo(
+    () => parseBookingDurationMinutes(menuCards.find((item) => item.sourceServiceId === selectedCheckoutTarget)?.duration),
+    [menuCards, selectedCheckoutTarget]
+  );
+  const unavailableTechnicianIds = useMemo(() => {
+    if (isMerchantEditable) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      storeTechnicians
+        .filter((technician) =>
+          isTechnicianUnavailableForSelectedTime({
+            bookingDurationMinutes: selectedBookingDurationMinutes,
+            selectedDate: selectedVisitDate,
+            selectedTime,
+            store,
+            technician
+          })
+        )
+        .map((technician) => technician.id)
+    );
+  }, [isMerchantEditable, selectedBookingDurationMinutes, selectedTime, selectedVisitDate, store, storeTechnicians]);
   const selectedBookingTechnician = useMemo(
-    () =>
-      displayedTechnicians.find(
+    () => {
+      const selected = displayedTechnicians.find(
         (technician) =>
           technician.id === selectedTechnicianId &&
+          !unavailableTechnicianIds.has(technician.id) &&
           (technician.storeId === store.id || technician.relatedStoreIds?.includes(store.id)) &&
           (isMerchantEditable || isTechnicianDisplayVisible(technician))
-      ) ??
-      routedBookingTechnician ??
-      null,
-    [displayedTechnicians, isMerchantEditable, routedBookingTechnician, selectedTechnicianId, store.id]
+      );
+
+      if (selected) {
+        return selected;
+      }
+
+      return routedBookingTechnician && !unavailableTechnicianIds.has(routedBookingTechnician.id)
+        ? routedBookingTechnician
+        : null;
+    },
+    [displayedTechnicians, isMerchantEditable, routedBookingTechnician, selectedTechnicianId, store.id, unavailableTechnicianIds]
   );
+  useEffect(() => {
+    if (selectedTechnicianId && unavailableTechnicianIds.has(selectedTechnicianId)) {
+      setSelectedTechnicianId("");
+    }
+  }, [selectedTechnicianId, unavailableTechnicianIds]);
   const displayedTimeOptions = useMemo(
     () => (timeOptions.includes(selectedTime) ? timeOptions : [selectedTime, ...timeOptions]),
     [selectedTime, timeOptions]
@@ -2646,7 +2961,6 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
       technicianId: selectedBookingTechnician?.id,
       time: selectedTime
     });
-  const selectedCheckoutTarget = menuCards.some((item) => item.sourceServiceId === selectedMenuCardId) ? selectedMenuCardId : primaryCheckoutTarget;
   const bookingHref = buildBookingHref(selectedCheckoutTarget);
   const canForwardOfferToNeedo = session?.portal === "merchant" && session.linkedStoreId === store.id && !isMerchantEditable;
   const updateBasicStoreField = (key: StoreBasicEditorFieldKey, value: string) => {
@@ -2749,6 +3063,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
     const nextMenuCardEditorTarget = activeTab === "menu" ? `menu-${nextMenuCard.id}` : `home-menu-${nextMenuCard.id}`;
 
     setServiceMenuCollapsed(false);
+    setServicePackageMenuCollapsed(false);
     updateMenuCards([...menuCards, nextMenuCard]);
     if (!onEditFocus) {
       setActiveEditor({ menuCard: nextMenuCard, mode: "menu", target: nextMenuCardEditorTarget });
@@ -2825,17 +3140,150 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
 
     navigate("/needo?tab=reverse");
   };
+  const getTechnicianServiceListTo = (technicianId: string) => getScopedTechnicianServiceListPath(scope, store.id, technicianId);
+
+  const renderTechnicianServiceListRows = ({ selectable = false }: { selectable?: boolean } = {}) =>
+    storeTechnicians.length > 0 ? (
+      <div className="mt-3 grid gap-2.5">
+        {storeTechnicians.map((technician) => {
+          const active = selectedBookingTechnician?.id === technician.id;
+          const technicianVisible = isTechnicianDisplayVisible(technician);
+          const unavailable = !isMerchantEditable && unavailableTechnicianIds.has(technician.id);
+
+          return (
+            <StoreTechnicianServiceListRow
+              fallbackServices={services}
+              isMerchantEditable={isMerchantEditable}
+              key={technician.id}
+              onSelect={selectable ? () => {
+                if (unavailable) {
+                  return;
+                }
+
+                setSelectedTechnicianId(active ? "" : technician.id);
+              } : undefined}
+              onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}
+              profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
+              quoteRatePercent={effectiveTechnicianPricingRatePercent}
+              selected={selectable ? active : undefined}
+              serviceListTo={getTechnicianServiceListTo(technician.id)}
+              technician={technician}
+              technicianVisible={technicianVisible}
+              unavailable={selectable ? unavailable : false}
+            />
+          );
+        })}
+      </div>
+    ) : (
+      <EmptyStatePanel caption="当前商户还没有开放可预约技师。" title="暂无技师" />
+    );
+  const technicianServiceListRows = renderTechnicianServiceListRows();
+  const storeHomeTechnicianServiceListRows = renderTechnicianServiceListRows({ selectable: true });
+  const renderServiceMenuPackageSection = ({
+    key,
+    showHighlights = false,
+    showSectionHeader = true,
+    targetPrefix,
+    visibleCards
+  }: {
+    key: string;
+    showHighlights?: boolean;
+    showSectionHeader?: boolean;
+    targetPrefix: "home-menu" | "menu";
+    visibleCards: MenuCard[];
+  }) =>
+    shouldShowServicePackagesInMenu ? (
+      <section className="space-y-3" key={key}>
+        {showSectionHeader ? (
+          <SectionTitle caption="店铺提供的服务套餐菜单" title="服务套餐菜单">
+            <CollapsibleSectionButton
+              collapsed={servicePackageMenuCollapsed}
+              label="服务套餐菜单"
+              onToggle={() => setServicePackageMenuCollapsed((current) => !current)}
+            />
+          </SectionTitle>
+        ) : null}
+        {isMerchantEditable && isTechnicianPricingActive ? (
+          <PricingModeHiddenWarning message="技师定价已开启，服务套餐菜单已隐藏，不会被用户看到。" />
+        ) : null}
+        {!showSectionHeader || !servicePackageMenuCollapsed ? (
+          <div className="grid gap-2.5">
+          {visibleCards.map((item, index) => {
+            const menuIndex = menuCards.findIndex((menuCard) => menuCard.id === item.id);
+            const editorTarget = `${targetPrefix}-${item.id}`;
+            const active = selectedCheckoutTarget === item.sourceServiceId;
+            const menuEditorActive = isMerchantEditorActive(editorTarget);
+            const serviceSelectLabel = active ? "已选服务套餐" : "选择服务套餐";
+
+            return (
+              <div className="grid gap-2" key={item.id}>
+                <CompactMenuCard
+                  activeIcon="check"
+                  cardUi={packageCardUi}
+                  editing={menuEditorActive}
+                  editor={renderMerchantEditor("menu", "编辑菜单", undefined, "default", editorTarget)}
+                  inactiveIcon="plus"
+                  item={item}
+                  onChange={(nextMenuCard) => updateMenuCard(menuIndex >= 0 ? menuIndex : index, nextMenuCard)}
+                  onReplaceImage={(files) => {
+                    void replaceMenuCardImage(menuIndex >= 0 ? menuIndex : index, files);
+                  }}
+                  onSelect={() => {
+                    setSelectedMenuCardId(item.sourceServiceId);
+                  }}
+                  selected={active}
+                  selectLabel={serviceSelectLabel}
+                  showHighlights={showHighlights}
+                  showSelectAction={!isMerchantEditable}
+                />
+                {renderActiveInlineEditor(editorTarget)}
+              </div>
+            );
+          })}
+          {isMerchantEditable ? (
+            <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
+          ) : null}
+          </div>
+        ) : null}
+      </section>
+    ) : null;
+  const renderTechnicianMenuListSection = (key: string) =>
+    shouldShowTechniciansInMenu ? (
+      <section className="space-y-3" key={key}>
+        <SectionTitle showInfo={false} title="技师列表" />
+        {isMerchantEditable && !isTechnicianPricingActive ? (
+          <PricingModeHiddenWarning message="商户定价已开启，技师列表已隐藏，不会被用户看到。" />
+        ) : null}
+        {technicianServiceListRows}
+      </section>
+    ) : null;
+  const serviceMenuHomePackageSection = renderServiceMenuPackageSection({
+    key: "service-package-menu",
+    showSectionHeader: false,
+    targetPrefix: "home-menu",
+    visibleCards: isMerchantEditable ? menuCards : menuCards.slice(0, 3)
+  });
+  const serviceMenuPackageSection = renderServiceMenuPackageSection({
+    key: "service-package-menu-tab",
+    showHighlights: true,
+    targetPrefix: "menu",
+    visibleCards: menuCards
+  });
+  const technicianMenuListSection = renderTechnicianMenuListSection("technician-list-tab");
+  const serviceMenuTabOrderedSections = isTechnicianPricingActive
+    ? [technicianMenuListSection, serviceMenuPackageSection]
+    : [serviceMenuPackageSection, technicianMenuListSection];
 
   const tabs = useMemo<Array<{ label: string; value: StoreTab }>>(
     () => [
       { label: "首页", value: "home" },
       ...(galleryBlock.visible ? [{ label: "环境", value: "seats" as const }] : []),
-      ...(shouldRenderServiceMenu ? [{ label: "菜单", value: "menu" as const }] : []),
+      ...(shouldRenderServiceMenu ? [{ label: serviceMenuTabLabel, value: "menu" as const }] : []),
       { label: "动态", value: "moments" },
       { label: "情报", value: "offers" },
       { label: "地图", value: "map" }
     ],
-    [galleryBlock.visible, shouldRenderServiceMenu]
+    [galleryBlock.visible, serviceMenuTabLabel, shouldRenderServiceMenu]
   );
 
   useEffect(() => {
@@ -3077,7 +3525,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
             </section>
           ) : null}
 
-          {shouldRenderServiceMenu ? (
+          {shouldRenderHomeServiceMenu ? (
             <section style={blockOrderStyle("menu")}>
               <SectionTitle caption="先看当前最受欢迎的预约菜单" title={menuBlock.name}>
                 <CollapsibleSectionButton
@@ -3087,49 +3535,14 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
                 />
               </SectionTitle>
               {!serviceMenuCollapsed ? (
-              <div className="mt-3 grid gap-2.5">
-                  {isMerchantServiceHidden ? <MerchantServiceHiddenWarning /> : null}
-                  {(isMerchantEditable ? menuCards : menuCards.slice(0, 3)).map((item, index) => {
-                    const editorTarget = `home-menu-${item.id}`;
-                    const active = selectedCheckoutTarget === item.sourceServiceId;
-                    const menuEditorActive = isMerchantEditorActive(editorTarget);
-                    const serviceSelectLabel = active ? "已选服务套餐" : "选择服务套餐";
-
-                    return (
-                      <div className="grid gap-2" key={item.id}>
-                        <CompactMenuCard
-                          activeIcon="check"
-                          cardUi={packageCardUi}
-                          editing={menuEditorActive}
-                          editor={renderMerchantEditor("menu", "编辑菜单", undefined, "default", editorTarget)}
-                          inactiveIcon="plus"
-                          item={item}
-                          onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
-                          onReplaceImage={(files) => {
-                            void replaceMenuCardImage(index, files);
-                          }}
-                          onSelect={() => {
-                            setSelectedMenuCardId(item.sourceServiceId);
-                          }}
-                          selected={active}
-                          selectLabel={serviceSelectLabel}
-                          showSelectAction={!isMerchantEditable}
-                        />
-                        {renderActiveInlineEditor(editorTarget)}
-                      </div>
-                    );
-                  })}
-                  {isMerchantEditable ? (
-                    <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
-                  ) : null}
-                </div>
+                <div className="mt-3 grid gap-4">{serviceMenuHomePackageSection}</div>
               ) : null}
             </section>
           ) : null}
 
-          {technicianBlock.visible ? (
+          {shouldRenderTechnicianShowcase ? (
             <section style={blockOrderStyle("technicians")}>
-              <SectionTitle caption="本店开放的可预约指名担当" title={technicianBlock.name}>
+              <SectionTitle showInfo={false} title={technicianBlock.name}>
                 <CollapsibleSectionButton
                   collapsed={technicianListCollapsed}
                   label={technicianBlock.name}
@@ -3137,11 +3550,14 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
                 />
               </SectionTitle>
               {!technicianListCollapsed ? (
-                storeTechnicians.length > 0 ? (
+                isTechnicianPricingActive ? (
+                  storeHomeTechnicianServiceListRows
+                ) : storeTechnicians.length > 0 ? (
                   <div className="mt-3 grid grid-cols-2 gap-2.5">
                     {storeTechnicians.map((technician, index) => {
                       const active = selectedBookingTechnician?.id === technician.id;
                       const technicianVisible = isTechnicianDisplayVisible(technician);
+                      const unavailable = !isMerchantEditable && unavailableTechnicianIds.has(technician.id);
 
                       return (
                         <StoreTechnicianSelectableCard
@@ -3156,12 +3572,17 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
                               return;
                             }
 
+                            if (unavailable) {
+                              return;
+                            }
+
                             setSelectedTechnicianId(active ? "" : technician.id);
                           }}
+                          profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}
                           rankIndex={index}
-                          serviceListTo={isTechnicianPricingEntry ? `/stores/${store.id}/technicians/${technician.id}/services` : undefined}
                           technician={technician}
                           technicianVisible={technicianVisible}
+                          unavailable={unavailable}
                         />
                       );
                     })}
@@ -3216,99 +3637,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, pricingCo
 
       {activeTab === "menu" && shouldRenderServiceMenu ? (
         <div className="space-y-4">
-          <section>
-            <SectionTitle caption="按价格、时长和适合人群快速查看" title={menuBlock.name}>
-              <CollapsibleSectionButton
-                collapsed={serviceMenuCollapsed}
-                label={menuBlock.name}
-                onToggle={() => setServiceMenuCollapsed((current) => !current)}
-              />
-            </SectionTitle>
-            {!serviceMenuCollapsed ? (
-              <div className="mt-3 grid gap-2.5">
-                {isMerchantServiceHidden ? <MerchantServiceHiddenWarning /> : null}
-                {menuCards.map((item, index) => {
-                  const editorTarget = `menu-${item.id}`;
-                  const active = selectedCheckoutTarget === item.sourceServiceId;
-                  const menuEditorActive = isMerchantEditorActive(editorTarget);
-                  const serviceSelectLabel = active ? "已选服务套餐" : "选择服务套餐";
-
-                  return (
-                    <div className="grid gap-2" key={item.id}>
-                      <CompactMenuCard
-                        activeIcon="check"
-                        cardUi={packageCardUi}
-                        editing={menuEditorActive}
-                        editor={renderMerchantEditor("menu", "编辑菜单", undefined, "default", editorTarget)}
-                        inactiveIcon="plus"
-                        item={item}
-                        onChange={(nextMenuCard) => updateMenuCard(index, nextMenuCard)}
-                        onReplaceImage={(files) => {
-                          void replaceMenuCardImage(index, files);
-                        }}
-                        onSelect={() => {
-                          setSelectedMenuCardId(item.sourceServiceId);
-                        }}
-                        selected={active}
-                        selectLabel={serviceSelectLabel}
-                        showHighlights
-                        showSelectAction={!isMerchantEditable}
-                      />
-                      {renderActiveInlineEditor(editorTarget)}
-                    </div>
-                  );
-                })}
-                {isMerchantEditable ? (
-                  <MerchantAddServiceButton onAdd={addMerchantMenuCard} />
-                ) : null}
-              </div>
-            ) : null}
-          </section>
-          {technicianBlock.visible ? (
-            <section style={blockOrderStyle("technicians")}>
-              <SectionTitle caption="本店开放的可预约担当" title={technicianBlock.name}>
-                <CollapsibleSectionButton
-                  collapsed={technicianListCollapsed}
-                  label={technicianBlock.name}
-                  onToggle={() => setTechnicianListCollapsed((current) => !current)}
-                />
-              </SectionTitle>
-              {!technicianListCollapsed ? (
-                storeTechnicians.length > 0 ? (
-                  <div className="mt-3 grid grid-cols-2 gap-2.5">
-                    {storeTechnicians.map((technician, index) => {
-                      const active = selectedBookingTechnician?.id === technician.id;
-                      const technicianVisible = isTechnicianDisplayVisible(technician);
-
-                      return (
-                        <StoreTechnicianSelectableCard
-                          active={active}
-                          fallbackServices={services}
-                          isMerchantEditable={isMerchantEditable}
-                          key={technician.id}
-                          language={language}
-                          onSelect={() => {
-                            if (isMerchantEditable) {
-                              toggleTechnicianDisplayVisibility(technician);
-                              return;
-                            }
-
-                            setSelectedTechnicianId(active ? "" : technician.id);
-                          }}
-                        rankIndex={index}
-                        serviceListTo={isTechnicianPricingEntry ? `/stores/${store.id}/technicians/${technician.id}/services` : undefined}
-                        technician={technician}
-                          technicianVisible={technicianVisible}
-                        />
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <EmptyStatePanel caption="当前商户还没有开放可预约技师。" title="暂无技师" />
-                )
-              ) : null}
-            </section>
-          ) : null}
+          {serviceMenuTabOrderedSections}
         </div>
       ) : null}
 

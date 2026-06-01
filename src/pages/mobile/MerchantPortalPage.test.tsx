@@ -31,6 +31,19 @@ describe("MerchantPortalPage store privacy control", () => {
   });
 
   it("adds the merchant pricing mode switch beside the privacy switch", () => {
+    const pricingControlSource = merchantSource.slice(
+      merchantSource.indexOf("function MerchantStorePricingModeControl"),
+      merchantSource.indexOf("function MerchantStorePrivacyInfoButton")
+    );
+    const pricingConfirmSource = merchantSource.slice(
+      merchantSource.indexOf("const confirmTechnicianPricingMode"),
+      merchantSource.indexOf("const isMerchantDataCenterView")
+    );
+    const pricingUpdateSource = merchantSource.slice(
+      merchantSource.indexOf("const updateStorePricingMode"),
+      merchantSource.indexOf("const requestTechnicianPricingConfirm")
+    );
+
     expect(merchantSource).toContain("function MerchantStorePricingModeControl");
     expect(merchantSource).toContain('data-testid="merchant-store-pricing-mode-control"');
     expect(merchantSource).toContain('"切换为技师定价"');
@@ -38,6 +51,9 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain("updateStorePricingRatioMenuOpen");
     expect(merchantSource).toContain("updateStorePrivacyMenuOpen");
     expect(merchantSource).toContain("technicianPricingRatioPercent");
+    expect(merchantSource).toContain("storeTechnicianPricingRatePercent");
+    expect(merchantSource).toContain('ratePercent={storeTechnicianPricingRatePercent}');
+    expect(merchantSource).toContain('technicianPricingRatePercent={storeTechnicianPricingRatePercent}');
     expect(merchantSource).toContain('data-testid="merchant-pricing-ratio-menu"');
     expect(merchantSource).toContain("店铺报价与技师定价的比例");
     expect(merchantSource).toContain("默认 100%，每次调整 10%。");
@@ -49,6 +65,24 @@ describe("MerchantPortalPage store privacy control", () => {
     expect(merchantSource).toContain('aria-label="增加比例"');
     expect(merchantSource).toContain('aria-label="减少比例"');
     expect(merchantSource).toContain("确认开启");
+    expect(merchantSource).toContain("storePricingModeConfirmOpen");
+    expect(merchantSource).toContain("requestTechnicianPricingConfirm");
+    expect(merchantSource).toContain("confirmTechnicianPricingMode");
+    expect(pricingControlSource).toContain("onTechnicianPricingConfirmRequest();");
+    expect(pricingControlSource).toContain('onModeChange("technician", technicianPricingRatioPercent);');
+    expect(pricingControlSource).toContain('onRatePercentChange(technicianPricingRatioPercent);');
+    expect(pricingControlSource).toContain('技师定价（{ratePercent}%）');
+    expect(pricingControlSource).not.toContain("onMenuOpenChange(true);");
+    expect(pricingConfirmSource).toContain("setStorePricingRatioMenuOpen(true);");
+    expect(pricingUpdateSource).toContain("setStoreTechnicianPricingRatePercent(result.technicianPricingRatePercent);");
+    expect(pricingUpdateSource).toContain("const pricingModeChanged = nextMode !== storePricingMode;");
+    expect(pricingUpdateSource).toContain("const pricingRateChanged = nextRatePercent !== storeTechnicianPricingRatePercent;");
+    expect(pricingUpdateSource).toContain("(!pricingModeChanged && !pricingRateChanged) || storePricingModeSaving");
+    expect(pricingUpdateSource).toContain("merchantStorePricingModeToApi(nextMode),");
+    expect(pricingUpdateSource).toContain("storeTechnicianPricingRatePercent");
+    expect(pricingConfirmSource).not.toContain('updateStorePricingMode("technician")');
+    expect(merchantSource).toContain("开启技师定价后，店铺的服务列表将被隐藏，是否确定开启？");
+    expect(merchantSource).toContain('confirmLabel="确定开启"');
     expect(merchantSource).not.toContain("window.confirm");
     expect(merchantSource).toContain("pricingControl={storePricingModeControl}");
 

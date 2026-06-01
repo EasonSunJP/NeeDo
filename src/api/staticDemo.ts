@@ -59,6 +59,11 @@ type StaticDemoResult<TData> =
 const staticTimestamp = "2026-05-29T00:00:00.000Z";
 const staticAccessToken = "static-demo-access-token";
 const staticRefreshToken = "static-demo-refresh-token";
+const staticShopPricingModes = new Map<number, {
+  pricingMode: "merchant" | "technician";
+  technicianPricingRatePercent: number;
+  updatedAt: string;
+}>();
 
 function isEnabledFlag(value: string | undefined) {
   return ["1", "static", "true", "yes"].includes((value ?? "").trim().toLowerCase());
@@ -70,6 +75,20 @@ export function isStaticDemoMode() {
 
 function clone<TValue>(value: TValue): TValue {
   return JSON.parse(JSON.stringify(value)) as TValue;
+}
+
+function normalizeStaticTechnicianPricingRatePercent(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(200, Math.max(10, Math.round(value)))
+    : 100;
+}
+
+function getStaticShopPricingMode(shopId: number) {
+  return staticShopPricingModes.get(shopId) ?? {
+    pricingMode: "merchant" as const,
+    technicianPricingRatePercent: 100,
+    updatedAt: new Date().toISOString()
+  };
 }
 
 function normalizePath(path: string) {
@@ -956,13 +975,22 @@ function handleCoreRead<TData>(path: string, options: HttpClientRequestOptions):
 
   const pricingModeMatch = path.match(/^\/shops\/(\d+)\/pricing-mode$/);
   if (pricingModeMatch) {
-    const body = options.body as { pricingMode?: "merchant" | "technician" } | undefined;
+    const shopId = Number(pricingModeMatch[1]);
+    const current = getStaticShopPricingMode(shopId);
+    const body = options.body as { pricingMode?: "merchant" | "technician"; technicianPricingRatePercent?: number } | undefined;
+    const next = {
+      pricingMode: body?.pricingMode ?? current.pricingMode,
+      technicianPricingRatePercent: normalizeStaticTechnicianPricingRatePercent(
+        body?.technicianPricingRatePercent ?? current.technicianPricingRatePercent
+      ),
+      updatedAt: new Date().toISOString()
+    };
+    staticShopPricingModes.set(shopId, next);
     return {
       handled: true,
       data: clone({
-        shopId: Number(pricingModeMatch[1]),
-        pricingMode: body?.pricingMode ?? "merchant",
-        updatedAt: new Date().toISOString(),
+        shopId,
+        ...next,
         updatedBy: 1
       }) as TData
     };
@@ -970,38 +998,55 @@ function handleCoreRead<TData>(path: string, options: HttpClientRequestOptions):
 
   const bookingNavigationMatch = path.match(/^\/shops\/(\d+)\/booking-navigation$/);
   if (bookingNavigationMatch) {
+    const shopId = Number(bookingNavigationMatch[1]);
+    const pricingMode = getStaticShopPricingMode(shopId);
+    const serviceNavigation = paginate(services.slice(0, 6).map((_, index) => ({
+      id: index + 1,
+      name: services[index]?.name ?? "服务",
+      priceAmount: String(services[index]?.priceFrom ?? 0),
+      currency: "JPY",
+      durationMinutes: services[index]?.packages[0]?.durationMinutes ?? 60,
+      coverUrl: services[index]?.cover ?? null
+    })), options);
+    const technicianNavigation = paginate(technicians.slice(0, 6).map((technician, index) => ({
+      id: index + 1,
+      displayName: technician.name,
+      city: technician.serviceAreas[0] ?? "东京",
+      avatarUrl: technician.avatar,
+      reviewSummary: null
+    })), options);
     return {
       handled: true,
       data: clone({
-        shopId: Number(bookingNavigationMatch[1]),
-        pricingMode: "merchant",
-        entry: "service_menu",
-        services: paginate(services.slice(0, 6).map((_, index) => ({
-          id: index + 1,
-          name: services[index]?.name ?? "服务",
-          priceAmount: String(services[index]?.priceFrom ?? 0),
-          currency: "JPY",
-          durationMinutes: services[index]?.packages[0]?.durationMinutes ?? 60,
-          coverUrl: services[index]?.cover ?? null
-        })), options)
+        shopId,
+        pricingMode: pricingMode.pricingMode,
+        technicianPricingRatePercent: pricingMode.technicianPricingRatePercent,
+        ...(pricingMode.pricingMode === "technician"
+          ? { entry: "technician_list", technicians: technicianNavigation }
+          : { entry: "service_menu", services: serviceNavigation })
       }) as TData
     };
   }
 
   const publicTechnicianServicesMatch = path.match(/^\/shops\/(\d+)\/technicians\/(\d+)\/services$/);
   if (publicTechnicianServicesMatch || path.match(/^\/technicians\/me\/shops\/(\d+)\/services(?:\/\d+)?$/)) {
+    const shopId = Number(publicTechnicianServicesMatch?.[1] ?? 1);
     const technician = technicians[(Number(publicTechnicianServicesMatch?.[2] ?? 1) - 1) % technicians.length] ?? technicians[0]!;
     const service = services[0]!;
+    const pricingMode = getStaticShopPricingMode(shopId);
+    const publicPriceAmount = publicTechnicianServicesMatch && pricingMode.pricingMode === "technician"
+      ? Math.round((service.priceFrom * pricingMode.technicianPricingRatePercent) / 100)
+      : service.priceFrom;
     const list = [
       {
         id: 1,
-        shopId: Number(publicTechnicianServicesMatch?.[1] ?? 1),
+        shopId,
         technicianId: Number(publicTechnicianServicesMatch?.[2] ?? 1),
         sourceShopServiceId: null,
         name: service.name,
         description: `${technician.name} · ${service.summary}`,
         categoryId: 1,
-        priceAmount: service.priceFrom,
+        priceAmount: publicPriceAmount,
         currency: "JPY",
         durationMinutes: service.packages[0]?.durationMinutes ?? 60,
         coverImageUrl: service.cover,

@@ -16,6 +16,7 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
     findShopPricingMode: jest.fn(async () => ({
       shopId: 1,
       pricingMode: "technician",
+      technicianPricingRatePercent: 200,
       updatedAt: now,
       updatedBy: 7
     })),
@@ -77,6 +78,42 @@ describe("pricing mode public API", () => {
         { id: 3, displayName: "Mika", city: "Tokyo", avatarUrl: null, reviewSummary: null }
       ])
     });
+
+    const servicesResponse = await request(app)
+      .get("/api/v1/shops/1/technicians/3/services?page=1&pageSize=20")
+      .expect(200);
+    expect(servicesResponse.body.data).toMatchObject({
+      list: [{ id: 11, name: "深层护理 60 分钟", priceAmount: 17600 }]
+    });
+  });
+
+  it("keeps public technician services readable in merchant pricing mode without exposing them in booking navigation", async () => {
+    const pricingModeRepository = createRepository();
+    pricingModeRepository.findShopPricingMode.mockResolvedValue({
+      shopId: 1,
+      pricingMode: "merchant",
+      technicianPricingRatePercent: 200,
+      updatedAt: now,
+      updatedBy: 7
+    });
+    pricingModeRepository.listBookingNavigationShopServices.mockResolvedValue(
+      paginated([{ id: 21, name: "店铺肩颈护理", priceAmount: "8800.00", currency: "JPY", durationMinutes: 60, coverUrl: null }])
+    );
+    const app = createApp(undefined, {
+      redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
+      pricingModeRepository
+    } as never);
+
+    const navigationResponse = await request(app)
+      .get("/api/v1/shops/1/booking-navigation?page=1&pageSize=20")
+      .expect(200);
+    expect(navigationResponse.body.data).toMatchObject({
+      shopId: 1,
+      pricingMode: "merchant",
+      entry: "service_menu",
+      services: paginated([{ id: 21, name: "店铺肩颈护理" }])
+    });
+    expect(navigationResponse.body.data).not.toHaveProperty("technicians");
 
     const servicesResponse = await request(app)
       .get("/api/v1/shops/1/technicians/3/services?page=1&pageSize=20")

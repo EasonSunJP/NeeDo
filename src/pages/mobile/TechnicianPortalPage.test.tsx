@@ -64,20 +64,21 @@ describe("TechnicianPortalPage profile card", () => {
     const serviceTabSource = source.slice(serviceTabStart, serviceTabEnd);
 
     expect(source).toContain("pricingModeApi.getShopPricingMode");
+    expect(source).toMatch(/pricingModeApi\s*\.\s*listTechnicianServices\(technicianShopApiId,\s*\{\s*page:\s*1,\s*pageSize:\s*20\s*\}\)/);
     expect(source).toContain('import { ApiClientError } from "../../api/httpClient";');
     expect(source).toContain("function TechnicianPricingModeReadonlySwitch");
     expect(source).toContain("function isTechnicianServiceIdentity");
     expect(source).toContain("function hasTechnicianProfileIdentity");
     expect(source).toContain("function getTechnicianServiceAccessIssue");
-    expect(source).toContain("function canSyncTechnicianServiceIdentity");
+    expect(source).toContain("function needsTechnicianServiceSettingsSwitch");
     expect(source).toContain("function getTechnicianServiceMutationFailureMessage");
     expect(source).toContain('session.currentIdentity.type === "technician"');
     expect(source).toContain('session.currentIdentity.scopeType === "technician_profile"');
     expect(source).toContain('session.permissions.includes("technician:services:write")');
-    expect(source).toContain('const { session, switchPortal, logout } = useAuth();');
+    expect(source).toContain('const { session, logout } = useAuth();');
     expect(source).toContain("const redirectToTechnicianServiceLogin = useCallback(async () =>");
     expect(source).toContain("technicianServiceLoginRedirectingRef");
-    expect(source).toContain("technicianServiceIdentitySyncInFlightRef");
+    expect(source).not.toContain("technicianServiceIdentitySyncInFlightRef");
     expect(source).toContain("technicianServiceEditingCardRef");
     expect(source).toContain("technicianServiceCancelConfirmOpen");
     expect(source).toContain("technicianServiceDeleteConfirmOpen");
@@ -98,9 +99,10 @@ describe("TechnicianPortalPage profile card", () => {
     expect(source).toContain("await logout();");
     expect(source).toContain("/login/technician?redirect=");
     expect(source).toContain("const technicianServiceLoginRedirectPath = \"/technician/me?meTab=services\";");
-    expect(source).toContain('const switched = await switchPortal("technician");');
-    expect(source).toContain('void switchPortal("technician")');
-    expect(source).toContain("当前技师身份同步失败，请重新登录技师账号后再");
+    expect(source).not.toContain('const switched = await switchPortal("technician");');
+    expect(source).not.toContain('void switchPortal("technician")');
+    expect(source).not.toContain("当前技师身份同步失败，请重新登录技师账号后再");
+    expect(source).toContain("请先到设置 > 身份切换切换到技师身份后再");
     expect(source).toContain("登录状态已失效，请重新登录技师账号后再");
     expect(source).toContain("当前账号无法");
     expect(source).toContain('data-testid="technician-service-pricing-mode-display"');

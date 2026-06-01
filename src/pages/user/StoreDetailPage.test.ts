@@ -16,7 +16,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("technicianListCollapsed");
     expect(pageSource).toContain("StoreTechnicianSelectableCard");
     expect(pageSource).toContain("grid-cols-2");
-    expect(pageSource).toContain('aria-label={active ? "已选技师" : "待选技师"}');
+    expect(pageSource).toContain('aria-label={unavailable ? "当前时间不可约" : active ? "已选技师" : "待选技师"}');
   });
 
   it("selects service packages through an icon control instead of a booking CTA", () => {
@@ -30,7 +30,7 @@ describe("StoreDetailPage routed booking defaults", () => {
   it("uses one consistent edit button size and avoids duplicate menu card edit actions", () => {
     const inlineEditSource = pageSource.slice(pageSource.indexOf("function StoreInlineEditLink"), pageSource.indexOf("const inlineTextEditorClassName"));
     const compactMenuSource = pageSource.slice(pageSource.indexOf("function CompactMenuCard"), pageSource.indexOf("function EnvironmentGalleryCard"));
-    const menuSectionSource = pageSource.slice(pageSource.indexOf("{shouldRenderServiceMenu ?"), pageSource.indexOf("{technicianBlock.visible ?"));
+    const menuPackageSource = pageSource.slice(pageSource.indexOf("const renderServiceMenuPackageSection"), pageSource.indexOf("const renderTechnicianMenuListSection"));
 
     expect(pageSource).toContain('const storeInlineEditButtonSizeClassName = "h-10 w-10";');
     expect(pageSource).toContain('const storeInlineEditIconSizeClassName = "h-4 w-4";');
@@ -42,28 +42,29 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("to={merchantScheduleEditorHref}");
     expect(compactMenuSource).toContain("showSelectAction = true");
     expect(compactMenuSource).toContain("{showSelectAction ? (");
-    expect(menuSectionSource).toContain("showSelectAction={!isMerchantEditable}");
-    expect(menuSectionSource).not.toContain("merchantServiceEditLabel");
+    expect(menuPackageSource).toContain("showSelectAction={!isMerchantEditable}");
+    expect(menuPackageSource).not.toContain("merchantServiceEditLabel");
   });
 
   it("shows a merchant-only add service action between menu and technicians", () => {
-    const homeMenuToTechnicianSource = pageSource.slice(pageSource.indexOf("{shouldRenderServiceMenu ?"), pageSource.indexOf("{technicianBlock.visible ?"));
+    const menuPackageSource = pageSource.slice(pageSource.indexOf("const renderServiceMenuPackageSection"), pageSource.indexOf("const renderTechnicianMenuListSection"));
 
     expect(pageSource).toContain("function MerchantAddServiceButton");
     expect(pageSource).toContain("function buildNextStoreMenuCard");
     expect(pageSource).toContain("const addMerchantMenuCard");
     expect(pageSource).toContain("添加服务");
-    expect(homeMenuToTechnicianSource).toContain("{isMerchantEditable ? (");
-    expect(homeMenuToTechnicianSource).toContain("<MerchantAddServiceButton");
-    expect(homeMenuToTechnicianSource).toContain("onAdd={addMerchantMenuCard}");
+    expect(menuPackageSource).toContain("{isMerchantEditable ? (");
+    expect(menuPackageSource).toContain("<MerchantAddServiceButton");
+    expect(menuPackageSource).toContain("onAdd={addMerchantMenuCard}");
     expect(pageSource).toContain('`home-menu-${nextMenuCard.id}`');
     expect(pageSource).toContain("target: nextMenuCardEditorTarget");
   });
 
-  it("warns merchants that store service menu items are hidden under technician pricing", () => {
-    expect(pageSource).toContain("const isMerchantServiceHidden = isMerchantEditable && pricingMode === \"technician\";");
-    expect(pageSource).toContain("function MerchantServiceHiddenWarning");
-    expect(pageSource).toContain("技师定价已开启，店铺服务项目已隐藏，不会被用户看到或搜索到。");
+  it("warns merchants which pricing section is hidden from customers", () => {
+    expect(pageSource).toContain("const isTechnicianPricingActive = isMerchantEditable ? pricingMode === \"technician\" : isTechnicianPricingEntry;");
+    expect(pageSource).toContain("function PricingModeHiddenWarning");
+    expect(pageSource).toContain("技师定价已开启，服务套餐菜单已隐藏，不会被用户看到。");
+    expect(pageSource).toContain("商户定价已开启，技师列表已隐藏，不会被用户看到。");
     expect(pageSource).toContain("border-[#ff4d5e]");
     expect(pageSource).toContain("bg-[#ff314f]/12");
     expect(pageSource).toContain("rounded-full border-[3px] border-[#ff4d5e]");
@@ -72,6 +73,165 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).not.toContain("isMerchantServiceHidden && focus === \"menu\"");
     expect(pageSource).not.toContain("店铺服务项目为只读");
     expect(pageSource).not.toContain("isMerchantServiceReadOnly");
+  });
+
+  it("keeps service package menu and technician list together with pricing-mode ordering", () => {
+    expect(pageSource).toContain("const shouldRenderServiceMenu = menuBlock.visible;");
+    expect(pageSource).toContain('const serviceMenuTabLabel = isTechnicianPricingActive ? "技师" : "菜单";');
+    expect(pageSource).toContain('{ label: serviceMenuTabLabel, value: "menu" as const }');
+    expect(pageSource).toContain("const shouldShowServicePackagesInMenu = isMerchantEditable || !isTechnicianPricingActive;");
+    expect(pageSource).toContain("const shouldShowTechniciansInMenu = isMerchantEditable || isTechnicianPricingActive;");
+    expect(pageSource).toContain("const serviceMenuHomePackageSection = renderServiceMenuPackageSection({");
+    expect(pageSource).toContain("const serviceMenuTabOrderedSections = isTechnicianPricingActive");
+    expect(pageSource).toContain("[technicianMenuListSection, serviceMenuPackageSection]");
+    expect(pageSource).toContain("[serviceMenuPackageSection, technicianMenuListSection]");
+    expect(pageSource).toContain("服务套餐菜单");
+    expect(pageSource).toContain("技师列表");
+    expect(pageSource).toContain("const shouldRenderTechnicianShowcase = technicianBlock.visible;");
+    expect(pageSource).toContain("function StoreTechnicianServiceListRow");
+    expect(pageSource).toContain("technicianPricingRatePercent?: number");
+    expect(pageSource).toContain("const effectiveTechnicianPricingRatePercent = isTechnicianPricingActive");
+    expect(pageSource).toContain("bookingNavigation?.technicianPricingRatePercent");
+    expect(pageSource).toContain("quoteRatePercent={effectiveTechnicianPricingRatePercent}");
+    expect(pageSource).toContain('<SectionTitle showInfo={false} title="技师列表" />');
+    expect(pageSource).toContain("<SectionTitle showInfo={false} title={technicianBlock.name}>");
+    expect(pageSource).toContain("{serviceMenuHomePackageSection}");
+    expect(pageSource).toContain("{serviceMenuTabOrderedSections}");
+    expect(pageSource).toContain("<StoreTechnicianServiceListRow");
+    expect(pageSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(pageSource).toContain("getScopedTechnicianServiceListPath");
+    expect(pageSource).toContain("const getTechnicianServiceListTo = (technicianId: string)");
+    expect(pageSource).toContain("serviceListTo={getTechnicianServiceListTo(technician.id)}");
+    expect(pageSource).not.toContain("selectStoreServiceFromTechnicianRecommendation");
+    expect(pageSource).not.toContain("onServiceSelect={selectStoreServiceFromTechnicianRecommendation}");
+    expect(pageSource).toContain("查看技师动态");
+    expect(pageSource).toContain("查看技师服务列表");
+  });
+
+  it("keeps store-home technician cards linked to dynamics while the plus selects the technician", () => {
+    const selectableCardSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianSelectableCard"), pageSource.indexOf("function getStoreTechnicianDisplayName"));
+    const homeTechnicianSource = pageSource.slice(pageSource.indexOf("{shouldRenderTechnicianShowcase ? ("), pageSource.indexOf('{activeTab === "seats" ?'));
+
+    expect(selectableCardSource).toContain("onSelect={onSelect}");
+    expect(selectableCardSource).toContain("detailTo={profileTo}");
+    expect(selectableCardSource).toContain('selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
+    expect(selectableCardSource).not.toContain("onServiceSelect");
+    expect(homeTechnicianSource).toContain("isTechnicianPricingActive ? (");
+    expect(homeTechnicianSource).toContain("storeHomeTechnicianServiceListRows");
+    expect(homeTechnicianSource).toContain(") : storeTechnicians.length > 0 ? (");
+    expect(homeTechnicianSource).toContain("<StoreTechnicianSelectableCard");
+    expect(homeTechnicianSource).toContain('profileTo={getScopedProfileDetailPath(scope, "technician", technician.id)}');
+    expect(homeTechnicianSource).toContain("setSelectedTechnicianId(active ? \"\" : technician.id);");
+    expect(homeTechnicianSource).not.toContain("onServiceSelect");
+  });
+
+  it("switches the store-home technician list to service rows only in technician-pricing mode", () => {
+    const technicianRowsSource = pageSource.slice(pageSource.indexOf("const renderTechnicianServiceListRows"), pageSource.indexOf("const renderServiceMenuPackageSection"));
+    const homeTechnicianSource = pageSource.slice(pageSource.indexOf("{shouldRenderTechnicianShowcase ? ("), pageSource.indexOf('{activeTab === "seats" ?'));
+    const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+
+    expect(pageSource).toContain("const storeHomeTechnicianServiceListRows = renderTechnicianServiceListRows({ selectable: true });");
+    expect(homeTechnicianSource).toContain("isTechnicianPricingActive ? (");
+    expect(homeTechnicianSource).toContain("storeHomeTechnicianServiceListRows");
+    expect(homeTechnicianSource).toContain(") : storeTechnicians.length > 0 ? (");
+    expect(homeTechnicianSource).toContain("<StoreTechnicianSelectableCard");
+    expect(technicianRowsSource).toContain("selectable = false");
+    expect(technicianRowsSource).toContain("selected={selectable ? active : undefined}");
+    expect(technicianRowsSource).toContain("onSelect={selectable");
+    expect(technicianRowsSource).toContain("unavailable={selectable ? unavailable : false}");
+    expect(technicianRowsSource).toContain("if (unavailable) {");
+    expect(technicianRowSource).toContain("selected?: boolean;");
+    expect(technicianRowSource).toContain("onSelect?: () => void;");
+    expect(technicianRowSource).toContain("unavailable?: boolean;");
+    expect(technicianRowSource).toContain('inactiveIcon={unavailable ? "x" : "plus"}');
+    expect(technicianRowSource).toContain('label={unavailable ? "当前时间不可约" : selected ? "已选技师" : "待选技师"}');
+  });
+
+  it("disables technicians whose confirmed appointment overlaps the selected store booking time", () => {
+    const selectableCardSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianSelectableCard"), pageSource.indexOf("function getStoreTechnicianDisplayName"));
+    const homeTechnicianSource = pageSource.slice(pageSource.indexOf("{shouldRenderTechnicianShowcase ? ("), pageSource.indexOf('{activeTab === "seats" ?'));
+    const technicianRowsSource = pageSource.slice(pageSource.indexOf("const renderTechnicianServiceListRows"), pageSource.indexOf("const renderServiceMenuPackageSection"));
+    const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+
+    expect(pageSource).toContain("orders");
+    expect(pageSource).toContain("confirmedTechnicianBookingStatuses");
+    expect(pageSource).toContain("function isTechnicianUnavailableForSelectedTime");
+    expect(pageSource).toContain("function doBookingWindowsOverlap");
+    expect(pageSource).toContain("const selectedBookingDurationMinutes");
+    expect(pageSource).toContain("const unavailableTechnicianIds");
+    expect(pageSource).toContain("unavailableTechnicianIds.has(technician.id)");
+    expect(pageSource).toContain("setSelectedTechnicianId(\"\");");
+    expect(selectableCardSource).toContain("unavailable = false");
+    expect(selectableCardSource).toContain("selectionDisabled={unavailable}");
+    expect(selectableCardSource).toContain('selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
+    expect(selectableCardSource).toContain('selectionAriaLabel={unavailable ? "当前时间不可约"');
+    expect(selectableCardSource).toContain('!isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"');
+    expect(homeTechnicianSource).toContain("const unavailable = !isMerchantEditable && unavailableTechnicianIds.has(technician.id);");
+    expect(homeTechnicianSource).toContain("if (unavailable) {");
+    expect(homeTechnicianSource).toContain("unavailable={unavailable}");
+    expect(technicianRowsSource).toContain("const unavailable = !isMerchantEditable && unavailableTechnicianIds.has(technician.id);");
+    expect(technicianRowsSource).toContain("if (unavailable) {");
+    expect(technicianRowSource).toContain('!isMerchantEditable && unavailable && "opacity-70 saturate-[0.72]"');
+    expect(technicianRowSource).toContain("disabled={unavailable}");
+    expect(technicianRowSource).toContain('inactiveIcon={unavailable ? "x" : "plus"}');
+  });
+
+  it("keeps technician-tab row right content linked to technician service lists with a service info affordance", () => {
+    const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+
+    expect(technicianRowSource).toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
+    expect(technicianRowSource).toContain('className="flex shrink-0 items-start -space-x-[4px]"');
+    expect(technicianRowSource).toContain("<SimpleRatingBadge compact");
+    expect(technicianRowSource).toContain('size="cluster"');
+    expect(technicianRowSource).toContain("serviceListTo");
+    expect(technicianRowSource).toContain("to={serviceListTo}");
+    expect(technicianRowSource).toContain("查看技师服务列表");
+    expect(technicianRowSource).toContain("quoteRatePercent = 100");
+    expect(technicianRowSource).toContain("const displayedPrice = Number.isFinite(price) && price > 0 ? Math.round((price * quoteRatePercent) / 100) : price;");
+    expect(technicianRowSource).toContain("yen(displayedPrice)");
+    expect(technicianRowSource).toContain('className="flex min-w-0 flex-col justify-between rounded-[14px] py-1 pl-1.5 pr-1.5 text-left active:scale-[0.99]"');
+    expect(technicianRowSource).toContain('className={cn("min-w-0", (isMerchantEditable || showSelectionAction) && "pr-12")}');
+    expect(technicianRowSource).toContain("py-2 pl-3 pr-11");
+    expect(technicianRowSource).toContain('name="info"');
+    expect(technicianRowSource).not.toContain("onServiceSelect");
+    expect(technicianRowSource).not.toContain("查看店铺服务项目");
+  });
+
+  it("keeps merchant technician visibility as an outer top-right eye action", () => {
+    const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+
+    expect(pageSource).toContain('metricLayout="split"');
+    expect(technicianRowSource).toContain("isMerchantEditable");
+    expect(technicianRowSource).toContain("onToggleVisibility");
+    expect(technicianRowSource).toContain('className="absolute right-2 top-2 z-30 h-11 w-11"');
+    expect(technicianRowSource).toContain('activeIcon="eye"');
+    expect(technicianRowSource).toContain('inactiveIcon="eyeOff"');
+    expect(technicianRowSource).toContain('label={technicianVisible ? "隐藏技师" : "显示技师"}');
+    expect(pageSource).toContain("onToggleVisibility={() => toggleTechnicianDisplayVisibility(technician)}");
+  });
+
+  it("keeps technician age in the profile detail line instead of a name-side badge", () => {
+    const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+
+    expect(technicianRowSource).toContain('technician.age ? `${technician.age}岁` : ""');
+    expect(technicianRowSource).toContain("technician.height ?? \"\"");
+    expect(technicianRowSource).not.toContain('>{technician.age}</span>');
+    expect(technicianRowSource).not.toContain('`${technician.height}cm`');
+  });
+
+  it("does not render an outer technician/menu title inside the combined menu tab", () => {
+    const tabMenuSource = pageSource.slice(pageSource.indexOf('{activeTab === "menu" && shouldRenderServiceMenu ?'), pageSource.indexOf('{activeTab === "moments" ?'));
+    const packageSectionSource = pageSource.slice(pageSource.indexOf("const renderServiceMenuPackageSection"), pageSource.indexOf("const renderTechnicianMenuListSection"));
+
+    expect(tabMenuSource).toContain("{serviceMenuTabOrderedSections}");
+    expect(tabMenuSource).not.toContain("{shouldRenderTechnicianShowcase ? (");
+    expect(tabMenuSource).not.toContain('style={blockOrderStyle("technicians")}');
+    expect(tabMenuSource).not.toContain("title={serviceMenuSectionTitle}");
+    expect(tabMenuSource).not.toContain("label={serviceMenuSectionTitle}");
+    expect(packageSectionSource).toContain("showSectionHeader");
+    expect(packageSectionSource).toContain("servicePackageMenuCollapsed");
+    expect(packageSectionSource).toContain('label="服务套餐菜单"');
+    expect(packageSectionSource).toContain("setServicePackageMenuCollapsed");
   });
 
   it("labels the booking calendar as appointment time selection with a merchant schedule edit action", () => {
@@ -112,8 +272,8 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain('scope === "merchant"');
     expect(pageSource).toContain("showSelectAction={!isMerchantEditable}");
     expect(pageSource).toContain('selectionActiveIcon={isMerchantEditable ? "eye" : "check"}');
-    expect(pageSource).toContain('selectionInactiveIcon={isMerchantEditable ? "eyeOff" : "plus"}');
-    expect(pageSource).toContain('selectionAriaLabel={isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}');
+    expect(pageSource).toContain('selectionInactiveIcon={unavailable ? "x" : isMerchantEditable ? "eyeOff" : "plus"}');
+    expect(pageSource).toContain('selectionAriaLabel={unavailable ? "当前时间不可约" : isMerchantEditable ? (technicianVisible ? "隐藏技师" : "显示技师") : active ? "已选技师" : "待选技师"}');
   });
 
   it("uses the technician eye action as a merchant display visibility switch", () => {

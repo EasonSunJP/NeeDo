@@ -13,13 +13,14 @@ type TechnicianShowcaseCardProps = {
   directService?: ServiceItem;
   fallbackServices?: ServiceItem[];
   language: Language;
+  metricLayout?: "cluster" | "split";
   onSelect?: () => void;
   rankIndex: number;
   selected?: boolean;
   selectionActiveIcon?: IconName;
   selectionAriaLabel?: string;
+  selectionDisabled?: boolean;
   selectionInactiveIcon?: IconName;
-  serviceListTo?: string;
   technician: Technician;
 };
 
@@ -322,13 +323,14 @@ export function TechnicianShowcaseCard({
   directService,
   fallbackServices = [],
   language,
+  metricLayout = "cluster",
   onSelect,
   rankIndex,
   selected,
   selectionActiveIcon = "check",
   selectionAriaLabel,
+  selectionDisabled = false,
   selectionInactiveIcon = "plus",
-  serviceListTo,
   technician
 }: TechnicianShowcaseCardProps) {
   const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
@@ -344,12 +346,22 @@ export function TechnicianShowcaseCard({
   const priceLabel = Number.isFinite(price) && price > 0 ? formatCardYen(price) : copy.pricePending;
   const serviceName = localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
   const detailHref = detailTo ?? getTechnicianDynamicPath(technician);
-  const serviceHref = serviceListTo ?? detailHref;
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
   const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon;
   const favoriteCount = getTechnicianCardFavoriteCount(technician);
   const shareCount = getTechnicianCardShareCount();
   const showBeginnerIcon = shouldShowTechnicianBeginnerIcon(technician);
+  const ageLabel = technician.age
+    ? language === "zh-Hant"
+      ? `${technician.age}歲`
+      : language === "ja"
+        ? `${technician.age}歳`
+        : language === "ko"
+          ? `${technician.age}세`
+          : language === "en"
+            ? `${technician.age}`
+            : `${technician.age}岁`
+    : "";
   const cardClassName = cn(
     "group block overflow-hidden rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,transparent)] text-left shadow-[0_16px_34px_rgba(0,0,0,0.16)] transition",
     typeof selected === "boolean" && selected
@@ -367,22 +379,41 @@ export function TechnicianShowcaseCard({
       <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
       <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
 
-      <SimpleRatingBadge className="absolute left-2 top-2 z-20" value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
-
-      <div className="absolute right-[1.5px] top-2 z-20 flex items-start -space-x-[5.5px]">
-        <IconMetricAction
-          count={favoriteCount}
-          icon="heart"
-          label={`${copy.favorite} ${favoriteCount}`}
-          size="compactLg"
-        />
-        <IconMetricAction
-          count={shareCount}
-          icon="share"
-          label={`${copy.share} ${shareCount}`}
-          size="compactLg"
-        />
-      </div>
+      {metricLayout === "split" ? (
+        <div className="absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1">
+          <SimpleRatingBadge compact value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
+          <div className="flex shrink-0 items-start -space-x-[4px]">
+            <IconMetricAction
+              count={favoriteCount}
+              icon="heart"
+              label={`${copy.favorite} ${favoriteCount}`}
+              size="cluster"
+            />
+            <IconMetricAction
+              count={shareCount}
+              icon="share"
+              label={`${copy.share} ${shareCount}`}
+              size="cluster"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]">
+          <SimpleRatingBadge compact value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
+          <IconMetricAction
+            count={favoriteCount}
+            icon="heart"
+            label={`${copy.favorite} ${favoriteCount}`}
+            size="cluster"
+          />
+          <IconMetricAction
+            count={shareCount}
+            icon="share"
+            label={`${copy.share} ${shareCount}`}
+            size="cluster"
+          />
+        </div>
+      )}
 
       <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
         {topBadges.length > 0 ? (
@@ -403,10 +434,9 @@ export function TechnicianShowcaseCard({
             />
           ) : null}
           <span className={cn("min-w-0 truncate", showBeginnerIcon ? "ml-1.5" : "")}>{displayName}</span>
-          {technician.age ? <span className="ml-1 shrink-0 text-[14px] font-semibold text-white/82">({technician.age})</span> : null}
         </h3>
         <p className="mt-1 line-clamp-1 text-[12px] font-bold text-white/86">
-          {[technician.height ? `${technician.height}cm` : "", primarySkill, areaLabel].filter(Boolean).join(" / ")}
+          {[ageLabel, technician.height ?? "", primarySkill, areaLabel].filter(Boolean).join(" / ")}
         </p>
         <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-white/72">
           {statusLabel} · {copy.acceptRate} {technician.acceptRate}%
@@ -415,7 +445,7 @@ export function TechnicianShowcaseCard({
     </div>
   );
   const detailContent = (
-    <div className="px-3 py-3 text-left">
+    <div className="relative px-3 py-3 text-left">
       <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]" data-no-i18n>
         {copy.recommendedService}
       </p>
@@ -428,7 +458,6 @@ export function TechnicianShowcaseCard({
       </p>
     </div>
   );
-
   return onSelect ? (
     <div className={cardClassName}>
       <div className="relative">
@@ -437,17 +466,24 @@ export function TechnicianShowcaseCard({
         </Link>
         {typeof selected === "boolean" ? (
           <button
+            aria-disabled={selectionDisabled}
             aria-label={selectionLabel}
             aria-pressed={selected}
             className={cn(
-              "absolute bottom-2 right-2 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95",
-              selected
+              "absolute bottom-2 right-2 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border backdrop-blur-md transition active:scale-95 disabled:cursor-not-allowed",
+              selectionDisabled
+                ? "border-white/46 bg-black/42 text-[#ff5f6e] shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
+                : selected
                 ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[#06100b] shadow-[0_8px_20px_color-mix(in_srgb,var(--client-primary)_40%,transparent)]"
                 : "border-white/58 bg-black/38 text-white/78 shadow-[0_8px_20px_rgba(0,0,0,0.22)]"
             )}
+            disabled={selectionDisabled}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
+              if (selectionDisabled) {
+                return;
+              }
               onSelect();
             }}
             type="button"
@@ -456,16 +492,7 @@ export function TechnicianShowcaseCard({
           </button>
         ) : null}
       </div>
-      <Link aria-label={`查看${displayName}服务`} className="block active:scale-[0.99]" to={serviceHref}>
-        {detailContent}
-      </Link>
-    </div>
-  ) : serviceListTo ? (
-    <div className={cardClassName}>
       <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
-        {photoContent}
-      </Link>
-      <Link aria-label={`查看${displayName}服务`} className="block active:scale-[0.99]" to={serviceListTo}>
         {detailContent}
       </Link>
     </div>
