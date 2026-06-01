@@ -106,6 +106,7 @@ type MerchantIncomeTrendPoint = {
 type MerchantPendingStaffDelete =
   | { type: "manual"; id: string; name: string }
   | { type: "technician"; id: string; name: string };
+type MerchantStorePricingMode = "store" | "technician";
 type MerchantStorePrivacyVisibility = "privateAll" | "limited" | "network";
 
 const merchantStorePrivacyOptions = [
@@ -1176,6 +1177,42 @@ function getMerchantStorePrivacySummary(enabled: boolean, visibility: MerchantSt
   return enabled ? getMerchantStorePrivacyLabel(visibility) : "公开可见";
 }
 
+function MerchantStorePricingModeControl({
+  mode,
+  onModeChange
+}: {
+  mode: MerchantStorePricingMode;
+  onModeChange: (mode: MerchantStorePricingMode) => void;
+}) {
+  const technicianPricing = mode === "technician";
+  const nextMode = technicianPricing ? "store" : "technician";
+
+  return (
+    <div className="relative z-[70] w-full" data-testid="merchant-store-pricing-mode-control">
+      <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            aria-pressed={technicianPricing}
+            className="min-w-0 flex-1 text-left"
+            onClick={() => onModeChange(nextMode)}
+            type="button"
+          >
+            <span className="block truncate text-[10px] font-black text-[color:var(--client-muted)]">定价模式</span>
+            <strong className="mt-0.5 block truncate text-[11px] font-black text-[color:var(--client-text)]">
+              {technicianPricing ? "技师定价" : "店铺定价"}
+            </strong>
+          </button>
+          <ToggleSwitch
+            ariaLabel={technicianPricing ? "切换为店铺定价" : "切换为技师定价"}
+            checked={technicianPricing}
+            onChange={(checked) => onModeChange(checked ? "technician" : "store")}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MerchantStorePrivacyInfoButton({ content }: { content: string }) {
   return (
     <InfoTooltipTrigger
@@ -1203,7 +1240,7 @@ function MerchantStorePrivacyControl({
   visibility: MerchantStorePrivacyVisibility;
 }) {
   return (
-    <div className="relative z-[70] w-[176px]" data-testid="merchant-store-privacy-control">
+    <div className="relative z-[70] w-full" data-testid="merchant-store-privacy-control">
       <div className="rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-2 shadow-[0_12px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl">
         <div className="flex items-center justify-between gap-2">
           <button
@@ -1309,6 +1346,7 @@ export function MerchantPortalPage() {
   const [merchantOrderEndDate, setMerchantOrderEndDate] = useState("");
   const [followedStaffIds, setFollowedStaffIds] = useState<string[]>(["tech-1"]);
   const [followedCustomerIds, setFollowedCustomerIds] = useState<string[]>(["cus-1", "cus-3"]);
+  const [storePricingMode, setStorePricingMode] = useState<MerchantStorePricingMode>("store");
   const [storePrivacyEnabled, setStorePrivacyEnabled] = useState(false);
   const [storePrivacyVisibility, setStorePrivacyVisibility] = useState<MerchantStorePrivacyVisibility>("privateAll");
   const [storePrivacyMenuOpen, setStorePrivacyMenuOpen] = useState(false);
@@ -1880,6 +1918,12 @@ export function MerchantPortalPage() {
   };
 
   const isMerchantDataCenterView = activeView === "me" && activeMeTab === "data";
+  const storePricingModeControl = (
+    <MerchantStorePricingModeControl
+      mode={storePricingMode}
+      onModeChange={setStorePricingMode}
+    />
+  );
   const storePrivacyControl = (
     <MerchantStorePrivacyControl
       enabled={storePrivacyEnabled}
@@ -2288,6 +2332,7 @@ export function MerchantPortalPage() {
               {activeMeTab === "service" ? (
                 <StoreDetailExperience
                   embedded
+                  pricingControl={storePricingModeControl}
                   privacyControl={storePrivacyControl}
                   scope="merchant"
                   store={store}

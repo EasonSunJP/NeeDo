@@ -75,6 +75,7 @@ type PendingStoreImageEdit = {
 type StoreDetailExperienceProps = {
   embedded?: boolean;
   onEditFocus?: (focus: StoreDisplayExternalEditorMode) => void;
+  pricingControl?: ReactNode;
   privacyControl?: ReactNode;
   scope?: "user" | "merchant";
   store: Store;
@@ -2357,7 +2358,7 @@ function EnvironmentGalleryCard({
   );
 }
 
-export function StoreDetailExperience({ embedded = false, onEditFocus, privacyControl, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
+export function StoreDetailExperience({ embedded = false, onEditFocus, pricingControl, privacyControl, scope = "user", store, techniciansOverride }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { session } = useAuth();
@@ -3618,18 +3619,23 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, privacyCo
   ) : null;
 
   if (embedded) {
-    const hasPrivacyControl = Boolean(privacyControl);
+    const hasMerchantControls = Boolean(pricingControl || privacyControl);
 
     return (
       <div className="space-y-4 pb-6">
         <section className="relative z-50 space-y-3 overflow-visible">
           {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")}
-          <div className={cn("relative pr-12", hasPrivacyControl && "min-h-[112px]")}>
-            <div className="min-w-0">
+          <div className={cn("relative", hasMerchantControls && "min-h-[112px]")}>
+            <div className="min-w-0 pr-12">
               <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
               <p className="mt-1 text-sm text-[color:var(--client-muted)]">{store.address}</p>
             </div>
-            {hasPrivacyControl ? <div className="absolute right-0 top-12 z-20">{privacyControl}</div> : null}
+            {hasMerchantControls ? (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {pricingControl ? <div>{pricingControl}</div> : <div />}
+                {privacyControl ? <div>{privacyControl}</div> : <div />}
+              </div>
+            ) : null}
           </div>
           <div className="-mx-1">{tabSwitcher}</div>
           {renderActiveInlineEditor("basic-card")}
