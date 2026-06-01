@@ -82,6 +82,18 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain('onClose={() => setActiveEditor(null)}');
   });
 
+  it("uses the working basic-card editor in the embedded merchant header without duplicating the info-card edit button", () => {
+    const embeddedHeaderSource = pageSource.slice(pageSource.indexOf("if (embedded)"), pageSource.indexOf('<div className="relative z-0">{content}</div>'));
+    const basicInfoCardStart = pageSource.indexOf('<FlatCard className="store-basic-info-block');
+    const basicInfoCardSource = pageSource.slice(basicInfoCardStart, pageSource.indexOf('<EditableTagChips editing={basicCardEditing}'));
+
+    expect(basicInfoCardStart).toBeGreaterThan(-1);
+    expect(embeddedHeaderSource).toContain('renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")');
+    expect(embeddedHeaderSource).not.toContain('"header-basic"');
+    expect(basicInfoCardSource).not.toContain('editor={renderMerchantEditor("basic", "编辑资料", undefined, "default", "basic-card")}');
+    expect(pageSource).not.toContain('renderActiveInlineEditor("header-basic")');
+  });
+
   it("uses edit affordances instead of user selection plus buttons for merchant-owned services and technicians", () => {
     expect(pageSource).toContain('scope === "merchant"');
     expect(pageSource).toContain("showSelectAction={!isMerchantEditable}");

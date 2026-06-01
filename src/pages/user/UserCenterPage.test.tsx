@@ -44,7 +44,7 @@ describe("UserCenterPage", () => {
     expect(source).toContain('data-testid="user-profile-privacy-options"');
     expect(source).toContain('ariaLabel="开启隐私模式"');
     expect(source).toContain("absolute right-0 top-[calc(100%+8px)]");
-    expect(source).toContain("flex h-36 min-w-0 flex-1 flex-col");
+    expect(source).toContain('isEditingProfile ? "min-h-36" : "h-36"');
     expect(source).toContain("mt-auto rounded-[18px]");
     expect(source).toContain("z-[90]");
     expect(source).toContain("UserProfilePrivacyInfoButton");

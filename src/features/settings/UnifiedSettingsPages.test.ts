@@ -98,3 +98,27 @@ describe("UnifiedSettingsPage Xiaobai asset gate", () => {
     expect(settingsHomeSource).not.toContain("disabled={!petAssetReadiness.ready}");
   });
 });
+
+describe("UnifiedSettingsProfilePage", () => {
+  const userProfileSource = source.slice(
+    source.indexOf("function UserProfileSettingsPage"),
+    source.indexOf("function TechnicianProfileSettingsPage")
+  );
+  const technicianProfileSource = source.slice(
+    source.indexOf("function TechnicianProfileSettingsPage"),
+    source.indexOf("function MerchantProfileSettingsPage")
+  );
+
+  it("keeps profile visibility controls out of user and technician profile edit pages", () => {
+    expect(userProfileSource).not.toContain("InfoCardVisibilityEditor");
+    expect(userProfileSource).not.toContain("信息卡可见范围");
+    expect(technicianProfileSource).not.toContain("InfoCardVisibilityEditor");
+    expect(technicianProfileSource).not.toContain("信息卡可见范围");
+    expect(technicianProfileSource).not.toContain("技师名片预览");
+    expect(technicianProfileSource).not.toContain("实时预览");
+  });
+
+  it("opens the technician profile edit page without the main bottom navigation", () => {
+    expect(technicianProfileSource).toContain("navItems={[]}");
+  });
+});

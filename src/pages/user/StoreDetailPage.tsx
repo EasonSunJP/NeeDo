@@ -2888,7 +2888,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, privacyCo
               </div>
             ) : null}
 
-            <FlatCard className={cn("store-basic-info-block space-y-3 !rounded-none !border-0 !bg-transparent !p-0 !shadow-none", isMerchantEditable && "pr-14")} editor={renderMerchantEditor("basic", "编辑资料", undefined, "default", "basic-card")}>
+            <FlatCard className="store-basic-info-block space-y-3 !rounded-none !border-0 !bg-transparent !p-0 !shadow-none">
               <div className="grid grid-cols-3 gap-2">
                 <StoreMetricDetailButton
                   active={activeMetricDetail === "rating"}
@@ -3623,7 +3623,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, privacyCo
     return (
       <div className="space-y-4 pb-6">
         <section className="relative z-50 space-y-3 overflow-visible">
-          {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0", "default", "header-basic")}
+          {renderMerchantEditor("basic", "编辑资料", "absolute right-0 top-0 z-30", "default", "basic-card")}
           <div className={cn("relative pr-12", hasPrivacyControl && "min-h-[112px]")}>
             <div className="min-w-0">
               <h2 className="text-[24px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{store.name}</h2>
@@ -3632,7 +3632,7 @@ export function StoreDetailExperience({ embedded = false, onEditFocus, privacyCo
             {hasPrivacyControl ? <div className="absolute right-0 top-12 z-20">{privacyControl}</div> : null}
           </div>
           <div className="-mx-1">{tabSwitcher}</div>
-          {renderActiveInlineEditor("header-basic")}
+          {renderActiveInlineEditor("basic-card")}
         </section>
         <div className="relative z-0">{content}</div>
         {lightbox}

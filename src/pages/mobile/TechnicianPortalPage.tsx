@@ -69,6 +69,7 @@ import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getServiceStartCode } from "../../lib/serviceStartCode";
 import { shareContent } from "../../lib/share";
 import { getActivePolicyForStore, getPolicyStatusLabel, getResponseStatusLabel, getScheduleContextLabel, resolveScheduleContext } from "../../lib/shiftPlanning";
+import { buildTrendCoordinates, buildTrendPolylineFromIndexes } from "../../lib/technicianWorkTrendChart";
 import { buildTechnicianWorkAnalyticsSeed } from "../../lib/technicianWorkAnalytics";
 import { updateCustomerEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import {
@@ -914,6 +915,21 @@ const railLineCatalog = {
   東横線: ["渋谷駅", "中目黒駅", "自由が丘駅", "武蔵小杉駅", "横浜駅"],
   御堂筋線: ["梅田駅", "本町駅", "心斎橋駅", "なんば駅", "天王寺駅"]
 } as const;
+const technicianServiceAreaOptions: string[] = (() => {
+  const options: string[] = [];
+
+  Object.values(serviceAreaCatalog).forEach((prefectureMap) => {
+    Object.values(prefectureMap).forEach((areas) => {
+      options.push(...areas);
+    });
+  });
+
+  Object.values(railLineCatalog).forEach((stations) => {
+    options.push(...stations);
+  });
+
+  return Array.from(new Set(options)).slice(0, 18);
+})();
 const kycBirthYearOptions = Array.from({ length: 46 }, (_, index) => String(2008 - index));
 const kycBirthMonthOptions = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 const kycBirthDayOptions = Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, "0"));
@@ -1567,35 +1583,20 @@ function getWorkTrendPoints(events: TechnicianScheduleEvent[], scope: WorkDetail
   });
 }
 
-function buildTrendPolyline(points: WorkTrendPoint[], values: number[], width: number, height: number, left: number, top: number, bottom: number) {
-  const maxValue = Math.max(...values, 1);
-  const usableHeight = height - top - bottom;
-  const usableWidth = width - left - 18;
-  const step = points.length > 1 ? usableWidth / (points.length - 1) : 0;
-
-  return points.map((point, index) => {
-    const value = values[index] ?? 0;
-    const x = left + step * index;
-    const y = top + usableHeight - (value / maxValue) * usableHeight;
-
-    return `${x},${y}`;
-  }).join(" ");
-}
-
-function splitTrendPoints(points: WorkTrendPoint[]) {
+function splitTrendPointIndexes(points: WorkTrendPoint[]) {
   const firstFutureIndex = points.findIndex((point) => point.future);
 
   if (firstFutureIndex === -1) {
-    return { solid: points, dashed: [] as WorkTrendPoint[] };
+    return { solid: points.map((_, index) => index), dashed: [] as number[] };
   }
 
   if (firstFutureIndex === 0) {
-    return { solid: [] as WorkTrendPoint[], dashed: points };
+    return { solid: [] as number[], dashed: points.map((_, index) => index) };
   }
 
   return {
-    solid: points.slice(0, firstFutureIndex),
-    dashed: points.slice(firstFutureIndex - 1)
+    solid: points.slice(0, firstFutureIndex).map((_, index) => index),
+    dashed: points.slice(firstFutureIndex - 1).map((_, index) => firstFutureIndex - 1 + index)
   };
 }
 
@@ -1641,19 +1642,20 @@ function WorkTrendChart({
   const left = 22;
   const top = 18;
   const bottom = points.some((point) => point.subLabel) ? 48 : 34;
-  const pointGroups = splitTrendPoints(points);
-  const solidValues = pointGroups.solid.map((point) => point[valueKey]);
-  const dashedValues = pointGroups.dashed.map((point) => point[valueKey]);
-  const solidPolyline = pointGroups.solid.length > 0 ? buildTrendPolyline(pointGroups.solid, solidValues, width, height, left, top, bottom) : "";
-  const dashedPolyline = pointGroups.dashed.length > 0 ? buildTrendPolyline(pointGroups.dashed, dashedValues, width, height, left, top, bottom) : "";
+  const right = 18;
+  const coordinates = buildTrendCoordinates(values, { bottom, height, left, right, top, width });
+  const pointGroups = splitTrendPointIndexes(points);
+  const solidPolyline = buildTrendPolylineFromIndexes(coordinates, pointGroups.solid);
+  const dashedPolyline = buildTrendPolylineFromIndexes(coordinates, pointGroups.dashed);
   const usableHeight = height - top - bottom;
-  const usableWidth = width - left - 18;
+  const usableWidth = width - left - right;
   const step = points.length > 1 ? usableWidth / (points.length - 1) : 0;
   const [activePoint, setActivePoint] = useState<ChartPointerState | null>(null);
   const [pointerDown, setPointerDown] = useState(false);
   const activeIndex = activePoint?.index ?? -1;
   const activeTrendPoint = activeIndex >= 0 ? points[activeIndex] : undefined;
   const activeValue = activeIndex >= 0 ? values[activeIndex] : undefined;
+  const activeCoordinate = activeIndex >= 0 ? coordinates[activeIndex] : undefined;
   const updateActivePoint = (event: ReactPointerEvent<SVGSVGElement>) => {
     const nextPoint = resolveChartPointerState(event, {
       width,
@@ -1668,7 +1670,7 @@ function WorkTrendChart({
   };
 
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className="rounded-lg border border-line bg-white p-4 text-[color:var(--client-text)] shadow-panel">
       <div className="flex items-center justify-between gap-3">
         <TitleWithInfo
           as="h3"
@@ -1715,7 +1717,7 @@ function WorkTrendChart({
           {Array.from({ length: 4 }, (_, index) => {
             const y = top + (usableHeight / 3) * index;
 
-            return <line key={index} stroke="rgba(32,38,56,0.08)" strokeDasharray="4 4" strokeWidth="1" x1={left} x2={width - 18} y1={y} y2={y} />;
+            return <line key={index} stroke="color-mix(in srgb,var(--client-line) 72%,transparent)" strokeDasharray="4 4" strokeWidth="1" x1={left} x2={width - right} y1={y} y2={y} />;
           })}
           {points.map((point, index) => {
             if (!shouldShowTrendLabel(points.length, index)) {
@@ -1727,7 +1729,7 @@ function WorkTrendChart({
             return (
               <line
                 key={`${point.key}-guide`}
-                stroke="rgba(32,38,56,0.1)"
+                stroke="color-mix(in srgb,var(--client-line) 78%,transparent)"
                 strokeDasharray="4 5"
                 strokeWidth="1"
                 x1={x}
@@ -1739,35 +1741,39 @@ function WorkTrendChart({
           })}
           {solidPolyline ? <polyline fill="none" points={solidPolyline} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" /> : null}
           {dashedPolyline ? <polyline fill="none" points={dashedPolyline} stroke={color} strokeDasharray="8 7" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.8" strokeWidth="3" /> : null}
-          {activeTrendPoint && activeValue !== undefined ? (
+          {activeTrendPoint && activeValue !== undefined && activeCoordinate ? (
             <line
               stroke={color}
               strokeDasharray="4 5"
               strokeOpacity="0.45"
               strokeWidth="1.4"
-              x1={left + step * activeIndex}
-              x2={left + step * activeIndex}
+              x1={activeCoordinate.x}
+              x2={activeCoordinate.x}
               y1={top}
               y2={height - bottom + 4}
             />
           ) : null}
           {points.map((point, index) => {
-            const value = point[valueKey];
-            const x = left + step * index;
-            const y = top + usableHeight - (value / maxValue) * usableHeight;
+            const coordinate = coordinates[index];
+
+            if (!coordinate) {
+              return null;
+            }
+
+            const { x, y } = coordinate;
             const showLabel = shouldShowTrendLabel(points.length, index);
             const textAnchor = index === 0 ? "start" : index === points.length - 1 ? "end" : "middle";
 
             return (
               <g key={point.key}>
-                <circle cx={x} cy={y} fill="#ffffff" r="5" stroke={color} strokeWidth="2.5" />
+                <circle cx={x} cy={y} fill="color-mix(in srgb,var(--client-bg) 88%,var(--client-surface) 12%)" r="5" stroke={color} strokeWidth="2.5" />
                 {showLabel ? (
                   <>
-                    <text fill="rgba(23,24,23,0.5)" fontSize="9" fontWeight="800" textAnchor={textAnchor} x={x} y={height - (point.subLabel ? 22 : 10)}>
+                    <text fill="var(--client-muted)" fontSize="9" fontWeight="800" textAnchor={textAnchor} x={x} y={height - (point.subLabel ? 22 : 10)}>
                       {point.label}
                     </text>
                     {point.subLabel ? (
-                      <text fill="rgba(23,24,23,0.42)" fontSize="8.5" fontWeight="800" textAnchor={textAnchor} x={x} y={height - 9}>
+                      <text fill="var(--client-muted)" fontSize="8.5" fontWeight="800" opacity="0.84" textAnchor={textAnchor} x={x} y={height - 9}>
                         {point.subLabel}
                       </text>
                     ) : null}
@@ -1776,13 +1782,13 @@ function WorkTrendChart({
               </g>
             );
           })}
-          {activeTrendPoint && activeValue !== undefined ? (
+          {activeTrendPoint && activeValue !== undefined && activeCoordinate ? (
             <circle
-              cx={left + step * activeIndex}
-              cy={top + usableHeight - (activeValue / maxValue) * usableHeight}
+              cx={activeCoordinate.x}
+              cy={activeCoordinate.y}
               fill={color}
               r="7"
-              stroke="#ffffff"
+              stroke="color-mix(in srgb,var(--client-bg) 88%,var(--client-surface) 12%)"
               strokeWidth="3"
             />
           ) : null}
@@ -1832,22 +1838,23 @@ function CompactWorkTrendPreview({
   const left = 14;
   const top = 14;
   const bottom = points.some((point) => point.subLabel) ? 40 : 28;
-  const pointGroups = splitTrendPoints(points);
-  const solidValues = pointGroups.solid.map((point) => point[valueKey]);
-  const dashedValues = pointGroups.dashed.map((point) => point[valueKey]);
-  const solidPolyline = pointGroups.solid.length > 0 ? buildTrendPolyline(pointGroups.solid, solidValues, width, height, left, top, bottom) : "";
-  const dashedPolyline = pointGroups.dashed.length > 0 ? buildTrendPolyline(pointGroups.dashed, dashedValues, width, height, left, top, bottom) : "";
+  const right = 14;
+  const coordinates = buildTrendCoordinates(values, { bottom, height, left, right, top, width });
+  const pointGroups = splitTrendPointIndexes(points);
+  const solidPolyline = buildTrendPolylineFromIndexes(coordinates, pointGroups.solid);
+  const dashedPolyline = buildTrendPolylineFromIndexes(coordinates, pointGroups.dashed);
   const usableHeight = height - top - bottom;
-  const usableWidth = width - left - 14;
+  const usableWidth = width - left - right;
   const step = points.length > 1 ? usableWidth / (points.length - 1) : 0;
-  const labelColor = isNight ? "rgba(255,255,255,0.5)" : "rgba(23,24,23,0.48)";
-  const gridStroke = isNight ? "rgba(255,255,255,0.12)" : "rgba(32,38,56,0.12)";
-  const pointFill = isNight ? "#0f1211" : "#ffffff";
+  const labelColor = "var(--client-muted)";
+  const gridStroke = "color-mix(in srgb,var(--client-line) 74%,transparent)";
+  const pointFill = "color-mix(in srgb,var(--client-bg) 88%,var(--client-surface) 12%)";
   const [activePoint, setActivePoint] = useState<ChartPointerState | null>(null);
   const [pointerDown, setPointerDown] = useState(false);
   const activeIndex = activePoint?.index ?? -1;
   const activeTrendPoint = activeIndex >= 0 ? points[activeIndex] : undefined;
   const activeValue = activeIndex >= 0 ? values[activeIndex] : undefined;
+  const activeCoordinate = activeIndex >= 0 ? coordinates[activeIndex] : undefined;
   const updateActivePoint = (event: ReactPointerEvent<SVGSVGElement>) => {
     const nextPoint = resolveChartPointerState(event, {
       width,
@@ -1866,17 +1873,19 @@ function CompactWorkTrendPreview({
       className={cn(
         "min-w-0 max-w-full overflow-visible rounded-[20px] border px-3 py-3",
         isNight
-          ? "border-transparent bg-[linear-gradient(180deg,rgba(19,24,23,0.96),rgba(14,18,17,0.98))]"
+          ? "border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_88%,transparent),color-mix(in_srgb,var(--client-bg)_94%,transparent))]"
           : "border-line bg-white",
         className
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <p className={cn("text-[11px] font-bold", isNight ? "text-white/55" : "text-ink/48")}>{label}</p>
+        <p className="text-[11px] font-bold text-[color:var(--client-muted)]">{label}</p>
         <span
           className={cn(
             "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-black",
-            isNight ? "bg-white/8 text-white/78" : "bg-black/5 text-ink/72"
+            isNight
+              ? "bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-[color:var(--client-text)]"
+              : "bg-black/5 text-[color:var(--client-text)]"
           )}
         >
           {formatter(maxValue)} 峰值
@@ -1918,7 +1927,7 @@ function CompactWorkTrendPreview({
           {Array.from({ length: 3 }, (_, index) => {
             const y = top + (usableHeight / 2) * index;
 
-            return <line key={index} stroke={gridStroke} strokeDasharray="4 4" strokeWidth="1" x1={left} x2={width - 14} y1={y} y2={y} />;
+            return <line key={index} stroke={gridStroke} strokeDasharray="4 4" strokeWidth="1" x1={left} x2={width - right} y1={y} y2={y} />;
           })}
           {points.map((point, index) => {
             if (!shouldShowTrendLabel(points.length, index, true)) {
@@ -1942,22 +1951,26 @@ function CompactWorkTrendPreview({
           })}
           {solidPolyline ? <polyline fill="none" points={solidPolyline} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.5" /> : null}
           {dashedPolyline ? <polyline fill="none" points={dashedPolyline} stroke={color} strokeDasharray="8 7" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.82" strokeWidth="3.5" /> : null}
-          {activeTrendPoint && activeValue !== undefined ? (
+          {activeTrendPoint && activeValue !== undefined && activeCoordinate ? (
             <line
               stroke={color}
               strokeDasharray="4 5"
               strokeOpacity="0.48"
               strokeWidth="1.4"
-              x1={left + step * activeIndex}
-              x2={left + step * activeIndex}
+              x1={activeCoordinate.x}
+              x2={activeCoordinate.x}
               y1={top}
               y2={height - bottom + 4}
             />
           ) : null}
           {points.map((point, index) => {
-            const value = point[valueKey];
-            const x = left + step * index;
-            const y = top + usableHeight - (value / maxValue) * usableHeight;
+            const coordinate = coordinates[index];
+
+            if (!coordinate) {
+              return null;
+            }
+
+            const { x, y } = coordinate;
             const showLabel = shouldShowTrendLabel(points.length, index, true);
             const textAnchor = index === 0 ? "start" : index === points.length - 1 ? "end" : "middle";
 
@@ -1979,13 +1992,13 @@ function CompactWorkTrendPreview({
               </g>
             );
           })}
-          {activeTrendPoint && activeValue !== undefined ? (
+          {activeTrendPoint && activeValue !== undefined && activeCoordinate ? (
             <circle
-              cx={left + step * activeIndex}
-              cy={top + usableHeight - (activeValue / maxValue) * usableHeight}
+              cx={activeCoordinate.x}
+              cy={activeCoordinate.y}
               fill={color}
               r="6.4"
-              stroke={isNight ? "#0f1211" : "#ffffff"}
+              stroke={pointFill}
               strokeWidth="3"
             />
           ) : null}
@@ -2043,20 +2056,20 @@ function WorkStatisticsCard({
   const accentClassName =
     isNight
       ? mode === "store"
-        ? "border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_82%,transparent),color-mix(in_srgb,var(--client-bg)_86%,var(--client-primary)_14%))]"
-        : "border-[color:color-mix(in_srgb,var(--client-warm)_24%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_82%,transparent),color-mix(in_srgb,var(--client-bg)_86%,var(--client-warm)_14%))]"
+        ? "border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)]"
+        : "border-[color:color-mix(in_srgb,var(--client-warm)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)]"
       : mode === "store"
-        ? "border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-primary)_10%),color-mix(in_srgb,white_94%,var(--client-primary)_6%))]"
-        : "border-[color:color-mix(in_srgb,var(--client-warm)_24%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-warm)_10%),color-mix(in_srgb,white_94%,var(--client-warm)_6%))]";
+        ? "border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,var(--client-primary)_8%)]"
+        : "border-[color:color-mix(in_srgb,var(--client-warm)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,var(--client-warm)_8%)]";
   const scopePrefix = scope === "day" ? "当日" : scope === "week" ? "本周" : "本月";
   const chartSurfaceClassName =
     isNight
       ? mode === "store"
-        ? "border-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_76%,transparent),color-mix(in_srgb,var(--client-bg)_94%,transparent))]"
-        : "border-[color:color-mix(in_srgb,var(--client-warm)_16%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_76%,transparent),color-mix(in_srgb,var(--client-bg)_94%,transparent))]"
+        ? "border-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)]"
+        : "border-[color:color-mix(in_srgb,var(--client-warm)_16%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)]"
       : mode === "store"
-        ? "border-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),color-mix(in_srgb,white_92%,var(--client-primary)_8%))]"
-        : "border-[color:color-mix(in_srgb,var(--client-warm)_16%,transparent)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),color-mix(in_srgb,white_92%,var(--client-warm)_8%))]";
+        ? "border-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-primary)_6%)]"
+        : "border-[color:color-mix(in_srgb,var(--client-warm)_16%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-warm)_6%)]";
 
   return (
     <button
@@ -2073,8 +2086,8 @@ function WorkStatisticsCard({
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className={cn("text-[18px] font-black tracking-[-0.03em]", isNight ? "text-white" : "text-ink")}>{workModeLabels[mode]}</h3>
-          <p className={cn("mt-1 text-xs leading-5", isNight ? "text-white/60" : "text-ink/55")}>{description}</p>
+          <h3 className="text-[18px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">{workModeLabels[mode]}</h3>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--client-muted)]">{description}</p>
         </div>
         <span
           className={cn(
@@ -2084,7 +2097,7 @@ function WorkStatisticsCard({
                 ? "bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] text-[color:var(--client-primary-strong)]"
                 : "bg-[color:color-mix(in_srgb,var(--client-warm)_14%,transparent)] text-[color:var(--client-warm)]"
               : isNight
-                ? "bg-white/8 text-white/72"
+                ? "bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] text-[color:var(--client-muted)]"
                 : "bg-black/5 text-ink/48"
           )}
         >
@@ -2106,8 +2119,8 @@ function WorkStatisticsCard({
             )}
             key={label}
           >
-            <p className={cn("text-[11px] font-bold", isNight ? "text-white/48" : "text-ink/45")}>{label}</p>
-            <strong className={cn("mt-1 block truncate text-[15px] font-black tracking-[-0.03em] sm:text-base", isNight ? "text-white" : "text-ink")}>
+            <p className={cn("text-[11px] font-bold", isNight ? "text-[color:var(--client-muted)]" : "text-ink/45")}>{label}</p>
+            <strong className={cn("mt-1 block truncate text-[15px] font-black tracking-[-0.03em] sm:text-base", isNight ? "text-[color:var(--client-text)]" : "text-ink")}>
               {value}
             </strong>
           </div>
@@ -2138,7 +2151,7 @@ function WorkStatisticsCard({
       <div
         className={cn(
           "mt-3 rounded-[20px] border px-3 py-3 text-xs leading-5",
-          isNight ? "border-transparent bg-white/[0.04] text-white/70" : "border-black/5 bg-white/74 text-ink/58"
+          isNight ? "border-transparent bg-white/[0.04] text-[color:var(--client-muted)]" : "border-black/5 bg-white/74 text-ink/58"
         )}
       >
         {footer}
@@ -2285,6 +2298,10 @@ function getProfilePrivacySummary(privacyEnabled: boolean, visibility: Technicia
   return privacyEnabled ? getVisibilityLabel(visibility) : "公开可见";
 }
 
+function getTechnicianIdentityDisplayLabel(identityLabel: TechnicianProfile["identityLabel"]) {
+  return identityLabel === "店铺所属技师" ? "店铺所属" : identityLabel;
+}
+
 function getTechnicianProfileSurfaceClassNames() {
   return {
     shell: "border-[color:color-mix(in_srgb,var(--client-primary)_30%,var(--client-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--client-primary)_22%,transparent),transparent_34%),linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg)),color-mix(in_srgb,var(--client-bg)_94%,black))] text-[color:var(--client-text)]",
@@ -2305,20 +2322,6 @@ function formatTechnicianHeightValue(value: string) {
 
 function formatTechnicianRating(value: number) {
   return Number.isFinite(value) ? value.toFixed(1) : "5.0";
-}
-
-function formatTechnicianCompactYen(value: number) {
-  if (!Number.isFinite(value)) {
-    return yen(0);
-  }
-
-  if (Math.abs(value) >= 100_000) {
-    const manYen = value / 10_000;
-
-    return `￥${Number.isInteger(manYen) ? manYen.toFixed(0) : manYen.toFixed(1)}万`;
-  }
-
-  return yen(value);
 }
 
 function ProfilePrivacyInfoButton({ content, className }: { content: string; className?: string }) {
@@ -2698,6 +2701,7 @@ export function TechnicianPortalPage() {
   };
   const kycCopy = getKycCopy(language);
   const kycDocumentTypeLabels = kycCopy.documentTypeLabels;
+  const serviceAreaOptions = Array.from(new Set([...profileDraft.serviceAreas, ...technicianServiceAreaOptions])).slice(0, 18);
   const selectedCountryCatalog =
     serviceAreaCatalog[profileDraft.selectedCountry as keyof typeof serviceAreaCatalog] ?? serviceAreaCatalog["日本"];
   const availablePrefectures = Object.keys(selectedCountryCatalog) as string[];
@@ -3201,14 +3205,14 @@ export function TechnicianPortalPage() {
   const dataCenterWorkColor = "var(--client-primary)";
   const activeIncomeTrendShellClass =
     isNight
-      ? "border-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_82%,transparent),color-mix(in_srgb,var(--client-bg)_86%,var(--client-primary)_14%))]"
+      ? "border-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)]"
       : "border-line bg-paper";
   const activeIncomeMetricClass = isNight ? "border-transparent bg-white/[0.05]" : "border-black/5 bg-white";
-  const activeIncomeNextClass = isNight ? "border-transparent bg-white/[0.04] text-white/70" : "border-black/5 bg-white text-ink/58";
+  const activeIncomeNextClass = isNight ? "border-transparent bg-white/[0.04] text-[color:var(--client-muted)]" : "border-black/5 bg-white text-ink/58";
   const activeIncomeChartClass =
     isNight
-      ? "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_76%,transparent),color-mix(in_srgb,var(--client-bg)_94%,transparent))]"
-      : "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),color-mix(in_srgb,white_92%,var(--client-primary)_8%))]";
+      ? "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)]"
+      : "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_94%,var(--client-primary)_6%)]";
   const recentWorkRecords = [...dataCenterWorkEvents]
     .filter((event) => event.status === "booked" || event.status === "free" || event.planType)
     .sort((left, right) => `${right.date} ${right.startTime}`.localeCompare(`${left.date} ${left.startTime}`))
@@ -3218,7 +3222,6 @@ export function TechnicianPortalPage() {
   const technicianRating = formatTechnicianRating(baseTech.rating);
   const technicianInfoTags = Array.from(new Set([...techProfile.tags, ...techProfile.languages])).slice(0, 12);
   const technicianMetricCards = [
-    { label: "本月收入", value: formatTechnicianCompactYen(baseTech.income) },
     { label: "完成订单", value: baseTech.orderCount.toLocaleString("en-US") },
     { label: "服务评分", value: technicianRating, suffix: "/5", helper: `${baseTech.reviewCount} 人评价` }
   ];
@@ -3531,7 +3534,15 @@ export function TechnicianPortalPage() {
   };
 
   const openProfileEditor = () => {
-    navigate("/technician/settings/profile");
+    setProfileDraft(buildTechnicianProfileDraft(techProfile, profilePrivacyEnabled, profileVisibility, defaultAreaSelection, defaultLineSelection));
+    setProfilePrivacyMenuOpen(false);
+    setProfileEditorOpen(true);
+  };
+
+  const cancelProfileEdit = () => {
+    setProfileDraft(buildTechnicianProfileDraft(techProfile, profilePrivacyEnabled, profileVisibility, defaultAreaSelection, defaultLineSelection));
+    setProfilePrivacyMenuOpen(false);
+    setProfileEditorOpen(false);
   };
 
   const updateProfilePrivacyEnabled = (enabled: boolean) => {
@@ -3621,7 +3632,6 @@ export function TechnicianPortalPage() {
 
     setProfilePrivacyEnabled(profileDraft.privacyEnabled);
     setProfilePrivacyMenuOpen(false);
-    setProfileDraftPrivacyMenuOpen(false);
     setProfileVisibility(profileDraft.visibility);
     setProfileEditorOpen(false);
     setContactLog("技师资料已保存，信息卡与分享资料已同步更新。");
@@ -3692,6 +3702,15 @@ export function TechnicianPortalPage() {
       languages: current.languages.includes(language)
         ? current.languages.filter((item) => item !== language)
         : [...current.languages, language]
+    }));
+  };
+
+  const toggleDraftServiceArea = (area: string) => {
+    setProfileDraft((current) => ({
+      ...current,
+      serviceAreas: current.serviceAreas.includes(area)
+        ? current.serviceAreas.filter((item) => item !== area)
+        : [...current.serviceAreas, area]
     }));
   };
 
@@ -4218,17 +4237,17 @@ export function TechnicianPortalPage() {
               "mt-4 rounded-[28px] border p-4",
               routeWorkDetailMode === "store"
                 ? isNight
-                  ? "border-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_82%,transparent),color-mix(in_srgb,var(--client-bg)_86%,var(--client-primary)_14%))]"
+                  ? "border-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)]"
                   : "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-primary)_10%),color-mix(in_srgb,white_94%,var(--client-primary)_6%))]"
                 : isNight
-                  ? "border-[color:color-mix(in_srgb,var(--client-warm)_18%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_82%,transparent),color-mix(in_srgb,var(--client-bg)_86%,var(--client-warm)_14%))]"
+                  ? "border-[color:color-mix(in_srgb,var(--client-warm)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,var(--client-bg)_12%)]"
                   : "border-[color:color-mix(in_srgb,var(--client-warm)_14%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-surface)_90%,var(--client-warm)_10%),color-mix(in_srgb,white_94%,var(--client-warm)_6%))]"
             )}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className={cn("text-[18px] font-black tracking-[-0.03em]", isNight ? "text-white" : "text-ink")}>{workModeLabels[routeWorkDetailMode]}</h3>
-                <p className={cn("mt-1 text-xs leading-5", isNight ? "text-white/60" : "text-ink/55")}>{routeActiveModeDescription}</p>
+                <h3 className={cn("text-[18px] font-black tracking-[-0.03em]", isNight ? "text-[color:var(--client-text)]" : "text-ink")}>{workModeLabels[routeWorkDetailMode]}</h3>
+                <p className={cn("mt-1 text-xs leading-5", isNight ? "text-[color:var(--client-muted)]" : "text-ink/55")}>{routeActiveModeDescription}</p>
               </div>
               <Badge tone="neutral">{routeWorkDetailScope === "day" ? "日视图" : routeWorkDetailScope === "week" ? "周视图" : "月视图"}</Badge>
             </div>
@@ -4246,8 +4265,8 @@ export function TechnicianPortalPage() {
                   )}
                   key={label}
                 >
-                  <p className={cn("text-[11px] font-bold", isNight ? "text-white/48" : "text-ink/45")}>{label}</p>
-                  <strong className={cn("mt-1 block text-base font-black tracking-[-0.03em]", isNight ? "text-white" : "text-ink")}>{value}</strong>
+                  <p className={cn("text-[11px] font-bold", isNight ? "text-[color:var(--client-muted)]" : "text-ink/45")}>{label}</p>
+                  <strong className={cn("mt-1 block text-base font-black tracking-[-0.03em]", isNight ? "text-[color:var(--client-text)]" : "text-ink")}>{value}</strong>
                 </div>
               ))}
             </div>
@@ -4265,7 +4284,7 @@ export function TechnicianPortalPage() {
                   key={label}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <p className={cn("text-[11px] font-bold", isNight ? "text-white/48" : "text-ink/45")}>{label}</p>
+                    <p className={cn("text-[11px] font-bold", isNight ? "text-[color:var(--client-muted)]" : "text-ink/45")}>{label}</p>
                     <Badge tone={tone}>{value}</Badge>
                   </div>
                 </div>
@@ -4274,7 +4293,7 @@ export function TechnicianPortalPage() {
             <div
               className={cn(
                 "mt-3 rounded-[20px] border px-3 py-3 text-xs leading-5",
-                isNight ? "border-transparent bg-white/[0.04] text-white/70" : "border-black/5 bg-white text-ink/58"
+                isNight ? "border-transparent bg-white/[0.04] text-[color:var(--client-muted)]" : "border-black/5 bg-white text-ink/58"
               )}
             >
               下一条安排：{routeActiveNextLabel}
@@ -4284,10 +4303,10 @@ export function TechnicianPortalPage() {
                 "mt-4 shadow-none",
                 routeWorkDetailMode === "store"
                   ? isNight
-                    ? "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_76%,transparent),color-mix(in_srgb,var(--client-bg)_94%,transparent))]"
+                    ? "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)]"
                     : "border-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),color-mix(in_srgb,white_92%,var(--client-primary)_8%))]"
                   : isNight
-                    ? "border-[color:color-mix(in_srgb,var(--client-warm)_14%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_76%,transparent),color-mix(in_srgb,var(--client-bg)_94%,transparent))]"
+                    ? "border-[color:color-mix(in_srgb,var(--client-warm)_14%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)]"
                     : "border-[color:color-mix(in_srgb,var(--client-warm)_14%,transparent)] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),color-mix(in_srgb,white_92%,var(--client-warm)_8%))]"
               )}
               color={routeWorkDetailMode === "store" ? "var(--client-primary)" : "var(--client-warm)"}
@@ -5023,29 +5042,59 @@ export function TechnicianPortalPage() {
                       <IconButton
                         className={cn("absolute right-0 top-0 z-10 shadow-[0_14px_30px_rgba(0,0,0,0.22)]", technicianProfileSurface.metric)}
                         icon="edit"
-                        label="编辑信息卡"
-                        onClick={openProfileEditor}
+                        label={profileEditorOpen ? "收起编辑" : "编辑信息卡"}
+                        onClick={profileEditorOpen ? cancelProfileEdit : openProfileEditor}
                       />
                       <div className="flex min-w-0 items-start gap-3">
                         <div className="shrink-0">
-                          <AvatarImage
-                            alt={techProfile.nickname}
-                            className={cn("h-36 w-36 rounded-[28px] border-[3px] shadow-[0_18px_36px_rgba(0,0,0,0.28)]", technicianProfileSurface.avatar)}
-                            src={techProfile.avatar}
-                          />
+                          <div className="relative h-36 w-36">
+                            <AvatarImage
+                              alt={profileEditorOpen ? profileDraft.nickname : techProfile.nickname}
+                              className={cn("h-36 w-36 rounded-[28px] border-[3px] shadow-[0_18px_36px_rgba(0,0,0,0.28)]", technicianProfileSurface.avatar)}
+                              src={profileEditorOpen ? profileDraft.avatar : techProfile.avatar}
+                            />
+                            {profileEditorOpen ? (
+                              <>
+                                <input accept="image/*" className="hidden" onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
+                                <IconButton
+                                  className={cn(
+                                    "absolute bottom-2 right-2 h-10 w-10 border-[2px] shadow-[0_12px_26px_rgba(0,0,0,0.34)]",
+                                    technicianProfileSurface.metric
+                                  )}
+                                  icon="edit"
+                                  label="更换头像"
+                                  onClick={() => avatarInputRef.current?.click()}
+                                />
+                              </>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="flex h-36 min-w-0 flex-1 flex-col">
-                          <h2 className="max-w-[calc(100%-44px)] overflow-hidden break-all text-[21px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
-                            {techProfile.nickname}
-                            <KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" />
-                          </h2>
+                        <div className={cn("flex min-w-0 flex-1 flex-col", profileEditorOpen ? "min-h-36" : "h-36")}>
+                          {profileEditorOpen ? (
+                            <div className="flex min-w-0 items-start gap-1.5">
+                              <textarea
+                                aria-label="昵称"
+                                autoFocus
+                                className="-ml-0.5 -mt-1 max-h-[84px] min-h-[38px] max-w-[calc(100%-22px)] flex-1 resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-1 text-[21px] font-black leading-tight shadow-none outline-none [appearance:none] [overflow-wrap:anywhere]"
+                                onChange={(event) => setProfileDraft((current) => ({ ...current, nickname: event.currentTarget.value }))}
+                                rows={3}
+                                value={profileDraft.nickname}
+                              />
+                              <KycVerifiedBadge className="mt-1.5" size="label" />
+                            </div>
+                          ) : (
+                            <h2 className="max-w-[calc(100%-44px)] overflow-hidden break-all text-[21px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
+                              {techProfile.nickname}
+                              <KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" />
+                            </h2>
+                          )}
                           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
                             <span className={cn("inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-[11px] font-black", technicianProfileSurface.chip)}>
-                              {techProfile.identityLabel}
+                              {getTechnicianIdentityDisplayLabel(profileEditorOpen ? profileDraft.identityLabel : techProfile.identityLabel)}
                             </span>
                           </div>
                           <p className={cn("truncate text-xs font-bold", technicianProfileSurface.muted)}>ID：{baseTech.systemId}</p>
-                          <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                          <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", technicianProfileSurface.panel)} data-testid="technician-profile-privacy-control">
                             <div className="flex items-center justify-between gap-3">
                               <button
                                 aria-expanded={profilePrivacyEnabled ? profilePrivacyMenuOpen : undefined}
@@ -5115,7 +5164,7 @@ export function TechnicianPortalPage() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-3 gap-2">
+                      <div className="mt-4 grid grid-cols-2 gap-2">
                         {technicianMetricCards.map((item) => (
                           <div className={cn("rounded-[18px] border p-2.5", technicianProfileSurface.metric)} key={item.label}>
                             <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>{item.label}</p>
@@ -5134,42 +5183,227 @@ export function TechnicianPortalPage() {
 
                       <div>
                         <h2 className="text-lg font-black">基础信息</h2>
-                        <div className="mt-3 grid grid-cols-3 gap-2">
-                          {[
-                            ["身份", techProfile.identityLabel],
-                            ["年龄", techProfile.age || "未设置"],
-                            ["身高（cm）", formatTechnicianHeightValue(techProfile.height) || "未设置"]
-                          ].map(([label, value]) => (
-                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)} key={label}>
-                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>{label}</p>
-                              <strong className="mt-1 block truncate text-sm">{value}</strong>
+                        {profileEditorOpen ? (
+                          <div className="mt-3 space-y-3">
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                                <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>身份</p>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {(["店铺所属技师", "个人技师"] as const).map((label) => (
+                                    <button
+                                      className={cn(
+                                        "rounded-full border px-2.5 py-1 text-xs font-black",
+                                        profileDraft.identityLabel === label ? technicianProfileSurface.chip : technicianProfileSurface.metric
+                                      )}
+                                      key={label}
+                                      onClick={() => setProfileDraft((current) => ({ ...current, identityLabel: label }))}
+                                      type="button"
+                                    >
+                                      {getTechnicianIdentityDisplayLabel(label)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <label className={cn("block rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                                <span className={cn("block text-xs font-bold", technicianProfileSurface.label)}>年龄</span>
+                                <input
+                                  className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
+                                  onChange={(event) => setProfileDraft((current) => ({ ...current, age: event.currentTarget.value }))}
+                                  value={profileDraft.age}
+                                />
+                              </label>
+                              <label className={cn("block rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                                <span className={cn("block text-xs font-bold", technicianProfileSurface.label)}>身高（cm）</span>
+                                <input
+                                  className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
+                                  inputMode="decimal"
+                                  onChange={(event) => setProfileDraft((current) => ({ ...current, height: formatTechnicianHeightValue(event.currentTarget.value) }))}
+                                  value={formatTechnicianHeightValue(profileDraft.height)}
+                                />
+                              </label>
                             </div>
-                          ))}
-                        </div>
-                        <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)}>
-                          <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>语言能力</p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {techProfile.languages.map((language) => (
-                              <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", technicianProfileSurface.chip)} key={language}>
-                                {language}
-                              </span>
-                            ))}
+
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>接待范围</p>
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                {[
+                                  { label: "服务外国人", value: true },
+                                  { label: "不服务外国人", value: false }
+                                ].map((option) => (
+                                  <button
+                                    className={cn(
+                                      "rounded-full border px-2.5 py-2 text-xs font-black",
+                                      profileDraft.canServeForeigners === option.value ? technicianProfileSurface.chip : technicianProfileSurface.metric
+                                    )}
+                                    key={option.label}
+                                    onClick={() => setProfileDraft((current) => ({ ...current, canServeForeigners: option.value }))}
+                                    type="button"
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>语言能力</p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {languageOptions.map((language) => (
+                                  <button
+                                    className={cn(
+                                      "rounded-full border px-2.5 py-1 text-xs font-black",
+                                      profileDraft.languages.includes(language) ? technicianProfileSurface.chip : technicianProfileSurface.metric
+                                    )}
+                                    key={language}
+                                    onClick={() => toggleDraftLanguage(language)}
+                                    type="button"
+                                  >
+                                    {language}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>服务范围</p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {serviceAreaOptions.map((area) => (
+                                  <button
+                                    className={cn(
+                                      "rounded-full border px-2.5 py-1 text-xs font-black",
+                                      profileDraft.serviceAreas.includes(area) ? technicianProfileSurface.chip : technicianProfileSurface.metric
+                                    )}
+                                    key={area}
+                                    onClick={() => toggleDraftServiceArea(area)}
+                                    type="button"
+                                  >
+                                    {area}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>标签</p>
+                              <div className="mt-2 space-y-2">
+                                {tagGroups.map((group) => (
+                                  <div key={group.title}>
+                                    <p className={cn("text-[11px] font-black", technicianProfileSurface.label)}>{group.title}</p>
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                      {group.tags.map((tag) => (
+                                        <button
+                                          className={cn(
+                                            "rounded-full border px-2.5 py-1 text-xs font-black",
+                                            profileDraft.tags.includes(tag) ? technicianProfileSurface.chip : technicianProfileSurface.metric
+                                          )}
+                                          key={tag}
+                                          onClick={() => toggleDraftTag(tag)}
+                                          type="button"
+                                        >
+                                          {tag}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>接单预算</p>
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                <input
+                                  aria-label="抢单预算下限"
+                                  className={cn("h-9 rounded-full border bg-transparent px-3 text-sm font-black outline-none", technicianProfileSurface.metric)}
+                                  onChange={(event) => setProfileDraft((current) => ({ ...current, bidBudgetMin: event.currentTarget.value }))}
+                                  value={profileDraft.bidBudgetMin}
+                                />
+                                <input
+                                  aria-label="抢单预算上限"
+                                  className={cn("h-9 rounded-full border bg-transparent px-3 text-sm font-black outline-none", technicianProfileSurface.metric)}
+                                  onChange={(event) => setProfileDraft((current) => ({ ...current, bidBudgetMax: event.currentTarget.value }))}
+                                  value={profileDraft.bidBudgetMax}
+                                />
+                              </div>
+                            </div>
+
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>支持支付方式</p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {paymentOptions.map((method) => (
+                                  <button
+                                    className={cn(
+                                      "rounded-full border px-2.5 py-1 text-xs font-black",
+                                      profileDraft.paymentMethods.includes(method) ? technicianProfileSurface.chip : technicianProfileSurface.metric
+                                    )}
+                                    key={method}
+                                    onClick={() => toggleDraftPaymentMethod(method)}
+                                    type="button"
+                                  >
+                                    {paymentOptionLabels[method]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <label className={cn("block overflow-hidden rounded-[24px] border px-5 py-4", technicianProfileSurface.panel)}>
+                              <span className={cn("block text-xs font-bold", technicianProfileSurface.label)}>自我介绍</span>
+                              <textarea
+                                className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none"
+                                onChange={(event) => setProfileDraft((current) => ({ ...current, bio: event.currentTarget.value }))}
+                                value={profileDraft.bio}
+                              />
+                            </label>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", technicianProfileSurface.metric)} onClick={cancelProfileEdit} type="button">
+                                取消
+                              </button>
+                              <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", technicianProfileSurface.chip)} onClick={saveProfile} type="button">
+                                保存
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                        <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", technicianProfileSurface.panel)}>
-                          <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>自我介绍</p>
-                          <p className={cn("mt-2 text-sm leading-6", technicianProfileSurface.muted)}>{techProfile.bio}</p>
-                        </div>
-                        <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)} data-testid="technician-info-tags">
-                          <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>标签</p>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {technicianInfoTags.map((tag) => (
-                              <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", technicianProfileSurface.chip)} key={tag}>
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
+                        ) : (
+                          <>
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                              {[
+                                ["身份", getTechnicianIdentityDisplayLabel(techProfile.identityLabel)],
+                                ["年龄", techProfile.age || "未设置"],
+                                ["身高（cm）", formatTechnicianHeightValue(techProfile.height) || "未设置"]
+                              ].map(([label, value]) => (
+                                <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)} key={label}>
+                                  <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>{label}</p>
+                                  <strong className="mt-1 block truncate text-sm">{value}</strong>
+                                </div>
+                              ))}
+                            </div>
+                            <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>语言能力</p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {techProfile.languages.map((language) => (
+                                  <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", technicianProfileSurface.chip)} key={language}>
+                                    {language}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>自我介绍</p>
+                              <p className={cn("mt-2 text-sm leading-6", technicianProfileSurface.muted)}>{techProfile.bio}</p>
+                            </div>
+                            <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)} data-testid="technician-info-tags">
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>标签</p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {technicianInfoTags.map((tag) => (
+                                  <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", technicianProfileSurface.chip)} key={tag}>
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -5186,8 +5420,8 @@ export function TechnicianPortalPage() {
                     <div className={cn("mt-4 rounded-[24px] border p-4", activeIncomeTrendShellClass)}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h3 className={cn("text-[18px] font-black tracking-[-0.03em]", isNight ? "text-white" : "text-ink")}>{dataCenterWorkProfile.title}</h3>
-                          <p className={cn("mt-1 text-xs leading-5", isNight ? "text-white/60" : "text-ink/55")}>{dataCenterWorkProfile.caption}</p>
+                          <h3 className={cn("text-[18px] font-black tracking-[-0.03em]", isNight ? "text-[color:var(--client-text)]" : "text-ink")}>{dataCenterWorkProfile.title}</h3>
+                          <p className={cn("mt-1 text-xs leading-5", isNight ? "text-[color:var(--client-muted)]" : "text-ink/55")}>{dataCenterWorkProfile.caption}</p>
                         </div>
                         <Badge tone="neutral">{dataCenterWorkProfile.settlement}</Badge>
                       </div>
@@ -5198,8 +5432,8 @@ export function TechnicianPortalPage() {
                           ["未来安排", `${dataCenterWorkProfile.future} 条`]
                         ].map(([label, value]) => (
                           <div className={cn("rounded-[18px] border p-3", activeIncomeMetricClass)} key={label}>
-                            <p className={cn("text-[11px] font-bold", isNight ? "text-white/48" : "text-ink/45")}>{label}</p>
-                            <strong className={cn("mt-1 block text-sm font-black", isNight ? "text-white" : "text-ink")}>{value}</strong>
+                            <p className={cn("text-[11px] font-bold", isNight ? "text-[color:var(--client-muted)]" : "text-ink/45")}>{label}</p>
+                            <strong className={cn("mt-1 block text-sm font-black", isNight ? "text-[color:var(--client-text)]" : "text-ink")}>{value}</strong>
                           </div>
                         ))}
                       </div>
@@ -5283,7 +5517,7 @@ export function TechnicianPortalPage() {
           </>
         )}
 
-        {profileEditorOpen && (
+        {false && profileEditorOpen && (
           <MobileFullscreenPage>
               <MobileFullscreenHeader
                 action={(
@@ -5320,7 +5554,7 @@ export function TechnicianPortalPage() {
                       <p className="text-xs font-bold text-moss">实时预览</p>
                       <h3 className="mt-1 truncate text-lg font-black">{profileDraft.nickname || techProfile.nickname}</h3>
                       <p className="mt-1 text-xs text-ink/50">
-                        {profileDraft.identityLabel} · {profileDraft.canServeForeigners ? "服务外国人" : "不服务外国人"}
+                        {getTechnicianIdentityDisplayLabel(profileDraft.identityLabel)} · {profileDraft.canServeForeigners ? "服务外国人" : "不服务外国人"}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Badge tone={!profileDraft.privacyEnabled || profileDraft.visibility === "privateAll" ? "neutral" : "yellow"}>
@@ -5377,7 +5611,7 @@ export function TechnicianPortalPage() {
                             }))}
                           value={profileDraft.identityLabel}
                         >
-                          <option value="店铺所属技师">店铺所属技师</option>
+                          <option value="店铺所属技师">店铺所属</option>
                           <option value="个人技师">个人技师</option>
                         </select>
                         </label>

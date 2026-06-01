@@ -1853,8 +1853,7 @@ function UserProfileSettingsPage({
       bio:
         customer.bio ??
         technician?.bio ??
-        "可在这里补充你的语言偏好、常用预约习惯和其他说明。",
-      infoCardVisibility: normalizeInfoCardVisibilityDraft(customer.infoCardVisibility)
+        "可在这里补充你的语言偏好、常用预约习惯和其他说明。"
     }),
     [customer, technician]
   );
@@ -1901,8 +1900,7 @@ function UserProfileSettingsPage({
       age: draft.age.trim(),
       height: draft.height.trim(),
       languages: draft.languages.length ? [...draft.languages] : [...initialDraft.languages],
-      bio: draft.bio.trim(),
-      infoCardVisibility: normalizeInfoCardVisibilityDraft(draft.infoCardVisibility)
+      bio: draft.bio.trim()
     };
 
     updateCustomerEntity(customer.id, {
@@ -1911,8 +1909,7 @@ function UserProfileSettingsPage({
       age: nextProfile.age,
       height: nextProfile.height,
       languages: [...nextProfile.languages],
-      bio: nextProfile.bio,
-      infoCardVisibility: nextProfile.infoCardVisibility
+      bio: nextProfile.bio
     });
 
     if (technician) {
@@ -2060,17 +2057,6 @@ function UserProfileSettingsPage({
             </div>
           </SurfacePanel>
 
-          <SurfacePanel className="space-y-4">
-            <div>
-              <p className="text-[18px] font-black text-[color:var(--client-text)]">信息卡可见范围</p>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--client-muted)]">控制用户信息卡在聊天、订单和资料页里的展示对象。</p>
-            </div>
-            <InfoCardVisibilityEditor
-              availableTags={[...customer.tags, ...(draft.languages ?? []), customer.memberLevel, customer.creditRating ?? ""]}
-              onChange={(infoCardVisibility) => setDraft((current) => ({ ...current, infoCardVisibility }))}
-              value={draft.infoCardVisibility}
-            />
-          </SurfacePanel>
         </main>
 
         <StickyBottomBar>
@@ -2087,7 +2073,6 @@ function UserProfileSettingsPage({
 
 function TechnicianProfileSettingsPage({ portal, technician }: { portal: UnifiedSettingsPortal; technician: Technician }) {
   const navigate = useNavigate();
-  const { isNight } = useClientTheme();
   type TechnicianPaymentOption = NonNullable<Technician["paymentMethods"]>[number];
   type TechnicianProfileDraft = {
     avatar: string;
@@ -2104,7 +2089,6 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
     bidBudgetMin: string;
     bidBudgetMax: string;
     paymentMethods: TechnicianPaymentOption[];
-    infoCardVisibility: InfoCardVisibilitySettings;
   };
 
   const languageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
@@ -2117,11 +2101,6 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
     paypal: "PayPal",
     wechatpay: "WeChat Pay",
     alipay: "Alipay"
-  };
-  const genderLabels: Record<NonNullable<Technician["gender"]>, string> = {
-    male: "男",
-    female: "女",
-    private: "保密"
   };
   const paymentOptions: TechnicianPaymentOption[] = ["platform", "offline", "cash", "prepay", "paypay", "paypal", "wechatpay", "alipay"];
   const serviceAreaCatalog = {
@@ -2169,8 +2148,7 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
     canServeForeigners: current.canServeForeigners ?? true,
     bidBudgetMin: current.bidBudgetMin ?? "12000",
     bidBudgetMax: current.bidBudgetMax ?? "28000",
-    paymentMethods: current.paymentMethods?.length ? [...current.paymentMethods] : ["platform", "offline", "cash"],
-    infoCardVisibility: normalizeInfoCardVisibilityDraft(current.infoCardVisibility)
+    paymentMethods: current.paymentMethods?.length ? [...current.paymentMethods] : ["platform", "offline", "cash"]
   });
   const [draft, setDraft] = useState<TechnicianProfileDraft>(() => buildDraft(technician));
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -2190,44 +2168,6 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
       })),
     []
   );
-  const previewTags = useMemo(
-    () => Array.from(new Set([...draft.profileTags, ...draft.languages.map((item) => (item === "中文" ? "🀄 中文" : item === "日本語" ? "🗾 日本語" : item))])).slice(0, 10),
-    [draft.languages, draft.profileTags]
-  );
-  const summarizePreviewList = (values: string[], maxVisible = 2, fallback = "未设置") => {
-    if (values.length === 0) {
-      return fallback;
-    }
-
-    if (values.length <= maxVisible) {
-      return values.join(" / ");
-    }
-
-    return `${values.slice(0, maxVisible).join(" / ")} +${values.length - maxVisible}`;
-  };
-  const previewBudgetLabel =
-    draft.bidBudgetMin.trim() && draft.bidBudgetMax.trim()
-      ? `¥${draft.bidBudgetMin.trim()} - ¥${draft.bidBudgetMax.trim()}`
-      : draft.bidBudgetMin.trim()
-        ? `¥${draft.bidBudgetMin.trim()} 起`
-        : draft.bidBudgetMax.trim()
-          ? `最高 ¥${draft.bidBudgetMax.trim()}`
-          : "待设置";
-  const previewGenderLabel = genderLabels[draft.gender];
-  const previewAgeLabel = draft.age.trim() ? `${draft.age.trim()}岁` : "";
-  const previewServiceRatingLabel = `★${technician.rating.toFixed(1).replace(/\.0$/, "")}`;
-  const previewForeignerLabel = draft.canServeForeigners ? "外国人对应" : "暂未开启";
-  const previewFacts = [
-    { label: "服务范围", value: summarizePreviewList(draft.serviceAreas, 2) },
-    { label: "语言能力", value: summarizePreviewList(draft.languages, 2) },
-    { label: "支付方式", value: summarizePreviewList(draft.paymentMethods.map((item) => paymentOptionLabels[item]), 2) },
-    { label: "主打标签", value: summarizePreviewList(draft.profileTags.map((item) => item.replace(/^[^\u4e00-\u9fffA-Za-z0-9]+/, "").trim()), 2) }
-  ];
-  const previewPrimaryTags = previewTags.slice(0, 6);
-  const previewHiddenTagCount = Math.max(previewTags.length - previewPrimaryTags.length, 0);
-  const previewBio = draft.bio.trim() || "请补充擅长项目、接单说明和服务风格。";
-  const previewBioSummary = previewBio.length > 86 ? `${previewBio.slice(0, 86)}…` : previewBio;
-
   useEffect(() => {
     setDraft(buildDraft(technician));
   }, [technician]);
@@ -2266,8 +2206,7 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
       canServeForeigners: draft.canServeForeigners,
       bidBudgetMin: draft.bidBudgetMin.trim() || undefined,
       bidBudgetMax: draft.bidBudgetMax.trim() || undefined,
-      paymentMethods: Array.from(new Set(draft.paymentMethods)),
-      infoCardVisibility: normalizeInfoCardVisibilityDraft(draft.infoCardVisibility)
+      paymentMethods: Array.from(new Set(draft.paymentMethods))
     });
     navigate(getSettingsBasePath(portal));
   };
@@ -2279,121 +2218,14 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
         ? "border-[color:var(--client-primary)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] text-[color:var(--client-primary)]"
         : "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] text-[color:var(--client-text)]"
     );
-  const previewShellClassName = cn(
-    "relative w-full overflow-hidden rounded-[32px] border px-5 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5",
-    isNight
-      ? "border-[color:color-mix(in_srgb,var(--client-line)_90%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-bg)_94%,#030d09),color-mix(in_srgb,var(--client-surface)_90%,var(--client-bg))_56%,color-mix(in_srgb,var(--client-warm)_34%,var(--client-bg))_100%)] shadow-[0_22px_48px_rgba(0,0,0,0.28)]"
-      : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[linear-gradient(145deg,color-mix(in_srgb,var(--client-bg)_88%,white),color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg))_58%,color-mix(in_srgb,var(--client-primary-soft)_74%,white)_100%)] shadow-[0_18px_38px_rgba(0,0,0,0.10)]"
-  );
-  const previewGlassClassName = cn(
-    "rounded-[22px] border backdrop-blur-sm",
-    isNight
-      ? "border-transparent bg-[color:color-mix(in_srgb,var(--client-surface)_92%,var(--client-bg))]"
-      : "border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,white)]"
-  );
-  const previewSubtleClassName = cn(
-    "rounded-full px-3 py-1 text-[11px] font-black",
-    "border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] text-[color:var(--client-text)]"
-  );
-
   return (
     <SettingsDetailPage
       backTo={getSettingsBasePath(portal)}
       contentClassName="space-y-6 pb-32 pt-[calc(env(safe-area-inset-top)+2.5rem)]"
       info="技师资料已经恢复成独立页面维护，保留技师专属字段，不再使用我的页上层浮窗。"
+      navItems={[]}
       title="资料编辑"
     >
-      <section className="-mt-5 space-y-2">
-        <TitleWithInfo
-          as="h2"
-          className="gap-2.5"
-          info="这里预览的是技师主页信息卡的主视觉和公开资料重点。"
-          infoClassName="h-5 w-5 text-[11px]"
-          label="查看技师名片预览说明"
-          title="技师名片预览"
-          titleClassName="text-[17px] font-black tracking-[-0.02em] text-[color:var(--client-text)]"
-          variant="client"
-        />
-        <div>
-          <div className={cn("w-full", previewShellClassName)}>
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,color-mix(in_srgb,var(--client-primary)_16%,transparent),transparent_32%),radial-gradient(circle_at_bottom_left,color-mix(in_srgb,var(--client-warm)_18%,transparent),transparent_34%)]" />
-            <div className="absolute inset-x-0 top-0 h-14 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-primary)_14%,transparent),transparent)]" />
-            <div className="relative z-10 flex items-start gap-3">
-              <AvatarImage alt={draft.nickname} className="h-20 w-20 shrink-0 rounded-[24px] shadow-[0_12px_24px_rgba(0,0,0,0.16)]" src={draft.avatar} />
-              <div className="min-w-0 flex-1 self-stretch">
-                <div className="grid h-20 min-w-0 grid-rows-[auto_auto_1fr_auto]">
-                  <div className="flex items-center gap-2">
-                    <h2 className="truncate text-[22px] font-black tracking-[-0.04em] text-[color:var(--client-text)]">{draft.nickname}</h2>
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color:var(--client-primary)] text-[#081109] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]">
-                      <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" viewBox="0 0 12 12">
-                        <path d="m2.5 6.1 2.1 2.1 4.9-4.9" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-                      </svg>
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    <span className={previewSubtleClassName}>{previewGenderLabel}</span>
-                    {previewAgeLabel ? <span className={previewSubtleClassName}>{previewAgeLabel}</span> : null}
-                    {draft.height.trim() ? <span className={previewSubtleClassName}>{draft.height.trim()} cm</span> : null}
-                  </div>
-                  <p className="row-start-4 text-[12px] leading-none text-[color:var(--client-muted)]">ID {technician.systemId}</p>
-                </div>
-              </div>
-            </div>
-            <div className="relative z-10 mt-3 flex min-w-0 gap-1.5">
-              <div className={cn("min-w-0 basis-0 flex-1 px-2 py-2.5", previewGlassClassName)}>
-                <p className="text-[9px] font-black tracking-[0.04em] text-[color:var(--client-muted)]">外国人对应</p>
-                <p
-                  className={cn(
-                    "mt-1 break-words text-[11px] font-black leading-4",
-                    draft.canServeForeigners ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]"
-                  )}
-                >
-                  {previewForeignerLabel}
-                </p>
-              </div>
-              <div className={cn("min-w-0 basis-0 flex-[1.08] px-2 py-2.5 text-center", previewGlassClassName)}>
-                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[color:var(--client-muted)]">接单预算</p>
-                <p className="mt-1 break-words text-[12px] font-black leading-4 text-[color:var(--client-text)]">{previewBudgetLabel}</p>
-              </div>
-              <div className={cn("min-w-0 basis-0 flex-1 px-2 py-2.5 text-right", previewGlassClassName)}>
-                <p className="text-[9px] font-black tracking-[0.04em] text-[color:var(--client-muted)]">服务评价</p>
-                <p className="mt-1 break-words text-[12px] font-black leading-4 text-[color:var(--client-text)]">{previewServiceRatingLabel}</p>
-              </div>
-            </div>
-            <div className="relative z-10 mt-4 grid grid-cols-2 gap-2">
-              {previewFacts.map((item) => (
-                <div className={cn("px-3 py-3", previewGlassClassName)} key={item.label}>
-                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[color:var(--client-muted)]">{item.label}</p>
-                  <p className="mt-1.5 text-[13px] font-black leading-5 text-[color:var(--client-text)]">{item.value}</p>
-                </div>
-              ))}
-            </div>
-            <div className={cn("relative z-10 mt-3 px-4 py-3.5", previewGlassClassName)}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-black text-[color:var(--client-text)]">公开简介</p>
-                <span className={previewSubtleClassName}>{draft.profileTags.length} 个标签</span>
-              </div>
-              <p className="mt-2 text-[12px] leading-6 text-[color:var(--client-muted)]">{previewBioSummary}</p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {previewPrimaryTags.map((tag) => (
-                  <span
-                    className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-text)]"
-                    key={tag}
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {previewHiddenTagCount > 0 ? (
-                  <span className="rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-2.5 py-1 text-[10px] font-black text-[color:var(--client-muted)]">
-                    +{previewHiddenTagCount}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <SettingsSection
         description="头像、昵称和基础身份信息会同步到技师主页与分享资料。"
         headerMode="info"
@@ -2634,24 +2466,8 @@ function TechnicianProfileSettingsPage({ portal, technician }: { portal: Unified
             <p className="mt-1 text-[12px] leading-6 text-[color:var(--client-muted)]">
               支付方式：{draft.paymentMethods.length > 0 ? draft.paymentMethods.map((item) => paymentOptionLabels[item]).join(" / ") : "未设置"}
             </p>
-            <p className="mt-1 text-[12px] leading-6 text-[color:var(--client-muted)]">
-              可见范围：{getInfoCardVisibilityLabel(draft.infoCardVisibility)}
-            </p>
           </div>
         </div>
-      </SettingsSection>
-
-      <SettingsSection
-        description="控制技师信息卡在公开主页、聊天置顶卡、订单联络卡中的展示对象。"
-        headerMode="info"
-        panelClassName="p-4"
-        title="信息卡可见范围"
-      >
-        <InfoCardVisibilityEditor
-          availableTags={[...draft.profileTags, ...technician.skills, ...draft.serviceAreas, ...draft.languages, draft.identityLabel]}
-          onChange={(infoCardVisibility) => setDraft((current) => ({ ...current, infoCardVisibility }))}
-          value={draft.infoCardVisibility}
-        />
       </SettingsSection>
 
       <SettingsSection description="这里建议写清楚服务风格、擅长项目和沟通说明。" headerMode="info" panelClassName="p-4" title="自我介绍">
