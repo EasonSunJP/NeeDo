@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { AppIcon } from "../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../components/ui/AvatarImage";
@@ -147,6 +148,7 @@ export function TechnicianPublicInfoCard({
   const themeStyle = getTechnicianPublicInfoCardThemeStyle(themeScope);
   const technicianInfoTags = (technician.profileTags?.length ? technician.profileTags : technician.skills).filter(Boolean);
   const displayName = technician.nickname?.trim() || technician.name;
+  const introductionText = technician.bio?.trim() || "这个技师暂时还没有补充介绍。";
   const rating = formatTechnicianRating(technician.rating);
   const reviewCount = Math.max(0, technician.reviewCount);
   const actionButtonClassName = cn("focus-ring grid h-11 w-11 place-items-center rounded-full border text-[color:var(--profile-card-primary-strong)] shadow-[0_14px_30px_color-mix(in_srgb,var(--profile-card-primary)_18%,rgba(0,0,0,0.26))]", surface.metric);
@@ -243,12 +245,10 @@ export function TechnicianPublicInfoCard({
           </p>
         </div>
 
-        {technician.bio ? (
-          <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", surface.panel)}>
-            <p className={cn("text-xs font-bold", surface.label)}>自我介绍</p>
-            <p className={cn("mt-2 text-sm leading-6", surface.muted)}>{technician.bio}</p>
-          </div>
-        ) : null}
+        <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", surface.panel)}>
+          <p className={cn("text-xs font-bold", surface.label)}>自我介绍</p>
+          <p className={cn("mt-2 text-sm leading-6", surface.muted)}>{introductionText}</p>
+        </div>
 
         <div className={cn("mt-3 rounded-[18px] border p-3", surface.panel)} data-testid="technician-info-special-tags">
           <p className={cn("text-xs font-bold", surface.label)}>特殊标签</p>
@@ -293,10 +293,10 @@ export function TechnicianPublicInfoCardModal({
 
   const themeStyle = getTechnicianPublicInfoCardThemeStyle(themeScope);
 
-  return (
+  const modal = (
     <div
       aria-modal="true"
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-[color:var(--profile-card-backdrop)] px-4 py-[max(18px,env(safe-area-inset-top))] pb-[max(18px,env(safe-area-inset-bottom))] text-[color:var(--profile-card-text)] backdrop-blur-md"
+      className="fixed inset-0 z-[180] flex items-center justify-center bg-[color:var(--profile-card-backdrop)] px-4 py-[max(18px,env(safe-area-inset-top))] pb-[max(18px,env(safe-area-inset-bottom))] text-[color:var(--profile-card-text)] backdrop-blur-md"
       data-theme-scope={themeScope}
       onClick={onClose}
       role="dialog"
@@ -307,4 +307,12 @@ export function TechnicianPublicInfoCardModal({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return modal;
+  }
+
+  const portalTarget = document.querySelector<HTMLElement>(".client-shell") ?? document.body;
+
+  return createPortal(modal, portalTarget);
 }

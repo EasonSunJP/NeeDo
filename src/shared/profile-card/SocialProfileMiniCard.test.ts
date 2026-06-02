@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
 import homePageSource from "../../pages/user/HomePage.tsx?raw";
+import type { Technician } from "../../types/domain";
 import cardSource from "./SocialProfileMiniCard.tsx?raw";
 import simpleRatingBadgeSource from "./SimpleRatingBadge.tsx?raw";
+import { TechnicianPublicInfoCard } from "./TechnicianPublicInfoCard";
 import technicianPublicInfoCardSource from "./TechnicianPublicInfoCard.tsx?raw";
 import technicianShowcaseCardSource from "./TechnicianShowcaseCard.tsx?raw";
 
@@ -62,10 +67,14 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(technicianPublicInfoCardSource).toContain('name="moments"');
     expect(technicianPublicInfoCardSource).toContain("onClose");
     expect(technicianPublicInfoCardSource).toContain("TechnicianPublicInfoCardThemeScope");
+    expect(technicianPublicInfoCardSource).toContain('import { createPortal } from "react-dom";');
     expect(technicianPublicInfoCardSource).toContain("getTechnicianPublicInfoCardThemeStyle");
     expect(technicianPublicInfoCardSource).toContain("--profile-card-primary");
     expect(technicianPublicInfoCardSource).toContain("--profile-card-backdrop");
     expect(technicianPublicInfoCardSource).toContain("bg-[color:var(--profile-card-backdrop)]");
+    expect(technicianPublicInfoCardSource).toContain("z-[180]");
+    expect(technicianPublicInfoCardSource).toContain('document.querySelector<HTMLElement>(".client-shell") ?? document.body');
+    expect(technicianPublicInfoCardSource).toContain("return createPortal(modal, portalTarget);");
     expect(technicianPublicInfoCardSource).toContain("data-theme-scope={themeScope}");
     expect(technicianPublicInfoCardSource).toContain('data-testid="technician-info-special-tags"');
     expect(technicianPublicInfoCardSource).toContain('data-testid="technician-info-tags"');
@@ -77,6 +86,43 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(technicianPublicInfoCardSource).not.toContain("接单预算");
     expect(technicianPublicInfoCardSource).not.toContain("bg-black/62");
     expect(technicianPublicInfoCardSource).not.toContain("#061018");
+  });
+
+  it("keeps the self-introduction section visible even when a technician has not filled bio", () => {
+    const technician: Technician = {
+      id: "tech-public-no-bio",
+      systemId: "B-900",
+      name: "No Bio Technician",
+      storeId: "store-1",
+      role: "therapist",
+      status: "available",
+      rating: 4.8,
+      orderCount: 120,
+      income: 880000,
+      skills: ["肩颈调理", "睡眠放松"],
+      serviceAreas: ["银座"],
+      acceptRate: 96,
+      cancelRate: 1,
+      reviewCount: 32,
+      languages: ["日本語"],
+      avatar: "/images/generated/profiles/profile-01.jpg"
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(TechnicianPublicInfoCard, {
+          dynamicTo: "/profiles/technician/tech-public-no-bio",
+          technician
+        })
+      )
+    );
+
+    expect(markup).toContain("自我介绍");
+    expect(markup).toContain("这个技师暂时还没有补充介绍。");
+    expect(markup).not.toContain("接单预算");
+    expect(markup).not.toContain("收入");
   });
 
   it("opens the same public info card from technician showcase photos", () => {

@@ -51,6 +51,7 @@ import { getStoreCardDecorationConfig, getStoreDecorationBlockConfig, getStoreUi
 import { cn, yen } from "../../lib/utils";
 import { shareContent } from "../../lib/share";
 import { TechnicianShowcaseCard } from "../../shared/profile-card";
+import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";
 import { SimpleRatingBadge } from "../../shared/profile-card/SimpleRatingBadge";
 import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "../../shared/profile-detail";
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
@@ -1285,6 +1286,7 @@ function StoreTechnicianServiceListRow({
   technicianVisible?: boolean;
   unavailable?: boolean;
 }) {
+  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
   const displayName = getStoreTechnicianDisplayName(technician);
   const recommendedService = getStoreRecommendedServiceForTechnician(technician, fallbackServices);
   const packageInfo = recommendedService?.packages[0];
@@ -1302,6 +1304,7 @@ function StoreTechnicianServiceListRow({
   const showSelectionAction = !isMerchantEditable && typeof selected === "boolean" && Boolean(onSelect);
 
   return (
+    <>
     <article
       className={cn(
         "relative grid grid-cols-[118px_minmax(0,1fr)] gap-3 overflow-hidden rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_92%,transparent)] p-2.5 shadow-[0_14px_28px_rgba(0,0,0,0.14)]",
@@ -1330,11 +1333,12 @@ function StoreTechnicianServiceListRow({
           onSelect={onSelect}
         />
       ) : null}
-      <Link
-        aria-label={`查看${displayName}动态`}
+      <button
+        aria-label={`查看${displayName}信息卡`}
         className="group relative min-h-[158px] overflow-hidden rounded-[14px] bg-black active:scale-[0.99]"
-        title="查看技师动态"
-        to={profileTo}
+        onClick={() => setTechnicianInfoCardOpen(true)}
+        title="查看技师信息卡"
+        type="button"
       >
         <img
           alt={displayName}
@@ -1349,7 +1353,7 @@ function StoreTechnicianServiceListRow({
             <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
           </div>
         </div>
-      </Link>
+      </button>
 
       <Link
         aria-label={`查看技师服务列表 ${displayName}`}
@@ -1383,6 +1387,14 @@ function StoreTechnicianServiceListRow({
         </div>
       </Link>
     </article>
+    <TechnicianPublicInfoCardModal
+      dynamicTo={profileTo}
+      onClose={() => setTechnicianInfoCardOpen(false)}
+      open={technicianInfoCardOpen}
+      technician={technician}
+      themeScope={isMerchantEditable ? "merchant" : "user"}
+    />
+    </>
   );
 }
 

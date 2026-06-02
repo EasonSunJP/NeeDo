@@ -104,7 +104,7 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).toContain("serviceListTo={getTechnicianServiceListTo(technician.id)}");
     expect(pageSource).not.toContain("selectStoreServiceFromTechnicianRecommendation");
     expect(pageSource).not.toContain("onServiceSelect={selectStoreServiceFromTechnicianRecommendation}");
-    expect(pageSource).toContain("查看技师动态");
+    expect(pageSource).toContain("查看技师信息卡");
     expect(pageSource).toContain("查看技师服务列表");
   });
 
@@ -195,6 +195,19 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(technicianRowSource).toContain('name="info"');
     expect(technicianRowSource).not.toContain("onServiceSelect");
     expect(technicianRowSource).not.toContain("查看店铺服务项目");
+  });
+
+  it("opens the technician public info card from technician-list row avatars", () => {
+    const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
+
+    expect(pageSource).toContain('import { TechnicianPublicInfoCardModal } from "../../shared/profile-card/TechnicianPublicInfoCard";');
+    expect(technicianRowSource).toContain("const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);");
+    expect(technicianRowSource).toContain('aria-label={`查看${displayName}信息卡`}');
+    expect(technicianRowSource).toContain("onClick={() => setTechnicianInfoCardOpen(true)}");
+    expect(technicianRowSource).toContain("<TechnicianPublicInfoCardModal");
+    expect(technicianRowSource).toContain("open={technicianInfoCardOpen}");
+    expect(technicianRowSource).toContain("technician={technician}");
+    expect(technicianRowSource).toContain("themeScope={isMerchantEditable ? \"merchant\" : \"user\"}");
   });
 
   it("keeps merchant technician visibility as an outer top-right eye action", () => {
