@@ -8,4 +8,9 @@ describe("UnifiedSocialUi technician store booking links", () => {
     expect(source).toContain('scope === "user" && hasMainStoreEntry');
     expect(source).toContain("technicianId: profile.id");
   });
+
+  it("does not render the four special review stamps in the dynamic profile header", () => {
+    expect(source).not.toContain("<SocialTechnicianReviewStamps />");
+    expect(source).not.toContain("function SocialTechnicianReviewStamps");
+  });
 });

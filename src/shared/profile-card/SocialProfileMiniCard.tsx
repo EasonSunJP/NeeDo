@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useState, type ReactNode } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { IconMetricAction } from "../../components/client-ui/AppScaffold";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
@@ -9,8 +9,10 @@ import { findStoreById } from "../../state/entityStore";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import type { Customer, ServiceItem, Store, Technician } from "../../types/domain";
 import type { InfoCardData } from "../info-card";
+import { getScopedProfileDetailPath } from "../profile-detail/paths";
 import { CustomerMembershipIcon } from "./CustomerMembershipIcon";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
+import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard";
 import { getCustomerLevelLabel, resolveCustomerMembership, type SocialProfileMiniMembershipKind } from "./customerMembership";
 
 export type SocialProfileMiniActionLabel = "关注" | "关注中" | "好友";
@@ -774,6 +776,9 @@ function ScoreMetricBadge({
 export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
   const { className, dark = false, detailTo, onOpenDetails, onAction, onShare, actionSlot, showAction = true, showShareAction = false, shareCount, topTags } = props;
   const { isNight, theme } = useClientTheme();
+  const location = useLocation();
+  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
+  const sourceTechnician = "technician" in props ? props.technician : null;
   const data = buildSocialProfileMiniCardData(
     "data" in props ? props.data : "customer" in props ? props.customer : "technician" in props ? props.technician : props.store,
     {
@@ -783,6 +788,11 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
     }
   );
   const resolvedDetailTo = detailTo ?? data.detailPath;
+  const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
+  const technicianDynamicPath = sourceTechnician ? getScopedProfileDetailPath(currentScope, "technician", sourceTechnician.id) : "";
+  const shouldOpenTechnicianInfoCard = Boolean(sourceTechnician && !onOpenDetails);
+  const avatarOnOpenDetails = onOpenDetails ?? (shouldOpenTechnicianInfoCard ? () => setTechnicianInfoCardOpen(true) : undefined);
+  const avatarDetailTo = avatarOnOpenDetails ? undefined : resolvedDetailTo;
   const scoreParts = splitScoreValue(data.scoreValue);
   const isService = data.entityType === "service";
   const usesSimpleScorePill = data.scoreLabel === "服务评价";
@@ -816,12 +826,13 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
   };
 
   return (
+    <>
     <article className={cn("overflow-hidden rounded-[24px] border shadow-panel", cardClassName, className)}>
       <div className="relative h-[92px] bg-ink">
         <InteractiveArea className="focus-ring absolute inset-0 block overflow-hidden text-left" detailTo={resolvedDetailTo} onOpenDetails={onOpenDetails}>
           <SystemCoverBackdrop dark={coverDark} seed={`${data.entityType}-${data.id}`} theme={theme} />
         </InteractiveArea>
-        <InteractiveArea className="focus-ring absolute top-11 left-3.5 z-10 block h-36 w-36 text-left" detailTo={resolvedDetailTo} onOpenDetails={onOpenDetails}>
+        <InteractiveArea className="focus-ring absolute top-11 left-3.5 z-10 block h-36 w-36 text-left" detailTo={avatarDetailTo} onOpenDetails={avatarOnOpenDetails}>
           <div className="relative h-full w-full">
             <AvatarImage
               alt={data.displayName}
@@ -906,5 +917,13 @@ export function SocialProfileMiniCard(props: SocialProfileMiniCardProps) {
         </div>
       </div>
     </article>
+    <TechnicianPublicInfoCardModal
+      dynamicTo={technicianDynamicPath}
+      onClose={() => setTechnicianInfoCardOpen(false)}
+      open={technicianInfoCardOpen}
+      technician={sourceTechnician}
+      themeScope={currentScope}
+    />
+    </>
   );
 }

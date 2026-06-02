@@ -323,6 +323,15 @@ export function getStoredRefreshToken() {
   return readBrowserStorage(refreshTokenStorageKey, { silent: true });
 }
 
+export function setStoredRefreshToken(nextRefreshToken: string | null) {
+  if (nextRefreshToken) {
+    writeBrowserStorage(refreshTokenStorageKey, nextRefreshToken, { silent: true });
+    return;
+  }
+
+  removeBrowserStorage(refreshTokenStorageKey, { silent: true });
+}
+
 export function setAccessToken(nextAccessToken: string | null) {
   accessToken = nextAccessToken;
   removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
@@ -332,7 +341,7 @@ export function setAuthTokens(tokens: { accessToken: string; refreshToken?: stri
   setAccessToken(tokens.accessToken);
 
   if (tokens.refreshToken) {
-    writeBrowserStorage(refreshTokenStorageKey, tokens.refreshToken, { silent: true });
+    setStoredRefreshToken(tokens.refreshToken);
   }
 }
 

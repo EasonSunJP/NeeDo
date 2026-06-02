@@ -1,10 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { authApi } from "../api/auth";
-import { clearAuthTokens, getAccessToken, getStoredRefreshToken, setAuthExpiredHandler } from "../api/httpClient";
+import { clearAuthTokens, getAccessToken, getStoredRefreshToken, setAccessToken, setAuthExpiredHandler, setStoredRefreshToken } from "../api/httpClient";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { demoAuthAccount, type PortalScope } from "./demoAccount";
 import type { FeaturePermission } from "./featurePermissions";
 import { hasPortalFeaturePermission } from "./featurePermissions";
+import {
+  forgetAllRememberedPortalAuthorizations,
+  forgetRememberedPortalAuthorization,
+  hasRememberedPortalAuthorization,
+  readRememberedPortalRefreshToken,
+  readRememberedPortalSession,
+  rememberPortalAuthorization
+} from "./portalAuthorization";
 import {
   buildAuthSessionFromMe,
   canAccessFeatureFromSession,
@@ -42,6 +50,7 @@ type AuthContextValue = {
   switchPortal: (portal: PortalScope) => Promise<AuthActionResult>;
   canAccess: (portal: PortalScope) => boolean;
   canEnterPortal: (portal: PortalScope) => boolean;
+  hasRememberedPortalAuthorization: (portal: PortalScope) => boolean;
   canAccessFeature: (portal: PortalScope, permission: FeaturePermission | string) => boolean;
   hasPermission: (permission: string) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
@@ -116,7 +125,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(nextSession);
     writeBrowserStorage(portalStorageKey, nextSession.portal, { silent: true });
     writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), { silent: true });
+    rememberPortalAuthorization(nextSession, getStoredRefreshToken());
   }, []);
+
+  const restoreRememberedPortalSession = useCallback(
+    async (portal: PortalScope): Promise<AuthActionResult> => {
+      const targetRefreshToken = readRememberedPortalRefreshToken(portal);
+
+      if (!targetRefreshToken) {
+        return { ok: false, message: "error.auth.portal_forbidden" };
+      }
+
+      const previousSession = session;
+      const previousRefreshToken = getStoredRefreshToken();
+
+      setStoredRefreshToken(targetRefreshToken);
+      setAccessToken(null);
+
+      try {
+        await authApi.refresh();
+        const me = await authApi.me();
+        const rememberedSession = readRememberedPortalSession(portal);
+        const nextSession = buildAuthSessionFromMe(
+          me,
+          portal,
+          rememberedSession?.loginMethod ?? previousSession?.loginMethod ?? "password"
+        );
+
+        if (!canAccessPortalFromSession(nextSession, portal)) {
+          throw new Error("error.auth.portal_forbidden");
+        }
+
+        persistSession(nextSession);
+
+        return { ok: true, session: nextSession };
+      } catch (error) {
+        forgetRememberedPortalAuthorization(portal);
+
+        if (previousRefreshToken) {
+          setStoredRefreshToken(previousRefreshToken);
+          setAccessToken(null);
+        } else {
+          clearAuthTokens();
+        }
+
+        if (previousSession) {
+          persistSession(previousSession);
+        } else {
+          setSession(null);
+          removeBrowserStorage(portalStorageKey, { silent: true });
+          removeBrowserStorage(legacySessionStorageKey, { silent: true });
+        }
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [persistSession, session]
+  );
 
   const completeAuthenticatedSession = useCallback(
     async (requestedPortal: PortalScope, loginMethod: LoginMethod, providedMe?: AuthMePayload): Promise<AuthActionResult> => {
@@ -253,12 +318,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await authApi.logout().catch(() => undefined);
+    forgetAllRememberedPortalAuthorizations();
     clearSession();
   }, [clearSession]);
 
   const switchPortal = useCallback(async (portal: PortalScope): Promise<AuthActionResult> => {
     if (!session || !canAccessPortalFromSession(session, portal)) {
-      return { ok: false, message: "error.auth.portal_forbidden" };
+      const restored = await restoreRememberedPortalSession(portal);
+
+      if (restored.ok) {
+        return restored;
+      }
+
+      return { ok: false, message: restored.message };
     }
 
     const portalIdentity = findIdentityForPortal(session.identities, portal);
@@ -286,7 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       return { ok: false, message: normalizeApiError(error) };
     }
-  }, [persistSession, session]);
+  }, [persistSession, restoreRememberedPortalSession, session]);
 
   const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);
   const hasAnyPermission = useCallback((permissions: string[]) => hasAnyPermissionInSession(session, permissions), [session]);
@@ -295,6 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (portal: PortalScope) => canAccessPortalFromSession(session, portal) || canUseUserSessionForClientPortal(session, portal),
     [session]
   );
+  const hasRememberedPortal = useCallback((portal: PortalScope) => hasRememberedPortalAuthorization(portal), []);
   const canAccessMenu = useCallback((permission: string) => canAccessMenuFromSession(session, permission), [session]);
   const canAccessFeature = useCallback(
     (portal: PortalScope, permission: FeaturePermission | string) =>
@@ -322,6 +395,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       switchPortal,
       canAccess,
       canEnterPortal,
+      hasRememberedPortalAuthorization: hasRememberedPortal,
       canAccessFeature,
       hasPermission,
       hasAnyPermission,
@@ -332,6 +406,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEnterPortal,
       canAccessFeature,
       canAccessMenu,
+      hasRememberedPortal,
       hasAnyPermission,
       hasPermission,
       isRestoring,

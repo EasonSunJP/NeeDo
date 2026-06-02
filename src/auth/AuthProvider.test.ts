@@ -33,4 +33,11 @@ describe("AuthProvider legacy login bridge", () => {
     expect(authProviderSource).toContain("authApi.switchIdentity(portalIdentity.id)");
     expect(authProviderSource).toContain("buildAuthSessionFromMe(switched.me, portal, session.loginMethod)");
   });
+
+  it("remembers each frontend portal authorization and restores it before asking for login again", () => {
+    expect(authProviderSource).toContain("rememberPortalAuthorization(nextSession, getStoredRefreshToken())");
+    expect(authProviderSource).toContain("restoreRememberedPortalSession(portal)");
+    expect(authProviderSource).toContain("forgetRememberedPortalAuthorization(portal)");
+    expect(authProviderSource).toContain("hasRememberedPortalAuthorization");
+  });
 });

@@ -1761,18 +1761,29 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
   const { session, switchPortal } = useAuth();
   const selectedPortal = resolveSettingsSelectedPortal(portal, session?.portal) as SwitchableSettingsPortal;
   const t = (source: string) => translateText(source, language);
-  const selectPortal = (nextPortal: SwitchableSettingsPortal) => {
+  const selectPortal = async (nextPortal: SwitchableSettingsPortal) => {
     if (nextPortal === selectedPortal) {
       return;
     }
 
-    void switchPortal(nextPortal);
-    navigate(getPortalEntry(nextPortal), {
+    const nextEntry = getPortalEntry(nextPortal);
+    const nextNavigationState = {
+      settingsSwitchedFromPortal: true,
+      settingsPortalTarget: nextPortal
+    } satisfies SettingsNavigationState;
+    const switched = await switchPortal(nextPortal);
+
+    if (!switched.ok) {
+      navigate(nextEntry, {
+        replace: true,
+        state: nextNavigationState
+      });
+      return;
+    }
+
+    navigate(nextEntry, {
       replace: true,
-      state: {
-        settingsSwitchedFromPortal: true,
-        settingsPortalTarget: nextPortal
-      } satisfies SettingsNavigationState
+      state: nextNavigationState
     });
   };
   const openBackendPortal = (href: string) => {
@@ -1802,7 +1813,9 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
                 info={t(compactPortalLabels[item].caption)}
                 infoLabel={t("查看身份说明")}
                 key={item}
-                onClick={() => selectPortal(item)}
+                onClick={() => {
+                  void selectPortal(item);
+                }}
                 title={t(compactPortalLabels[item].label)}
                 trailing={<SettingsPortalSelectionIndicator active={active} />}
               />

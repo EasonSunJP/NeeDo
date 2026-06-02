@@ -14,13 +14,20 @@ describe("portal identity switching boundaries", () => {
     "function UserProfileSettingsPage"
   );
 
-  it("does not switch the active identity from ordinary protected route navigation", () => {
-    expect(requirePortalAuthSource).not.toContain("switchPortal");
+  it("restores remembered frontend portal authorization from protected route navigation", () => {
+    expect(requirePortalAuthSource).toContain("hasRememberedPortalAuthorization(portal)");
+    expect(requirePortalAuthSource).toContain("switchPortal(portal)");
     expect(requirePortalAuthSource).not.toContain("needsPortalSync");
   });
 
+  it("keeps backend portal routes on direct portal access instead of remembered frontend authorization", () => {
+    expect(requirePortalAuthSource).toContain("const canRestoreRememberedPortal = !isBackendPortalRoute && hasRememberedPortalAuthorization(portal);");
+    expect(requirePortalAuthSource).toContain("const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));");
+  });
+
   it("keeps explicit identity switching inside the settings identity page", () => {
-    expect(settingsPortalPageSource).toContain("void switchPortal(nextPortal);");
+    expect(settingsPortalPageSource).toContain("const switched = await switchPortal(nextPortal);");
+    expect(settingsPortalPageSource).toContain("if (!switched.ok)");
     expect(settingsPortalPageSource).toContain("settingsPortalTarget: nextPortal");
   });
 });

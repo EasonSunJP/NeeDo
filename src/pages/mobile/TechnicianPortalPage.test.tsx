@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import source from "./TechnicianPortalPage.tsx?raw";
 
+function expectInOrder(text: string, labels: string[]) {
+  let previousIndex = -1;
+
+  labels.forEach((label) => {
+    const nextIndex = text.indexOf(label);
+
+    expect(nextIndex).toBeGreaterThan(previousIndex);
+    previousIndex = nextIndex;
+  });
+}
+
 describe("TechnicianPortalPage profile card", () => {
   it("keeps the info/data tabs and places privacy plus tags in the info card", () => {
     const cardStart = source.indexOf('data-testid="technician-info-card"');
@@ -34,6 +45,9 @@ describe("TechnicianPortalPage profile card", () => {
     expect(cardSource).toContain("toggleDraftServiceArea(area)");
     expect(cardSource).toContain("toggleDraftTag(tag)");
     expect(cardSource).toContain("toggleDraftPaymentMethod(method)");
+    expect(cardSource).toContain("techProfile.bidBudgetMin");
+    expect(cardSource).toContain("formatPaymentMethodLabels(techProfile.paymentMethods)");
+    expect(cardSource).toContain("<TechnicianReviewStampList");
     expect(cardSource).toContain("getTechnicianIdentityDisplayLabel(profileEditorOpen ? profileDraft.identityLabel : techProfile.identityLabel)");
     expect(cardSource).toContain("getTechnicianIdentityDisplayLabel(label)");
     expect(cardSource).toContain("onClick={saveProfile}");
@@ -50,12 +64,13 @@ describe("TechnicianPortalPage profile card", () => {
     expect(source).not.toContain("好友和订单、店铺、介绍关系中的关联人可以看到。");
 
     const basicInfoIndex = cardSource.indexOf("基础信息");
-    const introIndex = cardSource.indexOf("自我介绍");
+    const specialTagsIndex = cardSource.indexOf('data-testid="technician-info-special-tags"');
     const tagsIndex = cardSource.indexOf('data-testid="technician-info-tags"');
 
     expect(basicInfoIndex).toBeGreaterThan(-1);
-    expect(introIndex).toBeGreaterThan(basicInfoIndex);
-    expect(tagsIndex).toBeGreaterThan(introIndex);
+    expect(specialTagsIndex).toBeGreaterThan(basicInfoIndex);
+    expect(tagsIndex).toBeGreaterThan(specialTagsIndex);
+    expectInOrder(cardSource.slice(basicInfoIndex), ["接单预算", "支持支付方式", "自我介绍", "标签"]);
   });
 
   it("shows technician services as per-service inline edit cards with a read-only pricing mode switch", () => {

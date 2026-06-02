@@ -1,10 +1,13 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { AppIcon, IconMetricAction, type IconName } from "../../components/client-ui/AppScaffold";
 import { translateText, type Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
 import type { ServiceItem, Technician } from "../../types/domain";
+import { getScopedProfileDetailPath } from "../profile-detail/paths";
 import { SimpleRatingBadge } from "./SimpleRatingBadge";
+import { TechnicianPublicInfoCardModal } from "./TechnicianPublicInfoCard";
 
 type TechnicianShowcaseCardProps = {
   "aria-label"?: string;
@@ -333,6 +336,8 @@ export function TechnicianShowcaseCard({
   selectionInactiveIcon = "plus",
   technician
 }: TechnicianShowcaseCardProps) {
+  const location = useLocation();
+  const [technicianInfoCardOpen, setTechnicianInfoCardOpen] = useState(false);
   const recommendedService = getRecommendedServiceForTechnician(technician, directService, fallbackServices);
   const copy = getTechnicianCardCopy(language);
   const displayName = getTechnicianDisplayName(technician);
@@ -345,7 +350,8 @@ export function TechnicianShowcaseCard({
   const duration = packageInfo?.durationMinutes ?? 60;
   const priceLabel = Number.isFinite(price) && price > 0 ? formatCardYen(price) : copy.pricePending;
   const serviceName = localizeTechnicianCardText(recommendedService?.name ?? primarySkill, language);
-  const detailHref = detailTo ?? getTechnicianDynamicPath(technician);
+  const currentScope = location.pathname.startsWith("/merchant/") ? "merchant" : location.pathname.startsWith("/technician/") ? "technician" : "user";
+  const detailHref = detailTo ?? getScopedProfileDetailPath(currentScope, "technician", technician.id);
   const selectionLabel = selectionAriaLabel ?? ariaLabel ?? (selected ? "已选技师" : "待选技师");
   const selectionIconName = selected ? selectionActiveIcon : selectionInactiveIcon;
   const favoriteCount = getTechnicianCardFavoriteCount(technician);
@@ -444,6 +450,11 @@ export function TechnicianShowcaseCard({
       </div>
     </div>
   );
+  const photoTrigger = (
+    <button aria-label={`查看${displayName}信息卡`} className="block w-full text-left active:scale-[0.99]" onClick={() => setTechnicianInfoCardOpen(true)} type="button">
+      {photoContent}
+    </button>
+  );
   const detailContent = (
     <div className="relative px-3 py-3 text-left">
       <p className="text-[10px] font-black uppercase leading-none text-[color:var(--client-primary)]" data-no-i18n>
@@ -459,11 +470,10 @@ export function TechnicianShowcaseCard({
     </div>
   );
   return onSelect ? (
+    <>
     <div className={cardClassName}>
       <div className="relative">
-        <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
-          {photoContent}
-        </Link>
+        {photoTrigger}
         {typeof selected === "boolean" ? (
           <button
             aria-disabled={selectionDisabled}
@@ -496,13 +506,29 @@ export function TechnicianShowcaseCard({
         {detailContent}
       </Link>
     </div>
+    <TechnicianPublicInfoCardModal
+      dynamicTo={detailHref}
+      onClose={() => setTechnicianInfoCardOpen(false)}
+      open={technicianInfoCardOpen}
+      technician={technician}
+      themeScope={currentScope}
+    />
+    </>
   ) : (
-    <Link
-      className={cardClassName}
-      to={detailHref}
-    >
-      {photoContent}
-      {detailContent}
-    </Link>
+    <>
+    <div className={cardClassName}>
+      {photoTrigger}
+      <Link aria-label={`查看${displayName}动态`} className="block active:scale-[0.99]" to={detailHref}>
+        {detailContent}
+      </Link>
+    </div>
+    <TechnicianPublicInfoCardModal
+      dynamicTo={detailHref}
+      onClose={() => setTechnicianInfoCardOpen(false)}
+      open={technicianInfoCardOpen}
+      technician={technician}
+      themeScope={currentScope}
+    />
+    </>
   );
 }

@@ -179,6 +179,15 @@ function iconPath(name: IconName) {
           <path d="m12 4 1.1 3.4L16.5 8l-3.4 1.1L12 12.5l-1.1-3.4L7.5 8l3.4-1.1L12 4ZM18.5 14l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7.7-2.1ZM6 14l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7L6 14Z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.6" />
         </>
       );
+    case "moments":
+      return (
+        <>
+          <circle cx="8" cy="8" r="2.6" stroke="currentColor" strokeWidth="2" />
+          <circle cx="16" cy="8" r="2.6" stroke="currentColor" strokeWidth="2" />
+          <circle cx="8" cy="16" r="2.6" stroke="currentColor" strokeWidth="2" />
+          <circle cx="16" cy="16" r="2.6" stroke="currentColor" strokeWidth="2" />
+        </>
+      );
     case "info":
       return (
         <>
@@ -247,6 +256,7 @@ export type IconName =
   | "shield"
   | "bell"
   | "sparkles"
+  | "moments"
   | "info"
   | "share"
   | "sync"

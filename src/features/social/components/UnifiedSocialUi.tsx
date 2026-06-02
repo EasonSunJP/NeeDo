@@ -44,11 +44,6 @@ import { useSocial } from "../context";
 import { socialPaths } from "../paths";
 import { buildTechnicianWeeklyScheduleItems, type TechnicianWeeklyScheduleTone } from "../profileHeaderPresentation";
 import { getCustomerCustomProfileReviewTags } from "../profileReviewPresentation";
-import {
-  getServiceReviewStampVisual,
-  serviceReviewSpecialTags,
-  splitMaxReviewStampLabel
-} from "../../../shared/order-detail/serviceReviewTagCatalog";
 import type { SocialMediaItem, SocialPortalScope, SocialPost, SocialProfile, SocialProfileTab, SocialSearchTab, SocialTimelineFilterTab } from "../types";
 import {
   buildAbsoluteUrl,
@@ -773,55 +768,6 @@ function SocialTechnicianWeeklySchedule({
           </Link>
         ))}
       </div>
-    </div>
-  );
-}
-
-function renderProfileStampLabel(label: string) {
-  const labelParts = splitMaxReviewStampLabel(label);
-
-  if (!labelParts.marker) {
-    return <span>{label}</span>;
-  }
-
-  return (
-    <>
-      <span className="block text-[11px] leading-[1.05] tracking-normal sm:text-[12px]">{labelParts.title}</span>
-      <span className="mt-0.5 block text-[17px] leading-[0.92] tracking-normal sm:text-[18px]">{labelParts.marker}</span>
-    </>
-  );
-}
-
-function SocialTechnicianReviewStamps() {
-  return (
-    <div aria-label="评价特殊标签" className="social-profile-review-stamps mt-4 grid grid-cols-4 gap-2 px-0.5 pt-2" role="list">
-      {serviceReviewSpecialTags.map((tag, index) => {
-        const stampVisual = getServiceReviewStampVisual(tag, index);
-
-        return (
-          <div
-            aria-label={`${tag.label} ×${tag.count}`}
-            className={cn("service-review-stamp min-w-0", `service-review-stamp--${stampVisual.tone}`)}
-            key={tag.label}
-            role="listitem"
-          >
-            <span className="service-review-stamp__icon">
-              <img
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                src={stampVisual.iconSrc}
-              />
-            </span>
-            <span className="service-review-stamp__label">
-              {renderProfileStampLabel(tag.label)}
-            </span>
-            <span className="service-review-stamp__count">
-              ×{tag.count}
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -2434,8 +2380,6 @@ export function SocialProfileHeader({
             </div>
 
             {profile.entityType === "technician" ? <SocialTechnicianWeeklySchedule profile={profile} relatedShops={relatedShops} scope={scope} /> : null}
-            {profile.entityType === "technician" ? <SocialTechnicianReviewStamps /> : null}
-
             {headerNotes.length > 0 ? (
               <div className="mt-3 space-y-1.5 text-[13px] leading-6 text-[color:var(--client-muted)]">
                 {headerNotes.map((item) => (

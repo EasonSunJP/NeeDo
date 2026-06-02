@@ -84,6 +84,14 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).not.toContain("{t(compactPortalLabels[item].caption)}</p>");
     expect(portalPageSource).not.toContain("subtitle={t(entry.subtitle)}");
   });
+
+  it("waits for remembered portal authorization before navigating to another frontend identity", () => {
+    expect(portalPageSource).toContain("const selectPortal = async (nextPortal: SwitchableSettingsPortal) => {");
+    expect(portalPageSource).toContain("const nextEntry = getPortalEntry(nextPortal);");
+    expect(portalPageSource).toContain("const switched = await switchPortal(nextPortal);");
+    expect(portalPageSource).toContain("if (!switched.ok)");
+    expect(portalPageSource).toContain("navigate(nextEntry");
+  });
 });
 
 describe("UnifiedSettingsPage Xiaobai asset gate", () => {

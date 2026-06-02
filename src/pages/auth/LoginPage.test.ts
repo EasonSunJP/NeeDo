@@ -230,8 +230,9 @@ describe("LoginPage real-account login", () => {
     });
   });
 
-  it("shows continue only when the current session has the requested portal identity", () => {
+  it("shows continue when the current session or remembered authorization has the requested portal identity", () => {
     expect(loginPageSource).toContain("canAccess(activePortal)");
+    expect(loginPageSource).toContain("hasRememberedPortalAuthorization(activePortal)");
     expect(loginPageSource).toContain("hasActiveAccess");
     expect(loginPageSource).toContain("void enterPortal();");
     expect(loginPageSource).not.toContain("canEnterPortal(activePortal)");

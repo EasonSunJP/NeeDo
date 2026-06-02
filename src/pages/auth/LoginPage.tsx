@@ -654,7 +654,17 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
   const { theme, isNight } = useClientTheme();
-  const { canAccess, isAuthenticated, login, loginWithFormalPassword, loginWithProvider, logout, session, switchPortal: switchSessionPortal } = useAuth();
+  const {
+    canAccess,
+    hasRememberedPortalAuthorization,
+    isAuthenticated,
+    login,
+    loginWithFormalPassword,
+    loginWithProvider,
+    logout,
+    session,
+    switchPortal: switchSessionPortal
+  } = useAuth();
   const requestedPortal = normalizePortal(portal);
   const redirectPath = searchParams.get("redirect");
   const [activePortal, setActivePortal] = useState<PortalScope>(requestedPortal);
@@ -681,7 +691,8 @@ export function LoginPage() {
     () => resolveTestLoginCredentials(import.meta.env as TestCredentialEnv, activePortal),
     [activePortal]
   );
-  const hasActiveAccess = isAuthenticated && canAccess(activePortal);
+  const hasRememberedActivePortal = hasRememberedPortalAuthorization(activePortal);
+  const hasActiveAccess = (isAuthenticated && canAccess(activePortal)) || hasRememberedActivePortal;
   const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
   const error = feedback?.tone === "error" ? feedbackMessage : "";
   const notice = feedback?.tone === "notice" ? feedbackMessage : "";
@@ -763,7 +774,7 @@ export function LoginPage() {
 
     navigationInFlightRef.current = true;
 
-    if (isAuthenticated && canAccess(activePortal)) {
+    if (isAuthenticated || hasRememberedPortalAuthorization(activePortal)) {
       const switched = await switchSessionPortal(activePortal);
 
       if (!switched.ok) {
@@ -774,7 +785,7 @@ export function LoginPage() {
     }
 
     openPortalEntry(activePortal, nextPath);
-  }, [activePortal, canAccess, isAuthenticated, nextPath, switchSessionPortal]);
+  }, [activePortal, hasRememberedPortalAuthorization, isAuthenticated, nextPath, switchSessionPortal]);
 
   useEffect(() => {
     if (!hasActiveAccess || isLoginPending) {
@@ -955,7 +966,7 @@ export function LoginPage() {
                 <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 py-5 text-left shadow-[var(--client-shadow)]">
                   <p className="text-sm font-black text-[color:var(--client-primary)]">{copy.continueTitle}</p>
                   <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
-                    {copy.signedInAs}: <strong className="text-[color:var(--client-text)]">{session?.email || session?.username}</strong>
+                    {copy.signedInAs}: <strong className="text-[color:var(--client-text)]">{session?.email || session?.username || activePortalCopy.title}</strong>
                   </p>
                   <p className="mt-1 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">{activePortalCopy.title}</p>
                 </div>

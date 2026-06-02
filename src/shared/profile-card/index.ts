@@ -3,6 +3,7 @@ export { UnifiedSimpleProfileCard } from "./UnifiedSimpleProfileCard";
 export { CustomerMembershipBadge, CustomerMembershipIcon } from "./CustomerMembershipIcon";
 export { SocialProfileMiniCard, buildServiceMiniCardData, buildSocialProfileMiniCardData } from "./SocialProfileMiniCard";
 export { TechnicianShowcaseCard, getTechnicianDynamicPath } from "./TechnicianShowcaseCard";
+export { TechnicianPublicInfoCard, TechnicianPublicInfoCardModal, TechnicianReviewStampList } from "./TechnicianPublicInfoCard";
 export type { SocialProfileMiniActionLabel, SocialProfileMiniData } from "./SocialProfileMiniCard";
 export type { BaseProfileCardData, ShopProfileData, TechnicianProfileData, UserProfileData } from "./types";
 export { CompactProfileCard } from "./variants/compact";

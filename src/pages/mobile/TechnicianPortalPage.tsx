@@ -58,7 +58,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { partitionDirectoryContacts } from "../../lib/contactDirectory";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
-import { SocialProfileMiniCard, buildShopInfoCardData, buildTechnicianInfoCardData, buildUserInfoCardData } from "../../shared/profile-card";
+import { SocialProfileMiniCard, TechnicianReviewStampList, buildShopInfoCardData, buildTechnicianInfoCardData, buildUserInfoCardData } from "../../shared/profile-card";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 import {
   getMessagePath,
@@ -2352,6 +2352,19 @@ function getTechnicianProfileSurfaceClassNames() {
 
 function formatTechnicianHeightValue(value: string) {
   return value.trim().replace(/\s*(cm|厘米|センチ|㎝)$/i, "").trim();
+}
+
+function formatTechnicianBudgetRange(min: string, max: string) {
+  const minValue = Number.parseInt(min.replace(/[^\d]/g, ""), 10);
+  const maxValue = Number.parseInt(max.replace(/[^\d]/g, ""), 10);
+  const minLabel = Number.isFinite(minValue) ? yen(minValue) : min.trim();
+  const maxLabel = Number.isFinite(maxValue) ? yen(maxValue) : max.trim();
+
+  if (minLabel && maxLabel) {
+    return minLabel === maxLabel ? minLabel : `${minLabel} - ${maxLabel}`;
+  }
+
+  return minLabel || maxLabel || "未设置";
 }
 
 function formatTechnicianRating(value: number) {
@@ -5752,42 +5765,16 @@ export function TechnicianPortalPage() {
                             </div>
 
                             <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
-                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>标签</p>
-                              <div className="mt-2 space-y-2">
-                                {tagGroups.map((group) => (
-                                  <div key={group.title}>
-                                    <p className={cn("text-[11px] font-black", technicianProfileSurface.label)}>{group.title}</p>
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                      {group.tags.map((tag) => (
-                                        <button
-                                          className={cn(
-                                            "rounded-full border px-2.5 py-1 text-xs font-black",
-                                            profileDraft.tags.includes(tag) ? technicianProfileSurface.chip : technicianProfileSurface.metric
-                                          )}
-                                          key={tag}
-                                          onClick={() => toggleDraftTag(tag)}
-                                          type="button"
-                                        >
-                                          {tag}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
                               <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>接单预算</p>
                               <div className="mt-2 grid grid-cols-2 gap-2">
                                 <input
-                                  aria-label="抢单预算下限"
+                                  aria-label="接单预算下限"
                                   className={cn("h-9 rounded-full border bg-transparent px-3 text-sm font-black outline-none", technicianProfileSurface.metric)}
                                   onChange={(event) => setProfileDraft((current) => ({ ...current, bidBudgetMin: event.currentTarget.value }))}
                                   value={profileDraft.bidBudgetMin}
                                 />
                                 <input
-                                  aria-label="抢单预算上限"
+                                  aria-label="接单预算上限"
                                   className={cn("h-9 rounded-full border bg-transparent px-3 text-sm font-black outline-none", technicianProfileSurface.metric)}
                                   onChange={(event) => setProfileDraft((current) => ({ ...current, bidBudgetMax: event.currentTarget.value }))}
                                   value={profileDraft.bidBudgetMax}
@@ -5823,6 +5810,32 @@ export function TechnicianPortalPage() {
                               />
                             </label>
 
+                            <div className={cn("rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>标签</p>
+                              <div className="mt-2 space-y-2">
+                                {tagGroups.map((group) => (
+                                  <div key={group.title}>
+                                    <p className={cn("text-[11px] font-black", technicianProfileSurface.label)}>{group.title}</p>
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                      {group.tags.map((tag) => (
+                                        <button
+                                          className={cn(
+                                            "rounded-full border px-2.5 py-1 text-xs font-black",
+                                            profileDraft.tags.includes(tag) ? technicianProfileSurface.chip : technicianProfileSurface.metric
+                                          )}
+                                          key={tag}
+                                          onClick={() => toggleDraftTag(tag)}
+                                          type="button"
+                                        >
+                                          {tag}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-2">
                               <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", technicianProfileSurface.metric)} onClick={cancelProfileEdit} type="button">
                                 取消
@@ -5856,9 +5869,23 @@ export function TechnicianPortalPage() {
                                 ))}
                               </div>
                             </div>
+                            <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>接单预算</p>
+                              <strong className="mt-1 block text-sm">{formatTechnicianBudgetRange(techProfile.bidBudgetMin, techProfile.bidBudgetMax)}</strong>
+                            </div>
+                            <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)}>
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>支持支付方式</p>
+                              <p className={cn("mt-2 text-sm font-bold leading-6", technicianProfileSurface.muted)}>
+                                {formatPaymentMethodLabels(techProfile.paymentMethods)}
+                              </p>
+                            </div>
                             <div className={cn("mt-3 overflow-hidden rounded-[24px] border px-5 py-4", technicianProfileSurface.panel)}>
                               <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>自我介绍</p>
                               <p className={cn("mt-2 text-sm leading-6", technicianProfileSurface.muted)}>{techProfile.bio}</p>
+                            </div>
+                            <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)} data-testid="technician-info-special-tags">
+                              <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>特殊标签</p>
+                              <TechnicianReviewStampList className="mt-2" />
                             </div>
                             <div className={cn("mt-3 rounded-[18px] border p-3", technicianProfileSurface.panel)} data-testid="technician-info-tags">
                               <p className={cn("text-xs font-bold", technicianProfileSurface.label)}>标签</p>
@@ -6504,34 +6531,9 @@ export function TechnicianPortalPage() {
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <span className="mb-1 block text-xs font-bold text-ink/45">标签</span>
-                      <div className="space-y-3">
-                        {tagGroups.map((group) => (
-                          <div key={group.title}>
-                            <p className="text-xs font-black text-ink/45">{group.title}</p>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {group.tags.map((tag) => (
-                                <button
-                                  className={cn(
-                                    "rounded-full border px-3 py-2 text-xs font-black",
-                                    profileDraft.tags.includes(tag) ? "border-lemon bg-lemon/15 text-[#8a6800]" : "border-line bg-paper text-ink/60"
-                                  )}
-                                  key={tag}
-                                  onClick={() => toggleDraftTag(tag)}
-                                  type="button"
-                                >
-                                  {tag}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <label>
-                        <span className="mb-1 block text-xs font-bold text-ink/45">抢单预算下限</span>
+                        <span className="mb-1 block text-xs font-bold text-ink/45">接单预算下限</span>
                         <input
                           className="h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
                           onChange={(event) => setProfileDraft((current) => ({ ...current, bidBudgetMin: event.target.value }))}
@@ -6539,7 +6541,7 @@ export function TechnicianPortalPage() {
                         />
                       </label>
                       <label>
-                        <span className="mb-1 block text-xs font-bold text-ink/45">抢单预算上限</span>
+                        <span className="mb-1 block text-xs font-bold text-ink/45">接单预算上限</span>
                         <input
                           className="h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none"
                           onChange={(event) => setProfileDraft((current) => ({ ...current, bidBudgetMax: event.target.value }))}
@@ -6574,6 +6576,31 @@ export function TechnicianPortalPage() {
                         value={profileDraft.bio}
                       />
                     </label>
+                    <div>
+                      <span className="mb-1 block text-xs font-bold text-ink/45">标签</span>
+                      <div className="space-y-3">
+                        {tagGroups.map((group) => (
+                          <div key={group.title}>
+                            <p className="text-xs font-black text-ink/45">{group.title}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {group.tags.map((tag) => (
+                                <button
+                                  className={cn(
+                                    "rounded-full border px-3 py-2 text-xs font-black",
+                                    profileDraft.tags.includes(tag) ? "border-lemon bg-lemon/15 text-[#8a6800]" : "border-line bg-paper text-ink/60"
+                                  )}
+                                  key={tag}
+                                  onClick={() => toggleDraftTag(tag)}
+                                  type="button"
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </section>
               </main>

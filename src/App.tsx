@@ -802,8 +802,9 @@ function RequirePortalAuth({
   portal: PortalScope;
   children: ReactElement;
 }) {
-  const { isAuthenticated, isRestoring, canAccess, canEnterPortal } = useAuth();
+  const { isAuthenticated, isRestoring, canAccess, canEnterPortal, hasRememberedPortalAuthorization, switchPortal } = useAuth();
   const location = useLocation();
+  const [isPortalRestorePending, setIsPortalRestorePending] = useState(false);
   const hasDirectAccess = canAccess(portal);
   const isBackendPortalRoute =
     portal === "admin" ||
@@ -811,8 +812,28 @@ function RequirePortalAuth({
     (portal === "business" && isBusinessAdminPath(location.pathname));
   const requiresDirectPortalAccess = isBackendPortalRoute || portal === "merchant" || portal === "technician" || portal === "business";
   const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));
+  const canRestoreRememberedPortal = !isBackendPortalRoute && hasRememberedPortalAuthorization(portal);
 
-  if (isRestoring) {
+  useEffect(() => {
+    if (isRestoring || hasAccess || !canRestoreRememberedPortal || isPortalRestorePending) {
+      return;
+    }
+
+    let active = true;
+    setIsPortalRestorePending(true);
+
+    void switchPortal(portal).finally(() => {
+      if (active) {
+        setIsPortalRestorePending(false);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [canRestoreRememberedPortal, hasAccess, isPortalRestorePending, isRestoring, portal, switchPortal]);
+
+  if (isRestoring || isPortalRestorePending || (!hasAccess && canRestoreRememberedPortal)) {
     return null;
   }
 
