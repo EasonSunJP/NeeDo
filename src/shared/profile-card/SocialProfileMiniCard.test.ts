@@ -70,6 +70,9 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(technicianPublicInfoCardSource).toContain('import { createPortal } from "react-dom";');
     expect(technicianPublicInfoCardSource).toContain("getTechnicianPublicInfoCardThemeStyle");
     expect(technicianPublicInfoCardSource).toContain("--profile-card-primary");
+    expect(technicianPublicInfoCardSource).toContain("--profile-card-primary-soft");
+    expect(technicianPublicInfoCardSource).toContain("--profile-card-soft-muted");
+    expect(technicianPublicInfoCardSource).toContain("radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--profile-card-primary)_22%,transparent),transparent_34%)");
     expect(technicianPublicInfoCardSource).toContain("--profile-card-backdrop");
     expect(technicianPublicInfoCardSource).toContain("bg-[color:var(--profile-card-backdrop)]");
     expect(technicianPublicInfoCardSource).toContain("z-[180]");
@@ -86,6 +89,7 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(technicianPublicInfoCardSource).not.toContain("接单预算");
     expect(technicianPublicInfoCardSource).not.toContain("bg-black/62");
     expect(technicianPublicInfoCardSource).not.toContain("#061018");
+    expect(technicianPublicInfoCardSource).not.toContain("--technician-status-duty");
   });
 
   it("keeps the self-introduction section visible even when a technician has not filled bio", () => {

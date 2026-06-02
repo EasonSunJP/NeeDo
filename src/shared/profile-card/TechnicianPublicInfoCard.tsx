@@ -27,42 +27,31 @@ export type TechnicianPublicInfoCardThemeScope = "user" | "merchant" | "technici
 
 const publicInfoCardSurface = {
   shell:
-    "border-[color:color-mix(in_srgb,var(--profile-card-primary)_42%,var(--profile-card-line)_58%)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--profile-card-surface)_84%,var(--profile-card-primary)_16%),color-mix(in_srgb,var(--profile-card-bg)_92%,var(--profile-card-primary)_8%))] text-[color:var(--profile-card-text)] shadow-[var(--profile-card-shadow)]",
+    "border-[color:color-mix(in_srgb,var(--profile-card-primary)_30%,var(--profile-card-line))] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--profile-card-primary)_22%,transparent),transparent_34%),linear-gradient(145deg,color-mix(in_srgb,var(--profile-card-surface)_90%,var(--profile-card-bg)),color-mix(in_srgb,var(--profile-card-bg)_94%,black))] text-[color:var(--profile-card-text)] shadow-[var(--profile-card-shadow)]",
   panel:
-    "border-[color:color-mix(in_srgb,var(--profile-card-primary)_30%,var(--profile-card-line)_70%)] bg-[color:color-mix(in_srgb,var(--profile-card-elevated)_86%,var(--profile-card-bg)_14%)]",
+    "border-[color:color-mix(in_srgb,var(--profile-card-line)_72%,var(--profile-card-primary)_14%)] bg-[color:color-mix(in_srgb,var(--profile-card-elevated)_58%,var(--profile-card-bg)_42%)]",
   metric:
-    "border-[color:color-mix(in_srgb,var(--profile-card-primary)_34%,var(--profile-card-line)_66%)] bg-[color:color-mix(in_srgb,var(--profile-card-surface)_72%,transparent)]",
+    "border-[color:color-mix(in_srgb,var(--profile-card-line)_70%,var(--profile-card-primary)_16%)] bg-[color:color-mix(in_srgb,var(--profile-card-elevated)_50%,transparent)]",
   chip:
-    "border-[color:color-mix(in_srgb,var(--profile-card-primary)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--profile-card-primary)_16%,transparent)] text-[color:var(--profile-card-primary-strong)]",
-  label: "text-[color:var(--profile-card-muted)]",
+    "border-[color:color-mix(in_srgb,var(--profile-card-primary)_48%,var(--profile-card-line))] bg-[color:var(--profile-card-primary-soft)] text-[color:var(--profile-card-primary-strong)]",
+  label: "text-[color:var(--profile-card-soft-muted)]",
   muted: "text-[color:var(--profile-card-muted)]",
   accent: "text-[color:var(--profile-card-primary-strong)]",
   avatar:
     "border-[color:color-mix(in_srgb,var(--profile-card-primary)_48%,var(--profile-card-line))] ring-1 ring-[color:color-mix(in_srgb,var(--profile-card-primary)_24%,transparent)]",
-  divider: "bg-[color:color-mix(in_srgb,var(--profile-card-primary)_30%,transparent)]"
+  divider: "bg-[color:color-mix(in_srgb,var(--profile-card-line)_70%,var(--profile-card-primary)_18%)]"
 };
 
-function getTechnicianPublicInfoCardThemeStyle(themeScope: TechnicianPublicInfoCardThemeScope): CSSProperties {
-  const primary =
-    themeScope === "technician"
-      ? "var(--technician-status-duty, var(--client-primary, var(--admin-accent, #367a71)))"
-      : themeScope === "merchant"
-        ? "var(--client-primary, var(--admin-accent, #367a71))"
-        : "var(--client-primary, #367a71)";
-  const primaryStrong =
-    themeScope === "technician"
-      ? "var(--technician-status-duty-strong, var(--client-primary-strong, var(--admin-accent-strong, #245a53)))"
-      : themeScope === "merchant"
-        ? "var(--client-primary-strong, var(--admin-accent-strong, #245a53))"
-        : "var(--client-primary-strong, #245a53)";
-
+function getTechnicianPublicInfoCardThemeStyle(): CSSProperties {
   return {
     "--profile-card-bg": "var(--client-bg, var(--admin-bg, #ffffff))",
     "--profile-card-elevated": "var(--client-elevated, var(--admin-elevated, #ffffff))",
     "--profile-card-line": "var(--client-line, var(--admin-line, rgba(22, 54, 48, 0.14)))",
     "--profile-card-muted": "var(--client-muted, var(--admin-muted, rgba(22, 54, 48, 0.68)))",
-    "--profile-card-primary": primary,
-    "--profile-card-primary-strong": primaryStrong,
+    "--profile-card-soft-muted": "var(--client-soft-muted, color-mix(in srgb, var(--profile-card-muted) 64%, transparent))",
+    "--profile-card-primary": "var(--client-primary, var(--admin-accent, #367a71))",
+    "--profile-card-primary-soft": "var(--client-primary-soft, color-mix(in srgb, var(--profile-card-primary) 14%, transparent))",
+    "--profile-card-primary-strong": "var(--client-primary-strong, var(--admin-accent-strong, #245a53))",
     "--profile-card-shadow": "var(--client-shadow, 0 24px 58px rgba(21, 57, 51, 0.18))",
     "--profile-card-surface": "var(--client-surface, var(--admin-surface, #ffffff))",
     "--profile-card-text": "var(--client-text, var(--admin-text, #163630))",
@@ -145,7 +134,7 @@ export function TechnicianPublicInfoCard({
   themeScope?: TechnicianPublicInfoCardThemeScope;
 }) {
   const surface = publicInfoCardSurface;
-  const themeStyle = getTechnicianPublicInfoCardThemeStyle(themeScope);
+  const themeStyle = getTechnicianPublicInfoCardThemeStyle();
   const technicianInfoTags = (technician.profileTags?.length ? technician.profileTags : technician.skills).filter(Boolean);
   const displayName = technician.nickname?.trim() || technician.name;
   const introductionText = technician.bio?.trim() || "这个技师暂时还没有补充介绍。";
@@ -291,7 +280,7 @@ export function TechnicianPublicInfoCardModal({
     return null;
   }
 
-  const themeStyle = getTechnicianPublicInfoCardThemeStyle(themeScope);
+  const themeStyle = getTechnicianPublicInfoCardThemeStyle();
 
   const modal = (
     <div
