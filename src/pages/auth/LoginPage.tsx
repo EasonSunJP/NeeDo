@@ -114,6 +114,10 @@ type TestCredentialEnv = {
   VITE_TEST_LOGIN_TECHNICIAN_PASSWORD?: string;
 };
 
+type FrontendLoginEnv = TestCredentialEnv & {
+  VITE_NEEDO_FRONTEND_AUTH_BYPASS?: string;
+};
+
 const defaultPublicTestLoginEmail: Partial<Record<PortalScope, string>> = {
   merchant: "merchant@example.com",
   technician: "seed.technician@needo.local",
@@ -179,6 +183,12 @@ export function resolveTestLoginCredentials(env: TestCredentialEnv, portal: Port
   }
 
   return { email, password };
+}
+
+export function isFrontendAuthBypassEnabled(env: FrontendLoginEnv) {
+  const value = env.VITE_NEEDO_FRONTEND_AUTH_BYPASS?.trim().toLowerCase();
+
+  return value === "1" || value === "true" || value === "yes";
 }
 
 const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
@@ -656,10 +666,10 @@ export function LoginPage() {
   const { theme, isNight } = useClientTheme();
   const {
     canAccess,
+    enterFrontendWithoutAuthentication,
     hasRememberedPortalAuthorization,
     isAuthenticated,
     login,
-    loginWithFormalPassword,
     loginWithProvider,
     logout,
     session,
@@ -688,9 +698,11 @@ export function LoginPage() {
   const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
   const rememberCredentialsScope = useMemo(() => getFrontendRememberCredentialsScope(activePortal), [activePortal]);
   const testCredentials = useMemo(
-    () => resolveTestLoginCredentials(import.meta.env as TestCredentialEnv, activePortal),
+    () => resolveTestLoginCredentials(import.meta.env as FrontendLoginEnv, activePortal),
     [activePortal]
   );
+  const shouldBypassFrontendLogin = isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);
+  const canUseTestCredentialAction = Boolean(testCredentials || shouldBypassFrontendLogin);
   const hasRememberedActivePortal = hasRememberedPortalAuthorization(activePortal);
   const hasActiveAccess = (isAuthenticated && canAccess(activePortal)) || hasRememberedActivePortal;
   const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
@@ -838,8 +850,8 @@ export function LoginPage() {
     clearFeedback();
   };
 
-  const continueWithTestCredentials = async () => {
-    if (!testCredentials || isLoginPending) {
+  const continueWithTestCredentials = useCallback(async () => {
+    if (!canUseTestCredentialAction || isLoginPending) {
       return;
     }
 
@@ -847,7 +859,7 @@ export function LoginPage() {
     setIsLoginPending(true);
 
     try {
-      const result = await loginWithFormalPassword(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password);
+      const result = await enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal));
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
         return;
@@ -857,7 +869,15 @@ export function LoginPage() {
     } finally {
       setIsLoginPending(false);
     }
-  };
+  }, [activePortal, canUseTestCredentialAction, copy, enterFrontendWithoutAuthentication, isLoginPending, redirectPath]);
+
+  useEffect(() => {
+    if (!shouldBypassFrontendLogin || hasActiveAccess || isLoginPending) {
+      return;
+    }
+
+    void continueWithTestCredentials();
+  }, [continueWithTestCredentials, hasActiveAccess, isLoginPending, shouldBypassFrontendLogin]);
 
   const handleAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1007,7 +1027,7 @@ export function LoginPage() {
                 >
                   {copy.accountLogin}
                 </button>
-                {testCredentials ? (
+                {canUseTestCredentialAction ? (
                   <div className="space-y-3">
                     <button
                       className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"

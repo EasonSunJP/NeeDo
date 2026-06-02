@@ -4,6 +4,7 @@ import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } f
 import type { PortalScope } from "../../auth/demoAccount";
 import { useAuth } from "../../auth/AuthProvider";
 import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
+import { isFrontendBypassSession } from "../../auth/rbac";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -538,7 +539,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [notice, setNotice] = useState("");
   const redirectPath = searchParams.get("redirect");
   const nextPath = redirectPath || config.entryPath;
-  const hasAccess = isAuthenticated && canAccess(config.authPortal);
+  const hasAccess = isAuthenticated && canAccess(config.authPortal) && !isFrontendBypassSession(session);
   const qrToken = adminLoginQrTokens[portal];
   const rememberCredentialsScope = useMemo(() => getAdminRememberCredentialsScope(portal), [portal]);
   const testCredentials = useMemo(

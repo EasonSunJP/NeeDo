@@ -22,6 +22,7 @@ import {
   findIdentityForPortal,
   hasAnyPermissionInSession,
   hasPermissionInSession,
+  isFrontendBypassSession,
   normalizeAuthSessionEntityIds,
   type AuthMePayload,
   type AuthSession,
@@ -46,6 +47,7 @@ type AuthContextValue = {
   loginWithVerificationCode: (portal: PortalScope, email: string, code: string) => Promise<AuthActionResult>;
   loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => Promise<AuthActionResult>;
   loginWithQr: (portal: PortalScope, token: string) => Promise<AuthActionResult>;
+  enterFrontendWithoutAuthentication: (portal: PortalScope) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
   switchPortal: (portal: PortalScope) => Promise<AuthActionResult>;
   canAccess: (portal: PortalScope) => boolean;
@@ -60,6 +62,49 @@ type AuthContextValue = {
 const portalStorageKey = "needo.auth.portal";
 const legacySessionStorageKey = "needo.auth.session";
 const allPortals: PortalScope[] = ["user", "merchant", "technician", "business", "admin"];
+const frontendBypassPortals: PortalScope[] = ["user", "merchant", "technician", "business"];
+
+const frontendBypassIdentityConfig = {
+  user: {
+    identityType: "customer",
+    menu: "menu:client-app",
+    permission: "page:client-app",
+    role: "customer",
+    scopeId: 1,
+    scopeType: "customer_profile"
+  },
+  merchant: {
+    identityType: "merchant_owner",
+    menu: "menu:merchant-app",
+    permission: "page:merchant-app",
+    role: "merchant_owner",
+    scopeId: 1,
+    scopeType: "store"
+  },
+  technician: {
+    identityType: "technician",
+    menu: "menu:technician-app",
+    permission: "page:technician-app",
+    role: "technician",
+    scopeId: 1,
+    scopeType: "technician_profile"
+  },
+  business: {
+    identityType: "scout",
+    menu: "menu:business-app",
+    permission: "page:business-app",
+    role: "scout",
+    scopeId: null,
+    scopeType: "global"
+  }
+} satisfies Record<Exclude<PortalScope, "admin">, {
+  identityType: string;
+  menu: string;
+  permission: string;
+  role: string;
+  scopeId: number | null;
+  scopeType: string;
+}>;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -108,6 +153,29 @@ function readStoredAuthSession() {
 
 function normalizeApiError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function createFrontendBypassMe(portal: Exclude<PortalScope, "admin">): AuthMePayload {
+  const config = frontendBypassIdentityConfig[portal];
+  const identity = {
+    id: 260417,
+    scopeId: config.scopeId,
+    scopeType: config.scopeType,
+    type: config.identityType
+  };
+
+  return {
+    id: 260417,
+    email: `${portal}.preview@needo.local`,
+    username: `${portal}-preview`,
+    avatarUrl: null,
+    isActive: true,
+    currentIdentity: identity,
+    identities: [identity],
+    roles: [config.role],
+    permissions: [config.permission],
+    menus: [config.menu]
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -210,6 +278,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
 
     const restoreSession = async () => {
+      if (isFrontendBypassSession(session)) {
+        setIsRestoring(false);
+        return;
+      }
+
       const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();
 
       if (session && !shouldRefreshAccessToken) {
@@ -316,6 +389,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     message: "error.auth.qr_unavailable"
   }), []);
 
+  const enterFrontendWithoutAuthentication = useCallback(
+    async (portal: PortalScope): Promise<AuthActionResult> => {
+      if (!frontendBypassPortals.includes(portal)) {
+        return { ok: false, message: "error.auth.portal_forbidden" };
+      }
+
+      clearAuthTokens();
+      const nextSession = buildAuthSessionFromMe(createFrontendBypassMe(portal as Exclude<PortalScope, "admin">), portal, "frontend-bypass");
+      persistSession(nextSession);
+
+      return { ok: true, session: nextSession };
+    },
+    [persistSession]
+  );
+
   const logout = useCallback(async () => {
     await authApi.logout().catch(() => undefined);
     forgetAllRememberedPortalAuthorizations();
@@ -391,6 +479,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithVerificationCode,
       loginWithProvider,
       loginWithQr,
+      enterFrontendWithoutAuthentication,
       logout,
       switchPortal,
       canAccess,
@@ -412,6 +501,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRestoring,
       login,
       loginWithFormalPassword,
+      enterFrontendWithoutAuthentication,
       loginWithProvider,
       loginWithQr,
       loginWithVerificationCode,

@@ -11,6 +11,7 @@ type AdminAccountMenuProps = {
 };
 
 const loginMethodLabels = {
+  "frontend-bypass": "前台临时",
   password: "账号密码",
   "verification-code": "验证码",
   gmail: "Gmail",

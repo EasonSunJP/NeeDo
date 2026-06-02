@@ -8,6 +8,7 @@ import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { ChartPointerTooltip, resolveChartPointerState, type ChartPointerState } from "../../components/ui/ChartPointerTooltip";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
+import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { cn, percent, statusLabel, yen } from "../../lib/utils";
 import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
@@ -1680,44 +1681,25 @@ function AnalyticsFullscreenHeader({
   onClose: () => void;
 }) {
   return (
-    <header className="safe-header-top shrink-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] pb-3">
-      <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4">
-        <div className="min-w-0">
-          <div className="flex min-h-11 flex-col justify-center">
-            <TitleWithInfo
-              as="h2"
-              className="min-w-0"
-              info={info}
-              infoPanelClassName="!z-[180]"
-              label={typeof title === "string" ? `${title}说明` : "查看说明"}
-              title={title}
-              titleClassName="truncate text-[20px] font-black leading-none text-[color:var(--client-text)]"
-              variant="dark"
-            />
-          </div>
-          {subtitle ? <p className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--client-muted)]">{subtitle}</p> : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {actions}
-          <button
-            aria-label="关闭"
-            className={cn(floatingHeaderControlButtonClassName, "text-[color:var(--client-muted)] hover:text-[color:var(--client-primary-strong)]")}
-            onClick={onClose}
-            type="button"
-          >
-            <AppIcon className="h-5 w-5" name="close" />
-          </button>
-        </div>
-      </div>
-    </header>
+    <MobileFullscreenHeader
+      action={actions}
+      closeLabel="关闭数据中心详情"
+      info={info}
+      onClose={onClose}
+      showSpacer={false}
+      subtitle={subtitle}
+      title={title}
+    />
   );
 }
 
 function DrilldownDrawer({
   state,
+  surface,
   onClose
 }: {
   state: DrilldownState | null;
+  surface: DashboardSurface;
   onClose: () => void;
 }) {
   const { theme } = useClientTheme();
@@ -1740,6 +1722,77 @@ function DrilldownDrawer({
   const orderWindow = state.orders ? getOneWeekOrderWindow(state.orders) : null;
   const visibleOrders = orderWindow?.orders.filter((order) => orderMatchesSearch(order, searchQuery) && orderMatchesDateSearch(order, searchStartDate, searchEndDate)) ?? [];
   const orderDescription = getOrderDrilldownDescription(state.description, orderWindow);
+  const content = (
+    <>
+      <AnalyticsFullscreenHeader
+        actions={state.orders ? (
+          <button
+            aria-label="搜索订单"
+            aria-pressed={searchOpen}
+            className={cn(floatingHeaderControlButtonClassName, searchOpen ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]" : "text-[color:var(--client-muted)] hover:text-[color:var(--client-primary-strong)]")}
+            onClick={() => setSearchOpen((value) => !value)}
+            type="button"
+          >
+            <AppIcon className="h-5 w-5" name="search" />
+          </button>
+        ) : null}
+        onClose={onClose}
+        subtitle={orderDescription}
+        title={state.title}
+      />
+      {state.orders && searchOpen ? (
+        <div className="shrink-0 space-y-3 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 pb-3 pt-[calc(env(safe-area-inset-top)+86px)]">
+          <label className="flex h-11 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] px-4">
+            <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
+            <input
+              autoFocus
+              className="min-w-0 flex-1 bg-transparent text-sm font-bold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-soft-muted)]"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="搜索订单、客户、区域、状态"
+              value={searchQuery}
+            />
+            <span className="shrink-0 text-[11px] font-black text-[color:var(--client-soft-muted)]">{visibleOrders.length} 单</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label>
+              <span className="mb-1 block text-[11px] font-black text-[color:var(--client-soft-muted)]">开始时间</span>
+              <input
+                className="h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 text-sm font-bold text-[color:var(--client-text)] outline-none accent-[color:var(--client-primary)]"
+                max={searchEndDate || undefined}
+                onChange={(event) => setSearchStartDate(event.target.value)}
+                onInput={(event) => setSearchStartDate(event.currentTarget.value)}
+                type="date"
+                value={searchStartDate}
+              />
+            </label>
+            <label>
+              <span className="mb-1 block text-[11px] font-black text-[color:var(--client-soft-muted)]">结束时间</span>
+              <input
+                className="h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 text-sm font-bold text-[color:var(--client-text)] outline-none accent-[color:var(--client-primary)]"
+                min={searchStartDate || undefined}
+                onChange={(event) => setSearchEndDate(event.target.value)}
+                onInput={(event) => setSearchEndDate(event.currentTarget.value)}
+                type="date"
+                value={searchEndDate}
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
+      <main className={cn("scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+24px)]", state.orders && searchOpen ? "pt-4" : "pt-[calc(env(safe-area-inset-top)+86px)]")}>
+        {state.cast ? <CastInsightDetail cast={state.cast} /> : null}
+        {state.orders ? <RecentOrderList limit={visibleOrders.length} orders={visibleOrders} /> : null}
+        {state.settlements ? <SettlementList settlements={state.settlements} /> : null}
+        {state.casts ? <CastRankingList casts={state.casts} onCastClick={() => undefined} /> : null}
+        {state.alerts ? <AlertList alerts={state.alerts} /> : null}
+      </main>
+    </>
+  );
+
+  if (surface === "mobile") {
+    return <MobileFullscreenPage>{content}</MobileFullscreenPage>;
+  }
+
   const page = (
     <div
       className={cn(
@@ -1749,69 +1802,8 @@ function DrilldownDrawer({
       )}
       style={{ height: "100dvh", inset: 0, position: "fixed", width: "100vw", zIndex: 10000 }}
     >
-      <section className="flex h-[100dvh] w-screen flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%),color-mix(in_srgb,var(--client-bg)_96%,var(--client-surface)_4%))]">
-        <AnalyticsFullscreenHeader
-          actions={state.orders ? (
-            <button
-              aria-label="搜索订单"
-              aria-pressed={searchOpen}
-              className={cn(floatingHeaderControlButtonClassName, searchOpen ? "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]" : "text-[color:var(--client-muted)] hover:text-[color:var(--client-primary-strong)]")}
-              onClick={() => setSearchOpen((value) => !value)}
-              type="button"
-            >
-              <AppIcon className="h-5 w-5" name="search" />
-            </button>
-          ) : null}
-          onClose={onClose}
-          subtitle={orderDescription}
-          title={state.title}
-        />
-        {state.orders && searchOpen ? (
-          <div className="shrink-0 space-y-3 border-b border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-3">
-            <label className="flex h-11 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] px-4">
-              <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
-              <input
-                autoFocus
-                className="min-w-0 flex-1 bg-transparent text-sm font-bold text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-soft-muted)]"
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="搜索订单、客户、区域、状态"
-                value={searchQuery}
-              />
-              <span className="shrink-0 text-[11px] font-black text-[color:var(--client-soft-muted)]">{visibleOrders.length} 单</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label>
-                <span className="mb-1 block text-[11px] font-black text-[color:var(--client-soft-muted)]">开始时间</span>
-                <input
-                  className="h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 text-sm font-bold text-[color:var(--client-text)] outline-none accent-[color:var(--client-primary)]"
-                  max={searchEndDate || undefined}
-                  onChange={(event) => setSearchStartDate(event.target.value)}
-                  onInput={(event) => setSearchStartDate(event.currentTarget.value)}
-                  type="date"
-                  value={searchStartDate}
-                />
-              </label>
-              <label>
-                <span className="mb-1 block text-[11px] font-black text-[color:var(--client-soft-muted)]">结束时间</span>
-                <input
-                  className="h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 text-sm font-bold text-[color:var(--client-text)] outline-none accent-[color:var(--client-primary)]"
-                  min={searchStartDate || undefined}
-                  onChange={(event) => setSearchEndDate(event.target.value)}
-                  onInput={(event) => setSearchEndDate(event.currentTarget.value)}
-                  type="date"
-                  value={searchEndDate}
-                />
-              </label>
-            </div>
-          </div>
-        ) : null}
-        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+24px)]">
-          {state.cast ? <CastInsightDetail cast={state.cast} /> : null}
-          {state.orders ? <RecentOrderList limit={visibleOrders.length} orders={visibleOrders} /> : null}
-          {state.settlements ? <SettlementList settlements={state.settlements} /> : null}
-          {state.casts ? <CastRankingList casts={state.casts} onCastClick={() => undefined} /> : null}
-          {state.alerts ? <AlertList alerts={state.alerts} /> : null}
-        </main>
+      <section className="flex h-[100dvh] w-screen flex-col overflow-hidden bg-[color:var(--client-bg)]">
+        {content}
       </section>
     </div>
   );
@@ -1833,6 +1825,7 @@ function MetricInsightPage({
   orders,
   settlements,
   scopedOrders,
+  surface,
   onClose
 }: {
   metricKey: SummaryMetricKey;
@@ -1844,6 +1837,7 @@ function MetricInsightPage({
   orders: Order[];
   settlements: Settlement[];
   scopedOrders: Order[];
+  surface: DashboardSurface;
   onClose: () => void;
 }) {
   const { theme } = useClientTheme();
@@ -1896,13 +1890,12 @@ function MetricInsightPage({
     };
   }, []);
 
-  const page = (
-    <div className={cn("fixed inset-0 z-[160] overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]", getClientThemeModeClassName(theme), getClientThemeClassName(theme))}>
-      <section className="safe-screen-shell flex h-[100dvh] w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_18%_0%,color-mix(in_srgb,var(--client-primary)_22%,transparent),transparent_36%),linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%),color-mix(in_srgb,var(--client-bg)_96%,var(--client-surface)_4%)_58%,var(--client-bg))]">
-        <AnalyticsFullscreenHeader info={config.description} onClose={onClose} title={config.label} />
+  const content = (
+    <>
+      <AnalyticsFullscreenHeader info={config.description} onClose={onClose} title={config.label} />
 
-        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
-          <section className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] p-4 backdrop-blur">
+      <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-[calc(env(safe-area-inset-top)+86px)]">
+        <section className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] p-4 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-black text-[color:var(--client-muted)]">{overview.rangeLabel}</p>
@@ -1924,9 +1917,9 @@ function MetricInsightPage({
                 <strong className="mt-1 block truncate text-sm font-black text-[color:var(--client-text)]">{formatMetricValue(compareMetric)}</strong>
               </div>
             </div>
-          </section>
+        </section>
 
-          <section className="mt-4 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4">
+        <section className="mt-4 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4">
             <TitleWithInfo
               as="h3"
               info={`当前单位：${getGranularityTitle(filters.granularity)}。单日仅支持小时，本周和近7天仅支持日，本月和近30天支持日/周；自定义区间最多 ${shopAnalyticsMaxRangeDays} 天。`}
@@ -1993,9 +1986,9 @@ function MetricInsightPage({
                 </button>
               ))}
             </div>
-          </section>
+        </section>
 
-          <section className="mt-4">
+        <section className="mt-4">
             <MetricLineChart
               compareEnabled={compareEnabled}
               compareOverview={compareOverview}
@@ -2004,9 +1997,9 @@ function MetricInsightPage({
               overview={overview}
               points={overview.revenueTrend}
             />
-          </section>
+        </section>
 
-          <section className="mt-4 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4">
+        <section className="mt-4 rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] p-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-base font-black">相关订单</h3>
               <Badge tone="neutral">{overview.recentOrders.length} 单</Badge>
@@ -2014,8 +2007,19 @@ function MetricInsightPage({
             <div className="mt-3">
               <RecentOrderList orders={overview.recentOrders} />
             </div>
-          </section>
-        </main>
+        </section>
+      </main>
+    </>
+  );
+
+  if (surface === "mobile") {
+    return <MobileFullscreenPage>{content}</MobileFullscreenPage>;
+  }
+
+  const page = (
+    <div className={cn("fixed inset-0 z-[160] overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]", getClientThemeModeClassName(theme), getClientThemeClassName(theme))}>
+      <section className="safe-screen-shell flex h-[100dvh] w-full flex-col overflow-hidden bg-[color:var(--client-bg)]">
+        {content}
       </section>
     </div>
   );
@@ -2531,7 +2535,7 @@ export function ShopAnalyticsDashboard({
         open={filterOpen}
         storeOptions={merchantStores}
       />
-      <DrilldownDrawer onClose={() => setDrilldown(null)} state={drilldown} />
+      <DrilldownDrawer onClose={() => setDrilldown(null)} state={drilldown} surface={surface} />
       {metricInsight ? (
         <MetricInsightPage
           key={metricInsight}
@@ -2544,6 +2548,7 @@ export function ShopAnalyticsDashboard({
           settlements={settlements}
           store={store}
           stores={merchantStores}
+          surface={surface}
           technicians={technicians}
         />
       ) : null}

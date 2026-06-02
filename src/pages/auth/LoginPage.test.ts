@@ -87,11 +87,17 @@ describe("LoginPage real-account login", () => {
   });
 
   it("lets the public test credential action bypass the captcha requirement", () => {
-    const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = async \(\) => \{[\s\S]*?\n  \};/)?.[0] ?? "";
+    const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[/)?.[0] ?? "";
 
-    expect(testCredentialAction).toContain("await loginWithFormalPassword(getPublicTestLoginPortal(activePortal), testCredentials.email, testCredentials.password)");
+    expect(testCredentialAction).toContain("await enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal))");
+    expect(testCredentialAction).not.toContain("loginWithFormalPassword");
     expect(testCredentialAction).not.toContain("captchaRequiredError");
     expect(testCredentialAction).not.toContain("normalizedCaptchaCode");
+  });
+
+  it("can temporarily skip the frontend login page without waiting for an API response", () => {
+    expect(loginPageSource).toContain("isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv)");
+    expect(loginPageSource).toContain("void continueWithTestCredentials();");
   });
 
   it("does not point production login failures back to the formal /api/v1 backend path", () => {
@@ -141,6 +147,11 @@ describe("LoginPage real-account login", () => {
     expect(resolveBackendLoginTarget("admin", "merchant", "/merchant-admin")).toBeNull();
     expect(adminLoginPageSource).toContain("portalMismatchError");
     expect(adminLoginPageSource).not.toContain('nextPath : "/admin"');
+  });
+
+  it("does not treat temporary frontend sessions as backend login sessions", () => {
+    expect(adminLoginPageSource).toContain("isFrontendBypassSession");
+    expect(adminLoginPageSource).toContain("!isFrontendBypassSession(session)");
   });
 
   it("prefills operations admin login fields from configured test credentials", () => {
@@ -213,7 +224,7 @@ describe("LoginPage real-account login", () => {
   it("keeps the public test-account shortcut inside the current frontend portal", () => {
     expect(getPublicTestLoginPortal("user")).toBe("user");
     expect(getPublicTestLoginPortal("business")).toBe("business");
-    expect(loginPageSource).toContain("loginWithFormalPassword(getPublicTestLoginPortal(activePortal)");
+    expect(loginPageSource).toContain("enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal)");
   });
 
   it("falls back to formal seeded frontend test accounts when stale env still points to admin", () => {

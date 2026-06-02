@@ -1,6 +1,6 @@
 import type { PortalScope } from "./demoAccount";
 
-export type LoginMethod = "gmail" | "password" | "qr" | "verification-code";
+export type LoginMethod = "frontend-bypass" | "gmail" | "password" | "qr" | "verification-code";
 
 export type AuthIdentityPayload = {
   id: number;
@@ -209,4 +209,8 @@ export function canAccessFeatureFromSession(
 
 export function canAccessMenuFromSession(session: AuthSession | null, menuPermission: string) {
   return Boolean(session && (session.menus.includes(menuPermission) || hasPermissionInSession(session, menuPermission)));
+}
+
+export function isFrontendBypassSession(session: AuthSession | null) {
+  return session?.loginMethod === "frontend-bypass";
 }

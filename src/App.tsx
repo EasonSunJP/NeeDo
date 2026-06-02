@@ -2,6 +2,7 @@ import { Component, useEffect, useState, type CSSProperties, type ReactElement, 
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
+import { isFrontendBypassSession } from "./auth/rbac";
 import { I18nProvider, I18nRuntime } from "./i18n/I18nProvider";
 import { ClientThemeProvider, getClientThemeClassName, getClientThemeModeClassName, getInitialClientThemeState, isNightClientTheme, useClientTheme } from "./theme/ClientThemeProvider";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, isDarkAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, sharedAdminThemeOptions, type AdminTheme, type AdminThemeOption } from "./theme/AdminTheme";
@@ -802,7 +803,7 @@ function RequirePortalAuth({
   portal: PortalScope;
   children: ReactElement;
 }) {
-  const { isAuthenticated, isRestoring, canAccess, canEnterPortal, hasRememberedPortalAuthorization, switchPortal } = useAuth();
+  const { session, isAuthenticated, isRestoring, canAccess, canEnterPortal, hasRememberedPortalAuthorization, switchPortal } = useAuth();
   const location = useLocation();
   const [isPortalRestorePending, setIsPortalRestorePending] = useState(false);
   const hasDirectAccess = canAccess(portal);
@@ -813,6 +814,7 @@ function RequirePortalAuth({
   const requiresDirectPortalAccess = isBackendPortalRoute || portal === "merchant" || portal === "technician" || portal === "business";
   const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));
   const canRestoreRememberedPortal = !isBackendPortalRoute && hasRememberedPortalAuthorization(portal);
+  const hasBlockedFrontendBypass = isBackendPortalRoute && isFrontendBypassSession(session);
 
   useEffect(() => {
     if (isRestoring || hasAccess || !canRestoreRememberedPortal || isPortalRestorePending) {
@@ -837,7 +839,7 @@ function RequirePortalAuth({
     return null;
   }
 
-  if (!isAuthenticated || !hasAccess) {
+  if (!isAuthenticated || !hasAccess || hasBlockedFrontendBypass) {
     const redirect = `${location.pathname}${location.search}${location.hash}`;
     const loginPath = portal === "merchant" && location.pathname.startsWith("/merchant-admin")
       ? "/login/merchant-admin"

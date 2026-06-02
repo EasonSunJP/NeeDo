@@ -21,4 +21,27 @@ describe("ShopAnalyticsDashboard theme surfaces", () => {
     expect(styles).toContain(".client-shell.client-theme-vital-mono.merchant-analytics-clean-shell");
     expect(styles).toContain(".client-shell.client-theme-day.merchant-analytics-clean-shell .shop-analytics-panel");
   });
+
+  it("uses the shared mobile fullscreen header for data-center detail pages", () => {
+    const headerFunction = source.slice(
+      source.indexOf("function AnalyticsFullscreenHeader"),
+      source.indexOf("function DrilldownDrawer")
+    );
+
+    expect(headerFunction).toContain("<MobileFullscreenHeader");
+    expect(headerFunction).toContain("showSpacer={false}");
+    expect(headerFunction).toContain('subtitle={subtitle}');
+    expect(headerFunction).not.toContain("<header className=");
+    expect(headerFunction).not.toContain("dark");
+    expect(headerFunction).not.toContain("spacerGapPx={24}");
+    expect(headerFunction).not.toContain("!backdrop-blur-none");
+    expect(headerFunction).not.toContain("!bg-[color:var(--client-bg)]");
+  });
+
+  it("does not place extra gradient masks under data-center fullscreen headers", () => {
+    expect(source).toContain("<MobileFullscreenPage>{content}</MobileFullscreenPage>");
+    expect(source).toContain("pt-[calc(env(safe-area-inset-top)+86px)]");
+    expect(source).not.toContain("bg-[radial-gradient(circle_at_18%_0%");
+    expect(source).not.toContain("bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_94%,var(--client-bg)_6%)");
+  });
 });

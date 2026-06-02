@@ -25,6 +25,11 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).toContain("const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));");
   });
 
+  it("does not let a temporary frontend bypass session enter backend routes", () => {
+    expect(requirePortalAuthSource).toContain("const hasBlockedFrontendBypass = isBackendPortalRoute && isFrontendBypassSession(session);");
+    expect(requirePortalAuthSource).toContain("!isAuthenticated || !hasAccess || hasBlockedFrontendBypass");
+  });
+
   it("keeps explicit identity switching inside the settings identity page", () => {
     expect(settingsPortalPageSource).toContain("const switched = await switchPortal(nextPortal);");
     expect(settingsPortalPageSource).toContain("if (!switched.ok)");
