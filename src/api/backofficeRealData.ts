@@ -45,16 +45,33 @@ export interface BackofficeScheduleSlotPayload {
 
 export interface BackofficeFinanceSettlementPayload {
   id: number;
-  transactionId: number;
-  transactionNo: string;
+  bookingOrderId: number;
+  orderNo: string;
   referenceType: string;
   referenceId: number;
   status: string;
-  currency: string;
-  expectedAmount: number;
-  actualAmount: number;
-  differenceAmount: number;
-  exportedAt: string | null;
+  shopId: number;
+  shopName: string;
+  technicianProfileId: number | null;
+  technicianName: string | null;
+  estimatedServiceGmvJpy: number;
+  platformCollectedServiceAmountJpy: number;
+  offlineReportedServiceAmountJpy: number;
+  unknownOrUnreportedServiceAmountJpy: number;
+  serviceIncomeStatus: string;
+  paymentChannel: string;
+  platformNdpRevenue: number;
+  userRewardNdpCost: number;
+  pendingHoldNdp: number;
+  campaignDiscountNdp: number;
+  releasedNdp: number;
+  penaltyNdp: number;
+  compensationToUserNdp: number;
+  technicianEstimatedIncomeJpy: number;
+  shopEstimatedGrossProfitJpy: number;
+  appliedFeeRuleIds: string[];
+  moneyTimeline: unknown[];
+  moneyTimelineStatus: string;
   createdAt: string;
 }
 
@@ -94,9 +111,12 @@ export interface BackofficeDashboardPayload {
     booked: number;
   };
   finance: {
-    grossAmount: number;
-    pendingSettlementAmount: number;
-    refundAmount: number;
+    estimatedServiceGmvJpy: number;
+    platformNdpRevenue: number;
+    userRewardNdpCost: number;
+    pendingHoldNdp: number;
+    campaignDiscountNdp: number;
+    unknownOrUnreportedServiceAmountJpy: number;
   };
   technicians: BackofficeTechnicianPayload[];
   shops: BackofficeShopPayload[];
@@ -187,17 +207,15 @@ export function mapBackofficeOrder(row: BackofficeOrderPayload): Order {
 }
 
 export function mapBackofficeSettlement(row: BackofficeFinanceSettlementPayload): Settlement {
-  const platformFee = Math.max(0, row.actualAmount - row.expectedAmount);
-
   return {
     id: String(row.id),
-    merchantName: row.referenceType === "booking_order" ? `Booking #${row.referenceId}` : row.referenceType,
+    merchantName: row.shopName || `Booking #${row.referenceId}`,
     period: formatDateTime(row.createdAt).slice(0, 10),
-    grossAmount: row.actualAmount,
-    platformFee,
-    refundAmount: row.differenceAmount < 0 ? Math.abs(row.differenceAmount) : 0,
-    payableAmount: row.actualAmount - platformFee,
-    status: row.status === "exported" ? "paid" : "pending"
+    grossAmount: row.estimatedServiceGmvJpy,
+    platformFee: row.platformNdpRevenue,
+    refundAmount: row.userRewardNdpCost + row.campaignDiscountNdp,
+    payableAmount: row.estimatedServiceGmvJpy - row.platformNdpRevenue,
+    status: row.status === "settled" || row.status === "compensated" ? "paid" : "pending"
   };
 }
 

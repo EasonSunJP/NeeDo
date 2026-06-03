@@ -50,9 +50,7 @@ export const technicianServiceBodySchema = z.object({
 
 export type ShopIdParams = z.infer<typeof shopIdParamSchema>;
 export type TechnicianServiceIdParams = z.infer<typeof technicianServiceIdParamSchema>;
-export type PublicTechnicianServicesParams = z.infer<
-  typeof publicTechnicianServicesParamSchema
->;
+export type PublicTechnicianServicesParams = z.infer<typeof publicTechnicianServicesParamSchema>;
 export type PricingModeBody = z.infer<typeof pricingModeBodySchema>;
 export type TechnicianServiceListQuery = z.infer<typeof technicianServiceListQuerySchema>;
 export type BookingNavigationQuery = z.infer<typeof bookingNavigationQuerySchema>;

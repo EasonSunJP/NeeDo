@@ -1503,6 +1503,7 @@ function DashboardFilterSheet({
   storeOptions,
   castOptions,
   areaOptions,
+  surface,
   onClose,
   onChange,
   onApply,
@@ -1513,6 +1514,7 @@ function DashboardFilterSheet({
   storeOptions: Store[];
   castOptions: Technician[];
   areaOptions: string[];
+  surface: DashboardSurface;
   onClose: () => void;
   onChange: (next: AnalyticsFilterState) => void;
   onApply: () => void;
@@ -1534,6 +1536,7 @@ function DashboardFilterSheet({
     <div
       className={cn(
         "client-shell merchant-analytics-clean-shell shop-analytics-filter-page fixed inset-0 z-[190] h-[100dvh] w-screen overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]",
+        surface === "admin" && "merchant-admin-analytics-surface",
         getClientThemeModeClassName(theme),
         getClientThemeClassName(theme)
       )}
@@ -1629,7 +1632,11 @@ function DashboardFilterSheet({
     </div>
   );
 
-  return typeof document === "undefined" ? sheet : createPortal(sheet, document.body);
+  if (surface === "admin" || typeof document === "undefined") {
+    return sheet;
+  }
+
+  return createPortal(sheet, document.body);
 }
 
 function FilterChipGroup<T extends string>({
@@ -1797,6 +1804,7 @@ function DrilldownDrawer({
     <div
       className={cn(
         "client-shell merchant-analytics-clean-shell fixed inset-0 z-[10000] h-[100dvh] w-screen overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]",
+        surface === "admin" && "merchant-admin-analytics-surface",
         getClientThemeModeClassName(theme),
         getClientThemeClassName(theme)
       )}
@@ -1808,7 +1816,7 @@ function DrilldownDrawer({
     </div>
   );
 
-  if (typeof document === "undefined") {
+  if (surface === "admin" || typeof document === "undefined") {
     return page;
   }
 
@@ -2017,14 +2025,21 @@ function MetricInsightPage({
   }
 
   const page = (
-    <div className={cn("fixed inset-0 z-[160] overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]", getClientThemeModeClassName(theme), getClientThemeClassName(theme))}>
+    <div
+      className={cn(
+        "merchant-analytics-clean-shell fixed inset-0 z-[160] overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]",
+        surface === "admin" && "client-shell merchant-admin-analytics-surface",
+        getClientThemeModeClassName(theme),
+        getClientThemeClassName(theme)
+      )}
+    >
       <section className="safe-screen-shell flex h-[100dvh] w-full flex-col overflow-hidden bg-[color:var(--client-bg)]">
         {content}
       </section>
     </div>
   );
 
-  if (typeof document === "undefined") {
+  if (surface === "admin" || typeof document === "undefined") {
     return page;
   }
 
@@ -2348,7 +2363,7 @@ export function ShopAnalyticsDashboard({
     [customers, filters, merchantStores, orders, personnelMonthlyCost, settlements, store, technicians]
   );
   const shellClassName = surface === "admin"
-    ? "min-w-0 max-w-full space-y-5 overflow-x-hidden"
+    ? "merchant-admin-analytics-surface min-w-0 max-w-full space-y-5 overflow-x-hidden"
     : "min-w-0 max-w-full space-y-4 overflow-x-hidden";
 
   const applyPreset = (preset: AnalyticsRangePreset) => {
@@ -2403,24 +2418,24 @@ export function ShopAnalyticsDashboard({
           <div className="relative flex min-h-[188px] flex-col justify-between gap-5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/58">Shop BI Dashboard</p>
-                <h2 className="mt-2 text-[28px] font-black tracking-[-0.04em] text-white">店铺经营驾驶舱</h2>
-                <p className="mt-2 text-sm leading-5 text-white/70">{store.name} · {overview.rangeLabel}</p>
+                <p className="shop-analytics-hero-eyebrow text-[11px] font-black uppercase tracking-[0.16em] text-white/58">Shop BI Dashboard</p>
+                <h2 className="shop-analytics-hero-title mt-2 text-[28px] font-black tracking-[-0.04em] text-white">店铺经营驾驶舱</h2>
+                <p className="shop-analytics-hero-subtitle mt-2 text-sm leading-5 text-white/70">{store.name} · {overview.rangeLabel}</p>
               </div>
-              <Badge className="shrink-0 border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_24%,transparent)] text-white" tone="neutral">Asia/Tokyo</Badge>
+              <Badge className="shop-analytics-hero-badge shrink-0 border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_24%,transparent)] text-white" tone="neutral">Asia/Tokyo</Badge>
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="shop-analytics-hero-metric rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
-                <p className="text-[11px] font-bold text-white/55">营业额</p>
-                <strong className="mt-1 block truncate text-sm font-black text-white">{formatMetricValue(overview.summary.grossRevenue)}</strong>
+                <p className="shop-analytics-hero-metric-label text-[11px] font-bold text-white/55">营业额</p>
+                <strong className="shop-analytics-hero-metric-value mt-1 block truncate text-sm font-black text-white">{formatMetricValue(overview.summary.grossRevenue)}</strong>
               </div>
               <div className="shop-analytics-hero-metric rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
-                <p className="text-[11px] font-bold text-white/55">完单率</p>
-                <strong className="mt-1 block truncate text-sm font-black text-white">{formatMetricValue(overview.summary.completionRate)}</strong>
+                <p className="shop-analytics-hero-metric-label text-[11px] font-bold text-white/55">完单率</p>
+                <strong className="shop-analytics-hero-metric-value mt-1 block truncate text-sm font-black text-white">{formatMetricValue(overview.summary.completionRate)}</strong>
               </div>
               <div className="shop-analytics-hero-metric rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-primary)_24%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_20%,transparent)] px-3 py-3 backdrop-blur">
-                <p className="text-[11px] font-bold text-white/55">风险</p>
-                <strong className="mt-1 block truncate text-sm font-black text-white">{overview.alerts.length} 件</strong>
+                <p className="shop-analytics-hero-metric-label text-[11px] font-bold text-white/55">风险</p>
+                <strong className="shop-analytics-hero-metric-value mt-1 block truncate text-sm font-black text-white">{overview.alerts.length} 件</strong>
               </div>
             </div>
           </div>
@@ -2533,6 +2548,7 @@ export function ShopAnalyticsDashboard({
         onClose={() => setFilterOpen(false)}
         onReset={resetFilters}
         open={filterOpen}
+        surface={surface}
         storeOptions={merchantStores}
       />
       <DrilldownDrawer onClose={() => setDrilldown(null)} state={drilldown} surface={surface} />

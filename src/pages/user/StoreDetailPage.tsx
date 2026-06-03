@@ -1346,14 +1346,14 @@ function StoreTechnicianServiceListRow({
           src={getGeneratedImageThumbnailUrl(getStoreTechnicianPhoto(technician))}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/32" />
-        <div className="absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1">
+        <div className="absolute left-2 top-2 z-20">
           <SimpleRatingBadge compact value={formatStoreTechnicianRating(technician.rating).toFixed(1)} />
-          <div className="flex shrink-0 items-start -space-x-[4px]">
-            <IconMetricAction count={favoriteCount} icon="heart" label={`关注 ${favoriteCount}`} size="cluster" />
-            <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
-          </div>
         </div>
       </button>
+      <div className={cn("pointer-events-none absolute top-2 z-20 flex items-start gap-1", (isMerchantEditable || showSelectionAction) ? "right-[58px]" : "right-2")}>
+        <IconMetricAction count={favoriteCount} icon="heart" label={`关注 ${favoriteCount}`} size="cluster" />
+        <IconMetricAction count={shareCount} icon="share" label={`转发 ${shareCount}`} size="cluster" />
+      </div>
 
       <Link
         aria-label={`查看技师服务列表 ${displayName}`}

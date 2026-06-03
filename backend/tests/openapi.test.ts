@@ -56,6 +56,58 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/dashboard");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/shops/{shopId}/finance/rules"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/shops/{shopId}/finance/rules/preview"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/finance/orders/{bookingOrderId}"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/finance/orders/{bookingOrderId}/service-income-report"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/backoffice/finance/orders/{bookingOrderId}"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/shops/{shopId}/technicians/{technicianProfileId}/compensation-profile"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/shops/{shopId}/technicians/{technicianProfileId}/compensation-profile/preview"
+    );
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/export");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/publish");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/approve");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/pay-runs/{id}/lock");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/payslips/{id}/payout-records"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/payslips/{id}/resolve-dispute"
+    );
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/payroll-adjustments");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/payroll-adjustments/{id}/submit"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/payroll-adjustments/{id}/approve"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/payroll-adjustments/{id}/reject"
+    );
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/payslips");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/payslips/export");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/payslips/{id}/confirm");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/payslips/{id}/dispute");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/technician/payslips/{payslipId}/payout-records/{payoutRecordId}/confirm"
+    );
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/pay-runs");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/pay-runs/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/finance/settlements");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians");
@@ -87,6 +139,13 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("Wallet");
     expect(response.body.components.schemas).toHaveProperty("LedgerTransaction");
     expect(response.body.components.schemas).toHaveProperty("FinanceReconciliation");
+    expect(response.body.components.schemas).toHaveProperty("ShopFinanceRuleSet");
+    expect(response.body.components.schemas).toHaveProperty("ShopFinanceRulePreviewResult");
+    expect(response.body.components.schemas).toHaveProperty("OrderFinanceDetail");
+    expect(response.body.components.schemas).toHaveProperty("TechnicianCompensationProfile");
+    expect(response.body.components.schemas).toHaveProperty("CompensationProfilePreviewResult");
+    expect(response.body.components.schemas).toHaveProperty("PayrollCsvExport");
+    expect(response.body.components.schemas).toHaveProperty("PayrollAdjustmentRequest");
     expect(response.body.components.schemas).toHaveProperty("RealtimeConversation");
     expect(response.body.components.schemas).toHaveProperty("RealtimeMessage");
     expect(response.body.components.schemas).toHaveProperty("RealtimeContact");
@@ -95,5 +154,31 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("Follow");
     expect(response.body.components.schemas).toHaveProperty("Notification");
     expect(response.body.components.schemas).toHaveProperty("RealtimeUnreadCounts");
+
+    const resolveDisputePath =
+      response.body.paths["/api/v1/merchant-admin/payslips/{id}/resolve-dispute"].post;
+    expect(resolveDisputePath.security).toEqual([{ bearerAuth: [] }]);
+    expect(
+      resolveDisputePath.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/Payslip" });
+
+    const payoutConfirmPath =
+      response.body.paths[
+        "/api/v1/technician/payslips/{payslipId}/payout-records/{payoutRecordId}/confirm"
+      ].post;
+    expect(payoutConfirmPath.security).toEqual([{ bearerAuth: [] }]);
+    expect(
+      payoutConfirmPath.responses["200"].content["application/json"].schema.required
+    ).toEqual(["code", "message", "data"]);
+
+    const payslipSchema = response.body.components.schemas.Payslip;
+    expect(payslipSchema.properties).toMatchObject({
+      disputeResolvedAt: { type: ["string", "null"], format: "date-time" },
+      disputeResolvedById: { type: ["integer", "null"] },
+      disputeResolutionNote: { type: ["string", "null"] }
+    });
+    expect(
+      response.body.components.schemas.PayoutRecord.properties.technicianConfirmedAt
+    ).toEqual({ type: ["string", "null"], format: "date-time" });
   });
 });

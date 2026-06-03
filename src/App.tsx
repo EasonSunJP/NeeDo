@@ -52,6 +52,7 @@ import {
   NeedoPostDetailRoutePage
 } from "./pages/mobile/NeedoRoutePages";
 import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";
+import { TechnicianPayrollPage } from "./pages/mobile/TechnicianPayrollPage";
 import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";
 import { MerchantAdminAnalyticsPage } from "./pages/merchant-admin/MerchantAdminAnalyticsPage";
 import {
@@ -1225,6 +1226,7 @@ export default function App() {
               <Route path="/technician/schedule/events/:eventId" element={protect("technician", <TechnicianScheduleDetailRoutePage />)} />
               <Route path="/technician/schedule/shifts/:shiftId/transfer" element={protect("technician", <TechnicianScheduleTransferRoutePage />)} />
               <Route path="/technician/orders/:orderId" element={protect("technician", <TechnicianOrderDetailRoutePage />)} />
+              <Route path="/technician/payroll" element={protect("technician", <TechnicianPayrollPage />)} />
               <Route path="/technician/messages" element={protect("technician", <ImScopeProvider scope="technician"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/new" element={protect("technician", <ImScopeProvider scope="technician"><ImNewConversationPage /></ImScopeProvider>)} />
               <Route path="/technician/messages/:conversationId/info" element={protect("technician", <ImScopeProvider scope="technician"><ImConversationInfoPage /></ImScopeProvider>)} />

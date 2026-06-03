@@ -3266,10 +3266,31 @@ export function cancelDispatchCycle(cycleId: string, operatorId: string) {
   return { ok: true };
 }
 
-export function minimizeFloatingTask(taskId: string, minimized: boolean) {
+export function minimizeFloatingTasks(taskIds: string[], minimized: boolean) {
   hydrate();
-  state.floatingTasks = state.floatingTasks.map((task) => (task.id === taskId ? { ...task, minimized } : task));
-  notify();
+  const targetIds = new Set(taskIds);
+
+  if (targetIds.size === 0) {
+    return;
+  }
+
+  let changed = false;
+  state.floatingTasks = state.floatingTasks.map((task) => {
+    if (!targetIds.has(task.id) || task.minimized === minimized) {
+      return task;
+    }
+
+    changed = true;
+    return { ...task, minimized };
+  });
+
+  if (changed) {
+    notify();
+  }
+}
+
+export function minimizeFloatingTask(taskId: string, minimized: boolean) {
+  minimizeFloatingTasks([taskId], minimized);
 }
 
 export function rescheduleArrangement(orderId: string, minutes: number, operatorId: string) {

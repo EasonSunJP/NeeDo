@@ -37,13 +37,15 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
       updatedAt: null,
       updatedBy: null
     })),
-    updateShopPricingMode: jest.fn(async (_shopId, pricingMode, technicianPricingRatePercent, actorUserId) => ({
-      shopId: 1,
-      pricingMode,
-      technicianPricingRatePercent,
-      updatedAt: now,
-      updatedBy: actorUserId
-    })),
+    updateShopPricingMode: jest.fn(
+      async (_shopId, pricingMode, technicianPricingRatePercent, actorUserId) => ({
+        shopId: 1,
+        pricingMode,
+        technicianPricingRatePercent,
+        updatedAt: now,
+        updatedBy: actorUserId
+      })
+    ),
     findTechnicianShopScope: jest.fn(async () => ({ technicianId: 3, shopId: 1 })),
     listTechnicianServices: jest.fn(async () => ({
       list: [],

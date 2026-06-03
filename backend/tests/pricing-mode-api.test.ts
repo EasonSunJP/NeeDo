@@ -28,7 +28,9 @@ const createRepository = (): jest.Mocked<PricingModeRepositoryPort> =>
     deleteTechnicianService: jest.fn(),
     listBookingNavigationShopServices: jest.fn(),
     listBookingNavigationTechnicians: jest.fn(async () =>
-      paginated([{ id: 3, displayName: "Mika", city: "Tokyo", avatarUrl: null, reviewSummary: null }])
+      paginated([
+        { id: 3, displayName: "Mika", city: "Tokyo", avatarUrl: null, reviewSummary: null }
+      ])
     ),
     listPublicTechnicianServices: jest.fn(async () =>
       paginated([
@@ -97,7 +99,16 @@ describe("pricing mode public API", () => {
       updatedBy: 7
     });
     pricingModeRepository.listBookingNavigationShopServices.mockResolvedValue(
-      paginated([{ id: 21, name: "店铺肩颈护理", priceAmount: "8800.00", currency: "JPY", durationMinutes: 60, coverUrl: null }])
+      paginated([
+        {
+          id: 21,
+          name: "店铺肩颈护理",
+          priceAmount: "8800.00",
+          currency: "JPY",
+          durationMinutes: 60,
+          coverUrl: null
+        }
+      ])
     );
     const app = createApp(undefined, {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),

@@ -41,11 +41,24 @@ type ScheduleSlotRecord = Prisma.ScheduleSlotGetPayload<{
   };
 }>;
 
-type FinanceSettlementRecord = Prisma.FinanceReconciliationGetPayload<{
+type FinanceSettlementRecord = Prisma.OrderFinancialGetPayload<{
   include: {
-    transaction: {
+    bookingOrder: {
       select: {
-        transactionNo: true;
+        id: true;
+        orderNo: true;
+        shopId: true;
+        technicianProfileId: true;
+        technicianProfile: {
+          select: {
+            displayName: true;
+          };
+        };
+        shop: {
+          select: {
+            name: true;
+          };
+        };
       };
     };
   };
@@ -84,14 +97,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const scheduleWhere = this.scheduleWhere(scope, {});
     const technicianWhere = this.technicianWhere(scope, {});
     const shopWhere = this.shopWhere(scope, {});
-    const financeWhere = await this.financeWhere(scope, {});
+    const financeWhere = this.financeWhere(scope, {});
     const [
       orderCount,
       latestOrders,
       grossAggregate,
       availableSlots,
       bookedSlots,
-      pendingFinanceAggregate,
+      financeAggregate,
       techniciansPage,
       shopsPage
     ] = await Promise.all([
@@ -120,10 +133,18 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           status: "BOOKED"
         }
       }),
-      this.client.financeReconciliation.aggregate({
+      this.client.orderFinancial.aggregate({
         where: financeWhere,
         _sum: {
-          actualAmount: true
+          serviceAmountJpy: true,
+          platformCollectedServiceAmountJpy: true,
+          offlineReportedServiceAmountJpy: true,
+          unknownOrUnreportedServiceAmountJpy: true,
+          bPlatformFeeActualNdp: true,
+          userRewardNdp: true,
+          campaignDiscountNdp: true,
+          bPlatformFeeHoldNdp: true,
+          releasedNdp: true
         }
       }),
       this.client.technicianProfile.findMany({
@@ -140,7 +161,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       })
     ]);
     const grossAmount = this.toNumber(grossAggregate._sum.priceAmount);
-    const pendingSettlementAmount = pendingFinanceAggregate._sum.actualAmount ?? 0;
+    const platformNdpRevenue =
+      (financeAggregate._sum.bPlatformFeeActualNdp ?? 0) -
+      (financeAggregate._sum.userRewardNdp ?? 0);
+    const pendingHoldNdp = Math.max(
+      0,
+      (financeAggregate._sum.bPlatformFeeHoldNdp ?? 0) -
+        (financeAggregate._sum.bPlatformFeeActualNdp ?? 0) -
+        (financeAggregate._sum.releasedNdp ?? 0)
+    );
 
     return {
       metrics: [
@@ -158,9 +187,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         },
         {
           label: "NDP 对账",
-          value: String(pendingSettlementAmount),
-          change: "FinanceReconciliation",
-          tone: pendingSettlementAmount > 0 ? "good" : "neutral"
+          value: String(platformNdpRevenue),
+          change: "OrderFinancial",
+          tone: platformNdpRevenue > 0 ? "good" : "neutral"
         },
         {
           label: "技师数量",
@@ -176,9 +205,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         booked: bookedSlots
       },
       finance: {
-        grossAmount,
-        pendingSettlementAmount,
-        refundAmount: 0
+        estimatedServiceGmvJpy: financeAggregate._sum.serviceAmountJpy ?? grossAmount,
+        platformNdpRevenue,
+        userRewardNdpCost: financeAggregate._sum.userRewardNdp ?? 0,
+        pendingHoldNdp,
+        campaignDiscountNdp: financeAggregate._sum.campaignDiscountNdp ?? 0,
+        unknownOrUnreportedServiceAmountJpy:
+          financeAggregate._sum.unknownOrUnreportedServiceAmountJpy ?? 0
       },
       technicians: techniciansPage.map((technician) => this.mapTechnician(technician)),
       shops: shopsPage.map((shop) => this.mapShop(shop))
@@ -235,16 +268,16 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     input: BackofficeScope & BackofficeListQuery
   ): Promise<PaginatedResponse<BackofficeFinanceSettlementPayload>> {
     const pagination = toPrismaPagination(input);
-    const where = await this.financeWhere(input, input);
+    const where = this.financeWhere(input, input);
     const [list, total] = await Promise.all([
-      this.client.financeReconciliation.findMany({
+      this.client.orderFinancial.findMany({
         where,
         include: this.financeInclude(),
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       }),
-      this.client.financeReconciliation.count({ where })
+      this.client.orderFinancial.count({ where })
     ]);
 
     return buildPaginatedResponse(
@@ -257,8 +290,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   public async exportFinanceSettlements(
     input: BackofficeScope & BackofficeListQuery
   ): Promise<BackofficeCsvExportPayload> {
-    const where = await this.financeWhere(input, input);
-    const rows = await this.client.financeReconciliation.findMany({
+    const where = this.financeWhere(input, input);
+    const rows = await this.client.orderFinancial.findMany({
       where,
       include: this.financeInclude(),
       take: 1000,
@@ -266,14 +299,27 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     });
     const header = [
       "id",
-      "transactionNo",
-      "referenceType",
-      "referenceId",
+      "orderNo",
+      "shopName",
       "status",
-      "currency",
-      "expectedAmount",
-      "actualAmount",
-      "differenceAmount",
+      "serviceIncomeStatus",
+      "paymentChannel",
+      "technicianProfileId",
+      "technicianName",
+      "estimatedServiceGmvJpy",
+      "platformCollectedServiceAmountJpy",
+      "offlineReportedServiceAmountJpy",
+      "unknownOrUnreportedServiceAmountJpy",
+      "platformNdpRevenue",
+      "userRewardNdpCost",
+      "pendingHoldNdp",
+      "campaignDiscountNdp",
+      "releasedNdp",
+      "penaltyNdp",
+      "compensationToUserNdp",
+      "technicianEstimatedIncomeJpy",
+      "shopEstimatedGrossProfitJpy",
+      "moneyTimelineStatus",
       "createdAt"
     ];
     const content = [
@@ -281,14 +327,27 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ...rows.map((row) =>
         [
           row.id,
-          row.transaction.transactionNo,
-          row.referenceType,
-          row.referenceId,
-          row.status.toLowerCase(),
-          row.currency,
-          row.expectedAmount,
-          row.actualAmount,
-          row.differenceAmount,
+          row.bookingOrder.orderNo,
+          row.bookingOrder.shop.name,
+          row.settlementStatus,
+          row.serviceIncomeStatus,
+          row.paymentChannel,
+          row.technicianProfileId ?? "",
+          row.bookingOrder.technicianProfile?.displayName ?? "",
+          row.serviceAmountJpy,
+          row.platformCollectedServiceAmountJpy,
+          row.offlineReportedServiceAmountJpy,
+          row.unknownOrUnreportedServiceAmountJpy,
+          row.bPlatformFeeActualNdp - row.userRewardNdp,
+          row.userRewardNdp,
+          Math.max(0, row.bPlatformFeeHoldNdp - row.bPlatformFeeActualNdp - row.releasedNdp),
+          row.campaignDiscountNdp,
+          row.releasedNdp,
+          row.penaltyNdp,
+          row.compensationToUserNdp,
+          this.timelineAmount(row.moneyTimelineJson, "technician_income_estimated"),
+          this.shopEstimatedGrossProfit(row),
+          this.moneyTimelineStatus(row.serviceIncomeStatus),
           row.createdAt.toISOString()
         ].join(",")
       )
@@ -350,7 +409,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     );
   }
 
-  private orderWhere(scope: BackofficeScope, input: BackofficeListQuery): Prisma.BookingOrderWhereInput {
+  private orderWhere(
+    scope: BackofficeScope,
+    input: BackofficeListQuery
+  ): Prisma.BookingOrderWhereInput {
     return {
       deletedAt: null,
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
@@ -404,13 +466,14 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
-  private async financeWhere(
+  private financeWhere(
     scope: BackofficeScope,
     input: BackofficeListQuery
-  ): Promise<Prisma.FinanceReconciliationWhereInput> {
-    const base: Prisma.FinanceReconciliationWhereInput = {
+  ): Prisma.OrderFinancialWhereInput {
+    return {
       deletedAt: null,
-      ...(input.status ? { status: this.financeStatusToDb(input.status) } : {}),
+      ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
+      ...(input.status ? { settlementStatus: input.status } : {}),
       ...(input.from || input.to
         ? {
             createdAt: {
@@ -419,41 +482,6 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             }
           }
         : {})
-    };
-
-    if (scope.scope === "platform") {
-      return base;
-    }
-
-    const [orders, wallets] = await Promise.all([
-      this.client.bookingOrder.findMany({
-        where: { shopId: scope.shopId, deletedAt: null },
-        select: { id: true }
-      }),
-      this.client.wallet.findMany({
-        where: {
-          ownerType: "SHOP",
-          ownerId: scope.shopId,
-          deletedAt: null
-        },
-        select: { id: true }
-      })
-    ]);
-    const orderIds = orders.map((order) => order.id);
-    const walletIds = wallets.map((wallet) => wallet.id);
-
-    return {
-      ...base,
-      OR: [
-        {
-          referenceType: "booking_order",
-          referenceId: { in: orderIds.length ? orderIds : [-1] }
-        },
-        {
-          referenceType: "seed_wallet",
-          referenceId: { in: walletIds.length ? walletIds : [-1] }
-        }
-      ]
     };
   }
 
@@ -481,12 +509,25 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private financeInclude() {
     return {
-      transaction: {
+      bookingOrder: {
         select: {
-          transactionNo: true
+          id: true,
+          orderNo: true,
+          shopId: true,
+          technicianProfileId: true,
+          technicianProfile: {
+            select: {
+              displayName: true
+            }
+          },
+          shop: {
+            select: {
+              name: true
+            }
+          }
         }
       }
-    } satisfies Prisma.FinanceReconciliationInclude;
+    } satisfies Prisma.OrderFinancialInclude;
   }
 
   private technicianInclude() {
@@ -560,18 +601,44 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private mapFinanceSettlement(
     settlement: FinanceSettlementRecord
   ): BackofficeFinanceSettlementPayload {
+    const pendingHoldNdp = Math.max(
+      0,
+      settlement.bPlatformFeeHoldNdp - settlement.bPlatformFeeActualNdp - settlement.releasedNdp
+    );
+
     return {
       id: settlement.id,
-      transactionId: settlement.transactionId,
-      transactionNo: settlement.transaction.transactionNo,
-      referenceType: settlement.referenceType,
-      referenceId: settlement.referenceId,
-      status: settlement.status.toLowerCase(),
-      currency: settlement.currency,
-      expectedAmount: settlement.expectedAmount,
-      actualAmount: settlement.actualAmount,
-      differenceAmount: settlement.differenceAmount,
-      exportedAt: settlement.exportedAt?.toISOString() ?? null,
+      bookingOrderId: settlement.bookingOrderId,
+      orderNo: settlement.bookingOrder.orderNo,
+      referenceType: "booking_order",
+      referenceId: settlement.bookingOrderId,
+      status: settlement.settlementStatus,
+      shopId: settlement.shopId,
+      shopName: settlement.bookingOrder.shop.name,
+      technicianProfileId:
+        settlement.technicianProfileId ?? settlement.bookingOrder.technicianProfileId,
+      technicianName: settlement.bookingOrder.technicianProfile?.displayName ?? null,
+      estimatedServiceGmvJpy: settlement.serviceAmountJpy,
+      platformCollectedServiceAmountJpy: settlement.platformCollectedServiceAmountJpy,
+      offlineReportedServiceAmountJpy: settlement.offlineReportedServiceAmountJpy,
+      unknownOrUnreportedServiceAmountJpy: settlement.unknownOrUnreportedServiceAmountJpy,
+      serviceIncomeStatus: settlement.serviceIncomeStatus,
+      paymentChannel: settlement.paymentChannel,
+      platformNdpRevenue: settlement.bPlatformFeeActualNdp - settlement.userRewardNdp,
+      userRewardNdpCost: settlement.userRewardNdp,
+      pendingHoldNdp,
+      campaignDiscountNdp: settlement.campaignDiscountNdp,
+      releasedNdp: settlement.releasedNdp,
+      penaltyNdp: settlement.penaltyNdp,
+      compensationToUserNdp: settlement.compensationToUserNdp,
+      technicianEstimatedIncomeJpy: this.timelineAmount(
+        settlement.moneyTimelineJson,
+        "technician_income_estimated"
+      ),
+      shopEstimatedGrossProfitJpy: this.shopEstimatedGrossProfit(settlement),
+      appliedFeeRuleIds: this.stringArray(settlement.appliedFeeRuleIdsJson),
+      moneyTimeline: this.timelineArray(settlement.moneyTimelineJson),
+      moneyTimelineStatus: this.moneyTimelineStatus(settlement.serviceIncomeStatus),
       createdAt: settlement.createdAt.toISOString()
     };
   }
@@ -620,12 +687,62 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return status.trim().toUpperCase() as Prisma.EnumScheduleSlotStatusFilter["equals"];
   }
 
-  private financeStatusToDb(status: string) {
-    return status.trim().toUpperCase() as Prisma.EnumFinanceReconciliationStatusFilter["equals"];
-  }
-
   private statusFromDb(status: string): string {
     return status === "IN_SERVICE" ? "inService" : status.toLowerCase();
+  }
+
+  private stringArray(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
+  }
+
+  private timelineArray(value: unknown): unknown[] {
+    return Array.isArray(value) ? value : [];
+  }
+
+  private timelineAmount(value: unknown, type: string): number {
+    const event = this.timelineArray(value).find((item) => {
+      if (!item || typeof item !== "object") {
+        return false;
+      }
+
+      return (item as { type?: unknown }).type === type;
+    }) as { amountJpy?: unknown } | undefined;
+
+    return typeof event?.amountJpy === "number" ? event.amountJpy : 0;
+  }
+
+  private shopEstimatedGrossProfit(settlement: FinanceSettlementRecord): number {
+    const event = this.timelineArray(settlement.moneyTimelineJson).find((item) => {
+      if (!item || typeof item !== "object") {
+        return false;
+      }
+
+      return (item as { type?: unknown }).type === "technician_income_estimated";
+    }) as { metadata?: { shopEstimatedGrossProfitJpy?: unknown } } | undefined;
+    const timelineValue = event?.metadata?.shopEstimatedGrossProfitJpy;
+
+    if (typeof timelineValue === "number") {
+      return timelineValue;
+    }
+
+    return (
+      settlement.serviceAmountJpy -
+      this.timelineAmount(settlement.moneyTimelineJson, "technician_income_estimated") -
+      settlement.bPlatformFeeActualNdp
+    );
+  }
+
+  private moneyTimelineStatus(serviceIncomeStatus: string): string {
+    if (serviceIncomeStatus === "confirmed") {
+      return "complete";
+    }
+    if (serviceIncomeStatus === "reported") {
+      return "needs_review";
+    }
+
+    return "needs_income_report";
   }
 
   private toNumber(value: DecimalLike | number | string | null | undefined): number {

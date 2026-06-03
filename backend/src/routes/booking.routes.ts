@@ -6,8 +6,10 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { BookingRepository } from "../repositories/booking.repository";
+import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
 import { BookingService } from "../services/booking.service";
+import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
 import {
   availabilityListQuerySchema,
@@ -33,9 +35,15 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
   const authService = createAuthServiceForRoutes(config, dependencies);
   const authenticate = createAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
+  const feeCalculationService = new FeeCalculationService(
+    dependencies.feeRuleRepository ?? new FeeRuleRepository()
+  );
   const ledgerService =
     dependencies.ledgerRepository || !dependencies.bookingRepository
-      ? new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository())
+      ? new LedgerService(
+          dependencies.ledgerRepository ?? new LedgerRepository(),
+          feeCalculationService
+        )
       : undefined;
   const bookingService = new BookingService(
     dependencies.bookingRepository ?? new BookingRepository(),

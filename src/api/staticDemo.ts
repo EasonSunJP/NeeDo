@@ -23,6 +23,38 @@ import type {
   PaginatedApiPayload
 } from "./backofficeRealData";
 import type { HttpClientRequestOptions } from "./httpClient";
+import type {
+  ShopFinanceBonusRulePayload,
+  ShopFinanceDeductionRulePayload,
+  ShopFinanceRulePreviewInput,
+  ShopFinanceRulePreviewResult,
+  ShopFinanceRuleSetInput,
+  ShopFinanceRuleSetPayload
+} from "./merchantFinanceRules";
+import type {
+  CompensationPreviewPayload,
+  CompensationProfilePreviewInput,
+  CompensationProfilePreviewResult,
+  MoneyTimelineEvent,
+  OrderFinanceDetailPayload,
+  ServiceIncomeReportInput,
+  ServiceIncomeStatus,
+  ServicePaymentChannel,
+  TechnicianCompensationProfileInput,
+  TechnicianCompensationProfilePayload
+} from "./merchantFinanceCenter";
+import type {
+  PayRunPayload,
+  PayRunStatus,
+  PayrollCsvExportPayload,
+  PayrollAdjustmentRequestPayload,
+  PayrollAdjustmentStatus,
+  PayrollAdjustmentType,
+  PayrollListPayload,
+  PayoutMethod,
+  PayslipPayload,
+  PayslipStatus
+} from "./merchantPayrollCenter";
 import type { PaginatedBookingData, BookingOrder, BookingScheduleSlot } from "../features/booking/api";
 import type {
   CoreCategory,
@@ -64,6 +96,27 @@ const staticShopPricingModes = new Map<number, {
   technicianPricingRatePercent: number;
   updatedAt: string;
 }>();
+const staticShopFinanceRuleSets = new Map<number, ShopFinanceRuleSetPayload>();
+const staticTechnicianCompensationProfiles = new Map<string, TechnicianCompensationProfilePayload>();
+const staticPayRuns = new Map<number, PayRunPayload>();
+const staticPayrollAdjustments = new Map<number, PayrollAdjustmentRequestPayload>();
+let staticPayRunIdSeed = 9001;
+let staticPayslipIdSeed = 8001;
+let staticPayoutRecordIdSeed = 7001;
+let staticPayrollAdjustmentIdSeed = 501;
+const staticOrderIncomeReports = new Map<number, {
+  serviceAmountJpy: number;
+  platformCollectedServiceAmountJpy: number;
+  offlineReportedServiceAmountJpy: number;
+  unknownOrUnreportedServiceAmountJpy: number;
+  paymentChannel: ServicePaymentChannel;
+  serviceIncomeStatus: ServiceIncomeStatus;
+  note: string | null;
+  proofUrl: string | null;
+  reportedAt: string;
+  confirmedAt: string | null;
+  moneyTimeline: MoneyTimelineEvent[];
+}>();
 
 function isEnabledFlag(value: string | undefined) {
   return ["1", "static", "true", "yes"].includes((value ?? "").trim().toLowerCase());
@@ -88,6 +141,422 @@ function getStaticShopPricingMode(shopId: number) {
     pricingMode: "merchant" as const,
     technicianPricingRatePercent: 100,
     updatedAt: new Date().toISOString()
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readBodyRecord(options: HttpClientRequestOptions): Record<string, unknown> {
+  return isRecord(options.body) ? options.body : {};
+}
+
+function readBodyNumber(body: Record<string, unknown>, key: string, fallback: number) {
+  const value = body[key];
+
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function readBodyString(body: Record<string, unknown>, key: string, fallback: string) {
+  const value = body[key];
+
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function readStaticWageMode(value: unknown, fallback: ShopFinanceRuleSetInput["wageMode"]) {
+  return value === "fixed_per_order" || value === "commission" || value === "base_plus_commission" || value === "hourly"
+    ? value
+    : fallback;
+}
+
+function readStaticNdpFeeBearer(value: unknown, fallback: ShopFinanceRuleSetInput["ndpFeeBearer"]) {
+  return value === "shop" || value === "technician" || value === "split" ? value : fallback;
+}
+
+function readStaticBonusRules(
+  value: unknown,
+  fallback: ShopFinanceBonusRulePayload[]
+): ShopFinanceBonusRulePayload[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  return value.filter(isRecord).map((item, index) => ({
+    id: readBodyString(item, "id", `bonus-${index + 1}`),
+    name: readBodyString(item, "name", "月单量奖金"),
+    triggerType: item.triggerType === "monthly_service_gmv" || item.triggerType === "rating_average"
+      ? item.triggerType
+      : "monthly_order_count",
+    threshold: readBodyNumber(item, "threshold", 100),
+    amountJpy: readBodyNumber(item, "amountJpy", 3000),
+    active: item.active !== false
+  }));
+}
+
+function readStaticDeductionRules(
+  value: unknown,
+  fallback: ShopFinanceDeductionRulePayload[]
+): ShopFinanceDeductionRulePayload[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  return value.filter(isRecord).map((item, index) => ({
+    id: readBodyString(item, "id", `deduction-${index + 1}`),
+    name: readBodyString(item, "name", "控除ルール"),
+    triggerType: item.triggerType === "rating_average_below"
+      ? "rating_average_below"
+      : "late_cancellation_count",
+    threshold: readBodyNumber(item, "threshold", 1),
+    amountJpy: readBodyNumber(item, "amountJpy", 500),
+    active: item.active !== false
+  }));
+}
+
+function defaultStaticShopFinanceRuleSet(shopId: number): ShopFinanceRuleSetPayload {
+  return {
+    id: shopId,
+    shopId,
+    name: "商户财务规则中心 v1",
+    status: "active",
+    wageMode: "base_plus_commission",
+    baseSalaryJpy: 0,
+    hourlyRateJpy: 0,
+    dailyRateJpy: 0,
+    fixedOrderPayJpy: 1000,
+    commissionRatePercent: 50,
+    guaranteedMinimumJpy: 0,
+    ndpFeeBearer: "split",
+    technicianNdpSharePercent: 30,
+    bonusRules: [
+      {
+        id: "monthly-100",
+        name: "月 100 单突破奖金",
+        triggerType: "monthly_order_count",
+        threshold: 100,
+        amountJpy: 3000,
+        active: true
+      }
+    ],
+    deductionRules: [],
+    effectiveFrom: "2026-06-01T00:00:00.000Z",
+    effectiveTo: null,
+    createdById: 1,
+    updatedById: 1,
+    createdAt: staticTimestamp,
+    updatedAt: staticTimestamp
+  };
+}
+
+function getStaticShopFinanceRuleSet(shopId: number): ShopFinanceRuleSetPayload {
+  return staticShopFinanceRuleSets.get(shopId) ?? defaultStaticShopFinanceRuleSet(shopId);
+}
+
+function updateStaticShopFinanceRuleSet(
+  shopId: number,
+  body: ShopFinanceRuleSetInput
+): ShopFinanceRuleSetPayload {
+  const previous = getStaticShopFinanceRuleSet(shopId);
+  const next: ShopFinanceRuleSetPayload = {
+    ...previous,
+    ...body,
+    id: previous.id + 1,
+    shopId,
+    status: "active",
+    bonusRules: body.bonusRules ?? previous.bonusRules,
+    deductionRules: body.deductionRules ?? previous.deductionRules,
+    updatedAt: new Date().toISOString()
+  };
+
+  staticShopFinanceRuleSets.set(shopId, next);
+  return next;
+}
+
+function readStaticShopFinanceRuleInput(
+  shopId: number,
+  body: Record<string, unknown>
+): ShopFinanceRuleSetInput {
+  const current = getStaticShopFinanceRuleSet(shopId);
+
+  return {
+    name: readBodyString(body, "name", current.name),
+    wageMode: readStaticWageMode(body.wageMode, current.wageMode),
+    baseSalaryJpy: readBodyNumber(body, "baseSalaryJpy", current.baseSalaryJpy),
+    hourlyRateJpy: readBodyNumber(body, "hourlyRateJpy", current.hourlyRateJpy),
+    dailyRateJpy: readBodyNumber(body, "dailyRateJpy", current.dailyRateJpy),
+    fixedOrderPayJpy: readBodyNumber(body, "fixedOrderPayJpy", current.fixedOrderPayJpy),
+    commissionRatePercent: readBodyNumber(
+      body,
+      "commissionRatePercent",
+      current.commissionRatePercent
+    ),
+    guaranteedMinimumJpy: readBodyNumber(
+      body,
+      "guaranteedMinimumJpy",
+      current.guaranteedMinimumJpy
+    ),
+    ndpFeeBearer: readStaticNdpFeeBearer(body.ndpFeeBearer, current.ndpFeeBearer),
+    technicianNdpSharePercent: readBodyNumber(
+      body,
+      "technicianNdpSharePercent",
+      current.technicianNdpSharePercent
+    ),
+    bonusRules: readStaticBonusRules(body.bonusRules, current.bonusRules),
+    deductionRules: current.deductionRules,
+    effectiveFrom: current.effectiveFrom,
+    effectiveTo: current.effectiveTo
+  };
+}
+
+function previewStaticShopFinanceRule(
+  shopId: number,
+  input: ShopFinanceRulePreviewInput
+): ShopFinanceRulePreviewResult {
+  const ruleSet = getStaticShopFinanceRuleSet(shopId);
+  const serviceAmountJpy = Math.round(input.serviceAmountJpy);
+  const platformFeeNdp = Math.round(input.platformFeeNdp ?? 500);
+  const basePayJpy = ruleSet.wageMode === "fixed_per_order" || ruleSet.wageMode === "base_plus_commission"
+    ? ruleSet.fixedOrderPayJpy
+    : ruleSet.wageMode === "hourly"
+      ? Math.round(((input.workedMinutes ?? 60) / 60) * ruleSet.hourlyRateJpy)
+      : 0;
+  const commissionPayJpy = ruleSet.wageMode === "commission" || ruleSet.wageMode === "base_plus_commission"
+    ? Math.round(serviceAmountJpy * (ruleSet.commissionRatePercent / 100))
+    : 0;
+  const appliedBonusRules = ruleSet.bonusRules
+    .filter((rule) => rule.active && (input.monthlyCompletedOrders ?? 0) >= rule.threshold)
+    .map((rule) => ({ id: rule.id, name: rule.name, amountJpy: rule.amountJpy }));
+  const bonusPayJpy = appliedBonusRules.reduce((sum, rule) => sum + rule.amountJpy, 0);
+  const technicianGrossIncomeJpy = basePayJpy + commissionPayJpy + bonusPayJpy;
+  const technicianNdpShareNdp = ruleSet.ndpFeeBearer === "technician"
+    ? platformFeeNdp
+    : ruleSet.ndpFeeBearer === "split"
+      ? Math.round(platformFeeNdp * (ruleSet.technicianNdpSharePercent / 100))
+      : 0;
+  const shopNdpShareNdp = platformFeeNdp - technicianNdpShareNdp;
+
+  return {
+    shopId,
+    ruleSet,
+    preview: {
+      serviceAmountJpy,
+      platformFeeNdp,
+      basePayJpy,
+      commissionPayJpy,
+      minimumGuaranteeAdjustmentJpy: 0,
+      bonusPayJpy,
+      deductionJpy: 0,
+      technicianGrossIncomeJpy,
+      technicianNdpShareNdp,
+      shopNdpShareNdp,
+      technicianNetIncomeJpy: Math.max(0, technicianGrossIncomeJpy - technicianNdpShareNdp),
+      shopGrossMarginJpy: serviceAmountJpy - technicianGrossIncomeJpy - shopNdpShareNdp,
+      appliedBonusRules,
+      appliedDeductionRules: [],
+      explanation: [`wage_mode:${ruleSet.wageMode}`, `ndp_fee_bearer:${ruleSet.ndpFeeBearer}`]
+    }
+  };
+}
+
+function compensationProfileKey(shopId: number, technicianProfileId: number) {
+  return `${shopId}:${technicianProfileId}`;
+}
+
+function defaultStaticTechnicianCompensationProfile(
+  shopId: number,
+  technicianProfileId: number
+): TechnicianCompensationProfilePayload {
+  const ruleSet = getStaticShopFinanceRuleSet(shopId);
+
+  return {
+    id: 0,
+    sourceType: "shop_default",
+    shopId,
+    technicianProfileId,
+    name: `${ruleSet.name} / 技师默认`,
+    status: "active",
+    version: 0,
+    wageMode: ruleSet.wageMode,
+    baseSalaryJpy: ruleSet.baseSalaryJpy,
+    hourlyRateJpy: ruleSet.hourlyRateJpy,
+    dailyRateJpy: ruleSet.dailyRateJpy,
+    fixedOrderPayJpy: ruleSet.fixedOrderPayJpy,
+    commissionRatePercent: ruleSet.commissionRatePercent,
+    guaranteedMinimumJpy: ruleSet.guaranteedMinimumJpy,
+    ndpFeeBearer: ruleSet.ndpFeeBearer,
+    technicianNdpSharePercent: ruleSet.technicianNdpSharePercent,
+    bonusRules: ruleSet.bonusRules,
+    deductionRules: ruleSet.deductionRules,
+    effectiveFrom: ruleSet.effectiveFrom,
+    effectiveTo: ruleSet.effectiveTo,
+    createdById: ruleSet.createdById,
+    updatedById: ruleSet.updatedById,
+    createdAt: ruleSet.createdAt,
+    updatedAt: ruleSet.updatedAt
+  };
+}
+
+function getStaticTechnicianCompensationProfile(
+  shopId: number,
+  technicianProfileId: number
+): TechnicianCompensationProfilePayload {
+  return staticTechnicianCompensationProfiles.get(compensationProfileKey(shopId, technicianProfileId))
+    ?? defaultStaticTechnicianCompensationProfile(shopId, technicianProfileId);
+}
+
+function readStaticCompensationProfileInput(
+  shopId: number,
+  technicianProfileId: number,
+  body: Record<string, unknown>
+): TechnicianCompensationProfileInput {
+  const current = getStaticTechnicianCompensationProfile(shopId, technicianProfileId);
+
+  return {
+    name: readBodyString(body, "name", current.name),
+    wageMode: readStaticWageMode(body.wageMode, current.wageMode),
+    baseSalaryJpy: readBodyNumber(body, "baseSalaryJpy", current.baseSalaryJpy),
+    hourlyRateJpy: readBodyNumber(body, "hourlyRateJpy", current.hourlyRateJpy),
+    dailyRateJpy: readBodyNumber(body, "dailyRateJpy", current.dailyRateJpy),
+    fixedOrderPayJpy: readBodyNumber(body, "fixedOrderPayJpy", current.fixedOrderPayJpy),
+    commissionRatePercent: readBodyNumber(
+      body,
+      "commissionRatePercent",
+      current.commissionRatePercent
+    ),
+    guaranteedMinimumJpy: readBodyNumber(
+      body,
+      "guaranteedMinimumJpy",
+      current.guaranteedMinimumJpy
+    ),
+    ndpFeeBearer: readStaticNdpFeeBearer(body.ndpFeeBearer, current.ndpFeeBearer),
+    technicianNdpSharePercent: readBodyNumber(
+      body,
+      "technicianNdpSharePercent",
+      current.technicianNdpSharePercent
+    ),
+    bonusRules: readStaticBonusRules(body.bonusRules, current.bonusRules),
+    deductionRules: readStaticDeductionRules(body.deductionRules, current.deductionRules),
+    effectiveFrom: current.effectiveFrom,
+    effectiveTo: current.effectiveTo
+  };
+}
+
+function updateStaticTechnicianCompensationProfile(
+  shopId: number,
+  technicianProfileId: number,
+  body: TechnicianCompensationProfileInput
+): TechnicianCompensationProfilePayload {
+  const previous = getStaticTechnicianCompensationProfile(shopId, technicianProfileId);
+  const next: TechnicianCompensationProfilePayload = {
+    ...previous,
+    ...body,
+    id: previous.sourceType === "shop_default" ? technicianProfileId : previous.id + 1,
+    sourceType: "technician_override",
+    shopId,
+    technicianProfileId,
+    status: "active",
+    version: previous.version + 1,
+    bonusRules: body.bonusRules ?? previous.bonusRules,
+    deductionRules: body.deductionRules ?? previous.deductionRules,
+    updatedAt: new Date().toISOString()
+  };
+
+  staticTechnicianCompensationProfiles.set(compensationProfileKey(shopId, technicianProfileId), next);
+  return next;
+}
+
+function calculateStaticCompensationPreview(
+  profile: TechnicianCompensationProfilePayload,
+  input: CompensationProfilePreviewInput
+): CompensationPreviewPayload {
+  const serviceAmountJpy = Math.round(input.serviceAmountJpy);
+  const platformFeeNdp = Math.round(input.platformFeeNdp ?? 500);
+  const workedMinutes = Math.max(0, input.workedMinutes ?? 60);
+  const basePayJpy = profile.wageMode === "fixed_per_order" || profile.wageMode === "base_plus_commission"
+    ? profile.fixedOrderPayJpy
+    : profile.wageMode === "hourly"
+      ? Math.round((workedMinutes / 60) * profile.hourlyRateJpy)
+      : 0;
+  const commissionPayJpy = profile.wageMode === "commission" || profile.wageMode === "base_plus_commission"
+    ? Math.round(serviceAmountJpy * (profile.commissionRatePercent / 100))
+    : 0;
+  const minimumGuaranteeAdjustmentJpy = Math.max(
+    0,
+    profile.guaranteedMinimumJpy - basePayJpy - commissionPayJpy
+  );
+  const appliedBonusRules = profile.bonusRules
+    .filter((rule) => rule.active)
+    .filter((rule) => {
+      if (rule.triggerType === "monthly_service_gmv") {
+        return (input.monthlyServiceGmvJpy ?? 0) >= rule.threshold;
+      }
+      if (rule.triggerType === "rating_average") {
+        return (input.ratingAverage ?? 0) >= rule.threshold;
+      }
+
+      return (input.monthlyCompletedOrders ?? 0) >= rule.threshold;
+    })
+    .map((rule) => ({ id: rule.id, name: rule.name, amountJpy: rule.amountJpy }));
+  const appliedDeductionRules = profile.deductionRules
+    .filter((rule) => rule.active)
+    .filter((rule) => {
+      if (rule.triggerType === "rating_average_below") {
+        return (input.ratingAverage ?? 5) < rule.threshold;
+      }
+
+      return (input.lateCancellationCount ?? 0) >= rule.threshold;
+    })
+    .map((rule) => ({ id: rule.id, name: rule.name, amountJpy: rule.amountJpy }));
+  const bonusPayJpy = appliedBonusRules.reduce((sum, rule) => sum + rule.amountJpy, 0);
+  const deductionJpy = appliedDeductionRules.reduce((sum, rule) => sum + rule.amountJpy, 0);
+  const technicianGrossIncomeJpy = Math.max(
+    0,
+    basePayJpy + commissionPayJpy + minimumGuaranteeAdjustmentJpy + bonusPayJpy - deductionJpy
+  );
+  const technicianNdpShareNdp = profile.ndpFeeBearer === "technician"
+    ? platformFeeNdp
+    : profile.ndpFeeBearer === "split"
+      ? Math.round(platformFeeNdp * (profile.technicianNdpSharePercent / 100))
+      : 0;
+  const shopNdpShareNdp = platformFeeNdp - technicianNdpShareNdp;
+  const technicianNetIncomeJpy = Math.max(0, technicianGrossIncomeJpy - technicianNdpShareNdp);
+
+  return {
+    serviceAmountJpy,
+    platformFeeNdp,
+    basePayJpy,
+    commissionPayJpy,
+    minimumGuaranteeAdjustmentJpy,
+    bonusPayJpy,
+    deductionJpy,
+    technicianGrossIncomeJpy,
+    technicianNdpShareNdp,
+    shopNdpShareNdp,
+    technicianNetIncomeJpy,
+    shopEstimatedGrossProfitJpy: serviceAmountJpy - technicianGrossIncomeJpy - shopNdpShareNdp,
+    appliedBonusRules,
+    appliedDeductionRules,
+    explanation: [
+      `source:${profile.sourceType}`,
+      `wage_mode:${profile.wageMode}`,
+      `ndp_fee_bearer:${profile.ndpFeeBearer}`
+    ]
+  };
+}
+
+function previewStaticCompensationProfile(
+  shopId: number,
+  technicianProfileId: number,
+  input: CompensationProfilePreviewInput
+): CompensationProfilePreviewResult {
+  const profile = getStaticTechnicianCompensationProfile(shopId, technicianProfileId);
+
+  return {
+    shopId,
+    technicianProfileId,
+    profile,
+    preview: calculateStaticCompensationPreview(profile, input)
   };
 }
 
@@ -726,21 +1195,734 @@ function scheduleSlotPayload(scheduleIndex: number): BackofficeScheduleSlotPaylo
 
 function financeSettlementPayload(settlementIndex: number): BackofficeFinanceSettlementPayload {
   const settlement = settlements[settlementIndex % settlements.length] ?? settlements[0]!;
+  const technician = technicians[settlementIndex % technicians.length] ?? technicians[0]!;
+  const serviceIncomeStatus = settlement.status === "paid" ? "confirmed" : "unreported";
+  const technicianEstimatedIncomeJpy = Math.max(0, settlement.grossAmount - settlement.platformFee - 500);
 
   return {
     id: settlementIndex + 1,
-    transactionId: settlementIndex + 1,
-    transactionNo: `STATIC-TXN-${String(settlementIndex + 1).padStart(4, "0")}`,
+    bookingOrderId: settlementIndex + 1,
+    orderNo: `STATIC-ORDER-${String(settlementIndex + 1).padStart(4, "0")}`,
     referenceType: "booking_order",
     referenceId: settlementIndex + 1,
-    status: settlement.status === "paid" ? "exported" : "pending",
-    currency: "JPY",
-    expectedAmount: settlement.payableAmount,
-    actualAmount: settlement.grossAmount,
-    differenceAmount: -settlement.refundAmount,
-    exportedAt: settlement.status === "paid" ? staticTimestamp : null,
+    status: settlement.status === "paid" ? "settled" : "holding",
+    shopId: settlementIndex + 1,
+    shopName: settlement.merchantName,
+    technicianProfileId: numberFromText(technician.id, settlementIndex + 1),
+    technicianName: technician.name,
+    estimatedServiceGmvJpy: settlement.grossAmount,
+    platformCollectedServiceAmountJpy: 0,
+    offlineReportedServiceAmountJpy: serviceIncomeStatus === "confirmed" ? settlement.grossAmount : 0,
+    unknownOrUnreportedServiceAmountJpy: serviceIncomeStatus === "confirmed" ? 0 : settlement.grossAmount,
+    serviceIncomeStatus,
+    paymentChannel: serviceIncomeStatus === "confirmed" ? "offline_cash" : "unknown",
+    platformNdpRevenue: settlement.platformFee,
+    userRewardNdpCost: settlement.refundAmount,
+    pendingHoldNdp: settlement.status === "paid" ? 0 : settlement.platformFee,
+    campaignDiscountNdp: 0,
+    releasedNdp: 0,
+    penaltyNdp: 0,
+    compensationToUserNdp: 0,
+    technicianEstimatedIncomeJpy,
+    shopEstimatedGrossProfitJpy: settlement.grossAmount - technicianEstimatedIncomeJpy - settlement.platformFee,
+    appliedFeeRuleIds: ["static:default-booking"],
+    moneyTimeline: [
+      {
+        type: "technician_income_estimated",
+        label: "技师收入预估",
+        amountJpy: technicianEstimatedIncomeJpy,
+        actorType: "system",
+        occurredAt: staticTimestamp,
+        status: "estimated",
+        metadata: {
+          shopEstimatedGrossProfitJpy: settlement.grossAmount - technicianEstimatedIncomeJpy - settlement.platformFee
+        }
+      }
+    ],
+    moneyTimelineStatus: serviceIncomeStatus === "confirmed" ? "complete" : "needs_income_report",
     createdAt: staticTimestamp
   };
+}
+
+function staticOrderFinanceDetail(bookingOrderId: number): OrderFinanceDetailPayload {
+  const index = Math.max(0, bookingOrderId - 1);
+  const settlement = financeSettlementPayload(index);
+  const report = staticOrderIncomeReports.get(bookingOrderId);
+  const shopId = settlement.shopId;
+  const technicianProfileId = settlement.technicianProfileId ?? 1;
+  const preview = previewStaticCompensationProfile(shopId, technicianProfileId, {
+    serviceAmountJpy: report?.serviceAmountJpy ?? settlement.estimatedServiceGmvJpy,
+    platformFeeNdp: settlement.platformNdpRevenue + settlement.userRewardNdpCost,
+    workedMinutes: 60,
+    monthlyCompletedOrders: 101,
+    monthlyServiceGmvJpy: 900_000,
+    ratingAverage: 4.8,
+    lateCancellationCount: 0
+  }).preview;
+  const serviceIncomeStatus = report?.serviceIncomeStatus ?? settlement.serviceIncomeStatus as ServiceIncomeStatus;
+  const paymentChannel = report?.paymentChannel ?? settlement.paymentChannel as ServicePaymentChannel;
+  const serviceAmountJpy = report?.serviceAmountJpy ?? settlement.estimatedServiceGmvJpy;
+  const platformCollectedServiceAmountJpy = report?.platformCollectedServiceAmountJpy ?? settlement.platformCollectedServiceAmountJpy;
+  const offlineReportedServiceAmountJpy = report?.offlineReportedServiceAmountJpy ?? settlement.offlineReportedServiceAmountJpy;
+  const unknownOrUnreportedServiceAmountJpy = report?.unknownOrUnreportedServiceAmountJpy ?? settlement.unknownOrUnreportedServiceAmountJpy;
+  const reportTimeline = report?.moneyTimeline ?? [];
+  const moneyTimeline: MoneyTimelineEvent[] = [
+    {
+      type: "order_created",
+      label: "订单创建",
+      amountJpy: serviceAmountJpy,
+      actorType: "customer",
+      occurredAt: staticTimestamp,
+      status: "completed"
+    },
+    {
+      type: "platform_fee_captured",
+      label: "平台费实扣",
+      amountNdp: settlement.platformNdpRevenue + settlement.userRewardNdpCost,
+      actorType: "system",
+      occurredAt: staticTimestamp,
+      status: "captured"
+    },
+    ...reportTimeline,
+    ...(serviceIncomeStatus === "unreported"
+      ? [
+          {
+            type: "service_income_unreported",
+            label: "服务收入待上报",
+            amountJpy: unknownOrUnreportedServiceAmountJpy,
+            actorType: "merchant" as const,
+            occurredAt: staticTimestamp,
+            status: "pending"
+          }
+        ]
+      : []),
+    {
+      type: "technician_income_estimated",
+      label: "技师收入预估",
+      amountJpy: preview.technicianNetIncomeJpy,
+      actorType: "system",
+      occurredAt: staticTimestamp,
+      status: "estimated",
+      metadata: {
+        shopEstimatedGrossProfitJpy: preview.shopEstimatedGrossProfitJpy,
+        compensationRuleExplanation: preview.explanation
+      }
+    }
+  ];
+
+  return {
+    bookingOrderId,
+    orderNo: settlement.orderNo,
+    orderStatus: "completed",
+    shopId,
+    shopName: settlement.shopName,
+    technicianProfileId,
+    technicianName: settlement.technicianName,
+    serviceName: services[index % services.length]?.name ?? "Aroma Treatment",
+    estimatedServiceGmvJpy: serviceAmountJpy,
+    platformCollectedServiceAmountJpy,
+    offlineReportedServiceAmountJpy,
+    unknownOrUnreportedServiceAmountJpy,
+    paymentChannel,
+    serviceIncomeStatus,
+    serviceIncomeReportedById: report ? 1 : null,
+    serviceIncomeReportedAt: report?.reportedAt ?? null,
+    serviceIncomeConfirmedById: report?.confirmedAt ? 1 : null,
+    serviceIncomeConfirmedAt: report?.confirmedAt ?? null,
+    serviceIncomeNote: report?.note ?? null,
+    serviceIncomeProofUrl: report?.proofUrl ?? null,
+    platformNdpRevenue: settlement.platformNdpRevenue,
+    userRewardNdpCost: settlement.userRewardNdpCost,
+    pendingHoldNdp: settlement.pendingHoldNdp,
+    campaignDiscountNdp: settlement.campaignDiscountNdp,
+    releasedNdp: settlement.releasedNdp,
+    penaltyNdp: settlement.penaltyNdp,
+    compensationToUserNdp: settlement.compensationToUserNdp,
+    appliedFeeRuleIds: settlement.appliedFeeRuleIds,
+    moneyTimeline,
+    moneyTimelineStatus: serviceIncomeStatus === "confirmed"
+      ? "complete"
+      : serviceIncomeStatus === "reported"
+        ? "needs_review"
+        : "needs_income_report",
+    technicianIncomePreview: preview,
+    createdAt: settlement.createdAt,
+    updatedAt: report?.reportedAt ?? settlement.createdAt
+  };
+}
+
+function reportStaticServiceIncome(
+  bookingOrderId: number,
+  body: Record<string, unknown>
+): OrderFinanceDetailPayload {
+  const current = staticOrderFinanceDetail(bookingOrderId);
+  const serviceAmountJpy = readBodyNumber(body, "serviceAmountJpy", current.estimatedServiceGmvJpy);
+  const platformCollectedServiceAmountJpy = readBodyNumber(body, "platformCollectedServiceAmountJpy", 0);
+  const offlineReportedServiceAmountJpy = readBodyNumber(body, "offlineReportedServiceAmountJpy", serviceAmountJpy);
+  const paymentChannel = body.paymentChannel === "platform_online" ||
+    body.paymentChannel === "offline_card" ||
+    body.paymentChannel === "bank_transfer" ||
+    body.paymentChannel === "other"
+      ? body.paymentChannel
+      : body.paymentChannel === "unknown"
+        ? "unknown"
+        : "offline_cash";
+  const unknownOrUnreportedServiceAmountJpy = Math.max(
+    0,
+    serviceAmountJpy - platformCollectedServiceAmountJpy - offlineReportedServiceAmountJpy
+  );
+  const confirmedAt = body.confirmNow === true ? new Date().toISOString() : null;
+  const reportedAt = new Date().toISOString();
+  const serviceIncomeStatus: ServiceIncomeStatus = confirmedAt ? "confirmed" : "reported";
+  const moneyTimeline: MoneyTimelineEvent[] = [
+    {
+      type: "service_income_reported",
+      label: "服务收入已上报",
+      amountJpy: serviceAmountJpy,
+      actorType: "merchant",
+      occurredAt: reportedAt,
+      status: serviceIncomeStatus,
+      metadata: { paymentChannel }
+    },
+    ...(confirmedAt
+      ? [
+          {
+            type: "service_income_confirmed",
+            label: "服务收入已确认",
+            amountJpy: serviceAmountJpy,
+            actorType: "merchant" as const,
+            occurredAt: confirmedAt,
+            status: "confirmed",
+            metadata: { paymentChannel }
+          }
+        ]
+      : [])
+  ];
+
+  staticOrderIncomeReports.set(bookingOrderId, {
+    serviceAmountJpy,
+    platformCollectedServiceAmountJpy,
+    offlineReportedServiceAmountJpy,
+    unknownOrUnreportedServiceAmountJpy,
+    paymentChannel,
+    serviceIncomeStatus,
+    note: typeof body.note === "string" ? body.note : null,
+    proofUrl: typeof body.proofUrl === "string" ? body.proofUrl : null,
+    reportedAt,
+    confirmedAt,
+    moneyTimeline
+  });
+
+  return staticOrderFinanceDetail(bookingOrderId);
+}
+
+function staticPayRunPayload(status: PayRunStatus = "draft"): PayRunPayload {
+  const existing = staticPayRuns.values().next().value as PayRunPayload | undefined;
+  if (existing) {
+    return existing;
+  }
+
+  const settlement = financeSettlementPayload(0);
+  const orderFinance = staticOrderFinanceDetail(settlement.bookingOrderId);
+  const preview = orderFinance.technicianIncomePreview;
+  const baseSalaryJpy = preview?.basePayJpy ?? 1000;
+  const commissionJpy = preview?.commissionPayJpy ?? 4400;
+  const bonusJpy = preview?.bonusPayJpy ?? 500;
+  const platformFeeShareDeductionJpy = preview?.technicianNdpShareNdp ?? 150;
+  const deductionJpy = (preview?.deductionJpy ?? 0) + platformFeeShareDeductionJpy;
+  const netPayJpy = preview?.technicianNetIncomeJpy ?? Math.max(0, baseSalaryJpy + commissionJpy + bonusJpy - deductionJpy);
+  const payRunId = staticPayRunIdSeed++;
+  const payslipId = staticPayslipIdSeed++;
+  const payslip: PayslipPayload = {
+    id: payslipId,
+    payRunId,
+    shopId: settlement.shopId,
+    shopName: settlement.shopName,
+    technicianProfileId: settlement.technicianProfileId ?? 1,
+    technicianName: settlement.technicianName ?? "Misaki",
+    technicianUserId: 31,
+    compensationProfileId: 8,
+    periodStart: "2026-06-01T00:00:00.000Z",
+    periodEnd: "2026-06-30T23:59:59.000Z",
+    status,
+    disputeStatus: "none",
+    disputeReason: null,
+    baseSalaryJpy,
+    annualSalaryProratedJpy: 0,
+    dailyWageJpy: 0,
+    hourlyWageJpy: 0,
+    commissionJpy,
+    guaranteeTopupJpy: preview?.minimumGuaranteeAdjustmentJpy ?? 0,
+    bonusJpy,
+    allowanceJpy: 0,
+    deductionJpy,
+    platformFeeShareDeductionJpy,
+    netPayJpy,
+    paidAmountJpy: 0,
+    unpaidAmountJpy: netPayJpy,
+    confirmedAt: null,
+    disputedAt: null,
+    disputeResolvedAt: null,
+    disputeResolvedById: null,
+    disputeResolutionNote: null,
+    createdAt: staticTimestamp,
+    updatedAt: staticTimestamp,
+    lines: [
+      {
+        id: 1,
+        payslipId,
+        lineType: "commission",
+        title: `${settlement.orderNo} 订单分成`,
+        amountJpy: commissionJpy,
+        quantity: 1,
+        unitAmountJpy: commissionJpy,
+        formulaText: "服务金额 x 分成比例",
+        sourceType: "order",
+        sourceId: settlement.bookingOrderId,
+        ruleId: "static-compensation-v1",
+        orderId: settlement.bookingOrderId,
+        explanation: orderFinance.serviceName,
+        createdById: 1,
+        createdAt: staticTimestamp,
+        updatedAt: staticTimestamp
+      },
+      {
+        id: 2,
+        payslipId,
+        lineType: "platform_fee_share_deduction",
+        title: `${settlement.orderNo} NDP 平台费分摊`,
+        amountJpy: -platformFeeShareDeductionJpy,
+        quantity: 1,
+        unitAmountJpy: -platformFeeShareDeductionJpy,
+        formulaText: "平台费 x 技师承担比例",
+        sourceType: "order",
+        sourceId: settlement.bookingOrderId,
+        ruleId: "static-compensation-v1",
+        orderId: settlement.bookingOrderId,
+        explanation: "1 NDP = 1 JPY",
+        createdById: 1,
+        createdAt: staticTimestamp,
+        updatedAt: staticTimestamp
+      },
+      {
+        id: 3,
+        payslipId,
+        lineType: "bonus",
+        title: "店铺手动奖金",
+        amountJpy: bonusJpy,
+        quantity: 1,
+        unitAmountJpy: bonusJpy,
+        formulaText: null,
+        sourceType: "manual",
+        sourceId: null,
+        ruleId: "static-manual-bonus",
+        orderId: null,
+        explanation: "月度表现奖励",
+        createdById: 1,
+        createdAt: staticTimestamp,
+        updatedAt: staticTimestamp
+      }
+    ],
+    payoutRecords: []
+  };
+  const payRun: PayRunPayload = {
+    id: payRunId,
+    shopId: settlement.shopId,
+    shopName: settlement.shopName,
+    periodStart: payslip.periodStart,
+    periodEnd: payslip.periodEnd,
+    status,
+    totalBaseSalaryJpy: baseSalaryJpy,
+    totalCommissionJpy: commissionJpy,
+    totalBonusJpy: bonusJpy,
+    totalAllowanceJpy: 0,
+    totalDeductionJpy: deductionJpy,
+    totalNetPayJpy: netPayJpy,
+    paidAmountJpy: 0,
+    unpaidAmountJpy: netPayJpy,
+    generatedById: 1,
+    approvedById: null,
+    lockedAt: null,
+    createdAt: staticTimestamp,
+    updatedAt: staticTimestamp,
+    payslips: [payslip]
+  };
+
+  staticPayRuns.set(payRun.id, payRun);
+  return payRun;
+}
+
+function staticPayRunList(options: HttpClientRequestOptions): PayrollListPayload<PayRunPayload> {
+  const rows = Array.from(staticPayRuns.values());
+  const list = rows.length > 0 ? rows : [staticPayRunPayload("draft")];
+  const paged = paginate(list, options);
+
+  return {
+    list: paged.list,
+    total: paged.total,
+    page: paged.page,
+    page_size: paged.page_size
+  };
+}
+
+function staticPayRunCsvExport(options: HttpClientRequestOptions): PayrollCsvExportPayload {
+  const payRuns = staticPayRunList(options).list;
+  const headers = [
+    "shop_name",
+    "period_start",
+    "period_end",
+    "status",
+    "total_net_pay_jpy",
+    "paid_amount_jpy",
+    "unpaid_amount_jpy",
+    "payslip_count",
+    "disputed_payslips"
+  ];
+  const rows = payRuns.map((payRun) => [
+    payRun.shopName,
+    payRun.periodStart,
+    payRun.periodEnd,
+    payRun.status,
+    payRun.totalNetPayJpy,
+    payRun.paidAmountJpy,
+    payRun.unpaidAmountJpy,
+    payRun.payslips.length,
+    payRun.payslips.filter((payslip) => payslip.disputeStatus === "disputed").length
+  ]);
+
+  return {
+    filename: "static-pay-runs.csv",
+    contentType: "text/csv; charset=utf-8",
+    csv: [headers, ...rows].map((row) => row.map((cell) => staticCsvCell(cell)).join(",")).join("\n")
+  };
+}
+
+function staticPayslipCsvExport(): PayrollCsvExportPayload {
+  const payRun = staticPayRunPayload("published");
+  const payslips = payRun.payslips;
+  const headers = [
+    "shop_name",
+    "technician_name",
+    "period_start",
+    "period_end",
+    "status",
+    "net_pay_jpy",
+    "paid_amount_jpy",
+    "unpaid_amount_jpy",
+    "dispute_status",
+    "line_count"
+  ];
+  const rows = payslips.map((payslip) => [
+    payslip.shopName,
+    payslip.technicianName,
+    payslip.periodStart,
+    payslip.periodEnd,
+    payslip.status,
+    payslip.netPayJpy,
+    payslip.paidAmountJpy,
+    payslip.unpaidAmountJpy,
+    payslip.disputeStatus,
+    payslip.lines.length
+  ]);
+
+  return {
+    filename: "static-technician-payslips.csv",
+    contentType: "text/csv; charset=utf-8",
+    csv: [headers, ...rows].map((row) => row.map((cell) => staticCsvCell(cell)).join(",")).join("\n")
+  };
+}
+
+function staticCsvCell(value: string | number): string {
+  const text = String(value);
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function staticPayrollAdjustmentPayload(
+  status: PayrollAdjustmentStatus = "draft"
+): PayrollAdjustmentRequestPayload {
+  const existing = staticPayrollAdjustments.values().next().value as PayrollAdjustmentRequestPayload | undefined;
+  if (existing) {
+    return existing;
+  }
+
+  const payRun = staticPayRunPayload();
+  const payslip = payRun.payslips[0]!;
+  const adjustment: PayrollAdjustmentRequestPayload = {
+    id: staticPayrollAdjustmentIdSeed++,
+    shopId: payslip.shopId,
+    shopName: payslip.shopName,
+    technicianProfileId: payslip.technicianProfileId,
+    technicianName: payslip.technicianName,
+    technicianUserId: payslip.technicianUserId,
+    periodStart: payRun.periodStart,
+    periodEnd: payRun.periodEnd,
+    adjustmentType: "bonus",
+    title: "客户好评奖金",
+    amountJpy: 1200,
+    reason: "本周期收到 5 星好评",
+    proofUrl: null,
+    status,
+    requestedById: 1,
+    submittedAt: status === "draft" ? null : new Date().toISOString(),
+    approvedById: status === "approved" || status === "applied" ? 1 : null,
+    approvedAt: status === "approved" || status === "applied" ? new Date().toISOString() : null,
+    rejectedById: status === "rejected" ? 1 : null,
+    rejectedAt: status === "rejected" ? new Date().toISOString() : null,
+    rejectionReason: status === "rejected" ? "金额重复" : null,
+    appliedPayRunId: status === "applied" ? payRun.id : null,
+    appliedPayslipLineId: null,
+    createdAt: staticTimestamp,
+    updatedAt: staticTimestamp
+  };
+
+  staticPayrollAdjustments.set(adjustment.id, adjustment);
+  return adjustment;
+}
+
+function staticPayrollAdjustmentList(
+  options: HttpClientRequestOptions
+): PayrollListPayload<PayrollAdjustmentRequestPayload> {
+  const rows = Array.from(staticPayrollAdjustments.values());
+  const list = rows.length > 0 ? rows : [staticPayrollAdjustmentPayload("draft")];
+  const paged = paginate(list, options);
+
+  return {
+    list: paged.list,
+    total: paged.total,
+    page: paged.page,
+    page_size: paged.page_size
+  };
+}
+
+function createStaticPayrollAdjustment(body: Record<string, unknown>): PayrollAdjustmentRequestPayload {
+  const payRun = staticPayRunPayload();
+  const payslip = payRun.payslips[0]!;
+  const adjustmentType: PayrollAdjustmentType =
+    body.adjustmentType === "allowance" ||
+    body.adjustmentType === "deduction" ||
+    body.adjustmentType === "adjustment"
+      ? body.adjustmentType
+      : "bonus";
+  const adjustment: PayrollAdjustmentRequestPayload = {
+    id: staticPayrollAdjustmentIdSeed++,
+    shopId: readBodyNumber(body, "shopId", payslip.shopId),
+    shopName: payslip.shopName,
+    technicianProfileId: readBodyNumber(body, "technicianProfileId", payslip.technicianProfileId),
+    technicianName: payslip.technicianName,
+    technicianUserId: payslip.technicianUserId,
+    periodStart: typeof body.periodStart === "string" ? body.periodStart : payRun.periodStart,
+    periodEnd: typeof body.periodEnd === "string" ? body.periodEnd : payRun.periodEnd,
+    adjustmentType,
+    title: typeof body.title === "string" && body.title.trim() ? body.title.trim() : "工资调整",
+    amountJpy: readBodyNumber(body, "amountJpy", 1200),
+    reason: typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "工资周期调整",
+    proofUrl: typeof body.proofUrl === "string" ? body.proofUrl : null,
+    status: "draft",
+    requestedById: 1,
+    submittedAt: null,
+    approvedById: null,
+    approvedAt: null,
+    rejectedById: null,
+    rejectedAt: null,
+    rejectionReason: null,
+    appliedPayRunId: null,
+    appliedPayslipLineId: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  staticPayrollAdjustments.set(adjustment.id, adjustment);
+  return adjustment;
+}
+
+function transitionStaticPayrollAdjustment(
+  adjustmentId: number,
+  status: PayrollAdjustmentStatus,
+  body: Record<string, unknown> = {}
+): PayrollAdjustmentRequestPayload {
+  const current = staticPayrollAdjustments.get(adjustmentId) ?? staticPayrollAdjustmentPayload();
+  const timestamp = new Date().toISOString();
+  const next: PayrollAdjustmentRequestPayload = {
+    ...current,
+    status,
+    submittedAt: status === "submitted" ? timestamp : current.submittedAt,
+    approvedById: status === "approved" ? 1 : current.approvedById,
+    approvedAt: status === "approved" ? timestamp : current.approvedAt,
+    rejectedById: status === "rejected" ? 1 : current.rejectedById,
+    rejectedAt: status === "rejected" ? timestamp : current.rejectedAt,
+    rejectionReason:
+      status === "rejected"
+        ? typeof body.reason === "string" && body.reason.trim()
+          ? body.reason.trim()
+          : "金额需要复核"
+        : current.rejectionReason,
+    updatedAt: timestamp
+  };
+
+  staticPayrollAdjustments.set(adjustmentId, next);
+  return next;
+}
+
+function transitionStaticPayRun(payRunId: number, status: PayRunStatus): PayRunPayload {
+  const current = staticPayRuns.get(payRunId) ?? staticPayRunPayload();
+  const next: PayRunPayload = {
+    ...current,
+    status,
+    approvedById: status === "approved" ? 1 : current.approvedById,
+    lockedAt: status === "locked" ? new Date().toISOString() : current.lockedAt,
+    updatedAt: new Date().toISOString(),
+    payslips: current.payslips.map((payslip) => ({
+      ...payslip,
+      status: status === "published" && payslip.status === "draft" ? "published" : status === "approved" || status === "locked" ? status : payslip.status,
+      updatedAt: new Date().toISOString()
+    }))
+  };
+
+  staticPayRuns.set(payRunId, next);
+  return next;
+}
+
+function findStaticPayslip(payslipId: number): PayslipPayload {
+  const payRun = staticPayRunPayload();
+  const current = Array.from(staticPayRuns.values())
+    .flatMap((item) => item.payslips)
+    .find((payslip) => payslip.id === payslipId) ?? payRun.payslips[0]!;
+
+  return current;
+}
+
+function updateStaticPayslip(payslipId: number, updater: (payslip: PayslipPayload) => PayslipPayload): PayslipPayload {
+  let updated = findStaticPayslip(payslipId);
+  staticPayRuns.forEach((payRun, payRunId) => {
+    const nextPayslips = payRun.payslips.map((payslip) => {
+      if (payslip.id !== payslipId) {
+        return payslip;
+      }
+
+      updated = updater(payslip);
+      return updated;
+    });
+    const paidAmountJpy = nextPayslips.reduce((sum, item) => sum + item.paidAmountJpy, 0);
+    const unpaidAmountJpy = nextPayslips.reduce((sum, item) => sum + item.unpaidAmountJpy, 0);
+    staticPayRuns.set(payRunId, {
+      ...payRun,
+      paidAmountJpy,
+      unpaidAmountJpy,
+      status: unpaidAmountJpy === 0 ? "paid" : payRun.status,
+      updatedAt: new Date().toISOString(),
+      payslips: nextPayslips
+    });
+  });
+
+  return updated;
+}
+
+function reportStaticPayslipDispute(payslipId: number, body: Record<string, unknown>): PayslipPayload {
+  const reason = typeof body.reason === "string" && body.reason.trim() ? body.reason.trim() : "工资单金额需要复核";
+
+  return updateStaticPayslip(payslipId, (payslip) => ({
+    ...payslip,
+    status: "disputed",
+    disputeStatus: "disputed",
+    disputeReason: reason,
+    disputedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }));
+}
+
+function resolveStaticPayslipDispute(payslipId: number, body: Record<string, unknown>): PayslipPayload {
+  const resolutionNote =
+    typeof body.resolutionNote === "string" && body.resolutionNote.trim()
+      ? body.resolutionNote.trim()
+      : "商户已复核工资单并重新发布";
+
+  return updateStaticPayslip(payslipId, (payslip) => ({
+    ...payslip,
+    status: "published",
+    disputeStatus: "resolved",
+    disputeResolvedAt: new Date().toISOString(),
+    disputeResolvedById: 1,
+    disputeResolutionNote: resolutionNote,
+    updatedAt: new Date().toISOString()
+  }));
+}
+
+function confirmStaticPayslip(payslipId: number): PayslipPayload {
+  return updateStaticPayslip(payslipId, (payslip) => ({
+    ...payslip,
+    status: "confirmed",
+    disputeStatus: "confirmed",
+    disputeReason: null,
+    confirmedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }));
+}
+
+function recordStaticPayout(payslipId: number, body: Record<string, unknown>): PayslipPayload {
+  const payoutAmount = readBodyNumber(body, "amountJpy", findStaticPayslip(payslipId).unpaidAmountJpy);
+  const payoutMethod: PayoutMethod =
+    body.payoutMethod === "cash" ||
+    body.payoutMethod === "ndp" ||
+    body.payoutMethod === "external" ||
+    body.payoutMethod === "mixed" ||
+    body.payoutMethod === "other"
+      ? body.payoutMethod
+      : "bank_transfer";
+
+  return updateStaticPayslip(payslipId, (payslip) => {
+    const amountJpy = Math.min(payslip.unpaidAmountJpy, Math.max(1, payoutAmount));
+    const paidAmountJpy = payslip.paidAmountJpy + amountJpy;
+    const unpaidAmountJpy = Math.max(0, payslip.unpaidAmountJpy - amountJpy);
+
+    return {
+      ...payslip,
+      status: unpaidAmountJpy === 0 ? "paid" : "scheduled",
+      paidAmountJpy,
+      unpaidAmountJpy,
+      updatedAt: new Date().toISOString(),
+      payoutRecords: [
+        ...payslip.payoutRecords,
+        {
+          id: staticPayoutRecordIdSeed++,
+          payslipId,
+          shopId: payslip.shopId,
+          technicianProfileId: payslip.technicianProfileId,
+          amountJpy,
+          payoutMethod,
+          payoutDate: typeof body.payoutDate === "string" ? body.payoutDate : new Date().toISOString(),
+          referenceNo: typeof body.referenceNo === "string" ? body.referenceNo : null,
+          proofUrl: typeof body.proofUrl === "string" ? body.proofUrl : null,
+          note: typeof body.note === "string" ? body.note : null,
+          status: "completed",
+          confirmedByTechnician: false,
+          technicianConfirmedAt: null,
+          createdById: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ]
+    };
+  });
+}
+
+function confirmStaticPayoutRecord(payslipId: number, payoutRecordId: number): PayslipPayload {
+  return updateStaticPayslip(payslipId, (payslip) => ({
+    ...payslip,
+    payoutRecords: payslip.payoutRecords.map((record) =>
+      record.id === payoutRecordId
+        ? {
+            ...record,
+            confirmedByTechnician: true,
+            technicianConfirmedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        : record
+    ),
+    updatedAt: new Date().toISOString()
+  }));
 }
 
 function technicianPayload(index: number): BackofficeTechnicianPayload {
@@ -793,9 +1975,12 @@ function dashboardPayload(): BackofficeDashboardPayload {
       booked: scheduleRows.filter((item) => item.status === "booked").length
     },
     finance: {
-      grossAmount: settlementRows.reduce((total, item) => total + item.actualAmount, 0),
-      pendingSettlementAmount: settlementRows.filter((item) => item.status !== "exported").reduce((total, item) => total + item.expectedAmount, 0),
-      refundAmount: settlementRows.reduce((total, item) => total + Math.abs(Math.min(0, item.differenceAmount)), 0)
+      estimatedServiceGmvJpy: settlementRows.reduce((total, item) => total + item.estimatedServiceGmvJpy, 0),
+      platformNdpRevenue: settlementRows.reduce((total, item) => total + item.platformNdpRevenue, 0),
+      userRewardNdpCost: settlementRows.reduce((total, item) => total + item.userRewardNdpCost, 0),
+      pendingHoldNdp: settlementRows.reduce((total, item) => total + item.pendingHoldNdp, 0),
+      campaignDiscountNdp: settlementRows.reduce((total, item) => total + item.campaignDiscountNdp, 0),
+      unknownOrUnreportedServiceAmountJpy: settlementRows.reduce((total, item) => total + item.unknownOrUnreportedServiceAmountJpy, 0)
     },
     technicians: technicians.slice(0, 8).map((_, index) => technicianPayload(index)),
     shops: stores.slice(0, 8).map((_, index) => shopPayload(index))
@@ -807,7 +1992,7 @@ function backofficeList<TItem>(list: TItem[], options: HttpClientRequestOptions)
 }
 
 function handleBackoffice<TData>(path: string, options: HttpClientRequestOptions): StaticDemoResult<TData> {
-  const scopeMatch = path.match(/^\/(backoffice|merchant-admin)(\/.*)?$/);
+  const scopeMatch = path.match(/^\/(backoffice|merchant-admin|technician)(\/.*)?$/);
 
   if (!scopeMatch) {
     return { handled: false };
@@ -825,6 +2010,244 @@ function handleBackoffice<TData>(path: string, options: HttpClientRequestOptions
 
   if (suffix === "/schedule") {
     return { handled: true, data: clone(backofficeList(schedules.map((_, index) => scheduleSlotPayload(index)), options)) as TData };
+  }
+
+  if (
+    (scopeMatch[1] === "merchant-admin" || scopeMatch[1] === "backoffice") &&
+    suffix === "/pay-runs/export"
+  ) {
+    return { handled: true, data: clone(staticPayRunCsvExport(options)) as TData };
+  }
+
+  if ((scopeMatch[1] === "merchant-admin" || scopeMatch[1] === "backoffice") && suffix === "/pay-runs") {
+    if (scopeMatch[1] === "merchant-admin" && options.method === "POST") {
+      const payRun = staticPayRunPayload("draft");
+      staticPayRuns.set(payRun.id, { ...payRun, updatedAt: new Date().toISOString() });
+      return { handled: true, data: clone(staticPayRuns.get(payRun.id)!) as TData };
+    }
+
+    return { handled: true, data: clone(staticPayRunList(options)) as TData };
+  }
+
+  if (scopeMatch[1] === "merchant-admin" && suffix === "/payroll-adjustments") {
+    if (options.method === "POST") {
+      return {
+        handled: true,
+        data: clone(createStaticPayrollAdjustment(readBodyRecord(options))) as TData
+      };
+    }
+
+    return { handled: true, data: clone(staticPayrollAdjustmentList(options)) as TData };
+  }
+
+  const payrollAdjustmentActionMatch = suffix.match(/^\/payroll-adjustments\/(\d+)\/(submit|approve|reject)$/);
+  if (scopeMatch[1] === "merchant-admin" && payrollAdjustmentActionMatch) {
+    const adjustmentId = Number(payrollAdjustmentActionMatch[1]);
+    const action = payrollAdjustmentActionMatch[2];
+    const nextStatus: PayrollAdjustmentStatus =
+      action === "approve" ? "approved" : action === "reject" ? "rejected" : "submitted";
+    return {
+      handled: true,
+      data: clone(
+        transitionStaticPayrollAdjustment(adjustmentId, nextStatus, readBodyRecord(options))
+      ) as TData
+    };
+  }
+
+  const payRunActionMatch = suffix.match(/^\/pay-runs\/(\d+)(?:\/(recalculate|publish|approve|lock))?$/);
+  if (scopeMatch[1] === "merchant-admin" && payRunActionMatch) {
+    const payRunId = Number(payRunActionMatch[1]);
+    const action = payRunActionMatch[2];
+    if (!action) {
+      return { handled: true, data: clone(staticPayRuns.get(payRunId) ?? staticPayRunPayload()) as TData };
+    }
+    const nextStatus: PayRunStatus =
+      action === "publish"
+        ? "published"
+        : action === "approve"
+          ? "approved"
+          : action === "lock"
+            ? "locked"
+            : "draft";
+    return { handled: true, data: clone(transitionStaticPayRun(payRunId, nextStatus)) as TData };
+  }
+
+  const merchantPayoutMatch = suffix.match(/^\/payslips\/(\d+)\/payout-records$/);
+  if (scopeMatch[1] === "merchant-admin" && merchantPayoutMatch && options.method === "POST") {
+    return {
+      handled: true,
+      data: clone(recordStaticPayout(Number(merchantPayoutMatch[1]), readBodyRecord(options))) as TData
+    };
+  }
+
+  const merchantDisputeResolveMatch = suffix.match(/^\/payslips\/(\d+)\/resolve-dispute$/);
+  if (
+    scopeMatch[1] === "merchant-admin" &&
+    merchantDisputeResolveMatch &&
+    options.method === "POST"
+  ) {
+    return {
+      handled: true,
+      data: clone(
+        resolveStaticPayslipDispute(
+          Number(merchantDisputeResolveMatch[1]),
+          readBodyRecord(options)
+        )
+      ) as TData
+    };
+  }
+
+  if (scopeMatch[1] === "technician" && suffix === "/payslips") {
+    const payRun = staticPayRunPayload("published");
+    const payload: PayrollListPayload<PayslipPayload> = {
+      list: payRun.payslips,
+      total: payRun.payslips.length,
+      page: 1,
+      page_size: 20
+    };
+
+    return { handled: true, data: clone(payload) as TData };
+  }
+
+  if (scopeMatch[1] === "technician" && suffix === "/payslips/export") {
+    return { handled: true, data: clone(staticPayslipCsvExport()) as TData };
+  }
+
+  const technicianPayoutConfirmMatch = suffix.match(
+    /^\/payslips\/(\d+)\/payout-records\/(\d+)\/confirm$/
+  );
+  if (
+    scopeMatch[1] === "technician" &&
+    technicianPayoutConfirmMatch &&
+    options.method === "POST"
+  ) {
+    return {
+      handled: true,
+      data: clone(
+        confirmStaticPayoutRecord(
+          Number(technicianPayoutConfirmMatch[1]),
+          Number(technicianPayoutConfirmMatch[2])
+        )
+      ) as TData
+    };
+  }
+
+  const technicianPayslipMatch = suffix.match(/^\/payslips\/(\d+)(?:\/(confirm|dispute))?$/);
+  if (scopeMatch[1] === "technician" && technicianPayslipMatch) {
+    const payslipId = Number(technicianPayslipMatch[1]);
+    const action = technicianPayslipMatch[2];
+
+    if (action === "confirm") {
+      return { handled: true, data: clone(confirmStaticPayslip(payslipId)) as TData };
+    }
+    if (action === "dispute") {
+      return {
+        handled: true,
+        data: clone(reportStaticPayslipDispute(payslipId, readBodyRecord(options))) as TData
+      };
+    }
+
+    return { handled: true, data: clone(findStaticPayslip(payslipId)) as TData };
+  }
+
+  const orderFinanceMatch = suffix.match(/^\/finance\/orders\/(\d+)(\/service-income-report)?$/);
+  if (orderFinanceMatch) {
+    const bookingOrderId = Number(orderFinanceMatch[1]);
+    const isReport = Boolean(orderFinanceMatch[2]);
+
+    if (scopeMatch[1] === "merchant-admin" && isReport && options.method === "PUT") {
+      return {
+        handled: true,
+        data: clone(reportStaticServiceIncome(bookingOrderId, readBodyRecord(options))) as TData
+      };
+    }
+
+    if (!isReport) {
+      return { handled: true, data: clone(staticOrderFinanceDetail(bookingOrderId)) as TData };
+    }
+  }
+
+  const financeRulesMatch = suffix.match(/^\/shops\/(\d+)\/finance\/rules(\/preview)?$/);
+  if (scopeMatch[1] === "merchant-admin" && financeRulesMatch) {
+    const shopId = Number(financeRulesMatch[1]);
+    const isPreview = Boolean(financeRulesMatch[2]);
+
+    if (isPreview) {
+      const body = readBodyRecord(options);
+      return {
+        handled: true,
+        data: clone(
+          previewStaticShopFinanceRule(shopId, {
+            serviceAmountJpy: readBodyNumber(body, "serviceAmountJpy", 8800),
+            platformFeeNdp: readBodyNumber(body, "platformFeeNdp", 500),
+            workedMinutes: readBodyNumber(body, "workedMinutes", 60),
+            monthlyCompletedOrders: readBodyNumber(body, "monthlyCompletedOrders", 101),
+            monthlyServiceGmvJpy: readBodyNumber(body, "monthlyServiceGmvJpy", 900_000),
+            ratingAverage: readBodyNumber(body, "ratingAverage", 4.8),
+            lateCancellationCount: readBodyNumber(body, "lateCancellationCount", 0)
+          })
+        ) as TData
+      };
+    }
+
+    if (options.method === "PUT") {
+      return {
+        handled: true,
+        data: clone(
+          updateStaticShopFinanceRuleSet(
+            shopId,
+            readStaticShopFinanceRuleInput(shopId, readBodyRecord(options))
+          )
+        ) as TData
+      };
+    }
+
+    return { handled: true, data: clone(getStaticShopFinanceRuleSet(shopId)) as TData };
+  }
+
+  const compensationProfileMatch = suffix.match(
+    /^\/shops\/(\d+)\/technicians\/(\d+)\/compensation-profile(\/preview)?$/
+  );
+  if (scopeMatch[1] === "merchant-admin" && compensationProfileMatch) {
+    const shopId = Number(compensationProfileMatch[1]);
+    const technicianProfileId = Number(compensationProfileMatch[2]);
+    const isPreview = Boolean(compensationProfileMatch[3]);
+
+    if (isPreview) {
+      const body = readBodyRecord(options);
+      return {
+        handled: true,
+        data: clone(
+          previewStaticCompensationProfile(shopId, technicianProfileId, {
+            serviceAmountJpy: readBodyNumber(body, "serviceAmountJpy", 8800),
+            platformFeeNdp: readBodyNumber(body, "platformFeeNdp", 500),
+            workedMinutes: readBodyNumber(body, "workedMinutes", 60),
+            monthlyCompletedOrders: readBodyNumber(body, "monthlyCompletedOrders", 101),
+            monthlyServiceGmvJpy: readBodyNumber(body, "monthlyServiceGmvJpy", 900_000),
+            ratingAverage: readBodyNumber(body, "ratingAverage", 4.8),
+            lateCancellationCount: readBodyNumber(body, "lateCancellationCount", 0)
+          })
+        ) as TData
+      };
+    }
+
+    if (options.method === "PUT") {
+      return {
+        handled: true,
+        data: clone(
+          updateStaticTechnicianCompensationProfile(
+            shopId,
+            technicianProfileId,
+            readStaticCompensationProfileInput(shopId, technicianProfileId, readBodyRecord(options))
+          )
+        ) as TData
+      };
+    }
+
+    return {
+      handled: true,
+      data: clone(getStaticTechnicianCompensationProfile(shopId, technicianProfileId)) as TData
+    };
   }
 
   if (suffix === "/finance/settlements") {

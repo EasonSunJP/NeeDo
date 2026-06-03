@@ -142,11 +142,7 @@ export class BackofficeController {
   );
 
   private createListHandler<TPayload>(
-    handler: (
-      service: BackofficeService,
-      request: Request,
-      response: Response
-    ) => Promise<TPayload>
+    handler: (service: BackofficeService, request: Request, response: Response) => Promise<TPayload>
   ) {
     return async (request: Request, response: Response, next: NextFunction): Promise<void> => {
       try {

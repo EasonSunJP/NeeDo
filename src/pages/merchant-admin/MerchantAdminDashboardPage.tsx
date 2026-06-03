@@ -29,7 +29,7 @@ export function MerchantAdminDashboardPage() {
   };
   const dashboardMetrics: Metric[] = [
     ...(dashboard?.metrics ?? []),
-    { label: "门店流水", value: yen(dashboard?.finance.grossAmount ?? 0), change: "真实订单", tone: "good" }
+    { label: "门店流水", value: yen(dashboard?.finance.estimatedServiceGmvJpy ?? 0), change: "真实订单", tone: "good" }
   ];
   const technicianStatusSummary = [
     {
@@ -47,8 +47,10 @@ export function MerchantAdminDashboardPage() {
   ];
   const financeSummary = [
     ["平台分账", yen(0)],
-    ["待结算", yen(dashboard?.finance.pendingSettlementAmount ?? 0)],
-    ["退款影响", yen(dashboard?.finance.refundAmount ?? 0)],
+    ["平台 NDP 净收入", `${(dashboard?.finance.platformNdpRevenue ?? 0).toLocaleString("ja-JP")} NDP`],
+    ["返点成本", `${(dashboard?.finance.userRewardNdpCost ?? 0).toLocaleString("ja-JP")} NDP`],
+    ["冻结中", `${(dashboard?.finance.pendingHoldNdp ?? 0).toLocaleString("ja-JP")} NDP`],
+    ["未上报服务收入", yen(dashboard?.finance.unknownOrUnreportedServiceAmountJpy ?? 0)],
     ["导出状态", "可导出"]
   ] as const;
 

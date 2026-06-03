@@ -302,14 +302,17 @@ const createAuthFixture = async () => {
   const users = [passwordUser, customerUser, disabledUser, noPermissionUser, multiPortalUser];
 
   const repository = {
-    findUserByEmail: jest.fn(async (email: string) =>
-      users.find((item) => item.email === email && !item.deletedAt) ?? null
+    findUserByEmail: jest.fn(
+      async (email: string) => users.find((item) => item.email === email && !item.deletedAt) ?? null
     ),
-    findUserByLoginIdentifier: jest.fn(async (identifier: string) =>
-      users.find((item) => (item.email === identifier || item.username === identifier) && !item.deletedAt) ?? null
+    findUserByLoginIdentifier: jest.fn(
+      async (identifier: string) =>
+        users.find(
+          (item) => (item.email === identifier || item.username === identifier) && !item.deletedAt
+        ) ?? null
     ),
-    findUserById: jest.fn(async (id: number) =>
-      users.find((item) => item.id === id && !item.deletedAt) ?? null
+    findUserById: jest.fn(
+      async (id: number) => users.find((item) => item.id === id && !item.deletedAt) ?? null
     ),
     updateLastLoginAt: jest.fn(async (id: number, loggedInAt: Date) => {
       const user = users.find((item) => item.id === id);
@@ -380,7 +383,9 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       .expect((meResponse) => {
         expect(meResponse.body.data.email).toBe("admin@example.com");
         expect(meResponse.body.data.roles).toEqual(["admin"]);
-        expect(meResponse.body.data.permissions).toEqual(expect.arrayContaining(["auth:me", "user:list"]));
+        expect(meResponse.body.data.permissions).toEqual(
+          expect.arrayContaining(["auth:me", "user:list"])
+        );
       });
   });
 
@@ -442,7 +447,9 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       .expect((meResponse) => {
         expect(meResponse.body.data.email).toBe("customer@example.com");
         expect(meResponse.body.data.roles).toEqual(["customer"]);
-        expect(meResponse.body.data.permissions).toEqual(expect.arrayContaining(["menu:client-app", "order:list"]));
+        expect(meResponse.body.data.permissions).toEqual(
+          expect.arrayContaining(["menu:client-app", "order:list"])
+        );
       });
   });
 

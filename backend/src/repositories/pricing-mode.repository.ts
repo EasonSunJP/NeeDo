@@ -69,7 +69,12 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   ): Promise<ShopPricingModePayload> {
     try {
       return this.mapShopPricingMode(
-        await this.updateShopPricingModeWithRate(shopId, pricingMode, technicianPricingRatePercent, actorUserId)
+        await this.updateShopPricingModeWithRate(
+          shopId,
+          pricingMode,
+          technicianPricingRatePercent,
+          actorUserId
+        )
       ) as ShopPricingModePayload;
     } catch (error) {
       if (!this.isMissingTechnicianPricingRateColumn(error)) {
@@ -79,10 +84,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       const shop = await this.updateShopPricingModeWithoutRate(shopId, pricingMode, actorUserId);
       legacyShopTechnicianPricingRatePercent.set(shopId, technicianPricingRatePercent);
       return {
-        ...(this.mapShopPricingMode(
-          shop,
-          technicianPricingRatePercent
-        ) as ShopPricingModePayload)
+        ...(this.mapShopPricingMode(shop, technicianPricingRatePercent) as ShopPricingModePayload)
       };
     }
   }
@@ -125,7 +127,11 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       this.client.technicianService.count({ where })
     ]);
 
-    return buildPaginatedResponse(list.map((service) => this.mapTechnicianService(service)), total, input);
+    return buildPaginatedResponse(
+      list.map((service) => this.mapTechnicianService(service)),
+      total,
+      input
+    );
   }
 
   public async createTechnicianService(
@@ -242,7 +248,11 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       this.client.service.count({ where })
     ]);
 
-    return buildPaginatedResponse(list.map((service) => this.mapShopService(service)), total, input);
+    return buildPaginatedResponse(
+      list.map((service) => this.mapShopService(service)),
+      total,
+      input
+    );
   }
 
   public async listBookingNavigationTechnicians(
@@ -268,7 +278,11 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       this.client.technicianProfile.count({ where })
     ]);
 
-    return buildPaginatedResponse(list.map((technician) => this.mapTechnician(technician)), total, input);
+    return buildPaginatedResponse(
+      list.map((technician) => this.mapTechnician(technician)),
+      total,
+      input
+    );
   }
 
   public async listPublicTechnicianServices(
@@ -293,7 +307,11 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
       this.client.technicianService.count({ where })
     ]);
 
-    return buildPaginatedResponse(list.map((service) => this.mapTechnicianService(service)), total, input);
+    return buildPaginatedResponse(
+      list.map((service) => this.mapTechnicianService(service)),
+      total,
+      input
+    );
   }
 
   private mapTechnicianService(service: TechnicianServiceRecord): TechnicianServicePayload {
@@ -363,7 +381,9 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     });
   }
 
-  private async findShopPricingModeWithoutRate(shopId: number): Promise<ShopPricingModeRecord | null> {
+  private async findShopPricingModeWithoutRate(
+    shopId: number
+  ): Promise<ShopPricingModeRecord | null> {
     return this.client.shop.findFirst({
       where: { id: shopId, deletedAt: null },
       select: {
@@ -420,7 +440,10 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     });
   }
 
-  private mapShopPricingMode(shop: ShopPricingModeRecord | null, fallbackRatePercent = 100): ShopPricingModePayload | null {
+  private mapShopPricingMode(
+    shop: ShopPricingModeRecord | null,
+    fallbackRatePercent = 100
+  ): ShopPricingModePayload | null {
     return shop
       ? {
           shopId: shop.id,
@@ -438,12 +461,7 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
     }
 
     const issue = error as { code?: unknown; message?: unknown; meta?: Record<string, unknown> };
-    const evidence = [
-      issue.message,
-      issue.meta?.column,
-      issue.meta?.target,
-      issue.meta?.modelName
-    ]
+    const evidence = [issue.message, issue.meta?.column, issue.meta?.target, issue.meta?.modelName]
       .map((value) => String(value ?? ""))
       .join(" ");
 
@@ -467,7 +485,9 @@ export class PricingModeRepository implements PricingModeRepositoryPort {
   }
 
   private stringArrayFromJson(value: unknown): string[] {
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
   }
 
   private formatDecimal(value: DecimalLike | string | number, scale: number): string {

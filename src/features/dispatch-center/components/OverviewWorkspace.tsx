@@ -41,6 +41,7 @@ import {
   getDispatchScheduleGrid,
   getFloatingTasks,
   minimizeFloatingTask,
+  minimizeFloatingTasks,
   useDispatchCenterStore,
   type DispatchScheduleCell,
   type DispatchScheduleCellStatus
@@ -1737,7 +1738,8 @@ export function DispatchOverviewWorkspace({
       {!isMobileSurface ? (
         <FloatingActionWindow
           onMinimize={minimizeFloatingTask}
-          onRestoreAll={() => floatingTasks.forEach((task) => minimizeFloatingTask(task.id, false))}
+          onMinimizeAll={minimizeFloatingTasks}
+          onRestoreAll={() => minimizeFloatingTasks(floatingTasks.map((task) => task.id), false)}
           onSelect={focusTask}
           surface={surface}
           tasks={floatingTasks}

@@ -32,14 +32,25 @@ function FloatingTaskMinimizeIcon() {
   );
 }
 
+function FloatingWindowMinimizeIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path d="M6.75 7.75a2 2 0 0 1 2-2h6.5a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-6.5a2 2 0 0 1-2-2z" stroke="currentColor" strokeWidth="2.1" />
+      <path d="M9.5 15.25h5" stroke="currentColor" strokeLinecap="round" strokeWidth="2.4" />
+    </svg>
+  );
+}
+
 export function FloatingActionWindow({
   onMinimize,
+  onMinimizeAll,
   onRestoreAll,
   onSelect,
   surface,
   tasks
 }: {
   onMinimize: (taskId: string, minimized: boolean) => void;
+  onMinimizeAll: (taskIds: string[], minimized: boolean) => void;
   onRestoreAll: () => void;
   onSelect: (task: DispatchFloatingTask) => void;
   surface: "desktop" | "mobile";
@@ -53,7 +64,8 @@ export function FloatingActionWindow({
   const suppressClickRef = useRef(false);
   const isMobileSurface = surface === "mobile";
   const allMinimized = tasks.every((task) => task.minimized);
-  const visibleTaskCount = tasks.filter((task) => !task.minimized).length;
+  const visibleTasks = tasks.filter((task) => !task.minimized);
+  const visibleTaskCount = visibleTasks.length;
   const mobileWindowClassName =
     "w-[min(352px,calc(100vw-24px))] border-[rgba(255,255,255,0.08)] bg-[linear-gradient(180deg,rgba(54,45,44,0.96)_0%,rgba(24,27,29,0.98)_22%,rgba(16,18,20,0.99)_100%)] shadow-[0_28px_64px_rgba(0,0,0,0.58)] backdrop-blur-2xl";
   const mobileHeaderClassName =
@@ -191,10 +203,25 @@ export function FloatingActionWindow({
     }, MINIMIZE_ANIMATION_MS);
     animationTimersRef.current.set(taskId, minimizeTimer);
   };
+  const handleMinimizeWindow = () => {
+    if (windowCollapsing || visibleTasks.length === 0) {
+      return;
+    }
+
+    setWindowCollapsing(true);
+    const collapseTimer = window.setTimeout(() => {
+      onMinimizeAll(visibleTasks.map((task) => task.id), true);
+      setMinimizingTaskIds([]);
+      setWindowCollapsing(false);
+      animationTimersRef.current.delete("window:minimize");
+    }, WINDOW_COLLAPSE_MS);
+    animationTimersRef.current.set("window:minimize", collapseTimer);
+  };
 
   if (allMinimized) {
     return (
       <button
+        aria-label="展开待办列表"
         className={cn(
           "fixed z-40 grid place-items-center rounded-full",
           defaultAnchorClass,
@@ -214,6 +241,7 @@ export function FloatingActionWindow({
         onPointerMove={moveWhileDragging}
         onPointerUp={finishDragging}
         style={floatingStyle}
+        title="展开待办列表"
         type="button"
       >
         <span className="text-xl font-black">{tasks.length}</span>
@@ -268,12 +296,28 @@ export function FloatingActionWindow({
             <h3 className={cn("mt-1 text-lg font-black", isMobileSurface ? "text-white" : "text-ink")}>待办列表</h3>
             {isMobileSurface ? <p className="mt-1 text-[11px] font-semibold text-white/55">长按顶部可拖动</p> : null}
           </div>
-          <Badge className={isMobileSurface ? "bg-[rgba(255,118,96,0.14)] text-[#ff9887]" : undefined} tone="red">
-            {tasks.length} 件未处理
-          </Badge>
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge className={isMobileSurface ? "bg-[rgba(255,118,96,0.14)] text-[#ff9887]" : undefined} tone="red">
+              {tasks.length} 件未处理
+            </Badge>
+            <button
+              aria-label="最小化待办列表"
+              className={cn(
+                "focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full border transition",
+                isMobileSurface
+                  ? "border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] text-[color:var(--client-primary)] hover:bg-[color:var(--client-primary)] hover:text-[color:var(--client-primary-contrast)]"
+                  : "merchant-dispatch-floating-panel-minimize"
+              )}
+              onClick={handleMinimizeWindow}
+              title="最小化待办列表"
+              type="button"
+            >
+              <FloatingWindowMinimizeIcon />
+            </button>
+          </div>
         </div>
         <div className={cn("scrollbar-none max-h-[60vh] space-y-3 overflow-y-auto px-4 py-4", isMobileSurface && mobileListClassName)}>
-          {tasks.filter((task) => !task.minimized).map((task) => (
+          {visibleTasks.map((task) => (
             <div
               className={cn(
                 "overflow-hidden transition-[max-height,opacity,transform,margin] duration-200 ease-out",

@@ -219,41 +219,39 @@ const createFixture = async () => {
     currency: "JPY",
     durationMinutes: 60
   };
-  let order:
-    | {
-        id: number;
-        orderNo: string;
-        orderType: string;
-        status: string;
-        paymentStatus: "unpaid";
-        customerUserId: number;
-        serviceId: number | null;
-        technicianServiceId: number | null;
-        shopId: number;
-        technicianProfileId: number | null;
-        scheduleSlotId: number;
-        fulfillmentMode: string;
-        serviceName: string;
-        pricingModeSnapshot: "merchant" | "technician";
-        serviceOwnerType: "shop" | "technician";
-        serviceOwnerId: number | null;
-        serviceNameSnapshot: string | null;
-        servicePriceSnapshot: string | null;
-        serviceDurationSnapshot: number | null;
-        serviceSnapshot: unknown;
-        shopName: string;
-        technicianName: string | null;
-        priceAmount: string;
-        currency: string;
-        startsAt: Date;
-        endsAt: Date;
-        note: string | null;
-        cancelReason: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-        statusHistory: typeof statusHistory;
-      }
-    | null = null;
+  let order: {
+    id: number;
+    orderNo: string;
+    orderType: string;
+    status: string;
+    paymentStatus: "unpaid";
+    customerUserId: number;
+    serviceId: number | null;
+    technicianServiceId: number | null;
+    shopId: number;
+    technicianProfileId: number | null;
+    scheduleSlotId: number;
+    fulfillmentMode: string;
+    serviceName: string;
+    pricingModeSnapshot: "merchant" | "technician";
+    serviceOwnerType: "shop" | "technician";
+    serviceOwnerId: number | null;
+    serviceNameSnapshot: string | null;
+    servicePriceSnapshot: string | null;
+    serviceDurationSnapshot: number | null;
+    serviceSnapshot: unknown;
+    shopName: string;
+    technicianName: string | null;
+    priceAmount: string;
+    currency: string;
+    startsAt: Date;
+    endsAt: Date;
+    note: string | null;
+    cancelReason: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    statusHistory: typeof statusHistory;
+  } | null = null;
   const bookingRepository = {
     listAvailableSlots: jest.fn(async () => ({
       list: slot.status === "available" ? [slot] : [],
@@ -333,7 +331,8 @@ const createFixture = async () => {
         }
 
         order.status = input.toStatus;
-        order.cancelReason = input.toStatus === "cancelled" ? input.reason ?? null : order.cancelReason;
+        order.cancelReason =
+          input.toStatus === "cancelled" ? (input.reason ?? null) : order.cancelReason;
         order.updatedAt = now;
         statusHistory.push({
           id: statusHistory.length + 1,
@@ -385,7 +384,9 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
     const token = await fixture.login();
 
     const availabilityResponse = await request(fixture.app)
-      .get("/api/v1/schedule/availability?serviceId=1&shopId=1&from=2026-05-26T00:00:00.000Z&to=2026-05-27T00:00:00.000Z")
+      .get(
+        "/api/v1/schedule/availability?serviceId=1&shopId=1&from=2026-05-26T00:00:00.000Z&to=2026-05-27T00:00:00.000Z"
+      )
       .expect(200);
 
     expect(availabilityResponse.body.data.list).toEqual([
@@ -458,12 +459,9 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
     expect(completeResponse.body.data.status).toBe("completed");
-    expect(completeResponse.body.data.statusHistory.map((entry: { toStatus: string }) => entry.toStatus)).toEqual([
-      "pending",
-      "confirmed",
-      "inService",
-      "completed"
-    ]);
+    expect(
+      completeResponse.body.data.statusHistory.map((entry: { toStatus: string }) => entry.toStatus)
+    ).toEqual(["pending", "confirmed", "inService", "completed"]);
 
     await request(fixture.app)
       .post("/api/v1/orders/1/cancel")

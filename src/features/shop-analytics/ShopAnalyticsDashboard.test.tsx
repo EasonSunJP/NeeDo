@@ -14,6 +14,13 @@ describe("ShopAnalyticsDashboard theme surfaces", () => {
     expect(source).toContain("shop-analytics-hero-overlay");
   });
 
+  it("bridges the admin analytics surface to merchant admin theme tokens", () => {
+    expect(source).toContain("merchant-admin-analytics-surface");
+    expect(styles).toContain(".merchant-admin-shell .merchant-admin-analytics-surface");
+    expect(styles).toContain("--shop-analytics-page-bg: var(--admin-bg");
+    expect(styles).toContain("--client-primary: var(--admin-accent");
+  });
+
   it("does not force light client themes into the dark analytics shell", () => {
     expect(styles).toContain(".client-shell.client-theme-night.merchant-analytics-clean-shell");
     expect(styles).toContain(".client-shell.client-theme-day.merchant-analytics-clean-shell");

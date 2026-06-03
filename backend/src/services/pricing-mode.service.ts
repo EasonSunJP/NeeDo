@@ -290,10 +290,15 @@ export class PricingModeService {
     input: PaginationInput
   ): Promise<PaginatedResponse<TechnicianServicePayload>> {
     const pricingMode = await this.getExistingShopPricingMode(shopId);
-    const services = await this.repository.listPublicTechnicianServices({ ...input, shopId, technicianId });
-    const ratePercent = pricingMode.pricingMode === "technician"
-      ? this.normalizeTechnicianPricingRatePercent(pricingMode.technicianPricingRatePercent)
-      : 100;
+    const services = await this.repository.listPublicTechnicianServices({
+      ...input,
+      shopId,
+      technicianId
+    });
+    const ratePercent =
+      pricingMode.pricingMode === "technician"
+        ? this.normalizeTechnicianPricingRatePercent(pricingMode.technicianPricingRatePercent)
+        : 100;
 
     if (ratePercent === 100) {
       return services;
@@ -342,10 +347,7 @@ export class PricingModeService {
     actor: AuthenticatedAccessContext,
     shopId: number
   ): Promise<{ technicianId: number }> {
-    if (
-      actor.currentIdentityScopeType !== "technician_profile" ||
-      !actor.currentIdentityScopeId
-    ) {
+    if (actor.currentIdentityScopeType !== "technician_profile" || !actor.currentIdentityScopeId) {
       throw this.identityForbidden();
     }
 

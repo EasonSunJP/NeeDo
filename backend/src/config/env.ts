@@ -81,6 +81,7 @@ const envSchema = z.object({
   CACHE_STALE_WHILE_REVALIDATE_SECONDS: z.coerce.number().int().min(0).default(120),
   CDN_BASE_URL: optionalUrlSchema,
   DATABASE_URL: z.string().url(),
+  DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL: booleanSchema.default(false),
   DATABASE_POOL_CONNECTION_LIMIT: z.coerce.number().int().positive().max(200).default(10),
   DATABASE_POOL_ACQUIRE_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   DATABASE_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),

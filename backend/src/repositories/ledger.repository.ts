@@ -12,13 +12,17 @@ import type {
   LedgerTransactionPayload,
   LedgerTransactionStatus,
   LedgerTransactionType,
+  OrderFinancialUpsertInput,
   WalletLedgerDirection,
   WalletLedgerListInput,
   WalletLedgerPayload,
+  WalletHoldPayload,
+  WalletHoldStatus,
   WalletLookupInput,
   WalletOwnerType,
   WalletPayload
 } from "../services/ledger.service";
+import type { FeeType } from "../services/fee-calculation.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse } from "../utils/pagination";
 
@@ -42,6 +46,8 @@ type FinanceReconciliationRecord = Prisma.FinanceReconciliationGetPayload<{
     };
   };
 }>;
+
+type WalletHoldRecord = Prisma.WalletHoldGetPayload<Record<string, never>>;
 
 export class LedgerRepository implements LedgerRepositoryPort {
   public constructor(private readonly client: LedgerPrismaClient = prisma) {}
@@ -219,6 +225,157 @@ export class LedgerRepository implements LedgerRepositoryPort {
         targetType: "ledger_transaction",
         targetId: input.targetId,
         metadata: input.metadata as Prisma.InputJsonValue | undefined
+      }
+    });
+  }
+
+  public async findWalletHoldByIdempotencyKey(
+    idempotencyKey: string
+  ): Promise<WalletHoldPayload | null> {
+    const hold = await this.client.walletHold.findFirst({
+      where: { idempotencyKey, deletedAt: null }
+    });
+
+    return hold ? this.mapWalletHold(hold) : null;
+  }
+
+  public async findWalletHold(input: {
+    bookingOrderId: number;
+    ownerType: WalletOwnerType;
+    ownerId: number;
+    feeType: FeeType;
+  }): Promise<WalletHoldPayload | null> {
+    const hold = await this.client.walletHold.findFirst({
+      where: {
+        bookingOrderId: input.bookingOrderId,
+        ownerType: this.ownerTypeToDb(input.ownerType),
+        ownerId: input.ownerId,
+        feeType: input.feeType,
+        deletedAt: null
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+
+    return hold ? this.mapWalletHold(hold) : null;
+  }
+
+  public async createWalletHold(input: {
+    ownerType: WalletOwnerType;
+    ownerId: number;
+    bookingOrderId: number;
+    feeType: FeeType;
+    holdAmountNdp: number;
+    status: WalletHoldStatus;
+    idempotencyKey: string;
+    calculationLogId: number | null;
+    metadata?: unknown;
+  }): Promise<WalletHoldPayload> {
+    const hold = await this.client.walletHold.create({
+      data: {
+        ownerType: this.ownerTypeToDb(input.ownerType),
+        ownerId: input.ownerId,
+        bookingOrderId: input.bookingOrderId,
+        feeType: input.feeType,
+        holdAmountNdp: input.holdAmountNdp,
+        status: input.status,
+        idempotencyKey: input.idempotencyKey,
+        calculationLogId: input.calculationLogId,
+        metadata: input.metadata as Prisma.InputJsonValue | undefined
+      }
+    });
+
+    return this.mapWalletHold(hold);
+  }
+
+  public async updateWalletHold(input: {
+    id: number;
+    capturedAmountNdp?: number;
+    releasedAmountNdp?: number;
+    status: WalletHoldStatus;
+    capturedAt?: Date | null;
+    releasedAt?: Date | null;
+    metadata?: unknown;
+  }): Promise<WalletHoldPayload> {
+    const hold = await this.client.walletHold.update({
+      where: { id: input.id },
+      data: {
+        ...(typeof input.capturedAmountNdp === "number"
+          ? { capturedAmountNdp: input.capturedAmountNdp }
+          : {}),
+        ...(typeof input.releasedAmountNdp === "number"
+          ? { releasedAmountNdp: input.releasedAmountNdp }
+          : {}),
+        status: input.status,
+        ...(input.capturedAt !== undefined ? { capturedAt: input.capturedAt } : {}),
+        ...(input.releasedAt !== undefined ? { releasedAt: input.releasedAt } : {}),
+        ...(input.metadata !== undefined
+          ? { metadata: input.metadata as Prisma.InputJsonValue }
+          : {})
+      }
+    });
+
+    return this.mapWalletHold(hold);
+  }
+
+  public async upsertOrderFinancial(input: OrderFinancialUpsertInput): Promise<void> {
+    const existing = await this.client.orderFinancial.findUnique({
+      where: { bookingOrderId: input.bookingOrderId }
+    });
+    const appliedRuleIds = this.mergeStringArrays(
+      existing?.appliedFeeRuleIdsJson,
+      input.appliedFeeRuleIds
+    );
+    const timeline = this.appendTimeline(existing?.moneyTimelineJson, input.timelineEvent);
+    const baseData = {
+      orderType: input.orderType,
+      customerUserId: input.customerUserId,
+      shopId: input.shopId,
+      technicianProfileId: input.technicianProfileId ?? null,
+      serviceAmountJpy: input.serviceAmountJpy,
+      unknownOrUnreportedServiceAmountJpy:
+        input.unknownOrUnreportedServiceAmountJpy ?? input.serviceAmountJpy,
+      ...(input.bPlatformFeeHoldNdp !== undefined
+        ? { bPlatformFeeHoldNdp: input.bPlatformFeeHoldNdp }
+        : {}),
+      ...(input.bPlatformFeeActualNdp !== undefined
+        ? { bPlatformFeeActualNdp: input.bPlatformFeeActualNdp }
+        : {}),
+      ...(input.userRewardNdp !== undefined ? { userRewardNdp: input.userRewardNdp } : {}),
+      ...(input.penaltyNdp !== undefined ? { penaltyNdp: input.penaltyNdp } : {}),
+      ...(input.compensationToUserNdp !== undefined
+        ? { compensationToUserNdp: input.compensationToUserNdp }
+        : {}),
+      ...(input.campaignDiscountNdp !== undefined
+        ? { campaignDiscountNdp: input.campaignDiscountNdp }
+        : {}),
+      ...(input.releasedNdp !== undefined ? { releasedNdp: input.releasedNdp } : {}),
+      ...(input.platformFeePayerType !== undefined
+        ? { platformFeePayerType: input.platformFeePayerType }
+        : {}),
+      ...(input.platformFeePayerId !== undefined
+        ? { platformFeePayerId: input.platformFeePayerId }
+        : {}),
+      ...(input.completedOrderOrdinalInPeriod !== undefined
+        ? { completedOrderOrdinalInPeriod: input.completedOrderOrdinalInPeriod }
+        : {}),
+      appliedFeeRuleIdsJson: appliedRuleIds as Prisma.InputJsonValue,
+      moneyTimelineJson: timeline as Prisma.InputJsonValue,
+      settlementStatus: input.settlementStatus ?? existing?.settlementStatus ?? "pending",
+      deletedAt: null
+    };
+
+    if (existing) {
+      await this.client.orderFinancial.update({
+        where: { id: existing.id },
+        data: baseData
+      });
+      return;
+    }
+
+    await this.client.orderFinancial.create({
+      data: {
+        bookingOrderId: input.bookingOrderId,
+        ...baseData
       }
     });
   }
@@ -478,6 +635,60 @@ export class LedgerRepository implements LedgerRepositoryPort {
     };
   }
 
+  private mapWalletHold(hold: WalletHoldRecord): WalletHoldPayload {
+    return {
+      id: hold.id,
+      ownerType: this.ownerTypeFromDb(hold.ownerType),
+      ownerId: hold.ownerId,
+      bookingOrderId: hold.bookingOrderId,
+      feeType: this.feeTypeFromDb(hold.feeType),
+      holdAmountNdp: hold.holdAmountNdp,
+      capturedAmountNdp: hold.capturedAmountNdp,
+      releasedAmountNdp: hold.releasedAmountNdp,
+      status: this.walletHoldStatus(hold.status),
+      idempotencyKey: hold.idempotencyKey,
+      calculationLogId: hold.calculationLogId,
+      metadata: hold.metadata ?? null,
+      capturedAt: hold.capturedAt,
+      releasedAt: hold.releasedAt,
+      createdAt: hold.createdAt,
+      updatedAt: hold.updatedAt
+    };
+  }
+
+  private mergeStringArrays(existing: unknown, incoming: string[] | undefined): string[] {
+    const values = new Set<string>();
+
+    if (Array.isArray(existing)) {
+      for (const item of existing) {
+        if (typeof item === "string") {
+          values.add(item);
+        }
+      }
+    }
+    for (const item of incoming ?? []) {
+      values.add(item);
+    }
+
+    return [...values];
+  }
+
+  private appendTimeline(existing: unknown, event: unknown): unknown[] {
+    const timeline = Array.isArray(existing) ? existing : [];
+
+    if (!event) {
+      return timeline;
+    }
+
+    return [
+      ...timeline,
+      {
+        ...(typeof event === "object" && event !== null ? event : { event }),
+        recordedAt: new Date().toISOString()
+      }
+    ];
+  }
+
   private ownerTypeToDb(ownerType: WalletOwnerType) {
     if (ownerType === "shop") {
       return "SHOP" as const;
@@ -578,6 +789,22 @@ export class LedgerRepository implements LedgerRepositoryPort {
 
   private reconciliationStatusFromDb(status: string): FinanceReconciliationStatus {
     return status === "EXPORTED" ? "exported" : "pending";
+  }
+
+  private feeTypeFromDb(value: string): FeeType {
+    if (value === "c_request_dispatch_fee" || value === "user_reward" || value === "penalty") {
+      return value;
+    }
+
+    return "b_platform_fee";
+  }
+
+  private walletHoldStatus(status: string): WalletHoldStatus {
+    if (status === "captured" || status === "released" || status === "partially_captured") {
+      return status;
+    }
+
+    return "active";
   }
 
   private canStartTransaction(client: LedgerPrismaClient): client is PrismaClient {

@@ -187,7 +187,14 @@ export class BookingService {
           this.ledgerService!.freezeBookingAcceptance(
             {
               bookingOrderId: order.id,
+              orderType: order.orderType,
               shopId: order.shopId,
+              technicianProfileId: order.technicianProfileId,
+              serviceId: order.serviceId,
+              serviceAmountJpy: this.moneyToInteger(order.priceAmount),
+              scheduledStartAt: order.startsAt,
+              acceptedAt: new Date(),
+              customerUserId: order.customerUserId,
               actorUserId: actor.userId
             },
             { transactionClient: context.transactionClient }
@@ -201,7 +208,13 @@ export class BookingService {
           this.ledgerService!.settleBookingCompletion(
             {
               bookingOrderId: order.id,
+              orderType: order.orderType,
               shopId: order.shopId,
+              technicianProfileId: order.technicianProfileId,
+              serviceId: order.serviceId,
+              serviceAmountJpy: this.moneyToInteger(order.priceAmount),
+              scheduledStartAt: order.startsAt,
+              completedAt: new Date(),
               customerUserId: order.customerUserId,
               actorUserId: actor.userId
             },
@@ -217,7 +230,13 @@ export class BookingService {
               this.ledgerService!.compensateCustomerForMerchantCancellation(
                 {
                   bookingOrderId: order.id,
+                  orderType: order.orderType,
                   shopId: order.shopId,
+                  technicianProfileId: order.technicianProfileId,
+                  serviceId: order.serviceId,
+                  serviceAmountJpy: this.moneyToInteger(order.priceAmount),
+                  scheduledStartAt: order.startsAt,
+                  completedAt: new Date(),
                   customerUserId: order.customerUserId,
                   actorUserId: actor.userId
                 },
@@ -229,7 +248,12 @@ export class BookingService {
               this.ledgerService!.releaseBookingHold(
                 {
                   bookingOrderId: order.id,
+                  orderType: order.orderType,
                   shopId: order.shopId,
+                  technicianProfileId: order.technicianProfileId,
+                  serviceId: order.serviceId,
+                  serviceAmountJpy: this.moneyToInteger(order.priceAmount),
+                  scheduledStartAt: order.startsAt,
                   actorUserId: actor.userId
                 },
                 { transactionClient: context.transactionClient }
@@ -244,6 +268,10 @@ export class BookingService {
     return actor.roles.some((role) =>
       ["merchant_owner", "merchant_staff", "technician"].includes(role)
     );
+  }
+
+  private moneyToInteger(value: string): number {
+    return Math.round(Number(value));
   }
 
   private resolveOrderNotificationRecipients(

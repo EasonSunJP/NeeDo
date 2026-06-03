@@ -585,10 +585,7 @@ export class BookingRepository implements BookingRepositoryPort {
     };
   }
 
-  private createTechnicianServiceSource(
-    slot: SlotRecord,
-    requestedTechnicianServiceId?: number
-  ) {
+  private createTechnicianServiceSource(slot: SlotRecord, requestedTechnicianServiceId?: number) {
     if (
       !requestedTechnicianServiceId ||
       !slot.technicianService ||

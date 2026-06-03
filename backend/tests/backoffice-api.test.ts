@@ -173,7 +173,10 @@ const createFixture = async () => {
     updatedAt: now,
     deletedAt: null,
     rolePermissions: backofficePermissions
-      .filter((permission) => permission.code.startsWith("merchant-admin:") || permission.code.startsWith("auth:"))
+      .filter(
+        (permission) =>
+          permission.code.startsWith("merchant-admin:") || permission.code.startsWith("auth:")
+      )
       .map((permission, index) => ({
         id: 100 + index,
         roleId: 2,
@@ -278,7 +281,8 @@ const createFixture = async () => {
   ];
   const authRepository = {
     findUserByEmail: jest.fn(
-      async (email: string) => users.find((user) => user.email === email && user.deletedAt === null) ?? null
+      async (email: string) =>
+        users.find((user) => user.email === email && user.deletedAt === null) ?? null
     ),
     findUserByLoginIdentifier: jest.fn(
       async (identifier: string) =>
@@ -287,7 +291,9 @@ const createFixture = async () => {
             (user.email === identifier || user.username === identifier) && user.deletedAt === null
         ) ?? null
     ),
-    findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id && user.deletedAt === null) ?? null),
+    findUserById: jest.fn(
+      async (id: number) => users.find((user) => user.id === id && user.deletedAt === null) ?? null
+    ),
     updateLastLoginAt: jest.fn(async (id: number, loggedInAt: Date) => {
       const user = users.find((item) => item.id === id);
       if (user) {
@@ -309,7 +315,14 @@ const createFixture = async () => {
       metrics: [{ label: "今日订单", value: "2", change: "真实数据库", tone: "good" }],
       orders: [{ id: 31, orderNo: "ND202605250001", status: "pending", shopId: 11 }],
       schedule: { total: 2, available: 1, booked: 1 },
-      finance: { grossAmount: 8800, pendingSettlementAmount: 500, refundAmount: 0 },
+      finance: {
+        estimatedServiceGmvJpy: 8800,
+        platformNdpRevenue: 400,
+        userRewardNdpCost: 100,
+        pendingHoldNdp: 0,
+        campaignDiscountNdp: 0,
+        unknownOrUnreportedServiceAmountJpy: 8800
+      },
       technicians: [{ id: 7, displayName: "Mika Tanaka", shopId: 11 }],
       shops: [{ id: 11, name: "Aoyama Care Studio", status: "published" }]
     })),
@@ -327,7 +340,32 @@ const createFixture = async () => {
       page_size: 20
     })),
     listFinanceSettlements: jest.fn(async () => ({
-      list: [{ id: 51, transactionNo: "NDP202605250001", shopId: 11, actualAmount: 500 }],
+      list: [
+        {
+          id: 51,
+          bookingOrderId: 31,
+          orderNo: "ND202605250001",
+          referenceType: "booking_order",
+          referenceId: 31,
+          status: "settled",
+          shopId: 11,
+          shopName: "Aoyama Care Studio",
+          estimatedServiceGmvJpy: 8800,
+          platformCollectedServiceAmountJpy: 0,
+          offlineReportedServiceAmountJpy: 0,
+          unknownOrUnreportedServiceAmountJpy: 8800,
+          platformNdpRevenue: 400,
+          userRewardNdpCost: 100,
+          pendingHoldNdp: 0,
+          campaignDiscountNdp: 0,
+          releasedNdp: 0,
+          penaltyNdp: 0,
+          compensationToUserNdp: 0,
+          appliedFeeRuleIds: ["rule_set:1:rule:1"],
+          moneyTimeline: [],
+          createdAt: now.toISOString()
+        }
+      ],
       total: 1,
       page: 1,
       page_size: 20
@@ -335,7 +373,7 @@ const createFixture = async () => {
     exportFinanceSettlements: jest.fn(async () => ({
       filename: "merchant-finance-settlements.csv",
       contentType: "text/csv; charset=utf-8",
-      content: "id,transactionNo,actualAmount\n51,NDP202605250001,500"
+      content: "id,orderNo,platformNdpRevenue\n51,ND202605250001,400"
     })),
     listTechnicians: jest.fn(async () => ({
       list: [{ id: 7, displayName: "Mika Tanaka", shopId: 11 }],
@@ -383,6 +421,11 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     expect(response.body.data.metrics[0]).toMatchObject({
       label: "今日订单",
       value: "2"
+    });
+    expect(response.body.data.finance).toMatchObject({
+      estimatedServiceGmvJpy: 8800,
+      platformNdpRevenue: 400,
+      userRewardNdpCost: 100
     });
     expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledWith({
       scope: "platform"
@@ -433,7 +476,7 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(exportResponse.body.data.content).toContain("NDP202605250001");
+    expect(exportResponse.body.data.content).toContain("ND202605250001");
     expect(fixture.backofficeRepository.exportFinanceSettlements).toHaveBeenCalledWith(
       expect.objectContaining({
         scope: "merchant",

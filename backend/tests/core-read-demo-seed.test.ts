@@ -32,8 +32,14 @@ describe("core read demo seed contract", () => {
     const categoryCodes = new Set(CORE_READ_DEMO_CATEGORY_SEEDS.map((category) => category.code));
 
     expect(shopSlugs.size).toBe(CORE_READ_DEMO_SHOP_SEEDS.length);
-    expect(CORE_READ_DEMO_TECHNICIAN_SEEDS.every((technician) => shopSlugs.has(technician.shopSlug))).toBe(true);
-    expect(CORE_READ_DEMO_TECHNICIAN_SEEDS.every((technician) => categoryCodes.has(technician.categoryCode))).toBe(true);
+    expect(
+      CORE_READ_DEMO_TECHNICIAN_SEEDS.every((technician) => shopSlugs.has(technician.shopSlug))
+    ).toBe(true);
+    expect(
+      CORE_READ_DEMO_TECHNICIAN_SEEDS.every((technician) =>
+        categoryCodes.has(technician.categoryCode)
+      )
+    ).toBe(true);
   });
 
   it("uses local generated assets that exist with thumbnail counterparts", () => {

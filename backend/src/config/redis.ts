@@ -154,7 +154,10 @@ const checkSingleRedisHealth = async (
   }
 };
 
-const withRedisOperationTimeout = async <T>(operation: Promise<T>, timeoutMs: number): Promise<T> => {
+const withRedisOperationTimeout = async <T>(
+  operation: Promise<T>,
+  timeoutMs: number
+): Promise<T> => {
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
   try {

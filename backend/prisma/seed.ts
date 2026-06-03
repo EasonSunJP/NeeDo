@@ -1410,6 +1410,11 @@ const seedCoreReadData = async (
         }
       });
 
+  await upsertSeedShopFinanceRuleSet(tx, {
+    shopId: shop.id,
+    actorUserId: shopOwner.id
+  });
+
   const technician = await tx.technicianProfile.upsert({
     where: { userId: technicianUser.id },
     create: {
@@ -1552,6 +1557,11 @@ const seedCoreReadData = async (
             isRecommended: true
           }
         });
+
+    await upsertSeedShopFinanceRuleSet(tx, {
+      shopId: demoShop.id,
+      actorUserId: owner.id
+    });
 
     await upsertSeedIdentity(tx, {
       userId: owner.id,
@@ -1720,6 +1730,7 @@ const seedCoreReadData = async (
     ownerType: "USER",
     ownerId: customerUser.id
   });
+  await upsertDefaultFinanceRules(tx, shopOwner.id);
 
   const shiatsuService = await upsertSeedService(tx, {
     name: primaryTechnicianSeed.service.name,
@@ -2025,6 +2036,117 @@ const upsertSeedWallet = (
     }
   });
 
+const upsertDefaultFinanceRules = async (
+  tx: Prisma.TransactionClient,
+  actorUserId: number
+): Promise<void> => {
+  const existing = await tx.platformFeeRuleSet.findFirst({
+    where: { name: "Default Booking NDP Rules" },
+    select: { id: true }
+  });
+  const ruleSet = existing
+    ? await tx.platformFeeRuleSet.update({
+        where: { id: existing.id },
+        data: {
+          description: "Default Booking platform fee, customer reward, and merchant cancellation compensation.",
+          scopeType: "platform",
+          priority: 100,
+          status: "active",
+          version: 1,
+          effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+          effectiveTo: null,
+          updatedById: actorUserId,
+          deletedAt: null
+        }
+      })
+    : await tx.platformFeeRuleSet.create({
+        data: {
+          name: "Default Booking NDP Rules",
+          description: "Default Booking platform fee, customer reward, and merchant cancellation compensation.",
+          scopeType: "platform",
+          priority: 100,
+          status: "active",
+          version: 1,
+          effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+          createdById: actorUserId,
+          updatedById: actorUserId
+        }
+      });
+  const previousRules = await tx.platformFeeRule.findMany({
+    where: { ruleSetId: ruleSet.id, deletedAt: null },
+    select: { id: true }
+  });
+  const previousRuleIds = previousRules.map((rule) => rule.id);
+  const deletedAt = new Date();
+
+  if (previousRuleIds.length > 0) {
+    await Promise.all([
+      tx.platformFeeTier.updateMany({
+        where: { ruleId: { in: previousRuleIds }, deletedAt: null },
+        data: { deletedAt }
+      }),
+      tx.platformFeeTimeWindow.updateMany({
+        where: { ruleId: { in: previousRuleIds }, deletedAt: null },
+        data: { deletedAt }
+      })
+    ]);
+    await tx.platformFeeRule.updateMany({
+      where: { id: { in: previousRuleIds }, deletedAt: null },
+      data: { deletedAt }
+    });
+  }
+
+  await tx.platformFeeRule.createMany({
+    data: [
+      {
+        ruleSetId: ruleSet.id,
+        feeType: "b_platform_fee",
+        orderType: "booking",
+        payerType: "shop",
+        baseAmountNdp: 500,
+        calculationMode: "fixed",
+        holdStrategy: "max_possible_fee",
+        pricingLockMode: "recalculate_at_complete",
+        stackingMode: "sum",
+        priority: 100,
+        status: "active",
+        createdById: actorUserId,
+        updatedById: actorUserId
+      },
+      {
+        ruleSetId: ruleSet.id,
+        feeType: "user_reward",
+        orderType: "booking",
+        payerType: "platform",
+        baseAmountNdp: 100,
+        calculationMode: "fixed",
+        holdStrategy: "exact_estimate",
+        pricingLockMode: "recalculate_at_complete",
+        stackingMode: "sum",
+        priority: 110,
+        status: "active",
+        createdById: actorUserId,
+        updatedById: actorUserId
+      },
+      {
+        ruleSetId: ruleSet.id,
+        feeType: "penalty",
+        orderType: "booking",
+        payerType: "shop",
+        baseAmountNdp: 500,
+        calculationMode: "fixed",
+        holdStrategy: "exact_estimate",
+        pricingLockMode: "recalculate_at_complete",
+        stackingMode: "sum",
+        priority: 120,
+        status: "active",
+        createdById: actorUserId,
+        updatedById: actorUserId
+      }
+    ]
+  });
+};
+
 const upsertSeedWalletFunding = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -2214,6 +2336,67 @@ const upsertSeedReviewSummary = (
       deletedAt: null
     }
   });
+
+const upsertSeedShopFinanceRuleSet = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    shopId: number;
+    actorUserId: number;
+  }
+): Promise<void> => {
+  const existing = await tx.shopFinanceRuleSet.findFirst({
+    where: {
+      shopId: input.shopId,
+      status: "active",
+      deletedAt: null
+    },
+    orderBy: { id: "desc" }
+  });
+  const data = {
+    name: "商户财务规则中心 v1",
+    status: "active",
+    wageMode: "base_plus_commission",
+    baseSalaryJpy: 0,
+    hourlyRateJpy: 0,
+    dailyRateJpy: 0,
+    fixedOrderPayJpy: 1000,
+    commissionRateBps: 5000,
+    guaranteedMinimumJpy: 0,
+    ndpFeeBearer: "split",
+    technicianNdpShareBps: 3000,
+    bonusRulesJson: [
+      {
+        id: "monthly-100",
+        name: "月 100 单突破奖金",
+        triggerType: "monthly_order_count",
+        threshold: 100,
+        amountJpy: 3000,
+        active: true
+      }
+    ],
+    deductionRulesJson: [],
+    effectiveFrom: new Date("2026-06-01T00:00:00.000Z"),
+    effectiveTo: null,
+    updatedById: input.actorUserId,
+    deletedAt: null
+  };
+
+  if (existing) {
+    await tx.shopFinanceRuleSet.update({
+      where: { id: existing.id },
+      data
+    });
+    return;
+  }
+
+  await tx.shopFinanceRuleSet.create({
+    data: {
+      ...data,
+      shopId: input.shopId,
+      createdById: input.actorUserId
+    }
+  });
+};
 
 export const seedUserManagement = async (
   prisma: PrismaClient = createSeedPrismaClient()

@@ -167,10 +167,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         operation(),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(
-            () =>
-              reject(
-                new Error(`Redis operation timed out after ${this.operationTimeoutMs}ms`)
-              ),
+            () => reject(new Error(`Redis operation timed out after ${this.operationTimeoutMs}ms`)),
             this.operationTimeoutMs
           );
         })

@@ -7,7 +7,12 @@ import {
   REQUIRED_TEST_ACCOUNT_EMAILS,
   TEST_USER_ACCOUNTS
 } from "../src/constants/test-login.constants";
-import { buildSeedUserUpdateData, getAdminSeedConfig, getTestUserSeedPassword, shouldSeedRequiredTestAccounts } from "../prisma/seed";
+import {
+  buildSeedUserUpdateData,
+  getAdminSeedConfig,
+  getTestUserSeedPassword,
+  shouldSeedRequiredTestAccounts
+} from "../prisma/seed";
 
 describe("user management seed contract", () => {
   it("defines the Step 04 system roles in the required order", () => {
@@ -89,7 +94,9 @@ describe("user management seed contract", () => {
       "technician@example.com",
       "customer@example.com"
     ]);
-    expect(TEST_USER_ACCOUNTS.map((account) => [account.email, account.roleCode, account.identityType])).toEqual([
+    expect(
+      TEST_USER_ACCOUNTS.map((account) => [account.email, account.roleCode, account.identityType])
+    ).toEqual([
       ["admin@example.com", "admin", "platform"],
       ["operator@example.com", "operator", "platform"],
       ["merchant@example.com", "merchant_owner", "merchant"],
@@ -125,13 +132,24 @@ describe("user management seed contract", () => {
   });
 
   it("seeds required test accounts in local and staging but not production", () => {
-    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "development", DEPLOY_ENV: "local" })).toBe(true);
-    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "staging" })).toBe(true);
-    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "prod" })).toBe(false);
+    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "development", DEPLOY_ENV: "local" })).toBe(
+      true
+    );
+    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "staging" })).toBe(
+      true
+    );
+    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "prod" })).toBe(
+      false
+    );
   });
 
   it("refreshes existing seed user passwords when the configured test password changes", () => {
-    expect(buildSeedUserUpdateData({ email: "merchant@example.com", username: "Merchant" }, "next-password-hash")).toMatchObject({
+    expect(
+      buildSeedUserUpdateData(
+        { email: "merchant@example.com", username: "Merchant" },
+        "next-password-hash"
+      )
+    ).toMatchObject({
       passwordHash: "next-password-hash",
       username: "Merchant",
       isActive: true,
@@ -158,9 +176,15 @@ describe("user management seed contract", () => {
     );
 
     const assignments = buildRolePermissionAssignments();
-    expect(assignments.admin).toEqual(expect.arrayContaining(["menu:admin-console", "menu:user-management"]));
-    expect(assignments.merchant_owner).toEqual(expect.arrayContaining(["menu:merchant-app", "menu:merchant-admin"]));
-    expect(assignments.technician).toEqual(expect.arrayContaining(["menu:technician-app", "menu:technician-schedule"]));
+    expect(assignments.admin).toEqual(
+      expect.arrayContaining(["menu:admin-console", "menu:user-management"])
+    );
+    expect(assignments.merchant_owner).toEqual(
+      expect.arrayContaining(["menu:merchant-app", "menu:merchant-admin"])
+    );
+    expect(assignments.technician).toEqual(
+      expect.arrayContaining(["menu:technician-app", "menu:technician-schedule"])
+    );
     expect(assignments.customer).toEqual(expect.arrayContaining(["menu:client-app"]));
   });
 });

@@ -164,7 +164,7 @@ const backendSettingsPortalEntries = [
   }
 ] as const;
 
-function getPortalEntry(portal: PortalScope | UnifiedSettingsPortal) {
+export function getPortalEntry(portal: PortalScope | UnifiedSettingsPortal) {
   if (portal === "business") {
     return "/afirieito";
   }

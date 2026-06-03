@@ -2,6 +2,7 @@ import { env } from "./env";
 
 export interface DatabaseEnvConfig {
   DATABASE_URL: string;
+  DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL: boolean;
   DATABASE_POOL_CONNECTION_LIMIT: number;
   DATABASE_POOL_ACQUIRE_TIMEOUT_MS: number;
   DATABASE_POOL_IDLE_TIMEOUT_MS: number;
@@ -36,6 +37,7 @@ export interface MariaDbPoolRuntimeConfig {
   database?: string;
   charset: "utf8mb4";
   collation: "utf8mb4_unicode_ci";
+  allowPublicKeyRetrieval: boolean;
   connectionLimit: number;
   acquireTimeout: number;
   idleTimeout: number;
@@ -69,6 +71,7 @@ export const createMariaDbPoolConfig = (
     database: database ? decodeURIComponent(database) : undefined,
     charset: "utf8mb4",
     collation: "utf8mb4_unicode_ci",
+    allowPublicKeyRetrieval: config.DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL,
     connectionLimit: config.DATABASE_POOL_CONNECTION_LIMIT,
     acquireTimeout: config.DATABASE_POOL_ACQUIRE_TIMEOUT_MS,
     idleTimeout: config.DATABASE_POOL_IDLE_TIMEOUT_MS,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveSettingsSelectedPortal, shouldKeepSettingsRoutePortal } from "./UnifiedSettingsPages";
+import {
+  getPortalEntry,
+  resolveSettingsSelectedPortal,
+  shouldKeepSettingsRoutePortal
+} from "./UnifiedSettingsPages";
 import source from "./UnifiedSettingsPages.tsx?raw";
 
 const serviceRangeSource = source.slice(
@@ -91,6 +95,12 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).toContain("const switched = await switchPortal(nextPortal);");
     expect(portalPageSource).toContain("if (!switched.ok)");
     expect(portalPageSource).toContain("navigate(nextEntry");
+  });
+
+  it("keeps merchant identity switching on the merchant app instead of technician", () => {
+    expect(getPortalEntry("merchant")).toBe("/merchant");
+    expect(getPortalEntry("technician")).toBe("/technician");
+    expect(source).toContain('href: "/store-admin.html#/login/merchant-admin"');
   });
 });
 

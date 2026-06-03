@@ -80,7 +80,9 @@ describe("BaseRepository", () => {
       }
     };
 
-    await expect(new BaseRepository(delegate).softDelete("demo_1", deletedAt)).resolves.toBe(record);
+    await expect(new BaseRepository(delegate).softDelete("demo_1", deletedAt)).resolves.toBe(
+      record
+    );
     expect(updateArgs).toEqual({
       where: { id: "demo_1" },
       data: { deletedAt }

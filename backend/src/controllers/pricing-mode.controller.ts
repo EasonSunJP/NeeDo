@@ -45,7 +45,9 @@ export class PricingModeController {
   ): Promise<void> => {
     try {
       const { shopId } = shopIdParamSchema.parse(request.params);
-      const { pricingMode, technicianPricingRatePercent } = pricingModeBodySchema.parse(request.body);
+      const { pricingMode, technicianPricingRatePercent } = pricingModeBodySchema.parse(
+        request.body
+      );
       response
         .status(200)
         .json(

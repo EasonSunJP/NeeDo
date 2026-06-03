@@ -64,16 +64,33 @@ export interface BackofficeScheduleSlotPayload {
 
 export interface BackofficeFinanceSettlementPayload {
   id: number;
-  transactionId: number;
-  transactionNo: string;
+  bookingOrderId: number;
+  orderNo: string;
   referenceType: string;
   referenceId: number;
   status: string;
-  currency: string;
-  expectedAmount: number;
-  actualAmount: number;
-  differenceAmount: number;
-  exportedAt: string | null;
+  shopId: number;
+  shopName: string;
+  technicianProfileId: number | null;
+  technicianName: string | null;
+  estimatedServiceGmvJpy: number;
+  platformCollectedServiceAmountJpy: number;
+  offlineReportedServiceAmountJpy: number;
+  unknownOrUnreportedServiceAmountJpy: number;
+  serviceIncomeStatus: string;
+  paymentChannel: string;
+  platformNdpRevenue: number;
+  userRewardNdpCost: number;
+  pendingHoldNdp: number;
+  campaignDiscountNdp: number;
+  releasedNdp: number;
+  penaltyNdp: number;
+  compensationToUserNdp: number;
+  technicianEstimatedIncomeJpy: number;
+  shopEstimatedGrossProfitJpy: number;
+  appliedFeeRuleIds: string[];
+  moneyTimeline: unknown[];
+  moneyTimelineStatus: string;
   createdAt: string;
 }
 
@@ -113,9 +130,12 @@ export interface BackofficeDashboardPayload {
     booked: number;
   };
   finance: {
-    grossAmount: number;
-    pendingSettlementAmount: number;
-    refundAmount: number;
+    estimatedServiceGmvJpy: number;
+    platformNdpRevenue: number;
+    userRewardNdpCost: number;
+    pendingHoldNdp: number;
+    campaignDiscountNdp: number;
+    unknownOrUnreportedServiceAmountJpy: number;
   };
   technicians: BackofficeTechnicianPayload[];
   shops: BackofficeShopPayload[];
@@ -250,12 +270,7 @@ export class BackofficeService {
     context: AuthRequestContext,
     input: BackofficeListQuery
   ): Promise<BackofficeCsvExportPayload> {
-    await this.record(
-      actor,
-      context,
-      "backoffice.finance.export",
-      "finance_settlement_export"
-    );
+    await this.record(actor, context, "backoffice.finance.export", "finance_settlement_export");
 
     return this.repository.exportFinanceSettlements({ scope: "platform", ...input });
   }
@@ -322,7 +337,9 @@ export class BackofficeService {
     return this.repository.listShops({ ...scope, page: 1, pageSize: 1 });
   }
 
-  private getMerchantScope(actor: AuthenticatedAccessContext): BackofficeScope & { scope: "merchant" } {
+  private getMerchantScope(
+    actor: AuthenticatedAccessContext
+  ): BackofficeScope & { scope: "merchant" } {
     if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
       return {
         scope: "merchant",

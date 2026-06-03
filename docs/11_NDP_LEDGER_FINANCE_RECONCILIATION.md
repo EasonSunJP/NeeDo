@@ -22,12 +22,12 @@
 
 ## 3. 本步必须做
 
-- 设计 Wallet、WalletLedger、LedgerEntry、LedgerTransaction、FinanceReconciliation。
+- 设计 Wallet、WalletLedger、LedgerEntry、LedgerTransaction、FinanceReconciliation，并在规则驱动优化中补齐 fee rules、fee calculation logs、wallet holds 与 order financials。
 - 实现 1 NDP = 1 JPY 的整数点数账本。
-- Booking 接单冻结 B 端 500 NDP。
+- Booking 接单按当前激活费用规则冻结 B 端 NDP；默认 seed 保持 500 NDP。
 - Booking 取消时解冻。
-- Booking 完单时扣 B 端 500 NDP，给 C 端返 100 NDP。
-- B 端强行取消时划扣 500 NDP 给 C 端。
+- Booking 完单时按锁定规则扣 B 端平台费，并按用户返点规则给 C 端返 NDP；默认 seed 保持扣 500 NDP、返 100 NDP。
+- B 端强行取消时按 penalty/compensation 规则从 hold 中赔付 C 端；默认 seed 保持 500 NDP。
 - 实现幂等键、事务、审计。
 - 提供财务导出基础 API。
 
@@ -67,7 +67,7 @@
 ## 7. 给 Codex 的命令
 
 ```text
-请阅读 README.md、AGENTS.md、docs/11_NDP_LEDGER_FINANCE_RECONCILIATION.md。本次只执行 Step 11：NDP 钱包账本与财务对账。请实现 Wallet、WalletLedger、LedgerTransaction、冻结、解冻、扣费、返点、违约赔付、幂等键、事务和审计。请将 Booking 接单/取消/完单与 ledger service 打通：接单冻结 B 端 500 NDP，取消解冻，完单扣 B 端 500 NDP 并给 C 端返 100 NDP。不要接 Stripe，不要做会员订阅，不要开放 Request 前端。完成后运行 migration、lint、test、build，并更新 docs/ledger.md。
+请阅读 README.md、AGENTS.md、docs/11_NDP_LEDGER_FINANCE_RECONCILIATION.md。本次只执行 Step 11：NDP 钱包账本与财务对账。请实现 Wallet、WalletLedger、LedgerTransaction、冻结、解冻、扣费、返点、违约赔付、幂等键、事务和审计。请将 Booking 接单/取消/完单与 ledger service 打通：接单按费用规则冻结 B 端 NDP，取消解冻，完单按规则扣 B 端平台费并按规则给 C 端返点。默认 seed 保持历史 500 NDP 平台费与 100 NDP 用户返点。不要接 Stripe，不要做会员订阅，不要开放 Request 前端。完成后运行 migration、lint、test、build，并更新 docs/ledger.md。
 ```
 
 ---

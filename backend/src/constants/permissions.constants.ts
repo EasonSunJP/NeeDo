@@ -234,6 +234,41 @@ export const SYSTEM_PERMISSIONS = [
     "finance",
     "导出 NDP 财务对账 CSV 内容"
   ),
+  createPermission(
+    "finance:fee-rule:list",
+    "财务规则列表",
+    "api",
+    "finance",
+    "分页查看 NDP 动态扣费规则"
+  ),
+  createPermission(
+    "finance:fee-rule:write",
+    "财务规则写入",
+    "api",
+    "finance",
+    "创建或编辑 NDP 动态扣费规则"
+  ),
+  createPermission(
+    "finance:fee-rule:activate",
+    "财务规则启停",
+    "api",
+    "finance",
+    "启用或暂停 NDP 动态扣费规则"
+  ),
+  createPermission(
+    "finance:fee-rule:preview",
+    "财务规则预览",
+    "api",
+    "finance",
+    "预览订单命中的 NDP 动态扣费规则"
+  ),
+  createPermission(
+    "finance:calculation-log:list",
+    "财务计算日志",
+    "api",
+    "finance",
+    "分页查看 NDP 费用计算日志"
+  ),
   createPermission("menu:finance", "财务菜单", "menu", "menu", "显示财务与账本菜单"),
   createPermission("page:finance", "财务页面", "page", "finance", "访问财务与账本页面"),
 
@@ -271,6 +306,13 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "backoffice",
     "导出运营后台财务结算 CSV"
+  ),
+  createPermission(
+    "backoffice:finance-order:read",
+    "运营后台订单钱路",
+    "api",
+    "backoffice",
+    "读取运营后台订单钱路和服务收入上报详情"
   ),
   createPermission(
     "backoffice:technicians:list",
@@ -320,6 +362,153 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "merchant-admin",
     "导出本店财务结算 CSV"
+  ),
+  createPermission(
+    "merchant-admin:finance-order:read",
+    "商户订单钱路读取",
+    "api",
+    "merchant-admin",
+    "读取本店订单钱路、收入状态和技师收入预估"
+  ),
+  createPermission(
+    "merchant-admin:finance-income-report:write",
+    "商户服务收入上报",
+    "api",
+    "merchant-admin",
+    "上报本店订单服务收入、支付渠道和确认状态"
+  ),
+  createPermission(
+    "merchant-admin:finance-rules:read",
+    "商户财务规则读取",
+    "api",
+    "merchant-admin",
+    "读取本店工资、分成、奖金和 NDP 承担规则"
+  ),
+  createPermission(
+    "merchant-admin:finance-rules:write",
+    "商户财务规则维护",
+    "api",
+    "merchant-admin",
+    "维护本店工资、分成、奖金和 NDP 承担规则"
+  ),
+  createPermission(
+    "merchant-admin:finance-rules:preview",
+    "商户财务规则预览",
+    "api",
+    "merchant-admin",
+    "预览本店订单的工资、分成、奖金和 NDP 承担口径"
+  ),
+  createPermission(
+    "merchant-admin:compensation-profile:read",
+    "技师收入模式读取",
+    "api",
+    "merchant-admin",
+    "读取本店技师收入模式和分成配置"
+  ),
+  createPermission(
+    "merchant-admin:compensation-profile:write",
+    "技师收入模式维护",
+    "api",
+    "merchant-admin",
+    "维护本店技师固定工资、分成、奖金、扣款和 NDP 承担配置"
+  ),
+  createPermission(
+    "merchant-admin:compensation-profile:preview",
+    "技师收入模式预览",
+    "api",
+    "merchant-admin",
+    "预览本店技师单笔订单收入、NDP 分摊和店铺毛利"
+  ),
+  createPermission(
+    "merchant-admin:payroll:read",
+    "商户工资单读取",
+    "api",
+    "merchant-admin",
+    "读取本店 Pay Run、Payslip、工资行项目和支付记录"
+  ),
+  createPermission(
+    "merchant-admin:payroll:write",
+    "商户工资单生成",
+    "api",
+    "merchant-admin",
+    "生成和重算本店工资周期草稿"
+  ),
+  createPermission(
+    "merchant-admin:payroll:publish",
+    "商户工资单发布审批",
+    "api",
+    "merchant-admin",
+    "发布、审批和锁定本店工资周期"
+  ),
+  createPermission(
+    "merchant-admin:payroll:payout-record:write",
+    "商户工资支付记录",
+    "api",
+    "merchant-admin",
+    "记录本店工资单支付方式、凭证和备注"
+  ),
+  createPermission(
+    "merchant-admin:payroll-dispute:resolve",
+    "商户工资申诉处理",
+    "api",
+    "merchant-admin",
+    "处理本店技师工资单申诉并重新发布确认"
+  ),
+  createPermission(
+    "merchant-admin:payroll-adjustment:read",
+    "商户工资调整读取",
+    "api",
+    "merchant-admin",
+    "读取本店工资奖金、补贴和扣款调整申请"
+  ),
+  createPermission(
+    "merchant-admin:payroll-adjustment:write",
+    "商户工资调整提交",
+    "api",
+    "merchant-admin",
+    "创建和提交本店工资奖金、补贴和扣款调整申请"
+  ),
+  createPermission(
+    "merchant-admin:payroll-adjustment:approve",
+    "商户工资调整审批",
+    "api",
+    "merchant-admin",
+    "审批或驳回本店工资奖金、补贴和扣款调整申请"
+  ),
+  createPermission(
+    "technician:payslip:read",
+    "技师工资单读取",
+    "api",
+    "technician",
+    "读取本人工资单、行项目和支付记录"
+  ),
+  createPermission(
+    "technician:payslip:confirm",
+    "技师工资单确认",
+    "api",
+    "technician",
+    "确认本人工资单"
+  ),
+  createPermission(
+    "technician:payslip:dispute",
+    "技师工资单申诉",
+    "api",
+    "technician",
+    "对本人工资单发起申诉"
+  ),
+  createPermission(
+    "technician:payout-record:confirm",
+    "技师工资收款确认",
+    "api",
+    "technician",
+    "确认本人工资单支付记录已收款"
+  ),
+  createPermission(
+    "backoffice:payroll:read",
+    "运营工资单只读",
+    "api",
+    "backoffice",
+    "读取全平台 Pay Run 和工资单汇总"
   ),
   createPermission(
     "merchant-admin:technicians:list",
@@ -473,6 +662,9 @@ const FINANCE_PERMISSION_CODES = [
   "finance:ledger:list",
   "finance:reconciliation:list",
   "finance:reconciliation:export",
+  "finance:fee-rule:list",
+  "finance:fee-rule:preview",
+  "finance:calculation-log:list",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -485,6 +677,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:schedule:list",
   "backoffice:finance:list",
   "backoffice:finance:export",
+  "backoffice:finance-order:read",
+  "backoffice:payroll:read",
   "backoffice:technicians:list",
   "backoffice:shops:list",
   "menu:finance",
@@ -500,6 +694,22 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:schedule:list",
   "merchant-admin:finance:list",
   "merchant-admin:finance:export",
+  "merchant-admin:finance-order:read",
+  "merchant-admin:finance-income-report:write",
+  "merchant-admin:finance-rules:read",
+  "merchant-admin:finance-rules:write",
+  "merchant-admin:finance-rules:preview",
+  "merchant-admin:compensation-profile:read",
+  "merchant-admin:compensation-profile:write",
+  "merchant-admin:compensation-profile:preview",
+  "merchant-admin:payroll:read",
+  "merchant-admin:payroll:write",
+  "merchant-admin:payroll:publish",
+  "merchant-admin:payroll:payout-record:write",
+  "merchant-admin:payroll-dispute:resolve",
+  "merchant-admin:payroll-adjustment:read",
+  "merchant-admin:payroll-adjustment:write",
+  "merchant-admin:payroll-adjustment:approve",
   "merchant-admin:technicians:list",
   "merchant-admin:shop:read",
   "merchant-admin:shop:pricing-mode:read",
@@ -516,6 +726,9 @@ export const buildRolePermissionAssignments = (): Record<
   operator: [
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
+    "finance:fee-rule:list",
+    "finance:fee-rule:preview",
+    "finance:calculation-log:list",
     "user:create",
     "user:update",
     "user:status:update",
@@ -531,6 +744,8 @@ export const buildRolePermissionAssignments = (): Record<
     ...FINANCE_PERMISSION_CODES,
     "backoffice:finance:list",
     "backoffice:finance:export",
+    "backoffice:finance-order:read",
+    "backoffice:payroll:read",
     "menu:admin-settings",
     "page:admin-settings"
   ],
@@ -559,7 +774,11 @@ export const buildRolePermissionAssignments = (): Record<
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     "technician:services:list",
-    "technician:services:write"
+    "technician:services:write",
+    "technician:payslip:read",
+    "technician:payslip:confirm",
+    "technician:payslip:dispute",
+    "technician:payout-record:confirm"
   ],
   customer: [...CUSTOMER_BOOKING_PERMISSION_CODES, ...REALTIME_USER_PERMISSION_CODES],
   broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],

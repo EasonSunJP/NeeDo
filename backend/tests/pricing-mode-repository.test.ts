@@ -11,24 +11,18 @@ describe("PricingModeRepository", () => {
   it("keeps pricing-mode reads and updates usable when the rate column has not been migrated yet", async () => {
     const updatedAt = new Date("2026-06-02T12:00:00.000Z");
     const shop = {
-      findFirst: jest
-        .fn()
-        .mockRejectedValueOnce(missingRateColumnError)
-        .mockResolvedValueOnce({
-          id: 1,
-          pricingMode: "MERCHANT",
-          pricingModeUpdatedAt: null,
-          pricingModeUpdatedBy: null
-        }),
-      update: jest
-        .fn()
-        .mockRejectedValueOnce(missingRateColumnError)
-        .mockResolvedValueOnce({
-          id: 1,
-          pricingMode: "TECHNICIAN",
-          pricingModeUpdatedAt: updatedAt,
-          pricingModeUpdatedBy: 7
-        })
+      findFirst: jest.fn().mockRejectedValueOnce(missingRateColumnError).mockResolvedValueOnce({
+        id: 1,
+        pricingMode: "MERCHANT",
+        pricingModeUpdatedAt: null,
+        pricingModeUpdatedBy: null
+      }),
+      update: jest.fn().mockRejectedValueOnce(missingRateColumnError).mockResolvedValueOnce({
+        id: 1,
+        pricingMode: "TECHNICIAN",
+        pricingModeUpdatedAt: updatedAt,
+        pricingModeUpdatedBy: 7
+      })
     };
     const repository = new PricingModeRepository({ shop } as unknown as PrismaClient);
 
@@ -58,14 +52,12 @@ describe("PricingModeRepository", () => {
       })
     );
 
-    shop.findFirst
-      .mockRejectedValueOnce(missingRateColumnError)
-      .mockResolvedValueOnce({
-        id: 1,
-        pricingMode: "TECHNICIAN",
-        pricingModeUpdatedAt: updatedAt,
-        pricingModeUpdatedBy: 7
-      });
+    shop.findFirst.mockRejectedValueOnce(missingRateColumnError).mockResolvedValueOnce({
+      id: 1,
+      pricingMode: "TECHNICIAN",
+      pricingModeUpdatedAt: updatedAt,
+      pricingModeUpdatedBy: 7
+    });
     await expect(repository.findShopPricingMode(1)).resolves.toMatchObject({
       shopId: 1,
       pricingMode: "technician",

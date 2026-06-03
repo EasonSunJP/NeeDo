@@ -179,8 +179,11 @@ describe("StoreDetailPage routed booking defaults", () => {
   it("keeps technician-tab row right content linked to technician service lists with a service info affordance", () => {
     const technicianRowSource = pageSource.slice(pageSource.indexOf("function StoreTechnicianServiceListRow"), pageSource.indexOf("function StoreSelectionIconButton"));
 
-    expect(technicianRowSource).toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
-    expect(technicianRowSource).toContain('className="flex shrink-0 items-start -space-x-[4px]"');
+    expect(technicianRowSource).toContain('className="absolute left-2 top-2 z-20"');
+    expect(technicianRowSource).toContain('"pointer-events-none absolute top-2 z-20 flex items-start gap-1');
+    expect(technicianRowSource).toContain('(isMerchantEditable || showSelectionAction) ? "right-[58px]" : "right-2"');
+    expect(technicianRowSource).not.toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
+    expect(technicianRowSource).not.toContain("-space-x-[4px]");
     expect(technicianRowSource).toContain("<SimpleRatingBadge compact");
     expect(technicianRowSource).toContain('size="cluster"');
     expect(technicianRowSource).toContain("serviceListTo");

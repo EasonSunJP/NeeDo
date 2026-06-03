@@ -20,6 +20,13 @@ describe("CategoryPage technician showcase card", () => {
     expect(technicianShowcaseCardSource).toContain("{duration}{copy.minuteSuffix}({copy.taxSuffix})");
   });
 
+  it("keeps the shared metric layout branch available for category technician cards", () => {
+    expect(technicianShowcaseCardSource).toContain('metricLayout = "cluster"');
+    expect(technicianShowcaseCardSource).toContain('metricLayout === "split"');
+    expect(technicianShowcaseCardSource).toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
+    expect(technicianShowcaseCardSource).toContain("absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]");
+  });
+
   it("keeps the expanded entity filter to store, technician, and service only", () => {
     expect(categoryPageSource).toContain('const entityFilterMenuTags = entityFilterTags.filter((tag) => tag.value !== "all");');
     expect(categoryPageSource).toContain('className="mt-4 grid grid-cols-3 gap-2"');

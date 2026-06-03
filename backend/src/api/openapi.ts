@@ -856,6 +856,551 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           contentType: { type: "string", enum: ["text/csv"] },
           csv: { type: "string" }
         }
+      },
+      PayrollCsvExport: {
+        type: "object",
+        required: ["filename", "contentType", "csv"],
+        properties: {
+          filename: { type: "string" },
+          contentType: { type: "string", enum: ["text/csv; charset=utf-8"] },
+          csv: { type: "string" }
+        }
+      },
+      FeeCalculationResult: {
+        type: "object",
+        required: [
+          "orderType",
+          "stage",
+          "feeType",
+          "payerType",
+          "baseFeeNdp",
+          "finalFeeNdp",
+          "holdAmountNdp",
+          "appliedRuleIds",
+          "explanation"
+        ],
+        properties: {
+          bookingOrderId: { type: ["integer", "null"] },
+          orderType: { type: "string", enum: ["booking", "request"] },
+          stage: { type: "string", enum: ["preview", "hold", "capture", "release", "reversal"] },
+          feeType: {
+            type: "string",
+            enum: ["b_platform_fee", "c_request_dispatch_fee", "user_reward", "penalty"]
+          },
+          payerType: { type: "string", enum: ["shop", "cast", "user", "platform", "split"] },
+          payerId: { type: ["integer", "null"] },
+          baseFeeNdp: { type: "integer" },
+          tierAdjustmentNdp: { type: "integer" },
+          timeAdjustmentNdp: { type: "integer" },
+          campaignDiscountNdp: { type: "integer" },
+          finalFeeNdp: { type: "integer" },
+          holdAmountNdp: { type: "integer" },
+          completedOrderOrdinalInPeriod: { type: ["integer", "null"] },
+          appliedRuleIds: { type: "array", items: { type: "string" } },
+          explanation: { type: "array", items: { type: "string" } },
+          calculationLogId: { type: ["integer", "null"] }
+        }
+      },
+      ShopFinanceAdjustmentRule: {
+        type: "object",
+        required: ["id", "name", "triggerType", "threshold", "amountJpy", "active"],
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          triggerType: {
+            type: "string",
+            enum: [
+              "monthly_order_count",
+              "monthly_service_gmv",
+              "rating_average",
+              "late_cancellation_count",
+              "rating_average_below"
+            ]
+          },
+          threshold: { type: "number" },
+          amountJpy: { type: "integer" },
+          active: { type: "boolean" }
+        }
+      },
+      ShopFinanceRuleSet: {
+        type: "object",
+        required: [
+          "id",
+          "shopId",
+          "name",
+          "status",
+          "wageMode",
+          "baseSalaryJpy",
+          "hourlyRateJpy",
+          "dailyRateJpy",
+          "fixedOrderPayJpy",
+          "commissionRatePercent",
+          "guaranteedMinimumJpy",
+          "ndpFeeBearer",
+          "technicianNdpSharePercent",
+          "bonusRules",
+          "deductionRules",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          shopId: { type: "integer" },
+          name: { type: "string" },
+          status: { type: "string", enum: ["active", "archived"] },
+          wageMode: {
+            type: "string",
+            enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+          },
+          baseSalaryJpy: { type: "integer" },
+          hourlyRateJpy: { type: "integer" },
+          dailyRateJpy: { type: "integer" },
+          fixedOrderPayJpy: { type: "integer" },
+          commissionRatePercent: { type: "number" },
+          guaranteedMinimumJpy: { type: "integer" },
+          ndpFeeBearer: { type: "string", enum: ["shop", "technician", "split"] },
+          technicianNdpSharePercent: { type: "number" },
+          bonusRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          deductionRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          createdById: { type: ["integer", "null"] },
+          updatedById: { type: ["integer", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      ShopFinanceRulePreview: {
+        type: "object",
+        required: [
+          "serviceAmountJpy",
+          "platformFeeNdp",
+          "basePayJpy",
+          "commissionPayJpy",
+          "minimumGuaranteeAdjustmentJpy",
+          "bonusPayJpy",
+          "deductionJpy",
+          "technicianGrossIncomeJpy",
+          "technicianNdpShareNdp",
+          "shopNdpShareNdp",
+          "technicianNetIncomeJpy",
+          "shopGrossMarginJpy",
+          "appliedBonusRules",
+          "appliedDeductionRules",
+          "explanation"
+        ],
+        properties: {
+          serviceAmountJpy: { type: "integer" },
+          platformFeeNdp: { type: "integer" },
+          basePayJpy: { type: "integer" },
+          commissionPayJpy: { type: "integer" },
+          minimumGuaranteeAdjustmentJpy: { type: "integer" },
+          bonusPayJpy: { type: "integer" },
+          deductionJpy: { type: "integer" },
+          technicianGrossIncomeJpy: { type: "integer" },
+          technicianNdpShareNdp: { type: "integer" },
+          shopNdpShareNdp: { type: "integer" },
+          technicianNetIncomeJpy: { type: "integer" },
+          shopGrossMarginJpy: { type: "integer" },
+          appliedBonusRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          appliedDeductionRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          explanation: { type: "array", items: { type: "string" } }
+        }
+      },
+      ShopFinanceRulePreviewResult: {
+        type: "object",
+        required: ["shopId", "ruleSet", "preview"],
+        properties: {
+          shopId: { type: "integer" },
+          ruleSet: { $ref: "#/components/schemas/ShopFinanceRuleSet" },
+          preview: { $ref: "#/components/schemas/ShopFinanceRulePreview" }
+        }
+      },
+      MoneyTimelineEvent: {
+        type: "object",
+        required: ["type", "label", "actorType", "occurredAt", "status"],
+        properties: {
+          type: { type: "string" },
+          label: { type: "string" },
+          amountJpy: { type: "integer" },
+          amountNdp: { type: "integer" },
+          actorType: {
+            type: "string",
+            enum: ["system", "merchant", "backoffice", "customer", "technician"]
+          },
+          occurredAt: { type: "string", format: "date-time" },
+          status: { type: "string" },
+          metadata: { type: "object", additionalProperties: true }
+        }
+      },
+      CompensationPreview: {
+        type: "object",
+        required: [
+          "serviceAmountJpy",
+          "platformFeeNdp",
+          "basePayJpy",
+          "commissionPayJpy",
+          "minimumGuaranteeAdjustmentJpy",
+          "bonusPayJpy",
+          "deductionJpy",
+          "technicianGrossIncomeJpy",
+          "technicianNdpShareNdp",
+          "shopNdpShareNdp",
+          "technicianNetIncomeJpy",
+          "shopEstimatedGrossProfitJpy",
+          "appliedBonusRules",
+          "appliedDeductionRules",
+          "explanation"
+        ],
+        properties: {
+          serviceAmountJpy: { type: "integer" },
+          platformFeeNdp: { type: "integer" },
+          basePayJpy: { type: "integer" },
+          commissionPayJpy: { type: "integer" },
+          minimumGuaranteeAdjustmentJpy: { type: "integer" },
+          bonusPayJpy: { type: "integer" },
+          deductionJpy: { type: "integer" },
+          technicianGrossIncomeJpy: { type: "integer" },
+          technicianNdpShareNdp: { type: "integer" },
+          shopNdpShareNdp: { type: "integer" },
+          technicianNetIncomeJpy: { type: "integer" },
+          shopEstimatedGrossProfitJpy: { type: "integer" },
+          appliedBonusRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          appliedDeductionRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          explanation: { type: "array", items: { type: "string" } }
+        }
+      },
+      TechnicianCompensationProfile: {
+        type: "object",
+        required: [
+          "id",
+          "sourceType",
+          "shopId",
+          "technicianProfileId",
+          "name",
+          "status",
+          "version",
+          "wageMode",
+          "commissionRatePercent",
+          "ndpFeeBearer",
+          "bonusRules",
+          "deductionRules",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          sourceType: { type: "string", enum: ["shop_default", "technician_override"] },
+          shopId: { type: "integer" },
+          technicianProfileId: { type: ["integer", "null"] },
+          name: { type: "string" },
+          status: { type: "string", enum: ["active", "archived"] },
+          version: { type: "integer" },
+          wageMode: {
+            type: "string",
+            enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+          },
+          baseSalaryJpy: { type: "integer" },
+          hourlyRateJpy: { type: "integer" },
+          dailyRateJpy: { type: "integer" },
+          fixedOrderPayJpy: { type: "integer" },
+          commissionRatePercent: { type: "number" },
+          guaranteedMinimumJpy: { type: "integer" },
+          ndpFeeBearer: { type: "string", enum: ["shop", "technician", "split"] },
+          technicianNdpSharePercent: { type: "number" },
+          bonusRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          deductionRules: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+          },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          createdById: { type: ["integer", "null"] },
+          updatedById: { type: ["integer", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      CompensationProfilePreviewResult: {
+        type: "object",
+        required: ["shopId", "technicianProfileId", "profile", "preview"],
+        properties: {
+          shopId: { type: "integer" },
+          technicianProfileId: { type: "integer" },
+          profile: { $ref: "#/components/schemas/TechnicianCompensationProfile" },
+          preview: { $ref: "#/components/schemas/CompensationPreview" }
+        }
+      },
+      OrderFinanceDetail: {
+        type: "object",
+        required: [
+          "bookingOrderId",
+          "orderNo",
+          "shopId",
+          "estimatedServiceGmvJpy",
+          "serviceIncomeStatus",
+          "paymentChannel",
+          "moneyTimeline",
+          "moneyTimelineStatus"
+        ],
+        properties: {
+          bookingOrderId: { type: "integer" },
+          orderNo: { type: "string" },
+          orderStatus: { type: "string" },
+          shopId: { type: "integer" },
+          shopName: { type: "string" },
+          technicianProfileId: { type: ["integer", "null"] },
+          technicianName: { type: ["string", "null"] },
+          serviceName: { type: "string" },
+          estimatedServiceGmvJpy: { type: "integer" },
+          platformCollectedServiceAmountJpy: { type: "integer" },
+          offlineReportedServiceAmountJpy: { type: "integer" },
+          unknownOrUnreportedServiceAmountJpy: { type: "integer" },
+          paymentChannel: { type: "string" },
+          serviceIncomeStatus: { type: "string", enum: ["unreported", "reported", "confirmed"] },
+          platformNdpRevenue: { type: "integer" },
+          userRewardNdpCost: { type: "integer" },
+          pendingHoldNdp: { type: "integer" },
+          campaignDiscountNdp: { type: "integer" },
+          releasedNdp: { type: "integer" },
+          penaltyNdp: { type: "integer" },
+          compensationToUserNdp: { type: "integer" },
+          appliedFeeRuleIds: { type: "array", items: { type: "string" } },
+          moneyTimeline: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MoneyTimelineEvent" }
+          },
+          moneyTimelineStatus: { type: "string" },
+          technicianIncomePreview: {
+            oneOf: [{ $ref: "#/components/schemas/CompensationPreview" }, { type: "null" }]
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      PayslipLine: {
+        type: "object",
+        required: ["id", "lineType", "title", "amountJpy", "sourceType"],
+        properties: {
+          id: { type: "integer" },
+          payslipId: { type: "integer" },
+          lineType: {
+            type: "string",
+            enum: [
+              "base_salary",
+              "commission",
+              "bonus",
+              "allowance",
+              "deduction",
+              "adjustment",
+              "guarantee_topup",
+              "platform_fee_share_deduction"
+            ]
+          },
+          title: { type: "string" },
+          amountJpy: { type: "integer" },
+          quantity: { type: "number" },
+          unitAmountJpy: { type: "integer" },
+          formulaText: { type: ["string", "null"] },
+          sourceType: {
+            type: "string",
+            enum: ["order", "attendance", "rule", "manual", "payout", "adjustment"]
+          },
+          sourceId: { type: ["integer", "null"] },
+          ruleId: { type: ["string", "null"] },
+          orderId: { type: ["integer", "null"] },
+          explanation: { type: ["string", "null"] },
+          createdById: { type: ["integer", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      PayoutRecord: {
+        type: "object",
+        required: ["id", "payslipId", "amountJpy", "payoutMethod", "payoutDate", "status"],
+        properties: {
+          id: { type: "integer" },
+          payslipId: { type: "integer" },
+          shopId: { type: "integer" },
+          technicianProfileId: { type: "integer" },
+          amountJpy: { type: "integer" },
+          payoutMethod: {
+            type: "string",
+            enum: ["bank_transfer", "cash", "ndp", "external", "mixed", "other"]
+          },
+          payoutDate: { type: "string", format: "date-time" },
+          referenceNo: { type: ["string", "null"] },
+          proofUrl: { type: ["string", "null"] },
+          note: { type: ["string", "null"] },
+          status: { type: "string", enum: ["pending", "completed", "failed", "cancelled"] },
+          confirmedByTechnician: { type: "boolean" },
+          technicianConfirmedAt: { type: ["string", "null"], format: "date-time" },
+          createdById: { type: ["integer", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      Payslip: {
+        type: "object",
+        required: [
+          "id",
+          "payRunId",
+          "shopId",
+          "technicianProfileId",
+          "status",
+          "netPayJpy",
+          "lines",
+          "payoutRecords"
+        ],
+        properties: {
+          id: { type: "integer" },
+          payRunId: { type: "integer" },
+          shopId: { type: "integer" },
+          shopName: { type: "string" },
+          technicianProfileId: { type: "integer" },
+          technicianName: { type: "string" },
+          technicianUserId: { type: ["integer", "null"] },
+          compensationProfileId: { type: ["integer", "null"] },
+          periodStart: { type: "string", format: "date-time" },
+          periodEnd: { type: "string", format: "date-time" },
+          status: {
+            type: "string",
+            enum: [
+              "draft",
+              "reviewing",
+              "published",
+              "confirmed",
+              "disputed",
+              "approved",
+              "scheduled",
+              "paid",
+              "locked"
+            ]
+          },
+          disputeStatus: { type: "string", enum: ["none", "confirmed", "disputed", "resolved"] },
+          disputeReason: { type: ["string", "null"] },
+          baseSalaryJpy: { type: "integer" },
+          annualSalaryProratedJpy: { type: "integer" },
+          dailyWageJpy: { type: "integer" },
+          hourlyWageJpy: { type: "integer" },
+          commissionJpy: { type: "integer" },
+          guaranteeTopupJpy: { type: "integer" },
+          bonusJpy: { type: "integer" },
+          allowanceJpy: { type: "integer" },
+          deductionJpy: { type: "integer" },
+          platformFeeShareDeductionJpy: { type: "integer" },
+          netPayJpy: { type: "integer" },
+          paidAmountJpy: { type: "integer" },
+          unpaidAmountJpy: { type: "integer" },
+          confirmedAt: { type: ["string", "null"], format: "date-time" },
+          disputedAt: { type: ["string", "null"], format: "date-time" },
+          disputeResolvedAt: { type: ["string", "null"], format: "date-time" },
+          disputeResolvedById: { type: ["integer", "null"] },
+          disputeResolutionNote: { type: ["string", "null"], maxLength: 500 },
+          lines: { type: "array", items: { $ref: "#/components/schemas/PayslipLine" } },
+          payoutRecords: { type: "array", items: { $ref: "#/components/schemas/PayoutRecord" } }
+        }
+      },
+      PayRun: {
+        type: "object",
+        required: [
+          "id",
+          "shopId",
+          "periodStart",
+          "periodEnd",
+          "status",
+          "totalNetPayJpy",
+          "payslips"
+        ],
+        properties: {
+          id: { type: "integer" },
+          shopId: { type: "integer" },
+          shopName: { type: "string" },
+          periodStart: { type: "string", format: "date-time" },
+          periodEnd: { type: "string", format: "date-time" },
+          status: { type: "string" },
+          totalBaseSalaryJpy: { type: "integer" },
+          totalCommissionJpy: { type: "integer" },
+          totalBonusJpy: { type: "integer" },
+          totalAllowanceJpy: { type: "integer" },
+          totalDeductionJpy: { type: "integer" },
+          totalNetPayJpy: { type: "integer" },
+          paidAmountJpy: { type: "integer" },
+          unpaidAmountJpy: { type: "integer" },
+          generatedById: { type: ["integer", "null"] },
+          approvedById: { type: ["integer", "null"] },
+          lockedAt: { type: ["string", "null"], format: "date-time" },
+          payslips: { type: "array", items: { $ref: "#/components/schemas/Payslip" } }
+        }
+      },
+      PayrollAdjustmentRequest: {
+        type: "object",
+        required: [
+          "id",
+          "shopId",
+          "technicianProfileId",
+          "periodStart",
+          "periodEnd",
+          "adjustmentType",
+          "title",
+          "amountJpy",
+          "reason",
+          "status"
+        ],
+        properties: {
+          id: { type: "integer" },
+          shopId: { type: "integer" },
+          shopName: { type: "string" },
+          technicianProfileId: { type: "integer" },
+          technicianName: { type: "string" },
+          technicianUserId: { type: ["integer", "null"] },
+          periodStart: { type: "string", format: "date-time" },
+          periodEnd: { type: "string", format: "date-time" },
+          adjustmentType: {
+            type: "string",
+            enum: ["bonus", "allowance", "deduction", "adjustment"]
+          },
+          title: { type: "string" },
+          amountJpy: { type: "integer" },
+          reason: { type: "string" },
+          proofUrl: { type: ["string", "null"] },
+          status: {
+            type: "string",
+            enum: ["draft", "submitted", "approved", "rejected", "applied"]
+          },
+          requestedById: { type: "integer" },
+          submittedAt: { type: ["string", "null"], format: "date-time" },
+          approvedById: { type: ["integer", "null"] },
+          approvedAt: { type: ["string", "null"], format: "date-time" },
+          rejectedById: { type: ["integer", "null"] },
+          rejectedAt: { type: ["string", "null"], format: "date-time" },
+          rejectionReason: { type: ["string", "null"] },
+          appliedPayRunId: { type: ["integer", "null"] },
+          appliedPayslipLineId: { type: ["integer", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
       }
     }
   },
@@ -1001,7 +1546,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 properties: {
                   email: { type: "string", format: "email" },
                   username: { type: "string", minLength: 1, maxLength: 255 },
-                  type: { type: "string", enum: ["username", "mobile", "email", "wechat", "qq", "weibo"] },
+                  type: {
+                    type: "string",
+                    enum: ["username", "mobile", "email", "wechat", "qq", "weibo"]
+                  },
                   numcode: { type: "string", maxLength: 32 },
                   password: { type: "string", minLength: 1, maxLength: 128 }
                 },
@@ -1047,7 +1595,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                 properties: {
                   email: { type: "string", format: "email" },
                   username: { type: "string", minLength: 1, maxLength: 255 },
-                  type: { type: "string", enum: ["username", "mobile", "email", "wechat", "qq", "weibo"] },
+                  type: {
+                    type: "string",
+                    enum: ["username", "mobile", "email", "wechat", "qq", "weibo"]
+                  },
                   numcode: { type: "string", maxLength: 32 },
                   password: { type: "string", minLength: 1, maxLength: 128 }
                 },
@@ -2289,6 +2840,116 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/finance/fee-rule-sets`]: {
+      get: {
+        tags: ["Finance Rules"],
+        summary: "Paginated NDP dynamic fee rule sets",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["draft", "active", "paused", "archived"] }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated fee rule sets" }
+        }
+      },
+      post: {
+        tags: ["Finance Rules"],
+        summary: "Create an NDP dynamic fee rule set",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "201": { description: "Created fee rule set" },
+          "403": { description: "Missing finance fee-rule write permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/fee-rule-sets/{id}`]: {
+      put: {
+        tags: ["Finance Rules"],
+        summary: "Update an NDP dynamic fee rule set",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Updated fee rule set" },
+          "404": { description: "Fee rule set not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/fee-rule-sets/{id}/activate`]: {
+      post: {
+        tags: ["Finance Rules"],
+        summary: "Activate an NDP dynamic fee rule set",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Activated fee rule set" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/fee-rule-sets/{id}/pause`]: {
+      post: {
+        tags: ["Finance Rules"],
+        summary: "Pause an NDP dynamic fee rule set",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Paused fee rule set" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/fee-rules/preview`]: {
+      post: {
+        tags: ["Finance Rules"],
+        summary: "Preview a dynamic NDP fee calculation",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Fee calculation preview",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/FeeCalculationResult" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/finance/fee-calculation-logs`]: {
+      get: {
+        tags: ["Finance Rules"],
+        summary: "Paginated dynamic fee calculation logs",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "bookingOrderId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "feeType", in: "query", schema: { type: "string" } },
+          { name: "stage", in: "query", schema: { type: "string" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated fee calculation logs" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/dashboard`]: {
       get: {
         tags: ["Step 12 Backoffice"],
@@ -2395,6 +3056,964 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Paginated merchant schedule slots" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/finance/rules`]: {
+      get: {
+        tags: ["Merchant Finance Rules"],
+        summary: "Current active finance rule set for the authenticated merchant shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": {
+            description: "Active merchant finance rule set",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/ShopFinanceRuleSet" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing merchant finance rule permission or shop scope" }
+        }
+      },
+      put: {
+        tags: ["Merchant Finance Rules"],
+        summary: "Create a new active finance rule version for the authenticated merchant shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["name", "wageMode"],
+                properties: {
+                  name: { type: "string", maxLength: 160 },
+                  wageMode: {
+                    type: "string",
+                    enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+                  },
+                  baseSalaryJpy: { type: "integer", minimum: 0, default: 0 },
+                  hourlyRateJpy: { type: "integer", minimum: 0, default: 0 },
+                  dailyRateJpy: { type: "integer", minimum: 0, default: 0 },
+                  fixedOrderPayJpy: { type: "integer", minimum: 0, default: 0 },
+                  commissionRatePercent: { type: "number", minimum: 0, maximum: 100, default: 60 },
+                  guaranteedMinimumJpy: { type: "integer", minimum: 0, default: 0 },
+                  ndpFeeBearer: {
+                    type: "string",
+                    enum: ["shop", "technician", "split"],
+                    default: "shop"
+                  },
+                  technicianNdpSharePercent: {
+                    type: "number",
+                    minimum: 0,
+                    maximum: 100,
+                    default: 0
+                  },
+                  bonusRules: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+                  },
+                  deductionRules: {
+                    type: "array",
+                    items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+                  },
+                  effectiveFrom: { type: ["string", "null"], format: "date-time" },
+                  effectiveTo: { type: ["string", "null"], format: "date-time" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "New active merchant finance rule set" },
+          "403": { description: "Missing merchant finance rule permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/finance/rules/preview`]: {
+      post: {
+        tags: ["Merchant Finance Rules"],
+        summary: "Preview wage, commission, bonus, and NDP allocation for one order",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["serviceAmountJpy"],
+                properties: {
+                  serviceAmountJpy: { type: "integer", minimum: 0 },
+                  platformFeeNdp: { type: "integer", minimum: 0, default: 500 },
+                  workedMinutes: { type: "integer", minimum: 0, default: 60 },
+                  monthlyCompletedOrders: { type: "integer", minimum: 0, default: 0 },
+                  monthlyServiceGmvJpy: { type: "integer", minimum: 0, default: 0 },
+                  ratingAverage: { type: "number", minimum: 0, maximum: 5, default: 0 },
+                  lateCancellationCount: { type: "integer", minimum: 0, default: 0 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Merchant finance rule preview",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/ShopFinanceRulePreviewResult" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing merchant finance rule permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/finance/orders/{bookingOrderId}`]: {
+      get: {
+        tags: ["Finance Center"],
+        summary: "Get one merchant order money timeline and service income status",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "bookingOrderId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Order finance detail",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/OrderFinanceDetail" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing merchant order finance permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/finance/orders/{bookingOrderId}/service-income-report`]: {
+      put: {
+        tags: ["Finance Center"],
+        summary: "Report and optionally confirm service income for one merchant order",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "bookingOrderId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["serviceAmountJpy"],
+                properties: {
+                  serviceAmountJpy: { type: "integer", minimum: 0 },
+                  platformCollectedServiceAmountJpy: { type: "integer", minimum: 0, default: 0 },
+                  offlineReportedServiceAmountJpy: { type: "integer", minimum: 0, default: 0 },
+                  paymentChannel: {
+                    type: "string",
+                    enum: [
+                      "unknown",
+                      "platform_online",
+                      "offline_cash",
+                      "offline_card",
+                      "bank_transfer",
+                      "other"
+                    ],
+                    default: "unknown"
+                  },
+                  confirmNow: { type: "boolean", default: false },
+                  note: { type: ["string", "null"], maxLength: 500 },
+                  proofUrl: { type: ["string", "null"], format: "uri", maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Updated order finance detail",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/OrderFinanceDetail" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing income report permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/finance/orders/{bookingOrderId}`]: {
+      get: {
+        tags: ["Finance Center"],
+        summary: "Get one platform backoffice order money timeline",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "bookingOrderId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Order finance detail",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/OrderFinanceDetail" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing backoffice finance order permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/technicians/{technicianProfileId}/compensation-profile`]:
+      {
+        get: {
+          tags: ["Finance Center"],
+          summary: "Get active technician compensation profile or shop-rule fallback",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+            {
+              name: "technicianProfileId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 }
+            }
+          ],
+          responses: {
+            "200": {
+              description: "Technician compensation profile",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["code", "message", "data"],
+                    properties: {
+                      code: { type: "integer", enum: [0] },
+                      message: { type: "string", enum: ["success"] },
+                      data: { $ref: "#/components/schemas/TechnicianCompensationProfile" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        put: {
+          tags: ["Finance Center"],
+          summary: "Create a new active technician compensation profile version",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+            {
+              name: "technicianProfileId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 }
+            }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["name", "wageMode"],
+                  properties: {
+                    name: { type: "string", maxLength: 160 },
+                    wageMode: {
+                      type: "string",
+                      enum: ["fixed_per_order", "commission", "base_plus_commission", "hourly"]
+                    },
+                    baseSalaryJpy: { type: "integer", minimum: 0, default: 0 },
+                    hourlyRateJpy: { type: "integer", minimum: 0, default: 0 },
+                    dailyRateJpy: { type: "integer", minimum: 0, default: 0 },
+                    fixedOrderPayJpy: { type: "integer", minimum: 0, default: 0 },
+                    commissionRatePercent: {
+                      type: "number",
+                      minimum: 0,
+                      maximum: 100,
+                      default: 60
+                    },
+                    guaranteedMinimumJpy: { type: "integer", minimum: 0, default: 0 },
+                    ndpFeeBearer: {
+                      type: "string",
+                      enum: ["shop", "technician", "split"],
+                      default: "shop"
+                    },
+                    technicianNdpSharePercent: {
+                      type: "number",
+                      minimum: 0,
+                      maximum: 100,
+                      default: 0
+                    },
+                    bonusRules: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+                    },
+                    deductionRules: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/ShopFinanceAdjustmentRule" }
+                    },
+                    effectiveFrom: { type: ["string", "null"], format: "date-time" },
+                    effectiveTo: { type: ["string", "null"], format: "date-time" }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "200": { description: "New active technician compensation profile" }
+          }
+        }
+      },
+    [`${config.API_PREFIX}/merchant-admin/shops/{shopId}/technicians/{technicianProfileId}/compensation-profile/preview`]:
+      {
+        post: {
+          tags: ["Finance Center"],
+          summary: "Preview technician compensation profile for one order",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } },
+            {
+              name: "technicianProfileId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 }
+            }
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["serviceAmountJpy"],
+                  properties: {
+                    serviceAmountJpy: { type: "integer", minimum: 0 },
+                    platformFeeNdp: { type: "integer", minimum: 0, default: 500 },
+                    workedMinutes: { type: "integer", minimum: 0, default: 60 },
+                    monthlyCompletedOrders: { type: "integer", minimum: 0, default: 0 },
+                    monthlyServiceGmvJpy: { type: "integer", minimum: 0, default: 0 },
+                    ratingAverage: { type: "number", minimum: 0, maximum: 5, default: 0 },
+                    lateCancellationCount: { type: "integer", minimum: 0, default: 0 }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "200": {
+              description: "Technician compensation preview",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["code", "message", "data"],
+                    properties: {
+                      code: { type: "integer", enum: [0] },
+                      message: { type: "string", enum: ["success"] },
+                      data: { $ref: "#/components/schemas/CompensationProfilePreviewResult" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+    [`${config.API_PREFIX}/merchant-admin/pay-runs`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Paginated merchant pay runs",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated merchant pay runs" },
+          "403": { description: "Missing merchant payroll read permission" }
+        }
+      },
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Generate a merchant pay run draft from completed Booking finance",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["shopId", "periodStart", "periodEnd"],
+                properties: {
+                  shopId: { type: "integer", minimum: 1 },
+                  periodStart: { type: "string", format: "date-time" },
+                  periodEnd: { type: "string", format: "date-time" },
+                  manualLines: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      required: ["technicianProfileId", "lineType", "title", "amountJpy"],
+                      properties: {
+                        technicianProfileId: { type: "integer", minimum: 1 },
+                        lineType: {
+                          type: "string",
+                          enum: [
+                            "base_salary",
+                            "bonus",
+                            "allowance",
+                            "deduction",
+                            "adjustment",
+                            "guarantee_topup"
+                          ]
+                        },
+                        title: { type: "string", maxLength: 180 },
+                        amountJpy: { type: "integer" },
+                        explanation: { type: ["string", "null"], maxLength: 500 }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Generated pay run draft",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/PayRun" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing merchant payroll write permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/pay-runs/export`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Export merchant pay runs as CSV content",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Pay run CSV export payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/PayrollCsvExport" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing merchant payroll read permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/pay-runs/{id}`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Get merchant pay run detail",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Pay run detail" },
+          "403": { description: "Missing merchant payroll read permission or shop scope" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/pay-runs/{id}/recalculate`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Recalculate a draft merchant pay run",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Recalculated pay run draft" },
+          "409": { description: "Pay run is already published or locked" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/pay-runs/{id}/publish`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Publish a merchant pay run to technicians",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Published pay run" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/pay-runs/{id}/approve`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Approve a merchant pay run after technician review",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Approved pay run" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/pay-runs/{id}/lock`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Lock and archive a merchant pay run",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Locked pay run" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/payslips/{id}/payout-records`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Record a merchant payslip payout",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["amountJpy", "payoutMethod", "payoutDate"],
+                properties: {
+                  amountJpy: { type: "integer", minimum: 1 },
+                  payoutMethod: {
+                    type: "string",
+                    enum: ["bank_transfer", "cash", "ndp", "external", "mixed", "other"]
+                  },
+                  payoutDate: { type: "string", format: "date-time" },
+                  referenceNo: { type: ["string", "null"], maxLength: 120 },
+                  proofUrl: { type: ["string", "null"], format: "uri", maxLength: 500 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Updated payslip with payout record",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/Payslip" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/payslips/{id}/resolve-dispute`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Resolve a disputed merchant payslip and reopen technician confirmation",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["resolutionNote"],
+                properties: {
+                  resolutionNote: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Resolved payslip dispute",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/Payslip" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing merchant payroll dispute resolve permission" },
+          "409": { description: "Payslip is not currently disputed" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/payroll-adjustments`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Paginated merchant payroll adjustment requests",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated payroll adjustment requests" },
+          "403": { description: "Missing merchant payroll adjustment read permission" }
+        }
+      },
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Create a merchant payroll bonus, allowance, deduction, or adjustment request",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: [
+                  "shopId",
+                  "technicianProfileId",
+                  "periodStart",
+                  "periodEnd",
+                  "adjustmentType",
+                  "title",
+                  "amountJpy",
+                  "reason"
+                ],
+                properties: {
+                  shopId: { type: "integer", minimum: 1 },
+                  technicianProfileId: { type: "integer", minimum: 1 },
+                  periodStart: { type: "string", format: "date-time" },
+                  periodEnd: { type: "string", format: "date-time" },
+                  adjustmentType: {
+                    type: "string",
+                    enum: ["bonus", "allowance", "deduction", "adjustment"]
+                  },
+                  title: { type: "string", maxLength: 180 },
+                  amountJpy: { type: "integer" },
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  proofUrl: { type: ["string", "null"], format: "uri", maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Created payroll adjustment request",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/PayrollAdjustmentRequest" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            description: "Missing merchant payroll adjustment write permission or shop scope"
+          }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/payroll-adjustments/{id}/submit`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Submit a draft merchant payroll adjustment request",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Submitted payroll adjustment request" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/payroll-adjustments/{id}/approve`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Approve a submitted merchant payroll adjustment request",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Approved payroll adjustment request" } }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/payroll-adjustments/{id}/reject`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Reject a submitted merchant payroll adjustment request",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason"],
+                properties: { reason: { type: "string", minLength: 1, maxLength: 500 } }
+              }
+            }
+          }
+        },
+        responses: { "200": { description: "Rejected payroll adjustment request" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/payslips`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Paginated current technician payslips",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated technician payslips" },
+          "403": { description: "Missing technician payslip read permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technician/payslips/export`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Export current technician payslips as CSV content",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Payslip CSV export payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/PayrollCsvExport" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing technician payslip read permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/technician/payslips/{id}`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Get current technician payslip detail",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Technician payslip detail" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/payslips/{id}/confirm`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Confirm current technician payslip",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Confirmed payslip" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/payslips/{id}/dispute`]: {
+      post: {
+        tags: ["Payroll Center"],
+        summary: "Dispute current technician payslip",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason"],
+                properties: { reason: { type: "string", minLength: 1, maxLength: 500 } }
+              }
+            }
+          }
+        },
+        responses: { "200": { description: "Disputed payslip" } }
+      }
+    },
+    [`${config.API_PREFIX}/technician/payslips/{payslipId}/payout-records/{payoutRecordId}/confirm`]:
+      {
+        post: {
+          tags: ["Payroll Center"],
+          summary: "Confirm current technician payout record receipt",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "payslipId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 }
+            },
+            {
+              name: "payoutRecordId",
+              in: "path",
+              required: true,
+              schema: { type: "integer", minimum: 1 }
+            }
+          ],
+          responses: {
+            "200": {
+              description: "Updated payslip with technician-confirmed payout record",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["code", "message", "data"],
+                    properties: {
+                      code: { type: "integer", enum: [0] },
+                      message: { type: "string", enum: ["success"] },
+                      data: { $ref: "#/components/schemas/Payslip" }
+                    }
+                  }
+                }
+              }
+            },
+            "403": { description: "Missing technician payout record confirm permission" },
+            "404": { description: "Payout record not found for this payslip" }
+          }
+        }
+      },
+    [`${config.API_PREFIX}/backoffice/pay-runs`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Paginated platform pay runs for backoffice read-only finance review",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Paginated backoffice pay runs" },
+          "403": { description: "Missing backoffice payroll read permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/pay-runs/export`]: {
+      get: {
+        tags: ["Payroll Center"],
+        summary: "Export platform pay runs as CSV content",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": {
+            description: "Pay run CSV export payload",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/PayrollCsvExport" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { description: "Missing backoffice payroll read permission" }
         }
       }
     },

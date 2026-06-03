@@ -6228,7 +6228,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 88%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 82%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 88%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 10%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 10%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, #ffffff 96%, var(--admin-accent) 4%) 100%);
   --merchant-dispatch-table-sticky-bg: color-mix(in srgb, #ffffff 96%, var(--admin-accent) 4%);
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #ffffff 88%, var(--admin-accent) 12%);
@@ -6271,7 +6271,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 88%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 82%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 88%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 10%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 10%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #ffffff 0%, #f6f3fb 100%);
   --merchant-dispatch-table-sticky-bg: color-mix(in srgb, #ffffff 94%, var(--admin-accent) 6%);
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #ffffff 86%, var(--admin-accent) 14%);
@@ -6316,7 +6316,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 88%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 82%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 88%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 9%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 9%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%);
   --merchant-dispatch-table-sticky-bg: color-mix(in srgb, #ffffff 94%, var(--admin-accent) 6%);
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #ffffff 88%, var(--admin-accent) 12%);
@@ -6359,7 +6359,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 88%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 82%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 88%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 10%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 10%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #ffffff 0%, #f2f3f4 100%);
   --merchant-dispatch-table-sticky-bg: #f0f1f2;
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #ffffff 84%, var(--admin-accent-strong) 16%);
@@ -6405,7 +6405,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 90%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 88%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 92%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 14%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 14%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #0a0d10 0%, #252c33 100%);
   --merchant-dispatch-table-sticky-bg: #20272d;
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #20272d 84%, var(--admin-accent) 16%);
@@ -6453,7 +6453,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 90%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 88%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 92%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 14%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 14%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #071827 0%, #02070c 100%);
   --merchant-dispatch-table-sticky-bg: #0f1d27;
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #0f1d27 88%, var(--admin-accent) 12%);
@@ -6499,7 +6499,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 90%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 88%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 92%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 14%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 14%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #050505 0%, #1b1b1a 100%);
   --merchant-dispatch-table-sticky-bg: #1b1b1a;
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #1b1b1a 88%, var(--admin-accent) 12%);
@@ -6546,7 +6546,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 90%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 88%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 92%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 14%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 14%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #100817 0%, #1a0d24 100%);
   --merchant-dispatch-table-sticky-bg: #1a0d24;
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #1a0d24 84%, var(--admin-accent) 16%);
@@ -6592,7 +6592,7 @@ body:has(.admin-theme-dark),
   --merchant-dispatch-success-text: color-mix(in srgb, var(--admin-success) 90%, var(--admin-text));
   --merchant-dispatch-muted-bg: color-mix(in srgb, var(--admin-muted-surface) 88%, var(--admin-surface));
   --merchant-dispatch-muted-text: color-mix(in srgb, var(--admin-muted) 92%, var(--admin-text));
-  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-danger) 14%, var(--admin-surface));
+  --merchant-dispatch-float-header: color-mix(in srgb, var(--admin-accent) 14%, var(--admin-surface));
   --merchant-dispatch-table-mask-bg: linear-gradient(180deg, #171825 0%, #202131 100%);
   --merchant-dispatch-table-sticky-bg: #202131;
   --merchant-dispatch-table-header-bg: color-mix(in srgb, #202131 84%, var(--admin-accent) 16%);
@@ -6974,6 +6974,108 @@ body:has(.admin-theme-dark),
   color: var(--client-text);
 }
 
+.merchant-admin-shell .merchant-admin-analytics-surface {
+  --shop-analytics-page-bg: var(--admin-bg, #f7f8fb);
+  --shop-analytics-panel-bg: color-mix(in srgb, var(--admin-surface, #ffffff) 98%, transparent);
+  --shop-analytics-panel-border: var(--admin-line, rgba(22, 54, 48, 0.12));
+  --shop-analytics-panel-shadow: var(--admin-card-shadow, 0 18px 42px rgba(21, 57, 51, 0.1));
+  --shop-analytics-tile-bg: color-mix(in srgb, var(--admin-elevated, #ffffff) 88%, var(--admin-muted-surface, #edf1f5) 12%);
+  --shop-analytics-track-bg: color-mix(in srgb, var(--admin-accent, #3c887e) 12%, var(--admin-muted-surface, #edf1f5));
+  --shop-analytics-control-bg: color-mix(in srgb, var(--admin-elevated, #ffffff) 86%, transparent);
+  --shop-analytics-control-hover-bg: color-mix(in srgb, var(--admin-accent, #3c887e) 9%, var(--admin-surface, #ffffff));
+  --shop-analytics-hero-overlay: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--admin-surface, #ffffff) 92%, var(--admin-accent, #3c887e) 8%),
+    color-mix(in srgb, var(--admin-muted-surface, #edf1f5) 76%, var(--admin-surface, #ffffff) 24%)
+  );
+  --client-bg: var(--admin-bg, #f7f8fb);
+  --client-bg-soft: color-mix(in srgb, var(--admin-muted-surface, #edf1f5) 78%, var(--admin-surface, #ffffff));
+  --client-surface: color-mix(in srgb, var(--admin-surface, #ffffff) 92%, transparent);
+  --client-elevated: color-mix(in srgb, var(--admin-elevated, #ffffff) 94%, var(--admin-muted-surface, #edf1f5) 6%);
+  --client-line: var(--admin-line, rgba(22, 54, 48, 0.12));
+  --client-text: var(--admin-text, #163630);
+  --client-muted: var(--admin-muted, rgba(22, 54, 48, 0.68));
+  --client-soft-muted: var(--admin-soft-muted, rgba(22, 54, 48, 0.48));
+  --client-primary: var(--admin-accent, #3c887e);
+  --client-primary-strong: var(--admin-accent-strong, #275f57);
+  --client-primary-soft: color-mix(in srgb, var(--admin-accent, #3c887e) 13%, var(--admin-surface, #ffffff));
+  --client-needo-text: var(--merchant-dispatch-on-accent, #ffffff);
+  --client-accent: var(--admin-danger, #df5b52);
+  --client-warm: var(--admin-warning, #c39b4c);
+  --client-shadow: var(--admin-card-shadow, 0 18px 42px rgba(21, 57, 51, 0.1));
+  color: var(--admin-text);
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-panel,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-filter-panel,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-chart-panel {
+  border-color: var(--shop-analytics-panel-border) !important;
+  background: var(--shop-analytics-panel-bg) !important;
+  box-shadow: var(--shop-analytics-panel-shadow) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--admin-accent) 8%, transparent), transparent 48%),
+    var(--shop-analytics-panel-bg) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero img {
+  opacity: 0.14;
+  filter: saturate(0.82) contrast(0.96);
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-overlay {
+  background: var(--shop-analytics-hero-overlay) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-eyebrow,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-metric-label {
+  color: var(--admin-soft-muted) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-title,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-metric-value {
+  color: var(--admin-text) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-subtitle {
+  color: var(--admin-muted) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-badge,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-hero-metric,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-tile,
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-mini-legend {
+  border-color: color-mix(in srgb, var(--admin-line) 92%, transparent) !important;
+  background: var(--shop-analytics-tile-bg) !important;
+  color: var(--admin-text) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-track {
+  background: var(--shop-analytics-track-bg) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-control-inactive {
+  border-color: color-mix(in srgb, var(--admin-line) 92%, transparent) !important;
+  background: var(--shop-analytics-control-bg) !important;
+  color: var(--admin-muted) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-control-inactive:hover {
+  border-color: color-mix(in srgb, var(--admin-accent) 30%, var(--admin-line)) !important;
+  background: var(--shop-analytics-control-hover-bg) !important;
+  color: var(--admin-text) !important;
+}
+
+.merchant-admin-shell .merchant-admin-analytics-surface .shop-analytics-control-active {
+  border-color: color-mix(in srgb, var(--admin-accent) 42%, var(--admin-line)) !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--admin-accent) 92%, #ffffff), var(--admin-accent-strong)) !important;
+  color: var(--merchant-dispatch-on-accent) !important;
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--admin-accent) 24%, transparent) !important;
+}
+
 .merchant-admin-shell .merchant-admin-schedule-parity .client-sticky-control-panel {
   position: sticky;
   top: var(--client-schedule-substicky-top);
@@ -7164,36 +7266,61 @@ body:has(.admin-theme-dark),
 
 .merchant-admin-shell .merchant-dispatch-fab {
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--admin-danger) 88%, #ffffff), color-mix(in srgb, var(--admin-danger) 72%, #000000)) !important;
-  color: #fff7f4 !important;
-  box-shadow: 0 22px 48px color-mix(in srgb, var(--admin-danger) 36%, transparent) !important;
+    linear-gradient(135deg, color-mix(in srgb, var(--admin-accent) 92%, #ffffff), var(--admin-accent-strong)) !important;
+  border: 1px solid color-mix(in srgb, var(--admin-accent-strong) 42%, var(--admin-line)) !important;
+  color: var(--merchant-dispatch-on-accent) !important;
+  box-shadow:
+    0 22px 48px color-mix(in srgb, var(--admin-accent) 32%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 22%, transparent) !important;
 }
 
 .merchant-admin-shell .merchant-dispatch-floating-shell {
-  border-color: color-mix(in srgb, var(--admin-danger) 26%, var(--admin-line)) !important;
-  background: color-mix(in srgb, var(--admin-surface) 98%, transparent) !important;
-  box-shadow: 0 26px 54px rgba(17, 24, 39, 0.22) !important;
+  border-color: color-mix(in srgb, var(--admin-accent) 24%, var(--admin-line)) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--admin-elevated) 88%, var(--admin-accent) 12%),
+      color-mix(in srgb, var(--admin-surface) 98%, transparent)
+    ) !important;
+  box-shadow:
+    var(--admin-card-shadow-strong),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 10%, transparent) !important;
 }
 
 .merchant-admin-shell .merchant-dispatch-floating-header {
   background: var(--merchant-dispatch-float-header) !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--admin-line) 82%, transparent) !important;
 }
 
 .merchant-admin-shell .merchant-dispatch-floating-card {
-  border-color: var(--admin-line) !important;
-  background: color-mix(in srgb, var(--admin-surface) 98%, transparent) !important;
+  border-color: color-mix(in srgb, var(--admin-line) 92%, transparent) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--admin-elevated) 86%, var(--admin-muted-surface) 14%),
+      color-mix(in srgb, var(--admin-surface) 98%, transparent)
+    ) !important;
 }
 
-.merchant-admin-shell .merchant-dispatch-floating-minimize {
+.merchant-admin-shell .merchant-dispatch-floating-minimize,
+.merchant-admin-shell .merchant-dispatch-floating-panel-minimize {
   border-color: color-mix(in srgb, var(--admin-line) 94%, transparent) !important;
   background: color-mix(in srgb, var(--admin-muted-surface) 88%, var(--admin-surface)) !important;
   color: var(--admin-muted) !important;
+}
+
+.merchant-admin-shell .merchant-dispatch-floating-minimize:hover,
+.merchant-admin-shell .merchant-dispatch-floating-panel-minimize:hover {
+  border-color: color-mix(in srgb, var(--admin-accent) 34%, var(--admin-line)) !important;
+  background: color-mix(in srgb, var(--admin-accent) 12%, var(--admin-surface)) !important;
+  color: var(--admin-text) !important;
 }
 
 .merchant-admin-shell .merchant-dispatch-floating-action {
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--admin-accent) 92%, #ffffff), var(--admin-accent-strong)) !important;
   color: var(--merchant-dispatch-on-accent) !important;
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--admin-accent) 28%, transparent) !important;
 }
 
 .merchant-admin-shell .merchant-dispatch-cell-hover:hover {
