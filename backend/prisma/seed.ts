@@ -1,5 +1,15 @@
-import { PrismaClient, type Category, type Prisma } from "@prisma/client";
+import {
+  BookingOrderStatus,
+  OrderType,
+  PrismaClient,
+  ScheduleSlotStatus,
+  ServiceOwnerType,
+  ShopPricingMode,
+  type Category,
+  type Prisma
+} from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
 
 import {
@@ -22,6 +32,12 @@ export const CUSTOMER_REQUEST_WALLET_SEED_NDP = DEFAULT_REQUEST_DISPATCH_FEE_NDP
 export const getRequestDispatchWalletSeedAmount = (
   account: Pick<TestUserAccountDefinition, "identityType">
 ): number => (account.identityType === "customer" ? CUSTOMER_REQUEST_WALLET_SEED_NDP : 0);
+
+const getSeedWalletTopUpAmount = (availableBalance: number, requiredAvailable: number): number =>
+  Math.max(requiredAvailable - availableBalance, 0);
+
+export const getRequestDispatchWalletTopUpAmount = (availableBalance: number): number =>
+  getSeedWalletTopUpAmount(availableBalance, CUSTOMER_REQUEST_WALLET_SEED_NDP);
 
 const getDatabaseUrl = (): string => {
   const databaseUrl = process.env.DATABASE_URL;
@@ -1779,10 +1795,27 @@ const seedCoreReadData = async (
     isRecommended: true,
     sortOrder: 20
   });
+  const requestSmokeTechnicianService = await upsertSeedTechnicianService(tx, {
+    shopId: shop.id,
+    technicianId: technician.id,
+    sourceShopServiceId: shiatsuService.id,
+    name: `${shiatsuService.name} Technician Direct`,
+    description: "Technician-pricing seed service for Request finance smoke checks.",
+    categoryId: shiatsuService.categoryId,
+    priceAmount: toSeedJpyAmount(shiatsuService.priceAmount),
+    currency: shiatsuService.currency,
+    durationMinutes: shiatsuService.durationMinutes,
+    coverImageUrl: primaryTechnicianSeed.service.coverUrl,
+    createdBy: shopOwner.id
+  });
   const seedSlotStarts = [
     new Date("2026-05-26T01:00:00.000Z"),
     new Date("2026-05-26T02:30:00.000Z"),
     new Date("2026-05-27T01:00:00.000Z")
+  ];
+  const requestSmokeSlotStarts = [
+    new Date("2026-05-28T01:00:00.000Z"),
+    new Date("2026-05-28T02:30:00.000Z")
   ];
 
   for (const startsAt of seedSlotStarts) {
@@ -1798,6 +1831,29 @@ const seedCoreReadData = async (
     await upsertSeedScheduleSlot(tx, {
       availabilityId: availability.id,
       serviceId: shiatsuService.id,
+      shopId: shop.id,
+      technicianProfileId: technician.id,
+      startsAt,
+      endsAt,
+      capacity: 1
+    });
+  }
+
+  for (const startsAt of requestSmokeSlotStarts) {
+    const endsAt = new Date(
+      startsAt.getTime() + requestSmokeTechnicianService.durationMinutes * 60 * 1000
+    );
+    const availability = await upsertSeedAvailability(tx, {
+      shopId: shop.id,
+      technicianProfileId: technician.id,
+      startsAt,
+      endsAt,
+      capacity: 1
+    });
+
+    await upsertSeedScheduleSlot(tx, {
+      availabilityId: availability.id,
+      technicianServiceId: requestSmokeTechnicianService.id,
       shopId: shop.id,
       technicianProfileId: technician.id,
       startsAt,
@@ -1907,6 +1963,400 @@ const seedCoreReadData = async (
     reviewCount: 41,
     highlights: ["hydrating", "calm"]
   });
+
+  await seedFormalFinancePayrollDemoData(tx, {
+    shopId: shop.id,
+    shopName: shop.name,
+    merchantUserId: shopOwner.id,
+    customerUserId: customerUser.id,
+    fallbackTechnicianProfileId: technician.id,
+    serviceId: shiatsuService.id,
+    serviceName: shiatsuService.name,
+    serviceAmountJpy: 8800,
+    durationMinutes: shiatsuService.durationMinutes
+  });
+};
+
+const seedFormalFinancePayrollDemoData = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    shopId: number;
+    shopName: string;
+    merchantUserId: number;
+    customerUserId: number;
+    fallbackTechnicianProfileId: number;
+    serviceId: number;
+    serviceName: string;
+    serviceAmountJpy: number;
+    durationMinutes: number;
+  }
+): Promise<void> => {
+  const periodStart = new Date("2026-06-01T00:00:00.000Z");
+  const periodEnd = new Date("2026-06-30T23:59:59.000Z");
+  const startsAt = new Date("2026-06-04T01:00:00.000Z");
+  const endsAt = new Date(startsAt.getTime() + input.durationMinutes * 60 * 1000);
+  const technicianUser = await tx.user.findUnique({
+    where: { email: "technician@example.com" },
+    include: { technicianProfile: true }
+  });
+  const technicianProfileId =
+    technicianUser?.technicianProfile?.id ?? input.fallbackTechnicianProfileId;
+  const technicianUserId = technicianUser?.id ?? null;
+  const availability = await upsertSeedAvailability(tx, {
+    shopId: input.shopId,
+    technicianProfileId,
+    startsAt,
+    endsAt,
+    capacity: 1
+  });
+  const slot = await upsertSeedScheduleSlot(tx, {
+    availabilityId: availability.id,
+    serviceId: input.serviceId,
+    shopId: input.shopId,
+    technicianProfileId,
+    startsAt,
+    endsAt,
+    capacity: 1
+  });
+
+  await tx.scheduleSlot.update({
+    where: { id: slot.id },
+    data: {
+      bookedCount: 1,
+      status: ScheduleSlotStatus.BOOKED,
+      deletedAt: null
+    }
+  });
+
+  const order = await tx.bookingOrder.upsert({
+    where: { orderNo: "SEED-FINANCE-0001" },
+    create: {
+      orderNo: "SEED-FINANCE-0001",
+      orderType: OrderType.BOOKING,
+      customerUserId: input.customerUserId,
+      serviceId: input.serviceId,
+      shopId: input.shopId,
+      technicianProfileId,
+      scheduleSlotId: slot.id,
+      status: BookingOrderStatus.COMPLETED,
+      fulfillmentMode: "store",
+      priceAmount: input.serviceAmountJpy,
+      currency: "JPY",
+      pricingModeSnapshot: ShopPricingMode.MERCHANT,
+      serviceOwnerType: ServiceOwnerType.SHOP,
+      serviceOwnerId: input.shopId,
+      serviceNameSnapshot: input.serviceName,
+      servicePriceSnapshot: input.serviceAmountJpy,
+      serviceDurationSnapshot: input.durationMinutes,
+      startsAt,
+      endsAt,
+      note: "Formal finance/payroll seed order"
+    },
+    update: {
+      customerUserId: input.customerUserId,
+      serviceId: input.serviceId,
+      shopId: input.shopId,
+      technicianProfileId,
+      scheduleSlotId: slot.id,
+      status: BookingOrderStatus.COMPLETED,
+      fulfillmentMode: "store",
+      priceAmount: input.serviceAmountJpy,
+      currency: "JPY",
+      pricingModeSnapshot: ShopPricingMode.MERCHANT,
+      serviceOwnerType: ServiceOwnerType.SHOP,
+      serviceOwnerId: input.shopId,
+      serviceNameSnapshot: input.serviceName,
+      servicePriceSnapshot: input.serviceAmountJpy,
+      serviceDurationSnapshot: input.durationMinutes,
+      startsAt,
+      endsAt,
+      note: "Formal finance/payroll seed order",
+      deletedAt: null
+    }
+  });
+  const existingHistory = await tx.orderStatusHistory.findFirst({
+    where: {
+      bookingOrderId: order.id,
+      toStatus: BookingOrderStatus.COMPLETED,
+      reason: "formal_finance_payroll_seed"
+    }
+  });
+
+  if (existingHistory) {
+    await tx.orderStatusHistory.update({
+      where: { id: existingHistory.id },
+      data: {
+        actorUserId: input.merchantUserId,
+        metadata: { seed: "formal_finance_payroll" },
+        deletedAt: null
+      }
+    });
+  } else {
+    await tx.orderStatusHistory.create({
+      data: {
+        bookingOrderId: order.id,
+        fromStatus: BookingOrderStatus.CONFIRMED,
+        toStatus: BookingOrderStatus.COMPLETED,
+        actorUserId: input.merchantUserId,
+        reason: "formal_finance_payroll_seed",
+        metadata: { seed: "formal_finance_payroll" }
+      }
+    });
+  }
+
+  await tx.orderFinancial.upsert({
+    where: { bookingOrderId: order.id },
+    create: {
+      bookingOrderId: order.id,
+      orderType: "booking",
+      customerUserId: input.customerUserId,
+      shopId: input.shopId,
+      technicianProfileId,
+      serviceAmountJpy: input.serviceAmountJpy,
+      offlineReportedServiceAmountJpy: input.serviceAmountJpy,
+      paymentChannel: "offline_card",
+      serviceIncomeStatus: "confirmed",
+      bPlatformFeeHoldNdp: 500,
+      bPlatformFeeActualNdp: 500,
+      userRewardNdp: 100,
+      platformFeeBearerForPayroll: "split",
+      completedOrderOrdinalInPeriod: 1,
+      appliedFeeRuleIdsJson: ["seed:b_platform_fee", "seed:user_reward"],
+      moneyTimelineJson: [
+        { type: "service_income_confirmed", amountJpy: input.serviceAmountJpy },
+        { type: "b_platform_fee_captured", amountNdp: 500 },
+        { type: "user_reward_granted", amountNdp: 100 },
+        { type: "technician_income_estimated", amountJpy: 4250 }
+      ],
+      serviceIncomeReportedById: input.merchantUserId,
+      serviceIncomeReportedAt: endsAt,
+      serviceIncomeConfirmedById: input.merchantUserId,
+      serviceIncomeConfirmedAt: endsAt,
+      serviceIncomeNote: "Formal seed service income confirmed for payroll demo.",
+      settlementStatus: "ready_for_payroll"
+    },
+    update: {
+      customerUserId: input.customerUserId,
+      shopId: input.shopId,
+      technicianProfileId,
+      serviceAmountJpy: input.serviceAmountJpy,
+      offlineReportedServiceAmountJpy: input.serviceAmountJpy,
+      unknownOrUnreportedServiceAmountJpy: 0,
+      paymentChannel: "offline_card",
+      serviceIncomeStatus: "confirmed",
+      bPlatformFeeHoldNdp: 500,
+      bPlatformFeeActualNdp: 500,
+      cRequestFeeHoldNdp: 0,
+      cRequestFeeActualNdp: 0,
+      userRewardNdp: 100,
+      releasedNdp: 0,
+      platformFeeBearerForPayroll: "split",
+      completedOrderOrdinalInPeriod: 1,
+      appliedFeeRuleIdsJson: ["seed:b_platform_fee", "seed:user_reward"],
+      moneyTimelineJson: [
+        { type: "service_income_confirmed", amountJpy: input.serviceAmountJpy },
+        { type: "b_platform_fee_captured", amountNdp: 500 },
+        { type: "user_reward_granted", amountNdp: 100 },
+        { type: "technician_income_estimated", amountJpy: 4250 }
+      ],
+      serviceIncomeReportedById: input.merchantUserId,
+      serviceIncomeReportedAt: endsAt,
+      serviceIncomeConfirmedById: input.merchantUserId,
+      serviceIncomeConfirmedAt: endsAt,
+      serviceIncomeNote: "Formal seed service income confirmed for payroll demo.",
+      settlementStatus: "ready_for_payroll",
+      deletedAt: null
+    }
+  });
+
+  const payRunData = {
+    shopId: input.shopId,
+    periodStart,
+    periodEnd,
+    status: "paid",
+    totalBaseSalaryJpy: 1000,
+    totalCommissionJpy: 4400,
+    totalBonusJpy: 0,
+    totalAllowanceJpy: 0,
+    totalDeductionJpy: 1150,
+    totalNetPayJpy: 4250,
+    paidAmountJpy: 4250,
+    unpaidAmountJpy: 0,
+    generatedById: input.merchantUserId,
+    approvedById: input.merchantUserId,
+    lockedAt: null,
+    deletedAt: null
+  };
+  const existingPayRun = await tx.payRun.findFirst({
+    where: {
+      shopId: input.shopId,
+      periodStart,
+      periodEnd,
+      generatedById: input.merchantUserId
+    }
+  });
+  const payRun = existingPayRun
+    ? await tx.payRun.update({
+        where: { id: existingPayRun.id },
+        data: payRunData
+      })
+    : await tx.payRun.create({ data: payRunData });
+  const payslipData = {
+    payRunId: payRun.id,
+    shopId: input.shopId,
+    technicianProfileId,
+    technicianUserId,
+    periodStart,
+    periodEnd,
+    status: "paid",
+    disputeStatus: "none",
+    disputeReason: null,
+    baseSalaryJpy: 1000,
+    commissionJpy: 4400,
+    bonusJpy: 0,
+    allowanceJpy: 0,
+    deductionJpy: 1000,
+    platformFeeShareDeductionJpy: 150,
+    netPayJpy: 4250,
+    paidAmountJpy: 4250,
+    unpaidAmountJpy: 0,
+    confirmedAt: new Date("2026-06-05T02:00:00.000Z"),
+    disputedAt: null,
+    disputeResolvedAt: null,
+    disputeResolvedById: null,
+    disputeResolutionNote: null,
+    deletedAt: null
+  };
+  const existingPayslip = await tx.payslip.findFirst({
+    where: {
+      payRunId: payRun.id,
+      technicianProfileId,
+      periodStart,
+      periodEnd
+    }
+  });
+  const payslip = existingPayslip
+    ? await tx.payslip.update({
+        where: { id: existingPayslip.id },
+        data: payslipData
+      })
+    : await tx.payslip.create({ data: payslipData });
+
+  await tx.payslipLine.updateMany({
+    where: { payslipId: payslip.id, sourceType: "order", orderId: order.id, deletedAt: null },
+    data: { deletedAt: new Date() }
+  });
+  await tx.payslipLine.createMany({
+    data: [
+      {
+        payslipId: payslip.id,
+        lineType: "base_salary",
+        title: "Seed base pay",
+        amountJpy: 1000,
+        quantity: 1,
+        unitAmountJpy: 1000,
+        sourceType: "order",
+        orderId: order.id,
+        explanation: "Formal seed payroll base pay.",
+        createdById: input.merchantUserId
+      },
+      {
+        payslipId: payslip.id,
+        lineType: "commission",
+        title: "Seed service commission",
+        amountJpy: 4400,
+        quantity: 1,
+        unitAmountJpy: 4400,
+        sourceType: "order",
+        orderId: order.id,
+        explanation: "50 percent commission on confirmed service income.",
+        createdById: input.merchantUserId
+      },
+      {
+        payslipId: payslip.id,
+        lineType: "platform_fee_share_deduction",
+        title: "Seed NDP split deduction",
+        amountJpy: -150,
+        quantity: 1,
+        unitAmountJpy: -150,
+        sourceType: "order",
+        orderId: order.id,
+        explanation: "Technician share of Booking NDP platform fee.",
+        createdById: input.merchantUserId
+      },
+      {
+        payslipId: payslip.id,
+        lineType: "deduction",
+        title: "Seed attendance deduction",
+        amountJpy: -1000,
+        quantity: 1,
+        unitAmountJpy: -1000,
+        sourceType: "order",
+        orderId: order.id,
+        explanation: "Seed deduction to exercise payroll CSV totals.",
+        createdById: input.merchantUserId
+      }
+    ]
+  });
+
+  const existingPayout = await tx.payoutRecord.findFirst({
+    where: {
+      payslipId: payslip.id,
+      referenceNo: "SEED-PAYOUT-0001"
+    }
+  });
+  const payoutData = {
+    shopId: input.shopId,
+    technicianProfileId,
+    amountJpy: 4250,
+    payoutMethod: "bank_transfer",
+    payoutDate: new Date("2026-06-06T00:00:00.000Z"),
+    referenceNo: "SEED-PAYOUT-0001",
+    note: "Formal finance payroll seed payout.",
+    status: "completed",
+    confirmedByTechnician: true,
+    technicianConfirmedAt: new Date("2026-06-06T02:00:00.000Z"),
+    createdById: input.merchantUserId,
+    deletedAt: null
+  };
+
+  if (existingPayout) {
+    await tx.payoutRecord.update({
+      where: { id: existingPayout.id },
+      data: payoutData
+    });
+  } else {
+    await tx.payoutRecord.create({
+      data: {
+        ...payoutData,
+        payslipId: payslip.id
+      }
+    });
+  }
+
+  const existingAudit = await tx.auditLog.findFirst({
+    where: {
+      action: "seed.finance_payroll.formal_demo",
+      targetType: "pay_run",
+      targetId: payRun.id
+    }
+  });
+
+  if (!existingAudit) {
+    await tx.auditLog.create({
+      data: {
+        actorId: input.merchantUserId,
+        action: "seed.finance_payroll.formal_demo",
+        targetType: "pay_run",
+        targetId: payRun.id,
+        metadata: {
+          orderNo: order.orderNo,
+          shopName: input.shopName,
+          payslipId: payslip.id
+        }
+      }
+    });
+  }
 };
 
 const upsertSeedService = async (
@@ -1957,6 +2407,66 @@ const upsertSeedService = async (
       });
 };
 
+const toSeedJpyAmount = (value: { toString: () => string } | string | number): number =>
+  Math.round(Number(value.toString()));
+
+const upsertSeedTechnicianService = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    shopId: number;
+    technicianId: number;
+    sourceShopServiceId: number;
+    name: string;
+    description: string;
+    categoryId: number;
+    priceAmount: number;
+    currency: string;
+    durationMinutes: number;
+    coverImageUrl: string;
+    createdBy: number;
+  }
+) => {
+  const existing = await tx.technicianService.findFirst({
+    where: {
+      shopId: input.shopId,
+      technicianId: input.technicianId,
+      sourceShopServiceId: input.sourceShopServiceId,
+      name: input.name
+    }
+  });
+  const data = {
+    shopId: input.shopId,
+    technicianId: input.technicianId,
+    sourceShopServiceId: input.sourceShopServiceId,
+    name: input.name,
+    description: input.description,
+    categoryId: input.categoryId,
+    priceAmount: input.priceAmount,
+    currency: input.currency,
+    durationMinutes: input.durationMinutes,
+    coverImageUrl: input.coverImageUrl,
+    isActive: true,
+    isBookable: true,
+    isRecommended: true,
+    sortOrder: 10,
+    reviewStatus: "APPROVED" as const,
+    updatedBy: input.createdBy,
+    deletedAt: null
+  };
+
+  return existing
+    ? tx.technicianService.update({
+        where: { id: existing.id },
+        data
+      })
+    : tx.technicianService.create({
+        data: {
+          ...data,
+          createdBy: input.createdBy
+        }
+      });
+};
+
 const upsertSeedAvailability = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -1997,7 +2507,8 @@ const upsertSeedScheduleSlot = async (
   tx: Prisma.TransactionClient,
   input: {
     availabilityId: number;
-    serviceId: number;
+    serviceId?: number | null;
+    technicianServiceId?: number | null;
     shopId: number;
     technicianProfileId: number;
     startsAt: Date;
@@ -2007,7 +2518,8 @@ const upsertSeedScheduleSlot = async (
 ) => {
   const existing = await tx.scheduleSlot.findFirst({
     where: {
-      serviceId: input.serviceId,
+      serviceId: input.serviceId ?? null,
+      technicianServiceId: input.technicianServiceId ?? null,
       shopId: input.shopId,
       technicianProfileId: input.technicianProfileId,
       startsAt: input.startsAt,
@@ -2016,7 +2528,8 @@ const upsertSeedScheduleSlot = async (
   });
   const data = {
     availabilityId: input.availabilityId,
-    serviceId: input.serviceId,
+    serviceId: input.serviceId ?? null,
+    technicianServiceId: input.technicianServiceId ?? null,
     shopId: input.shopId,
     technicianProfileId: input.technicianProfileId,
     startsAt: input.startsAt,
@@ -2199,9 +2712,34 @@ const upsertSeedWalletFunding = async (
   });
 
   if (existing) {
+    const topUpAmount = getSeedWalletTopUpAmount(wallet.availableBalance, input.amount);
+
+    if (topUpAmount <= 0) {
+      return;
+    }
+
+    await createSeedWalletFundingTransaction(tx, wallet, {
+      ...input,
+      amount: topUpAmount,
+      idempotencyKey: createSeedWalletTopUpIdempotencyKey(input, wallet, topUpAmount)
+    });
     return;
   }
 
+  await createSeedWalletFundingTransaction(tx, wallet, input);
+};
+
+const createSeedWalletFundingTransaction = async (
+  tx: Prisma.TransactionClient,
+  wallet: Awaited<ReturnType<typeof upsertSeedWallet>>,
+  input: {
+    ownerType: "USER" | "SHOP" | "PLATFORM";
+    ownerId: number;
+    actorUserId: number;
+    amount: number;
+    idempotencyKey: string;
+  }
+): Promise<void> => {
   const transaction = await tx.ledgerTransaction.create({
     data: {
       transactionNo: createSeedLedgerTransactionNo(input),
@@ -2264,11 +2802,23 @@ const upsertSeedWalletFunding = async (
   });
 };
 
+const createSeedWalletTopUpIdempotencyKey = (
+  input: { idempotencyKey: string },
+  wallet: Awaited<ReturnType<typeof upsertSeedWallet>>,
+  topUpAmount: number
+): string =>
+  `${input.idempotencyKey}:top-up:${wallet.availableBalance}:${wallet.frozenBalance}:${topUpAmount}:${wallet.updatedAt.getTime()}`;
+
 const createSeedLedgerTransactionNo = (input: {
   ownerType: string;
   ownerId: number;
   amount: number;
-}): string => `LTSEED${input.ownerType}${input.ownerId}${input.amount}`;
+  idempotencyKey: string;
+}): string => {
+  const digest = createHash("sha1").update(input.idempotencyKey).digest("hex").slice(0, 12).toUpperCase();
+
+  return `LTSEED${digest}${Math.abs(input.amount)}`.slice(0, 40);
+};
 
 const upsertSeedMedia = async (
   tx: Prisma.TransactionClient,

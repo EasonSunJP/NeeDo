@@ -11,6 +11,7 @@ import {
   CUSTOMER_REQUEST_WALLET_SEED_NDP,
   DEFAULT_REQUEST_DISPATCH_FEE_NDP,
   buildSeedUserUpdateData,
+  getRequestDispatchWalletTopUpAmount,
   getRequestDispatchWalletSeedAmount,
   getAdminSeedConfig,
   getTestUserSeedPassword,
@@ -127,6 +128,13 @@ describe("user management seed contract", () => {
     );
     expect(walletSeedAmountByEmail.get("merchant@example.com")).toBe(0);
     expect(walletSeedAmountByEmail.get("technician@example.com")).toBe(0);
+  });
+
+  it("tops up repeat seed wallets back to the Request smoke minimum", () => {
+    expect(getRequestDispatchWalletTopUpAmount(0)).toBe(CUSTOMER_REQUEST_WALLET_SEED_NDP);
+    expect(getRequestDispatchWalletTopUpAmount(500)).toBe(500);
+    expect(getRequestDispatchWalletTopUpAmount(CUSTOMER_REQUEST_WALLET_SEED_NDP)).toBe(0);
+    expect(getRequestDispatchWalletTopUpAmount(CUSTOMER_REQUEST_WALLET_SEED_NDP + 100)).toBe(0);
   });
 
   it("uses TEST_USER_DEFAULT_PASSWORD for test accounts and only falls back locally", () => {
