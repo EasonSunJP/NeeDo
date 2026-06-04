@@ -85,6 +85,7 @@ export type AvailabilityQuery = {
 export type CreateBookingInput = {
   fulfillmentMode: FulfillmentMode;
   note?: string;
+  orderType?: "booking" | "request";
   scheduleSlotId: number;
 } & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
 
@@ -142,7 +143,7 @@ export const bookingApi = {
     return httpClient.request<BookingOrder>("/bookings", {
       body: {
         ...input,
-        orderType: "booking"
+        orderType: input.orderType ?? "booking"
       }
     });
   },

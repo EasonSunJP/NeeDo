@@ -290,6 +290,12 @@ Step 12E 不新建 Request 大厅、调度大厅、退款状态机或前端入�
 
 本步不新增 migration，因为 `c_request_fee_hold_ndp` 与 `c_request_fee_actual_ndp` 已在 `order_financials` 中存在。
 
+正式验收脚本：
+
+- `cd backend && ENV_FILE=.env.dev npm run check:finance-request-flow -- --base-url http://127.0.0.1:3000/api/v1`
+
+该脚本使用真实 `/api/v1`、真实登录账号、真实 `ScheduleSlot` 和真实 `Wallet` 数据，连续验证一单 Request 完单扣除和一单 Request 取消释放。输出只包含订单 ID、状态、金额断言和失败原因，不打印 access token、refresh token、密码或敏感字段。
+
 ## 数据来源
 
 本次读取正式表：
@@ -352,6 +358,7 @@ Step 12E 不新建 Request 大厅、调度大厅、退款状态机或前端入�
 - `src/pages/auth/AdminLoginPage.tsx`
 - `src/auth/AuthProvider.tsx`
 - `src/api/auth.ts`
+- `src/features/booking/api.ts`
 
 ## 边界
 
