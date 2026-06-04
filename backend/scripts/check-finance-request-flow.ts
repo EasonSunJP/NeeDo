@@ -101,6 +101,15 @@ const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
 const joinUrl = (baseUrl: string, path: string): string =>
   `${trimTrailingSlash(baseUrl)}${path.startsWith("/") ? path : `/${path}`}`;
 
+const formatRequestFailure = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : "unknown error";
+  const cause =
+    error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+  const causeMessage = cause instanceof Error ? ` (${cause.message})` : "";
+
+  return `${message}${causeMessage}`;
+};
+
 const assertEqual = (actual: number | string | undefined, expected: number | string, label: string): void => {
   if (actual !== expected) {
     throw new Error(`${label} expected ${expected}, got ${String(actual)}`);
@@ -293,14 +302,21 @@ export const createFetchFinanceRequestFlowApi = (baseUrl: string): FinanceReques
     path: string,
     options: { body?: unknown; method?: string; token?: string } = {}
   ): Promise<T> => {
-    const response = await fetch(joinUrl(baseUrl, path), {
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      headers: {
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
-      },
-      method: options.method ?? "GET"
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(joinUrl(baseUrl, path), {
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        headers: {
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+        },
+        method: options.method ?? "GET"
+      });
+    } catch (error) {
+      throw new Error(`${path} request failed: ${formatRequestFailure(error)}`);
+    }
+
     const payload = (await response.json()) as ApiEnvelope<T>;
 
     if (!response.ok || payload.code !== 0 || payload.data === undefined) {

@@ -1,4 +1,5 @@
 import {
+  createFetchFinanceRequestFlowApi,
   parseFinanceRequestFlowArgs,
   runFinanceRequestFlow,
   type FinanceRequestFlowApi,
@@ -135,6 +136,12 @@ const createDatabase = (): MutableFinanceRequestFlowDatabase => {
 };
 
 describe("check-finance-request-flow", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   it("parses base-url and env-file arguments without leaking secrets", () => {
     expect(
       parseFinanceRequestFlowArgs([
@@ -147,6 +154,22 @@ describe("check-finance-request-flow", () => {
       baseUrl: "http://127.0.0.1:3000/api/v1",
       envFile: ".env.dev"
     });
+  });
+
+  it("reports sanitized fetch failures with the endpoint and cause", async () => {
+    const cause = Object.assign(new Error("connect EPERM 127.0.0.1:3000"), {
+      code: "EPERM"
+    });
+    global.fetch = jest.fn(async () => {
+      throw new TypeError("fetch failed", { cause });
+    }) as never;
+
+    await expect(
+      createFetchFinanceRequestFlowApi("http://127.0.0.1:3000/api/v1").login(
+        "customer@example.com",
+        testPassword
+      )
+    ).rejects.toThrow("/auth/login request failed: fetch failed (connect EPERM 127.0.0.1:3000)");
   });
 
   it("runs complete and cancellation Request dispatch-fee smoke flows", async () => {

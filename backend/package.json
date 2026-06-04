@@ -12,7 +12,7 @@
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" \"prisma/**/*.ts\" \"scripts/**/*.ts\"",
     "test": "jest --runInBand",
-    "check:finance-request-flow": "tsx scripts/check-finance-request-flow.ts",
+    "check:finance-request-flow": "node --import tsx scripts/check-finance-request-flow.ts",
     "check:test-login": "tsx scripts/check-test-login.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
