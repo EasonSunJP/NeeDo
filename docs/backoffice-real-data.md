@@ -337,6 +337,15 @@ Step 12E 不新建 Request 大厅、调度大厅、退款状态机或前端入�
 
 - `GET /api/v1/ready` 在数据库连通后会校验 Step 12 财务和 payroll 必需表列；如果缺少上述 migration 中的关键列，返回 `not_ready`，避免正式财务接口在运行时因 schema drift 变成 500。
 
+## 正式 Seed 演示数据
+
+`backend/prisma/seed.ts` 会补齐一组正式 finance/payroll 演示闭环数据，供本地和静态上线前的真实 API smoke 使用：
+
+- `SEED-FINANCE-0001`：一单已完成 Booking，绑定正式 `BookingOrder`、`OrderFinancial` 和已确认的线下服务收入。
+- 商户/运营财务结算列表可读取该订单的 GMV、B 端 NDP 平台费、用户返点成本和 Money Timeline。
+- 商户、技师、运营 payroll 列表可读取一组 `PayRun`、`Payslip`、`PayslipLine` 和 `PayoutRecord`，并可导出 CSV。
+- 该 seed 不新增 migration，不新增 mock API，也不开放 Request 前端入口；它只让正式数据库在验收时具备非空的财务/工资单样例。
+
 ## 前端接入文件
 
 - `src/api/backofficeRealData.ts`

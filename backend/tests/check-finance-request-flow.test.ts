@@ -87,6 +87,7 @@ const createApi = (database: MutableFinanceRequestFlowDatabase): jest.Mocked<Fin
       });
       return { id, status: "confirmed" };
     }),
+    startOrder: jest.fn(async (_token, id) => ({ id, status: "inService" })),
     completeOrder: jest.fn(async (_token, id) => {
       database.setUserWallet(5, { availableBalance: 500, frozenBalance: 0 });
       details.set(id, {
@@ -201,8 +202,38 @@ describe("check-finance-request-flow", () => {
       "customer-token",
       expect.objectContaining({ orderType: "request", scheduleSlotId: 12, serviceId: 21 })
     );
+    expect(api.startOrder).toHaveBeenCalledWith("merchant-token", 101);
     expect(logs.join("\n")).toContain("completed request order 101");
     expect(logs.join("\n")).toContain("cancelled request order 102");
+  });
+
+  it("uses technician service ids when the selected smoke slots are technician-pricing slots", async () => {
+    const database = createDatabase();
+    const api = createApi(database);
+    database.findAvailableSeedSlots.mockResolvedValueOnce([
+      { id: 11, technicianServiceId: 41, startsAt: "2026-05-28T01:00:00.000Z" },
+      { id: 12, technicianServiceId: 42, startsAt: "2026-05-28T02:30:00.000Z" }
+    ] as never);
+
+    await runFinanceRequestFlow({
+      api,
+      database,
+      log: jest.fn(),
+      password: testPassword
+    });
+
+    expect(api.createRequestBooking).toHaveBeenNthCalledWith(
+      1,
+      "customer-token",
+      expect.objectContaining({ scheduleSlotId: 11, technicianServiceId: 41 })
+    );
+    expect(api.createRequestBooking.mock.calls[0][1]).not.toHaveProperty("serviceId");
+    expect(api.createRequestBooking).toHaveBeenNthCalledWith(
+      2,
+      "customer-token",
+      expect.objectContaining({ scheduleSlotId: 12, technicianServiceId: 42 })
+    );
+    expect(api.createRequestBooking.mock.calls[1][1]).not.toHaveProperty("serviceId");
   });
 
   it("stops before creating orders when the customer wallet cannot cover both smoke flows", async () => {

@@ -20,7 +20,8 @@ export interface FinanceRequestFlowAccount {
 export interface FinanceRequestFlowBookingInput {
   orderType: "request";
   scheduleSlotId: number;
-  serviceId: number;
+  serviceId?: number;
+  technicianServiceId?: number;
   fulfillmentMode: "store";
   note: string;
 }
@@ -38,7 +39,8 @@ export interface FinanceRequestFlowWallet {
 
 export interface FinanceRequestFlowSlot {
   id: number;
-  serviceId: number;
+  serviceId?: number | null;
+  technicianServiceId?: number | null;
   startsAt: string;
 }
 
@@ -63,6 +65,7 @@ export interface FinanceRequestFlowApi {
     input: FinanceRequestFlowBookingInput
   ): Promise<FinanceRequestFlowOrder>;
   confirmOrder(token: string, id: number): Promise<FinanceRequestFlowOrder>;
+  startOrder(token: string, id: number): Promise<FinanceRequestFlowOrder>;
   completeOrder(token: string, id: number): Promise<FinanceRequestFlowOrder>;
   cancelOrder(token: string, id: number, reason: string): Promise<FinanceRequestFlowOrder>;
   getMerchantOrderFinance(token: string, id: number): Promise<FinanceRequestFlowOrderFinance>;
@@ -139,6 +142,33 @@ const assertWallet = (
   return wallet;
 };
 
+const createRequestBookingInput = (
+  slot: FinanceRequestFlowSlot,
+  note: string
+): FinanceRequestFlowBookingInput => {
+  if (slot.technicianServiceId) {
+    return {
+      orderType: "request",
+      scheduleSlotId: slot.id,
+      technicianServiceId: slot.technicianServiceId,
+      fulfillmentMode: "store",
+      note
+    };
+  }
+
+  if (slot.serviceId) {
+    return {
+      orderType: "request",
+      scheduleSlotId: slot.id,
+      serviceId: slot.serviceId,
+      fulfillmentMode: "store",
+      note
+    };
+  }
+
+  throw new Error(`seeded ScheduleSlot ${slot.id} has no bookable service id`);
+};
+
 export const parseFinanceRequestFlowArgs = (args: string[]): FinanceRequestFlowCliOptions => {
   const options: FinanceRequestFlowCliOptions = {
     baseUrl: trimTrailingSlash(process.env.API_BASE_URL || "http://127.0.0.1:3000/api/v1"),
@@ -193,11 +223,10 @@ export const runFinanceRequestFlow = async (
   log(`customer wallet before flow: available=${initialWallet.availableBalance}, frozen=${initialWallet.frozenBalance}`);
 
   const completedOrder = await input.api.createRequestBooking(customerToken, {
-    orderType: "request",
-    scheduleSlotId: slots[0].id,
-    serviceId: slots[0].serviceId,
-    fulfillmentMode: "store",
-    note: "Step 12E request finance completed smoke flow"
+    ...createRequestBookingInput(
+      slots[0],
+      "Step 12E request finance completed smoke flow"
+    )
   });
   assertEqual(completedOrder.orderType, "request", "created completed-flow orderType");
 
@@ -221,6 +250,7 @@ export const runFinanceRequestFlow = async (
     "completed-flow request fee hold"
   );
 
+  await input.api.startOrder(merchantToken, completedOrder.id);
   await input.api.completeOrder(merchantToken, completedOrder.id);
   const afterCompletedWallet = assertWallet(
     await input.database.getUserWallet(customer.id),
@@ -250,11 +280,10 @@ export const runFinanceRequestFlow = async (
   );
 
   const cancelledOrder = await input.api.createRequestBooking(customerToken, {
-    orderType: "request",
-    scheduleSlotId: slots[1].id,
-    serviceId: slots[1].serviceId,
-    fulfillmentMode: "store",
-    note: "Step 12E request finance cancellation smoke flow"
+    ...createRequestBookingInput(
+      slots[1],
+      "Step 12E request finance cancellation smoke flow"
+    )
   });
   assertEqual(cancelledOrder.orderType, "request", "created cancellation-flow orderType");
 
@@ -348,6 +377,8 @@ export const createFetchFinanceRequestFlowApi = (baseUrl: string): FinanceReques
       }),
     confirmOrder: (token, id) =>
       request<FinanceRequestFlowOrder>(`/orders/${id}/confirm`, { method: "POST", token }),
+    startOrder: (token, id) =>
+      request<FinanceRequestFlowOrder>(`/orders/${id}/start`, { method: "POST", token }),
     completeOrder: (token, id) =>
       request<FinanceRequestFlowOrder>(`/orders/${id}/complete`, { method: "POST", token }),
     cancelOrder: (token, id, reason) =>
@@ -372,6 +403,7 @@ export const createPrismaFinanceRequestFlowDatabase = (
       select: {
         id: true,
         serviceId: true,
+        technicianServiceId: true,
         startsAt: true,
         capacity: true,
         bookedCount: true,
@@ -381,9 +413,17 @@ export const createPrismaFinanceRequestFlowDatabase = (
             status: true
           }
         },
+        technicianService: {
+          select: {
+            deletedAt: true,
+            isActive: true,
+            isBookable: true
+          }
+        },
         shop: {
           select: {
             deletedAt: true,
+            pricingMode: true,
             status: true
           }
         }
@@ -391,25 +431,43 @@ export const createPrismaFinanceRequestFlowDatabase = (
       take: 20,
       where: {
         deletedAt: null,
-        serviceId: { not: null },
+        OR: [{ serviceId: { not: null } }, { technicianServiceId: { not: null } }],
         status: "AVAILABLE"
       }
     });
 
     return slots
       .filter(
-        (slot) =>
-          slot.serviceId !== null &&
-          slot.bookedCount < slot.capacity &&
-          slot.service?.deletedAt === null &&
-          slot.service.status === "published" &&
-          slot.shop.deletedAt === null &&
-          slot.shop.status === "published"
+        (slot) => {
+          if (slot.bookedCount >= slot.capacity) {
+            return false;
+          }
+          if (slot.shop.deletedAt !== null || slot.shop.status !== "published") {
+            return false;
+          }
+
+          if (slot.shop.pricingMode === "TECHNICIAN") {
+            return (
+              slot.technicianServiceId !== null &&
+              slot.technicianService?.deletedAt === null &&
+              slot.technicianService.isActive &&
+              slot.technicianService.isBookable
+            );
+          }
+
+          return (
+            slot.serviceId !== null &&
+            slot.service?.deletedAt === null &&
+            slot.service.status === "published"
+          );
+        }
       )
       .slice(0, 2)
       .map((slot) => ({
         id: slot.id,
-        serviceId: slot.serviceId as number,
+        serviceId: slot.shop.pricingMode === "TECHNICIAN" ? null : slot.serviceId,
+        technicianServiceId:
+          slot.shop.pricingMode === "TECHNICIAN" ? slot.technicianServiceId : null,
         startsAt: slot.startsAt.toISOString()
       }));
   },
