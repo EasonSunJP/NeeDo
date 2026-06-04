@@ -107,12 +107,43 @@ describe("TechnicianShowcaseCard engagement metrics", () => {
     expect(cardSource).toContain('icon="share"');
     expect(cardSource).toContain('metricLayout = "cluster"');
     expect(cardSource).toContain('metricLayout === "split"');
-    expect(cardSource).toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
+    expect(cardSource).toContain("absolute left-2 top-2 z-20 flex items-start justify-between gap-1");
+    expect(cardSource).toContain('metricLayout === "split" ? "right-[5px]" : "right-2"');
     expect(cardSource).toContain('className="flex shrink-0 items-start -space-x-[4px]"');
-    expect(cardSource).toContain("absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]");
+    expect(cardSource).not.toContain("absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]");
     expect(cardSource).toContain('size="cluster"');
     expect(cardSource).not.toContain("WebkitTextStroke");
     expect(cardSource).not.toContain("ShareNetworkIcon");
+  });
+
+  it("renders default favorite and share actions in the top-right corner", () => {
+    const technician: Technician = {
+      id: "technician-card-right-actions",
+      systemId: "B-910",
+      name: "Right Action Technician",
+      storeId: "store-1",
+      role: "therapist",
+      status: "available",
+      rating: 4.7,
+      orderCount: 154,
+      income: 0,
+      skills: ["Clean"],
+      serviceAreas: ["Tokyo"],
+      acceptRate: 98,
+      cancelRate: 0,
+      reviewCount: 32,
+      languages: ["ja"],
+      avatar: "/images/generated/profiles/profile-11.jpg"
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(TechnicianShowcaseCard, { language: "zh", rankIndex: 0, technician }))
+    );
+
+    expect(markup).toContain("absolute left-2 top-2 z-20 flex items-start justify-between gap-1 right-2");
+    expect(markup).toContain("收藏 154");
+    expect(markup).toContain("分享 0");
+    expect(markup).not.toContain("max-w-[calc(100%-16px)]");
   });
 
   it("matches the mini-card top-right metric action size and keeps counts below the circles", () => {

@@ -259,58 +259,64 @@ const createFixture = async () => {
       page: 1,
       page_size: 20
     })),
-    createBooking: jest.fn(async (input: { customerUserId: number; note?: string | null }) => {
-      if (slot.bookedCount >= slot.capacity || slot.status !== "available" || order) {
-        return null;
+    createBooking: jest.fn(
+      async (input: {
+        customerUserId: number;
+        orderType?: "booking" | "request";
+        note?: string | null;
+      }) => {
+        if (slot.bookedCount >= slot.capacity || slot.status !== "available" || order) {
+          return null;
+        }
+
+        slot.bookedCount += 1;
+        slot.status = "booked";
+        statusHistory.push({
+          id: 1,
+          orderId: 1,
+          fromStatus: null,
+          toStatus: "pending",
+          actorUserId: input.customerUserId,
+          reason: null,
+          createdAt: now
+        });
+        order = {
+          id: 1,
+          orderNo: "ND202605260001",
+          orderType: input.orderType ?? "booking",
+          status: "pending",
+          paymentStatus: "unpaid",
+          customerUserId: input.customerUserId,
+          serviceId: slot.serviceId,
+          technicianServiceId: slot.technicianServiceId,
+          shopId: slot.shopId,
+          technicianProfileId: slot.technicianProfileId,
+          scheduleSlotId: slot.id,
+          fulfillmentMode: "store",
+          serviceName: slot.serviceName,
+          pricingModeSnapshot: "merchant",
+          serviceOwnerType: "shop",
+          serviceOwnerId: slot.serviceId,
+          serviceNameSnapshot: slot.serviceName,
+          servicePriceSnapshot: slot.priceAmount,
+          serviceDurationSnapshot: slot.durationMinutes,
+          serviceSnapshot: null,
+          shopName: slot.shopName,
+          technicianName: slot.technicianName,
+          priceAmount: slot.priceAmount,
+          currency: slot.currency,
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+          note: input.note ?? null,
+          cancelReason: null,
+          createdAt: now,
+          updatedAt: now,
+          statusHistory
+        };
+
+        return order;
       }
-
-      slot.bookedCount += 1;
-      slot.status = "booked";
-      statusHistory.push({
-        id: 1,
-        orderId: 1,
-        fromStatus: null,
-        toStatus: "pending",
-        actorUserId: input.customerUserId,
-        reason: null,
-        createdAt: now
-      });
-      order = {
-        id: 1,
-        orderNo: "ND202605260001",
-        orderType: "booking",
-        status: "pending",
-        paymentStatus: "unpaid",
-        customerUserId: input.customerUserId,
-        serviceId: slot.serviceId,
-        technicianServiceId: slot.technicianServiceId,
-        shopId: slot.shopId,
-        technicianProfileId: slot.technicianProfileId,
-        scheduleSlotId: slot.id,
-        fulfillmentMode: "store",
-        serviceName: slot.serviceName,
-        pricingModeSnapshot: "merchant",
-        serviceOwnerType: "shop",
-        serviceOwnerId: slot.serviceId,
-        serviceNameSnapshot: slot.serviceName,
-        servicePriceSnapshot: slot.priceAmount,
-        serviceDurationSnapshot: slot.durationMinutes,
-        serviceSnapshot: null,
-        shopName: slot.shopName,
-        technicianName: slot.technicianName,
-        priceAmount: slot.priceAmount,
-        currency: slot.currency,
-        startsAt: slot.startsAt,
-        endsAt: slot.endsAt,
-        note: input.note ?? null,
-        cancelReason: null,
-        createdAt: now,
-        updatedAt: now,
-        statusHistory
-      };
-
-      return order;
-    }),
+    ),
     listOrders: jest.fn(async () => ({
       list: order ? [order] : [],
       total: order ? 1 : 0,

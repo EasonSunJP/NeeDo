@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { authApi } from "../../api/auth";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
+import { isFrontendBypassSession } from "../../auth/rbac";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -124,6 +125,10 @@ const defaultPublicTestLoginEmail: Partial<Record<PortalScope, string>> = {
   business: "affiliate@example.com"
 };
 
+const formalFrontendTestLoginEmail: Partial<Record<PortalScope, string>> = {
+  technician: "technician@example.com"
+};
+
 function getPortalTestLoginCredentials(env: TestCredentialEnv, portal: PortalScope) {
   if (portal === "admin") {
     return {
@@ -166,12 +171,23 @@ function getPortalTestLoginCredentials(env: TestCredentialEnv, portal: PortalSco
   };
 }
 
-export function resolveTestLoginCredentials(env: TestCredentialEnv, portal: PortalScope) {
+export function resolveTestLoginCredentials(
+  env: TestCredentialEnv,
+  portal: PortalScope,
+  options: { preferFormalAccount?: boolean } = {}
+) {
   const portalCredentials = getPortalTestLoginCredentials(env, portal);
   const sharedEmail = env.VITE_TEST_LOGIN_EMAIL?.trim();
   const portalEmail = portalCredentials.email?.trim();
   const defaultPortalEmail = defaultPublicTestLoginEmail[portal];
-  const email = portal === "user"
+  const formalPortalEmail = formalFrontendTestLoginEmail[portal];
+  const shouldUseFormalDefault =
+    options.preferFormalAccount &&
+    Boolean(formalPortalEmail) &&
+    (!portalEmail || portalEmail === sharedEmail || portalEmail === defaultPortalEmail || portalEmail === "admin");
+  const email = shouldUseFormalDefault
+    ? formalPortalEmail
+    : portal === "user"
     ? portalEmail || sharedEmail
     : !portalEmail || portalEmail === sharedEmail
       ? defaultPortalEmail
@@ -655,6 +671,13 @@ export function getPostLoginRoute(portal: PortalScope, redirectPath: string | nu
   return redirectRoute;
 }
 
+export function requiresFormalFrontendLogin(portal: PortalScope, redirectPath: string | null) {
+  const redirectRoute = normalizeRedirectRoute(redirectPath);
+  const pathname = redirectRoute?.split(/[?#]/)[0] || "";
+
+  return portal === "technician" && pathname.startsWith("/technician/payroll");
+}
+
 export function getPublicTestLoginPortal(portal: PortalScope): PortalScope {
   return portal;
 }
@@ -670,6 +693,7 @@ export function LoginPage() {
     hasRememberedPortalAuthorization,
     isAuthenticated,
     login,
+    loginWithFormalPassword,
     loginWithProvider,
     logout,
     session,
@@ -697,14 +721,19 @@ export function LoginPage() {
   const activePortalCopy = copy.portals[activePortal];
   const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
   const rememberCredentialsScope = useMemo(() => getFrontendRememberCredentialsScope(activePortal), [activePortal]);
+  const requiresFormalLogin = requiresFormalFrontendLogin(activePortal, redirectPath);
   const testCredentials = useMemo(
-    () => resolveTestLoginCredentials(import.meta.env as FrontendLoginEnv, activePortal),
-    [activePortal]
+    () =>
+      resolveTestLoginCredentials(import.meta.env as FrontendLoginEnv, activePortal, {
+        preferFormalAccount: requiresFormalLogin
+      }),
+    [activePortal, requiresFormalLogin]
   );
-  const shouldBypassFrontendLogin = isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);
+  const shouldBypassFrontendLogin = !requiresFormalLogin && isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);
   const canUseTestCredentialAction = Boolean(testCredentials || shouldBypassFrontendLogin);
   const hasRememberedActivePortal = hasRememberedPortalAuthorization(activePortal);
-  const hasActiveAccess = (isAuthenticated && canAccess(activePortal)) || hasRememberedActivePortal;
+  const hasBlockedFormalFrontendBypass = requiresFormalLogin && isFrontendBypassSession(session);
+  const hasActiveAccess = (isAuthenticated && canAccess(activePortal) && !hasBlockedFormalFrontendBypass) || hasRememberedActivePortal;
   const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
   const error = feedback?.tone === "error" ? feedbackMessage : "";
   const notice = feedback?.tone === "notice" ? feedbackMessage : "";
@@ -772,12 +801,12 @@ export function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (hasActiveAccess || panelMode !== "account") {
+    if (requiresFormalLogin || hasActiveAccess || panelMode !== "account") {
       return;
     }
 
     void loadCaptcha();
-  }, [hasActiveAccess, loadCaptcha, panelMode]);
+  }, [hasActiveAccess, loadCaptcha, panelMode, requiresFormalLogin]);
 
   const enterPortal = useCallback(async () => {
     if (navigationInFlightRef.current) {
@@ -859,6 +888,17 @@ export function LoginPage() {
     setIsLoginPending(true);
 
     try {
+      if (requiresFormalLogin && testCredentials) {
+        const result = await loginWithFormalPassword(activePortal, testCredentials.email, testCredentials.password);
+        if (!result.ok) {
+          setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
+          return;
+        }
+
+        openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+        return;
+      }
+
       const result = await enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal));
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
@@ -869,7 +909,17 @@ export function LoginPage() {
     } finally {
       setIsLoginPending(false);
     }
-  }, [activePortal, canUseTestCredentialAction, copy, enterFrontendWithoutAuthentication, isLoginPending, redirectPath]);
+  }, [
+    activePortal,
+    canUseTestCredentialAction,
+    copy,
+    enterFrontendWithoutAuthentication,
+    isLoginPending,
+    loginWithFormalPassword,
+    redirectPath,
+    requiresFormalLogin,
+    testCredentials
+  ]);
 
   useEffect(() => {
     if (!shouldBypassFrontendLogin || hasActiveAccess || isLoginPending) {
@@ -891,6 +941,26 @@ export function LoginPage() {
       setFeedback({ key: "requiredError", tone: "error", type: "localized" });
       return;
     }
+    const normalizedUsername = username.trim();
+    const normalizedPassword = password.trim();
+
+    if (requiresFormalLogin) {
+      setIsLoginPending(true);
+
+      try {
+        const result = await loginWithFormalPassword(activePortal, normalizedUsername, normalizedPassword);
+        if (!result.ok) {
+          setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
+          return;
+        }
+
+        openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+      } finally {
+        setIsLoginPending(false);
+      }
+      return;
+    }
+
     const normalizedCaptchaCode = captchaCode.trim();
 
     if (!normalizedCaptchaCode) {
@@ -901,7 +971,7 @@ export function LoginPage() {
     setIsLoginPending(true);
 
     try {
-      const result = await login(activePortal, username, password, normalizedCaptchaCode);
+      const result = await login(activePortal, normalizedUsername, normalizedPassword, normalizedCaptchaCode);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
         void loadCaptcha();
@@ -1117,7 +1187,7 @@ export function LoginPage() {
                     {copy.testCredentialFill}
                   </button>
                 ) : null}
-                {captchaControl}
+                {requiresFormalLogin ? null : captchaControl}
                 <button
                   className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
                   disabled={isLoginPending}

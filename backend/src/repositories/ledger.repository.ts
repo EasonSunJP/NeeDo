@@ -340,6 +340,12 @@ export class LedgerRepository implements LedgerRepositoryPort {
       ...(input.bPlatformFeeActualNdp !== undefined
         ? { bPlatformFeeActualNdp: input.bPlatformFeeActualNdp }
         : {}),
+      ...(input.cRequestFeeHoldNdp !== undefined
+        ? { cRequestFeeHoldNdp: input.cRequestFeeHoldNdp }
+        : {}),
+      ...(input.cRequestFeeActualNdp !== undefined
+        ? { cRequestFeeActualNdp: input.cRequestFeeActualNdp }
+        : {}),
       ...(input.userRewardNdp !== undefined ? { userRewardNdp: input.userRewardNdp } : {}),
       ...(input.penaltyNdp !== undefined ? { penaltyNdp: input.penaltyNdp } : {}),
       ...(input.compensationToUserNdp !== undefined

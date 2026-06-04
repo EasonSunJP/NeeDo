@@ -2351,6 +2351,7 @@ function CalendarEventCard({
         "focus-ring h-full w-full overflow-hidden rounded-[16px] border px-3 py-2.5 text-left shadow-[0_12px_24px_color-mix(in_srgb,var(--calendar-accent)_12%,transparent)] transition active:scale-[0.99]",
         "border-[color:color-mix(in_srgb,var(--calendar-accent)_38%,transparent)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--calendar-soft)_88%,var(--client-elevated)),color-mix(in_srgb,var(--client-elevated)_88%,transparent))]"
       )}
+      data-calendar-event-card="true"
       onClick={() => onOpen(event)}
       style={getEventStyle(event)}
       type="button"
@@ -2971,6 +2972,7 @@ function DayTimeline({
           {hasParallelCalendars && activeCalendarLanes ? (
             <div
               className="grid border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)]"
+              data-calendar-lane-header="true"
               ref={timelineHeaderRef}
               style={{ gridTemplateColumns: `${timelineTimeColumnWidth}px minmax(0, 1fr)` }}
             >
@@ -2995,11 +2997,11 @@ function DayTimeline({
                   );
 
                   return calendar.detailPath ? (
-                    <Link aria-label={`查看${calendar.label}详情`} className={laneClassName} key={calendar.id} to={calendar.detailPath}>
+                    <Link aria-label={`查看${calendar.label}详情`} className={laneClassName} data-calendar-lane-heading="true" key={calendar.id} to={calendar.detailPath}>
                       {content}
                     </Link>
                   ) : (
-                    <div aria-disabled="true" aria-label={calendar.label} className={laneClassName} key={calendar.id} role="button">
+                    <div aria-disabled="true" aria-label={calendar.label} className={laneClassName} data-calendar-lane-heading="true" key={calendar.id} role="button">
                       {content}
                     </div>
                   );
@@ -3017,6 +3019,7 @@ function DayTimeline({
                 return (
                   <div
                     className="flex items-start justify-center border-b border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] px-1 pt-2 last:border-b-0"
+                    data-calendar-time-row="true"
                     key={hour}
                     style={{ height: hourRowHeight }}
                   >
@@ -3030,10 +3033,11 @@ function DayTimeline({
                 );
               })}
             </div>
-            <div className="relative touch-pan-y" onClick={handleCanvasClick} onPointerDown={handleCanvasPointerDown} ref={canvasRef} style={{ height: totalHeight }}>
+            <div className="relative touch-pan-y" data-calendar-time-canvas="true" onClick={handleCanvasClick} onPointerDown={handleCanvasPointerDown} ref={canvasRef} style={{ height: totalHeight }}>
               {Array.from({ length: dayEndHour - dayStartHour }, (_, index) => (
                 <div
                   className="absolute inset-x-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_46%,transparent)] transition hover:bg-[color:color-mix(in_srgb,var(--client-primary-soft)_38%,transparent)]"
+                  data-calendar-hour-line="true"
                   key={index}
                   style={{ top: index * hourRowHeight, height: hourRowHeight }}
                 />
@@ -3043,6 +3047,7 @@ function DayTimeline({
                 ? activeCalendarLanes.map((calendar, index) => (
                     <div
                       className="pointer-events-none absolute bottom-0 top-0 border-l border-[color:color-mix(in_srgb,var(--client-line)_38%,transparent)]"
+                      data-calendar-lane-line="true"
                       key={`line-${calendar.id}`}
                       style={{ left: `calc(${index * parallelColumnWidth}%)` }}
                     />

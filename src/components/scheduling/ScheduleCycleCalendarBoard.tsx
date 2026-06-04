@@ -900,7 +900,7 @@ export function ScheduleCycleCalendarBoard({
 
   return (
     <UnifiedCalendarSurface
-      className={className}
+      className={cn(className, surface === "desktop" && "merchant-admin-schedule-parity")}
       data-schedule-cycle-calendar-board="true"
     >
       <div className="flex items-center justify-between gap-2">

@@ -812,10 +812,11 @@ function RequirePortalAuth({
     portal === "admin" ||
     (portal === "merchant" && location.pathname.startsWith("/merchant-admin")) ||
     (portal === "business" && isBusinessAdminPath(location.pathname));
-  const requiresDirectPortalAccess = isBackendPortalRoute || portal === "merchant" || portal === "technician" || portal === "business";
+  const isTechnicianPayrollRoute = portal === "technician" && location.pathname.startsWith("/technician/payroll");
+  const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;
   const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));
-  const canRestoreRememberedPortal = !isBackendPortalRoute && hasRememberedPortalAuthorization(portal);
-  const hasBlockedFrontendBypass = isBackendPortalRoute && isFrontendBypassSession(session);
+  const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);
+  const hasBlockedFrontendBypass = requiresDirectPortalAccess && isFrontendBypassSession(session);
 
   useEffect(() => {
     if (isRestoring || hasAccess || !canRestoreRememberedPortal || isPortalRestorePending) {

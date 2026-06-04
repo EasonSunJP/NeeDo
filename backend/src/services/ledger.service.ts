@@ -127,6 +127,8 @@ export interface OrderFinancialUpsertInput {
   unknownOrUnreportedServiceAmountJpy?: number;
   bPlatformFeeHoldNdp?: number;
   bPlatformFeeActualNdp?: number;
+  cRequestFeeHoldNdp?: number;
+  cRequestFeeActualNdp?: number;
   userRewardNdp?: number;
   penaltyNdp?: number;
   compensationToUserNdp?: number;
@@ -325,12 +327,14 @@ export class LedgerService implements BookingLedgerSettlementPort {
       }
 
       this.assertFinanceMutationRepository(repository);
-      const fee = await this.calculateFee("b_platform_fee", "hold", input, context);
+      const feeType = this.acceptanceFeeType(input);
+      const fee = await this.calculateFee(feeType, "hold", input, context);
+      const holdOwner = this.acceptanceHoldOwner(input, feeType);
       const holdAmount = fee.holdAmountNdp;
 
       const wallet = await repository.getOrCreateWallet({
-        ownerType: "shop",
-        ownerId: input.shopId,
+        ownerType: holdOwner.ownerType,
+        ownerId: holdOwner.ownerId,
         currency: CURRENCY
       });
 
@@ -353,10 +357,10 @@ export class LedgerService implements BookingLedgerSettlementPort {
       }
 
       await repository.createWalletHold!({
-        ownerType: "shop",
-        ownerId: input.shopId,
+        ownerType: holdOwner.ownerType,
+        ownerId: holdOwner.ownerId,
         bookingOrderId: input.bookingOrderId,
-        feeType: "b_platform_fee",
+        feeType,
         holdAmountNdp: holdAmount,
         status: "active",
         idempotencyKey,
@@ -364,14 +368,17 @@ export class LedgerService implements BookingLedgerSettlementPort {
         metadata: this.feeMetadata(fee)
       });
       await this.upsertOrderFinancial(repository, input, {
-        bPlatformFeeHoldNdp: holdAmount,
+        ...this.holdFinancialFields(feeType, holdAmount),
         campaignDiscountNdp: fee.campaignDiscountNdp,
         platformFeePayerType: fee.payerType,
         platformFeePayerId: fee.payerId,
         appliedFeeRuleIds: fee.appliedRuleIds,
         settlementStatus: holdAmount > 0 ? "holding" : "pending",
         timelineEvent: {
-          action: "booking_accept_hold",
+          action:
+            feeType === "c_request_dispatch_fee"
+              ? "request_accept_dispatch_fee_hold"
+              : "booking_accept_hold",
           amountNdp: holdAmount,
           fee
         }
@@ -388,7 +395,7 @@ export class LedgerService implements BookingLedgerSettlementPort {
         referenceId: input.bookingOrderId,
         actorUserId: input.actorUserId,
         amount: holdAmount,
-        metadata: { shopId: input.shopId, fee }
+        metadata: { shopId: input.shopId, holdOwner, fee }
       });
       await repository.createLedgerEntry({
         transactionId: transaction.id,
@@ -399,7 +406,10 @@ export class LedgerService implements BookingLedgerSettlementPort {
         frozenDelta: holdAmount,
         availableBalanceAfter: updatedWallet.availableBalance,
         frozenBalanceAfter: updatedWallet.frozenBalance,
-        reason: "booking_accept_freeze"
+        reason:
+          feeType === "c_request_dispatch_fee"
+            ? "request_accept_dispatch_fee_freeze"
+            : "booking_accept_freeze"
       });
       await this.recordFinanceAndAudit(repository, transaction, {
         action: "ledger.booking_accept.freeze",
@@ -423,7 +433,7 @@ export class LedgerService implements BookingLedgerSettlementPort {
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
-      const hold = await this.requireBookingHold(repository, input);
+      const hold = await this.requireAcceptanceHold(repository, input);
       const releaseAmount = this.remainingHoldAmount(hold);
 
       if (releaseAmount <= 0) {
@@ -444,8 +454,8 @@ export class LedgerService implements BookingLedgerSettlementPort {
       }
 
       const wallet = await repository.getOrCreateWallet({
-        ownerType: "shop",
-        ownerId: input.shopId,
+        ownerType: hold.ownerType,
+        ownerId: hold.ownerId,
         currency: CURRENCY
       });
 
@@ -482,7 +492,10 @@ export class LedgerService implements BookingLedgerSettlementPort {
         frozenDelta: -releaseAmount,
         availableBalanceAfter: updatedWallet.availableBalance,
         frozenBalanceAfter: updatedWallet.frozenBalance,
-        reason: "booking_cancel_unfreeze"
+        reason:
+          hold.feeType === "c_request_dispatch_fee"
+            ? "request_cancel_dispatch_fee_unfreeze"
+            : "booking_cancel_unfreeze"
       });
       await repository.updateWalletHold!({
         id: hold.id,
@@ -512,6 +525,10 @@ export class LedgerService implements BookingLedgerSettlementPort {
     input: BookingLedgerSettlementInput & { customerUserId: number },
     context: LedgerMutationContext = {}
   ): Promise<LedgerTransactionPayload | void> {
+    if (input.orderType === "request") {
+      return this.settleRequestCompletion(input, context);
+    }
+
     return this.repository.runInTransaction(async (repository) => {
       const idempotencyKey = `booking:${input.bookingOrderId}:complete:settlement`;
       const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
@@ -520,7 +537,7 @@ export class LedgerService implements BookingLedgerSettlementPort {
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
-      const hold = await this.requireBookingHold(repository, input);
+      const hold = await this.requireAcceptanceHold(repository, input);
       const fee = await this.calculateFee("b_platform_fee", "capture", input, context);
       const reward = await this.calculateFee("user_reward", "capture", input, context);
       const holdRemaining = this.remainingHoldAmount(hold);
@@ -674,10 +691,139 @@ export class LedgerService implements BookingLedgerSettlementPort {
     }, context.transactionClient);
   }
 
+  private settleRequestCompletion(
+    input: BookingLedgerSettlementInput & { customerUserId: number },
+    context: LedgerMutationContext
+  ): Promise<LedgerTransactionPayload | void> {
+    return this.repository.runInTransaction(async (repository) => {
+      const idempotencyKey = `booking:${input.bookingOrderId}:complete:settlement`;
+      const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
+
+      if (existing) {
+        return existing;
+      }
+      this.assertFinanceMutationRepository(repository);
+      const hold = await this.requireAcceptanceHold(repository, input);
+      const fee = await this.calculateFee("c_request_dispatch_fee", "capture", input, context);
+      const holdRemaining = this.remainingHoldAmount(hold);
+      const captureAmount = Math.min(fee.finalFeeNdp, holdRemaining);
+      const releaseAmount = Math.max(0, holdRemaining - captureAmount);
+      const transactionAmount = captureAmount + releaseAmount;
+
+      const customerWallet = await repository.getOrCreateWallet({
+        ownerType: "user",
+        ownerId: input.customerUserId,
+        currency: CURRENCY
+      });
+
+      if (customerWallet.frozenBalance < captureAmount + releaseAmount) {
+        throw this.insufficientFrozenError();
+      }
+
+      const updatedCustomerWallet =
+        captureAmount + releaseAmount > 0
+          ? await repository.applyWalletDelta({
+              walletId: customerWallet.id,
+              availableDelta: releaseAmount,
+              frozenDelta: -(captureAmount + releaseAmount),
+              requireFrozenAtLeast: captureAmount + releaseAmount
+            })
+          : customerWallet;
+
+      if (!updatedCustomerWallet) {
+        throw this.insufficientFrozenError();
+      }
+
+      await repository.updateWalletHold!({
+        id: hold.id,
+        capturedAmountNdp: hold.capturedAmountNdp + captureAmount,
+        releasedAmountNdp: hold.releasedAmountNdp + releaseAmount,
+        status: releaseAmount > 0 && captureAmount > 0 ? "partially_captured" : "captured",
+        capturedAt: new Date(),
+        releasedAt: releaseAmount > 0 ? new Date() : null,
+        metadata: {
+          holdMetadata: hold.metadata,
+          dispatchFee: this.feeMetadata(fee)
+        }
+      });
+      await this.upsertOrderFinancial(repository, input, {
+        cRequestFeeActualNdp: captureAmount,
+        campaignDiscountNdp: fee.campaignDiscountNdp,
+        releasedNdp: releaseAmount,
+        completedOrderOrdinalInPeriod: fee.completedOrderOrdinalInPeriod,
+        appliedFeeRuleIds: fee.appliedRuleIds,
+        settlementStatus: "settled",
+        timelineEvent: {
+          action: "request_complete_dispatch_fee_settlement",
+          requestFeeNdp: captureAmount,
+          releasedNdp: releaseAmount,
+          fee
+        }
+      });
+
+      if (transactionAmount === 0) {
+        return undefined;
+      }
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey,
+        type: "booking_complete_settlement",
+        referenceType: "booking_order",
+        referenceId: input.bookingOrderId,
+        actorUserId: input.actorUserId,
+        amount: transactionAmount,
+        metadata: {
+          shopId: input.shopId,
+          customerUserId: input.customerUserId,
+          requestFeeAmount: captureAmount,
+          customerReleaseAmount: releaseAmount,
+          fee
+        }
+      });
+      if (captureAmount > 0) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: customerWallet.id,
+          direction: "frozen_debit",
+          amount: captureAmount,
+          availableDelta: 0,
+          frozenDelta: -captureAmount,
+          availableBalanceAfter: updatedCustomerWallet.availableBalance,
+          frozenBalanceAfter: updatedCustomerWallet.frozenBalance,
+          reason: "request_complete_dispatch_fee_debit"
+        });
+      }
+      if (releaseAmount > 0) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: customerWallet.id,
+          direction: "unfreeze",
+          amount: releaseAmount,
+          availableDelta: releaseAmount,
+          frozenDelta: -releaseAmount,
+          availableBalanceAfter: updatedCustomerWallet.availableBalance,
+          frozenBalanceAfter: updatedCustomerWallet.frozenBalance,
+          reason: "request_complete_dispatch_fee_release"
+        });
+      }
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.request_complete.dispatch_fee_settlement",
+        expectedAmount: transactionAmount,
+        actualAmount: transactionAmount
+      });
+
+      return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
+    }, context.transactionClient);
+  }
+
   public compensateCustomerForMerchantCancellation(
     input: BookingLedgerSettlementInput & { customerUserId: number },
     context: LedgerMutationContext = {}
   ): Promise<LedgerTransactionPayload | void> {
+    if (input.orderType === "request") {
+      return this.releaseBookingHold(input, context);
+    }
+
     return this.repository.runInTransaction(async (repository) => {
       const idempotencyKey = `booking:${input.bookingOrderId}:merchant-cancel:compensation`;
       const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
@@ -686,7 +832,7 @@ export class LedgerService implements BookingLedgerSettlementPort {
         return existing;
       }
       this.assertFinanceMutationRepository(repository);
-      const hold = await this.requireBookingHold(repository, input);
+      const hold = await this.requireAcceptanceHold(repository, input);
       const penaltyFee = await this.calculateFee("penalty", "capture", input, context);
       const holdRemaining = this.remainingHoldAmount(hold);
       const penaltyAmount = Math.min(penaltyFee.finalFeeNdp || holdRemaining, holdRemaining);
@@ -851,15 +997,17 @@ export class LedgerService implements BookingLedgerSettlementPort {
     }
   }
 
-  private async requireBookingHold(
+  private async requireAcceptanceHold(
     repository: LedgerRepositoryPort,
     input: BookingLedgerSettlementInput
   ): Promise<WalletHoldPayload> {
+    const feeType = this.acceptanceFeeType(input);
+    const holdOwner = this.acceptanceHoldOwner(input, feeType);
     const hold = await repository.findWalletHold?.({
       bookingOrderId: input.bookingOrderId,
-      ownerType: "shop",
-      ownerId: input.shopId,
-      feeType: "b_platform_fee"
+      ownerType: holdOwner.ownerType,
+      ownerId: holdOwner.ownerId,
+      feeType
     });
 
     if (!hold) {
@@ -867,6 +1015,50 @@ export class LedgerService implements BookingLedgerSettlementPort {
     }
 
     return hold;
+  }
+
+  private acceptanceFeeType(input: BookingLedgerSettlementInput): FeeType {
+    return input.orderType === "request" ? "c_request_dispatch_fee" : "b_platform_fee";
+  }
+
+  private acceptanceHoldOwner(
+    input: BookingLedgerSettlementInput,
+    feeType: FeeType
+  ): { ownerType: WalletOwnerType; ownerId: number } {
+    if (feeType === "c_request_dispatch_fee") {
+      return {
+        ownerType: "user",
+        ownerId: this.requireCustomerUserId(input)
+      };
+    }
+
+    return {
+      ownerType: "shop",
+      ownerId: input.shopId
+    };
+  }
+
+  private holdFinancialFields(
+    feeType: FeeType,
+    holdAmount: number
+  ): Pick<OrderFinancialUpsertInput, "bPlatformFeeHoldNdp" | "cRequestFeeHoldNdp"> {
+    if (feeType === "c_request_dispatch_fee") {
+      return { cRequestFeeHoldNdp: holdAmount };
+    }
+
+    return { bPlatformFeeHoldNdp: holdAmount };
+  }
+
+  private requireCustomerUserId(input: BookingLedgerSettlementInput): number {
+    if (typeof input.customerUserId === "number") {
+      return input.customerUserId;
+    }
+
+    throw new AppError({
+      code: ERROR_CODES.INTERNAL,
+      message: "error.ledger.customer_user_required",
+      statusCode: 500
+    });
   }
 
   private remainingHoldAmount(hold: WalletHoldPayload): number {

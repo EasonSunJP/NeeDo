@@ -10,6 +10,7 @@ import { CompensationEngine } from "./compensation-engine.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
 export type ServiceIncomeStatus = "unreported" | "reported" | "confirmed";
+export type OrderFinanceType = "booking" | "request";
 export type ServicePaymentChannel =
   | "unknown"
   | "platform_online"
@@ -39,6 +40,8 @@ export interface OrderFinancialRecordPayload {
   serviceIncomeStatus: ServiceIncomeStatus;
   bPlatformFeeHoldNdp: number;
   bPlatformFeeActualNdp: number;
+  cRequestFeeHoldNdp: number;
+  cRequestFeeActualNdp: number;
   userRewardNdp: number;
   campaignDiscountNdp: number;
   releasedNdp: number;
@@ -59,6 +62,7 @@ export interface OrderFinancialRecordPayload {
 
 export interface OrderFinanceRecord {
   bookingOrderId: number;
+  orderType: OrderFinanceType;
   orderNo: string;
   orderStatus: string;
   customerUserId: number;
@@ -98,6 +102,7 @@ export interface OrderFinanceRepositoryPort {
 
 export interface OrderFinanceDetailPayload {
   bookingOrderId: number;
+  orderType: OrderFinanceType;
   orderNo: string;
   orderStatus: string;
   shopId: number;
@@ -118,6 +123,9 @@ export interface OrderFinanceDetailPayload {
   serviceIncomeNote: string | null;
   serviceIncomeProofUrl: string | null;
   platformNdpRevenue: number;
+  cRequestFeeHoldNdp: number;
+  cRequestFeeActualNdp: number;
+  requestFeeNdpRevenue: number;
   userRewardNdpCost: number;
   pendingHoldNdp: number;
   campaignDiscountNdp: number;
@@ -267,10 +275,16 @@ export class OrderFinanceService {
   private buildDetail(record: OrderFinanceRecord): OrderFinanceDetailPayload {
     const financial = record.financial ?? this.defaultFinancial(record);
     const estimatedServiceGmvJpy = financial.serviceAmountJpy || record.priceAmountJpy;
-    const platformNdpRevenue = financial.bPlatformFeeActualNdp - financial.userRewardNdp;
+    const requestFeeNdpRevenue = financial.cRequestFeeActualNdp;
+    const platformNdpRevenue =
+      financial.bPlatformFeeActualNdp + requestFeeNdpRevenue - financial.userRewardNdp;
     const pendingHoldNdp = Math.max(
       0,
-      financial.bPlatformFeeHoldNdp - financial.bPlatformFeeActualNdp - financial.releasedNdp
+      financial.bPlatformFeeHoldNdp +
+        financial.cRequestFeeHoldNdp -
+        financial.bPlatformFeeActualNdp -
+        financial.cRequestFeeActualNdp -
+        financial.releasedNdp
     );
     const technicianIncomePreview = record.activeCompensationRule
       ? this.compensationEngine.calculate(record.activeCompensationRule, {
@@ -283,6 +297,7 @@ export class OrderFinanceService {
 
     return {
       bookingOrderId: record.bookingOrderId,
+      orderType: record.orderType,
       orderNo: record.orderNo,
       orderStatus: record.orderStatus.toLowerCase(),
       shopId: record.shopId,
@@ -303,6 +318,9 @@ export class OrderFinanceService {
       serviceIncomeNote: financial.serviceIncomeNote,
       serviceIncomeProofUrl: financial.serviceIncomeProofUrl,
       platformNdpRevenue,
+      cRequestFeeHoldNdp: financial.cRequestFeeHoldNdp,
+      cRequestFeeActualNdp: financial.cRequestFeeActualNdp,
+      requestFeeNdpRevenue,
       userRewardNdpCost: financial.userRewardNdp,
       pendingHoldNdp,
       campaignDiscountNdp: financial.campaignDiscountNdp,
@@ -351,6 +369,28 @@ export class OrderFinanceService {
         type: "platform_fee_captured",
         label: "平台费实扣",
         amountNdp: financial.bPlatformFeeActualNdp,
+        actorType: "system",
+        occurredAt: financial.updatedAt,
+        status: "captured"
+      });
+    }
+
+    if (financial.cRequestFeeHoldNdp > 0) {
+      timeline.push({
+        type: "request_fee_hold",
+        label: "Request 费用冻结",
+        amountNdp: financial.cRequestFeeHoldNdp,
+        actorType: "system",
+        occurredAt: financial.createdAt,
+        status: financial.cRequestFeeActualNdp > 0 ? "captured" : "held"
+      });
+    }
+
+    if (financial.cRequestFeeActualNdp > 0) {
+      timeline.push({
+        type: "request_fee_captured",
+        label: "Request 费用实扣",
+        amountNdp: financial.cRequestFeeActualNdp,
         actorType: "system",
         occurredAt: financial.updatedAt,
         status: "captured"
@@ -410,6 +450,8 @@ export class OrderFinanceService {
       serviceIncomeStatus: "unreported",
       bPlatformFeeHoldNdp: 0,
       bPlatformFeeActualNdp: 0,
+      cRequestFeeHoldNdp: 0,
+      cRequestFeeActualNdp: 0,
       userRewardNdp: 0,
       campaignDiscountNdp: 0,
       releasedNdp: 0,

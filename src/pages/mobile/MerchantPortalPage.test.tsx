@@ -3,6 +3,20 @@ import merchantSource from "./MerchantPortalPage.tsx?raw";
 import storeDetailSource from "../user/StoreDetailPage.tsx?raw";
 
 describe("MerchantPortalPage store privacy control", () => {
+  it("keeps the merchant staff detail header as a single shared glass layer", () => {
+    const staffDetailSource = merchantSource.slice(
+      merchantSource.indexOf("export function MerchantStaffDetailRoutePage"),
+      merchantSource.indexOf("function MerchantOrdersHeader")
+    );
+
+    expect(staffDetailSource).toContain("<MobileFullscreenHeader");
+    expect(staffDetailSource).toContain("showSpacer={false}");
+    expect(staffDetailSource).not.toContain('className="fixed inset-x-0 top-0 z-[70] mx-auto w-full max-w-[480px]"');
+    expect(staffDetailSource).toContain("pt-[calc(env(safe-area-inset-top)+86px)]");
+    expect(staffDetailSource).toContain("pb-[calc(env(safe-area-inset-bottom)+124px)]");
+    expect(staffDetailSource).toContain('<div className="space-y-3">');
+  });
+
   it("adds the floating privacy menu to the merchant service card only", () => {
     expect(merchantSource).toContain('{ label: "服务展示", value: "service" }');
     expect(merchantSource).toContain('{ label: "数据中心", value: "data" }');

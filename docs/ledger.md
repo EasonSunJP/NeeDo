@@ -11,8 +11,8 @@ Step 11 implements the first formal NDP wallet ledger. It uses integer NDP where
 - `platform_fee_rule_sets`, `platform_fee_rules`, `platform_fee_tiers`, `platform_fee_time_windows`: versioned fee rule definitions for Booking/Request fee preview and Booking settlement.
 - `fee_campaigns`: campaign discounts and fee waivers applied during fee calculation.
 - `fee_calculation_logs`: calculation snapshots with applied rule IDs, adjustments, campaign discount, and explanation.
-- `wallet_holds`: locked Booking fee holds created at acceptance and consumed/released by later settlement.
-- `order_financials`: one minimal financial summary per Booking order for backoffice and merchant-admin finance views.
+- `wallet_holds`: locked Booking/Request fee holds created at acceptance and consumed/released by later settlement.
+- `order_financials`: one minimal financial summary per Booking/Request order for backoffice and merchant-admin finance views.
 - `audit_logs`: ledger mutations write audit rows with target type `ledger_transaction`.
 
 ## Booking Settlement
@@ -26,6 +26,16 @@ Step 11 implements the first formal NDP wallet ledger. It uses integer NDP where
 - Merchant-side forced cancellation after confirm: calculates the Booking penalty/compensation rule, deducts the actual penalty from the shop's frozen hold, releases any surplus, and credits the customer compensation if positive.
   - Idempotency key: `booking:{orderId}:merchant-cancel:compensation`
 
+## Request Dispatch Fee
+
+- Request order creation is accepted by the same `/api/v1/bookings` endpoint with `orderType = request`, but no Request marketplace or frontend entry is opened in this slice.
+- Confirm Request order: calculates `c_request_dispatch_fee` at stage `hold`, creates a `wallet_holds` row owned by the customer wallet, writes `order_financials.c_request_fee_hold_ndp`, and freezes the calculated amount from the customer wallet.
+  - Idempotency key: `booking:{orderId}:accept:freeze`
+- Cancel confirmed Request order: releases the remaining customer dispatch-fee hold back to the customer wallet.
+  - Idempotency key: `booking:{orderId}:cancel:unfreeze`
+- Complete Request order: calculates `c_request_dispatch_fee` at stage `capture`, deducts the actual dispatch fee from the customer frozen hold, releases any hold surplus, and writes `order_financials.c_request_fee_actual_ndp`.
+  - Idempotency key: `booking:{orderId}:complete:settlement`
+
 These mutations run inside the same Prisma transaction as the booking state transition. If ledger settlement fails, the order transition rolls back.
 
 The default seed keeps the historical behavior through rules rather than business constants:
@@ -33,6 +43,9 @@ The default seed keeps the historical behavior through rules rather than busines
 - Booking shop platform fee: `500 NDP`
 - Booking customer completion reward: `100 NDP`
 - Booking merchant cancellation penalty/compensation: `500 NDP`
+- Request customer dispatch fee: `500 NDP`
+- Demo customer wallets are seeded with `1000 NDP` through ledger seed credit so
+  Request accept/complete smoke flows can freeze and capture the default dispatch fee.
 
 Future changes should edit or version fee rules instead of adding ledger constants.
 

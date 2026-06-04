@@ -19,7 +19,7 @@ export interface AuthenticatedBookingActor {
 }
 
 export interface BookingCreateInput extends Omit<BookingCreateRepositoryInput, "customerUserId"> {
-  orderType?: "booking";
+  orderType?: "booking" | "request";
 }
 
 type OrderAction = "confirm" | "cancel" | "start" | "complete";
@@ -63,6 +63,7 @@ export class BookingService {
   ): Promise<BookingOrderPayload> {
     const order = await this.repository.createBooking({
       customerUserId: actor.userId,
+      orderType: input.orderType ?? "booking",
       serviceId: input.serviceId,
       technicianServiceId: input.technicianServiceId,
       scheduleSlotId: input.scheduleSlotId,
@@ -224,6 +225,26 @@ export class BookingService {
     }
 
     if (action === "cancel" && order.status === "confirmed") {
+      if (order.orderType === "request") {
+        return {
+          settle: (context) =>
+            this.ledgerService!.releaseBookingHold(
+              {
+                bookingOrderId: order.id,
+                orderType: order.orderType,
+                shopId: order.shopId,
+                technicianProfileId: order.technicianProfileId,
+                serviceId: order.serviceId,
+                serviceAmountJpy: this.moneyToInteger(order.priceAmount),
+                scheduledStartAt: order.startsAt,
+                customerUserId: order.customerUserId,
+                actorUserId: actor.userId
+              },
+              { transactionClient: context.transactionClient }
+            ).then(() => undefined)
+        };
+      }
+
       return this.isServiceProviderActor(actor)
         ? {
             settle: (context) =>

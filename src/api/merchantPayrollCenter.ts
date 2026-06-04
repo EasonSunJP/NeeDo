@@ -207,9 +207,7 @@ export const merchantPayrollCenterApi = {
     );
   },
   exportPayRuns(params = "") {
-    return httpClient.request<PayrollCsvExportPayload>(
-      `/merchant-admin/pay-runs/export${params}`
-    );
+    return httpClient.requestCsvExport(`/merchant-admin/pay-runs/export${params}`);
   },
   createPayRun(body: PayRunCreateInput) {
     return httpClient.request<PayRunPayload>("/merchant-admin/pay-runs", {
@@ -297,6 +295,6 @@ export const merchantPayrollCenterApi = {
     return httpClient.request<PayrollListPayload<PayRunPayload>>(`/backoffice/pay-runs${params}`);
   },
   exportBackofficePayRuns(params = "") {
-    return httpClient.request<PayrollCsvExportPayload>(`/backoffice/pay-runs/export${params}`);
+    return httpClient.requestCsvExport(`/backoffice/pay-runs/export${params}`);
   }
 };

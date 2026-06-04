@@ -5,6 +5,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { technicianPayrollCenterApi } from "../../api/technicianPayrollCenter";
 import type { PayslipPayload } from "../../api/merchantPayrollCenter";
+import { downloadCsvExport } from "../../lib/downloadCsvExport";
 import { cn, yen } from "../../lib/utils";
 
 const payslipStatusLabel: Record<PayslipPayload["status"], string> = {
@@ -175,6 +176,18 @@ export function TechnicianPayrollPage() {
     }
   };
 
+  const exportPayslips = async () => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      downloadCsvExport(await technicianPayrollCenterApi.exportPayslips());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "工资 CSV 导出失败");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   return (
     <PageScaffold contentClassName="space-y-5 pb-28 pt-[calc(env(safe-area-inset-top)+5rem)]" navItems={technicianNavItems}>
       <AppTopBar
@@ -191,7 +204,12 @@ export function TechnicianPayrollPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--client-muted)]">Payroll</p>
             <h1 className="mt-2 text-2xl font-black text-[color:var(--client-text)]">本期工资单中心</h1>
           </div>
-          <Badge tone={summary.disputedCount > 0 ? "red" : "blue"}>{summary.disputedCount > 0 ? `${summary.disputedCount} 个申诉` : "正常"}</Badge>
+          <div className="flex flex-col items-end gap-2">
+            <Badge tone={summary.disputedCount > 0 ? "red" : "blue"}>{summary.disputedCount > 0 ? `${summary.disputedCount} 个申诉` : "正常"}</Badge>
+            <Button className="min-h-10 px-4 text-xs" disabled={isBusy} onClick={() => void exportPayslips()} type="button">
+              导出 CSV
+            </Button>
+          </div>
         </div>
         <div className="mt-5 grid grid-cols-3 gap-2">
           {[

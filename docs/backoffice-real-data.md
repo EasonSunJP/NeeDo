@@ -201,7 +201,7 @@ draft -> reviewing -> published -> confirmed / disputed -> approved -> scheduled
 - 草稿可生成和重算；发布后不允许重算覆盖金额。
 - 商户可发布、审批、记录支付、锁定工资周期。
 - 商户财务结算页已接入工资调整申请列表、创建、提交、审批和驳回操作，使用正式 `merchantPayrollCenterApi` typed API。
-- 商户和运营后台可导出 Pay Run CSV，技师可导出自己的 Payslip CSV；返回 JSON envelope 内的 `filename`、`contentType` 和 `csv`，暂不做 Excel/PDF。
+- 商户和运营后台可导出 Pay Run CSV，技师可导出自己的 Payslip CSV；正式 payroll 导出路由直接返回 `text/csv; charset=utf-8` 与 `Content-Disposition` 文件名，前端通过 `httpClient.requestCsvExport` 转换为下载 envelope，暂不做 Excel/PDF。
 - 技师可读取自己的工资单，发布后可确认或申诉。
 - 运营后台只读查看工资周期汇总，不参与商户支付动作。
 - 本轮不接银行代付、不做文件上传、不做税务/发票；奖金/补贴/扣款只做基础申请、提交、审批/驳回和工资单应用，不做多级审批或外部附件流。
@@ -252,6 +252,44 @@ Step 12C 扩展字段：
 - `GET /api/v1/backoffice/pay-runs`
 - `GET /api/v1/backoffice/pay-runs/export`
 
+Payroll CSV 导出响应合同：
+
+- `GET /api/v1/merchant-admin/pay-runs/export`
+- `GET /api/v1/technician/payslips/export`
+- `GET /api/v1/backoffice/pay-runs/export`
+
+以上三个接口不使用 `{ code, message, data }` JSON envelope，而是返回 CSV 下载响应：
+
+```text
+Content-Type: text/csv; charset=utf-8
+Content-Disposition: attachment; filename="<scope>-<YYYY-MM-DD>.csv"
+```
+
+前端正式 API adapter 使用 `httpClient.requestCsvExport` 读取真实 CSV body，并保持 `downloadCsvExport` 所需的 `{ filename, contentType, csv }` 调用形状；静态 demo 仍只作为 same-shape compatibility。
+
+## Step 12E：Request 财务 API 适配
+
+Step 12E 不新建 Request 大厅、调度大厅、退款状态机或前端入口；本步只把既有 `BookingOrder.orderType = request` 和 C 端 Request dispatch fee 接入正式后端订单/账本/API 适配。
+
+新增/收紧的写侧口径：
+
+- `POST /api/v1/bookings` 允许 `orderType = request`，默认仍为 `booking`，旧前端不传该字段时行为不变。
+- Request 确认接单时计算 `c_request_dispatch_fee`，默认 seed 为 `500 NDP`，付款方为 customer user wallet。
+- seed 通过账本初始化给 demo customer 与 `customer@example.com` 钱包充值 `1000 NDP`，用于 Request dispatch fee 冻结/完单 smoke flow。
+- Request 确认接单会冻结 C 端钱包，并写入 `order_financials.c_request_fee_hold_ndp`。
+- Request 完单会实扣 C 端冻结的 dispatch fee，并写入 `order_financials.c_request_fee_actual_ndp`。
+- Request 取消会释放剩余 C 端 dispatch fee 冻结；本步不做商户违约赔付和 Request refund 状态机。
+
+新增/收紧的展示口径：
+
+- `OrderFinanceDetail` 返回 `orderType`、`cRequestFeeHoldNdp`、`cRequestFeeActualNdp` 和 `requestFeeNdpRevenue`。
+- 平台 NDP 净收入统一按 `bPlatformFeeActualNdp + cRequestFeeActualNdp - userRewardNdp` 计算。
+- 待处理冻结统一按 `bPlatformFeeHoldNdp + cRequestFeeHoldNdp - bPlatformFeeActualNdp - cRequestFeeActualNdp - releasedNdp` 计算，结果不小于 0。
+- Money Timeline 在存在 C 端 Request fee 时显示 `request_fee_hold` / `request_fee_captured`。
+- 运营后台和商户后台财务结算列表、详情抽屉与 CSV 导出带出 Request fee 字段；静态预览只做 same-shape compatibility。
+
+本步不新增 migration，因为 `c_request_fee_hold_ndp` 与 `c_request_fee_actual_ndp` 已在 `order_financials` 中存在。
+
 ## 数据来源
 
 本次读取正式表：
@@ -289,6 +327,10 @@ Step 12C 扩展字段：
 - `20260603222000_payroll_adjustment_requests`：工资奖金、补贴、扣款调整申请及应用标记表。
 - `20260604013000_payroll_dispute_payout_closure`：工资单申诉处理字段与支付记录技师收款确认时间。
 
+正式 readiness：
+
+- `GET /api/v1/ready` 在数据库连通后会校验 Step 12 财务和 payroll 必需表列；如果缺少上述 migration 中的关键列，返回 `not_ready`，避免正式财务接口在运行时因 schema drift 变成 500。
+
 ## 前端接入文件
 
 - `src/api/backofficeRealData.ts`
@@ -317,5 +359,5 @@ Step 12C 扩展字段：
 - 本次不做压测。
 - 本次不重做后台 UI。
 - 本次不做银行代付、税务/发票、文件上传和多级复杂审批；工资调整只覆盖基础申请、提交、审批/驳回、申诉处理、支付记录确认和锁定应用。
-- 本次不做 Request 订单财务生命周期，只保留 Booking 财务链路。
+- 本次只做 Request dispatch fee 的后端/API/账本适配，不做 Request 大厅、复杂调度、退款、商户违约赔付或前端入口。
 - 旧后台周边模块仍可能保留 legacy mock compatibility；已接入的核心指标、订单、财务、技师、店铺数据优先走真实 API。

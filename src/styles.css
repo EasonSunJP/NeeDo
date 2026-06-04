@@ -6971,7 +6971,95 @@ body:has(.admin-theme-dark),
   --client-tab-button-height: 36px;
   --client-schedule-substicky-top: 152px;
   --client-sticky-content-layer: 12;
+  --merchant-schedule-timeline-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--admin-elevated, #ffffff) 66%, transparent),
+    color-mix(in srgb, var(--admin-surface, #ffffff) 82%, var(--admin-bg, #f7f8fb))
+  );
+  --merchant-schedule-timeline-fill: color-mix(in srgb, var(--admin-surface, #ffffff) 78%, var(--admin-bg, #f7f8fb));
+  --merchant-schedule-timeline-fill-alt: color-mix(in srgb, var(--admin-muted-surface, #edf1f5) 70%, transparent);
+  --merchant-schedule-timeline-line: color-mix(in srgb, var(--admin-accent, #3c887e) 18%, transparent);
+  --merchant-schedule-timeline-line-strong: color-mix(in srgb, var(--admin-accent, #3c887e) 30%, var(--admin-line, rgba(22, 54, 48, 0.12)));
+  --merchant-schedule-timeline-hover: color-mix(in srgb, var(--admin-accent, #3c887e) 10%, transparent);
+  --merchant-schedule-timeline-tag-bg: color-mix(in srgb, var(--admin-elevated, #ffffff) 88%, var(--admin-bg, #f7f8fb));
   color: var(--client-text);
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-day-timeline="true"] {
+  overflow: hidden;
+  border: 1px solid var(--merchant-schedule-timeline-line-strong);
+  border-radius: 24px;
+  background: var(--merchant-schedule-timeline-bg);
+  box-shadow:
+    var(--admin-card-shadow),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 9%, transparent);
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-day-timeline-scroll="true"] {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--admin-accent) 8%, transparent), transparent 22rem),
+    linear-gradient(180deg, var(--merchant-schedule-timeline-fill-alt), transparent 8.5rem),
+    var(--merchant-schedule-timeline-fill);
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-lane-header="true"] {
+  border-color: var(--merchant-schedule-timeline-line-strong) !important;
+  background: color-mix(in srgb, var(--admin-elevated) 62%, var(--admin-surface)) !important;
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-time-corner="true"],
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-time-column="true"] {
+  border-color: var(--merchant-schedule-timeline-line-strong) !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--admin-elevated) 52%, transparent), color-mix(in srgb, var(--admin-surface) 84%, transparent)),
+    var(--merchant-schedule-timeline-fill) !important;
+  box-shadow: 10px 0 24px color-mix(in srgb, #000000 16%, transparent);
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-lane-heading="true"] {
+  border-color: var(--merchant-schedule-timeline-line) !important;
+  background: color-mix(in srgb, var(--admin-elevated) 40%, transparent);
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-lane-heading="true"]:hover {
+  background: var(--merchant-schedule-timeline-hover) !important;
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-time-row="true"],
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-hour-line="true"] {
+  border-color: var(--merchant-schedule-timeline-line) !important;
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-hour-line="true"] {
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--admin-accent) 6%, transparent), transparent 42%, color-mix(in srgb, var(--admin-elevated) 8%, transparent));
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-hour-line="true"]:hover {
+  background: var(--merchant-schedule-timeline-hover) !important;
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-lane-line="true"] {
+  border-color: var(--merchant-schedule-timeline-line-strong) !important;
+  opacity: 0.68;
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-time-tag="true"] {
+  border-color: var(--merchant-schedule-timeline-line-strong) !important;
+  background: var(--merchant-schedule-timeline-tag-bg) !important;
+  color: var(--admin-muted) !important;
+  box-shadow:
+    0 10px 20px color-mix(in srgb, #000000 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 8%, transparent) !important;
+}
+
+.merchant-admin-shell .merchant-admin-schedule-parity [data-calendar-event-card="true"] {
+  border-color: color-mix(in srgb, var(--calendar-accent) 46%, var(--merchant-schedule-timeline-line-strong)) !important;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--calendar-soft) 76%, var(--admin-elevated)), color-mix(in srgb, var(--admin-elevated) 76%, var(--admin-surface))) !important;
+  box-shadow:
+    0 14px 30px color-mix(in srgb, #000000 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 9%, transparent) !important;
 }
 
 .merchant-admin-shell .merchant-admin-analytics-surface {

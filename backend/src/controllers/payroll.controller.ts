@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import type { PayrollService } from "../services/payroll.service";
+import type { PayrollCsvExportPayload, PayrollService } from "../services/payroll.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 import {
@@ -70,17 +70,14 @@ export class PayrollController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response
-        .status(200)
-        .json(
-          successResponse(
-            await this.service.exportMerchantPayRuns(
-              getAuthenticatedAccess(response),
-              getRequestContext(request),
-              payrollListQuerySchema.parse(request.query)
-            )
-          )
-        );
+      this.sendCsvExport(
+        response,
+        await this.service.exportMerchantPayRuns(
+          getAuthenticatedAccess(response),
+          getRequestContext(request),
+          payrollListQuerySchema.parse(request.query)
+        )
+      );
     } catch (error) {
       next(error);
     }
@@ -220,17 +217,14 @@ export class PayrollController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response
-        .status(200)
-        .json(
-          successResponse(
-            await this.service.exportTechnicianPayslips(
-              getAuthenticatedAccess(response),
-              getRequestContext(request),
-              payrollListQuerySchema.parse(request.query)
-            )
-          )
-        );
+      this.sendCsvExport(
+        response,
+        await this.service.exportTechnicianPayslips(
+          getAuthenticatedAccess(response),
+          getRequestContext(request),
+          payrollListQuerySchema.parse(request.query)
+        )
+      );
     } catch (error) {
       next(error);
     }
@@ -312,9 +306,7 @@ export class PayrollController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const { payslipId, payoutRecordId } = payoutRecordConfirmParamSchema.parse(
-        request.params
-      );
+      const { payslipId, payoutRecordId } = payoutRecordConfirmParamSchema.parse(request.params);
       response
         .status(200)
         .json(
@@ -360,17 +352,14 @@ export class PayrollController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      response
-        .status(200)
-        .json(
-          successResponse(
-            await this.service.exportBackofficePayRuns(
-              getAuthenticatedAccess(response),
-              getRequestContext(request),
-              payrollListQuerySchema.parse(request.query)
-            )
-          )
-        );
+      this.sendCsvExport(
+        response,
+        await this.service.exportBackofficePayRuns(
+          getAuthenticatedAccess(response),
+          getRequestContext(request),
+          payrollListQuerySchema.parse(request.query)
+        )
+      );
     } catch (error) {
       next(error);
     }
@@ -451,6 +440,16 @@ export class PayrollController {
       next(error);
     }
   };
+
+  private sendCsvExport(response: Response, payload: PayrollCsvExportPayload): void {
+    const filename = payload.filename.replace(/["\r\n]/g, "_");
+
+    response
+      .status(200)
+      .setHeader("Content-Type", payload.contentType)
+      .setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      .send(payload.csv);
+  }
 
   private payRunAction(
     handler: (

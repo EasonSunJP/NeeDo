@@ -1,6 +1,5 @@
 import { httpClient } from "./httpClient";
 import type {
-  PayrollCsvExportPayload,
   PayrollListPayload,
   PayslipPayload
 } from "./merchantPayrollCenter";
@@ -10,7 +9,7 @@ export const technicianPayrollCenterApi = {
     return httpClient.request<PayrollListPayload<PayslipPayload>>(`/technician/payslips${params}`);
   },
   exportPayslips(params = "") {
-    return httpClient.request<PayrollCsvExportPayload>(`/technician/payslips/export${params}`);
+    return httpClient.requestCsvExport(`/technician/payslips/export${params}`);
   },
   getPayslip(id: number) {
     return httpClient.request<PayslipPayload>(`/technician/payslips/${id}`);

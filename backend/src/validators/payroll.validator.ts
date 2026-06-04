@@ -101,9 +101,7 @@ export type ParsedPayrollListQuery = z.output<typeof payrollListQuerySchema>;
 export type ParsedPayrollAdjustmentListQuery = z.output<typeof payrollAdjustmentListQuerySchema>;
 export type ParsedPayRunCreateBody = z.output<typeof payRunCreateBodySchema>;
 export type ParsedPayslipDisputeBody = z.output<typeof payslipDisputeBodySchema>;
-export type ParsedPayslipDisputeResolveBody = z.output<
-  typeof payslipDisputeResolveBodySchema
->;
+export type ParsedPayslipDisputeResolveBody = z.output<typeof payslipDisputeResolveBodySchema>;
 export type ParsedPayoutRecordBody = z.output<typeof payoutRecordBodySchema>;
 export type ParsedPayrollAdjustmentBody = z.output<typeof payrollAdjustmentBodySchema>;
 export type ParsedPayrollAdjustmentRejectBody = z.output<typeof payrollAdjustmentRejectBodySchema>;

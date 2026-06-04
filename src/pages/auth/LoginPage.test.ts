@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isBackendAccountForAnotherPortal, resolveAdminDefaultCredentials, resolveAdminTestLoginCredentials, resolveBackendLoginTarget } from "./AdminLoginPage";
-import { getPostLoginRoute, getPublicTestLoginPortal, resolveLoginErrorMessage, resolveLoginFeedbackMessage, resolveTestLoginCredentials, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
+import { getPostLoginRoute, getPublicTestLoginPortal, requiresFormalFrontendLogin, resolveLoginErrorMessage, resolveLoginFeedbackMessage, resolveTestLoginCredentials, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
 import appSource from "../../App.tsx?raw";
 import adminLoginPageSource from "./AdminLoginPage.tsx?raw";
 import loginPageSource from "./LoginPage.tsx?raw";
@@ -86,13 +86,24 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).toContain('testCredentialLogin: "跳过验证登录"');
   });
 
-  it("lets the public test credential action bypass the captcha requirement", () => {
+  it("lets the non-formal public test credential action bypass the captcha requirement", () => {
     const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[/)?.[0] ?? "";
 
     expect(testCredentialAction).toContain("await enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal))");
-    expect(testCredentialAction).not.toContain("loginWithFormalPassword");
     expect(testCredentialAction).not.toContain("captchaRequiredError");
     expect(testCredentialAction).not.toContain("normalizedCaptchaCode");
+  });
+
+  it("uses formal password login for technician payroll redirects instead of frontend bypass", () => {
+    const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[/)?.[0] ?? "";
+
+    expect(loginPageSource).toContain("const requiresFormalLogin = requiresFormalFrontendLogin(activePortal, redirectPath);");
+    expect(loginPageSource).toContain("const shouldBypassFrontendLogin = !requiresFormalLogin && isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);");
+    expect(loginPageSource).toContain("const hasBlockedFormalFrontendBypass = requiresFormalLogin && isFrontendBypassSession(session);");
+    expect(loginPageSource).toContain("const hasActiveAccess = (isAuthenticated && canAccess(activePortal) && !hasBlockedFormalFrontendBypass) || hasRememberedActivePortal;");
+    expect(loginPageSource).toContain("{requiresFormalLogin ? null : captchaControl}");
+    expect(testCredentialAction).toContain("if (requiresFormalLogin && testCredentials)");
+    expect(testCredentialAction).toContain("await loginWithFormalPassword(activePortal, testCredentials.email, testCredentials.password)");
   });
 
   it("can temporarily skip the frontend login page without waiting for an API response", () => {
@@ -239,6 +250,28 @@ describe("LoginPage real-account login", () => {
       email: "seed.technician@needo.local",
       password: "Admin.2026"
     });
+    expect(resolveTestLoginCredentials(staleSharedEnv, "technician", { preferFormalAccount: true })).toEqual({
+      email: "technician@example.com",
+      password: "Admin.2026"
+    });
+    expect(resolveTestLoginCredentials(
+      {
+        VITE_TEST_LOGIN_TECHNICIAN_EMAIL: "seed.technician@needo.local",
+        VITE_TEST_LOGIN_TECHNICIAN_PASSWORD: "Admin.2026"
+      },
+      "technician",
+      { preferFormalAccount: true }
+    )).toEqual({
+      email: "technician@example.com",
+      password: "Admin.2026"
+    });
+  });
+
+  it("requires formal frontend login only for technician payroll redirects", () => {
+    expect(requiresFormalFrontendLogin("technician", "/technician/payroll")).toBe(true);
+    expect(requiresFormalFrontendLogin("technician", "/technician/payroll?period=2026-06")).toBe(true);
+    expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(false);
+    expect(requiresFormalFrontendLogin("merchant", "/technician/payroll")).toBe(false);
   });
 
   it("shows continue when the current session or remembered authorization has the requested portal identity", () => {

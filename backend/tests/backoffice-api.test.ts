@@ -317,7 +317,8 @@ const createFixture = async () => {
       schedule: { total: 2, available: 1, booked: 1 },
       finance: {
         estimatedServiceGmvJpy: 8800,
-        platformNdpRevenue: 400,
+        platformNdpRevenue: 700,
+        requestFeeNdpRevenue: 300,
         userRewardNdpCost: 100,
         pendingHoldNdp: 0,
         campaignDiscountNdp: 0,
@@ -344,6 +345,7 @@ const createFixture = async () => {
         {
           id: 51,
           bookingOrderId: 31,
+          orderType: "request",
           orderNo: "ND202605250001",
           referenceType: "booking_order",
           referenceId: 31,
@@ -354,7 +356,10 @@ const createFixture = async () => {
           platformCollectedServiceAmountJpy: 0,
           offlineReportedServiceAmountJpy: 0,
           unknownOrUnreportedServiceAmountJpy: 8800,
-          platformNdpRevenue: 400,
+          platformNdpRevenue: 700,
+          cRequestFeeHoldNdp: 300,
+          cRequestFeeActualNdp: 300,
+          requestFeeNdpRevenue: 300,
           userRewardNdpCost: 100,
           pendingHoldNdp: 0,
           campaignDiscountNdp: 0,
@@ -373,7 +378,8 @@ const createFixture = async () => {
     exportFinanceSettlements: jest.fn(async () => ({
       filename: "merchant-finance-settlements.csv",
       contentType: "text/csv; charset=utf-8",
-      content: "id,orderNo,platformNdpRevenue\n51,ND202605250001,400"
+      content:
+        "id,orderType,orderNo,platformNdpRevenue,requestFeeNdpRevenue\n51,request,ND202605250001,700,300"
     })),
     listTechnicians: jest.fn(async () => ({
       list: [{ id: 7, displayName: "Mika Tanaka", shopId: 11 }],
@@ -424,7 +430,8 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
     });
     expect(response.body.data.finance).toMatchObject({
       estimatedServiceGmvJpy: 8800,
-      platformNdpRevenue: 400,
+      platformNdpRevenue: 700,
+      requestFeeNdpRevenue: 300,
       userRewardNdpCost: 100
     });
     expect(fixture.backofficeRepository.getDashboard).toHaveBeenCalledWith({

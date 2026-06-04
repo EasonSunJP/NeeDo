@@ -128,6 +128,40 @@ describe("FeeCalculationService", () => {
     });
   });
 
+  it("calculates the default Request dispatch fee from the customer side", async () => {
+    const repository = new InMemoryFeeRuleRepository();
+    repository.ruleSets = [
+      makeRuleSet(1, {
+        name: "Default Request",
+        status: "active",
+        rules: [
+          {
+            feeType: "c_request_dispatch_fee",
+            orderType: "request",
+            payerType: "user",
+            baseAmountNdp: 500
+          }
+        ]
+      })
+    ];
+    const service = new FeeCalculationService(repository);
+
+    await expect(
+      service.calculateFee({
+        ...baseInput("c_request_dispatch_fee"),
+        orderType: "request",
+        stage: "hold"
+      })
+    ).resolves.toMatchObject({
+      orderType: "request",
+      feeType: "c_request_dispatch_fee",
+      payerType: "user",
+      payerId: 3,
+      finalFeeNdp: 500,
+      holdAmountNdp: 500
+    });
+  });
+
   it("prefers a lower-priority-number shop-specific rule over the global rule", async () => {
     const repository = new InMemoryFeeRuleRepository();
     repository.ruleSets = [

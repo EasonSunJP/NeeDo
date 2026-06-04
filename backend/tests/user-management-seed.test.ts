@@ -8,7 +8,10 @@ import {
   TEST_USER_ACCOUNTS
 } from "../src/constants/test-login.constants";
 import {
+  CUSTOMER_REQUEST_WALLET_SEED_NDP,
+  DEFAULT_REQUEST_DISPATCH_FEE_NDP,
   buildSeedUserUpdateData,
+  getRequestDispatchWalletSeedAmount,
   getAdminSeedConfig,
   getTestUserSeedPassword,
   shouldSeedRequiredTestAccounts
@@ -104,6 +107,26 @@ describe("user management seed contract", () => {
       ["technician@example.com", "technician", "technician"],
       ["customer@example.com", "customer", "customer"]
     ]);
+  });
+
+  it("funds customer seed wallets enough for Request dispatch-fee smoke flows", () => {
+    expect(DEFAULT_REQUEST_DISPATCH_FEE_NDP).toBe(500);
+    expect(CUSTOMER_REQUEST_WALLET_SEED_NDP).toBeGreaterThanOrEqual(
+      DEFAULT_REQUEST_DISPATCH_FEE_NDP
+    );
+
+    const walletSeedAmountByEmail = new Map(
+      TEST_USER_ACCOUNTS.map((account) => [
+        account.email,
+        getRequestDispatchWalletSeedAmount(account)
+      ])
+    );
+
+    expect(walletSeedAmountByEmail.get("customer@example.com")).toBe(
+      CUSTOMER_REQUEST_WALLET_SEED_NDP
+    );
+    expect(walletSeedAmountByEmail.get("merchant@example.com")).toBe(0);
+    expect(walletSeedAmountByEmail.get("technician@example.com")).toBe(0);
   });
 
   it("uses TEST_USER_DEFAULT_PASSWORD for test accounts and only falls back locally", () => {

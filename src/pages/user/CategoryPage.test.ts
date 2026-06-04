@@ -23,8 +23,8 @@ describe("CategoryPage technician showcase card", () => {
   it("keeps the shared metric layout branch available for category technician cards", () => {
     expect(technicianShowcaseCardSource).toContain('metricLayout = "cluster"');
     expect(technicianShowcaseCardSource).toContain('metricLayout === "split"');
-    expect(technicianShowcaseCardSource).toContain("absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1");
-    expect(technicianShowcaseCardSource).toContain("absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]");
+    expect(technicianShowcaseCardSource).toContain("absolute left-2 top-2 z-20 flex items-start justify-between gap-1");
+    expect(technicianShowcaseCardSource).toContain('metricLayout === "split" ? "right-[5px]" : "right-2"');
   });
 
   it("keeps the expanded entity filter to store, technician, and service only", () => {

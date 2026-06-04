@@ -257,7 +257,8 @@ const createRepository = (
       };
       draft = {
         ...draft,
-        status: input.status === "confirmed" || input.status === "disputed" ? input.status : draft.status,
+        status:
+          input.status === "confirmed" || input.status === "disputed" ? input.status : draft.status,
         payslips: [nextPayslip]
       };
       return nextPayslip;
@@ -269,24 +270,24 @@ const createRepository = (
         paidAmountJpy: input.nextPaidAmountJpy,
         unpaidAmountJpy: input.nextUnpaidAmountJpy,
         payoutRecords: [
-        {
-          id: 7001,
-          payslipId: 8001,
-          shopId: 11,
-          technicianProfileId: 21,
-          amountJpy: input.amountJpy,
-          payoutMethod: input.payoutMethod,
-          payoutDate: input.payoutDate,
-          referenceNo: input.referenceNo,
-          proofUrl: input.proofUrl,
-          note: input.note,
-          status: "completed" as const,
-          confirmedByTechnician: false,
-          technicianConfirmedAt: null,
-          createdById: 2,
-          createdAt: now.toISOString(),
-          updatedAt: now.toISOString()
-        }
+          {
+            id: 7001,
+            payslipId: 8001,
+            shopId: 11,
+            technicianProfileId: 21,
+            amountJpy: input.amountJpy,
+            payoutMethod: input.payoutMethod,
+            payoutDate: input.payoutDate,
+            referenceNo: input.referenceNo,
+            proofUrl: input.proofUrl,
+            note: input.note,
+            status: "completed" as const,
+            confirmedByTechnician: false,
+            technicianConfirmedAt: null,
+            createdById: 2,
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString()
+          }
         ]
       };
       draft = {
@@ -314,24 +315,24 @@ const createRepository = (
       const nextPayslip: PayslipPayload = {
         ...draft.payslips[0]!,
         payoutRecords: [
-        {
-          id: input.payoutRecordId,
-          payslipId: 8001,
-          shopId: 11,
-          technicianProfileId: 21,
-          amountJpy: 12660,
-          payoutMethod: "bank_transfer",
-          payoutDate: "2026-07-10T00:00:00.000Z",
-          referenceNo: "BANK-20260710-001",
-          proofUrl: null,
-          note: null,
-          status: "completed" as const,
-          confirmedByTechnician: true,
-          technicianConfirmedAt: input.technicianConfirmedAt,
-          createdById: 2,
-          createdAt: now.toISOString(),
-          updatedAt: now.toISOString()
-        }
+          {
+            id: input.payoutRecordId,
+            payslipId: 8001,
+            shopId: 11,
+            technicianProfileId: 21,
+            amountJpy: 12660,
+            payoutMethod: "bank_transfer",
+            payoutDate: "2026-07-10T00:00:00.000Z",
+            referenceNo: "BANK-20260710-001",
+            proofUrl: null,
+            note: null,
+            status: "completed" as const,
+            confirmedByTechnician: true,
+            technicianConfirmedAt: input.technicianConfirmedAt,
+            createdById: 2,
+            createdAt: now.toISOString(),
+            updatedAt: now.toISOString()
+          }
         ]
       };
       draft = { ...draft, payslips: [nextPayslip] };

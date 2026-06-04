@@ -8,9 +8,13 @@ describe("FinancePage Step 12A fields", () => {
     expect(source).toContain("paymentChannel");
     expect(source).toContain("technicianEstimatedIncomeJpy");
     expect(source).toContain("shopEstimatedGrossProfitJpy");
+    expect(source).toContain("requestFeeNdpRevenue");
+    expect(source).toContain("Request 费用");
     expect(source).toContain("Money Timeline");
     expect(source).toContain("merchantPayrollCenterApi.listBackofficePayRuns");
     expect(source).toContain("merchantPayrollCenterApi.exportBackofficePayRuns");
+    expect(source).toContain("downloadCsvExport");
+    expect(source).toContain("runCsvExport");
     expect(source).toContain("工资单 / Pay Run 只读汇总");
     expect(source).toContain("导出工资 CSV");
     expect(source).not.toContain("FinanceReconciliation.actualAmount");

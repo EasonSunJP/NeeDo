@@ -32,6 +32,7 @@ import { DataTable } from "../ui/DataTable";
 import { Drawer } from "../ui/Drawer";
 import { TitleWithInfo } from "../ui/TitleWithInfo";
 import { merchantAdminDemo } from "../../data/merchantAdmin";
+import { downloadCsvExport } from "../../lib/downloadCsvExport";
 import { yen } from "../../lib/utils";
 import type { InventoryItem } from "../../types/domain";
 
@@ -519,6 +520,18 @@ export function MerchantStoreOperationsWorkspace({
     }
   };
 
+  const exportMerchantPayRuns = async () => {
+    setIsPayrollBusy(true);
+    setPayrollError(null);
+    try {
+      downloadCsvExport(await merchantPayrollCenterApi.exportPayRuns());
+    } catch {
+      setPayrollError("工资 CSV 导出失败");
+    } finally {
+      setIsPayrollBusy(false);
+    }
+  };
+
   const createPayrollAdjustment = () => {
     const technicianProfileId = activePayslip?.technicianProfileId ?? currentSettlement?.technicianProfileId;
 
@@ -905,6 +918,9 @@ export function MerchantStoreOperationsWorkspace({
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
                   ["服务 GMV", yen(orderFinanceDetail?.estimatedServiceGmvJpy ?? 0)],
+                  ["订单类型", orderFinanceDetail?.orderType ?? "-"],
+                  ["Request 费用", `${orderFinanceDetail?.requestFeeNdpRevenue ?? 0} NDP`],
+                  ["Request 冻结/实扣", `${orderFinanceDetail?.cRequestFeeHoldNdp ?? 0} / ${orderFinanceDetail?.cRequestFeeActualNdp ?? 0} NDP`],
                   ["未上报金额", yen(orderFinanceDetail?.unknownOrUnreportedServiceAmountJpy ?? 0)],
                   ["服务收入状态", orderFinanceDetail?.serviceIncomeStatus ?? "-"],
                   ["钱路状态", orderFinanceDetail?.moneyTimelineStatus ?? "-"]
@@ -1127,6 +1143,14 @@ export function MerchantStoreOperationsWorkspace({
                 >
                   发布工资单
                 </button>
+                <button
+                  className="rounded-full border border-line bg-paper px-4 py-2 text-xs font-black text-ink transition hover:bg-white disabled:opacity-50"
+                  disabled={isPayrollBusy}
+                  onClick={() => void exportMerchantPayRuns()}
+                  type="button"
+                >
+                  导出工资 CSV
+                </button>
               </div>
             </div>
 
@@ -1331,10 +1355,11 @@ export function MerchantStoreOperationsWorkspace({
 
           <section className="grid gap-3 sm:grid-cols-4">
             {[
-              ["估算服务 GMV", yen(currentSettlement?.estimatedServiceGmvJpy ?? 0)],
-              ["平台 NDP 收入", `${currentSettlement?.platformNdpRevenue ?? 0} NDP`],
-              ["技师收入预估", yen(currentSettlement?.technicianEstimatedIncomeJpy ?? 0)],
-              ["未上报金额", yen(currentSettlement?.unknownOrUnreportedServiceAmountJpy ?? 0)]
+               ["估算服务 GMV", yen(currentSettlement?.estimatedServiceGmvJpy ?? 0)],
+               ["平台 NDP 收入", `${currentSettlement?.platformNdpRevenue ?? 0} NDP`],
+               ["Request 费用", `${currentSettlement?.requestFeeNdpRevenue ?? 0} NDP`],
+               ["技师收入预估", yen(currentSettlement?.technicianEstimatedIncomeJpy ?? 0)],
+               ["未上报金额", yen(currentSettlement?.unknownOrUnreportedServiceAmountJpy ?? 0)]
             ].map(([label, value]) => (
               <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={label}>
                 <p className="text-xs font-bold text-ink/50">{label}</p>
@@ -1344,10 +1369,12 @@ export function MerchantStoreOperationsWorkspace({
           </section>
           <DataTable<BackofficeFinanceSettlementPayload>
             columns={[
-              { key: "orderNo", title: "订单/店铺", render: (row) => `${row.orderNo} · ${row.shopName}` },
-              { key: "estimatedServiceGmvJpy", title: "估算服务 GMV", render: (row) => yen(row.estimatedServiceGmvJpy) },
-              { key: "platformNdpRevenue", title: "平台 NDP 收入", render: (row) => `${row.platformNdpRevenue} NDP` },
-              { key: "technicianEstimatedIncomeJpy", title: "技师收入", render: (row) => yen(row.technicianEstimatedIncomeJpy) },
+               { key: "orderNo", title: "订单/店铺", render: (row) => `${row.orderNo} · ${row.shopName}` },
+               { key: "orderType", title: "类型", render: (row) => row.orderType },
+               { key: "estimatedServiceGmvJpy", title: "估算服务 GMV", render: (row) => yen(row.estimatedServiceGmvJpy) },
+               { key: "platformNdpRevenue", title: "平台 NDP 收入", render: (row) => `${row.platformNdpRevenue} NDP` },
+               { key: "requestFeeNdpRevenue", title: "Request 费用", render: (row) => `${row.requestFeeNdpRevenue} NDP` },
+               { key: "technicianEstimatedIncomeJpy", title: "技师收入", render: (row) => yen(row.technicianEstimatedIncomeJpy) },
               { key: "pendingHoldNdp", title: "冻结/释放", render: (row) => `${row.pendingHoldNdp} / ${row.releasedNdp} NDP` },
               { key: "serviceIncomeStatus", title: "收入状态", render: (row) => <Badge tone={row.serviceIncomeStatus === "confirmed" ? "green" : row.serviceIncomeStatus === "reported" ? "yellow" : "red"}>{row.serviceIncomeStatus}</Badge> }
             ]}

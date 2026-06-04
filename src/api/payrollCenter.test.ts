@@ -15,13 +15,13 @@ describe("payroll center typed API", () => {
     expect(merchantPayrollSource).toContain("resolvePayslipDispute");
     expect(merchantPayrollSource).toContain("/resolve-dispute");
     expect(merchantPayrollSource).toContain("PayrollAdjustmentRequestPayload");
-    expect(merchantPayrollSource).toContain("PayrollCsvExportPayload");
+    expect(merchantPayrollSource).toContain("requestCsvExport");
     expect(merchantPayrollSource).toContain("PayRunPayload");
     expect(technicianPayrollSource).toContain("/technician/payslips");
     expect(technicianPayrollSource).toContain("/technician/payslips/export");
     expect(technicianPayrollSource).toContain("confirmPayoutRecord");
     expect(technicianPayrollSource).toContain("/payout-records/");
-    expect(technicianPayrollSource).toContain("PayrollCsvExportPayload");
+    expect(technicianPayrollSource).toContain("requestCsvExport");
     expect(technicianPayrollSource).toContain("PayslipPayload");
     expect(staticDemoSource).toContain("staticPayRunPayload");
     expect(staticDemoSource).toContain("staticPayRunCsvExport");

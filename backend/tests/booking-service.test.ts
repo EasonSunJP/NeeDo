@@ -10,10 +10,13 @@ import { BookingService } from "../src/services/booking.service";
 const now = new Date("2026-05-25T00:00:00.000Z");
 const actor = { userId: 1, roles: ["customer"] };
 
-const makeOrder = (status: BookingOrderPayload["status"]): BookingOrderPayload => ({
+const makeOrder = (
+  status: BookingOrderPayload["status"],
+  orderType: BookingOrderPayload["orderType"] = "booking"
+): BookingOrderPayload => ({
   id: 1,
   orderNo: "ND202605260001",
-  orderType: "booking",
+  orderType,
   status,
   paymentStatus: "unpaid",
   customerUserId: 1,
@@ -115,13 +118,39 @@ describe("BookingService state machine", () => {
       fulfillmentMode: "store"
     });
 
-    expect(repository.createBooking).toHaveBeenCalledWith({
-      customerUserId: 1,
-      technicianServiceId: 21,
+    expect(repository.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerUserId: 1,
+        technicianServiceId: 21,
+        orderType: "booking",
+        scheduleSlotId: 11,
+        fulfillmentMode: "store",
+        note: undefined
+      })
+    );
+  });
+
+  it("passes request order creation through without downgrading it to booking", async () => {
+    const repository = createRepository(makeOrder("pending", "request"));
+    const service = new BookingService(repository);
+
+    await service.createBooking(actor, {
+      orderType: "request",
+      serviceId: 1,
       scheduleSlotId: 11,
-      fulfillmentMode: "store",
-      note: undefined
+      fulfillmentMode: "store"
     });
+
+    expect(repository.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerUserId: 1,
+        orderType: "request",
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store",
+        note: undefined
+      })
+    );
   });
 
   it("allows confirmed orders to start service and blocks cancelling completed orders", async () => {
@@ -188,6 +217,20 @@ describe("BookingService state machine", () => {
     );
 
     await new BookingService(
+      createRepository(makeOrder("pending", "request")),
+      ledgerService
+    ).transitionOrder(providerActor, 1, "confirm");
+    expect(ledgerService.freezeBookingAcceptance).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 1,
+        orderType: "request",
+        customerUserId: 1,
+        actorUserId: 2
+      }),
+      expect.anything()
+    );
+
+    await new BookingService(
       createRepository(makeOrder("inService")),
       ledgerService
     ).transitionOrder(providerActor, 1, "complete");
@@ -195,6 +238,20 @@ describe("BookingService state machine", () => {
       expect.objectContaining({
         bookingOrderId: 1,
         shopId: 1,
+        customerUserId: 1,
+        actorUserId: 2
+      }),
+      expect.anything()
+    );
+
+    await new BookingService(
+      createRepository(makeOrder("confirmed", "request")),
+      ledgerService
+    ).transitionOrder(providerActor, 1, "cancel", "request not matched");
+    expect(ledgerService.releaseBookingHold).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        bookingOrderId: 1,
+        orderType: "request",
         customerUserId: 1,
         actorUserId: 2
       }),

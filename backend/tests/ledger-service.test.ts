@@ -20,9 +20,10 @@ const bookingInput = (input: {
   shopId: number;
   actorUserId: number | null;
   customerUserId?: number;
+  orderType?: "booking" | "request";
 }) => ({
   bookingOrderId: input.bookingOrderId,
-  orderType: "booking" as const,
+  orderType: input.orderType ?? ("booking" as const),
   shopId: input.shopId,
   serviceAmountJpy: 8800,
   scheduledStartAt: now,
@@ -501,5 +502,59 @@ describe("LedgerService wallet mutations", () => {
     expect(repository.financials.get(4)).toMatchObject({
       bPlatformFeeHoldNdp: 0
     });
+  });
+
+  it("freezes and captures a request dispatch fee from the customer wallet", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "user", ownerId: 3, availableBalance: 1000 });
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1000 });
+    const service = new LedgerService(
+      repository,
+      createFeeService({ c_request_dispatch_fee: 500 })
+    );
+    const input = bookingInput({
+      bookingOrderId: 5,
+      orderType: "request",
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+
+    await service.freezeBookingAcceptance(input);
+    expect(repository.wallets.get("user:3:NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 500
+    });
+    expect(repository.wallets.get("shop:10:NDP")).toMatchObject({
+      availableBalance: 1000,
+      frozenBalance: 0
+    });
+    expect([...repository.holds.values()]).toEqual([
+      expect.objectContaining({
+        ownerType: "user",
+        ownerId: 3,
+        feeType: "c_request_dispatch_fee",
+        holdAmountNdp: 500
+      })
+    ]);
+    expect(repository.financials.get(5)).toMatchObject({
+      orderType: "request",
+      cRequestFeeHoldNdp: 500
+    });
+
+    await service.settleBookingCompletion({ ...input, customerUserId: 3 });
+
+    expect(repository.wallets.get("user:3:NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 0
+    });
+    expect(repository.financials.get(5)).toMatchObject({
+      orderType: "request",
+      cRequestFeeActualNdp: 500,
+      settlementStatus: "settled"
+    });
+    expect(repository.entries.map((entry) => entry.reason)).toContain(
+      "request_complete_dispatch_fee_debit"
+    );
   });
 });

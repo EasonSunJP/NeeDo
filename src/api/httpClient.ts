@@ -28,6 +28,12 @@ export type HttpClientRequestOptions = {
   retryOnUnauthorized?: boolean;
 };
 
+export type HttpClientCsvExportPayload = {
+  filename: string;
+  contentType: "text/csv; charset=utf-8";
+  csv: string;
+};
+
 export class ApiClientError extends Error {
   public readonly code: number;
   public readonly status: number;
@@ -275,6 +281,83 @@ async function sendRequest<TData>(
   return assertSuccess(envelope, response.status);
 }
 
+function parseCsvFilename(contentDisposition: string | null) {
+  if (!contentDisposition) {
+    return "export.csv";
+  }
+
+  const encodedMatch = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1]);
+    } catch {
+      return encodedMatch[1];
+    }
+  }
+
+  const quotedMatch = /filename="([^"]+)"/i.exec(contentDisposition);
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1];
+  }
+
+  const plainMatch = /filename=([^;]+)/i.exec(contentDisposition);
+  return plainMatch?.[1]?.trim() || "export.csv";
+}
+
+async function sendCsvExportRequest(
+  path: string,
+  options: HttpClientRequestOptions,
+  canRetry: boolean
+): Promise<HttpClientCsvExportPayload> {
+  const staticResult = await resolveStaticDemoRequest<HttpClientCsvExportPayload>(path, options);
+
+  if (staticResult.handled) {
+    return staticResult.data;
+  }
+
+  const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
+    body: createRequestBody(options.body),
+    headers: await createRequestHeaders({
+      ...options,
+      headers: { ...(options.headers ?? {}), Accept: "text/csv" }
+    }),
+    method: options.method ?? (options.body === undefined ? "GET" : "POST")
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.retryOnUnauthorized !== false &&
+    getStoredRefreshToken()
+  ) {
+    try {
+      await refreshAccessToken();
+      return sendCsvExportRequest(path, options, false);
+    } catch (error) {
+      clearAuthTokens();
+      authExpiredHandler?.();
+      throw error;
+    }
+  }
+
+  if (!response.ok || isJsonContentType(contentType)) {
+    const envelope = await parseEnvelope<unknown>(response);
+    assertSuccess(envelope, response.status);
+  }
+
+  if (!contentType.includes("text/csv")) {
+    throw new ApiClientError("error.response.invalid_csv", response.status || 502, response.status || 502);
+  }
+
+  return {
+    filename: parseCsvFilename(response.headers.get("content-disposition")),
+    contentType: "text/csv; charset=utf-8",
+    csv: await response.text()
+  };
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer);
   const chunkSize = 0x8000;
@@ -358,6 +441,9 @@ export function setAuthExpiredHandler(handler: (() => void) | null) {
 export const httpClient = {
   request<TData>(path: string, options: HttpClientRequestOptions = {}) {
     return sendRequest<TData>(path, options, true);
+  },
+  requestCsvExport(path: string, options: HttpClientRequestOptions = {}) {
+    return sendCsvExportRequest(path, options, true);
   },
   requestDataUrl(path: string, options: HttpClientRequestOptions = {}) {
     return sendDataUrlRequest(path, options);

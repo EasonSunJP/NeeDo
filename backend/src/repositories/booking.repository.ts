@@ -25,6 +25,7 @@ export interface AvailabilityListInput extends PaginationInput {
 
 export interface BookingCreateRepositoryInput {
   customerUserId: number;
+  orderType?: BookingOrderTypePayload;
   serviceId?: number;
   technicianServiceId?: number;
   scheduleSlotId: number;
@@ -311,7 +312,7 @@ export class BookingRepository implements BookingRepositoryPort {
       const order = await tx.bookingOrder.create({
         data: {
           orderNo: this.createOrderNo(),
-          orderType: "BOOKING",
+          orderType: this.orderTypeToDb(input.orderType ?? "booking"),
           customerUserId: input.customerUserId,
           serviceId: serviceSource.serviceId,
           technicianServiceId: serviceSource.technicianServiceId,
@@ -662,6 +663,10 @@ export class BookingRepository implements BookingRepositoryPort {
 
   private orderTypeFromDb(orderType: string): BookingOrderTypePayload {
     return orderType === "REQUEST" ? "request" : "booking";
+  }
+
+  private orderTypeToDb(orderType: BookingOrderTypePayload) {
+    return orderType === "request" ? ("REQUEST" as const) : ("BOOKING" as const);
   }
 
   private pricingModeFromDb(value: string): "merchant" | "technician" {

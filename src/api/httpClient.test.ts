@@ -184,6 +184,38 @@ describe("httpClient auth tokens", () => {
     });
   });
 
+  it("reads formal CSV export responses as a download envelope", async () => {
+    setAuthTokens({
+      accessToken: "merchant-access-token",
+      refreshToken: "refresh-token"
+    });
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response("shop_name,total_net_pay_jpy\nGINZA Calm Body Lab,12960", {
+        headers: {
+          "content-disposition": "attachment; filename=\"merchant-pay-runs-2026-06-04.csv\"",
+          "content-type": "text/csv; charset=utf-8"
+        },
+        status: 200
+      })
+    );
+
+    await expect(httpClient.requestCsvExport("/merchant-admin/pay-runs/export")).resolves.toEqual({
+      filename: "merchant-pay-runs-2026-06-04.csv",
+      contentType: "text/csv; charset=utf-8",
+      csv: "shop_name,total_net_pay_jpy\nGINZA Calm Body Lab,12960"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/merchant-admin/pay-runs/export",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "text/csv",
+          Authorization: "Bearer merchant-access-token"
+        })
+      })
+    );
+  });
+
   it("uses msg from non-NeeDo JSON API errors when message is absent", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({

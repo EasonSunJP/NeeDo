@@ -385,27 +385,9 @@ export function TechnicianShowcaseCard({
       <div className="absolute inset-0 bg-gradient-to-b from-black/18 via-transparent to-black/10" />
       <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-black/84 via-black/48 to-transparent" />
 
-      {metricLayout === "split" ? (
-        <div className="absolute left-2 right-[5px] top-2 z-20 flex items-start justify-between gap-1">
-          <SimpleRatingBadge compact value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
-          <div className="flex shrink-0 items-start -space-x-[4px]">
-            <IconMetricAction
-              count={favoriteCount}
-              icon="heart"
-              label={`${copy.favorite} ${favoriteCount}`}
-              size="cluster"
-            />
-            <IconMetricAction
-              count={shareCount}
-              icon="share"
-              label={`${copy.share} ${shareCount}`}
-              size="cluster"
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="absolute left-2 top-2 z-20 flex max-w-[calc(100%-16px)] items-start -space-x-[4px]">
-          <SimpleRatingBadge compact value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
+      <div className={cn("absolute left-2 top-2 z-20 flex items-start justify-between gap-1", metricLayout === "split" ? "right-[5px]" : "right-2")}>
+        <SimpleRatingBadge compact value={formatTechnicianCardRating(technician.rating).toFixed(1)} />
+        <div className="flex shrink-0 items-start -space-x-[4px]">
           <IconMetricAction
             count={favoriteCount}
             icon="heart"
@@ -419,7 +401,7 @@ export function TechnicianShowcaseCard({
             size="cluster"
           />
         </div>
-      )}
+      </div>
 
       <div className="absolute inset-x-0 bottom-0 px-3 pb-3 pt-12 text-white">
         {topBadges.length > 0 ? (

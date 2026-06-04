@@ -1,6 +1,7 @@
 # Order State Machine
 
 Step 10 implements the first formal Booking / Schedule / Order chain for free reservations only.
+Step 12E extends the same backend order table/API lane to accept `orderType = request` for finance adaptation only.
 
 ## Scope
 
@@ -15,7 +16,9 @@ Implemented:
 
 Reserved only:
 
-- `OrderType.REQUEST` exists in Prisma/database for compatibility, but the API only accepts `booking`.
+- `OrderType.REQUEST` exists in Prisma/database.
+- Since Step 12E, `/api/v1/bookings` accepts `orderType = request` so backend finance can calculate and settle the C-side Request dispatch fee.
+- This does not open a Request lobby, marketplace, or new frontend entry.
 
 Not implemented in Step 10:
 

@@ -125,6 +125,7 @@ const makePermission = (code: string, index: number) => ({
 
 const orderRecord: OrderFinanceRecord = {
   bookingOrderId: 101,
+  orderType: "booking",
   orderNo: "BK-20260603-0001",
   orderStatus: "COMPLETED",
   customerUserId: 4,
@@ -146,6 +147,8 @@ const orderRecord: OrderFinanceRecord = {
     serviceIncomeStatus: "unreported",
     bPlatformFeeHoldNdp: 500,
     bPlatformFeeActualNdp: 500,
+    cRequestFeeHoldNdp: 0,
+    cRequestFeeActualNdp: 0,
     userRewardNdp: 100,
     campaignDiscountNdp: 0,
     releasedNdp: 0,

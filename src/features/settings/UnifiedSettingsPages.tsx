@@ -1761,7 +1761,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
   const { session, switchPortal } = useAuth();
   const selectedPortal = resolveSettingsSelectedPortal(portal, session?.portal) as SwitchableSettingsPortal;
   const t = (source: string) => translateText(source, language);
-  const selectPortal = async (nextPortal: SwitchableSettingsPortal) => {
+  const selectPortal = (nextPortal: SwitchableSettingsPortal) => {
     if (nextPortal === selectedPortal) {
       return;
     }
@@ -1771,15 +1771,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
       settingsSwitchedFromPortal: true,
       settingsPortalTarget: nextPortal
     } satisfies SettingsNavigationState;
-    const switched = await switchPortal(nextPortal);
-
-    if (!switched.ok) {
-      navigate(nextEntry, {
-        replace: true,
-        state: nextNavigationState
-      });
-      return;
-    }
+    void switchPortal(nextPortal);
 
     navigate(nextEntry, {
       replace: true,

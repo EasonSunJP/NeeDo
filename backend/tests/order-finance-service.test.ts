@@ -26,6 +26,7 @@ const otherShopActor = {
 
 const orderFinanceRecord: OrderFinanceRecord = {
   bookingOrderId: 101,
+  orderType: "booking",
   orderNo: "BK-20260603-0001",
   orderStatus: "COMPLETED",
   customerUserId: 4,
@@ -47,6 +48,8 @@ const orderFinanceRecord: OrderFinanceRecord = {
     serviceIncomeStatus: "unreported",
     bPlatformFeeHoldNdp: 500,
     bPlatformFeeActualNdp: 500,
+    cRequestFeeHoldNdp: 0,
+    cRequestFeeActualNdp: 0,
     userRewardNdp: 100,
     campaignDiscountNdp: 0,
     releasedNdp: 0,
@@ -139,6 +142,49 @@ describe("OrderFinanceService", () => {
         expect.objectContaining({ type: "user_reward_granted", amountNdp: 100 }),
         expect.objectContaining({ type: "service_income_unreported", amountJpy: 8800 }),
         expect.objectContaining({ type: "technician_income_estimated", amountJpy: 5250 })
+      ])
+    );
+  });
+
+  it("includes Request fee hold and capture in the money timeline and platform revenue", async () => {
+    const repository = createRepository();
+    repository.findOrderFinance.mockResolvedValueOnce({
+      ...orderFinanceRecord,
+      orderType: "request",
+      orderNo: "RQ-20260603-0001",
+      financial: {
+        ...orderFinanceRecord.financial!,
+        bPlatformFeeHoldNdp: 500,
+        bPlatformFeeActualNdp: 500,
+        cRequestFeeHoldNdp: 300,
+        cRequestFeeActualNdp: 300,
+        userRewardNdp: 100
+      }
+    } as OrderFinanceRecord);
+    const service = new OrderFinanceService(repository, { record: jest.fn() });
+
+    const detail = await service.getMerchantOrderFinance(merchantActor, context, 101);
+
+    expect(detail).toMatchObject({
+      orderType: "request",
+      cRequestFeeHoldNdp: 300,
+      cRequestFeeActualNdp: 300,
+      requestFeeNdpRevenue: 300,
+      platformNdpRevenue: 700,
+      pendingHoldNdp: 0
+    });
+    expect(detail.moneyTimeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "request_fee_hold",
+          amountNdp: 300,
+          status: "captured"
+        }),
+        expect.objectContaining({
+          type: "request_fee_captured",
+          amountNdp: 300,
+          status: "captured"
+        })
       ])
     );
   });

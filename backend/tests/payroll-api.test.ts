@@ -519,7 +519,10 @@ const createFixture = async () => {
       };
       currentPayRun = {
         ...currentPayRun,
-        status: input.status === "confirmed" || input.status === "disputed" ? input.status : currentPayRun.status,
+        status:
+          input.status === "confirmed" || input.status === "disputed"
+            ? input.status
+            : currentPayRun.status,
         payslips: [nextPayslip]
       };
       return nextPayslip;
@@ -685,14 +688,15 @@ describe("payroll API", () => {
       .get("/api/v1/technician/payslips/export")
       .set("Authorization", `Bearer ${technicianToken}`)
       .expect(200);
-    expect(technicianExport.body.data).toMatchObject({
-      contentType: "text/csv; charset=utf-8"
-    });
-    expect(technicianExport.body.data.csv).toContain(
+    expect(technicianExport.headers["content-type"]).toContain("text/csv; charset=utf-8");
+    expect(technicianExport.headers["content-disposition"]).toContain(
+      'filename="technician-payslips-'
+    );
+    expect(technicianExport.text).toContain(
       "shop_name,technician_name,period_start,period_end,status"
     );
-    expect(technicianExport.body.data.csv).toContain("Misaki");
-    expect(technicianExport.body.data.csv).toContain("12960");
+    expect(technicianExport.text).toContain("Misaki");
+    expect(technicianExport.text).toContain("12960");
 
     const dispute = await request(fixture.app)
       .post("/api/v1/technician/payslips/8001/dispute")
@@ -766,18 +770,21 @@ describe("payroll API", () => {
       .get("/api/v1/merchant-admin/pay-runs/export")
       .set("Authorization", `Bearer ${merchantToken}`)
       .expect(200);
-    expect(merchantExport.body.data).toMatchObject({
-      contentType: "text/csv; charset=utf-8"
-    });
-    expect(merchantExport.body.data.csv).toContain("shop_name,period_start,period_end,status");
-    expect(merchantExport.body.data.csv).toContain("GINZA Calm Body Lab");
-    expect(merchantExport.body.data.csv).toContain("12960");
+    expect(merchantExport.headers["content-type"]).toContain("text/csv; charset=utf-8");
+    expect(merchantExport.headers["content-disposition"]).toContain('filename="merchant-pay-runs-');
+    expect(merchantExport.text).toContain("shop_name,period_start,period_end,status");
+    expect(merchantExport.text).toContain("GINZA Calm Body Lab");
+    expect(merchantExport.text).toContain("12960");
 
     const backofficeExport = await request(fixture.app)
       .get("/api/v1/backoffice/pay-runs/export")
       .set("Authorization", `Bearer ${merchantToken}`)
       .expect(200);
-    expect(backofficeExport.body.data.csv).toContain("total_net_pay_jpy");
+    expect(backofficeExport.headers["content-type"]).toContain("text/csv; charset=utf-8");
+    expect(backofficeExport.headers["content-disposition"]).toContain(
+      'filename="backoffice-pay-runs-'
+    );
+    expect(backofficeExport.text).toContain("total_net_pay_jpy");
   });
 
   it("supports merchant bonus adjustment request submission and approval", async () => {

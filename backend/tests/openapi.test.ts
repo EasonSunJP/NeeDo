@@ -131,6 +131,16 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/realtime/events");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/reconciliation");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/reconciliation/export");
+    [
+      "/api/v1/merchant-admin/pay-runs/export",
+      "/api/v1/technician/payslips/export",
+      "/api/v1/backoffice/pay-runs/export"
+    ].forEach((path) => {
+      expect(response.body.paths[path].get.responses["200"].content).toHaveProperty("text/csv");
+      expect(response.body.paths[path].get.responses["200"].content).not.toHaveProperty(
+        "application/json"
+      );
+    });
     expect(response.body.components.schemas).toHaveProperty("ServiceCard");
     expect(response.body.components.schemas).toHaveProperty("ShopDetail");
     expect(response.body.components.schemas).toHaveProperty("CustomerProfile");
@@ -155,6 +165,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("Notification");
     expect(response.body.components.schemas).toHaveProperty("RealtimeUnreadCounts");
 
+    const orderFinanceSchema = response.body.components.schemas.OrderFinanceDetail;
+    expect(orderFinanceSchema.properties).toMatchObject({
+      orderType: { type: "string", enum: ["booking", "request"] },
+      cRequestFeeHoldNdp: { type: "integer" },
+      cRequestFeeActualNdp: { type: "integer" },
+      requestFeeNdpRevenue: { type: "integer" }
+    });
+    expect(
+      response.body.paths["/api/v1/bookings"].post.requestBody.content["application/json"].schema
+        .properties.orderType
+    ).toEqual({ type: "string", enum: ["booking", "request"] });
+
     const resolveDisputePath =
       response.body.paths["/api/v1/merchant-admin/payslips/{id}/resolve-dispute"].post;
     expect(resolveDisputePath.security).toEqual([{ bearerAuth: [] }]);
@@ -167,9 +189,11 @@ describe("GET /api/v1/openapi.json", () => {
         "/api/v1/technician/payslips/{payslipId}/payout-records/{payoutRecordId}/confirm"
       ].post;
     expect(payoutConfirmPath.security).toEqual([{ bearerAuth: [] }]);
-    expect(
-      payoutConfirmPath.responses["200"].content["application/json"].schema.required
-    ).toEqual(["code", "message", "data"]);
+    expect(payoutConfirmPath.responses["200"].content["application/json"].schema.required).toEqual([
+      "code",
+      "message",
+      "data"
+    ]);
 
     const payslipSchema = response.body.components.schemas.Payslip;
     expect(payslipSchema.properties).toMatchObject({
@@ -177,8 +201,9 @@ describe("GET /api/v1/openapi.json", () => {
       disputeResolvedById: { type: ["integer", "null"] },
       disputeResolutionNote: { type: ["string", "null"] }
     });
-    expect(
-      response.body.components.schemas.PayoutRecord.properties.technicianConfirmedAt
-    ).toEqual({ type: ["string", "null"], format: "date-time" });
+    expect(response.body.components.schemas.PayoutRecord.properties.technicianConfirmedAt).toEqual({
+      type: ["string", "null"],
+      format: "date-time"
+    });
   });
 });

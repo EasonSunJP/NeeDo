@@ -18,6 +18,9 @@ describe("TechnicianPayrollPage", () => {
     expect(source).toContain("确认收款");
     expect(source).toContain("confirmPayoutRecord");
     expect(source).toContain("technicianConfirmedAt");
+    expect(source).toContain("technicianPayrollCenterApi.exportPayslips");
+    expect(source).toContain("downloadCsvExport");
+    expect(source).toContain("导出 CSV");
   });
 
   it("shows inclusive payroll period end dates without shifting month-end UTC timestamps", () => {

@@ -1060,14 +1060,14 @@ export function MerchantStaffDetailRoutePage() {
   return (
     <MobileFullscreenPage>
       <MobileFullscreenHeader
-        className="fixed inset-x-0 top-0 z-[70] mx-auto w-full max-w-[480px]"
         onBack={closePage}
+        showSpacer={false}
         subtitle={technician ? "员工详细信息卡" : "员工资料不可用"}
         title={displayName}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+24px)] pt-[calc(env(safe-area-inset-top)+104px)]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+124px)] pt-[calc(env(safe-area-inset-top)+86px)]">
         {technician ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <SocialProfileMiniCard
               showAction={false}
               technician={technician}

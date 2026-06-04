@@ -31,7 +31,7 @@ export const bookingCreateBodySchema = z
     serviceId: z.coerce.number().int().positive().optional(),
     technicianServiceId: z.coerce.number().int().positive().optional(),
     scheduleSlotId: z.coerce.number().int().positive(),
-    orderType: z.literal("booking").optional(),
+    orderType: z.enum(["booking", "request"]).optional(),
     fulfillmentMode: z.enum(["home", "store"]),
     note: z.string().trim().max(500).optional()
   })

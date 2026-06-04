@@ -1198,10 +1198,15 @@ function financeSettlementPayload(settlementIndex: number): BackofficeFinanceSet
   const technician = technicians[settlementIndex % technicians.length] ?? technicians[0]!;
   const serviceIncomeStatus = settlement.status === "paid" ? "confirmed" : "unreported";
   const technicianEstimatedIncomeJpy = Math.max(0, settlement.grossAmount - settlement.platformFee - 500);
+  const orderType = settlementIndex % 2 === 1 ? "request" : "booking";
+  const cRequestFeeActualNdp = orderType === "request" ? 300 : 0;
+  const cRequestFeeHoldNdp = orderType === "request" ? 300 : 0;
+  const requestFeeNdpRevenue = cRequestFeeActualNdp;
 
   return {
     id: settlementIndex + 1,
     bookingOrderId: settlementIndex + 1,
+    orderType,
     orderNo: `STATIC-ORDER-${String(settlementIndex + 1).padStart(4, "0")}`,
     referenceType: "booking_order",
     referenceId: settlementIndex + 1,
@@ -1216,9 +1221,12 @@ function financeSettlementPayload(settlementIndex: number): BackofficeFinanceSet
     unknownOrUnreportedServiceAmountJpy: serviceIncomeStatus === "confirmed" ? 0 : settlement.grossAmount,
     serviceIncomeStatus,
     paymentChannel: serviceIncomeStatus === "confirmed" ? "offline_cash" : "unknown",
-    platformNdpRevenue: settlement.platformFee,
+    platformNdpRevenue: settlement.platformFee + requestFeeNdpRevenue,
+    cRequestFeeHoldNdp,
+    cRequestFeeActualNdp,
+    requestFeeNdpRevenue,
     userRewardNdpCost: settlement.refundAmount,
-    pendingHoldNdp: settlement.status === "paid" ? 0 : settlement.platformFee,
+    pendingHoldNdp: settlement.status === "paid" ? 0 : settlement.platformFee + cRequestFeeHoldNdp,
     campaignDiscountNdp: 0,
     releasedNdp: 0,
     penaltyNdp: 0,
@@ -1252,7 +1260,10 @@ function staticOrderFinanceDetail(bookingOrderId: number): OrderFinanceDetailPay
   const technicianProfileId = settlement.technicianProfileId ?? 1;
   const preview = previewStaticCompensationProfile(shopId, technicianProfileId, {
     serviceAmountJpy: report?.serviceAmountJpy ?? settlement.estimatedServiceGmvJpy,
-    platformFeeNdp: settlement.platformNdpRevenue + settlement.userRewardNdpCost,
+    platformFeeNdp:
+      settlement.platformNdpRevenue +
+      settlement.userRewardNdpCost -
+      settlement.requestFeeNdpRevenue,
     workedMinutes: 60,
     monthlyCompletedOrders: 101,
     monthlyServiceGmvJpy: 900_000,
@@ -1278,11 +1289,26 @@ function staticOrderFinanceDetail(bookingOrderId: number): OrderFinanceDetailPay
     {
       type: "platform_fee_captured",
       label: "平台费实扣",
-      amountNdp: settlement.platformNdpRevenue + settlement.userRewardNdpCost,
+      amountNdp:
+        settlement.platformNdpRevenue +
+        settlement.userRewardNdpCost -
+        settlement.requestFeeNdpRevenue,
       actorType: "system",
       occurredAt: staticTimestamp,
       status: "captured"
     },
+    ...(settlement.cRequestFeeActualNdp > 0
+      ? [
+          {
+            type: "request_fee_captured",
+            label: "Request 费用实扣",
+            amountNdp: settlement.cRequestFeeActualNdp,
+            actorType: "system" as const,
+            occurredAt: staticTimestamp,
+            status: "captured"
+          }
+        ]
+      : []),
     ...reportTimeline,
     ...(serviceIncomeStatus === "unreported"
       ? [
@@ -1312,6 +1338,7 @@ function staticOrderFinanceDetail(bookingOrderId: number): OrderFinanceDetailPay
 
   return {
     bookingOrderId,
+    orderType: settlement.orderType,
     orderNo: settlement.orderNo,
     orderStatus: "completed",
     shopId,
@@ -1332,6 +1359,9 @@ function staticOrderFinanceDetail(bookingOrderId: number): OrderFinanceDetailPay
     serviceIncomeNote: report?.note ?? null,
     serviceIncomeProofUrl: report?.proofUrl ?? null,
     platformNdpRevenue: settlement.platformNdpRevenue,
+    cRequestFeeHoldNdp: settlement.cRequestFeeHoldNdp,
+    cRequestFeeActualNdp: settlement.cRequestFeeActualNdp,
+    requestFeeNdpRevenue: settlement.requestFeeNdpRevenue,
     userRewardNdpCost: settlement.userRewardNdpCost,
     pendingHoldNdp: settlement.pendingHoldNdp,
     campaignDiscountNdp: settlement.campaignDiscountNdp,
@@ -1977,6 +2007,7 @@ function dashboardPayload(): BackofficeDashboardPayload {
     finance: {
       estimatedServiceGmvJpy: settlementRows.reduce((total, item) => total + item.estimatedServiceGmvJpy, 0),
       platformNdpRevenue: settlementRows.reduce((total, item) => total + item.platformNdpRevenue, 0),
+      requestFeeNdpRevenue: settlementRows.reduce((total, item) => total + item.requestFeeNdpRevenue, 0),
       userRewardNdpCost: settlementRows.reduce((total, item) => total + item.userRewardNdpCost, 0),
       pendingHoldNdp: settlementRows.reduce((total, item) => total + item.pendingHoldNdp, 0),
       campaignDiscountNdp: settlementRows.reduce((total, item) => total + item.campaignDiscountNdp, 0),

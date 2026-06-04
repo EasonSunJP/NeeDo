@@ -19,6 +19,7 @@ import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { FilterBar } from "../../components/ui/FilterBar";
+import { downloadCsvExport, type CsvExportEnvelope } from "../../lib/downloadCsvExport";
 import { yen } from "../../lib/utils";
 
 export function FinancePage() {
@@ -26,9 +27,11 @@ export function FinancePage() {
   const [selectedOrderFinance, setSelectedOrderFinance] = useState<OrderFinanceDetailPayload | null>(null);
   const [settlementRows, setSettlementRows] = useState<BackofficeFinanceSettlementPayload[]>([]);
   const [payRunRows, setPayRunRows] = useState<PayRunPayload[]>([]);
+  const [exportError, setExportError] = useState<string | null>(null);
   const financeSummary = useMemo(() => {
     const estimatedServiceGmv = settlementRows.reduce((sum, row) => sum + row.estimatedServiceGmvJpy, 0);
     const platformNdpRevenue = settlementRows.reduce((sum, row) => sum + row.platformNdpRevenue, 0);
+    const requestFeeNdpRevenue = settlementRows.reduce((sum, row) => sum + row.requestFeeNdpRevenue, 0);
     const userRewardCost = settlementRows.reduce((sum, row) => sum + row.userRewardNdpCost, 0);
     const pendingHold = settlementRows.reduce((sum, row) => sum + row.pendingHoldNdp, 0);
     const campaignDiscount = settlementRows.reduce((sum, row) => sum + row.campaignDiscountNdp, 0);
@@ -37,6 +40,7 @@ export function FinancePage() {
     return [
       ["估算服务 GMV", estimatedServiceGmv, "jpy"],
       ["平台 NDP 净收入", platformNdpRevenue, "ndp"],
+      ["Request 费用", requestFeeNdpRevenue, "ndp"],
       ["用户返点成本", userRewardCost, "ndp"],
       ["待处理冻结", pendingHold, "ndp"],
       ["活动减免", campaignDiscount, "ndp"],
@@ -91,6 +95,15 @@ export function FinancePage() {
     });
   };
 
+  const runCsvExport = async (action: () => Promise<CsvExportEnvelope>) => {
+    setExportError(null);
+    try {
+      downloadCsvExport(await action());
+    } catch {
+      setExportError("导出失败");
+    }
+  };
+
   return (
     <AdminLayout>
       <ModuleShell
@@ -98,15 +111,20 @@ export function FinancePage() {
         description="今日营收、待结算、退款、渠道手续费、商家分账、技师分账、退款审核、结算单导出和发票记录。"
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => backofficeRealDataApi.exportFinanceSettlements("backoffice").catch(() => undefined)}>
+            <Button onClick={() => void runCsvExport(() => backofficeRealDataApi.exportFinanceSettlements("backoffice"))}>
               导出结算 CSV
             </Button>
-            <Button onClick={() => merchantPayrollCenterApi.exportBackofficePayRuns().catch(() => undefined)} variant="secondary">
+            <Button onClick={() => void runCsvExport(() => merchantPayrollCenterApi.exportBackofficePayRuns())} variant="secondary">
               导出工资 CSV
             </Button>
           </div>
         }
       >
+        {exportError ? (
+          <div className="mb-4">
+            <Badge tone="red">{exportError}</Badge>
+          </div>
+        ) : null}
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {financeSummary.map(([label, value, unit]) => (
             <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={label}>
@@ -169,10 +187,12 @@ export function FinancePage() {
         <div className="mt-4">
           <DataTable<BackofficeFinanceSettlementPayload>
             columns={[
-              { key: "merchant", title: "商家 / 订单", render: (row) => `${row.shopName} / ${row.orderNo}` },
-              { key: "gross", title: "估算服务 GMV", render: (row) => yen(row.estimatedServiceGmvJpy) },
-              { key: "platform", title: "平台 NDP 收入", render: (row) => formatNdp(row.platformNdpRevenue) },
-              { key: "reward", title: "返点成本", render: (row) => formatNdp(row.userRewardNdpCost) },
+               { key: "merchant", title: "商家 / 订单", render: (row) => `${row.shopName} / ${row.orderNo}` },
+               { key: "orderType", title: "类型", render: (row) => row.orderType },
+               { key: "gross", title: "估算服务 GMV", render: (row) => yen(row.estimatedServiceGmvJpy) },
+               { key: "platform", title: "平台 NDP 收入", render: (row) => formatNdp(row.platformNdpRevenue) },
+               { key: "requestFee", title: "Request 费用", render: (row) => formatNdp(row.requestFeeNdpRevenue) },
+               { key: "reward", title: "返点成本", render: (row) => formatNdp(row.userRewardNdpCost) },
               { key: "hold", title: "冻结 / 释放", render: (row) => `${formatNdp(row.pendingHoldNdp)} / ${formatNdp(row.releasedNdp)}` },
               { key: "technician", title: "技师收入", render: (row) => `${row.technicianName ?? "-"} / ${yen(row.technicianEstimatedIncomeJpy)}` },
               { key: "income", title: "服务收入", render: (row) => <Badge tone={row.serviceIncomeStatus === "confirmed" ? "green" : row.serviceIncomeStatus === "reported" ? "yellow" : "red"}>{row.serviceIncomeStatus}</Badge> },
@@ -190,16 +210,19 @@ export function FinancePage() {
           <div className="space-y-5">
             <DetailGrid
               items={[
-                { label: "商家", value: selected.shopName },
-                { label: "订单", value: selected.orderNo },
+                 { label: "商家", value: selected.shopName },
+                 { label: "订单类型", value: selected.orderType },
+                 { label: "订单", value: selected.orderNo },
                 { label: "估算服务 GMV", value: yen(selected.estimatedServiceGmvJpy) },
                 { label: "平台支付收入", value: yen(selected.platformCollectedServiceAmountJpy) },
                 { label: "线下上报收入", value: yen(selected.offlineReportedServiceAmountJpy) },
                 { label: "未上报服务收入", value: yen(selected.unknownOrUnreportedServiceAmountJpy) },
                 { label: "服务收入状态", value: selected.serviceIncomeStatus },
                 { label: "支付渠道", value: selected.paymentChannel },
-                { label: "平台 NDP 净收入", value: formatNdp(selected.platformNdpRevenue) },
-                { label: "用户返点成本", value: formatNdp(selected.userRewardNdpCost) },
+                 { label: "平台 NDP 净收入", value: formatNdp(selected.platformNdpRevenue) },
+                 { label: "Request 费用", value: formatNdp(selected.requestFeeNdpRevenue) },
+                 { label: "Request 冻结/实扣", value: `${formatNdp(selected.cRequestFeeHoldNdp)} / ${formatNdp(selected.cRequestFeeActualNdp)}` },
+                 { label: "用户返点成本", value: formatNdp(selected.userRewardNdpCost) },
                 { label: "技师", value: selected.technicianName ?? "-" },
                 { label: "技师收入预估", value: yen(selected.technicianEstimatedIncomeJpy) },
                 { label: "店铺预估毛利", value: yen(selected.shopEstimatedGrossProfitJpy) },

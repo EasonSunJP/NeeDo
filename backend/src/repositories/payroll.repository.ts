@@ -402,9 +402,7 @@ export class PayrollRepository implements PayrollRepositoryPort {
     return this.mapPayslip(updated);
   }
 
-  public async resolvePayslipDispute(
-    input: PayslipDisputeResolveInput
-  ): Promise<PayslipPayload> {
+  public async resolvePayslipDispute(input: PayslipDisputeResolveInput): Promise<PayslipPayload> {
     const updated = await this.client.$transaction(async (transaction) => {
       const payslip = await transaction.payslip.update({
         where: { id: input.payslipId },

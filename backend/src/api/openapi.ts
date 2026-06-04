@@ -4,6 +4,21 @@ import type { AppConfig } from "../config/env";
 
 type OpenApiDocument = Record<string, unknown>;
 
+const payrollCsvResponse = (description: string) => ({
+  description,
+  headers: {
+    "Content-Disposition": {
+      description: "CSV attachment filename",
+      schema: { type: "string", example: 'attachment; filename="merchant-pay-runs-2026-06-04.csv"' }
+    }
+  },
+  content: {
+    "text/csv": {
+      schema: { type: "string" }
+    }
+  }
+});
+
 export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   openapi: "3.1.0",
   info: {
@@ -1156,6 +1171,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         required: [
           "bookingOrderId",
+          "orderType",
           "orderNo",
           "shopId",
           "estimatedServiceGmvJpy",
@@ -1166,6 +1182,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           bookingOrderId: { type: "integer" },
+          orderType: { type: "string", enum: ["booking", "request"] },
           orderNo: { type: "string" },
           orderStatus: { type: "string" },
           shopId: { type: "integer" },
@@ -1180,6 +1197,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           paymentChannel: { type: "string" },
           serviceIncomeStatus: { type: "string", enum: ["unreported", "reported", "confirmed"] },
           platformNdpRevenue: { type: "integer" },
+          cRequestFeeHoldNdp: { type: "integer" },
+          cRequestFeeActualNdp: { type: "integer" },
+          requestFeeNdpRevenue: { type: "integer" },
           userRewardNdpCost: { type: "integer" },
           pendingHoldNdp: { type: "integer" },
           campaignDiscountNdp: { type: "integer" },
@@ -2620,7 +2640,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   serviceId: { type: "integer", minimum: 1 },
                   technicianServiceId: { type: "integer", minimum: 1 },
                   scheduleSlotId: { type: "integer", minimum: 1 },
-                  orderType: { type: "string", enum: ["booking"] },
+                  orderType: { type: "string", enum: ["booking", "request"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },
                   note: { type: "string", maxLength: 500 }
                 }
@@ -3565,22 +3585,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Export merchant pay runs as CSV content",
         security: [{ bearerAuth: [] }],
         responses: {
-          "200": {
-            description: "Pay run CSV export payload",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/PayrollCsvExport" }
-                  }
-                }
-              }
-            }
-          },
+          "200": payrollCsvResponse("Pay run CSV download"),
           "403": { description: "Missing merchant payroll read permission" }
         }
       }
@@ -3873,22 +3878,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Export current technician payslips as CSV content",
         security: [{ bearerAuth: [] }],
         responses: {
-          "200": {
-            description: "Payslip CSV export payload",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/PayrollCsvExport" }
-                  }
-                }
-              }
-            }
-          },
+          "200": payrollCsvResponse("Payslip CSV download"),
           "403": { description: "Missing technician payslip read permission" }
         }
       }
@@ -3997,22 +3987,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "Export platform pay runs as CSV content",
         security: [{ bearerAuth: [] }],
         responses: {
-          "200": {
-            description: "Pay run CSV export payload",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/PayrollCsvExport" }
-                  }
-                }
-              }
-            }
-          },
+          "200": payrollCsvResponse("Pay run CSV download"),
           "403": { description: "Missing backoffice payroll read permission" }
         }
       }

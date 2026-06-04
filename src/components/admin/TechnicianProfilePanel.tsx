@@ -1,11 +1,14 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { DetailGrid } from "./DetailGrid";
-import { MonthlyScheduleCalendar } from "./MonthlyScheduleCalendar";
+import { AppIcon, IconButton, type IconName } from "../client-ui/AppScaffold";
+import { ScheduleSearchField } from "../scheduling/ScheduleSearchField";
+import { UnifiedUserCalendar } from "../scheduling/UnifiedUserCalendar";
 import { Badge } from "../ui/Badge";
 import { Tabs } from "../ui/Tabs";
 import { technicianMoments } from "../../data/mock";
 import { buildStaffCompensationRule, calculateStaffCompensation } from "../../lib/staffCompensation";
-import { yen } from "../../lib/utils";
+import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
+import { cn, yen } from "../../lib/utils";
 import { useEntityStore } from "../../state/entityStore";
 import { useScheduleStore } from "../../state/scheduleStore";
 import type { Technician } from "../../types/domain";
@@ -19,8 +22,47 @@ type TechnicianProfileLike = Technician & {
 
 type TechnicianProfileContext = "platform" | "merchant";
 type StaffDetailTab = "基础资料" | "状态与数据" | "技能与服务" | "排班偏好" | "薪酬设置" | "权限与账号" | "时间线";
+type EditableStaffSectionId = "preferences" | "compensation" | "permissions";
 
 const staffDetailTabs: StaffDetailTab[] = ["基础资料", "状态与数据", "技能与服务", "排班偏好", "薪酬设置", "权限与账号", "时间线"];
+const staffDetailTabIcons: Record<StaffDetailTab, IconName> = {
+  基础资料: "info",
+  状态与数据: "eye",
+  技能与服务: "star",
+  排班偏好: "calendar",
+  薪酬设置: "palette",
+  权限与账号: "shield",
+  时间线: "clock"
+};
+const staffManagementDraftStorageKey = "needo.merchant-staff-management-drafts.v1";
+const compactInputClassName =
+  "h-10 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_84%,transparent)] px-3 text-sm font-bold text-[color:var(--client-text)] outline-none transition focus:border-[color:var(--client-primary)]";
+const compactTextareaClassName =
+  "min-h-[76px] w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_84%,transparent)] px-3 py-2 text-sm font-bold leading-6 text-[color:var(--client-text)] outline-none transition focus:border-[color:var(--client-primary)]";
+
+type StaffManagementDraft = {
+  preferredDays: string;
+  blockedDays: string;
+  expectedHoursMin: string;
+  expectedHoursMax: string;
+  restPreference: string;
+  holidayRequests: string;
+  scheduleConfirmation: string;
+  salaryMonthly: string;
+  commissionRate: string;
+  nominationFeeRate: string;
+  bonusAmount: string;
+  bonusCondition: string;
+  insuranceLabel: string;
+  transportAllowancePerVisit: string;
+  settlementBasis: string;
+  dataScope: string;
+  canEditSchedule: "yes" | "review";
+  canHandleOrders: "yes" | "paused";
+  canExportData: "no" | "limited";
+  accountStatus: string;
+  rbacNote: string;
+};
 
 const statusText: Record<Technician["status"], string> = {
   available: "空闲",
@@ -54,6 +96,31 @@ function formatHours(value: number) {
   return `${value.toFixed(value % 1 === 0 ? 0 : 1)}h`;
 }
 
+function parseDraftNumber(value: string, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseStoredStaffManagementDraft(value: unknown): Partial<StaffManagementDraft> | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  return value as Partial<StaffManagementDraft>;
+}
+
+function readStaffManagementDraft(technicianId: string, fallback: StaffManagementDraft) {
+  const saved = parseBrowserStorageJson<Record<string, unknown>>(staffManagementDraftStorageKey, {}, { silent: true });
+  const stored = parseStoredStaffManagementDraft(saved[technicianId]);
+
+  return stored ? { ...fallback, ...stored } : fallback;
+}
+
+function writeStaffManagementDraft(technicianId: string, draft: StaffManagementDraft) {
+  const saved = parseBrowserStorageJson<Record<string, unknown>>(staffManagementDraftStorageKey, {}, { silent: true });
+  return writeBrowserStorage(staffManagementDraftStorageKey, JSON.stringify({ ...saved, [technicianId]: draft }), { silent: true });
+}
+
 function getSeniorityLabel(technician: TechnicianProfileLike) {
   if (technician.rating >= 4.9 || technician.orderCount >= 900) {
     return "高级";
@@ -69,37 +136,224 @@ function getSeniorityLabel(technician: TechnicianProfileLike) {
 function PanelSection({
   title,
   caption,
+  action,
+  compact = false,
   children
 }: {
   title: string;
   caption?: string;
+  action?: ReactNode;
+  compact?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <section
+      className={cn(
+        "border shadow-panel",
+        compact
+          ? "rounded-[24px] border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,var(--client-bg)_16%)] p-4"
+          : "rounded-lg border-line bg-white p-4"
+      )}
+    >
+      <div className={cn("flex flex-wrap items-start justify-between gap-3", compact ? "mb-3" : "mb-4")}>
         <div>
-          <h4 className="font-black">{title}</h4>
-          {caption ? <p className="mt-1 text-sm leading-6 text-ink/55">{caption}</p> : null}
+          <h4 className={cn("font-black", compact ? "text-[17px] text-[color:var(--client-text)]" : "")}>{title}</h4>
+          {caption ? <p className={cn("mt-1 leading-6", compact ? "text-[13px] font-bold text-[color:var(--client-muted)]" : "text-sm text-ink/55")}>{caption}</p> : null}
         </div>
+        {action}
       </div>
       {children}
     </section>
   );
 }
 
-function MetricTiles({ items }: { items: Array<{ label: string; value: ReactNode; caption?: string; tone?: "green" | "yellow" | "red" | "blue" | "neutral" }> }) {
+function MetricTiles({ compact = false, items }: { compact?: boolean; items: Array<{ label: string; value: ReactNode; caption?: string; tone?: "green" | "yellow" | "red" | "blue" | "neutral" }> }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={cn("grid sm:grid-cols-2 xl:grid-cols-4", compact ? "gap-2" : "gap-3")}>
       {items.map((item) => (
-        <div className="rounded-lg border border-line bg-paper p-3" key={item.label}>
-          <p className="text-xs font-semibold text-ink/50">{item.label}</p>
-          <strong className="mt-1 block text-xl font-black text-ink">{item.value}</strong>
-          {item.caption ? <p className="mt-1 text-xs leading-5 text-ink/45">{item.caption}</p> : null}
+        <div
+          className={cn(
+            "border",
+            compact
+              ? "rounded-[20px] border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 py-3"
+              : "rounded-lg border-line bg-paper p-3"
+          )}
+          key={item.label}
+        >
+          <p className={cn("text-xs font-semibold", compact ? "text-[color:var(--client-muted)]" : "text-ink/50")}>{item.label}</p>
+          <strong className={cn("mt-1 block font-black", compact ? "text-lg text-[color:var(--client-text)]" : "text-xl text-ink")}>{item.value}</strong>
+          {item.caption ? <p className={cn("mt-1 text-xs leading-5", compact ? "text-[color:var(--client-muted)]" : "text-ink/45")}>{item.caption}</p> : null}
           {item.tone ? <span className={`mt-3 block h-1 rounded-full ${item.tone === "green" ? "bg-mint" : item.tone === "yellow" ? "bg-lemon" : item.tone === "red" ? "bg-coral" : item.tone === "blue" ? "bg-sky" : "bg-line"}`} /> : null}
         </div>
       ))}
     </div>
+  );
+}
+
+function StaffDetailTabBar({
+  active,
+  compact = false,
+  items,
+  onChange
+}: {
+  active: StaffDetailTab;
+  compact?: boolean;
+  items: StaffDetailTab[];
+  onChange: (item: StaffDetailTab) => void;
+}) {
+  if (compact) {
+    return null;
+  }
+
+  return <Tabs active={active} items={items} onChange={(item) => onChange(item as StaffDetailTab)} />;
+}
+
+function StaffDetailFloatingTabs({
+  active,
+  compact = false,
+  items,
+  onChange
+}: {
+  active: StaffDetailTab;
+  compact?: boolean;
+  items: StaffDetailTab[];
+  onChange: (item: StaffDetailTab) => void;
+}) {
+  if (!compact) {
+    return null;
+  }
+
+  return (
+    <div className="safe-nav-bottom client-bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-[76] mx-auto w-full max-w-[480px] px-3 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-4" data-merchant-staff-floating-tabs="true">
+      <div
+        className="client-liquid-glass-nav scrollbar-none pointer-events-auto overflow-x-auto rounded-[22px] border p-1.5 backdrop-blur-2xl"
+        data-client-bottom-nav-panel="true"
+      >
+        <div className="grid min-w-[560px] gap-1" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+          {items.map((item) => {
+            const selected = item === active;
+
+            return (
+              <button
+                aria-current={selected ? "page" : undefined}
+                aria-label={item}
+                className={cn(
+                  "focus-ring pointer-events-auto flex min-h-[50px] flex-col items-center justify-center gap-0.5 rounded-lg text-[10px] font-bold transition",
+                  selected
+                    ? "text-[color:var(--client-primary)]"
+                    : "text-[color:var(--client-muted)] hover:bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] hover:text-[color:var(--client-text)]"
+                )}
+                key={item}
+                onClick={() => onChange(item)}
+                type="button"
+              >
+                <span
+                  className={cn(
+                    "mobile-nav-icon relative grid h-6 w-6 place-items-center rounded-full transition",
+                    selected ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]"
+                  )}
+                >
+                  <AppIcon className="h-5 w-5" name={staffDetailTabIcons[item]} />
+                </span>
+                <span className="leading-tight">{item}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StaffDetailGrid({
+  compact = false,
+  items
+}: {
+  compact?: boolean;
+  items: Array<{ label: string; value: ReactNode }>;
+}) {
+  if (!compact) {
+    return <DetailGrid items={items} />;
+  }
+
+  return (
+    <dl className="grid gap-2">
+      {items.map((item) => (
+        <div
+          className="rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 py-3"
+          key={item.label}
+        >
+          <dt className="text-[12px] font-black text-[color:var(--client-muted)]">{item.label}</dt>
+          <dd className="mt-1 text-[15px] font-black leading-6 text-[color:var(--client-text)]">{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function EditablePanelActions({
+  editing,
+  label,
+  onCancel,
+  onEdit,
+  onSave
+}: {
+  editing: boolean;
+  label: string;
+  onCancel: () => void;
+  onEdit: () => void;
+  onSave: () => void;
+}) {
+  if (editing) {
+    return (
+      <div className="flex shrink-0 items-center gap-1.5">
+        <IconButton
+          className="h-10 w-10 bg-[color:var(--client-primary)] text-[color:var(--client-primary-contrast)] shadow-[0_12px_28px_color-mix(in_srgb,var(--client-primary)_24%,transparent)]"
+          icon="check"
+          label={`保存${label}`}
+          onClick={onSave}
+        />
+        <IconButton
+          className="h-10 w-10 text-[color:var(--client-muted)]"
+          icon="close"
+          label={`取消编辑${label}`}
+          onClick={onCancel}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <IconButton
+      className="h-10 w-10 shrink-0 border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary-soft)_58%,transparent)] text-[color:var(--client-primary)]"
+      icon="edit"
+      label={`编辑${label}`}
+      onClick={onEdit}
+    />
+  );
+}
+
+function ManagementField({
+  children,
+  label,
+  value,
+  wide = false
+}: {
+  children?: ReactNode;
+  label: string;
+  value?: ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <label
+      className={cn(
+        "block rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 py-3",
+        wide && "sm:col-span-2"
+      )}
+    >
+      <span className="text-[12px] font-black text-[color:var(--client-muted)]">{label}</span>
+      <span className="mt-1 block">{children ?? <strong className="text-[15px] font-black leading-6 text-[color:var(--client-text)]">{value}</strong>}</span>
+    </label>
   );
 }
 
@@ -131,6 +385,31 @@ function Timeline({ entries }: { entries: Array<{ title: string; time: string; d
           <p className="mt-2 text-sm leading-6 text-ink/60">{entry.detail}</p>
         </article>
       ))}
+    </div>
+  );
+}
+
+function MerchantStaffPersonalCalendar({ technician }: { technician: TechnicianProfileLike }) {
+  const [scheduleSearchQuery, setScheduleSearchQuery] = useState("");
+
+  return (
+    <div className="space-y-3" data-merchant-staff-personal-calendar="true">
+      <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] p-3">
+        <ScheduleSearchField
+          ariaLabel="搜索个人排班"
+          onChange={setScheduleSearchQuery}
+          placeholder="行程搜索"
+          value={scheduleSearchQuery}
+        />
+      </div>
+      <div className="overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] p-3">
+        <UnifiedUserCalendar
+          currentTechnician={technician}
+          displayMode="parallel"
+          scope="technician"
+          searchQuery={scheduleSearchQuery}
+        />
+      </div>
     </div>
   );
 }
@@ -233,9 +512,97 @@ export function TechnicianProfilePanel({
     penaltyCount: compensationPenaltyCount,
     rating: technician.rating
   });
+  const isMerchantMobile = context === "merchant" && !showSummaryCard;
+  const canEditManagement = context === "merchant";
+  const preferredDaysLabel = preferredDays.join("、");
+  const blockedDaysLabel = blockedDays.join("、");
+  const baseManagementDraft = useMemo<StaffManagementDraft>(() => ({
+    preferredDays: preferredDaysLabel,
+    blockedDays: blockedDaysLabel,
+    expectedHoursMin: String(weekHours - 4),
+    expectedHoursMax: String(weekHours + 6),
+    restPreference: staffIndex % 2 === 0 ? "连续休息优先" : "分散休息优先",
+    holidayRequests: String(1 + (staffIndex % 3)),
+    scheduleConfirmation: technician.status === "off" ? "需店长复核" : "可进入自动排班",
+    salaryMonthly: String(compensationRule.salaryMonthly),
+    commissionRate: String(compensationRule.commissionRate),
+    nominationFeeRate: String(compensationRule.nominationFeeRate),
+    bonusAmount: String(compensationRule.bonusAmount),
+    bonusCondition: compensationRule.bonusCondition,
+    insuranceLabel: compensationRule.insuranceLabel,
+    transportAllowancePerVisit: String(compensationRule.transportAllowancePerVisit),
+    settlementBasis: compensationRule.settlementBasis,
+    dataScope: context === "merchant" ? `${storeName} / 本人订单与排班` : "平台授权范围 / 所属门店数据",
+    canEditSchedule: technician.role === "storeManager" || technician.acceptRate >= 95 ? "yes" : "review",
+    canHandleOrders: technician.status === "off" ? "paused" : "yes",
+    canExportData: context === "merchant" ? "no" : "limited",
+    accountStatus: isVirtual ? "测试启用" : "正常",
+    rbacNote: "权限变更会写入时间线并同步后台审计。"
+  }), [
+    blockedDaysLabel,
+    compensationRule.bonusAmount,
+    compensationRule.bonusCondition,
+    compensationRule.commissionRate,
+    compensationRule.insuranceLabel,
+    compensationRule.nominationFeeRate,
+    compensationRule.salaryMonthly,
+    compensationRule.settlementBasis,
+    compensationRule.transportAllowancePerVisit,
+    context,
+    isVirtual,
+    preferredDaysLabel,
+    staffIndex,
+    storeName,
+    technician.acceptRate,
+    technician.role,
+    technician.status,
+    weekHours
+  ]);
+  const [savedManagementDraft, setSavedManagementDraft] = useState<StaffManagementDraft>(() => readStaffManagementDraft(technician.id, baseManagementDraft));
+  const [managementDraft, setManagementDraft] = useState<StaffManagementDraft>(() => savedManagementDraft);
+  const [editingSection, setEditingSection] = useState<EditableStaffSectionId | null>(null);
+  const managementValues = editingSection ? managementDraft : savedManagementDraft;
+  const compensationPreviewTotal =
+    parseDraftNumber(managementValues.salaryMonthly) +
+    Math.round(technician.income * (parseDraftNumber(managementValues.commissionRate) / 100)) +
+    parseDraftNumber(managementValues.bonusAmount) +
+    Math.round(completedOrders * 0.12) * parseDraftNumber(managementValues.transportAllowancePerVisit) -
+    compensationEstimate.penaltyAmount;
+  const updateManagementDraft = (patch: Partial<StaffManagementDraft>) => {
+    setManagementDraft((current) => ({ ...current, ...patch }));
+  };
+  const startEditingSection = (section: EditableStaffSectionId) => {
+    setManagementDraft(savedManagementDraft);
+    setEditingSection(section);
+  };
+  const cancelEditingSection = () => {
+    setManagementDraft(savedManagementDraft);
+    setEditingSection(null);
+  };
+  const saveEditingSection = () => {
+    setSavedManagementDraft(managementDraft);
+    writeStaffManagementDraft(technician.id, managementDraft);
+    setEditingSection(null);
+  };
+  const editableAction = (section: EditableStaffSectionId, label: string) => canEditManagement ? (
+    <EditablePanelActions
+      editing={editingSection === section}
+      label={label}
+      onCancel={cancelEditingSection}
+      onEdit={() => startEditingSection(section)}
+      onSave={saveEditingSection}
+    />
+  ) : undefined;
+
+  useEffect(() => {
+    const nextDraft = readStaffManagementDraft(technician.id, baseManagementDraft);
+    setSavedManagementDraft(nextDraft);
+    setManagementDraft(nextDraft);
+    setEditingSection(null);
+  }, [baseManagementDraft, technician.id]);
 
   return (
-    <div className="space-y-5">
+    <div className={cn(isMerchantMobile ? "space-y-4" : "space-y-5")}>
       {showSummaryCard ? (
         <section className="rounded-lg bg-ink p-4 text-white">
           <div className="flex gap-4">
@@ -261,15 +628,23 @@ export function TechnicianProfilePanel({
         </section>
       ) : null}
 
-      <Tabs
+      <StaffDetailTabBar
         active={activeTab}
+        compact={isMerchantMobile}
         items={staffDetailTabs}
-        onChange={(item) => setActiveTab(item as StaffDetailTab)}
+        onChange={setActiveTab}
+      />
+      <StaffDetailFloatingTabs
+        active={activeTab}
+        compact={isMerchantMobile}
+        items={staffDetailTabs}
+        onChange={setActiveTab}
       />
 
       {activeTab === "基础资料" ? (
-        <PanelSection title="基础资料" caption="姓名、电话、LINE、地址、eKYC、紧急联系人和入职时间集中管理。">
-          <DetailGrid
+        <PanelSection compact={isMerchantMobile} title="基础资料" caption="姓名、电话、LINE、地址、eKYC、紧急联系人和入职时间集中管理。">
+          <StaffDetailGrid
+            compact={isMerchantMobile}
             items={[
               { label: "系统ID", value: technician.systemId },
               { label: "姓名", value: technician.name },
@@ -289,9 +664,10 @@ export function TechnicianProfilePanel({
       ) : null}
 
       {activeTab === "状态与数据" ? (
-        <PanelSection title="状态与数据" caption="今日 / 本周 / 本月工时、接单、完单、取消、评分和迟到，用于运营与排班质量判断。">
+        <PanelSection compact={isMerchantMobile} title="状态与数据" caption="今日 / 本周 / 本月工时、接单、完单、取消、评分和迟到，用于运营与排班质量判断。">
           <div className="space-y-4">
             <MetricTiles
+              compact={isMerchantMobile}
               items={[
                 { label: "今日工时", value: formatHours(Math.max(2, staffSchedules.length + (staffIndex % 3))), caption: "当前已发布班次", tone: "blue" },
                 { label: "本周工时", value: formatHours(weekHours), caption: "含已预约与空闲时段", tone: "green" },
@@ -299,7 +675,8 @@ export function TechnicianProfilePanel({
                 { label: "迟到", value: `${staffIndex % 4} 次`, caption: "近 30 天", tone: staffIndex % 4 === 0 ? "neutral" : "yellow" }
               ]}
             />
-            <DetailGrid
+            <StaffDetailGrid
+              compact={isMerchantMobile}
               items={[
                 { label: "当前状态", value: <Badge tone={technician.status === "available" ? "green" : technician.status === "busy" ? "yellow" : "neutral"}>{statusText[technician.status]}</Badge> },
                 { label: "接单", value: `${technician.orderCount.toLocaleString("ja-JP")} 单` },
@@ -316,9 +693,10 @@ export function TechnicianProfilePanel({
       ) : null}
 
       {activeTab === "技能与服务" ? (
-        <PanelSection title="技能与服务" caption="可提供服务、熟练等级、可上门 / 到店、语言和可服务区域，影响派单和服务管理。">
+        <PanelSection compact={isMerchantMobile} title="技能与服务" caption="可提供服务、熟练等级、可上门 / 到店、语言和可服务区域，影响派单和服务管理。">
           <div className="space-y-4">
-            <DetailGrid
+            <StaffDetailGrid
+              compact={isMerchantMobile}
               items={[
                 { label: "熟练等级", value: getSeniorityLabel(technician) },
                 { label: "服务方式", value: workModes.join("、") },
@@ -326,20 +704,20 @@ export function TechnicianProfilePanel({
                 { label: "指名预算", value: technician.bidBudgetMin && technician.bidBudgetMax ? `${yen(Number(technician.bidBudgetMin))} - ${yen(Number(technician.bidBudgetMax))}` : "跟随门店标准" }
               ]}
             />
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border border-line bg-paper p-4">
+            <div className={cn("grid lg:grid-cols-2", isMerchantMobile ? "gap-2" : "gap-4")}>
+              <div className={cn("border", isMerchantMobile ? "rounded-[20px] border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 py-3" : "rounded-lg border-line bg-paper p-4")}>
                 <h5 className="mb-3 text-sm font-black">可提供服务</h5>
                 <TagList items={technician.skills} />
               </div>
-              <div className="rounded-lg border border-line bg-paper p-4">
+              <div className={cn("border", isMerchantMobile ? "rounded-[20px] border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 py-3" : "rounded-lg border-line bg-paper p-4")}>
                 <h5 className="mb-3 text-sm font-black">语言</h5>
                 <TagList items={technician.languages} />
               </div>
-              <div className="rounded-lg border border-line bg-paper p-4">
+              <div className={cn("border", isMerchantMobile ? "rounded-[20px] border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 py-3" : "rounded-lg border-line bg-paper p-4")}>
                 <h5 className="mb-3 text-sm font-black">可服务区域</h5>
                 <TagList items={technician.serviceAreas} />
               </div>
-              <div className="rounded-lg border border-line bg-paper p-4">
+              <div className={cn("border", isMerchantMobile ? "rounded-[20px] border-[color:color-mix(in_srgb,var(--client-line)_54%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_78%,transparent)] px-3 py-3" : "rounded-lg border-line bg-paper p-4")}>
                 <h5 className="mb-3 text-sm font-black">员工标签</h5>
                 <TagList items={technician.profileTags ?? technician.skills} />
               </div>
@@ -349,66 +727,178 @@ export function TechnicianProfilePanel({
       ) : null}
 
       {activeTab === "排班偏好" ? (
-        <PanelSection title="排班偏好" caption="可上班日、不可上班日、期望工时、休息偏好和提前假期，影响自动 / 智能排班。">
+        <PanelSection
+          action={editableAction("preferences", "偏好信息")}
+          compact={isMerchantMobile}
+          title="排班偏好"
+          caption="可上班日、不可上班日、期望工时、休息偏好和提前假期，影响自动 / 智能排班。"
+        >
           <div className="space-y-4">
-            <DetailGrid
-              items={[
-                { label: "可上班日", value: preferredDays.join("、") },
-                { label: "不可上班日", value: blockedDays.join("、") },
-                { label: "期望工时", value: `${weekHours - 4} - ${weekHours + 6}h / 周` },
-                { label: "休息偏好", value: staffIndex % 2 === 0 ? "连续休息优先" : "分散休息优先" },
-                { label: "提前假期", value: `${1 + (staffIndex % 3)} 件待确认` },
-                { label: "排班确认", value: technician.status === "off" ? "需店长复核" : "可进入自动排班" }
-              ]}
-            />
-            <MonthlyScheduleCalendar compact schedules={staffSchedules} technicians={[technician]} />
+            {editingSection === "preferences" ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <ManagementField label="可上班日" wide>
+                  <input className={compactInputClassName} onChange={(event) => updateManagementDraft({ preferredDays: event.target.value })} value={managementDraft.preferredDays} />
+                </ManagementField>
+                <ManagementField label="不可上班日" wide>
+                  <input className={compactInputClassName} onChange={(event) => updateManagementDraft({ blockedDays: event.target.value })} value={managementDraft.blockedDays} />
+                </ManagementField>
+                <ManagementField label="期望工时下限">
+                  <input className={compactInputClassName} inputMode="numeric" onChange={(event) => updateManagementDraft({ expectedHoursMin: event.target.value })} value={managementDraft.expectedHoursMin} />
+                </ManagementField>
+                <ManagementField label="期望工时上限">
+                  <input className={compactInputClassName} inputMode="numeric" onChange={(event) => updateManagementDraft({ expectedHoursMax: event.target.value })} value={managementDraft.expectedHoursMax} />
+                </ManagementField>
+                <ManagementField label="休息偏好">
+                  <select className={compactInputClassName} onChange={(event) => updateManagementDraft({ restPreference: event.target.value })} value={managementDraft.restPreference}>
+                    <option value="连续休息优先">连续休息优先</option>
+                    <option value="分散休息优先">分散休息优先</option>
+                  </select>
+                </ManagementField>
+                <ManagementField label="提前假期">
+                  <input className={compactInputClassName} inputMode="numeric" onChange={(event) => updateManagementDraft({ holidayRequests: event.target.value })} value={managementDraft.holidayRequests} />
+                </ManagementField>
+                <ManagementField label="排班确认" wide>
+                  <select className={compactInputClassName} onChange={(event) => updateManagementDraft({ scheduleConfirmation: event.target.value })} value={managementDraft.scheduleConfirmation}>
+                    <option value="可进入自动排班">可进入自动排班</option>
+                    <option value="需店长复核">需店长复核</option>
+                    <option value="仅手动确认">仅手动确认</option>
+                  </select>
+                </ManagementField>
+              </div>
+            ) : (
+              <StaffDetailGrid
+                compact={isMerchantMobile}
+                items={[
+                  { label: "可上班日", value: managementValues.preferredDays },
+                  { label: "不可上班日", value: managementValues.blockedDays },
+                  { label: "期望工时", value: `${managementValues.expectedHoursMin} - ${managementValues.expectedHoursMax}h / 周` },
+                  { label: "休息偏好", value: managementValues.restPreference },
+                  { label: "提前假期", value: `${managementValues.holidayRequests} 件待确认` },
+                  { label: "排班确认", value: managementValues.scheduleConfirmation }
+                ]}
+              />
+            )}
+            <MerchantStaffPersonalCalendar technician={technician} />
           </div>
         </PanelSection>
       ) : null}
 
       {activeTab === "薪酬设置" ? (
-        <PanelSection title="薪酬设置" caption="工资、分成、指名料、奖金金额、条件、扣罚和交通补贴会影响结算与导出。">
-          <DetailGrid
-            items={[
-              { label: "工资", value: `${yen(compensationRule.salaryMonthly)} / 月` },
-              { label: "分成", value: `${compensationRule.commissionRate}%` },
-              { label: "指名料", value: `${compensationRule.nominationFeeRate}%` },
-              { label: "奖金金额", value: yen(compensationRule.bonusAmount) },
-              { label: "条件", value: compensationRule.bonusCondition },
-              { label: "保险", value: compensationRule.insuranceLabel },
-              { label: "扣罚", value: `${compensationPenaltyCount} 件 · ${yen(compensationEstimate.penaltyAmount)} 进入试算` },
-              { label: "交通补贴", value: `${yen(compensationRule.transportAllowancePerVisit)} / 次上门` },
-              { label: "结算口径", value: compensationRule.settlementBasis },
-              { label: "本月预估", value: yen(compensationEstimate.totalAmount) }
-            ]}
-          />
+        <PanelSection
+          action={editableAction("compensation", "薪酬设置")}
+          compact={isMerchantMobile}
+          title="薪酬设置"
+          caption="工资、分成、指名料、奖金金额、条件、扣罚和交通补贴会影响结算与导出。"
+        >
+          {editingSection === "compensation" ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <ManagementField label="工资">
+                <input className={compactInputClassName} inputMode="numeric" onChange={(event) => updateManagementDraft({ salaryMonthly: event.target.value })} value={managementDraft.salaryMonthly} />
+              </ManagementField>
+              <ManagementField label="分成">
+                <input className={compactInputClassName} inputMode="decimal" onChange={(event) => updateManagementDraft({ commissionRate: event.target.value })} value={managementDraft.commissionRate} />
+              </ManagementField>
+              <ManagementField label="指名料">
+                <input className={compactInputClassName} inputMode="decimal" onChange={(event) => updateManagementDraft({ nominationFeeRate: event.target.value })} value={managementDraft.nominationFeeRate} />
+              </ManagementField>
+              <ManagementField label="奖金金额">
+                <input className={compactInputClassName} inputMode="numeric" onChange={(event) => updateManagementDraft({ bonusAmount: event.target.value })} value={managementDraft.bonusAmount} />
+              </ManagementField>
+              <ManagementField label="条件" wide>
+                <textarea className={compactTextareaClassName} onChange={(event) => updateManagementDraft({ bonusCondition: event.target.value })} value={managementDraft.bonusCondition} />
+              </ManagementField>
+              <ManagementField label="保险">
+                <input className={compactInputClassName} onChange={(event) => updateManagementDraft({ insuranceLabel: event.target.value })} value={managementDraft.insuranceLabel} />
+              </ManagementField>
+              <ManagementField label="交通补贴">
+                <input className={compactInputClassName} inputMode="numeric" onChange={(event) => updateManagementDraft({ transportAllowancePerVisit: event.target.value })} value={managementDraft.transportAllowancePerVisit} />
+              </ManagementField>
+              <ManagementField label="结算口径" wide>
+                <input className={compactInputClassName} onChange={(event) => updateManagementDraft({ settlementBasis: event.target.value })} value={managementDraft.settlementBasis} />
+              </ManagementField>
+            </div>
+          ) : (
+            <StaffDetailGrid
+              compact={isMerchantMobile}
+              items={[
+                { label: "工资", value: `${yen(parseDraftNumber(managementValues.salaryMonthly))} / 月` },
+                { label: "分成", value: `${managementValues.commissionRate}%` },
+                { label: "指名料", value: `${managementValues.nominationFeeRate}%` },
+                { label: "奖金金额", value: yen(parseDraftNumber(managementValues.bonusAmount)) },
+                { label: "条件", value: managementValues.bonusCondition },
+                { label: "保险", value: managementValues.insuranceLabel },
+                { label: "扣罚", value: `${compensationPenaltyCount} 件 · ${yen(compensationEstimate.penaltyAmount)} 进入试算` },
+                { label: "交通补贴", value: `${yen(parseDraftNumber(managementValues.transportAllowancePerVisit))} / 次上门` },
+                { label: "结算口径", value: managementValues.settlementBasis },
+                { label: "本月预估", value: yen(Math.max(0, compensationPreviewTotal)) }
+              ]}
+            />
+          )}
         </PanelSection>
       ) : null}
 
       {activeTab === "权限与账号" ? (
-        <PanelSection title="权限与账号" caption="角色、可查看数据范围、手动改排班和订单处理权限对应 RBAC 权限控制。">
-          <DetailGrid
-            items={[
-              { label: "角色", value: roleText[technician.role] },
-              { label: "联动账号", value: technician.accountUsername ?? "未绑定登录账号" },
-              { label: "可查看数据范围", value: context === "merchant" ? `${storeName} / 本人订单与排班` : "平台授权范围 / 所属门店数据" },
-              { label: "是否可手动改排班", value: technician.role === "storeManager" || technician.acceptRate >= 95 ? "是" : "需店长确认" },
-              { label: "是否可处理订单", value: technician.status === "off" ? "暂停处理" : "可处理本人订单" },
-              { label: "数据导出", value: context === "merchant" ? "不可导出跨店数据" : "按运营角色授权" },
-              { label: "账号状态", value: <Badge tone={isVirtual ? "yellow" : "green"}>{isVirtual ? "测试启用" : "正常"}</Badge> },
-              { label: "RBAC 备注", value: "权限变更会写入时间线并同步后台审计。" }
-            ]}
-          />
+        <PanelSection
+          action={editableAction("permissions", "权限设置")}
+          compact={isMerchantMobile}
+          title="权限与账号"
+          caption="角色、可查看数据范围、手动改排班和订单处理权限对应 RBAC 权限控制。"
+        >
+          {editingSection === "permissions" ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <ManagementField label="可查看数据范围" wide>
+                <input className={compactInputClassName} onChange={(event) => updateManagementDraft({ dataScope: event.target.value })} value={managementDraft.dataScope} />
+              </ManagementField>
+              <ManagementField label="是否可手动改排班">
+                <select className={compactInputClassName} onChange={(event) => updateManagementDraft({ canEditSchedule: event.target.value as StaffManagementDraft["canEditSchedule"] })} value={managementDraft.canEditSchedule}>
+                  <option value="yes">是</option>
+                  <option value="review">需店长确认</option>
+                </select>
+              </ManagementField>
+              <ManagementField label="是否可处理订单">
+                <select className={compactInputClassName} onChange={(event) => updateManagementDraft({ canHandleOrders: event.target.value as StaffManagementDraft["canHandleOrders"] })} value={managementDraft.canHandleOrders}>
+                  <option value="yes">可处理本人订单</option>
+                  <option value="paused">暂停处理</option>
+                </select>
+              </ManagementField>
+              <ManagementField label="数据导出">
+                <select className={compactInputClassName} onChange={(event) => updateManagementDraft({ canExportData: event.target.value as StaffManagementDraft["canExportData"] })} value={managementDraft.canExportData}>
+                  <option value="no">不可导出跨店数据</option>
+                  <option value="limited">按运营角色授权</option>
+                </select>
+              </ManagementField>
+              <ManagementField label="账号状态">
+                <input className={compactInputClassName} onChange={(event) => updateManagementDraft({ accountStatus: event.target.value })} value={managementDraft.accountStatus} />
+              </ManagementField>
+              <ManagementField label="RBAC 备注" wide>
+                <textarea className={compactTextareaClassName} onChange={(event) => updateManagementDraft({ rbacNote: event.target.value })} value={managementDraft.rbacNote} />
+              </ManagementField>
+            </div>
+          ) : (
+            <StaffDetailGrid
+              compact={isMerchantMobile}
+              items={[
+                { label: "角色", value: roleText[technician.role] },
+                { label: "联动账号", value: technician.accountUsername ?? "未绑定登录账号" },
+                { label: "可查看数据范围", value: managementValues.dataScope },
+                { label: "是否可手动改排班", value: managementValues.canEditSchedule === "yes" ? "是" : "需店长确认" },
+                { label: "是否可处理订单", value: managementValues.canHandleOrders === "yes" ? "可处理本人订单" : "暂停处理" },
+                { label: "数据导出", value: managementValues.canExportData === "no" ? "不可导出跨店数据" : "按运营角色授权" },
+                { label: "账号状态", value: <Badge tone={isVirtual ? "yellow" : "green"}>{managementValues.accountStatus}</Badge> },
+                { label: "RBAC 备注", value: managementValues.rbacNote }
+              ]}
+            />
+          )}
         </PanelSection>
       ) : null}
 
       {activeTab === "时间线" ? (
         <div className="space-y-5">
-          <PanelSection title="时间线" caption="资料修改、排班确认、请假、转让、派单拒绝和奖惩全链路留痕。">
+          <PanelSection compact={isMerchantMobile} title="时间线" caption="资料修改、排班确认、请假、转让、派单拒绝和奖惩全链路留痕。">
             <Timeline entries={timelineEntries} />
           </PanelSection>
 
-          <PanelSection title="动态投稿" caption={`查看${staffLabel}在动态里发布过的内容，以及用户点赞和留言反馈。`}>
+          <PanelSection compact={isMerchantMobile} title="动态投稿" caption={`查看${staffLabel}在动态里发布过的内容，以及用户点赞和留言反馈。`}>
             <div className="mb-4 grid grid-cols-3 gap-2 text-center text-xs">
               {[
                 ["投稿", moments.length],
@@ -475,7 +965,7 @@ export function TechnicianProfilePanel({
       ) : null}
 
       {isVirtual ? (
-        <section className="rounded-lg border border-line bg-paper p-4">
+        <section className={cn("border", isMerchantMobile ? "rounded-[24px] border-[color:color-mix(in_srgb,var(--client-line)_64%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,var(--client-bg)_16%)] p-4" : "rounded-lg border-line bg-paper p-4")}>
           <h4 className="font-black">虚拟账号说明</h4>
           <p className="mt-2 text-sm leading-6 text-ink/60">
             场景：{technician.scenario}。虚拟技师用于测试排班、订单链路、冷启动供给和活动展示，不会真实派单给用户。

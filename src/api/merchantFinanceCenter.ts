@@ -118,6 +118,7 @@ export interface ServiceIncomeReportInput {
 
 export interface OrderFinanceDetailPayload {
   bookingOrderId: number;
+  orderType: "booking" | "request";
   orderNo: string;
   orderStatus: string;
   shopId: number;
@@ -138,6 +139,9 @@ export interface OrderFinanceDetailPayload {
   serviceIncomeNote: string | null;
   serviceIncomeProofUrl: string | null;
   platformNdpRevenue: number;
+  cRequestFeeHoldNdp: number;
+  cRequestFeeActualNdp: number;
+  requestFeeNdpRevenue: number;
   userRewardNdpCost: number;
   pendingHoldNdp: number;
   campaignDiscountNdp: number;

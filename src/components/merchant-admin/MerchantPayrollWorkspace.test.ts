@@ -8,6 +8,9 @@ describe("merchant payroll workspace", () => {
     expect(source).toContain("生成工资草稿");
     expect(source).toContain("发布工资单");
     expect(source).toContain("记录支付");
+    expect(source).toContain("merchantPayrollCenterApi.exportPayRuns");
+    expect(source).toContain("downloadCsvExport");
+    expect(source).toContain("导出工资 CSV");
   });
 
   it("connects payroll adjustment requests to the merchant payroll controls", () => {
@@ -25,5 +28,11 @@ describe("merchant payroll workspace", () => {
     expect(source).toContain("处理申诉");
     expect(source).toContain("merchantPayrollCenterApi.resolvePayslipDispute");
     expect(source).toContain("disputeResolutionNote");
+  });
+
+  it("surfaces Request finance fees in the merchant order money route", () => {
+    expect(source).toContain("requestFeeNdpRevenue");
+    expect(source).toContain("cRequestFeeHoldNdp");
+    expect(source).toContain("Request 费用");
   });
 });

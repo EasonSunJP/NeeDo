@@ -89,11 +89,11 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(portalPageSource).not.toContain("subtitle={t(entry.subtitle)}");
   });
 
-  it("waits for remembered portal authorization before navigating to another frontend identity", () => {
-    expect(portalPageSource).toContain("const selectPortal = async (nextPortal: SwitchableSettingsPortal) => {");
+  it("does not block frontend identity navigation on portal authorization sync", () => {
+    expect(portalPageSource).toContain("const selectPortal = (nextPortal: SwitchableSettingsPortal) => {");
     expect(portalPageSource).toContain("const nextEntry = getPortalEntry(nextPortal);");
-    expect(portalPageSource).toContain("const switched = await switchPortal(nextPortal);");
-    expect(portalPageSource).toContain("if (!switched.ok)");
+    expect(portalPageSource).toContain("void switchPortal(nextPortal);");
+    expect(portalPageSource).not.toContain("await switchPortal(nextPortal)");
     expect(portalPageSource).toContain("navigate(nextEntry");
   });
 

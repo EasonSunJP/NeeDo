@@ -56,7 +56,7 @@ CREATE TABLE `technician_compensation_profiles` (
 
   INDEX `technician_compensation_profiles_shop_id_idx`(`shop_id`),
   INDEX `technician_compensation_profiles_technician_profile_id_idx`(`technician_profile_id`),
-  INDEX `technician_compensation_profiles_shop_id_technician_profile_id_status_idx`(`shop_id`, `technician_profile_id`, `status`),
+  INDEX `tech_comp_profiles_shop_tech_status_idx`(`shop_id`, `technician_profile_id`, `status`),
   INDEX `technician_compensation_profiles_status_idx`(`status`),
   INDEX `technician_compensation_profiles_wage_mode_idx`(`wage_mode`),
   INDEX `technician_compensation_profiles_ndp_fee_bearer_idx`(`ndp_fee_bearer`),

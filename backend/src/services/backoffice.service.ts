@@ -65,6 +65,7 @@ export interface BackofficeScheduleSlotPayload {
 export interface BackofficeFinanceSettlementPayload {
   id: number;
   bookingOrderId: number;
+  orderType: "booking" | "request";
   orderNo: string;
   referenceType: string;
   referenceId: number;
@@ -80,6 +81,9 @@ export interface BackofficeFinanceSettlementPayload {
   serviceIncomeStatus: string;
   paymentChannel: string;
   platformNdpRevenue: number;
+  cRequestFeeHoldNdp: number;
+  cRequestFeeActualNdp: number;
+  requestFeeNdpRevenue: number;
   userRewardNdpCost: number;
   pendingHoldNdp: number;
   campaignDiscountNdp: number;
@@ -132,6 +136,7 @@ export interface BackofficeDashboardPayload {
   finance: {
     estimatedServiceGmvJpy: number;
     platformNdpRevenue: number;
+    requestFeeNdpRevenue: number;
     userRewardNdpCost: number;
     pendingHoldNdp: number;
     campaignDiscountNdp: number;

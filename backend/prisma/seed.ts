@@ -16,6 +16,12 @@ const BCRYPT_ROUNDS = 12;
 const DEFAULT_ADMIN_EMAIL = "admin@example.com";
 const DEFAULT_ADMIN_USERNAME = "admin";
 const SEED_PRISMA_LOG_LEVELS: Prisma.LogLevel[] = ["error"];
+export const DEFAULT_REQUEST_DISPATCH_FEE_NDP = 500;
+export const CUSTOMER_REQUEST_WALLET_SEED_NDP = DEFAULT_REQUEST_DISPATCH_FEE_NDP * 2;
+
+export const getRequestDispatchWalletSeedAmount = (
+  account: Pick<TestUserAccountDefinition, "identityType">
+): number => (account.identityType === "customer" ? CUSTOMER_REQUEST_WALLET_SEED_NDP : 0);
 
 const getDatabaseUrl = (): string => {
   const databaseUrl = process.env.DATABASE_URL;
@@ -1292,6 +1298,18 @@ const seedRequiredTestAccounts = async (
       scopeType: identity.scopeType,
       scopeId: identity.scopeId
     });
+
+    const requestDispatchSeedAmount = getRequestDispatchWalletSeedAmount(account);
+
+    if (requestDispatchSeedAmount > 0) {
+      await upsertSeedWalletFunding(tx, {
+        ownerType: "USER",
+        ownerId: user.id,
+        actorUserId: user.id,
+        amount: requestDispatchSeedAmount,
+        idempotencyKey: `seed:wallet:user:${user.id}:request-dispatch-ndp`
+      });
+    }
   }
 };
 
@@ -1726,9 +1744,12 @@ const seedCoreReadData = async (
     amount: 5000,
     idempotencyKey: `seed:wallet:shop:${shop.id}:initial-ndp`
   });
-  await upsertSeedWallet(tx, {
+  await upsertSeedWalletFunding(tx, {
     ownerType: "USER",
-    ownerId: customerUser.id
+    ownerId: customerUser.id,
+    actorUserId: customerUser.id,
+    amount: CUSTOMER_REQUEST_WALLET_SEED_NDP,
+    idempotencyKey: `seed:wallet:user:${customerUser.id}:request-dispatch-ndp`
   });
   await upsertDefaultFinanceRules(tx, shopOwner.id);
 
@@ -2124,6 +2145,21 @@ const upsertDefaultFinanceRules = async (
         pricingLockMode: "recalculate_at_complete",
         stackingMode: "sum",
         priority: 110,
+        status: "active",
+        createdById: actorUserId,
+        updatedById: actorUserId
+      },
+      {
+        ruleSetId: ruleSet.id,
+        feeType: "c_request_dispatch_fee",
+        orderType: "request",
+        payerType: "user",
+        baseAmountNdp: DEFAULT_REQUEST_DISPATCH_FEE_NDP,
+        calculationMode: "fixed",
+        holdStrategy: "exact_estimate",
+        pricingLockMode: "recalculate_at_complete",
+        stackingMode: "sum",
+        priority: 115,
         status: "active",
         createdById: actorUserId,
         updatedById: actorUserId

@@ -141,9 +141,11 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           offlineReportedServiceAmountJpy: true,
           unknownOrUnreportedServiceAmountJpy: true,
           bPlatformFeeActualNdp: true,
+          cRequestFeeActualNdp: true,
           userRewardNdp: true,
           campaignDiscountNdp: true,
           bPlatformFeeHoldNdp: true,
+          cRequestFeeHoldNdp: true,
           releasedNdp: true
         }
       }),
@@ -161,13 +163,17 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       })
     ]);
     const grossAmount = this.toNumber(grossAggregate._sum.priceAmount);
+    const requestFeeNdpRevenue = financeAggregate._sum.cRequestFeeActualNdp ?? 0;
     const platformNdpRevenue =
-      (financeAggregate._sum.bPlatformFeeActualNdp ?? 0) -
+      (financeAggregate._sum.bPlatformFeeActualNdp ?? 0) +
+      requestFeeNdpRevenue -
       (financeAggregate._sum.userRewardNdp ?? 0);
     const pendingHoldNdp = Math.max(
       0,
-      (financeAggregate._sum.bPlatformFeeHoldNdp ?? 0) -
+      (financeAggregate._sum.bPlatformFeeHoldNdp ?? 0) +
+        (financeAggregate._sum.cRequestFeeHoldNdp ?? 0) -
         (financeAggregate._sum.bPlatformFeeActualNdp ?? 0) -
+        (financeAggregate._sum.cRequestFeeActualNdp ?? 0) -
         (financeAggregate._sum.releasedNdp ?? 0)
     );
 
@@ -207,6 +213,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       finance: {
         estimatedServiceGmvJpy: financeAggregate._sum.serviceAmountJpy ?? grossAmount,
         platformNdpRevenue,
+        requestFeeNdpRevenue,
         userRewardNdpCost: financeAggregate._sum.userRewardNdp ?? 0,
         pendingHoldNdp,
         campaignDiscountNdp: financeAggregate._sum.campaignDiscountNdp ?? 0,
@@ -299,6 +306,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     });
     const header = [
       "id",
+      "orderType",
       "orderNo",
       "shopName",
       "status",
@@ -311,6 +319,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       "offlineReportedServiceAmountJpy",
       "unknownOrUnreportedServiceAmountJpy",
       "platformNdpRevenue",
+      "cRequestFeeHoldNdp",
+      "cRequestFeeActualNdp",
+      "requestFeeNdpRevenue",
       "userRewardNdpCost",
       "pendingHoldNdp",
       "campaignDiscountNdp",
@@ -327,6 +338,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ...rows.map((row) =>
         [
           row.id,
+          this.orderType(row.orderType),
           row.bookingOrder.orderNo,
           row.bookingOrder.shop.name,
           row.settlementStatus,
@@ -338,9 +350,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           row.platformCollectedServiceAmountJpy,
           row.offlineReportedServiceAmountJpy,
           row.unknownOrUnreportedServiceAmountJpy,
-          row.bPlatformFeeActualNdp - row.userRewardNdp,
+          this.platformNdpRevenue(row),
+          row.cRequestFeeHoldNdp,
+          row.cRequestFeeActualNdp,
+          row.cRequestFeeActualNdp,
           row.userRewardNdp,
-          Math.max(0, row.bPlatformFeeHoldNdp - row.bPlatformFeeActualNdp - row.releasedNdp),
+          this.pendingHoldNdp(row),
           row.campaignDiscountNdp,
           row.releasedNdp,
           row.penaltyNdp,
@@ -601,14 +616,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   private mapFinanceSettlement(
     settlement: FinanceSettlementRecord
   ): BackofficeFinanceSettlementPayload {
-    const pendingHoldNdp = Math.max(
-      0,
-      settlement.bPlatformFeeHoldNdp - settlement.bPlatformFeeActualNdp - settlement.releasedNdp
-    );
+    const pendingHoldNdp = this.pendingHoldNdp(settlement);
 
     return {
       id: settlement.id,
       bookingOrderId: settlement.bookingOrderId,
+      orderType: this.orderType(settlement.orderType),
       orderNo: settlement.bookingOrder.orderNo,
       referenceType: "booking_order",
       referenceId: settlement.bookingOrderId,
@@ -624,7 +637,10 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       unknownOrUnreportedServiceAmountJpy: settlement.unknownOrUnreportedServiceAmountJpy,
       serviceIncomeStatus: settlement.serviceIncomeStatus,
       paymentChannel: settlement.paymentChannel,
-      platformNdpRevenue: settlement.bPlatformFeeActualNdp - settlement.userRewardNdp,
+      platformNdpRevenue: this.platformNdpRevenue(settlement),
+      cRequestFeeHoldNdp: settlement.cRequestFeeHoldNdp,
+      cRequestFeeActualNdp: settlement.cRequestFeeActualNdp,
+      requestFeeNdpRevenue: settlement.cRequestFeeActualNdp,
       userRewardNdpCost: settlement.userRewardNdp,
       pendingHoldNdp,
       campaignDiscountNdp: settlement.campaignDiscountNdp,
@@ -689,6 +705,41 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private statusFromDb(status: string): string {
     return status === "IN_SERVICE" ? "inService" : status.toLowerCase();
+  }
+
+  private orderType(value: string): "booking" | "request" {
+    return value === "request" ? "request" : "booking";
+  }
+
+  private platformNdpRevenue(
+    settlement: Pick<
+      FinanceSettlementRecord,
+      "bPlatformFeeActualNdp" | "cRequestFeeActualNdp" | "userRewardNdp"
+    >
+  ): number {
+    return (
+      settlement.bPlatformFeeActualNdp + settlement.cRequestFeeActualNdp - settlement.userRewardNdp
+    );
+  }
+
+  private pendingHoldNdp(
+    settlement: Pick<
+      FinanceSettlementRecord,
+      | "bPlatformFeeHoldNdp"
+      | "bPlatformFeeActualNdp"
+      | "cRequestFeeHoldNdp"
+      | "cRequestFeeActualNdp"
+      | "releasedNdp"
+    >
+  ): number {
+    return Math.max(
+      0,
+      settlement.bPlatformFeeHoldNdp +
+        settlement.cRequestFeeHoldNdp -
+        settlement.bPlatformFeeActualNdp -
+        settlement.cRequestFeeActualNdp -
+        settlement.releasedNdp
+    );
   }
 
   private stringArray(value: unknown): string[] {

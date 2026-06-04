@@ -188,6 +188,7 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
   ): OrderFinanceRecord {
     return {
       bookingOrderId: order.id,
+      orderType: order.orderType === "REQUEST" ? "request" : "booking",
       orderNo: order.orderNo,
       orderStatus: String(order.status),
       customerUserId: order.customerUserId,
@@ -219,6 +220,8 @@ export class OrderFinanceRepository implements OrderFinanceRepositoryPort {
       serviceIncomeStatus: this.incomeStatus(record.serviceIncomeStatus),
       bPlatformFeeHoldNdp: record.bPlatformFeeHoldNdp,
       bPlatformFeeActualNdp: record.bPlatformFeeActualNdp,
+      cRequestFeeHoldNdp: record.cRequestFeeHoldNdp,
+      cRequestFeeActualNdp: record.cRequestFeeActualNdp,
       userRewardNdp: record.userRewardNdp,
       campaignDiscountNdp: record.campaignDiscountNdp,
       releasedNdp: record.releasedNdp,
