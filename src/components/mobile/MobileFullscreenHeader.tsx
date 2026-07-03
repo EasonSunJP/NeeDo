@@ -122,8 +122,8 @@ export function MobileFullscreenHeader({
       <div className={floatingHeaderInnerClassName}>
         <div
           className={cn(
-            "mx-auto grid min-h-11 w-full items-center gap-3",
-            showBackButton ? "grid-cols-[44px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"
+            "mx-auto grid min-h-10 w-full items-center gap-2.5",
+            showBackButton ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]"
           )}
         >
           {showBackButton ? (
@@ -136,19 +136,19 @@ export function MobileFullscreenHeader({
               hasRightControls ? "" : showBackButton ? "col-end-4" : "col-end-3"
             )}
           >
-            <div className="flex min-h-11 flex-col justify-center">
+            <div className="flex min-h-10 flex-col justify-center">
               <TitleWithInfo
                 as="h1"
                 info={headerInfo}
                 label={typeof title === "string" ? `${title} 说明` : "查看页面说明"}
                 title={title}
-                titleClassName={cn("truncate text-[20px] font-black leading-none", dark ? "text-white" : "text-current")}
+                titleClassName={cn("truncate text-[18px] font-black leading-none", dark ? "text-white" : "text-current")}
                 variant={dark ? "dark" : "client"}
               />
             </div>
           </div>
           {hasRightControls ? (
-            <div className={cn("flex h-11 shrink-0 items-center gap-2", showBackButton ? "col-start-3" : "col-start-2")}>
+            <div className={cn("flex h-10 shrink-0 items-center gap-2", showBackButton ? "col-start-3" : "col-start-2")}>
               {action}
               {showCloseButton ? <MobileFullscreenCloseButton dark={dark} label={closeLabel} onClose={onClose!} /> : null}
             </div>

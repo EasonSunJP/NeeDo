@@ -260,7 +260,9 @@ export function FeatureCarousel({
                 aria-label={`切换到第 ${index + 1} 张轮播`}
                 className={cn(
                   "h-2 rounded-full transition",
-                  resolvedActiveIndex === index ? "w-6 bg-[color:var(--client-primary)]" : "w-2 bg-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)]"
+                  resolvedActiveIndex === index
+                    ? "feature-carousel-indicator-pill w-6 bg-[color:var(--client-primary)]"
+                    : "feature-carousel-indicator-dot w-2 border border-white/35 bg-white/45 shadow-[0_0_8px_rgba(0,0,0,0.22)]"
                 )}
                 key={`${slide.id}-${index}`}
                 onClick={() => updateActiveIndex(index)}

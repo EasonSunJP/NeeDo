@@ -12,12 +12,15 @@ import type { ImRoleType } from "../../features/im/model";
 import { useImStore } from "../../features/im/store";
 import { useSocial } from "../../features/social/context";
 import type { SocialPortalScope } from "../../features/social/types";
+import { useI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { getClientThemeClassName, useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
 import { NotificationBadge } from "../ui/NotificationBadge";
 import { ClientEdgeMask } from "./ClientEdgeMask";
 import { MobileNavIcon } from "./MobileNavIcon";
 import { merchantNavItems, technicianNavItems, userNavItems } from "./navItems";
+import { SpecialBlackFlatIcon, type SpecialBlackFlatIconName } from "./SpecialBlackIcon";
 
 export interface MobileNavItem {
   label: string;
@@ -27,15 +30,6 @@ export interface MobileNavItem {
   end?: boolean;
   notificationCount?: number;
 }
-
-const needoNavButtonImages = {
-  "dark-green": "/icons/needo-nav-button-dark.png",
-  "black-gold": "/icons/needo-nav-button-dark.png",
-  "cool-black-gray": "/icons/needo-nav-button-light.png",
-  "light-green": "/icons/needo-nav-button-light.png",
-  "vital-mono": "/icons/needo-nav-button-light.png",
-  "neon-pink": "/icons/needo-nav-button-dark.png"
-} satisfies Record<ClientTheme, string>;
 
 type PageDragSession = {
   pointerId: number;
@@ -116,6 +110,62 @@ function getNavAriaLabel(label: string, notificationCount: number) {
   return notificationCount > 0 ? `${label}，${notificationCount} 条新提醒` : label;
 }
 
+function getSpecialBlackNavIconName(icon: string): SpecialBlackFlatIconName {
+  if (icon === "home") {
+    return "home";
+  }
+
+  if (icon === "needo") {
+    return "plus-circle";
+  }
+
+  if (icon === "message") {
+    return "chat";
+  }
+
+  if (icon === "contacts" || icon === "me" || icon === "customers") {
+    return "contacts";
+  }
+
+  if (icon === "schedule" || icon === "booking") {
+    return "calendar";
+  }
+
+  if (icon === "store" || icon === "categories") {
+    return "store";
+  }
+
+  if (icon === "staff") {
+    return "technician";
+  }
+
+  if (icon === "orders" || icon === "tasks" || icon === "jobs") {
+    return "feed";
+  }
+
+  if (icon === "moments") {
+    return "feed";
+  }
+
+  return "feed";
+}
+
+function getSpecialBlackNavLabel(item: MobileNavItem) {
+  return item.label;
+}
+
+function NeedoFeaturedNavButton({ className }: { className?: string }) {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={cn("client-featured-nav-image", className)}
+      draggable={false}
+      src="/icons/needo-green-button-light.png"
+    />
+  );
+}
+
 function shouldIgnorePageDrag(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return true;
@@ -168,7 +218,7 @@ const liquidGlassBottomEdgeMaskStyle = {
   "--client-edge-mask-bottom-strong-stop": "78%",
   "--client-edge-mask-bottom-end-opacity": "0.44"
 } as CSSProperties;
-const darkLiquidGlassNavThemes = new Set<ClientTheme>(["dark-green", "black-gold", "vital-mono", "cool-black-gray", "neon-pink"]);
+const darkLiquidGlassNavThemes = new Set<ClientTheme>(["dark-green", "black-gold", "vital-mono", "cool-black-gray", "special-black", "neon-pink"]);
 
 export function MobileShell({
   children,
@@ -176,6 +226,7 @@ export function MobileShell({
   navItems,
   className,
   navPanelStyle = "default",
+  showBottomNav = true,
   showTopEdgeMask = true
 }: {
   children: ReactNode;
@@ -183,10 +234,12 @@ export function MobileShell({
   navItems?: MobileNavItem[];
   className?: string;
   navPanelStyle?: "default" | "plain";
+  showBottomNav?: boolean;
   showTopEdgeMask?: boolean;
 }) {
   const location = useLocation();
   const { isNight, theme } = useClientTheme();
+  const { language } = useI18n();
   const bottomEdgeMaskStyle = {
     ...liquidGlassBottomEdgeMaskStyle,
     ...(isNight || darkLiquidGlassNavThemes.has(theme) ? { "--client-edge-mask-rgb": "0 0 0" } : null)
@@ -195,8 +248,10 @@ export function MobileShell({
   const imStore = useImStore(portalRole);
   const social = useSocial();
   const resolvedNavItems = navItems ?? getDefaultNavItems(location.pathname);
-  const featuredItem = resolvedNavItems.find((item) => item.featured);
-  const normalItems = resolvedNavItems.filter((item) => !item.featured);
+  const isSpecialBlack = theme === "special-black";
+  const displayedNavItems = showBottomNav ? resolvedNavItems : [];
+  const featuredItem = displayedNavItems.find((item) => item.featured);
+  const normalItems = displayedNavItems.filter((item) => !item.featured);
   const splitIndex = featuredItem ? Math.floor(normalItems.length / 2) : normalItems.length;
   const pageDragSessionRef = useRef<PageDragSession | null>(null);
   const suppressClickUntilRef = useRef(0);
@@ -377,7 +432,8 @@ export function MobileShell({
   return (
     <div
       className={cn(
-        "safe-shell-bottom client-shell min-h-[100dvh] w-full max-w-full overflow-x-hidden [overflow-x:clip]",
+        "client-shell min-h-[100dvh] w-full max-w-full overflow-x-hidden [overflow-x:clip]",
+        showBottomNav && "safe-shell-bottom",
         isNight ? "client-theme-night bg-ink text-white" : "client-theme-day bg-paper text-ink",
         getClientThemeClassName(theme),
         className
@@ -394,13 +450,98 @@ export function MobileShell({
       >
         {children}
       </main>
-      {resolvedNavItems.length > 0 ? (
+      {displayedNavItems.length > 0 && !isSpecialBlack ? (
         <>
           {showTopEdgeMask ? <ClientEdgeMask edge="top" /> : null}
           <ClientEdgeMask edge="bottom" style={bottomEdgeMaskStyle} />
         </>
       ) : null}
-      {resolvedNavItems.length > 0 ? (
+      {displayedNavItems.length > 0 && isSpecialBlack ? (
+        <nav
+          className="safe-nav-bottom special-black-bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-[120] mx-auto w-full px-0 pb-0 pt-0"
+          style={{ maxWidth: "var(--client-bottom-nav-max-width, 430px)" }}
+        >
+          <div className="special-black-bottom-nav-panel pointer-events-auto relative mx-auto h-[124px] overflow-visible px-2 pt-[48px]">
+            <span aria-hidden="true" className="special-black-bottom-nav-backplate absolute inset-x-[-2px] bottom-0 h-[112px]" />
+            <span aria-hidden="true" className="special-black-bottom-nav-center-glow absolute left-1/2 top-[-18px] h-[112px] w-[150px] -translate-x-1/2" />
+            <img
+              alt=""
+              aria-hidden="true"
+              className="special-black-bottom-nav-dock absolute inset-x-0 bottom-0 h-[112px] w-full select-none object-fill"
+              draggable={false}
+              src="/icons/special-black/nav-dock.png"
+            />
+            {featuredItem ? (
+              <NavLink
+                aria-label={getNavAriaLabel(featuredItem.label, featuredItemNotificationCount)}
+                className="focus-ring special-black-featured-nav-link absolute left-1/2 top-[-18px] z-20 flex h-[88px] w-[88px] -translate-x-1/2 items-center justify-center rounded-full"
+                to={featuredItem.to}
+              >
+                <NeedoFeaturedNavButton className="special-black-featured-nav-image h-[88px] w-[88px]" />
+                {featuredItemNotificationCount > 0 ? (
+                  <span className="special-black-bottom-nav-badge absolute right-[7px] top-[8px] grid h-[20px] min-w-[20px] place-items-center rounded-full px-1 text-center text-[11px] font-black leading-none text-white">
+                    {featuredItemNotificationCount}
+                  </span>
+                ) : null}
+              </NavLink>
+            ) : null}
+            <div
+              className="relative z-10 grid h-full items-start gap-1 px-1"
+              style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}
+            >
+              {visibleItems.map((item, index) => {
+                if (!item) {
+                  return <span aria-hidden="true" className="min-h-[70px]" key={`special-black-space-${index}`} />;
+                }
+
+                const notificationCount = getNavItemNotificationCount(item, portalRole, navNotificationCounts);
+                const label = translateText(getSpecialBlackNavLabel(item), language);
+
+                return (
+                  <NavLink
+                    aria-label={getNavAriaLabel(label, notificationCount)}
+                    className={({ isActive }) =>
+                      cn(
+                        "focus-ring special-black-bottom-nav-item relative flex min-h-[70px] flex-col items-center justify-start gap-[7px] rounded-[18px] pt-[4px] text-center transition",
+                        isActive
+                          ? "special-black-bottom-nav-item-active opacity-100"
+                          : "opacity-78 hover:opacity-92"
+                      )
+                    }
+                    end={item.end ?? (item.to === "/" || item.to === "/merchant" || item.to === "/technician")}
+                    key={item.to}
+                    to={item.to}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <SpecialBlackFlatIcon
+                          className={cn(
+                            "special-black-bottom-nav-flat-icon h-[30px] w-[30px] transition",
+                            item.icon === "home" && "h-[34px] w-[34px]",
+                            item.icon === "moments" && "h-[31px] w-[31px]",
+                            item.icon === "contacts" && "h-[31px] w-[31px]",
+                            isActive ? "special-black-bottom-nav-flat-icon-active scale-105" : "scale-100"
+                          )}
+                          name={getSpecialBlackNavIconName(item.icon)}
+                        />
+                        <span className="special-black-bottom-nav-label max-w-full truncate text-[11px] font-black leading-none">
+                          {label}
+                        </span>
+                        {notificationCount > 0 ? (
+                          <span className="special-black-bottom-nav-badge absolute right-[15px] top-[0px] grid h-[20px] min-w-[20px] place-items-center rounded-full px-1 text-center text-[11px] font-black leading-none text-white">
+                            {notificationCount > 99 ? "99+" : notificationCount}
+                          </span>
+                        ) : null}
+                      </>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </div>
+        </nav>
+      ) : null}
+      {displayedNavItems.length > 0 && !isSpecialBlack ? (
         <nav
           className={cn(
             "safe-nav-bottom client-bottom-nav pointer-events-none fixed inset-x-0 bottom-0 z-[100] mx-auto w-full pt-2",
@@ -424,7 +565,7 @@ export function MobileShell({
               to={featuredItem.to}
             >
               {featuredItem.icon === "needo" ? (
-                <img alt="" className="client-featured-nav-image" draggable={false} src={needoNavButtonImages[theme]} />
+                <NeedoFeaturedNavButton />
               ) : (
                 <>
                   <span className="mobile-nav-icon relative z-10 grid h-7 w-7 place-items-center">

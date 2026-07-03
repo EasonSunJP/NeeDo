@@ -126,6 +126,10 @@ export function isStaticDemoMode() {
   return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO);
 }
 
+export function isStaticDemoStrictMode() {
+  return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO_STRICT) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO_STRICT);
+}
+
 function clone<TValue>(value: TValue): TValue {
   return JSON.parse(JSON.stringify(value)) as TValue;
 }
@@ -2629,6 +2633,10 @@ export async function resolveStaticDemoRequest<TData>(
   const backoffice = handleBackoffice<TData>(path, options);
   if (backoffice.handled) {
     return backoffice;
+  }
+
+  if (isStaticDemoStrictMode()) {
+    return { handled: false };
   }
 
   return { handled: true, data: clone(emptyStaticFallback<TData>(path, options)) };

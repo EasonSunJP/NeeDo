@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/Button";
 import { HorizontalScrollArea } from "../../components/ui/HorizontalScrollArea";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { japanCityRecords, japanCitySummary, type JapanCityLevel, type JapanCityRecord } from "../../data/japanCityData";
+import { downloadJapanCityExcel } from "../../lib/japanCityExcelExport";
 import { cn } from "../../lib/utils";
 
 type CityFilterLevel = "all" | JapanCityLevel;
@@ -25,7 +26,7 @@ const coordinateFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 6,
   minimumFractionDigits: 6
 });
-const cityTableColumnCount = 6;
+const cityTableColumnCount = 7;
 const cityRowHeight = 58;
 const cityRowOverscan = 8;
 const cityTableDefaultViewportHeight = 520;
@@ -58,6 +59,10 @@ function normalizeSearchText(value: string) {
 
 function formatCoordinate(value: number | null) {
   return value === null ? "-" : coordinateFormatter.format(value);
+}
+
+function formatParentCode(record: JapanCityRecord) {
+  return record.parentId ? (recordById.get(record.parentId)?.code ?? "-") : "-";
 }
 
 function getBadgeTone(record: JapanCityRecord) {
@@ -234,6 +239,10 @@ export function CitySettingsPage() {
     setExpandedIds(allExpanded ? new Set() : getInitialExpandedIds());
   };
 
+  const handleExportExcel = () => {
+    downloadJapanCityExcel(japanCityRecords);
+  };
+
   const handleTableScroll = (event: UIEvent<HTMLDivElement>) => {
     const { clientHeight, scrollTop } = event.currentTarget;
 
@@ -258,6 +267,7 @@ export function CitySettingsPage() {
             description="日本全量都道府县、市区町村和政令指定都市行政区，按官方行政代码与役所坐标统一维护。"
           >
             <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button variant="secondary" onClick={handleExportExcel}>导出 Excel</Button>
               <Button>添加城市</Button>
               <Button variant="secondary">更新城市缓存</Button>
               <Button variant="secondary" onClick={toggleAll}>{allExpanded ? "全部关闭" : "全部展开"}</Button>
@@ -323,11 +333,12 @@ export function CitySettingsPage() {
             key={filterKey}
             onScroll={handleTableScroll}
           >
-            <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-left text-sm">
+            <table className="w-full min-w-[1220px] border-separate border-spacing-0 text-left text-sm">
               <thead className="sticky top-0 z-20 bg-paper text-xs font-semibold uppercase text-ink/55 shadow-[0_1px_0_var(--admin-line)]">
                 <tr>
                   <th className="border-b border-line bg-paper px-4 py-3">城市</th>
                   <th className="border-b border-line bg-paper px-4 py-3">行政代码</th>
+                  <th className="border-b border-line bg-paper px-4 py-3">上级代码</th>
                   <th className="border-b border-line bg-paper px-4 py-3">经度</th>
                   <th className="border-b border-line bg-paper px-4 py-3">纬度</th>
                   <th className="border-b border-line bg-paper px-4 py-3">更新时间</th>
@@ -368,6 +379,7 @@ export function CitySettingsPage() {
                         </div>
                       </td>
                       <td className="h-[58px] whitespace-nowrap border-b border-line px-4 py-2 font-mono text-xs text-ink/65">{record.code}</td>
+                      <td className="h-[58px] whitespace-nowrap border-b border-line px-4 py-2 font-mono text-xs text-ink/55">{formatParentCode(record)}</td>
                       <td className="h-[58px] whitespace-nowrap border-b border-line px-4 py-2 text-ink/70">{formatCoordinate(record.longitude)}</td>
                       <td className="h-[58px] whitespace-nowrap border-b border-line px-4 py-2 text-ink/70">{formatCoordinate(record.latitude)}</td>
                       <td className="h-[58px] whitespace-nowrap border-b border-line px-4 py-2 text-ink/60">{record.updatedAt}</td>

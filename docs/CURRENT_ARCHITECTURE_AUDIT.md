@@ -3,6 +3,9 @@
 > Step 01 audit date: 2026-05-25  
 > Scope: repository audit and baseline protection only. No business code, database schema, mock replacement, or UI refactor was performed.
 
+> Refresh note: 2026-06-07  
+> The original Step 01 baseline is preserved for history, but the repository now includes a formal `backend/` service, Prisma migrations, Auth/RBAC/User Management APIs, core-read APIs, Booking/Order APIs, NDP/finance/payroll APIs, and realtime API slices. Static demo mode remains available and intentionally preserves current online static-page behavior by default.
+
 ## 1. Required Reading
 
 The Step 01 audit was based on the current repository files below:
@@ -27,7 +30,7 @@ NeeDo is currently a React / TypeScript / Vite frontend application with a local
 | Build tool | Vite, configured in `vite.config.ts` |
 | Styling | Tailwind CSS `3.4.17`, shared CSS in `src/styles.css`, client/admin theme tokens |
 | Tests | Vitest `4.1.4` |
-| Backend | No independent real backend yet. `scripts/mock-backend.mjs` is a local mock/health helper only |
+| Backend | Formal `backend/` service now exists with Express, TypeScript, Prisma, Redis-backed auth/session behavior, OpenAPI, Jest/Supertest tests, and multiple migration slices. `scripts/mock-backend.mjs` still exists as a local helper/status service and must not be treated as the formal backend |
 | Persistence | Browser `localStorage` through `src/lib/browserStorage.ts` plus some direct `window.localStorage` usage |
 | i18n | `src/i18n/I18nProvider.tsx` and `src/i18n/translations.ts` |
 
@@ -91,14 +94,14 @@ Important routing files:
 
 ## 6. Current Auth And Permission Boundary
 
-The current auth layer is demo/local only:
+The auth layer is now mixed rather than demo-only:
 
-- `src/auth/demoAccount.ts` contains demo credentials, demo verification code, and linked entity IDs.
-- `src/auth/AuthProvider.tsx` stores `needo.auth.session` in browser storage and validates against `demoAuthAccount`.
-- `src/auth/featurePermissions.ts` contains a static frontend permission list. Most current protected routes only check portal access; selected merchant-admin routes check static feature permissions.
-- There is no JWT, refresh token, Redis session, `/api/v1/auth/me`, backend RBAC middleware, or real permission API yet.
+- Formal frontend auth calls `/api/v1/auth/*`, `/api/v1/users`, `/api/v1/roles`, and `/api/v1/permissions` through `src/api/httpClient.ts`.
+- `backend/` implements JWT access tokens, refresh-token persistence, OTP, logout blacklisting, RBAC middleware, User/Role/Permission APIs, audit logs, and OpenAPI/test coverage.
+- `src/auth/AuthProvider.tsx` still keeps a browser-side `needo.auth.session` compatibility session for portal switching and restoration.
+- `src/auth/demoAccount.ts`, `src/auth/featurePermissions.ts`, and temporary frontend bypass behavior remain legacy/static-preview compatibility and must not be expanded for formal product behavior.
 
-This makes User Management, Auth, RBAC, and admin/user identity the first high-risk boundary for later Steps 04-07.
+This makes Auth/RBAC a partial-completion boundary: core formal APIs exist, while preview shortcuts and static frontend permissions still need controlled retirement as later frontend batches stop depending on them.
 
 ## 7. Mock And Local State Boundaries
 
@@ -110,6 +113,7 @@ The repository still relies on legacy frontend data and browser persistence:
 - `src/features/im/api.ts` intercepts `/api/im/*` requests in the browser by wrapping `window.fetch`; it is not a real backend API.
 - `src/features/social/context.tsx`, `src/features/dine-in/store.ts`, `src/features/dispatch-center/store.ts`, `src/features/shop-member/store.ts`, and Afirieito runtime state use seed data plus `localStorage`.
 - `scripts/mock-backend.mjs` exposes local health, Google account/calendar helper routes, and translation helper routes, but README explicitly identifies it as a mock backend status service.
+- `src/api/staticDemo.ts` intercepts static-demo `/api/v1/*` requests. By default it keeps permissive fallback behavior for current static pages. For development acceptance only, `VITE_NEEDO_STATIC_DEMO_STRICT=true` or `VITE_STATIC_DEMO_STRICT=true` makes unknown static-demo API paths fall through to the real network request instead of returning an empty object/list.
 
 These boundaries are documented in `docs/MOCK_RETIREMENT_MAP.md`.
 

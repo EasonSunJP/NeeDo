@@ -117,6 +117,15 @@ describe("UnifiedSettingsPage Xiaobai asset gate", () => {
   });
 });
 
+describe("UnifiedSettingsThemePage", () => {
+  it("lists the special black UI branch with its caption and preview swatches", () => {
+    expect(source).toContain('case "special-black":');
+    expect(source).toContain("夜间 / 特殊黑");
+    expect(source).toContain("#5f8dff");
+    expect(source).toContain("#ff4e9a");
+  });
+});
+
 describe("UnifiedSettingsProfilePage", () => {
   const userProfileSource = source.slice(
     source.indexOf("function UserProfileSettingsPage"),

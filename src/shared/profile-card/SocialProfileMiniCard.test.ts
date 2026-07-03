@@ -4,9 +4,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import appScaffoldSource from "../../components/client-ui/AppScaffold.tsx?raw";
 import homePageSource from "../../pages/user/HomePage.tsx?raw";
-import type { Technician } from "../../types/domain";
+import { ClientThemeProvider } from "../../theme/ClientThemeProvider";
+import type { Store, Technician } from "../../types/domain";
 import cardSource from "./SocialProfileMiniCard.tsx?raw";
 import simpleRatingBadgeSource from "./SimpleRatingBadge.tsx?raw";
+import { SocialProfileMiniCard } from "./SocialProfileMiniCard";
 import { TechnicianPublicInfoCard } from "./TechnicianPublicInfoCard";
 import technicianPublicInfoCardSource from "./TechnicianPublicInfoCard.tsx?raw";
 import technicianShowcaseCardSource from "./TechnicianShowcaseCard.tsx?raw";
@@ -50,6 +52,50 @@ describe("SocialProfileMiniCard cover readability", () => {
     expect(homePageSource).toContain("<SocialProfileMiniCard detailTo={data.to} showShareAction store={data.store} />");
     expect(homePageSource).toContain("<SocialProfileMiniCard detailTo={data.to} showShareAction technician={data.technician} />");
     expect(cardSource).not.toContain('label === "关注"');
+  });
+
+  it("does not render follower/following stats inside shop info cards", () => {
+    const store: Store = {
+      id: "store-social-stats-hidden",
+      systemId: "S-900",
+      merchantId: "merchant-1",
+      name: "Roppongi Recovery",
+      area: "Roppongi",
+      address: "Tokyo 6-8 Roppongi, Minato-ku",
+      rating: 4.9,
+      reviewCount: 970,
+      priceLabel: "¥12,000",
+      tags: ["recovery", "private", "night"],
+      openStatus: "open",
+      nextSlot: "18:00",
+      cover: "/images/generated/store/store-01.jpg",
+      gallery: ["/images/generated/store/store-01.jpg"],
+      description: "Private recovery salon",
+      rankLabel: "店铺",
+      businessHours: "10:00-24:00",
+      mode: "store"
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(
+        ClientThemeProvider,
+        null,
+        createElement(
+          MemoryRouter,
+          null,
+          createElement(SocialProfileMiniCard, {
+            detailTo: "/stores/store-social-stats-hidden",
+            showShareAction: true,
+            store
+          })
+        )
+      )
+    );
+
+    expect(cardSource).toContain("function SocialStatsLine");
+    expect(markup).toContain("Roppongi Recovery");
+    expect(markup).not.toContain("粉丝：");
+    expect(markup).not.toContain("关注：");
   });
 
   it("opens the public technician info card from the technician avatar while keeping a dynamic-page action", () => {

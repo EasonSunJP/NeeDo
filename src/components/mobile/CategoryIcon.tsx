@@ -105,6 +105,21 @@ const coolBlackGrayPalette: CategoryPalette = {
   glow: "rgba(24, 210, 240, 0.28)"
 };
 
+const specialBlackPalette: CategoryPalette = {
+  badgeBg: "radial-gradient(circle at 30% 24%, #263858 0%, #121a2a 58%, #070b13 100%)",
+  badgeBorder: "rgba(119, 146, 205, 0.24)",
+  badgeShadow: "0 12px 24px rgba(0, 0, 0, 0.52), 0 0 20px rgba(95, 141, 255, 0.12), inset 0 1px 0 rgba(157, 183, 255, 0.14)",
+  primary: "#5f8dff",
+  primaryDark: "#2d5ed8",
+  secondary: "#ff4e9a",
+  secondaryDark: "#b9326d",
+  surface: "#f7f9ff",
+  surfaceShade: "#223150",
+  outline: "#9db7ff",
+  shadow: "rgba(0, 0, 0, 0.34)",
+  glow: "rgba(95, 141, 255, 0.3)"
+};
+
 const neonPinkPalette: CategoryPalette = {
   badgeBg: "radial-gradient(circle at 30% 24%, #33245d 0%, #1e1b42 56%, #0d0f22 100%)",
   badgeBorder: "rgba(199, 177, 255, 0.24)",
@@ -126,6 +141,7 @@ const categoryPalettes: Record<ClientTheme, CategoryPalette> = {
   "black-gold": blackGoldPalette,
   "vital-mono": vitalMonoPalette,
   "cool-black-gray": coolBlackGrayPalette,
+  "special-black": specialBlackPalette,
   "neon-pink": neonPinkPalette
 };
 

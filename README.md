@@ -56,6 +56,7 @@ npm run preview:static
 - Google 账号、Google Calendar、Afirieito 翻译等本地辅助 API 不再访问 `4176` 或外部服务。
 - 正式 `backend/`、Prisma migration、seed、真实 API 代码和普通 `npm run dev` / `npm run build` 不受影响。
 - `dist/*.html` 仍需通过 `npm run preview:static` 或其他 HTTP 静态服务访问，不建议直接用 `file://` 双击打开。
+- 当前线上静态演示默认保持宽松兜底；本地验收缺失接口时可额外设置 `VITE_NEEDO_STATIC_DEMO_STRICT=true`，让未知静态 `/api/v1` 请求走真实网络请求，而不是返回空对象或空列表。
 
 ## Formal Auth Frontend
 
@@ -161,6 +162,10 @@ Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the
   - 活力黑白版
   - 白色主界面 + 深黑模块 + 亮蓝点缀
   - 对应白天语义 `day`
+- `special-black`
+  - 特殊黑
+  - 蓝黑暗底 + 半透明石墨面板 + 蓝色发光主按钮
+  - 对应夜间语义 `night`，该分支禁用实时模糊 / 折射类视觉运算
 - `jade-light`
   - 白绿版
   - 清爽白底 + 克制绿色主色

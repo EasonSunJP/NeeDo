@@ -96,6 +96,23 @@ const infoToneClassesByTheme: Record<ClientTheme, OfferToneClasses> = {
     imageLabel: "bg-black/60 text-[#f3f8fb]",
     eyebrow: "text-[#79f0ff]"
   },
+  "special-black": {
+    card:
+      "border-[rgba(119,146,205,0.18)] bg-[linear-gradient(180deg,rgba(24,31,48,0.94)_0%,rgba(13,18,29,0.96)_100%)] shadow-[0_20px_40px_rgba(0,0,0,0.42),0_0_26px_rgba(95,141,255,0.08)]",
+    chip: "bg-[rgba(95,141,255,0.12)] text-[#e8eeff]",
+    fieldValue: "text-[rgba(218,226,244,0.78)]",
+    noteSurface: "border border-[rgba(119,146,205,0.1)] bg-[rgba(119,146,205,0.07)]",
+    noteLabel: "text-[rgba(218,226,244,0.62)]",
+    noteValue: "text-[#f7f9ff]",
+    noteTag: "text-[#9db7ff]",
+    expirySurface: "border border-[rgba(119,146,205,0.1)] bg-[rgba(95,141,255,0.07)]",
+    expiryLabel: "text-[rgba(218,226,244,0.62)]",
+    expiryCountdown: "text-[rgba(218,226,244,0.68)]",
+    title: "text-[#f7f9ff]",
+    titlePrefix: "text-[#9db7ff]",
+    imageLabel: "bg-black/62 text-[#f7f9ff]",
+    eyebrow: "text-[#9db7ff]"
+  },
   "neon-pink": {
     card:
       "border-[rgba(143,124,255,0.24)] bg-[linear-gradient(180deg,rgba(32,35,78,0.92)_0%,rgba(25,29,66,0.94)_58%,rgba(43,20,61,0.92)_100%)] shadow-[0_18px_34px_rgba(4,5,18,0.28)]",
@@ -200,6 +217,23 @@ const demandToneClassesByTheme: Record<ClientTheme, OfferToneClasses> = {
     titlePrefix: "text-[#79f0ff]",
     imageLabel: "bg-black/58 text-[#f3f8fb]",
     eyebrow: "text-[#79f0ff]"
+  },
+  "special-black": {
+    card:
+      "border-[rgba(95,141,255,0.32)] bg-[linear-gradient(180deg,rgba(31,42,66,0.98)_0%,rgba(22,31,51,0.98)_56%,rgba(12,18,31,0.98)_100%)] shadow-[0_20px_40px_rgba(0,0,0,0.34),0_0_28px_rgba(95,141,255,0.12)]",
+    chip: "bg-[rgba(95,141,255,0.16)] text-[#e8eeff]",
+    fieldValue: "text-[rgba(238,243,255,0.84)]",
+    noteSurface: "border border-[rgba(255,78,154,0.16)] bg-[rgba(255,78,154,0.08)]",
+    noteLabel: "text-[rgba(218,226,244,0.7)]",
+    noteValue: "text-[#f7f9ff]",
+    noteTag: "text-[#ff9ac4]",
+    expirySurface: "border border-[rgba(95,141,255,0.16)] bg-[rgba(95,141,255,0.09)]",
+    expiryLabel: "text-[rgba(218,226,244,0.7)]",
+    expiryCountdown: "text-[rgba(238,243,255,0.72)]",
+    title: "text-[#f7f9ff]",
+    titlePrefix: "text-[#9db7ff]",
+    imageLabel: "bg-black/62 text-[#f7f9ff]",
+    eyebrow: "text-[#9db7ff]"
   },
   "neon-pink": {
     card:

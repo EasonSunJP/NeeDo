@@ -339,6 +339,42 @@ describe("httpClient auth tokens", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("keeps the permissive static demo fallback by default", async () => {
+    vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
+    const fetchMock = vi.mocked(fetch);
+
+    const result = await httpClient.request<{ list: unknown[]; total: number }>("/unwired-items");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      list: [],
+      total: 0
+    });
+  });
+
+  it("routes unknown static demo requests to the network when strict mode is enabled", async () => {
+    vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
+    vi.stubEnv("VITE_NEEDO_STATIC_DEMO_STRICT", "true");
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        code: 0,
+        message: "success",
+        data: { strict: true }
+      })
+    );
+
+    await expect(httpClient.request<{ strict: boolean }>("/unwired-items")).resolves.toEqual({
+      strict: true
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/unwired-items",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
+  });
+
   it("does not attach the device fingerprint header by default", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ok: true } }));
 

@@ -603,6 +603,8 @@ function getThemeCaption(themeId: ClientThemeDefinition["id"]) {
       return "夜间 / 黑金";
     case "cool-black-gray":
       return "夜间 / 冷酷黑灰";
+    case "special-black":
+      return "夜间 / 特殊黑";
     case "vital-mono":
       return "白天 / 活力黑白";
     case "dark-green":
@@ -627,6 +629,12 @@ function getThemePreviewClasses(themeId: ClientThemeDefinition["id"]) {
         "bg-[linear-gradient(135deg,#0a0d10_0%,#1d2329_54%,#404951_100%)]",
         "bg-[#18d2f0]",
         "bg-[#313841]"
+      ];
+    case "special-black":
+      return [
+        "bg-[linear-gradient(135deg,#060a12_0%,#121a2a_50%,#263858_100%)]",
+        "bg-[#5f8dff]",
+        "bg-[#ff4e9a]"
       ];
     case "vital-mono":
       return [
@@ -1717,7 +1725,7 @@ export function UnifiedSettingsThemePage({ portal }: { portal: UnifiedSettingsPo
     <PortalScopedSettingsPage portal={portal}>
       <SettingsDetailPage backTo={getSettingsBasePath(portal)} info={t("主题选择移到独立页面，三端共用同一套主题设置页。")} navItems={getSettingsNavItems(portal)} title={t("UI 切换")}>
         <SettingsSection
-          description={t("三端统一切换活力黑白 / 冷酷黑灰 / 白绿 / 黑绿 / 霓虹粉紫 / 黑金主题，由同一套 token 与组件承载。")}
+          description={t("三端统一切换活力黑白 / 冷酷黑灰 / 特殊黑 / 白绿 / 黑绿 / 霓虹粉紫 / 黑金主题，由同一套 token 与组件承载。")}
           panelClassName={settingsListDividerClassName}
           title={t("主题选择")}
         >

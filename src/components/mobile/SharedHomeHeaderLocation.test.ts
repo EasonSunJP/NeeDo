@@ -16,6 +16,17 @@ describe("SharedHomeHeader location entry", () => {
     expect(appSource).toContain('path="/merchant/settings/service-range"');
   });
 
+  it("shows the current service area caption above the technician task header location", () => {
+    const taskHeaderStart = technicianSource.indexOf('{activeView === "tasks"');
+    const taskHeaderEnd = technicianSource.indexOf('{activeView === "me"', taskHeaderStart);
+    const taskHeaderSource = technicianSource.slice(taskHeaderStart, taskHeaderEnd);
+
+    expect(taskHeaderSource).toContain("<SharedHomeHeader");
+    expect(taskHeaderSource).toContain('locationCaption="当前服务区域"');
+    expect(taskHeaderSource).toContain('locationLabel={activeOrder?.area ? `东京 · ${activeOrder.area}` : "东京 · 新宿区"}');
+    expect(taskHeaderSource).toContain('locationTo="/technician/settings/service-range"');
+  });
+
   it("does not keep a page-local location picker on the user home page", () => {
     expect(userSource).not.toContain("LocationSheet");
     expect(userSource).not.toContain("setLocationSheetOpen");

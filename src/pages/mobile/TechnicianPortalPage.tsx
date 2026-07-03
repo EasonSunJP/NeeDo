@@ -287,6 +287,13 @@ function ScheduleNewBadge({ className }: { className?: string }) {
   );
 }
 
+const technicianTaskUtilityActionClassName =
+  "focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_96%,white_4%)] text-[color:var(--client-text)] shadow-[0_10px_24px_rgba(30,58,52,0.14)] backdrop-blur-md transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-line))] hover:text-[color:var(--client-primary-strong)] active:scale-[0.96]";
+const technicianTaskCardClassName =
+  "focus-ring cursor-pointer overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_96%,white_4%)] shadow-panel transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_34%,var(--client-line))] hover:bg-[color:var(--client-elevated)]";
+const technicianTaskSecondaryActionClassName =
+  "focus-ring inline-flex h-10 items-center justify-center rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] text-sm font-black text-[color:var(--client-text)] transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_38%,var(--client-line))] hover:text-[color:var(--client-primary-strong)]";
+
 function getTaskOrderTabLabel(tab: TechnicianTaskOrderTab) {
   return tab === "active" ? "进行中" : tab === "pending" ? "待确认" : "已收尾";
 }
@@ -4972,6 +4979,7 @@ export function TechnicianPortalPage() {
               avatarLabel="打开我的页面"
               avatarSrc={techProfile.avatar}
               avatarTo="/technician/me"
+              locationCaption="当前服务区域"
               locationLabel={activeOrder?.area ? `东京 · ${activeOrder.area}` : "东京 · 新宿区"}
               locationTo="/technician/settings/service-range"
               settingsLabel="打开技师设置"
@@ -5128,15 +5136,15 @@ export function TechnicianPortalPage() {
               </div>
             </section>
 
-            <section className="space-y-3 text-white">
+            <section className="space-y-3 text-[color:var(--client-text)]">
               <div className="flex items-center justify-between gap-3">
                 <TitleWithInfo
                   as="h2"
                   info="默认先看今天的仅排班展示，下一单会补充用户资料、地址、导航和沟通入口，也可以切回今日订单处理。"
                   label="今日安排 简介"
                   title="今日安排"
-                  titleClassName="text-lg font-bold text-white"
-                  variant="dark"
+                  titleClassName="text-lg font-bold text-[color:var(--client-text)]"
+                  variant="paper"
                 />
               </div>
 
@@ -5152,7 +5160,7 @@ export function TechnicianPortalPage() {
               {tasksPanelTab === "schedule" ? (
                 <div className="space-y-3">
                   <article
-                    className="focus-ring cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] shadow-[0_18px_36px_rgba(0,0,0,0.2)] transition hover:border-white/20 hover:bg-white/[0.07]"
+                    className={technicianTaskCardClassName}
                     onClick={(event) => handleTaskCardClick(event, nextServiceOrder)}
                     onKeyDown={(event) => handleTaskCardKeyDown(event, nextServiceOrder)}
                     role="button"
@@ -5182,12 +5190,12 @@ export function TechnicianPortalPage() {
                                 {nextServiceOrder.mode === "home" ? "上门服务" : "到店服务"}
                               </Badge>
                             </div>
-                            <h3 className="mt-3 text-[18px] font-black tracking-[-0.03em] text-white">
+                            <h3 className="mt-3 text-[18px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">
                               {nextServiceJob?.serviceContent ?? nextServiceOrder.itemName}
                             </h3>
-                            <p className="mt-2 text-xs leading-5 text-white/60">开始时间：{nextServiceTime}</p>
+                            <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]">开始时间：{nextServiceTime}</p>
                             {nextServiceEstimatedEndTime ? (
-                              <p className="text-xs leading-5 text-white/60">预计结束：{nextServiceEstimatedEndTime}</p>
+                              <p className="text-xs leading-5 text-[color:var(--client-muted)]">预计结束：{nextServiceEstimatedEndTime}</p>
                             ) : null}
                           </div>
                           <div className="flex shrink-0 flex-col items-end gap-2">
@@ -5195,14 +5203,14 @@ export function TechnicianPortalPage() {
                               <div className="flex items-center gap-1.5">
                                 <Link
                                   aria-label="联系用户"
-                                  className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/32 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-white/16 active:scale-[0.96]"
+                                  className={technicianTaskUtilityActionClassName}
                                   to={getMessagePath("technician", getTechnicianCustomerConversationId(nextServiceOrder.customerId), "/technician/tasks")}
                                 >
                                   <AppIcon className="h-4 w-4" name="chat" />
                                 </Link>
                                 <button
                                   aria-label="转发服务卡"
-                                  className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/32 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-white/16 active:scale-[0.96]"
+                                  className={technicianTaskUtilityActionClassName}
                                   onClick={() => shareTaskOrder(nextServiceOrder)}
                                   type="button"
                                 >
@@ -5235,22 +5243,22 @@ export function TechnicianPortalPage() {
                           onOpenDetails={() => openTaskOrderDetails(nextServiceOrder)}
                         />
 
-                        <div className="mt-3 rounded-[20px] border border-white/10 bg-white/[0.06] px-4 py-3">
-                          <p className="text-[11px] font-bold text-white/45">服务地址</p>
-                          <p className="mt-1 text-sm font-black text-white">{nextServiceAddress}</p>
+                        <div className="mt-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 py-3">
+                          <p className="text-[11px] font-bold text-[color:var(--client-muted)]">服务地址</p>
+                          <p className="mt-1 text-sm font-black text-[color:var(--client-text)]">{nextServiceAddress}</p>
                         </div>
 
                         {isCurrentServiceFocused ? (
                           <div className="mt-4 grid grid-cols-3 gap-2">
                             <button
-                              className="focus-ring inline-flex h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] text-sm font-black text-white transition hover:bg-white/[0.1]"
+                              className={technicianTaskSecondaryActionClassName}
                               onClick={() => handleStatusSync("移动中")}
                               type="button"
                             >
                               移动
                             </button>
                             <a
-                              className="focus-ring inline-flex h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] text-sm font-black text-white transition hover:bg-white/[0.1]"
+                              className={technicianTaskSecondaryActionClassName}
                               href={googleRouteUrl(nextServiceAddress)}
                               rel="noreferrer"
                               target="_blank"
@@ -5268,7 +5276,7 @@ export function TechnicianPortalPage() {
                         ) : (
                           <div className="mt-4 grid grid-cols-2 gap-2">
                             <a
-                              className="focus-ring inline-flex h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] text-sm font-black text-white transition hover:bg-white/[0.1]"
+                              className={technicianTaskSecondaryActionClassName}
                               href={googleRouteUrl(nextServiceAddress)}
                               rel="noreferrer"
                               target="_blank"
@@ -5289,7 +5297,7 @@ export function TechnicianPortalPage() {
 
                   {secondaryNextServiceOrder ? (
                     <article
-                      className="focus-ring cursor-pointer overflow-hidden rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.03))] shadow-[0_18px_36px_rgba(0,0,0,0.2)] transition hover:border-white/20 hover:bg-white/[0.07]"
+                      className={technicianTaskCardClassName}
                       onClick={(event) => handleTaskCardClick(event, secondaryNextServiceOrder)}
                       onKeyDown={(event) => handleTaskCardKeyDown(event, secondaryNextServiceOrder)}
                       role="button"
@@ -5308,26 +5316,26 @@ export function TechnicianPortalPage() {
                                   {secondaryNextServiceOrder.mode === "home" ? "上门服务" : "到店服务"}
                                 </Badge>
                               </div>
-                              <h3 className="mt-3 text-[18px] font-black tracking-[-0.03em] text-white">
+                              <h3 className="mt-3 text-[18px] font-black tracking-[-0.03em] text-[color:var(--client-text)]">
                                 {secondaryNextServiceJob?.serviceContent ?? secondaryNextServiceOrder.itemName}
                               </h3>
-                              <p className="mt-2 text-xs leading-5 text-white/60">开始时间：{secondaryNextServiceTime}</p>
+                              <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]">开始时间：{secondaryNextServiceTime}</p>
                               {secondaryNextServiceEstimatedEndTime ? (
-                                <p className="text-xs leading-5 text-white/60">预计结束：{secondaryNextServiceEstimatedEndTime}</p>
+                                <p className="text-xs leading-5 text-[color:var(--client-muted)]">预计结束：{secondaryNextServiceEstimatedEndTime}</p>
                               ) : null}
                             </div>
                             <div className="flex shrink-0 flex-col items-end gap-2">
                               <div className="flex items-center gap-1.5">
                                 <Link
                                   aria-label="联系用户"
-                                  className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/32 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-white/16 active:scale-[0.96]"
+                                  className={technicianTaskUtilityActionClassName}
                                   to={getMessagePath("technician", getTechnicianCustomerConversationId(secondaryNextServiceOrder.customerId), "/technician/tasks")}
                                 >
                                   <AppIcon className="h-4 w-4" name="chat" />
                                 </Link>
                                 <button
                                   aria-label="转发服务卡"
-                                  className="focus-ring inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/32 text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] backdrop-blur-md transition hover:bg-white/16 active:scale-[0.96]"
+                                  className={technicianTaskUtilityActionClassName}
                                   onClick={() => shareTaskOrder(secondaryNextServiceOrder)}
                                   type="button"
                                 >
@@ -5361,7 +5369,7 @@ export function TechnicianPortalPage() {
 
                           <div className="mt-4 grid grid-cols-2 gap-2">
                             <a
-                              className="focus-ring inline-flex h-10 items-center justify-center rounded-[16px] border border-white/10 bg-white/[0.06] text-sm font-black text-white transition hover:bg-white/[0.1]"
+                              className={technicianTaskSecondaryActionClassName}
                               href={googleRouteUrl(secondaryNextServiceAddress)}
                               rel="noreferrer"
                               target="_blank"
@@ -5384,7 +5392,7 @@ export function TechnicianPortalPage() {
                   <div className="space-y-3">
                     {todaySchedulePreviewEvents.length > 0 ? (
                       todaySchedulePreviewEvents.map((event) => (
-                        <article className="rounded-[22px] border border-white/8 bg-white/[0.05] px-4 py-4" key={event.id}>
+                        <article className="rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,white_8%)] px-4 py-4" key={event.id}>
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex flex-wrap gap-2">
@@ -5395,16 +5403,16 @@ export function TechnicianPortalPage() {
                                   {event.startTime} - {event.endTime}
                                 </Badge>
                               </div>
-                              <h3 className="mt-2 text-sm font-black text-white">{event.title}</h3>
-                              <p className="mt-1 text-xs text-white/58">{event.place} · {event.customer}</p>
-                              <p className="mt-2 text-xs leading-5 text-white/50">{event.note}</p>
+                              <h3 className="mt-2 text-sm font-black text-[color:var(--client-text)]">{event.title}</h3>
+                              <p className="mt-1 text-xs text-[color:var(--client-muted)]">{event.place} · {event.customer}</p>
+                              <p className="mt-2 text-xs leading-5 text-[color:var(--client-muted)]">{event.note}</p>
                             </div>
-                            <strong className="shrink-0 text-xs font-black text-white/72">{event.amount > 0 ? yen(event.amount) : "待派单"}</strong>
+                            <strong className="shrink-0 text-xs font-black text-[color:var(--client-accent-text)]">{event.amount > 0 ? yen(event.amount) : "待派单"}</strong>
                           </div>
                         </article>
                       ))
                     ) : (
-                      <div className="rounded-[16px] border border-white/[0.04] bg-white/[0.025] px-3 py-2.5 text-[11px] leading-5 text-white/45">
+                      <div className="rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-3 py-2.5 text-[11px] leading-5 text-[color:var(--client-muted)]">
                         今天暂未写入新的排班安排，可以去排班里补充出勤、移动、休息或锁定时段。
                       </div>
                     )}

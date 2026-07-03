@@ -3,6 +3,34 @@ import merchantSource from "./MerchantPortalPage.tsx?raw";
 import storeDetailSource from "../user/StoreDetailPage.tsx?raw";
 
 describe("MerchantPortalPage store privacy control", () => {
+  it("places appointment list navigation controls above the schedule tabs and hides the shared bottom nav", () => {
+    const scheduleHeaderSource = merchantSource.slice(
+      merchantSource.indexOf("function MerchantScheduleHeaderTabs"),
+      merchantSource.indexOf("function MerchantStaffHeaderTabs")
+    );
+    const shellSource = merchantSource.slice(
+      merchantSource.indexOf("<MobileShell"),
+      merchantSource.indexOf("{activeView === \"dashboard\"")
+    );
+    const schedulePanelSource = merchantSource.slice(
+      merchantSource.indexOf("{activeView === \"schedule\" && ("),
+      merchantSource.indexOf("{activeView === \"contacts\" && (")
+    );
+
+    expect(merchantSource).toContain('const isMerchantAppointmentsView = activeView === "schedule" && merchantSchedulePrimaryTab === "appointments";');
+    expect(scheduleHeaderSource).toContain("showAppointmentsToolbar");
+    expect(scheduleHeaderSource).toContain('className="relative z-10"');
+    expect(scheduleHeaderSource).toContain('className="flex items-center gap-2"');
+    expect(scheduleHeaderSource).toContain('aria-label="返回商户首页"');
+    expect(scheduleHeaderSource).toContain('placeholder="搜索预约、客户、员工、状态"');
+    expect(scheduleHeaderSource).toContain('name="search"');
+    expect(scheduleHeaderSource).toContain("<FeatureSegmentedTabs");
+    expect(shellSource).toContain("showBottomNav={!isMerchantAppointmentsView}");
+    expect(schedulePanelSource).toContain("onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}");
+    expect(schedulePanelSource).toContain("appointmentSearchQuery={merchantAppointmentSearchQuery}");
+    expect(schedulePanelSource).toContain("searchQuery={merchantAppointmentSearchQuery}");
+  });
+
   it("keeps the merchant staff detail header as a single shared glass layer", () => {
     const staffDetailSource = merchantSource.slice(
       merchantSource.indexOf("export function MerchantStaffDetailRoutePage"),

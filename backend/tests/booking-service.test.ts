@@ -153,6 +153,39 @@ describe("BookingService state machine", () => {
     );
   });
 
+  it("forces customer order lists to the authenticated user scope", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+
+    await service.listOrders(actor, {
+      customerUserId: 999,
+      page: 1,
+      pageSize: 20
+    });
+
+    expect(repository.listOrders).toHaveBeenCalledWith({
+      customerUserId: actor.userId,
+      page: 1,
+      pageSize: 20
+    });
+  });
+
+  it("hides other customers' orders from customer actors", async () => {
+    const repository = createRepository({ ...makeOrder("pending"), customerUserId: 999 });
+    const service = new BookingService(repository);
+
+    await expect(service.getOrder(actor, 1)).rejects.toMatchObject({
+      code: ERROR_CODES.NOT_FOUND,
+      message: "error.order.not_found"
+    });
+
+    await expect(service.transitionOrder(actor, 1, "cancel", "not mine")).rejects.toMatchObject({
+      code: ERROR_CODES.NOT_FOUND,
+      message: "error.order.not_found"
+    });
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
+  });
+
   it("allows confirmed orders to start service and blocks cancelling completed orders", async () => {
     const repository = createRepository(makeOrder("confirmed"));
     const service = new BookingService(repository);

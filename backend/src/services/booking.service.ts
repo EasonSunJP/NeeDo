@@ -79,19 +79,23 @@ export class BookingService {
   }
 
   public listOrders(
-    _actor: AuthenticatedBookingActor,
+    actor: AuthenticatedBookingActor,
     input: OrderListInput
   ): Promise<PaginatedResponse<BookingOrderPayload>> {
-    return this.repository.listOrders(input);
+    return this.repository.listOrders(this.scopeOrderListInput(actor, input));
   }
 
   public async getOrder(
-    _actor: AuthenticatedBookingActor,
+    actor: AuthenticatedBookingActor,
     id: number
   ): Promise<BookingOrderPayload> {
     const order = await this.repository.findOrderById(id);
 
     if (!order) {
+      throw this.notFoundError();
+    }
+
+    if (!this.canAccessOrder(actor, order)) {
       throw this.notFoundError();
     }
 
@@ -288,6 +292,39 @@ export class BookingService {
   private isServiceProviderActor(actor: AuthenticatedBookingActor): boolean {
     return actor.roles.some((role) =>
       ["merchant_owner", "merchant_staff", "technician"].includes(role)
+    );
+  }
+
+  private scopeOrderListInput(
+    actor: AuthenticatedBookingActor,
+    input: OrderListInput
+  ): OrderListInput {
+    if (this.canBypassCustomerOrderScope(actor)) {
+      return input;
+    }
+
+    return {
+      ...input,
+      customerUserId: actor.userId
+    };
+  }
+
+  private canAccessOrder(actor: AuthenticatedBookingActor, order: BookingOrderPayload): boolean {
+    return order.customerUserId === actor.userId || this.canBypassCustomerOrderScope(actor);
+  }
+
+  private canBypassCustomerOrderScope(actor: AuthenticatedBookingActor): boolean {
+    return actor.roles.some((role) =>
+      [
+        "platform_admin",
+        "admin",
+        "operator",
+        "finance",
+        "support",
+        "merchant_owner",
+        "merchant_staff",
+        "technician"
+      ].includes(role)
     );
   }
 

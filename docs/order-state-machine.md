@@ -12,6 +12,7 @@ Implemented:
 - Booking order state transitions: pending, confirmed, inService, completed, cancelled.
 - Slot capacity and active-order conflict checks to prevent oversell.
 - Order status history records for every creation and transition.
+- Customer order list/detail/transition access is scoped to the authenticated customer user. If a customer passes another `customerUserId` in the order list query, the service overrides it with the token user id. Other customers' order detail/transition attempts return `error.order.not_found`.
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
 
 Reserved only:
@@ -69,6 +70,12 @@ Authenticated:
 - `PUT /api/v1/shops/:shopId/pricing-mode`
 
 Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:start`, and `order:complete`.
+
+Access boundary:
+
+- Customer actors are limited to their own `booking_orders.customer_user_id`.
+- Platform and service-provider roles keep the current backend handling lane for operational order transitions.
+- Merchant/shop-specific order scoping still needs the later merchant-admin real-data/API slice to bind operations to the current shop identity.
 
 ## State Machine
 

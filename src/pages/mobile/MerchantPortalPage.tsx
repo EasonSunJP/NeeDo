@@ -881,9 +881,17 @@ function MerchantHomeContactStatusPanel({
 }
 
 function MerchantScheduleHeaderTabs({
+  appointmentSearchQuery = "",
+  onAppointmentBack,
+  onAppointmentSearchQueryChange,
+  showAppointmentsToolbar = false,
   value,
   onChange
 }: {
+  appointmentSearchQuery?: string;
+  onAppointmentBack?: () => void;
+  onAppointmentSearchQueryChange?: (value: string) => void;
+  showAppointmentsToolbar?: boolean;
   value: MerchantSchedulePrimaryTab;
   onChange: (value: MerchantSchedulePrimaryTab) => void;
 }) {
@@ -898,6 +906,28 @@ function MerchantScheduleHeaderTabs({
       className="relative z-10"
       panelClassName="relative overflow-hidden"
     >
+      {showAppointmentsToolbar ? (
+        <div className="flex items-center gap-2" data-page-drag-ignore="true">
+          <button
+            aria-label="返回商户首页"
+            className="focus-ring grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]"
+            onClick={onAppointmentBack}
+            type="button"
+          >
+            <AppIcon className="h-5 w-5" name="back" />
+          </button>
+          <label className="focus-within:ring-focus flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 text-[color:var(--client-text)] shadow-[0_10px_22px_rgba(0,0,0,0.08)]">
+            <span className="sr-only">搜索预约</span>
+            <AppIcon className="h-4 w-4 shrink-0 text-[color:var(--client-muted)]" name="search" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]"
+              onChange={(event) => onAppointmentSearchQueryChange?.(event.target.value)}
+              placeholder="搜索预约、客户、员工、状态"
+              value={appointmentSearchQuery}
+            />
+          </label>
+        </div>
+      ) : null}
       <FeatureSegmentedTabs items={tabs} onChange={onChange} value={value} variant="header" />
     </FloatingHomeHeader>
   );
@@ -1523,6 +1553,7 @@ export function MerchantPortalPage() {
   const [homeContactStatusFilter, setHomeContactStatusFilter] = useState<MerchantContactStatusFilter>("active");
   const [staffHrStatusFilter, setStaffHrStatusFilter] = useState<MerchantContactStatusFilter>("active");
   const [appointmentContactStatusFilter, setAppointmentContactStatusFilter] = useState<MerchantContactStatusFilter>("active");
+  const [merchantAppointmentSearchQuery, setMerchantAppointmentSearchQuery] = useState("");
   const [generalContactStatusFilter, setGeneralContactStatusFilter] = useState<MerchantContactStatusFilter>("active");
   const staffIdParam = searchParams.get("staffId");
   const [manualEmployees, setManualEmployees] = useState<MerchantManualEmployee[]>(() => getInitialMerchantManualEmployees());
@@ -1594,6 +1625,7 @@ export function MerchantPortalPage() {
     ? orders.find((order) => order.customerId === selectedContactCustomer.id) ?? orders[0]
     : orders[0];
   const merchantSchedulePrimaryTab = getMerchantScheduleTab(searchParams.get("tab"));
+  const isMerchantAppointmentsView = activeView === "schedule" && merchantSchedulePrimaryTab === "appointments";
   const merchantStaffTab = getMerchantStaffTab(searchParams.get("staffType"));
   const storeStaffEntries = useMemo(
     () => storeTechnicians.map((technician, index) => ({
@@ -2228,6 +2260,7 @@ export function MerchantPortalPage() {
       className={isMerchantDataCenterView ? "merchant-analytics-clean-shell" : undefined}
       navItems={merchantNavItems}
       navPanelStyle={activeView === "me" ? "plain" : "default"}
+      showBottomNav={!isMerchantAppointmentsView}
       showTopEdgeMask={activeView !== "orders" && activeView !== "messages" && activeView !== "contacts"}
     >
       {activeView === "dashboard" ? (
@@ -2588,7 +2621,11 @@ export function MerchantPortalPage() {
         {activeView === "schedule" && (
           <>
             <MerchantScheduleHeaderTabs
+              appointmentSearchQuery={merchantAppointmentSearchQuery}
+              onAppointmentBack={() => navigate("/merchant")}
+              onAppointmentSearchQueryChange={setMerchantAppointmentSearchQuery}
               onChange={updateMerchantSchedulePrimaryTab}
+              showAppointmentsToolbar={merchantSchedulePrimaryTab === "appointments"}
               value={merchantSchedulePrimaryTab}
             />
             {merchantSchedulePrimaryTab === "current" ? (
@@ -2600,7 +2637,7 @@ export function MerchantPortalPage() {
               />
             ) : null}
             {merchantSchedulePrimaryTab === "appointments" ? (
-              <UnifiedUserCalendar currentStore={store} displayMode="parallel" merchantLaneMode="appointmentStatus" scope="merchant" />
+              <UnifiedUserCalendar currentStore={store} displayMode="parallel" merchantLaneMode="appointmentStatus" scope="merchant" searchQuery={merchantAppointmentSearchQuery} />
             ) : null}
             {merchantSchedulePrimaryTab === "planning" ? (
               <AutomationWizard operatorId={store.id} storeId={store.id} surface="mobile" />

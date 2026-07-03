@@ -31,18 +31,17 @@ describe("OverviewWorkspace mobile schedule detail header", () => {
     expect(scheduleDetailSource).not.toContain("bg-transparent text-ink backdrop-blur-none");
   });
 
-  it("lets schedule content sit under the header so the glass has backing content to refract", () => {
+  it("keeps schedule content aligned under the shared glass header without a local solid wrapper", () => {
     expect(styles).toContain(".client-mobile-schedule-detail__refractive-scroll");
     expect(styles).toContain("--client-mobile-schedule-detail-grid-header-top: calc(env(safe-area-inset-top, 0px) + 58px);");
     expect(styles).toContain(".client-mobile-schedule-detail__calendar-board");
     expect(styles).toContain("padding-top: calc(env(safe-area-inset-top, 0px) + 86px) !important;");
-    expect(styles).toContain("border-color: transparent !important;");
-    expect(styles).toContain("border-radius: 0 !important;");
-    expect(styles).toContain("box-shadow: none !important;");
+    expect(styles).toContain("color-mix(in srgb, var(--client-top-chrome-bg) 7%, transparent) 0%");
+    expect(styles).toContain("0 14px 34px color-mix(in srgb, var(--client-bg) 16%, rgba(0, 0, 0, 0.16))");
     expect(styles).toContain(".client-mobile-schedule-detail__floating-header");
     expect(styles).toContain(".client-store-display-editor-glass-header");
     expect(styles).toContain(").client-floating-header-glass-frame");
-    expect(styles).toContain("color-mix(in srgb, var(--client-top-chrome-bg) 7%, transparent) 0%");
+    expect(styles).not.toContain(".client-shell .client-floating-header-frameless");
   });
 
   it("keeps the desktop floating todo list aligned to merchant admin theme controls", () => {

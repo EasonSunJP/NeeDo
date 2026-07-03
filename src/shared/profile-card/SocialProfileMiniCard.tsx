@@ -714,6 +714,10 @@ function SocialStatsLine({
   data: SocialProfileMiniData;
   valueClassName?: string;
 }) {
+  if (data.entityType === "shop") {
+    return null;
+  }
+
   if (data.entityType === "service") {
     return (
       <span>

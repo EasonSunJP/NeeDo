@@ -6,9 +6,11 @@ describe("CategoryIcon theme palettes", () => {
     expect(categoryIconSource).toContain("Record<ClientTheme, CategoryPalette>");
     expect(categoryIconSource).toContain('"vital-mono": vitalMonoPalette');
     expect(categoryIconSource).toContain('"cool-black-gray": coolBlackGrayPalette');
+    expect(categoryIconSource).toContain('"special-black": specialBlackPalette');
     expect(categoryIconSource).toContain('"black-gold": blackGoldPalette');
     expect(categoryIconSource).toContain('primary: "#087bb8"');
     expect(categoryIconSource).toContain('primary: "#18d2f0"');
+    expect(categoryIconSource).toContain('primary: "#5f8dff"');
     expect(categoryIconSource).not.toContain("const palette = isNight ? nightPalette : dayPalette");
   });
 });

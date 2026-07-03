@@ -180,3 +180,29 @@ describe("TechnicianPortalPage profile card", () => {
     expect(source).toContain("return [...current, ...createdServices, saved];");
   });
 });
+
+describe("TechnicianPortalPage task panel contrast", () => {
+  it("keeps the today arrangement heading and utility icons readable on the white tasks background", () => {
+    const todayTitleIndex = source.indexOf('title="今日安排"');
+    const todayPanelSource = source.slice(todayTitleIndex, source.indexOf("{renderTechnicianStatusTimeline()}", todayTitleIndex));
+
+    expect(todayTitleIndex).toBeGreaterThan(-1);
+    expect(todayPanelSource).toContain('titleClassName="text-lg font-bold text-[color:var(--client-text)]"');
+    expect(todayPanelSource).toContain('variant="paper"');
+    expect(todayPanelSource).not.toContain('titleClassName="text-lg font-bold text-white"');
+    expect(todayPanelSource).not.toContain('variant="dark"');
+
+    expect(source).toContain("const technicianTaskUtilityActionClassName");
+    expect(source).toContain("const technicianTaskCardClassName");
+    expect(source).toContain("const technicianTaskSecondaryActionClassName");
+    expect(source).toContain("text-[color:var(--client-text)]");
+    expect(source).toContain("bg-[color:color-mix(in_srgb,var(--client-elevated)_96%,white_4%)]");
+    expect(todayPanelSource).not.toContain("border border-white/20 bg-black/32 text-white");
+    expect(todayPanelSource).not.toContain('className="mt-3 text-[18px] font-black tracking-[-0.03em] text-white"');
+    expect(todayPanelSource).not.toContain('className="mt-2 text-xs leading-5 text-white/60"');
+    expect(todayPanelSource).not.toContain('className="text-xs leading-5 text-white/60"');
+    expect(todayPanelSource).not.toContain('className="mt-3 rounded-[20px] border border-white/10 bg-white/[0.06] px-4 py-3"');
+    expect(todayPanelSource).not.toContain('className="text-[11px] font-bold text-white/45"');
+    expect(todayPanelSource).not.toContain("border border-white/10 bg-white/[0.06] text-sm font-black text-white");
+  });
+});

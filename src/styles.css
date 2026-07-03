@@ -104,6 +104,25 @@ body:has(.client-theme-cool-black-gray),
   background-image: none !important;
 }
 
+html:has(.client-theme-special-black),
+body:has(.client-theme-special-black),
+#root:has(.client-theme-special-black) {
+  background: #030509 !important;
+  background-image: none !important;
+}
+
+html:has(.client-theme-special-black),
+body:has(.client-theme-special-black) {
+  scrollbar-width: none;
+}
+
+html:has(.client-theme-special-black)::-webkit-scrollbar,
+body:has(.client-theme-special-black)::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 html:has(.client-theme-neon-pink),
 html:has(.client-theme-lovely-neon),
 body:has(.client-theme-neon-pink),
@@ -1478,6 +1497,11 @@ img {
   border-color: rgba(24, 210, 240, 0.42);
 }
 
+.client-theme-special-black .needo-login-logo {
+  background: radial-gradient(circle at 34% 26%, #a8bdff 0%, #5f8dff 32%, #21437d 64%, #101827 100%);
+  border-color: rgba(145, 178, 255, 0.48);
+}
+
 .client-theme-neon-pink .needo-login-logo,
 .client-theme-lovely-neon .needo-login-logo {
   background: linear-gradient(145deg, #ad65e9 0%, #7556dd 54%, #243d82 100%);
@@ -1699,6 +1723,317 @@ body:has(.client-theme-noir-gold),
     92px 92px,
     auto,
     auto;
+}
+
+.client-theme-special-black {
+  --client-theme-name: "special-black";
+  --client-edge-mask-rgb: 3 5 9;
+  --client-bg: #030509;
+  --client-top-chrome-bg: #030509;
+  --client-bg-soft: rgba(9, 12, 18, 0.9);
+  --client-hero: rgba(12, 16, 24, 0.78);
+  --client-surface: rgba(13, 17, 25, 0.82);
+  --client-elevated: rgba(18, 23, 33, 0.9);
+  --client-line: rgba(124, 140, 170, 0.14);
+  --client-text: #f7f9ff;
+  --client-muted: rgba(218, 226, 244, 0.66);
+  --client-soft-muted: rgba(218, 226, 244, 0.44);
+  --client-primary: #5f8dff;
+  --client-primary-strong: #9db7ff;
+  --client-primary-soft: rgba(95, 141, 255, 0.19);
+  --client-nav-active: rgba(95, 141, 255, 0.2);
+  --client-accent-text: #9db7ff;
+  --client-needo-bg: radial-gradient(circle at 32% 20%, #b9c9ff 0%, #6f96ff 38%, #386cff 68%, #20dfff 100%);
+  --client-needo-active-bg: radial-gradient(circle at 34% 20%, #d4dcff 0%, #7fa2ff 42%, #477bff 70%, #37edff 100%);
+  --client-needo-border: rgba(158, 184, 255, 0.56);
+  --client-needo-text: #ffffff;
+  --client-primary-contrast: var(--client-needo-text);
+  --client-primary-contrast-muted: rgba(255, 255, 255, 0.86);
+  --client-primary-contrast-soft: rgba(255, 255, 255, 0.72);
+  --client-accent: #ff4e9a;
+  --client-warning: #ffa83f;
+  --client-warning-soft: rgba(255, 168, 63, 0.17);
+  --client-warning-mid: rgba(255, 168, 63, 0.28);
+  --client-warning-text: #ffd9a0;
+  --client-warning-ink: #1f1408;
+  --client-warm: #39f47a;
+  --client-schedule-mask-bg:
+    radial-gradient(circle at 82% 7%, rgba(88, 103, 132, 0.1), transparent 30rem),
+    radial-gradient(circle at 17% 18%, rgba(255, 78, 154, 0.055), transparent 24rem),
+    linear-gradient(180deg, #070a10 0%, #04070c 52%, #030509 100%),
+    var(--client-bg);
+  --client-schedule-sticky-bg: #121a2a;
+  --client-schedule-sticky-edge: linear-gradient(90deg, #121a2a, rgba(18, 26, 42, 0));
+  --client-schedule-sticky-shadow: 16px 0 30px rgba(0, 0, 0, 0.44);
+  --pin-badge-fill: var(--client-accent);
+  --pin-badge-glyph: #ffffff;
+  --needo-compose-button-bg: var(--client-needo-bg);
+  --needo-compose-button-fg: var(--client-needo-text);
+  --needo-compose-button-border: var(--client-needo-border);
+  --needo-compose-button-shadow: 0 18px 42px rgba(74, 120, 255, 0.34), 0 0 38px rgba(55, 237, 255, 0.16);
+  --client-shadow: 0 30px 76px rgba(0, 0, 0, 0.56), 0 0 38px rgba(95, 141, 255, 0.12);
+  --client-overlay: rgba(2, 5, 12, 0.78);
+  background:
+    radial-gradient(circle at 78% 0%, rgba(90, 105, 136, 0.1), transparent 24rem),
+    radial-gradient(circle at 20% 10%, rgba(255, 78, 154, 0.055), transparent 22rem),
+    radial-gradient(circle at 88% 72%, rgba(57, 244, 122, 0.035), transparent 20rem),
+    linear-gradient(122deg, rgba(150, 165, 196, 0.018) 0 1px, transparent 1px 92px),
+    linear-gradient(180deg, #070a10 0%, #04070c 45%, #030509 100%),
+    var(--client-bg) !important;
+  background-size:
+    auto,
+    auto,
+    auto,
+    92px 92px,
+    auto,
+    auto;
+}
+
+.client-theme-special-black,
+.client-theme-special-black * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.client-theme-special-black .special-black-bottom-nav {
+  padding-bottom: 0;
+}
+
+.client-theme-special-black .special-black-bottom-nav-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  isolation: isolate;
+}
+
+.client-theme-special-black .special-black-bottom-nav-backplate {
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 34px 34px 0 0;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(225, 230, 255, 0.36) 0%, rgba(150, 164, 255, 0.17) 23%, rgba(24, 31, 49, 0) 54%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.025) 18%, rgba(255, 255, 255, 0) 42%);
+  box-shadow:
+    0 -9px 28px rgba(223, 228, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.19);
+}
+
+.client-theme-special-black .special-black-bottom-nav-center-glow {
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(246, 248, 255, 0.74) 0%, rgba(129, 150, 255, 0.3) 25%, rgba(77, 96, 255, 0.18) 43%, rgba(9, 15, 32, 0) 72%);
+  filter: drop-shadow(0 0 30px rgba(73, 91, 255, 0.62));
+  opacity: 0.9;
+}
+
+.client-theme-special-black .special-black-bottom-nav-panel::before {
+  display: none;
+  content: none;
+}
+
+.client-theme-special-black .special-black-bottom-nav-panel::after {
+  display: none;
+  content: none;
+}
+
+.client-theme-special-black .special-black-bottom-nav-dock {
+  z-index: 1;
+  pointer-events: none;
+  filter: saturate(1.08) brightness(1.1) contrast(1.06);
+  opacity: 0.98;
+}
+
+.client-theme-special-black .special-black-featured-nav-image {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.72))
+    drop-shadow(0 0 16px rgba(89, 108, 255, 0.92))
+    drop-shadow(0 0 31px rgba(68, 98, 255, 0.62))
+    drop-shadow(0 12px 18px rgba(0, 0, 0, 0.42));
+}
+
+.client-theme-special-black .special-black-bottom-nav-item {
+  color: rgba(176, 181, 194, 0.78);
+}
+
+.client-theme-special-black .special-black-bottom-nav-item-active {
+  color: #4d66ff;
+}
+
+.client-theme-special-black .special-black-bottom-nav-label {
+  letter-spacing: 0;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.54),
+    0 0 9px rgba(60, 85, 255, 0);
+}
+
+.client-theme-special-black .special-black-bottom-nav-item-active .special-black-bottom-nav-label {
+  text-shadow: 0 0 11px rgba(64, 94, 255, 0.58);
+}
+
+.client-theme-special-black .special-black-bottom-nav-flat-icon img {
+  opacity: 0.94;
+  filter:
+    drop-shadow(0 0 4px rgba(255, 255, 255, 0.34))
+    drop-shadow(0 0 10px rgba(82, 98, 255, 0.22))
+    drop-shadow(0 7px 8px rgba(0, 0, 0, 0.42));
+}
+
+.client-theme-special-black .special-black-bottom-nav-flat-icon-active img {
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.84))
+    drop-shadow(0 0 17px rgba(90, 104, 255, 0.96))
+    drop-shadow(0 0 28px rgba(80, 99, 255, 0.58));
+}
+
+.client-theme-special-black .special-black-bottom-nav-badge {
+  border: 1px solid rgba(255, 139, 139, 0.34);
+  background:
+    radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.62), transparent 0.18rem),
+    linear-gradient(180deg, #ff5c56 0%, #ff3c43 46%, #ee222f 100%);
+  box-shadow:
+    0 0 12px rgba(255, 55, 64, 0.72),
+    0 4px 10px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.client-theme-special-black.special-black-home-layout,
+.client-theme-special-black .special-black-home-layout {
+  --client-primary: #4654b9;
+  --client-primary-soft: rgba(70, 84, 185, 0.24);
+  --special-black-home-background:
+    radial-gradient(circle at 50% 8%, rgba(92, 106, 134, 0.1), transparent 34%),
+    radial-gradient(circle at 86% 30%, rgba(255, 78, 154, 0.055), transparent 28%),
+    linear-gradient(180deg, #050810 0%, #03070d 44%, #02050a 100%);
+}
+
+.client-theme-special-black .special-black-home-background,
+.client-theme-special-black .special-black-home-header-clip,
+.client-theme-special-black .special-black-home-fixed-header,
+.client-theme-special-black .special-black-home-fixed-header-fill {
+  background: var(--special-black-home-background);
+  background-attachment: fixed;
+  background-position: top center;
+  background-repeat: no-repeat;
+  background-size: auto, auto, auto;
+}
+
+.client-theme-special-black .special-black-home-background {
+  position: fixed;
+  inset: 0;
+  min-height: 100dvh;
+}
+
+.client-theme-special-black .special-black-home-header-clip,
+.client-theme-special-black .special-black-home-fixed-header {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  left: 0 !important;
+  height: calc(env(safe-area-inset-top) + 124px) !important;
+}
+
+.client-theme-special-black .special-black-home-fixed-header {
+  overflow: hidden;
+  padding-top: calc(env(safe-area-inset-top) + 12px) !important;
+}
+
+.client-theme-special-black .special-black-home-content {
+  padding-top: calc(env(safe-area-inset-top) + 124px) !important;
+}
+
+.client-theme-special-black .special-black-home-header-clip,
+.client-theme-special-black .special-black-home-fixed-header,
+.client-theme-special-black .special-black-home-fixed-header-fill {
+  background-color: var(--client-bg);
+}
+
+.client-theme-special-black .special-black-home-header-clip {
+  z-index: 1000 !important;
+}
+
+.client-theme-special-black .special-black-home-fixed-header {
+  z-index: 1002 !important;
+}
+
+.client-theme-special-black .special-black-home-bright-icon img {
+  opacity: 0.98;
+  filter:
+    brightness(3.2)
+    grayscale(0.82)
+    saturate(0.58)
+    contrast(1.12)
+    drop-shadow(0 0 12px rgba(102, 117, 255, 0.5));
+}
+
+.client-theme-special-black .special-black-flat-icon img,
+.client-theme-special-black .special-black-home-quick-glyph img {
+  filter:
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.35))
+    drop-shadow(0 0 14px rgba(93, 106, 255, 0.56));
+}
+
+.client-theme-special-black .special-black-appointment-overview-button {
+  box-shadow:
+    0 0 28px rgba(98, 89, 255, 0.66),
+    0 16px 32px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.client-theme-special-black .special-black-bottom-nav .special-black-bottom-nav-flat-icon img {
+  opacity: 0.94;
+  filter:
+    drop-shadow(0 0 4px rgba(255, 255, 255, 0.34))
+    drop-shadow(0 0 10px rgba(82, 98, 255, 0.22))
+    drop-shadow(0 7px 8px rgba(0, 0, 0, 0.42));
+}
+
+.client-theme-special-black .special-black-bottom-nav .special-black-bottom-nav-flat-icon-active img {
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.84))
+    drop-shadow(0 0 17px rgba(90, 104, 255, 0.96))
+    drop-shadow(0 0 28px rgba(80, 99, 255, 0.58));
+}
+
+.client-theme-special-black.special-black-home-layout .client-feature-segmented-tabs,
+.client-theme-special-black .special-black-home-layout .client-feature-segmented-tabs {
+  min-height: 38px;
+  border-color: rgba(104, 132, 192, 0.16) !important;
+  background:
+    linear-gradient(180deg, rgba(16, 23, 36, 0.92), rgba(8, 13, 22, 0.98)) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(156, 178, 224, 0.05),
+    0 14px 28px rgba(0, 0, 0, 0.26) !important;
+}
+
+.client-theme-special-black.special-black-home-layout .client-feature-segmented-tab,
+.client-theme-special-black .special-black-home-layout .client-feature-segmented-tab {
+  min-height: 30px !important;
+  color: rgba(223, 231, 250, 0.5);
+  font-size: 15px !important;
+}
+
+.client-theme-special-black.special-black-home-layout h2,
+.client-theme-special-black .special-black-home-layout h2 {
+  font-size: 17px !important;
+  line-height: 1.15 !important;
+}
+
+.client-theme-special-black .special-black-project-card {
+  box-shadow:
+    0 18px 38px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(156, 178, 224, 0.055),
+    inset 0 -18px 34px rgba(0, 0, 0, 0.16);
+}
+
+.client-theme-special-black .special-black-recommendation-card {
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(157, 183, 255, 0.055);
 }
 
 .client-theme-neon-pink,
