@@ -46,3 +46,4 @@
 - `scripts/needo-roadshow/data.mjs` 已作為必要且自包含的既有資料基線納入提交；未跟蹤的舊 roadshow 目錄其餘文件沒有加入。
 - `premiumSlides` 的標題只由 imported `slideTitles[index]` 生成；map 不再解構或使用任何 title 欄位。
 - 提交後會以 `git archive` 解壓至臨時目錄，只读取已提交文件執行 `node --test scripts/needo-roadshow-premium/data.test.mjs`，確認不依賴工作區髒文件。
+- 聚焦測試改為依環境選擇 Vitest 或原生 `node:test` suite，保留 `npm test` 與乾淨檢出 `node --test` 的雙重可執行性。
