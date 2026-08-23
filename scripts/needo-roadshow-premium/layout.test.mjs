@@ -168,6 +168,7 @@ describe("premium visual system", () => {
     expect(chartCalls.map(([, type]) => type)).toEqual(["bar", "line"]);
     chartCalls.forEach(([, , , options]) => {
       expect(options.altText).toBeTruthy();
+      expect(options.dataLabelFontFace).toBe(THEME.font);
       expect(options.chartColors.every((color) => !color.startsWith("#"))).toBe(true);
     });
   });
