@@ -40,3 +40,9 @@
 - 融資共用文案改用 `financing.round`，Pre-A 在第 2、25、26 頁均可由下游識別；並移除第 2 頁殘餘 `",`。
 - `premiumSlides.title` 直接取自 `slideTitles[index]`，新增逐項一致性測試，避免輸出標題偏離既有資料源。
 - 修復後聚焦測試為 6 tests passed；完整 `npm test` 將在本輪提交前執行一次。
+
+## 可重現性修復（第三輪）
+
+- `scripts/needo-roadshow/data.mjs` 已作為必要且自包含的既有資料基線納入提交；未跟蹤的舊 roadshow 目錄其餘文件沒有加入。
+- `premiumSlides` 的標題只由 imported `slideTitles[index]` 生成；map 不再解構或使用任何 title 欄位。
+- 提交後會以 `git archive` 解壓至臨時目錄，只读取已提交文件執行 `node --test scripts/needo-roadshow-premium/data.test.mjs`，確認不依賴工作區髒文件。

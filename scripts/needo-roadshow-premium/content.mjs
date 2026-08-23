@@ -61,7 +61,7 @@ const slideDefinitions = [
   ["dark", "NeeDo｜讓服務被看見、被選擇、被完成、被分配", "以可履約服務為核心，讓需求、供給、場所與服務者在透明、合規、可追蹤的流程中完成交易。聯絡方式與資料室內容以正式盡調文件為準。", "S5、S7"],
 ];
 
-export const premiumSlides = slideDefinitions.map(([mode, title, statement, sourceIds], index) => ({
+export const premiumSlides = slideDefinitions.map(([mode, , statement, sourceIds], index) => ({
   page: index + 1,
   title: slideTitles[index],
   statement,
