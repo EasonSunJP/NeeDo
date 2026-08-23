@@ -62,6 +62,10 @@ describe("premium AI assets", () => {
       ]);
       expect(entry.file.startsWith(ASSET_DIRECTORY)).toBe(true);
       expect(entry.file).toBe(projectRelative(AI_ASSETS[entry.id]));
+      expect(entry.prompt.trim()).not.toBe("");
+      expect(entry.generator.trim()).not.toBe("");
+      expect(entry.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/);
+      expect(Number.isNaN(Date.parse(entry.createdAt))).toBe(false);
       expect(entry.approvedUse).toBe("validated for specified deck use");
 
       const hash = crypto.createHash("sha256").update(fs.readFileSync(AI_ASSETS[entry.id])).digest("hex");
