@@ -160,6 +160,21 @@ describe("premium visual system", () => {
     });
   });
 
+  it("gives two-digit source page numbers enough width for PDF rendering", () => {
+    const calls = [];
+    const slide = {
+      addShape: () => {},
+      addText: (...args) => calls.push(args),
+    };
+    const deck = { ShapeType: { ellipse: "ellipse" } };
+
+    addLightBase(slide, deck, { title: "Scenario", page: 23 });
+    const [, pageNumberOptions] = calls.find(([, options]) => options.objectName === "Page number");
+
+    expect(pageNumberOptions.w).toBeGreaterThanOrEqual(0.7);
+    expect(pageNumberOptions.fit).toBe("shrink");
+  });
+
   it("builds aligned native shapes, text, and charts with fresh option objects", () => {
     const calls = [];
     const slide = {

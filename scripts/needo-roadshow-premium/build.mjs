@@ -8,6 +8,7 @@ import { premiumSlides } from "./content.mjs";
 import { THEME, addDarkBase, addLightBase, createDeck } from "./theme.mjs";
 import { buildMarketSlides } from "./slides/market.mjs";
 import { buildProductSlides } from "./slides/product.mjs";
+import { buildBusinessSlides } from "./slides/business.mjs";
 import * as data from "../needo-roadshow/data.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -23,8 +24,8 @@ function readIntegerFlag(name, fallback) {
 
 const from = readIntegerFlag("--from", 1);
 const through = readIntegerFlag("--through", 9);
-if (from < 1 || through > 18 || from > through) {
-  throw new Error("Premium checkpoint range must satisfy 1 <= --from <= --through <= 18; slides 19–34 are intentionally not built yet.");
+if (from < 1 || through > 26 || from > through) {
+  throw new Error("Premium checkpoint range must satisfy 1 <= --from <= --through <= 26; slides 27–34 are intentionally not built yet.");
 }
 
 const deck = createDeck();
@@ -36,13 +37,14 @@ const theme = {
 const builders = [
   { first: 1, last: 9, build: buildMarketSlides },
   { first: 10, last: 18, build: buildProductSlides },
+  { first: 19, last: 26, build: buildBusinessSlides },
 ];
 
 const selectedBuilders = builders.filter(({ first, last }) => from <= first && last <= through);
 const expectedSlides = through - from + 1;
 const coveredSlides = selectedBuilders.reduce((total, { first, last }) => total + last - first + 1, 0);
 if (coveredSlides !== expectedSlides) {
-  throw new Error("Checkpoint ranges must align to completed slide groups: 1–9 and/or 10–18.");
+  throw new Error("Checkpoint ranges must align to completed slide groups: 1–9, 10–18, and/or 19–26.");
 }
 
 const context = {

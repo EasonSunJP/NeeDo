@@ -138,15 +138,16 @@ function addBase(slide, deck, {
   }
   if (page !== undefined && page !== null) {
     slide.addText(String(page).padStart(2, "0"), {
-      x: 12.08,
+      x: 11.94,
       y: 0.34,
-      w: 0.58,
+      w: 0.72,
       h: 0.18,
       fontFace: THEME.font,
       fontSize: 9,
       color: secondary,
       align: "right",
       margin: 0,
+      fit: "shrink",
       objectName: "Page number",
     });
   }
