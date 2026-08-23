@@ -3,7 +3,7 @@ const { describe, it } = process.env.VITEST
   ? await import("vitest")
   : await import("node:test");
 import { financing, scenarios, slideTitles } from "../needo-roadshow/data.mjs";
-import { premiumSlides } from "./content.mjs";
+import { premiumSlideDefinitions, premiumSlides } from "./content.mjs";
 
 describe("premium roadshow locks", () => {
   it("keeps 34 slides and seven approved dark slides", () => {
@@ -19,6 +19,12 @@ describe("premium roadshow locks", () => {
 
   it("derives every title from the approved source data", () => {
     assert.deepEqual(premiumSlides.map((slide) => slide.title), slideTitles);
+  });
+
+  it("keeps definitions title-free and limited to page-specific data", () => {
+    assert.equal(premiumSlideDefinitions.length, 34);
+    assert.ok(premiumSlideDefinitions.every((definition) => definition.length === 3));
+    assert.ok(premiumSlideDefinitions.every((definition) => !Object.prototype.hasOwnProperty.call(definition, "title")));
   });
 
   it("locks the Pre-A round and appendix classification", () => {

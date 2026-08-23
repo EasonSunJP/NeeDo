@@ -47,3 +47,4 @@
 - `premiumSlides` 的標題只由 imported `slideTitles[index]` 生成；map 不再解構或使用任何 title 欄位。
 - 提交後會以 `git archive` 解壓至臨時目錄，只读取已提交文件執行 `node --test scripts/needo-roadshow-premium/data.test.mjs`，確認不依賴工作區髒文件。
 - 聚焦測試改為依環境選擇 Vitest 或原生 `node:test` suite，保留 `npm test` 與乾淨檢出 `node --test` 的雙重可執行性。
+- `premiumSlideDefinitions` 現已改為 34 個三元組 `[mode, statement, sourceIds]`，完全移除重複標題字串；新增結構測試確保定義表沒有 `title` 欄位，輸出標題唯一取自 `slideTitles[index]`。
