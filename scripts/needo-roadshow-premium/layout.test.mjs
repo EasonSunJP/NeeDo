@@ -134,6 +134,32 @@ describe("premium visual system", () => {
     ].forEach((name) => expect(components[name]).toBeTypeOf("function"));
   });
 
+  it("keeps ambient base shapes fully inside the public slide bounds", () => {
+    const calls = [];
+    const slide = {
+      addShape: (...args) => calls.push(args),
+      addText: () => {},
+    };
+    const deck = {
+      ShapeType: { ellipse: "ellipse" },
+    };
+
+    addLightBase(slide, deck, { title: "Light", page: 1 });
+    addDarkBase(slide, deck, { title: "Dark", page: 2 });
+
+    const ambientShapes = calls
+      .map(([, options]) => options)
+      .filter(({ objectName = "" }) => /ambient halo|glass node/.test(objectName));
+
+    expect(ambientShapes).toHaveLength(4);
+    ambientShapes.forEach(({ x, y, w, h }) => {
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(y).toBeGreaterThanOrEqual(0);
+      expect(x + w).toBeLessThanOrEqual(THEME.layout.width);
+      expect(y + h).toBeLessThanOrEqual(THEME.layout.height);
+    });
+  });
+
   it("builds aligned native shapes, text, and charts with fresh option objects", () => {
     const calls = [];
     const slide = {

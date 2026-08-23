@@ -87,19 +87,19 @@ function addBase(slide, deck, {
 
   slide.background = { color: background };
   slide.addShape(deck.ShapeType.ellipse, {
-    x: 11.48,
-    y: -0.62,
-    w: 2.3,
-    h: 2.3,
+    x: 11.63,
+    y: 0,
+    w: 1.7,
+    h: 1.7,
     fill: { color: halo, transparency: dark ? 18 : 8 },
     line: { color: halo, transparency: 100 },
     objectName: dark ? "Dark ambient halo" : "Light ambient halo",
   });
   slide.addShape(deck.ShapeType.ellipse, {
-    x: 12.27,
-    y: 6.4,
-    w: 1.42,
-    h: 1.42,
+    x: 12.25,
+    y: 6.42,
+    w: 1.08,
+    h: 1.08,
     fill: { color: dark ? THEME.colors.sage : THEME.colors.white, transparency: dark ? 78 : 24 },
     line: { color: secondary, transparency: 74, width: 0.6 },
     objectName: dark ? "Dark glass node" : "Light glass node",

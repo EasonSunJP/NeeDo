@@ -79,23 +79,6 @@ function addNotes(slide, slideMeta) {
 function addBoundedBase(slide, deck, theme, options, dark = false) {
   const addBase = dark ? theme.addDarkBase : theme.addLightBase;
   addBase(slide, deck, options);
-
-  // Keep the approved ambient-node motif while satisfying the checkpoint's
-  // strict no-object-outside-slide requirement.
-  for (const object of slide._slideObjects ?? []) {
-    if (object.options?.objectName?.endsWith("ambient halo")) {
-      object.options.x = 11.63;
-      object.options.y = 0;
-      object.options.w = 1.7;
-      object.options.h = 1.7;
-    }
-    if (object.options?.objectName?.endsWith("glass node")) {
-      object.options.x = 12.25;
-      object.options.y = 6.42;
-      object.options.w = 1.08;
-      object.options.h = 1.08;
-    }
-  }
 }
 
 function buildCover(ctx) {
