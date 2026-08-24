@@ -13,6 +13,14 @@ function expectInOrder(text: string, labels: string[]) {
 }
 
 describe("TechnicianPortalPage profile card", () => {
+  it("binds the authenticated technician and shop identity to formal profile data", () => {
+    expect(source).toContain("getFormalTechnicianProfileId(session)");
+    expect(source).toContain("coreReadApi.getTechnicianDetail(formalTechnicianProfileId)");
+    expect(source).toContain("mapCoreTechnicianToTechnician(formalTechnicianProfileQuery.data)");
+    expect(source).toContain("mapCoreShopToStore(formalTechnicianProfileQuery.data.shop)");
+    expect(source).toContain("isStaticDemoMode()");
+  });
+
   it("keeps the info/data tabs and places privacy plus tags in the info card", () => {
     const cardStart = source.indexOf('data-testid="technician-info-card"');
     const cardEnd = source.indexOf('{activeMeTab === "data"', cardStart);

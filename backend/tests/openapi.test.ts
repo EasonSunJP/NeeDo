@@ -177,6 +177,7 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(response.body.components.schemas).toHaveProperty("ServiceCard");
     expect(response.body.components.schemas).toHaveProperty("ShopDetail");
+    expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toContain("shop");
     expect(response.body.components.schemas).toHaveProperty("CustomerProfile");
     expect(response.body.components.schemas).toHaveProperty("ScheduleSlot");
     expect(response.body.components.schemas).toHaveProperty("BookingOrder");

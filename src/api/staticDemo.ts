@@ -744,6 +744,7 @@ function technicianDetail(id: number): CoreTechnicianDetail {
 
   return {
     ...card,
+    shop: shopCard(index),
     bio: source.bio ?? null,
     serviceArea: source.serviceAreas.join(", "),
     yearsExperience: Math.max(1, Math.round(source.orderCount / 180)),

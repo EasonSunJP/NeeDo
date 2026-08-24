@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
 import { ApiClientError } from "../../api/httpClient";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import {
   createCustomContactCategoryDraft,
   CustomContactCategoryEditor,
@@ -51,6 +52,8 @@ import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirm
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { fieldJobs, orders } from "../../data/mock";
+import { coreReadApi, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";
 import { pricingModeApi, type ShopPricingMode, type TechnicianServicePayload } from "../../features/pricing-mode/api";
@@ -2184,6 +2187,19 @@ function getTechnicianView(view?: string): TechnicianView {
   return "tasks";
 }
 
+function getFormalTechnicianProfileId(session: AuthSession | null) {
+  if (
+    isStaticDemoMode() ||
+    session?.portal !== "technician" ||
+    session.currentIdentity.scopeType !== "technician_profile"
+  ) {
+    return null;
+  }
+
+  const profileId = session.currentIdentity.scopeId;
+  return profileId && Number.isInteger(profileId) && profileId > 0 ? profileId : null;
+}
+
 function getRouteWorkMode(_value?: string | null): TechWorkMode {
   return "store";
 }
@@ -2764,12 +2780,27 @@ export function TechnicianPortalPage() {
   const { isNight } = useClientTheme();
   const { language } = useI18n();
   const { customers, stores, technicians } = useEntityStore();
-  const baseTech = technicians.find((technician) => technician.id === session?.linkedTechnicianId) ?? technicians[0];
+  const formalTechnicianProfileId = getFormalTechnicianProfileId(session);
+  const formalTechnicianProfileQuery = useCoreReadQuery(
+    () => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null,
+    [formalTechnicianProfileId]
+  );
+  const formalTechnician = useMemo(
+    () => formalTechnicianProfileQuery.data ? mapCoreTechnicianToTechnician(formalTechnicianProfileQuery.data) : null,
+    [formalTechnicianProfileQuery.data]
+  );
+  const formalStore = useMemo(
+    () => formalTechnicianProfileQuery.data?.shop
+      ? mapCoreShopToStore(formalTechnicianProfileQuery.data.shop)
+      : null,
+    [formalTechnicianProfileQuery.data]
+  );
+  const baseTech = formalTechnician ?? technicians.find((technician) => technician.id === session?.linkedTechnicianId) ?? technicians[0];
   const linkedCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId);
   const defaultAreaSelection = useRef(getDefaultAreaSelection()).current;
   const defaultLineSelection = useRef(getDefaultLineSelection()).current;
   const nextJob = fieldJobs[0];
-  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+  const store = formalStore ?? stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const taskOrderCodeSectionRef = useRef<HTMLElement | null>(null);
   const taskOrderCodeInputRef = useRef<HTMLInputElement | null>(null);

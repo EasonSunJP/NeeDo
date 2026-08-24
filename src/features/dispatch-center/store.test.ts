@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import storeSource from "./store.ts?raw";
 import { addDays } from "./domain";
 import {
   closeDispatchFeedback,
@@ -151,5 +152,15 @@ describe("dispatch center scheduling workflow", () => {
 
     expect(readiness.status).toBe("ready");
     expect(readiness.canRunSmartSchedule).toBe(true);
+  });
+});
+
+describe("dispatch center hydration safety", () => {
+  it("defers cross-store projection updates until after React commits", () => {
+    expect(storeSource).toContain('import { useEffect, useSyncExternalStore } from "react"');
+    expect(storeSource).toContain("projectionSyncPending = true");
+    expect(storeSource).toContain("useEffect(() => {");
+    expect(storeSource).toContain("flushHydrationProjections()");
+    expect(storeSource).not.toContain("function getSnapshot(): DispatchCenterSnapshot {\n  hydrate();\n  syncShiftPlanningProjection();");
   });
 });

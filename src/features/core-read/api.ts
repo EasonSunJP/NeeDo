@@ -94,6 +94,7 @@ export type CoreShopDetail = CoreShopCard & {
 };
 
 export type CoreTechnicianDetail = CoreTechnicianCard & {
+  shop: CoreShopCard | null;
   bio: string | null;
   serviceArea: string | null;
   yearsExperience: number;
@@ -320,7 +321,7 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
     id: String(technician.id),
     systemId: `B-${technician.id}`,
     name: technician.displayName,
-    storeId: firstService ? String(firstService.shop.id) : "",
+    storeId: detail?.shop ? String(detail.shop.id) : firstService ? String(firstService.shop.id) : "",
     role: "therapist",
     status: "available",
     rating: parseRating(technician.reviewSummary),

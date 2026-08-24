@@ -688,6 +688,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             type: "object",
             required: [
+              "shop",
               "bio",
               "serviceArea",
               "yearsExperience",
@@ -697,6 +698,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "updatedAt"
             ],
             properties: {
+              shop: {
+                anyOf: [
+                  { $ref: "#/components/schemas/ShopCard" },
+                  { type: "null" }
+                ]
+              },
               bio: { type: ["string", "null"] },
               serviceArea: { type: ["string", "null"] },
               yearsExperience: { type: "integer" },
