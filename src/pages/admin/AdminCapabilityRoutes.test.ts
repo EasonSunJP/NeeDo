@@ -17,6 +17,7 @@ const adminLayoutSource = readFileSync(
   "utf8"
 );
 const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
+const supportSource = readFileSync(new URL("./AdminSupportPage.tsx", import.meta.url), "utf8");
 
 describe("operations timeline production capability gate", () => {
   it("does not present sample operations history as persisted records", () => {
@@ -161,5 +162,27 @@ describe("travel and map provider production capability gate", () => {
     expect(travelSource).toContain("计费版本、审批、范围 RBAC、审计、分页与导出");
     expect(travelSource).toContain("当前不会展示静态城市车费、试算结果或“已启用”交通方式");
     expect(travelSource).toContain("地址和经纬度基础数据仍可由正式店铺/订单接口保存");
+  });
+});
+
+describe("support case management production capability gate", () => {
+  it("does not expose unverified contact details or inert contact actions", () => {
+    expect(supportSource).not.toContain("support@needo.jp");
+    expect(supportSource).not.toContain("@needo_support");
+    expect(supportSource).not.toContain("+81 3-6824-7788");
+    expect(supportSource).not.toContain("复制联系信息");
+    expect(supportSource).not.toContain("打开值班说明");
+  });
+
+  it("states the support ticket, SLA, privacy and delivery prerequisites", () => {
+    expect(supportSource).toContain("正式客服工单与值班联系尚未启用");
+    expect(supportSource).toContain(
+      "SupportTicket、SupportMessage、SupportAttachment 与 OnCallPolicy 表和 migration"
+    );
+    expect(supportSource).toContain("创建、分派、优先级、SLA、升级、解决、关闭与重开状态机 API");
+    expect(supportSource).toContain("租户范围 RBAC、敏感信息脱敏、附件权限与不可变审计");
+    expect(supportSource).toContain("通知投递、值班配置、服务端搜索、分页、SLA 聚合与导出");
+    expect(supportSource).toContain("官方邮箱、LINE、电话和工作时间必须来自版本化配置");
+    expect(supportSource).toContain("当前不会展示未经验证的联系方式、模拟工单、SLA 或值班状态");
   });
 });
