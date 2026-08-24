@@ -81,7 +81,7 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     key: "settings",
     title: "门店设置",
     items: [
-      { label: "门店设置", to: "/merchant-admin/settings", icon: "设", children: ["营业时间", "资质文件", "管理员"] }
+      { label: "门店设置", to: "/merchant-admin/settings", icon: "设", children: ["基础资料", "数据库状态", "待接入能力"] }
     ]
   },
   {

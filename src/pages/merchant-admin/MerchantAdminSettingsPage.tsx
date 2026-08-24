@@ -1,465 +1,255 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useAuth } from "../../auth/AuthProvider";
-import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
+import {
+  backofficeRealDataApi,
+  type BackofficeShopPayload,
+  type MerchantShopUpdateInput
+} from "../../api/backofficeRealData";
 import { ModuleShell } from "../../components/admin/ModuleShell";
-import { SegmentedTabs } from "../../components/client-ui/AppScaffold";
-import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
+import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
-import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { merchantAdminDemo } from "../../data/merchantAdmin";
-import { readImageFileAsDataUrl } from "../../lib/imageUpload";
-import {
-  detectStorePresentationIndustry,
-  getStorePresentationConfig,
-  normalizeStorePresentationConfig
-} from "../../lib/storePresentation";
-import { updateStoreEntity, useEntityStore } from "../../state/entityStore";
-import { useProfileCardBackgroundSettings } from "../../state/profileCardBackgroundStore";
-import type { Store, StorePresentationConfig } from "../../types/domain";
 
-const merchantTagPool = ["深夜营业", "女性友好", "到店主力", "上门服务", "可预约", "多语言", "企业合作", "高复购"];
+type ShopDraft = {
+  name: string;
+  description: string;
+  city: string;
+  address: string;
+  phone: string;
+};
 
-function listToText(items: string[]) {
-  return items.join("\n");
-}
+const emptyDraft: ShopDraft = {
+  name: "",
+  description: "",
+  city: "",
+  address: "",
+  phone: ""
+};
 
-function textToList(value: string) {
-  return value
-    .split(/\n|,|，|、/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
+const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
-function createStoreDraft(store: Store) {
-  const industry = detectStorePresentationIndustry(store);
+const unavailableCapabilities = [
+  {
+    title: "图片与轮播尚未启用",
+    description: "需要媒体文件表、对象存储、上传策略、删除审计和前台读取合同后才能开放。"
+  },
+  {
+    title: "营业时段尚未启用",
+    description: "需要带时区的 OpeningHours 数据模型、例外日期和店铺范围写 API 后才能开放。"
+  },
+  {
+    title: "证照与展示装修尚未启用",
+    description: "需要文件审核状态、版本记录以及店铺展示配置表，当前不会保存到浏览器。"
+  },
+  {
+    title: "地图、导航与 eKYC 尚未启用",
+    description: "这些能力依赖外部付费服务与生产密钥；接入前不会显示可点击的假操作。"
+  }
+];
 
+function createDraft(shop: BackofficeShopPayload): ShopDraft {
   return {
-    cover: store.cover,
-    gallery: [...store.gallery].slice(0, 5),
-    name: store.name,
-    area: store.area,
-    address: store.address,
-    businessHours: store.businessHours,
-    nextSlot: store.nextSlot,
-    priceLabel: store.priceLabel,
-    rankLabel: store.rankLabel,
-    description: store.description,
-    tags: [...store.tags],
-    mode: store.mode,
-    presentation: getStorePresentationConfig(store, industry)
+    name: shop.name,
+    description: shop.description ?? "",
+    city: shop.city,
+    address: shop.address,
+    phone: shop.phone ?? ""
+  };
+}
+
+function toUpdateInput(draft: ShopDraft): MerchantShopUpdateInput {
+  return {
+    name: draft.name.trim(),
+    description: draft.description.trim() || null,
+    city: draft.city.trim(),
+    address: draft.address.trim(),
+    phone: draft.phone.trim() || null
   };
 }
 
 export function MerchantAdminSettingsPage() {
   const [searchParams] = useSearchParams();
-  const { session } = useAuth();
-  const { stores, technicians } = useEntityStore();
-  const profileCardBackgroundSettings = useProfileCardBackgroundSettings();
-  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
-  const coverInputRef = useRef<HTMLInputElement | null>(null);
-  const focus = searchParams.get("focus");
-  const focusModule = searchParams.get("module");
-  const availableTags = useMemo(() => Array.from(new Set([...merchantTagPool, ...store.tags])), [store.tags]);
-  const [draft, setDraft] = useState(() => createStoreDraft(store));
-  const updatePresentationDraft = <Key extends keyof StorePresentationConfig>(key: Key, value: StorePresentationConfig[Key]) => {
-    setDraft((current) => ({ ...current, presentation: { ...current.presentation, [key]: value } }));
-  };
+  const [shop, setShop] = useState<BackofficeShopPayload | null>(null);
+  const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setSaved(false);
+    try {
+      const page = await backofficeRealDataApi.merchantShop();
+      const currentShop = page.list[0] ?? null;
+      setShop(currentShop);
+      setDraft(currentShop ? createDraft(currentShop) : emptyDraft);
+    } catch (loadError) {
+      setShop(null);
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    setDraft(createStoreDraft(store));
-  }, [
-    store.id,
-    store.cover,
-    store.gallery,
-    store.name,
-    store.area,
-    store.address,
-    store.businessHours,
-    store.nextSlot,
-    store.priceLabel,
-    store.rankLabel,
-    store.description,
-    store.tags,
-    store.mode,
-    store.presentation
-  ]);
-  const handleCoverUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    void load();
+  }, [load]);
 
-    if (!file) {
-      return;
+  const hasRequiredFields = useMemo(
+    () => Boolean(draft.name.trim() && draft.city.trim() && draft.address.trim()),
+    [draft.address, draft.city, draft.name]
+  );
+  const isDirty = useMemo(
+    () => Boolean(shop && JSON.stringify(createDraft(shop)) !== JSON.stringify(draft)),
+    [draft, shop]
+  );
+
+  const save = async () => {
+    if (!shop || !hasRequiredFields || saving) return;
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    try {
+      const updated = await backofficeRealDataApi.updateMerchantShop(toUpdateInput(draft));
+      setShop(updated);
+      setDraft(createDraft(updated));
+      setSaved(true);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    } finally {
+      setSaving(false);
     }
+  };
 
-    const nextCover = await readImageFileAsDataUrl(file);
-    setDraft((current) => ({ ...current, cover: nextCover }));
-    event.target.value = "";
+  const reset = () => {
+    if (!shop) return;
+    setDraft(createDraft(shop));
+    setError("");
+    setSaved(false);
   };
 
   return (
     <MerchantAdminLayout>
       <ModuleShell
         title="门店设置"
-        description="PC 后台现在可以直接维护店铺展示内容，和商户手机端改的是同一份门店资料。"
+        description="维护当前登录店铺已进入正式数据库合同的基础资料。"
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setDraft(createStoreDraft(store))}
-            >
-              还原当前内容
-            </Button>
-            <Button
-              onClick={() =>
-                updateStoreEntity(store.id, {
-                  cover: draft.cover,
-                  gallery: draft.gallery.slice(0, 5),
-                  name: draft.name,
-                  area: draft.area,
-                  address: draft.address,
-                  businessHours: draft.businessHours,
-                  nextSlot: draft.nextSlot,
-                  priceLabel: draft.priceLabel,
-                  rankLabel: draft.rankLabel,
-                  description: draft.description,
-                  tags: draft.tags,
-                  mode: draft.mode,
-                  presentation: normalizeStorePresentationConfig(draft.presentation, detectStorePresentationIndustry({ tags: draft.tags }))
-                })
-              }
-            >
-              保存到前台
+            <Button disabled={!isDirty || saving} onClick={reset} variant="secondary">还原未保存修改</Button>
+            <Button disabled={!shop || !hasRequiredFields || !isDirty || saving} onClick={() => void save()}>
+              {saving ? "正在保存..." : "保存基础资料"}
             </Button>
           </div>
         }
       >
-        <div className="grid gap-5 xl:grid-cols-[1fr,0.9fr]">
-          <section className="space-y-4">
-            <article className="rounded-lg border border-line bg-white p-4 shadow-panel">
-              <div className="flex items-center justify-between gap-3">
-                <TitleWithInfo
-                  as="h2"
-                  info="这里看到的就是商户手机端【服务展示】里正在使用的资料结构。"
-                  label="门店展示预览说明"
-                  title="门店展示预览"
-                  titleClassName="font-black"
-                  variant="paper"
-                />
-                <Badge tone="green">已同步前台</Badge>
-              </div>
-              <div className="mt-4 overflow-hidden rounded-[28px] border border-line bg-paper">
-                <img alt={draft.name} className="h-56 w-full object-cover" src={draft.gallery[0] ?? draft.cover} />
-                <div className="space-y-3 p-4">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-moss">{draft.rankLabel}</p>
-                    <h3 className="mt-2 text-[28px] font-black">{draft.name}</h3>
-                    <p className="mt-2 text-sm leading-6 text-ink/65">{draft.presentation.subtitle}</p>
-                    <p className="mt-2 text-sm text-ink/60">{draft.address}</p>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {[
-                      ["服务区域", draft.area],
-                      ["最近车站", draft.presentation.station],
-                      ["营业时间", draft.businessHours],
-                      ["最近可约", draft.nextSlot],
-                      ["价格说明", draft.priceLabel]
-                    ].map(([label, value]) => (
-                      <div className="rounded-[18px] bg-white p-3" key={label}>
-                        <p className="text-xs font-bold text-ink/45">{label}</p>
-                        <strong className="mt-1 block text-sm">{value}</strong>
-                      </div>
-                    ))}
-                  </div>
+        {error ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+            <span>{error}</span>
+            <Button onClick={() => void load()} size="sm" variant="secondary">重新加载店铺资料</Button>
+          </div>
+        ) : null}
+
+        {saved ? (
+          <p className="mb-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm font-bold text-green-800">
+            店铺基础资料已保存并写入数据库
+          </p>
+        ) : null}
+
+        {loading ? (
+          <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/55 shadow-panel">
+            正在读取当前店铺正式资料...
+          </p>
+        ) : null}
+
+        {!loading && !error && !shop ? (
+          <div className="rounded-lg border border-line bg-white p-6 shadow-panel">
+            <h2 className="text-lg font-black text-ink">当前身份没有可管理的店铺</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-ink/55">请检查当前活动身份是否为有效店铺身份，或联系运营人员完成店铺绑定。</p>
+            <Button className="mt-4" onClick={() => void load()} variant="secondary">重新加载店铺资料</Button>
+          </div>
+        ) : null}
+
+        {shop ? (
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className={`rounded-lg border border-line bg-white p-5 shadow-panel ${searchParams.get("focus") === "basic" ? "ring-2 ring-moss/25" : ""}`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-black text-ink">正式基础资料</h2>
+                  <p className="mt-1 text-sm font-bold text-ink/50">保存后直接写入当前店铺记录，并生成审计日志。</p>
                 </div>
+                <Badge tone={shop.status === "published" ? "green" : "yellow"}>{shop.status}</Badge>
               </div>
-            </article>
 
-            <article className={`rounded-lg border border-line bg-white p-4 shadow-panel ${focus === "gallery" ? "ring-2 ring-moss/25" : ""}`}>
-              <div className="flex items-center justify-between gap-3">
-                <TitleWithInfo
-                  as="h2"
-                  info="顶部轮播、缩略图和环境图都从这里统一维护。"
-                  label="图片内容说明"
-                  title="图片内容"
-                  titleClassName="font-black"
-                  variant="paper"
-                />
-                <Badge tone="blue">图片</Badge>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-black">店铺名称</span>
+                  <input className={inputClassName} maxLength={160} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} required value={draft.name} />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-black">城市</span>
+                  <input className={inputClassName} maxLength={100} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} required value={draft.city} />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="mb-2 block text-sm font-black">门店地址</span>
+                  <input className={inputClassName} maxLength={255} onChange={(event) => setDraft((current) => ({ ...current, address: event.target.value }))} required value={draft.address} />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-black">联系电话</span>
+                  <input className={inputClassName} maxLength={32} onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))} type="tel" value={draft.phone} />
+                  <span className="mt-1 block text-xs font-bold text-ink/45">留空表示不公开；填写时至少 5 个字符。</span>
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="mb-2 block text-sm font-black">店铺简介</span>
+                  <textarea className="min-h-[150px] w-full rounded-lg border border-line bg-paper px-3 py-3 text-sm font-bold outline-none focus:border-moss" maxLength={5000} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} value={draft.description} />
+                  <span className="mt-1 block text-right text-xs font-bold text-ink/45">{draft.description.length} / 5000</span>
+                </label>
               </div>
-              <div className="mt-4 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper p-3">
-                  <input accept="image/*" className="hidden" onChange={handleCoverUpload} ref={coverInputRef} type="file" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-ink">封面图片</p>
-                    <p className="mt-1 text-xs text-ink/50">从本地上传新封面，不需要填写图片链接。</p>
-                  </div>
-                  <Button size="sm" variant="secondary" onClick={() => coverInputRef.current?.click()}>
-                    上传封面
-                  </Button>
-                </div>
+            </section>
 
-                <ImageGalleryManager
-                  coverHint="最多 5 张，发布后商户手机端和用户端店铺详情都会同步刷新。"
-                  description="PC 后台和商户手机端共用同一份店铺轮播数据。"
-                  images={draft.gallery}
-                  label="店铺轮播图"
-                  maxImages={5}
-                  onChange={(images) => setDraft((current) => ({ ...current, gallery: images.slice(0, 5) }))}
-                />
-
-                {profileCardBackgroundSettings.editEntryEnabled ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper p-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-black text-ink">简易信息卡背景</p>
-                      <p className="mt-1 text-xs leading-5 text-ink/50">入口由运营后台开放；当前背景仍按 UI 主题使用系统分配图。</p>
+            <aside className="space-y-4">
+              <section className="rounded-lg border border-line bg-white p-5 shadow-panel">
+                <h2 className="font-black text-ink">数据库记录</h2>
+                <dl className="mt-4 space-y-3 text-sm">
+                  {[
+                    ["店铺 ID", shop.id],
+                    ["负责人邮箱", shop.ownerEmail ?? "未设置"],
+                    ["平台推荐", shop.isRecommended ? "是" : "否"],
+                    ["创建时间", new Date(shop.createdAt).toLocaleString("ja-JP")]
+                  ].map(([label, value]) => (
+                    <div className="flex items-start justify-between gap-4 border-b border-line pb-3 last:border-0 last:pb-0" key={label}>
+                      <dt className="font-bold text-ink/45">{label}</dt>
+                      <dd className="max-w-[210px] break-words text-right font-black text-ink">{value}</dd>
                     </div>
-                    <Button disabled size="sm" variant="secondary">
-                      背景编辑待接入
-                    </Button>
-                  </div>
-                ) : null}
+                  ))}
+                </dl>
+              </section>
+              <div className="flex flex-wrap gap-2">
+                <Button to="/merchant-admin/orders" variant="secondary">查看正式订单</Button>
+                <Button to="/merchant-admin/people?module=staff" variant="secondary">查看本店技师</Button>
               </div>
-            </article>
+            </aside>
+          </div>
+        ) : null}
 
-            <article className={`rounded-lg border border-line bg-white p-4 shadow-panel ${focus === "basic" ? "ring-2 ring-moss/25" : ""}`}>
-              <div className="flex items-center justify-between gap-3">
-                <TitleWithInfo
-                  as="h2"
-                  info="门店名称、地址、营业时间和经营方式会同步到所有服务展示信息卡。"
-                  label="基础资料说明"
-                  title="基础资料"
-                  titleClassName="font-black"
-                  variant="paper"
-                />
-                <Badge tone="green">资料</Badge>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {[
-                  { label: "店铺名称", key: "name" },
-                  { label: "服务区域", key: "area" },
-                  { label: "门店地址", key: "address" },
-                  { label: "营业时间", key: "businessHours" }
-                ].map((field) => (
-                  <label className="block" key={field.key}>
-                    <span className="mb-2 block text-xs font-bold text-ink/50">{field.label}</span>
-                    <input
-                      className="h-10 w-full rounded-lg border border-line bg-paper px-3 outline-none"
-                      onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}
-                      value={draft[field.key as keyof typeof draft] as string}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-4">
-                <span className="mb-2 block text-xs font-bold text-ink/50">经营方式</span>
-                <SegmentedTabs
-                  items={[
-                    { label: "上门服务", value: "home" },
-                    { label: "到店服务", value: "store" }
-                  ]}
-                  onChange={(value) => setDraft((current) => ({ ...current, mode: value as Store["mode"] }))}
-                  value={draft.mode}
-                />
-              </div>
-            </article>
-
-            <article className={`rounded-lg border border-line bg-white p-4 shadow-panel ${focus === "presentation" ? "ring-2 ring-moss/25" : ""}`}>
-              <div className="flex items-center justify-between gap-3">
-                <TitleWithInfo
-                  as="h2"
-                  info="角标、最近可约、价格和介绍文案会同步到服务展示里的图片与信息卡。"
-                  label="展示信息说明"
-                  title="展示信息"
-                  titleClassName="font-black"
-                  variant="paper"
-                />
-                <Badge tone="yellow">展示字段</Badge>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {[
-                  { label: "首页角标", key: "rankLabel" },
-                  { label: "最近可约", key: "nextSlot" },
-                  { label: "价格说明", key: "priceLabel" }
-                ].map((field) => (
-                  <label className="block" key={field.key}>
-                    <span className="mb-2 block text-xs font-bold text-ink/50">{field.label}</span>
-                    <input
-                      className="h-10 w-full rounded-lg border border-line bg-paper px-3 outline-none"
-                      onChange={(event) => setDraft((current) => ({ ...current, [field.key]: event.target.value }))}
-                      value={draft[field.key as keyof typeof draft] as string}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-4 grid gap-3">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-bold text-ink/50">前台首屏说明</span>
-                  <textarea
-                    className="min-h-[96px] w-full rounded-[18px] border border-line bg-paper px-4 py-3 outline-none"
-                    onChange={(event) => updatePresentationDraft("subtitle", event.target.value)}
-                    value={draft.presentation.subtitle}
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-2 block text-xs font-bold text-ink/50">最近车站</span>
-                    <input
-                      className="h-10 w-full rounded-lg border border-line bg-paper px-3 outline-none"
-                      onChange={(event) => updatePresentationDraft("station", event.target.value)}
-                      value={draft.presentation.station}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-xs font-bold text-ink/50">距离说明</span>
-                    <input
-                      className="h-10 w-full rounded-lg border border-line bg-paper px-3 outline-none"
-                      onChange={(event) => updatePresentationDraft("distance", event.target.value)}
-                      value={draft.presentation.distance}
-                    />
-                  </label>
-                </div>
-                <label className="block">
-                  <span className="mb-2 block text-xs font-bold text-ink/50">交通说明</span>
-                  <textarea
-                    className="min-h-[90px] w-full rounded-[18px] border border-line bg-paper px-4 py-3 outline-none"
-                    onChange={(event) => updatePresentationDraft("access", event.target.value)}
-                    value={draft.presentation.access}
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-xs font-bold text-ink/50">到店提示</span>
-                  <textarea
-                    className="min-h-[90px] w-full rounded-[18px] border border-line bg-paper px-4 py-3 outline-none"
-                    onChange={(event) => updatePresentationDraft("routeGuide", event.target.value)}
-                    value={draft.presentation.routeGuide}
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-2 block text-xs font-bold text-ink/50">支付方式</span>
-                    <textarea
-                      className="min-h-[96px] w-full rounded-[18px] border border-line bg-paper px-4 py-3 outline-none"
-                      onChange={(event) => updatePresentationDraft("paymentMethods", textToList(event.target.value))}
-                      value={listToText(draft.presentation.paymentMethods)}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-xs font-bold text-ink/50">设备 / 服务标记</span>
-                    <textarea
-                      className="min-h-[96px] w-full rounded-[18px] border border-line bg-paper px-4 py-3 outline-none"
-                      onChange={(event) => updatePresentationDraft("equipment", textToList(event.target.value))}
-                      value={listToText(draft.presentation.equipment)}
-                    />
-                  </label>
-                </div>
-              </div>
-              <div className="mt-4">
-                <span className="mb-2 block text-xs font-bold text-ink/50">店铺标签</span>
-                <div className="flex flex-wrap gap-2">
-                  {availableTags.map((tag) => {
-                    const active = draft.tags.includes(tag);
-
-                    return (
-                      <button
-                        className={`rounded-full px-3 py-2 text-xs font-black ${
-                          active ? "bg-moss text-white" : "bg-paper text-ink"
-                        }`}
-                        key={tag}
-                        onClick={() =>
-                          setDraft((current) => ({
-                            ...current,
-                            tags: current.tags.includes(tag) ? current.tags.filter((item) => item !== tag) : [...current.tags, tag]
-                          }))
-                        }
-                        type="button"
-                      >
-                        {tag}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <label className="mt-4 block">
-                <span className="mb-2 block text-xs font-bold text-ink/50">店铺介绍</span>
-                <textarea
-                  className="min-h-[160px] w-full rounded-[24px] border border-line bg-paper px-4 py-3 outline-none"
-                  onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
-                  value={draft.description}
-                />
-              </label>
-            </article>
-
-            <article className={`rounded-lg border border-line bg-white p-4 shadow-panel ${focusModule === "documents" ? "ring-2 ring-moss/25" : ""}`}>
-              <div className="flex items-center justify-between gap-3">
-                <TitleWithInfo
-                  as="h2"
-                  info="这里只管理本店的营业执照、保险和店员资质扫描件。"
-                  label="资质文件说明"
-                  title="资质文件"
-                  titleClassName="font-black"
-                  variant="paper"
-                />
-                <Badge tone="yellow">{merchantAdminDemo.merchant.documents.length} 份</Badge>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {merchantAdminDemo.merchant.documents.map((document) => (
-                  <span className="rounded-full border border-line bg-paper px-3 py-2 text-xs font-black text-ink" key={document}>
-                    {document}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button to="/merchant/settings/verification">上传新文件</Button>
-                <Button to="/merchant/settings/verification" variant="secondary">查看审核状态</Button>
-              </div>
-            </article>
-          </section>
-
-          <aside className="space-y-4">
-            <article className="rounded-lg border border-line bg-white p-4 shadow-panel">
-              <h2 className="font-black">结算与收款</h2>
-              <div className="mt-3 space-y-2">
-                {[
-                  ["结算周期", merchantAdminDemo.merchant.settlementCycle],
-                  ["平台佣金", `${merchantAdminDemo.merchant.commissionRate}%`],
-                  ["最近可结算", "T+7 自动生成"],
-                  ["收款状态", "正常"]
-                ].map(([label, value]) => (
-                  <div className="flex items-center justify-between rounded-lg bg-paper px-3 py-3" key={label}>
-                    <span className="text-sm text-ink/55">{label}</span>
-                    <strong className="text-sm">{value}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button to="/merchant-admin/finance">查看结算页</Button>
-                <Button to="/merchant/settings/account" variant="secondary">绑定收款账户</Button>
-              </div>
-            </article>
-
-            <article className="rounded-lg border border-line bg-white p-4 shadow-panel">
-              <h2 className="font-black">管理员与权限</h2>
-              <div className="mt-3 space-y-2">
-                {[
-                  ["当前角色", "店长 / 商家管理员"],
-                  ["可管理门店", `${merchantAdminDemo.stores.length} 家`],
-                  ["可管理员工", `${technicians.length} 人`],
-                  ["权限模式", "店铺专属后台"]
-                ].map(([label, value]) => (
-                  <div className="flex items-center justify-between rounded-lg bg-paper px-3 py-3" key={label}>
-                    <span className="text-sm text-ink/55">{label}</span>
-                    <strong className="text-sm">{value}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button variant="secondary">邀请管理员</Button>
-                <Button variant="secondary">查看操作日志</Button>
-              </div>
-            </article>
-          </aside>
-        </div>
+        <section className="mt-5 rounded-lg border border-line bg-white p-5 shadow-panel">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-ink">尚未进入正式数据合同的设置</h2>
+              <p className="mt-1 text-sm font-bold text-ink/50">完成对应表、接口、权限和审计后再逐项开放。</p>
+            </div>
+            <Badge tone="yellow">明确禁用</Badge>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {unavailableCapabilities.map((capability) => (
+              <article className="rounded-lg border border-line bg-paper p-4" key={capability.title}>
+                <h3 className="text-sm font-black text-ink">{capability.title}</h3>
+                <p className="mt-2 text-xs font-bold leading-6 text-ink/55">{capability.description}</p>
+              </article>
+            ))}
+          </div>
+        </section>
       </ModuleShell>
     </MerchantAdminLayout>
   );
