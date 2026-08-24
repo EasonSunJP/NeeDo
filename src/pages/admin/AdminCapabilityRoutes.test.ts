@@ -9,6 +9,8 @@ const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.
 const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
 const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
 const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapabilityGate.tsx", import.meta.url), "utf8");
+const dispatchSource = readFileSync(new URL("./AdminDispatchPage.tsx", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 
 describe("operations timeline production capability gate", () => {
   it("does not present sample operations history as persisted records", () => {
@@ -82,5 +84,23 @@ describe("NeeDo exchange administration production capability gate", () => {
     expect(exchangeSource).toContain("发布身份、联系方式脱敏与范围 RBAC");
     expect(exchangeSource).toContain("匹配、预约、支付、审计、分页与导出合同");
     expect(exchangeSource).toContain("当前不会展示模拟需求、情报、发布主体、联系方式、互动或支付履约数据");
+  });
+});
+
+describe("platform dispatch production capability gate", () => {
+  it("does not redirect a platform operator into a merchant-scoped workspace", () => {
+    expect(appSource).toContain('path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)}');
+    expect(appSource).not.toContain(
+      'path="/admin/dispatch" element={protect("admin", <Navigate replace to="/merchant-admin/dispatch-center/current" />)}'
+    );
+  });
+
+  it("states the cross-shop dispatch persistence and workflow prerequisites", () => {
+    expect(dispatchSource).toContain("正式跨店派单中心尚未启用");
+    expect(dispatchSource).toContain("DispatchJob、DispatchAssignment 与 DispatchException 表和 migration");
+    expect(dispatchSource).toContain("创建、分派、接单、改派、升级与关闭状态机 API");
+    expect(dispatchSource).toContain("跨店技师可用性、冲突锁、范围 RBAC 与不可变审计");
+    expect(dispatchSource).toContain("服务端筛选、分页、聚合、SLA 与导出合同");
+    expect(dispatchSource).toContain("当前不会跳转到任何单店商户工作区");
   });
 });

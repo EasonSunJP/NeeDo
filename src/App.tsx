@@ -11,6 +11,7 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
 import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
 import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
+import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
 import { AdminNotificationComposePage } from "./pages/admin/AdminNotificationComposePage";
 import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
@@ -1294,7 +1295,7 @@ export default function App() {
               <Route path="/admin/orders" element={protect("admin", <OrdersAdminPage />)} />
               <Route path="/admin/orders/demands" element={protect("admin", <NeedoDemandAdminPage />)} />
               <Route path="/admin/orders/info" element={protect("admin", <NeedoInfoAdminPage />)} />
-              <Route path="/admin/dispatch" element={protect("admin", <Navigate replace to="/merchant-admin/dispatch-center/current" />)} />
+              <Route path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)} />
               <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
               <Route path="/admin/crm" element={protect("admin", <CRMPage />)} />
               <Route path="/admin/users" element={protectPermission("admin", "page:user-management", <UsersPage />)} />
