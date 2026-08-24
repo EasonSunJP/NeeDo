@@ -581,6 +581,9 @@ const createFixture = async () => {
       );
       return canRead ? post : null;
     }),
+    listFollowerUserIds: jest.fn(async (followingUserId: number) =>
+      follows.filter((follow) => follow.followingUserId === followingUserId).map((follow) => follow.followerUserId)
+    ),
     createFollow: jest.fn(async (input: { followerUserId: number; followingUserId: number }) => {
       const existing = follows.find(
         (follow) =>
