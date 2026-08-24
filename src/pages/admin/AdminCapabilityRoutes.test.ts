@@ -6,6 +6,9 @@ const exchangeSource = readFileSync(new URL("./NeedoExchangeAdminPage.tsx", impo
 const carouselSource = readFileSync(new URL("./CarouselPage.tsx", import.meta.url), "utf8");
 const decorationSource = readFileSync(new URL("./DecorationPage.tsx", import.meta.url), "utf8");
 const badgesSource = readFileSync(new URL("./AvatarBadgesPage.tsx", import.meta.url), "utf8");
+const notificationsSource = readFileSync(new URL("./AdminNotificationsPage.tsx", import.meta.url), "utf8");
+const notificationComposeSource = readFileSync(new URL("./AdminNotificationComposePage.tsx", import.meta.url), "utf8");
+const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapabilityGate.tsx", import.meta.url), "utf8");
 
 describe("operations timeline production capability gate", () => {
   it("does not present sample operations history as persisted records", () => {
@@ -21,6 +24,25 @@ describe("operations timeline production capability gate", () => {
     expect(timelineSource).toContain("跨城市 RBAC 与不可变审计链路");
     expect(timelineSource).toContain("服务端筛选、分页、聚合与导出合同");
     expect(timelineSource).toContain("当前不会展示模拟运营记录、负责人、城市、优先级或处理状态");
+  });
+});
+
+describe("official notification production capability gate", () => {
+  it("does not treat bundled updates or browser storage as sent notices", () => {
+    expect(notificationsSource).not.toContain("readStoredOfficialNotices");
+    expect(notificationsSource).not.toContain("updateNotices");
+    expect(notificationComposeSource).not.toContain("saveStoredOfficialNotice");
+    expect(notificationComposeSource).not.toContain("useEntityStore");
+  });
+
+  it("states the formal broadcast delivery prerequisites on list and compose routes", () => {
+    for (const pageSource of [notificationsSource, notificationComposeSource]) {
+      expect(pageSource).toContain("OfficialNotificationCapabilityGate");
+    }
+    expect(notificationGateSource).toContain("OfficialNotice、NoticeAudience 与 NoticeDelivery 表和 migration");
+    expect(notificationGateSource).toContain("草稿、审核、定时发送、取消与归档状态机 API");
+    expect(notificationGateSource).toContain("目标快照、幂等投递、重试、失败回执与审计");
+    expect(notificationGateSource).toContain("当前不会展示模拟通知、更新记录、目标账号或发送状态");
   });
 });
 

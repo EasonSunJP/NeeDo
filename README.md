@@ -138,6 +138,8 @@ The operations demand and information routes are explicit production exchange ca
 
 The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 
+The official-notice list and compose routes are explicit delivery capability gates. They do not show bundled update history or browser-stored drafts, attachments, target accounts, and schedules as sent notices. The existing Notification table remains available for recipient-side event notifications; administrator broadcasts additionally require persisted notices, audience snapshots, per-recipient delivery attempts, idempotent workers, retry and failure receipts, attachment storage, RBAC, and audit evidence.
+
 The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
 
 The shared merchant-admin shell now follows the same authenticated scope. Its account name, shop status, pending-order count, avatar, and service GMV come from the active session and `/api/v1/merchant-admin/dashboard`; it shows a retryable error state instead of falling back to demo shop or order data.
