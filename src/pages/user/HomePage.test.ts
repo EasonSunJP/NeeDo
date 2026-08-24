@@ -31,6 +31,17 @@ describe("HomePage technician recommendations", () => {
   });
 });
 
+describe("HomePage authenticated customer identity", () => {
+  it("loads the formal customer profile instead of falling back to the first demo customer", () => {
+    expect(homePageSource).toContain("getFormalCustomerProfileId(session)");
+    expect(homePageSource).toContain("coreReadApi.getCustomerProfile(formalCustomerProfileId)");
+    expect(homePageSource).toContain("mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)");
+    expect(homePageSource).toContain("isStaticDemoMode()");
+    expect(homePageSource).toContain("const currentCustomer = formalCustomerProfileQuery.data");
+    expect(homePageSource).toContain(": legacyCurrentCustomer");
+  });
+});
+
 describe("HomePage quick action icon theme colors", () => {
   it("uses client theme tokens instead of a hard-coded green", () => {
     expect(homePageSource).toContain("function getQuickActionIconClassName");
