@@ -60,6 +60,21 @@ time() - max by (dependency) (needo_dependency_last_check_timestamp_seconds) > 1
   `RATE_LIMIT_MAX`. Auth-specific login failure limits remain in the Auth env
   variables.
 
+## Database Index Audit
+
+Run the read-only live-schema audit before staging load tests:
+
+```bash
+cd backend
+ENV_FILE=.env.staging npm run audit:database-indexes
+```
+
+The audit fails on tables without primary keys or foreign-key columns that are
+not the leading column of an index. It also reports duplicate index definitions
+and soft-delete tables without a leading `deleted_at` index as optimization
+warnings. The 2026-08-25 local database result covered 56 business tables, 436
+indexes, and 122 foreign keys with zero errors and zero warnings.
+
 ## CDN Static Asset Plan
 
 Static frontend bundles should be served from CDN/object storage, not from the

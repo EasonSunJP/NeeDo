@@ -20,6 +20,7 @@
     "check:registration-flow": "tsx scripts/check-registration-flow.ts",
     "check:test-login": "tsx scripts/check-test-login.ts",
     "check:simulation-data": "tsx scripts/check-three-month-simulation.ts",
+    "audit:database-indexes": "tsx scripts/audit-database-indexes.ts",
     "export:simulation-accounts-xlsx": "python3 -m venv .data/simulation-xlsx-venv && .data/simulation-xlsx-venv/bin/python -m pip install --disable-pip-version-check -r requirements-simulation.txt && .data/simulation-xlsx-venv/bin/python scripts/export-simulation-accounts-xlsx.py ../outputs/NeeDo_模拟账号_2026-06至08.csv ../outputs/NeeDo_模拟账号_2026-06至08.xlsx",
     "seed:simulation": "tsx scripts/seed-three-month-simulation.ts",
     "prisma:generate": "prisma generate",
