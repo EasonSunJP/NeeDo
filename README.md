@@ -132,6 +132,8 @@ Authenticated customer identities now receive an API-backed “My” page. The p
 
 The operations dashboard now renders the protected backoffice aggregate for metrics, orders, schedule inventory, financial totals, shops, and technicians. City trends, field jobs, risk scores, and merchant-health scoring stay visibly disabled until formal aggregate contracts exist; the production dashboard no longer substitutes demo metrics for these modules.
 
+The operations timeline route is an explicit production capability gate. It does not present sample events, owners, cities, priorities, or handling states as persisted work. Activation requires formal event and incident records, audited assignment and resolution state machines, cross-city RBAC, and server-side filter, pagination, aggregate, and export contracts.
+
 The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
 
 The shared merchant-admin shell now follows the same authenticated scope. Its account name, shop status, pending-order count, avatar, and service GMV come from the active session and `/api/v1/merchant-admin/dashboard`; it shows a retryable error state instead of falling back to demo shop or order data.
