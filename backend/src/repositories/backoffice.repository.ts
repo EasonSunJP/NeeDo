@@ -1066,7 +1066,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       id: order.id,
       orderNo: order.orderNo,
       status: this.statusFromDb(order.status),
-      paymentStatus: "unpaid",
+      paymentStatus: this.paymentStatusFromDb(order.paymentStatus),
       customerUserId: order.customerUserId,
       customerName: order.customer.username || order.customer.email,
       serviceId: order.serviceId,
@@ -1232,6 +1232,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
 
   private statusFromDb(status: string): string {
     return status === "IN_SERVICE" ? "inService" : status.toLowerCase();
+  }
+
+  private paymentStatusFromDb(status: string): BackofficeOrderPayload["paymentStatus"] {
+    if (status === "CONFIRMED") return "confirmed";
+    if (status === "REFUND_PENDING") return "refundPending";
+    if (status === "REFUNDED") return "refunded";
+    return "pending";
   }
 
   private orderType(value: string): "booking" | "request" {

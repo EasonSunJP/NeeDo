@@ -8,7 +8,7 @@ export interface BackofficeOrderPayload {
   id: number;
   orderNo: string;
   status: string;
-  paymentStatus: "unpaid";
+  paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
   customerUserId: number;
   customerName: string;
   serviceId: number;
@@ -302,7 +302,12 @@ export function mapBackofficeOrder(row: BackofficeOrderPayload): Order {
     city: "",
     area: "",
     amount: row.priceAmount,
-    paymentStatus: row.paymentStatus,
+    paymentStatus:
+      row.paymentStatus === "confirmed" || row.paymentStatus === "refundPending"
+        ? "paid"
+        : row.paymentStatus === "refunded"
+          ? "refunded"
+          : "unpaid",
     bookedAt: formatDateTime(row.startsAt),
     createdAt: formatDateTime(row.createdAt),
     source: "web",

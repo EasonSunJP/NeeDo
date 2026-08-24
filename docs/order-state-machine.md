@@ -60,6 +60,8 @@ backend/prisma/migrations/20260825014000_manual_payment_flow/migration.sql
 
 `booking_orders` now also stores payment method/status, exact JPY amount, confirmation and refund actors/timestamps, references, notes and refund reason. Existing rows are backfilled from the immutable order price snapshot.
 
+Backoffice and merchant-admin order list payloads expose the persisted manual-payment state as `pending`, `confirmed`, `refundPending`, or `refunded`. The frontend adapter maps these values to its existing unpaid/paid/refunded display vocabulary; it no longer hard-codes every order as unpaid.
+
 ## APIs
 
 Public:

@@ -1159,7 +1159,7 @@ function backofficeOrderPayload(orderIndex: number): BackofficeOrderPayload {
     id: orderIndex + 1,
     orderNo: order.orderNo,
     status: order.status,
-    paymentStatus: "unpaid",
+    paymentStatus: order.paymentStatus === "refunded" ? "refunded" : order.paymentStatus === "unpaid" ? "pending" : "confirmed",
     customerUserId: numberFromText(order.customerId, 1),
     customerName: order.customerName,
     serviceId: orderIndex + 1,

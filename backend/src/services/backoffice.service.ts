@@ -37,7 +37,7 @@ export interface BackofficeOrderPayload {
   id: number;
   orderNo: string;
   status: string;
-  paymentStatus: "unpaid";
+  paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
   customerUserId: number;
   customerName: string;
   serviceId: number | null;

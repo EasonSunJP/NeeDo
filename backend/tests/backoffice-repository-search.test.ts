@@ -41,4 +41,47 @@ describe("BackofficeRepository keyword filters", () => {
       where: expect.objectContaining({ OR: expect.arrayContaining([{ bookingOrder: { orderNo: { contains: "Aoyama" } } }]) })
     }));
   });
+
+  it.each([
+    ["PENDING", "pending"],
+    ["CONFIRMED", "confirmed"],
+    ["REFUND_PENDING", "refundPending"],
+    ["REFUNDED", "refunded"]
+  ])("maps persisted payment status %s into the backoffice order payload", async (paymentStatus, expected) => {
+    const order = {
+      id: 31,
+      orderNo: "ND202608250001",
+      status: "CONFIRMED",
+      paymentStatus,
+      customerUserId: 7,
+      customer: { username: "Customer", email: "customer@example.com" },
+      serviceId: 3,
+      serviceNameSnapshot: "Formal Service",
+      service: { name: "Formal Service" },
+      shopId: 11,
+      shop: { name: "Aoyama Care Studio" },
+      technicianProfileId: 17,
+      technicianProfile: { displayName: "Mika" },
+      fulfillmentMode: "store",
+      priceAmount: { toString: () => "9800" },
+      currency: "JPY",
+      startsAt: new Date("2026-08-25T01:00:00.000Z"),
+      endsAt: new Date("2026-08-25T02:00:00.000Z"),
+      note: null,
+      cancelReason: null,
+      createdAt: new Date("2026-08-24T01:00:00.000Z"),
+      updatedAt: new Date("2026-08-25T01:00:00.000Z")
+    };
+    const client = {
+      bookingOrder: {
+        findMany: jest.fn(async () => [order]),
+        count: jest.fn(async () => 1)
+      }
+    };
+    const repository = new BackofficeRepository(client as never);
+
+    const response = await repository.listOrders({ scope: "platform", page: 1, pageSize: 20 });
+
+    expect(response.list[0]?.paymentStatus).toBe(expected);
+  });
 });

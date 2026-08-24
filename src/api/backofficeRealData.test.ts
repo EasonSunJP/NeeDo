@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { backofficeRealDataApi } from "./backofficeRealData";
+import { backofficeRealDataApi, mapBackofficeOrder, type BackofficeOrderPayload } from "./backofficeRealData";
 import { httpClient } from "./httpClient";
 
 vi.mock("./httpClient", () => ({ httpClient: { request: vi.fn() } }));
@@ -41,5 +41,38 @@ describe("backofficeRealDataApi master data writes", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/customers", { query: { page: 1 } });
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/services", { query: { page: 1 } });
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/services", expect.objectContaining({ method: "POST" }));
+  });
+
+  it.each([
+    ["pending", "unpaid"],
+    ["confirmed", "paid"],
+    ["refundPending", "paid"],
+    ["refunded", "refunded"]
+  ] as const)("maps formal payment status %s for the current order UI", (paymentStatus, expected) => {
+    const order: BackofficeOrderPayload = {
+      id: 1,
+      orderNo: "ND-1",
+      status: "confirmed",
+      paymentStatus,
+      customerUserId: 1,
+      customerName: "Customer",
+      serviceId: 1,
+      serviceName: "Service",
+      shopId: 1,
+      shopName: "Shop",
+      technicianProfileId: null,
+      technicianName: null,
+      fulfillmentMode: "store",
+      priceAmount: 9800,
+      currency: "JPY",
+      startsAt: "2026-08-25T01:00:00.000Z",
+      endsAt: "2026-08-25T02:00:00.000Z",
+      note: null,
+      cancelReason: null,
+      createdAt: "2026-08-24T01:00:00.000Z",
+      updatedAt: "2026-08-25T01:00:00.000Z"
+    };
+
+    expect(mapBackofficeOrder(order).paymentStatus).toBe(expected);
   });
 });
