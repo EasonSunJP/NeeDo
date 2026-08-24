@@ -6,6 +6,7 @@ import viteConfig, {
 import { isStaticDemoMode } from "./staticDemoMode";
 import httpClientSource from "./httpClient.ts?raw";
 import mainSource from "../main.tsx?raw";
+import packageJsonSource from "../../package.json?raw";
 import {
   isFrontendAuthBypassEnabled,
   requiresFormalFrontendLogin
@@ -93,6 +94,16 @@ describe("frontend production safety", () => {
 
     expect(config.test?.exclude).toEqual(
       expect.arrayContaining([".worktrees/**", "worktrees/**"])
+    );
+  });
+
+  it("builds the formal release without loading a local production env file", () => {
+    const packageJson = JSON.parse(packageJsonSource) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(packageJson.scripts["verify:production-build"]).toContain(
+      "npm run build -- --mode formal"
     );
   });
 });
