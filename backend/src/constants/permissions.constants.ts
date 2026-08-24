@@ -187,6 +187,20 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("order:cancel", "取消订单", "api", "order", "取消 Booking 订单"),
   createPermission("order:start", "开始服务", "api", "order", "将订单切换为服务中"),
   createPermission("order:complete", "完成服务", "api", "order", "将订单切换为已完成"),
+  createPermission(
+    "merchant-admin:order-payment:write",
+    "商户线下收款维护",
+    "api",
+    "order",
+    "确认或标记退款本店订单的到店及银行转账收款"
+  ),
+  createPermission(
+    "backoffice:order-payment:write",
+    "运营线下收款维护",
+    "api",
+    "order",
+    "运营确认或标记退款订单的到店及银行转账收款"
+  ),
 
   createPermission("conversation:list", "会话列表", "api", "im", "分页查看 IM 会话"),
   createPermission("conversation:create", "创建会话", "api", "im", "创建 IM 单聊或群聊会话"),
@@ -692,6 +706,7 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:finance:list",
   "backoffice:finance:export",
   "backoffice:finance-order:read",
+  "backoffice:order-payment:write",
   "backoffice:payroll:read",
   "backoffice:technicians:list",
   "backoffice:technicians:write",
@@ -716,6 +731,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:finance:export",
   "merchant-admin:finance-order:read",
   "merchant-admin:finance-income-report:write",
+  "merchant-admin:order-payment:write",
   "merchant-admin:finance-rules:read",
   "merchant-admin:finance-rules:write",
   "merchant-admin:finance-rules:preview",
@@ -769,6 +785,7 @@ export const buildRolePermissionAssignments = (): Record<
     "backoffice:finance:list",
     "backoffice:finance:export",
     "backoffice:finance-order:read",
+    "backoffice:order-payment:write",
     "backoffice:payroll:read",
     "menu:admin-settings",
     "page:admin-settings"

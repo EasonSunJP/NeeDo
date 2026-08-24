@@ -37,6 +37,7 @@ export const bookingCreateBodySchema = z
     scheduleSlotId: z.coerce.number().int().positive(),
     orderType: z.enum(["booking", "request"]).optional(),
     fulfillmentMode: z.enum(["home", "store"]),
+    paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
     note: z.string().trim().max(500).optional()
   })
   .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
@@ -56,6 +57,18 @@ export const orderListQuerySchema = z.object({
 
 export const orderCancelBodySchema = z.object({
   reason: z.string().trim().max(500).optional()
+});
+
+export const manualPaymentConfirmBodySchema = z.object({
+  method: z.enum(["onsite", "bank_transfer"]),
+  amountJpy: z.coerce.number().int().positive().max(100_000_000),
+  reference: z.string().trim().min(1).max(120).nullable().optional(),
+  note: z.string().trim().min(1).max(500).nullable().optional()
+});
+
+export const manualPaymentRefundBodySchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+  reference: z.string().trim().min(1).max(120).nullable().optional()
 });
 
 export const scheduleSlotListQuerySchema = boundedDateRange(z.object({
@@ -108,6 +121,8 @@ export type BookingCreateBody = z.infer<typeof bookingCreateBodySchema>;
 export type OrderIdParams = z.infer<typeof orderIdParamSchema>;
 export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 export type OrderCancelBody = z.infer<typeof orderCancelBodySchema>;
+export type ManualPaymentConfirmBody = z.infer<typeof manualPaymentConfirmBodySchema>;
+export type ManualPaymentRefundBody = z.infer<typeof manualPaymentRefundBodySchema>;
 export type ScheduleSlotListQuery = z.infer<typeof scheduleSlotListQuerySchema>;
 export type ScheduleSlotCreateBody = z.infer<typeof scheduleSlotCreateBodySchema>;
 export type ScheduleSlotUpdateBody = z.infer<typeof scheduleSlotUpdateBodySchema>;

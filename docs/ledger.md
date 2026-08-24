@@ -13,6 +13,8 @@ Step 11 implements the first formal NDP wallet ledger. It uses integer NDP where
 - `fee_calculation_logs`: calculation snapshots with applied rule IDs, adjustments, campaign discount, and explanation.
 - `wallet_holds`: locked Booking/Request fee holds created at acceptance and consumed/released by later settlement.
 - `order_financials`: one minimal financial summary per Booking/Request order for backoffice and merchant-admin finance views.
+
+Manual service payments remain JPY records, not NDP wallet mutations. Confirming an `onsite` or `bank_transfer` payment updates the Booking payment snapshot and synchronizes the `order_financials` offline-income fields/timeline transactionally. NDP platform-fee holds and settlement remain exclusively inside `LedgerService`.
 - `audit_logs`: ledger mutations write audit rows with target type `ledger_transaction`.
 
 ## Booking Settlement

@@ -27,6 +27,16 @@ interface DatabaseSchemaColumnRow {
 }
 
 export const FINANCE_READINESS_SCHEMA_COLUMNS: readonly FinanceReadinessSchemaColumn[] = [
+  { table: "booking_orders", column: "payment_method" },
+  { table: "booking_orders", column: "payment_status" },
+  { table: "booking_orders", column: "payment_amount_jpy" },
+  { table: "booking_orders", column: "payment_confirmed_by_id" },
+  { table: "booking_orders", column: "payment_confirmed_at" },
+  { table: "booking_orders", column: "payment_reference" },
+  { table: "booking_orders", column: "payment_refunded_by_id" },
+  { table: "booking_orders", column: "payment_refunded_at" },
+  { table: "booking_orders", column: "payment_refund_reference" },
+  { table: "booking_orders", column: "payment_refund_reason" },
   { table: "order_financials", column: "id" },
   { table: "order_financials", column: "booking_order_id" },
   { table: "order_financials", column: "order_type" },

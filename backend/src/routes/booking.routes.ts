@@ -16,6 +16,8 @@ import { LedgerService } from "../services/ledger.service";
 import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  manualPaymentConfirmBodySchema,
+  manualPaymentRefundBodySchema,
   orderCancelBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
@@ -33,6 +35,8 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   cancel: "order:cancel",
   start: "order:start",
   complete: "order:complete",
+  merchantPaymentWrite: "merchant-admin:order-payment:write",
+  backofficePaymentWrite: "backoffice:order-payment:write",
   scheduleList: "schedule:slots:list",
   scheduleWrite: "schedule:slots:write"
 } as const;
@@ -113,6 +117,34 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     authorize(BOOKING_ROUTE_PERMISSIONS.complete),
     validateRequest({ params: orderIdParamSchema }),
     controller.completeOrder
+  );
+  router.post(
+    "/merchant-admin/orders/:id/payment/confirm",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.merchantPaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentConfirmBodySchema }),
+    controller.confirmManualPayment
+  );
+  router.post(
+    "/merchant-admin/orders/:id/payment/refund",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.merchantPaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentRefundBodySchema }),
+    controller.refundManualPayment
+  );
+  router.post(
+    "/backoffice/orders/:id/payment/confirm",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.backofficePaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentConfirmBodySchema }),
+    controller.confirmManualPayment
+  );
+  router.post(
+    "/backoffice/orders/:id/payment/refund",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.backofficePaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentRefundBodySchema }),
+    controller.refundManualPayment
   );
   ["/merchant-admin/schedule/slots", "/technician/schedule/slots"].forEach((path) => {
     router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: scheduleSlotListQuerySchema }), controller.listScheduleSlots);

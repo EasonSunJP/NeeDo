@@ -16,6 +16,7 @@ Implemented:
 - Customer order list/detail/transition access is scoped to the authenticated customer user. If a customer passes another `customerUserId` in the order list query, the service overrides it with the token user id. Other customers' order detail/transition attempts return `error.order.not_found`.
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
 - Merchant and technician schedule portals create, block, restore, and soft-delete formal slots; the shared calendar reads the same backend records.
+- Booking orders persist `onsite` or `bank_transfer` payment selection and the formal manual-payment lifecycle.
 
 Reserved only:
 
@@ -51,6 +52,14 @@ Additional pricing-mode migration:
 backend/prisma/migrations/20260602103000_shop_technician_pricing_rate/migration.sql
 ```
 
+Manual-payment migration:
+
+```text
+backend/prisma/migrations/20260825014000_manual_payment_flow/migration.sql
+```
+
+`booking_orders` now also stores payment method/status, exact JPY amount, confirmation and refund actors/timestamps, references, notes and refund reason. Existing rows are backfilled from the immutable order price snapshot.
+
 ## APIs
 
 Public:
@@ -74,6 +83,10 @@ Authenticated:
 - `PATCH|DELETE /api/v1/merchant-admin/schedule/slots/:id`
 - `GET|POST /api/v1/technician/schedule/slots`
 - `PATCH|DELETE /api/v1/technician/schedule/slots/:id`
+- `POST /api/v1/merchant-admin/orders/:id/payment/confirm`
+- `POST /api/v1/merchant-admin/orders/:id/payment/refund`
+- `POST /api/v1/backoffice/orders/:id/payment/confirm`
+- `POST /api/v1/backoffice/orders/:id/payment/refund`
 
 Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:start`, `order:complete`, `schedule:slots:list`, and `schedule:slots:write`.
 
@@ -134,6 +147,15 @@ Oversell or conflict returns:
 }
 ```
 
+## Manual Payment Rules
+
+- Initial methods are limited to `onsite` and `bank_transfer`; no external gateway can create a paid transaction.
+- A payment can be confirmed only after the order is confirmed and before/after service completion. The confirmed amount must equal the order price snapshot.
+- Merchant mutations are restricted to the authenticated shop. Operations/finance mutations require a platform identity and the backoffice payment-write permission.
+- Repeating the exact same confirmation or refund returns the existing order without another mutation or audit event. A different retry returns a stable conflict.
+- Cancelling a confirmed paid order changes payment status to `refundPending`. A cancelled `refundPending` payment or a completed confirmed payment can be marked `refunded`.
+- Confirmation and refund update the order plus `order_financials` money timeline in one database transaction. Each applied action also writes an audit log.
+
 ## Frontend Integration
 
 The frontend is connected incrementally:
@@ -156,3 +178,11 @@ ENV_FILE=.env.dev npm run check:schedule-flow
 ```
 
 The check creates isolated temporary identities and verifies merchant/technician scope, exact UTC storage for a `+09:00` source time, overlap rejection, slot mutation lifecycle, capacity-one concurrent booking, capacity-two pooled booking, and exact cleanup. The script refuses production environment flags and non-local database hosts.
+
+Manual payment acceptance uses the same local-only boundary:
+
+```text
+ENV_FILE=.env.dev npm run check:manual-payment-flow
+```
+
+It verifies amount matching, cross-shop hiding, confirmation/refund idempotency, `refundPending` cancellation behavior and order-finance synchronization before exact cleanup.

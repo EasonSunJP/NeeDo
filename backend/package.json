@@ -15,6 +15,7 @@
     "check:finance-request-flow": "node --import tsx scripts/check-finance-request-flow.ts",
     "check:master-data-flow": "tsx scripts/check-master-data-flow.ts",
     "check:schedule-flow": "tsx scripts/check-schedule-flow.ts",
+    "check:manual-payment-flow": "tsx scripts/check-manual-payment-flow.ts",
     "check:registration-flow": "tsx scripts/check-registration-flow.ts",
     "check:test-login": "tsx scripts/check-test-login.ts",
     "prisma:generate": "prisma generate",

@@ -2328,7 +2328,17 @@ function bookingOrder(index: number, patch: Partial<BookingOrder> = {}): Booking
     status: order.status === "scheduled" || order.status === "unpaid" || order.status === "refunding" || order.status === "refunded"
       ? "pending"
       : order.status,
-    paymentStatus: "unpaid",
+    paymentMethod: "onsite",
+    paymentStatus: "pending",
+    paymentAmountJpy: Math.round(service.priceFrom),
+    paymentConfirmedById: null,
+    paymentConfirmedAt: null,
+    paymentReference: null,
+    paymentNote: null,
+    paymentRefundedById: null,
+    paymentRefundedAt: null,
+    paymentRefundReference: null,
+    paymentRefundReason: null,
     customerUserId: numberFromText(order.customerId, 1),
     serviceId: index + 1,
     technicianServiceId: null,

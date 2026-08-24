@@ -2,6 +2,8 @@ import { httpClient } from "../../api/httpClient";
 import type { FulfillmentMode, Order } from "../../types/domain";
 
 export type BookingOrderStatus = "pending" | "confirmed" | "inService" | "completed" | "cancelled";
+export type ManualPaymentMethod = "onsite" | "bank_transfer";
+export type ManualPaymentStatus = "pending" | "confirmed" | "refundPending" | "refunded";
 
 export type BookingScheduleSlot = {
   id: number;
@@ -27,7 +29,17 @@ export type BookingOrder = {
   orderNo: string;
   orderType: "booking" | "request";
   status: BookingOrderStatus;
-  paymentStatus: "unpaid";
+  paymentMethod: ManualPaymentMethod;
+  paymentStatus: ManualPaymentStatus;
+  paymentAmountJpy: number;
+  paymentConfirmedById: number | null;
+  paymentConfirmedAt: string | null;
+  paymentReference: string | null;
+  paymentNote: string | null;
+  paymentRefundedById: number | null;
+  paymentRefundedAt: string | null;
+  paymentRefundReference: string | null;
+  paymentRefundReason: string | null;
   customerUserId: number;
   serviceId: number | null;
   technicianServiceId: number | null;
@@ -86,6 +98,7 @@ export type CreateBookingInput = {
   fulfillmentMode: FulfillmentMode;
   note?: string;
   orderType?: "booking" | "request";
+  paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
 } & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
 
@@ -123,8 +136,13 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
     city: "东京",
     area: order.shopName,
     amount: Number.parseFloat(order.priceAmount) || 0,
-    paymentStatus: "unpaid",
-    paymentMethod: "offline",
+    paymentStatus:
+      order.paymentStatus === "confirmed" || order.paymentStatus === "refundPending"
+        ? "paid"
+        : order.paymentStatus === "refunded"
+          ? "refunded"
+          : "unpaid",
+    paymentMethod: order.paymentMethod === "onsite" ? "cash" : "offline",
     bookedAt: formatApiOrderDateTime(order.startsAt),
     createdAt: formatApiOrderDateTime(order.createdAt),
     source: "app",
@@ -143,7 +161,8 @@ export const bookingApi = {
     return httpClient.request<BookingOrder>("/bookings", {
       body: {
         ...input,
-        orderType: input.orderType ?? "booking"
+        orderType: input.orderType ?? "booking",
+        paymentMethod: input.paymentMethod ?? "onsite"
       }
     });
   },
@@ -167,5 +186,30 @@ export const bookingApi = {
   },
   completeOrder(id: number) {
     return httpClient.request<BookingOrder>(`/orders/${id}/complete`, { method: "POST" });
+  },
+  confirmManualPayment(
+    surface: "merchant-admin" | "backoffice",
+    id: number,
+    input: {
+      method: ManualPaymentMethod;
+      amountJpy: number;
+      reference?: string | null;
+      note?: string | null;
+    }
+  ) {
+    return httpClient.request<BookingOrder>(`/${surface}/orders/${id}/payment/confirm`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  refundManualPayment(
+    surface: "merchant-admin" | "backoffice",
+    id: number,
+    input: { reason: string; reference?: string | null }
+  ) {
+    return httpClient.request<BookingOrder>(`/${surface}/orders/${id}/payment/refund`, {
+      body: input,
+      method: "POST"
+    });
   }
 };

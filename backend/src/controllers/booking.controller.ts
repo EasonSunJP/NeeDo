@@ -5,6 +5,8 @@ import { successResponse } from "../utils/api-response";
 import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  manualPaymentConfirmBodySchema,
+  manualPaymentRefundBodySchema,
   orderCancelBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
@@ -183,6 +185,48 @@ export class BookingController {
             )
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public confirmManualPayment = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.confirmManualPayment(
+            getAuthenticatedAccess(response),
+            this.getOrderId(request),
+            manualPaymentConfirmBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public refundManualPayment = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.bookingService.refundManualPayment(
+            getAuthenticatedAccess(response),
+            this.getOrderId(request),
+            manualPaymentRefundBodySchema.parse(request.body),
+            getRequestContext(request)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }

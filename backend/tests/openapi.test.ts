@@ -44,6 +44,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/cancel");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/start");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/complete");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/orders/{id}/payment/confirm"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/orders/{id}/payment/refund"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/backoffice/orders/{id}/payment/confirm"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/backoffice/orders/{id}/payment/refund"
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/{id}/ledger");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/ledger/transactions");

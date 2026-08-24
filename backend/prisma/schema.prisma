@@ -23,6 +23,22 @@ enum BookingOrderStatus {
   @@map("booking_order_status")
 }
 
+enum ServicePaymentMethod {
+  ONSITE        @map("onsite")
+  BANK_TRANSFER @map("bank_transfer")
+
+  @@map("service_payment_method")
+}
+
+enum ServicePaymentStatus {
+  PENDING        @map("pending")
+  CONFIRMED      @map("confirmed")
+  REFUND_PENDING @map("refund_pending")
+  REFUNDED       @map("refunded")
+
+  @@map("service_payment_status")
+}
+
 enum ScheduleSlotStatus {
   AVAILABLE @map("available")
   BOOKED    @map("booked")
@@ -162,6 +178,8 @@ model User {
   updatedTechnicianServices TechnicianService[]       @relation("TechnicianServiceUpdatedBy")
   reportedOrderFinancials   OrderFinancial[]          @relation("OrderFinancialIncomeReporter")
   confirmedOrderFinancials  OrderFinancial[]          @relation("OrderFinancialIncomeConfirmer")
+  confirmedBookingPayments  BookingOrder[]            @relation("BookingOrderPaymentConfirmer")
+  refundedBookingPayments   BookingOrder[]            @relation("BookingOrderPaymentRefunder")
   generatedPayRuns          PayRun[]                  @relation("PayRunGeneratedBy")
   approvedPayRuns           PayRun[]                  @relation("PayRunApprovedBy")
   createdPayslipLines       PayslipLine[]             @relation("PayslipLineCreatedBy")
@@ -642,6 +660,17 @@ model BookingOrder {
   endsAt                  DateTime           @map("ends_at")
   note                    String?            @db.VarChar(500)
   cancelReason            String?            @map("cancel_reason") @db.VarChar(500)
+  paymentMethod           ServicePaymentMethod @default(ONSITE) @map("payment_method")
+  paymentStatus           ServicePaymentStatus @default(PENDING) @map("payment_status")
+  paymentAmountJpy        Int                  @default(0) @map("payment_amount_jpy")
+  paymentConfirmedById    Int?                 @map("payment_confirmed_by_id")
+  paymentConfirmedAt      DateTime?            @map("payment_confirmed_at")
+  paymentReference        String?              @map("payment_reference") @db.VarChar(120)
+  paymentNote             String?              @map("payment_note") @db.VarChar(500)
+  paymentRefundedById     Int?                 @map("payment_refunded_by_id")
+  paymentRefundedAt       DateTime?            @map("payment_refunded_at")
+  paymentRefundReference  String?              @map("payment_refund_reference") @db.VarChar(120)
+  paymentRefundReason     String?               @map("payment_refund_reason") @db.VarChar(500)
   createdAt               DateTime           @default(now()) @map("created_at")
   updatedAt               DateTime           @updatedAt @map("updated_at")
   deletedAt               DateTime?          @map("deleted_at")
@@ -656,6 +685,8 @@ model BookingOrder {
   feeCalculationLogs FeeCalculationLog[]
   walletHolds        WalletHold[]
   financial          OrderFinancial?
+  paymentConfirmer   User?                @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
+  paymentRefunder    User?                @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -668,6 +699,10 @@ model BookingOrder {
   @@index([pricingModeSnapshot])
   @@index([serviceOwnerType, serviceOwnerId])
   @@index([startsAt, endsAt])
+  @@index([paymentMethod])
+  @@index([paymentStatus])
+  @@index([paymentConfirmedById])
+  @@index([paymentRefundedById])
   @@index([deletedAt])
   @@map("booking_orders")
 }

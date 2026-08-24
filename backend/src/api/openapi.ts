@@ -817,7 +817,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "orderNo",
           "orderType",
           "status",
+          "paymentMethod",
           "paymentStatus",
+          "paymentAmountJpy",
+          "paymentConfirmedById",
+          "paymentConfirmedAt",
+          "paymentReference",
+          "paymentNote",
+          "paymentRefundedById",
+          "paymentRefundedAt",
+          "paymentRefundReference",
+          "paymentRefundReason",
           "customerUserId",
           "serviceId",
           "shopId",
@@ -845,7 +855,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "string",
             enum: ["pending", "confirmed", "inService", "completed", "cancelled"]
           },
-          paymentStatus: { type: "string", enum: ["unpaid"] },
+          paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"] },
+          paymentStatus: {
+            type: "string",
+            enum: ["pending", "confirmed", "refundPending", "refunded"]
+          },
+          paymentAmountJpy: { type: "integer", minimum: 0 },
+          paymentConfirmedById: { type: ["integer", "null"] },
+          paymentConfirmedAt: { type: ["string", "null"], format: "date-time" },
+          paymentReference: { type: ["string", "null"], maxLength: 120 },
+          paymentNote: { type: ["string", "null"], maxLength: 500 },
+          paymentRefundedById: { type: ["integer", "null"] },
+          paymentRefundedAt: { type: ["string", "null"], format: "date-time" },
+          paymentRefundReference: { type: ["string", "null"], maxLength: 120 },
+          paymentRefundReason: { type: ["string", "null"], maxLength: 500 },
           customerUserId: { type: "integer" },
           serviceId: { type: "integer" },
           shopId: { type: "integer" },
@@ -2839,6 +2862,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   scheduleSlotId: { type: "integer", minimum: 1 },
                   orderType: { type: "string", enum: ["booking", "request"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },
+                  paymentMethod: {
+                    type: "string",
+                    enum: ["onsite", "bank_transfer"],
+                    default: "onsite"
+                  },
                   note: { type: "string", maxLength: 500 }
                 }
               }
@@ -2995,6 +3023,127 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Order completed" },
           "409": { description: "Invalid state transition" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/confirm`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Confirm an onsite or bank-transfer payment in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["method", "amountJpy"],
+                properties: {
+                  method: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  amountJpy: { type: "integer", minimum: 1, maximum: 100000000 },
+                  reference: { type: ["string", "null"], maxLength: 120 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment confirmed or identical retry returned" },
+          "403": { description: "Order is outside the authenticated shop scope" },
+          "409": { description: "Payment state, amount, or retry conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/refund`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Mark an authenticated-shop manual payment refunded",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason"],
+                properties: {
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  reference: { type: ["string", "null"], maxLength: 120 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment marked refunded or identical retry returned" },
+          "409": { description: "Payment is not refundable from its current state" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/payment/confirm`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Confirm an onsite or bank-transfer payment as platform operations",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["method", "amountJpy"],
+                properties: {
+                  method: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  amountJpy: { type: "integer", minimum: 1, maximum: 100000000 },
+                  reference: { type: ["string", "null"], maxLength: 120 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment confirmed or identical retry returned" },
+          "409": { description: "Payment state, amount, or retry conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/payment/refund`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Mark a manual payment refunded as platform operations",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason"],
+                properties: {
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  reference: { type: ["string", "null"], maxLength: 120 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment marked refunded or identical retry returned" },
+          "409": { description: "Payment is not refundable from its current state" }
         }
       }
     },

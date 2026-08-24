@@ -13,6 +13,12 @@ export type BookingOrderStatusPayload =
 export type BookingOrderTypePayload = "booking" | "request";
 export type ScheduleSlotStatusPayload = "available" | "booked" | "blocked";
 export type BookingFulfillmentMode = "home" | "store";
+export type ServicePaymentMethodPayload = "onsite" | "bank_transfer";
+export type ServicePaymentStatusPayload =
+  | "pending"
+  | "confirmed"
+  | "refundPending"
+  | "refunded";
 
 export interface AvailabilityListInput extends PaginationInput {
   serviceId?: number;
@@ -30,8 +36,29 @@ export interface BookingCreateRepositoryInput {
   technicianServiceId?: number;
   scheduleSlotId: number;
   fulfillmentMode: BookingFulfillmentMode;
+  paymentMethod?: ServicePaymentMethodPayload;
   note?: string | null;
 }
+
+export type ManualPaymentScope =
+  | { scope: "merchant"; shopId: number }
+  | { scope: "backoffice" };
+
+export type ConfirmManualPaymentRepositoryInput = ManualPaymentScope & {
+  orderId: number;
+  actorUserId: number;
+  method: ServicePaymentMethodPayload;
+  amountJpy: number;
+  reference?: string | null;
+  note?: string | null;
+};
+
+export type RefundManualPaymentRepositoryInput = ManualPaymentScope & {
+  orderId: number;
+  actorUserId: number;
+  reason: string;
+  reference?: string | null;
+};
 
 export interface OrderListInput extends PaginationInput {
   customerUserId?: number;
@@ -125,7 +152,17 @@ export interface BookingOrderPayload {
   orderNo: string;
   orderType: BookingOrderTypePayload;
   status: BookingOrderStatusPayload;
-  paymentStatus: "unpaid";
+  paymentMethod: ServicePaymentMethodPayload;
+  paymentStatus: ServicePaymentStatusPayload;
+  paymentAmountJpy: number;
+  paymentConfirmedById: number | null;
+  paymentConfirmedAt: Date | null;
+  paymentReference: string | null;
+  paymentNote: string | null;
+  paymentRefundedById: number | null;
+  paymentRefundedAt: Date | null;
+  paymentRefundReference: string | null;
+  paymentRefundReason: string | null;
   customerUserId: number;
   serviceId: number | null;
   technicianServiceId: number | null;
@@ -154,6 +191,10 @@ export interface BookingOrderPayload {
   statusHistory: OrderStatusHistoryPayload[];
 }
 
+export type ManualPaymentMutationResult =
+  | { outcome: "ok"; order: BookingOrderPayload; applied: boolean }
+  | { outcome: "not_found" | "invalid_state" | "amount_mismatch" | "conflict" };
+
 export interface BookingRepositoryPort {
   listAvailableSlots: (
     input: AvailabilityListInput
@@ -169,6 +210,12 @@ export interface BookingRepositoryPort {
   createScheduleSlot: (input: ScheduleSlotCreateInput) => Promise<ScheduleMutationResult>;
   updateScheduleSlot: (input: ScheduleSlotUpdateInput) => Promise<ScheduleMutationResult>;
   deleteScheduleSlot: (input: ScheduleSlotDeleteInput) => Promise<ScheduleMutationResult>;
+  confirmManualPayment: (
+    input: ConfirmManualPaymentRepositoryInput
+  ) => Promise<ManualPaymentMutationResult>;
+  refundManualPayment: (
+    input: RefundManualPaymentRepositoryInput
+  ) => Promise<ManualPaymentMutationResult>;
 }
 
 type DecimalLike = {
@@ -513,6 +560,8 @@ export class BookingRepository implements BookingRepositoryPort {
           serviceSnapshotJson: serviceSource.snapshot,
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
+          paymentMethod: this.paymentMethodToDb(input.paymentMethod ?? "onsite"),
+          paymentAmountJpy: Math.round(Number(serviceSource.priceAmount.toString())),
           note: input.note?.trim() || null,
           statusHistory: {
             create: {
@@ -591,7 +640,11 @@ export class BookingRepository implements BookingRepositoryPort {
         },
         data: {
           status: this.statusToDb(input.toStatus),
-          cancelReason: input.toStatus === "cancelled" ? input.reason?.trim() || null : undefined
+          cancelReason: input.toStatus === "cancelled" ? input.reason?.trim() || null : undefined,
+          paymentStatus:
+            input.toStatus === "cancelled" && current.paymentStatus === "CONFIRMED"
+              ? "REFUND_PENDING"
+              : undefined
         }
       });
 
@@ -641,10 +694,234 @@ export class BookingRepository implements BookingRepositoryPort {
     });
   }
 
+  public confirmManualPayment(
+    input: ConfirmManualPaymentRepositoryInput
+  ): Promise<ManualPaymentMutationResult> {
+    return this.client.$transaction(async (tx) => {
+      const current = await tx.bookingOrder.findFirst({
+        where: {
+          id: input.orderId,
+          deletedAt: null,
+          ...this.manualPaymentScopeWhere(input)
+        },
+        include: this.orderInclude()
+      });
+
+      if (!current) {
+        return { outcome: "not_found" };
+      }
+
+      const amountJpy = Math.round(Number(current.priceAmount.toString()));
+
+      if (input.amountJpy !== amountJpy) {
+        return { outcome: "amount_mismatch" };
+      }
+
+      const reference = input.reference?.trim() || null;
+      const note = input.note?.trim() || null;
+      const method = this.paymentMethodToDb(input.method);
+
+      if (current.paymentStatus === "CONFIRMED") {
+        const isSameConfirmation =
+          current.paymentMethod === method &&
+          current.paymentAmountJpy === input.amountJpy &&
+          current.paymentReference === reference &&
+          current.paymentNote === note;
+
+        return isSameConfirmation
+          ? { outcome: "ok", order: this.mapOrder(current), applied: false }
+          : { outcome: "conflict" };
+      }
+
+      if (current.paymentStatus !== "PENDING") {
+        return { outcome: "conflict" };
+      }
+
+      if (
+        current.status !== "CONFIRMED" &&
+        current.status !== "IN_SERVICE" &&
+        current.status !== "COMPLETED"
+      ) {
+        return { outcome: "invalid_state" };
+      }
+
+      const confirmedAt = new Date();
+      const update = await tx.bookingOrder.updateMany({
+        where: {
+          id: current.id,
+          deletedAt: null,
+          paymentStatus: "PENDING",
+          status: { in: ["CONFIRMED", "IN_SERVICE", "COMPLETED"] }
+        },
+        data: {
+          paymentMethod: method,
+          paymentStatus: "CONFIRMED",
+          paymentAmountJpy: input.amountJpy,
+          paymentConfirmedById: input.actorUserId,
+          paymentConfirmedAt: confirmedAt,
+          paymentReference: reference,
+          paymentNote: note
+        }
+      });
+
+      if (update.count !== 1) {
+        return { outcome: "conflict" };
+      }
+
+      const existingFinancial = await tx.orderFinancial.findUnique({
+        where: { bookingOrderId: current.id }
+      });
+      const timeline = this.appendMoneyTimeline(existingFinancial?.moneyTimelineJson, {
+        type: "manual_payment_confirmed",
+        label: "线下服务收款已确认",
+        amountJpy: input.amountJpy,
+        actorType: input.scope === "merchant" ? "merchant" : "backoffice",
+        occurredAt: confirmedAt.toISOString(),
+        status: "confirmed",
+        metadata: { method: input.method, reference }
+      });
+      const financialData = {
+        orderType: current.orderType === "REQUEST" ? "request" : "booking",
+        customerUserId: current.customerUserId,
+        shopId: current.shopId,
+        technicianProfileId: current.technicianProfileId,
+        serviceAmountJpy: input.amountJpy,
+        platformCollectedServiceAmountJpy: 0,
+        offlineReportedServiceAmountJpy: input.amountJpy,
+        unknownOrUnreportedServiceAmountJpy: 0,
+        paymentChannel: input.method === "bank_transfer" ? "bank_transfer" : "offline_cash",
+        serviceIncomeStatus: "confirmed",
+        serviceIncomeReportedById: input.actorUserId,
+        serviceIncomeReportedAt: confirmedAt,
+        serviceIncomeConfirmedById: input.actorUserId,
+        serviceIncomeConfirmedAt: confirmedAt,
+        serviceIncomeNote: note,
+        moneyTimelineJson: timeline as Prisma.InputJsonValue,
+        deletedAt: null
+      };
+
+      await tx.orderFinancial.upsert({
+        where: { bookingOrderId: current.id },
+        update: financialData,
+        create: { bookingOrderId: current.id, ...financialData }
+      });
+
+      const next = await tx.bookingOrder.findFirst({
+        where: { id: current.id, deletedAt: null },
+        include: this.orderInclude()
+      });
+
+      return next
+        ? { outcome: "ok", order: this.mapOrder(next), applied: true }
+        : { outcome: "not_found" };
+    });
+  }
+
+  public refundManualPayment(
+    input: RefundManualPaymentRepositoryInput
+  ): Promise<ManualPaymentMutationResult> {
+    return this.client.$transaction(async (tx) => {
+      const current = await tx.bookingOrder.findFirst({
+        where: {
+          id: input.orderId,
+          deletedAt: null,
+          ...this.manualPaymentScopeWhere(input)
+        },
+        include: this.orderInclude()
+      });
+
+      if (!current) {
+        return { outcome: "not_found" };
+      }
+
+      const reason = input.reason.trim();
+      const reference = input.reference?.trim() || null;
+
+      if (current.paymentStatus === "REFUNDED") {
+        const isSameRefund =
+          current.paymentRefundReason === reason && current.paymentRefundReference === reference;
+
+        return isSameRefund
+          ? { outcome: "ok", order: this.mapOrder(current), applied: false }
+          : { outcome: "conflict" };
+      }
+
+      const mayRefund =
+        (current.paymentStatus === "REFUND_PENDING" && current.status === "CANCELLED") ||
+        (current.paymentStatus === "CONFIRMED" && current.status === "COMPLETED");
+
+      if (!mayRefund) {
+        return { outcome: "invalid_state" };
+      }
+
+      const refundedAt = new Date();
+      const update = await tx.bookingOrder.updateMany({
+        where: {
+          id: current.id,
+          deletedAt: null,
+          paymentStatus: current.paymentStatus,
+          status: current.status
+        },
+        data: {
+          paymentStatus: "REFUNDED",
+          paymentRefundedById: input.actorUserId,
+          paymentRefundedAt: refundedAt,
+          paymentRefundReference: reference,
+          paymentRefundReason: reason
+        }
+      });
+
+      if (update.count !== 1) {
+        return { outcome: "conflict" };
+      }
+
+      const existingFinancial = await tx.orderFinancial.findUnique({
+        where: { bookingOrderId: current.id }
+      });
+      const timeline = this.appendMoneyTimeline(existingFinancial?.moneyTimelineJson, {
+        type: "manual_payment_refunded",
+        label: "线下服务收款已退款",
+        amountJpy: current.paymentAmountJpy,
+        actorType: input.scope === "merchant" ? "merchant" : "backoffice",
+        occurredAt: refundedAt.toISOString(),
+        status: "refunded",
+        metadata: { reason, reference }
+      });
+
+      if (existingFinancial) {
+        await tx.orderFinancial.update({
+          where: { id: existingFinancial.id },
+          data: {
+            serviceIncomeStatus: "confirmed",
+            settlementStatus: "refunded",
+            moneyTimelineJson: timeline as Prisma.InputJsonValue
+          }
+        });
+      }
+
+      const next = await tx.bookingOrder.findFirst({
+        where: { id: current.id, deletedAt: null },
+        include: this.orderInclude()
+      });
+
+      return next
+        ? { outcome: "ok", order: this.mapOrder(next), applied: true }
+        : { outcome: "not_found" };
+    });
+  }
+
   private scheduleScopeWhere(scope: ScheduleScope): Prisma.ScheduleSlotWhereInput {
     return scope.scope === "merchant"
       ? { shopId: scope.shopId }
       : { technicianProfileId: scope.technicianProfileId };
+  }
+
+  private manualPaymentScopeWhere(scope: ManualPaymentScope): Prisma.BookingOrderWhereInput {
+    return scope.scope === "merchant" ? { shopId: scope.shopId } : {};
+  }
+
+  private appendMoneyTimeline(value: Prisma.JsonValue | null | undefined, event: object): object[] {
+    return [...(Array.isArray(value) ? value.filter((item): item is object => Boolean(item) && typeof item === "object") : []), event];
   }
 
   private async resolveScheduleTarget(
@@ -790,7 +1067,17 @@ export class BookingRepository implements BookingRepositoryPort {
       orderNo: order.orderNo,
       orderType: this.orderTypeFromDb(order.orderType),
       status: this.statusFromDb(order.status),
-      paymentStatus: "unpaid",
+      paymentMethod: this.paymentMethodFromDb(order.paymentMethod),
+      paymentStatus: this.paymentStatusFromDb(order.paymentStatus),
+      paymentAmountJpy: order.paymentAmountJpy,
+      paymentConfirmedById: order.paymentConfirmedById,
+      paymentConfirmedAt: order.paymentConfirmedAt,
+      paymentReference: order.paymentReference,
+      paymentNote: order.paymentNote,
+      paymentRefundedById: order.paymentRefundedById,
+      paymentRefundedAt: order.paymentRefundedAt,
+      paymentRefundReference: order.paymentRefundReference,
+      paymentRefundReason: order.paymentRefundReason,
       customerUserId: order.customerUserId,
       serviceId: order.serviceId,
       technicianServiceId: order.technicianServiceId,
@@ -899,6 +1186,21 @@ export class BookingRepository implements BookingRepositoryPort {
       return "cancelled";
     }
 
+    return "pending";
+  }
+
+  private paymentMethodFromDb(method: string): ServicePaymentMethodPayload {
+    return method === "BANK_TRANSFER" ? "bank_transfer" : "onsite";
+  }
+
+  private paymentMethodToDb(method: ServicePaymentMethodPayload): "ONSITE" | "BANK_TRANSFER" {
+    return method === "bank_transfer" ? "BANK_TRANSFER" : "ONSITE";
+  }
+
+  private paymentStatusFromDb(status: string): ServicePaymentStatusPayload {
+    if (status === "CONFIRMED") return "confirmed";
+    if (status === "REFUND_PENDING") return "refundPending";
+    if (status === "REFUNDED") return "refunded";
     return "pending";
   }
 

@@ -5,6 +5,8 @@ import type {
   BookingOrderPayload,
   BookingOrderStatusPayload,
   BookingRepositoryPort,
+  ManualPaymentMutationResult,
+  ManualPaymentScope,
   OrderTransitionRepositoryOptions,
   OrderListInput,
   ScheduleListInput,
@@ -28,6 +30,18 @@ export interface AuthenticatedBookingActor {
 
 export interface BookingCreateInput extends Omit<BookingCreateRepositoryInput, "customerUserId"> {
   orderType?: "booking" | "request";
+}
+
+export interface ManualPaymentConfirmInput {
+  method: "onsite" | "bank_transfer";
+  amountJpy: number;
+  reference?: string | null;
+  note?: string | null;
+}
+
+export interface ManualPaymentRefundInput {
+  reason: string;
+  reference?: string | null;
 }
 
 type OrderAction = "confirm" | "cancel" | "start" | "complete";
@@ -129,6 +143,7 @@ export class BookingService {
       technicianServiceId: input.technicianServiceId,
       scheduleSlotId: input.scheduleSlotId,
       fulfillmentMode: input.fulfillmentMode,
+      paymentMethod: input.paymentMethod,
       note: input.note
     });
 
@@ -170,6 +185,54 @@ export class BookingService {
     reason?: string | null
   ): Promise<BookingOrderPayload> {
     return this.transition(actor, id, action, reason);
+  }
+
+  public async confirmManualPayment(
+    actor: AuthenticatedAccessContext,
+    orderId: number,
+    input: ManualPaymentConfirmInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    const scope = this.getManualPaymentScope(actor);
+    const result = await this.repository.confirmManualPayment({
+      ...scope,
+      orderId,
+      actorUserId: actor.userId,
+      method: input.method,
+      amountJpy: input.amountJpy,
+      reference: input.reference,
+      note: input.note
+    });
+    const order = this.requireManualPaymentMutation(result);
+
+    if (result.outcome === "ok" && result.applied) {
+      await this.recordManualPaymentMutation(actor, context, scope, "confirm", order);
+    }
+
+    return order;
+  }
+
+  public async refundManualPayment(
+    actor: AuthenticatedAccessContext,
+    orderId: number,
+    input: ManualPaymentRefundInput,
+    context: AuthRequestContext
+  ): Promise<BookingOrderPayload> {
+    const scope = this.getManualPaymentScope(actor);
+    const result = await this.repository.refundManualPayment({
+      ...scope,
+      orderId,
+      actorUserId: actor.userId,
+      reason: input.reason,
+      reference: input.reference
+    });
+    const order = this.requireManualPaymentMutation(result);
+
+    if (result.outcome === "ok" && result.applied) {
+      await this.recordManualPaymentMutation(actor, context, scope, "refund", order);
+    }
+
+    return order;
   }
 
   private async transition(
@@ -230,6 +293,69 @@ export class BookingService {
       return { scope: "technician", technicianProfileId: actor.currentIdentityScopeId };
     }
     throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.auth.identity_forbidden", statusCode: 403 });
+  }
+
+  private getManualPaymentScope(actor: AuthenticatedAccessContext): ManualPaymentScope {
+    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
+      return { scope: "merchant", shopId: actor.currentIdentityScopeId };
+    }
+    if (actor.currentIdentityType === "platform") {
+      return { scope: "backoffice" };
+    }
+    throw new AppError({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.auth.identity_forbidden",
+      statusCode: 403
+    });
+  }
+
+  private requireManualPaymentMutation(
+    result: ManualPaymentMutationResult
+  ): BookingOrderPayload {
+    if (result.outcome === "ok") return result.order;
+    if (result.outcome === "not_found") throw this.notFoundError();
+    if (result.outcome === "invalid_state") {
+      throw new AppError({
+        code: ERROR_CODES.PAYMENT_INVALID_STATE,
+        message: "error.payment.invalid_state",
+        statusCode: 409
+      });
+    }
+    if (result.outcome === "amount_mismatch") {
+      throw new AppError({
+        code: ERROR_CODES.PAYMENT_AMOUNT_MISMATCH,
+        message: "error.payment.amount_mismatch",
+        statusCode: 409
+      });
+    }
+    throw new AppError({
+      code: ERROR_CODES.PAYMENT_CONFLICT,
+      message: "error.payment.conflict",
+      statusCode: 409
+    });
+  }
+
+  private async recordManualPaymentMutation(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    scope: ManualPaymentScope,
+    operation: "confirm" | "refund",
+    order: BookingOrderPayload
+  ): Promise<void> {
+    if (!this.auditLogService) throw new Error("Manual payment audit log service is required");
+    await this.auditLogService.record({
+      actor,
+      action: `${scope.scope === "merchant" ? "merchant_admin" : "backoffice"}.order_payment.${operation}`,
+      targetType: "BookingOrder",
+      targetId: order.id,
+      context,
+      metadata: {
+        shopId: order.shopId,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        paymentAmountJpy: order.paymentAmountJpy
+      }
+    });
   }
 
   private requireScheduleMutation(result: ScheduleMutationResult): ScheduleSlotPayload {

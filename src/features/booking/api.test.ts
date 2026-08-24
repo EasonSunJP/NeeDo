@@ -18,7 +18,17 @@ function createBookingResponse(orderType: "booking" | "request") {
       orderNo: "ND202606040001",
       orderType,
       status: "pending",
-      paymentStatus: "unpaid",
+      paymentMethod: "onsite",
+      paymentStatus: "pending",
+      paymentAmountJpy: 8800,
+      paymentConfirmedById: null,
+      paymentConfirmedAt: null,
+      paymentReference: null,
+      paymentNote: null,
+      paymentRefundedById: null,
+      paymentRefundedAt: null,
+      paymentRefundReference: null,
+      paymentRefundReason: null,
       customerUserId: 5,
       serviceId: 12,
       technicianServiceId: null,
@@ -71,6 +81,7 @@ describe("bookingApi", () => {
     expect(lastRequestBody()).toEqual({
       fulfillmentMode: "store",
       orderType: "booking",
+      paymentMethod: "onsite",
       scheduleSlotId: 33,
       serviceId: 12
     });
@@ -90,8 +101,42 @@ describe("bookingApi", () => {
     expect(lastRequestBody()).toEqual({
       fulfillmentMode: "store",
       orderType: "request",
+      paymentMethod: "onsite",
       scheduleSlotId: 33,
       serviceId: 12
     });
+  });
+
+  it("calls the scoped manual-payment confirmation and refund endpoints", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")))
+      .mockResolvedValueOnce(jsonResponse(createBookingResponse("booking")));
+
+    await bookingApi.confirmManualPayment("merchant-admin", 88, {
+      method: "bank_transfer",
+      amountJpy: 8800,
+      reference: "BANK-001"
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/merchant-admin/orders/88/payment/confirm",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(lastRequestBody()).toEqual({
+      amountJpy: 8800,
+      method: "bank_transfer",
+      reference: "BANK-001"
+    });
+
+    await bookingApi.refundManualPayment("backoffice", 88, {
+      reason: "客户退款",
+      reference: "REF-001"
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/backoffice/orders/88/payment/refund",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(lastRequestBody()).toEqual({ reason: "客户退款", reference: "REF-001" });
   });
 });

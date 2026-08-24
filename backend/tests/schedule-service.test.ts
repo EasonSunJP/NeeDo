@@ -39,6 +39,8 @@ const repository = (result: "ok" | "conflict" = "ok") => ({
   listOrders: jest.fn(),
   findOrderById: jest.fn(),
   transitionOrder: jest.fn(),
+  confirmManualPayment: jest.fn(),
+  refundManualPayment: jest.fn(),
   listScheduleSlots: jest.fn(async (input: ScheduleListInput) => { void input; return { list: [slot], total: 1, page: 1, page_size: 20 }; }),
   createScheduleSlot: jest.fn(async (input: ScheduleSlotCreateInput) => { void input; return result === "ok" ? { outcome: "ok" as const, slot } : { outcome: "conflict" as const }; }),
   updateScheduleSlot: jest.fn(async (input: ScheduleSlotUpdateInput) => { void input; return { outcome: "ok" as const, slot }; }),

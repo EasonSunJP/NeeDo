@@ -224,7 +224,17 @@ const createFixture = async () => {
     orderNo: string;
     orderType: string;
     status: string;
-    paymentStatus: "unpaid";
+    paymentMethod: "onsite" | "bank_transfer";
+    paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
+    paymentAmountJpy: number;
+    paymentConfirmedById: number | null;
+    paymentConfirmedAt: Date | null;
+    paymentReference: string | null;
+    paymentNote: string | null;
+    paymentRefundedById: number | null;
+    paymentRefundedAt: Date | null;
+    paymentRefundReference: string | null;
+    paymentRefundReason: string | null;
     customerUserId: number;
     serviceId: number | null;
     technicianServiceId: number | null;
@@ -285,7 +295,17 @@ const createFixture = async () => {
           orderNo: "ND202605260001",
           orderType: input.orderType ?? "booking",
           status: "pending",
-          paymentStatus: "unpaid",
+          paymentMethod: "onsite",
+          paymentStatus: "pending",
+          paymentAmountJpy: 8800,
+          paymentConfirmedById: null,
+          paymentConfirmedAt: null,
+          paymentReference: null,
+          paymentNote: null,
+          paymentRefundedById: null,
+          paymentRefundedAt: null,
+          paymentRefundReference: null,
+          paymentRefundReason: null,
           customerUserId: input.customerUserId,
           serviceId: slot.serviceId,
           technicianServiceId: slot.technicianServiceId,
@@ -425,7 +445,8 @@ describe("Step 10 Booking / Schedule / Order state machine API", () => {
       orderNo: "ND202605260001",
       orderType: "booking",
       status: "pending",
-      paymentStatus: "unpaid",
+      paymentMethod: "onsite",
+      paymentStatus: "pending",
       serviceId: 1,
       scheduleSlotId: 11,
       serviceName: "Shiatsu Recovery"
