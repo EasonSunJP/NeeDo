@@ -1,141 +1,185 @@
-import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { ApiClientError } from "../../api/httpClient";
+import {
+  backofficeRealDataApi,
+  mapBackofficeOrder,
+  type BackofficeDashboardPayload,
+  type BackofficeShopPayload,
+  type BackofficeTechnicianPayload
+} from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
-import { ChartPanel } from "../../components/admin/ChartPanel";
 import { ModuleShell } from "../../components/admin/ModuleShell";
-import { DataTable } from "../../components/ui/DataTable";
-import { FilterBar } from "../../components/ui/FilterBar";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
-import { cities, services } from "../../data/mock";
-import { yen } from "../../lib/utils";
-import { useEntityStore } from "../../state/entityStore";
-import type { City, ServiceItem, Store, Technician } from "../../types/domain";
-import { DataBigScreenPage } from "./DataBigScreenPage";
+import { DataTable } from "../../components/ui/DataTable";
+import { MetricCard } from "../../components/ui/MetricCard";
+import { statusLabel, yen } from "../../lib/utils";
+import type { Metric, Order } from "../../types/domain";
 
-const ranges = ["近7天", "近30天", "近90天", "自定义"];
-const analysisCards = [
-  ["复购趋势", "41.8%", "+3.4%"],
-  ["留存分析", "D30 28.6%", "+1.9%"],
-  ["高峰时段", "19:00-22:00", "晚高峰"],
-  ["订单来源", "App 62%", "+7.1%"],
-  ["渠道转化", "LINE 18.4%", "+4.2%"],
-  ["退款原因", "改期失败 34%", "-2.6%"],
-  ["评价趋势", "4.72/5", "+0.08"],
-  ["城市增长", "大阪 +21%", "供给增加"]
-];
+function describeAnalyticsError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前身份没有查看分析数据的权限";
+    if (error.status >= 500) return "分析数据服务暂时不可用，请稍后重试";
+  }
+  return "分析数据加载失败，请检查网络后重试";
+}
 
 export function AnalyticsPage() {
-  const { stores, technicians, revision: entityRevision } = useEntityStore();
-  const [searchParams] = useSearchParams();
-  const rankedTechnicians = useMemo(
-    () => [...technicians].sort((left, right) => right.orderCount - left.orderCount),
-    [entityRevision, technicians]
-  );
-  const rankedStores = useMemo(
-    () => [...stores].sort((left, right) => right.reviewCount - left.reviewCount),
-    [entityRevision, stores]
+  const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
+  const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
+  const [loadError, setLoadError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const orders = useMemo<Order[]>(
+    () => dashboard ? dashboard.orders.map(mapBackofficeOrder) : [],
+    [dashboard]
   );
 
-  if (searchParams.get("module") === "big-screen") {
-    return <DataBigScreenPage />;
-  }
+  useEffect(() => {
+    let active = true;
+    setLoadStatus("loading");
+    setLoadError("");
+    backofficeRealDataApi.dashboard("backoffice")
+      .then((payload) => {
+        if (!active) return;
+        setDashboard(payload);
+        setLoadStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setDashboard(null);
+        setLoadError(describeAnalyticsError(error));
+        setLoadStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [revision]);
+
+  const snapshotMetrics: Metric[] = dashboard
+    ? [
+        ...dashboard.metrics,
+        { label: "服务 GMV", value: yen(dashboard.finance.estimatedServiceGmvJpy), change: "当前真实快照", tone: "good" },
+        { label: "排班占用", value: `${dashboard.schedule.booked}/${dashboard.schedule.total}`, change: "正式排班", tone: "neutral" }
+      ]
+    : [];
 
   return (
     <AdminLayout>
       <ModuleShell
+        description="当前页只展示已接通的数据库快照；历史趋势将在正式时间序列聚合上线后启用。"
         title="分析中心"
-        description="覆盖营收、订单、用户、复购、留存、来源、城市区域、商家技师排名和退款评价趋势。"
-        actions={<Button>保存视图</Button>}
       >
-        <FilterBar
-          searchPlaceholder="搜索城市、类目、门店"
-          filters={[
-            { label: "城市", options: cities.map((city) => ({ label: city.name, value: city.id })) },
-            { label: "类目", options: services.map((service) => ({ label: service.name, value: service.id })) },
-            { label: "门店", options: stores.map((store) => ({ label: store.name, value: store.id })) }
-          ]}
-          actions
-        />
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {ranges.map((range, index) => (
-            <button className={`rounded-lg px-3 py-2 text-sm font-bold ${index === 1 ? "bg-ink text-white" : "bg-white text-ink/65"}`} key={range}>
-              {range}
-            </button>
-          ))}
-        </div>
-
-        <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {analysisCards.map(([title, value, change]) => (
-            <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={title}>
-              <p className="text-sm text-ink/55">{title}</p>
-              <strong className="mt-2 block text-2xl">{value}</strong>
-              <Badge className="mt-3" tone="green">{change}</Badge>
-            </article>
-          ))}
-        </section>
-
-        <div className="mt-5 grid gap-5 xl:grid-cols-3">
-          <ChartPanel title="流水趋势" series="revenue" />
-          <ChartPanel title="客流量趋势" series="users" />
-          <ChartPanel title="客单价趋势" series="avgOrder" />
-        </div>
-
-        <div className="mt-5 grid gap-5 xl:grid-cols-3">
-          <section className="xl:col-span-1">
-            <h2 className="mb-3 text-lg font-bold">城市 / 区域分析</h2>
-            <DataTable<City>
-              columns={[
-                { key: "name", title: "城市", render: (row) => `${row.name} ${row.prefecture}` },
-                { key: "stores", title: "门店", render: (row) => row.activeStores },
-                { key: "tech", title: "技师", render: (row) => row.activeTechnicians }
-              ]}
-              footerPlacement="inline"
-              rows={cities}
-            />
+        {loadStatus === "loading" ? (
+          <section className="rounded-lg border border-line bg-white px-5 py-10 text-center shadow-panel" aria-live="polite">
+            <p className="text-sm font-black text-ink">正在加载真实分析快照</p>
           </section>
-          <section className="xl:col-span-1">
-            <h2 className="mb-3 text-lg font-bold">服务类目排名</h2>
-            <DataTable<ServiceItem>
-              columns={[
-                { key: "name", title: "服务", render: (row) => row.name },
-                { key: "sales", title: "销量", render: (row) => row.sales },
-                { key: "price", title: "起价", render: (row) => yen(row.priceFrom) }
-              ]}
-              footerPlacement="inline"
-              rows={services}
-              pageSize={10}
-            />
-          </section>
-          <section className="xl:col-span-1">
-            <h2 className="mb-3 text-lg font-bold">技师排名</h2>
-            <DataTable<Technician>
-              columns={[
-                { key: "name", title: "技师", render: (row) => row.nickname ? `${row.nickname} / ${row.name}` : row.name },
-                { key: "rating", title: "评分", render: (row) => row.rating },
-                { key: "orders", title: "订单", render: (row) => row.orderCount }
-              ]}
-              footerPlacement="inline"
-              rows={rankedTechnicians}
-            />
-          </section>
-        </div>
+        ) : null}
 
-        <section className="mt-5">
-          <h2 className="mb-3 text-lg font-bold">商家排名</h2>
-          <DataTable<Store>
-            columns={[
-              { key: "rank", title: "排名", render: (row) => row.rankLabel },
-              { key: "name", title: "店铺", render: (row) => row.name },
-              { key: "area", title: "区域", render: (row) => row.area },
-              { key: "rating", title: "评分", render: (row) => row.rating },
-              { key: "reviews", title: "评论", render: (row) => row.reviewCount }
-            ]}
-            footerPlacement="inline"
-            rows={rankedStores}
-          />
-        </section>
+        {loadStatus === "error" ? (
+          <section className="rounded-lg border border-coral/30 bg-coral/5 px-5 py-8 text-center shadow-panel" role="alert">
+            <h2 className="text-lg font-black text-ink">分析快照加载失败</h2>
+            <p className="mt-2 text-sm font-bold text-ink/55">{loadError}</p>
+            <Button className="mt-4" onClick={() => setRevision((current) => current + 1)}>重新加载分析快照</Button>
+          </section>
+        ) : null}
+
+        {loadStatus === "success" && dashboard ? (
+          <>
+            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {snapshotMetrics.map((metric) => <MetricCard dense key={metric.label} metric={metric} />)}
+            </section>
+
+            <section className="mt-5 rounded-lg border border-line bg-paper px-5 py-4">
+              <h2 className="font-black text-ink">历史趋势尚未启用</h2>
+              <p className="mt-2 text-sm font-bold leading-6 text-ink/55">
+                复购、留存、渠道、评价和城市趋势需要正式时间序列聚合接口。当前不生成虚构折线、增长率或排行榜；接口完成口径、权限和时区验收后再开放日期筛选与全屏图表。
+              </p>
+            </section>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+              <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+                <h2 className="text-lg font-bold text-ink">当前财务结构</h2>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {[
+                    ["服务 GMV", yen(dashboard.finance.estimatedServiceGmvJpy)],
+                    ["平台 NDP 收入", `${dashboard.finance.platformNdpRevenue.toLocaleString("ja-JP")} NDP`],
+                    ["请求费收入", `${dashboard.finance.requestFeeNdpRevenue.toLocaleString("ja-JP")} NDP`],
+                    ["用户奖励成本", `${dashboard.finance.userRewardNdpCost.toLocaleString("ja-JP")} NDP`],
+                    ["待处理冻结", `${dashboard.finance.pendingHoldNdp.toLocaleString("ja-JP")} NDP`],
+                    ["活动折扣", `${dashboard.finance.campaignDiscountNdp.toLocaleString("ja-JP")} NDP`]
+                  ].map(([label, value]) => (
+                    <div className="rounded-lg bg-paper px-3 py-3" key={label}>
+                      <p className="text-[11px] font-bold text-ink/45">{label}</p>
+                      <strong className="mt-1 block text-base text-ink">{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+                <h2 className="text-lg font-bold text-ink">当前供给结构</h2>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  {[
+                    ["店铺", dashboard.shops.length],
+                    ["技师", dashboard.technicians.length],
+                    ["排班", dashboard.schedule.total]
+                  ].map(([label, value]) => (
+                    <div className="rounded-lg bg-paper px-3 py-4" key={label}>
+                      <p className="text-xs font-bold text-ink/45">{label}</p>
+                      <strong className="mt-1 block text-xl text-ink">{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <section className="mt-5">
+              <h2 className="mb-3 text-lg font-bold">当前真实订单</h2>
+              {orders.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-line bg-white px-5 py-8 text-center text-sm font-black text-ink/55">当前没有可分析的真实订单</div>
+              ) : (
+                <DataTable<Order>
+                  columns={[
+                    { key: "order", title: "订单", render: (row) => row.orderNo },
+                    { key: "store", title: "店铺", render: (row) => row.storeName ?? "--" },
+                    { key: "service", title: "服务", render: (row) => row.itemName },
+                    { key: "status", title: "状态", render: (row) => <Badge tone="yellow">{statusLabel(row.status)}</Badge> },
+                    { key: "amount", title: "金额", render: (row) => yen(row.amount) }
+                  ]}
+                  footerPlacement="inline"
+                  pageSize={10}
+                  rows={orders}
+                />
+              )}
+            </section>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-2">
+              <section>
+                <h2 className="mb-3 text-lg font-bold">店铺快照</h2>
+                <DataTable<BackofficeShopPayload>
+                  columns={[
+                    { key: "name", title: "店铺", render: (row) => row.name },
+                    { key: "city", title: "城市", render: (row) => row.city },
+                    { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "published" ? "green" : "yellow"}>{row.status}</Badge> }
+                  ]}
+                  rows={dashboard.shops}
+                />
+              </section>
+              <section>
+                <h2 className="mb-3 text-lg font-bold">技师快照</h2>
+                <DataTable<BackofficeTechnicianPayload>
+                  columns={[
+                    { key: "name", title: "技师", render: (row) => row.displayName },
+                    { key: "shop", title: "店铺", render: (row) => row.shopName ?? "未绑定" },
+                    { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "published" ? "green" : "yellow"}>{row.status}</Badge> }
+                  ]}
+                  rows={dashboard.technicians}
+                />
+              </section>
+            </div>
+          </>
+        ) : null}
       </ModuleShell>
     </AdminLayout>
   );
