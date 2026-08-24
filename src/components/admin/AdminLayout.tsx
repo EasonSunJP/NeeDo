@@ -91,9 +91,9 @@ const navSections: AdminNavSection[] = [
     key: "marketing",
     title: "营销",
     items: [
-      { label: "优惠券", to: "/admin/marketing", icon: "券", children: ["优惠券列表", "优惠券统计", "发放记录", "会员优惠券"] },
-      { label: "礼品卡", to: "/admin/marketing?module=gift-cards", icon: "礼", children: ["礼品卡列表"] },
-      { label: "文章管理", to: "/admin/marketing?module=articles", icon: "文", children: ["文章列表", "文章分类"] }
+      { label: "优惠券", to: "/admin/marketing", icon: "券", children: ["能力门禁", "核销合同", "归因审计"] },
+      { label: "礼品卡", to: "/admin/marketing?module=gift-cards", icon: "礼", children: ["能力门禁"] },
+      { label: "文章管理", to: "/admin/marketing?module=articles", icon: "文", children: ["能力门禁"] }
     ]
   },
   {
