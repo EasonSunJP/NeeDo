@@ -46,7 +46,7 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
       { label: "点单 / オーダー", to: "/merchant-admin/dine/orders", icon: "点", children: ["新单", "KDS", "上菜", "收银"], permission: "store.dine-in.order.view" },
       { label: "菜单 / メニュー", to: "/merchant-admin/menu", icon: "菜", children: ["商品", "售罄", "制作区", "设施限定"], permission: "store.dine-in.menu.view" },
       { label: "场控 / 店内", to: "/merchant-admin/floor", icon: "店", children: ["桌台", "包厢", "床位", "QR"], permission: "store.dine-in.floor.view" },
-      { label: "场控布局", to: "/merchant-admin/stage-layout", icon: "场", children: ["区域状态", "包间利用", "预约占用"], permission: "store.stage-layout.view" },
+      { label: "场控布局", to: "/merchant-admin/stage-layout", icon: "场", children: ["能力门禁", "版本 API", "占用合同"], permission: "store.stage-layout.view" },
       { label: "库存管理", to: "/merchant-admin/inventory", icon: "库", children: ["能力门禁", "库存锁", "移动审计"], permission: "store.inventory.view" },
       { label: "财务结算", to: "/merchant-admin/finance", icon: "¥", children: ["店铺流水", "结算单", "分账"] }
     ]

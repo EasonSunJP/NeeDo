@@ -136,6 +136,8 @@ The merchant dashboard applies the same rule within the authenticated shop scope
 
 The operations and merchant inventory routes are explicit production capability gates. They do not render sample stock, low-stock alerts, replenishment suggestions, purchase drafts, or browser-local inventory mutations. Activation requires formal item, location, and stock-movement tables; transactional purchase, transfer, count, receipt, and issue state machines; idempotency, inventory locking, RBAC, and audit evidence; plus alert, aggregate, and export contracts.
 
+The operations and merchant floor-control routes are also explicit production capability gates. They do not expose sample rooms, beds, workstations, utilization, revenue, booking occupancy, or browser-local layout edits. Activation requires versioned floor-area and resource records, shop-scoped draft/publish/rollback APIs, coordinate validation, optimistic locking, RBAC and audit evidence, and live occupancy derived from formal Booking and Schedule data.
+
 The common Booking order API now enforces the same active-identity boundary for reads and state transitions: customers see their own orders, merchant identities see only their current shop, technician identities see only their assigned profile, and only global platform identities can operate across shops. Out-of-scope detail and mutation requests are returned as not found.
 
 Operations and merchant order aggregates now carry the persisted manual-payment state instead of returning a hard-coded unpaid value, so confirmed payments, refund-pending orders, and refunded orders remain accurate on every formal admin surface.
