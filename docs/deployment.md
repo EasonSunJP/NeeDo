@@ -84,6 +84,19 @@ curl -fsS https://needo.dackou.com/api/v1/ready
 curl -fsS "https://needo.dackou.com/api/v1/home/recommendations?limit=1"
 ```
 
+The repeatable application-level smoke gate is:
+
+```bash
+SMOKE_BASE_URL=https://needo.dackou.com \
+SMOKE_EMAIL='release-smoke-account@example.invalid' \
+SMOKE_PASSWORD='read-from-secret-manager' \
+npm run verify:production-smoke
+```
+
+Use a dedicated least-privilege account. The command checks health, readiness,
+core anonymous reads, login, `/auth/me`, and logout without printing tokens or
+credentials.
+
 If the login page shows `token不能为空` or graph-captcha errors, the browser is
 still running an old frontend bundle or the API base points to the legacy
 service. If it shows an API-route-not-found message, the frontend bundle is new

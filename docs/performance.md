@@ -111,3 +111,7 @@ small VM is not valid evidence for those tiers.
 Use `load-tests/reports/step14-performance-report-template.md` for every run.
 Every row must include measured P50, P95, P99, error rate, throughput, and the
 observed bottleneck. Keep rows as `Not run` until there is actual data.
+
+The accepted laptop-only baseline is recorded in
+`load-tests/reports/2026-08-25-local-development-baseline.md`. It is evidence for
+the local smoke gate only and does not qualify any capacity tier.
