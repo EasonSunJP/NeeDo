@@ -23,6 +23,15 @@ Core metrics now emitted:
 - `http_request_duration_seconds_count`
 - `needo_backend_uptime_seconds`
 - `process_resident_memory_bytes`
+- `needo_dependency_up{dependency}`
+- `needo_dependency_latency_seconds{dependency}`
+- `needo_dependency_pool_size{dependency}`
+- `needo_dependency_pool_healthy{dependency}`
+- `needo_dependency_last_check_timestamp_seconds{dependency}`
+
+The dependency gauges are refreshed by `/health` and `/ready` probes, so the
+deployment health-check cadence also defines their freshness. Alert when a
+dependency is down or `needo_dependency_last_check_timestamp_seconds` is stale.
 
 PromQL examples for key API latency:
 
@@ -31,6 +40,8 @@ histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by 
 histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, path))
 histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, path))
 sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+max by (dependency) (needo_dependency_up) < 1
+time() - max by (dependency) (needo_dependency_last_check_timestamp_seconds) > 120
 ```
 
 ## Pools, Cache, Rate Limit

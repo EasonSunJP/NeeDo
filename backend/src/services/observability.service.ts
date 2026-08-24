@@ -16,8 +16,17 @@ export interface HttpRequestMetricInput {
   durationSeconds: number;
 }
 
+export interface DependencyHealthMetricInput {
+  dependency: "database" | "redis";
+  status: "ok" | "error";
+  latencyMs?: number;
+  poolSize?: number;
+  healthyClients?: number;
+}
+
 export interface ObservabilityMetricsPort {
   recordHttpRequest: (metric: HttpRequestMetricInput) => void;
+  recordDependencyHealth: (metric: DependencyHealthMetricInput) => void;
   renderPrometheus: () => string;
 }
 
@@ -33,6 +42,10 @@ const labels = (values: Record<string, string | number>): string =>
 
 export class ObservabilityMetricsService implements ObservabilityMetricsPort {
   private readonly httpRequests = new Map<string, HttpRequestMetric>();
+  private readonly dependencyHealth = new Map<
+    DependencyHealthMetricInput["dependency"],
+    DependencyHealthMetricInput & { checkedAtSeconds: number }
+  >();
   private readonly startedAt = Date.now();
 
   public constructor(private readonly config: AppConfig) {}
@@ -66,6 +79,17 @@ export class ObservabilityMetricsService implements ObservabilityMetricsPort {
     this.httpRequests.set(key, existing);
   }
 
+  public recordDependencyHealth(metric: DependencyHealthMetricInput): void {
+    if (!this.config.METRICS_ENABLED) {
+      return;
+    }
+
+    this.dependencyHealth.set(metric.dependency, {
+      ...metric,
+      checkedAtSeconds: Date.now() / 1000
+    });
+  }
+
   public renderPrometheus(): string {
     const lines: string[] = [
       "# HELP needo_backend_uptime_seconds Process uptime in seconds.",
@@ -77,8 +101,41 @@ export class ObservabilityMetricsService implements ObservabilityMetricsPort {
       "# HELP http_requests_total Total HTTP requests by method, normalized path, and status.",
       "# TYPE http_requests_total counter",
       "# HELP http_request_duration_seconds HTTP request duration histogram.",
-      "# TYPE http_request_duration_seconds histogram"
+      "# TYPE http_request_duration_seconds histogram",
+      "# HELP needo_dependency_up Whether the last dependency readiness check succeeded.",
+      "# TYPE needo_dependency_up gauge",
+      "# HELP needo_dependency_latency_seconds Duration of the last dependency readiness check.",
+      "# TYPE needo_dependency_latency_seconds gauge",
+      "# HELP needo_dependency_pool_size Configured dependency pool size.",
+      "# TYPE needo_dependency_pool_size gauge",
+      "# HELP needo_dependency_pool_healthy Healthy clients reported by the dependency pool.",
+      "# TYPE needo_dependency_pool_healthy gauge",
+      "# HELP needo_dependency_last_check_timestamp_seconds Unix timestamp of the last dependency check.",
+      "# TYPE needo_dependency_last_check_timestamp_seconds gauge"
     ];
+
+    Array.from(this.dependencyHealth.values())
+      .sort((left, right) => left.dependency.localeCompare(right.dependency))
+      .forEach((metric) => {
+        const dependencyLabels = labels({ dependency: metric.dependency });
+        lines.push(`needo_dependency_up{${dependencyLabels}} ${metric.status === "ok" ? 1 : 0}`);
+        if (metric.latencyMs !== undefined) {
+          lines.push(
+            `needo_dependency_latency_seconds{${dependencyLabels}} ${metric.latencyMs / 1000}`
+          );
+        }
+        if (metric.poolSize !== undefined) {
+          lines.push(`needo_dependency_pool_size{${dependencyLabels}} ${metric.poolSize}`);
+        }
+        if (metric.healthyClients !== undefined) {
+          lines.push(
+            `needo_dependency_pool_healthy{${dependencyLabels}} ${metric.healthyClients}`
+          );
+        }
+        lines.push(
+          `needo_dependency_last_check_timestamp_seconds{${dependencyLabels}} ${metric.checkedAtSeconds}`
+        );
+      });
 
     Array.from(this.httpRequests.values())
       .sort((left, right) =>
