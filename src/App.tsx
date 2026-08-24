@@ -179,14 +179,16 @@ import {
 } from "./features/im/route-pages";
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
-import { SocialComposerPage } from "./features/social/pages/SocialComposerPage";
-import { SocialDraftsPage } from "./features/social/pages/SocialDraftsPage";
-import { SocialMediaViewerPage } from "./features/social/pages/SocialMediaViewerPage";
-import { SocialNotificationsPage } from "./features/social/pages/SocialNotificationsPage";
-import { SocialPostDetailPage } from "./features/social/pages/SocialPostDetailPage";
-import { SocialRelationshipsPage } from "./features/social/pages/SocialRelationshipsPage";
-import { SocialRepostPage } from "./features/social/pages/SocialRepostPage";
-import { SocialSearchPage } from "./features/social/pages/SocialSearchPage";
+import {
+  SocialComposerPage,
+  SocialDraftsPage,
+  SocialMediaViewerPage,
+  SocialNotificationsPage,
+  SocialPostDetailPage,
+  SocialRelationshipsPage,
+  SocialRepostPage,
+  SocialSearchPage
+} from "./features/social/route-pages";
 import {
   backendManagementSystemBgUrl,
   businessBgUrl,
