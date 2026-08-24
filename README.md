@@ -67,6 +67,14 @@ Auth behavior:
 - Access Token is kept in memory only.
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
+- Public registration uses `POST /api/v1/auth/register` and only accepts customer or technician accounts. Customers are activated immediately; technicians remain inactive with a `pending_review` profile until the protected management workflow approves them.
+- Merchant and operations accounts do not have public self-registration and continue to be created through protected management APIs.
+
+Verify the registration transaction against the configured local, non-production MySQL database (the check rejects remote/production targets and removes only the uniquely named rows it creates):
+
+```bash
+npm --prefix backend run check:registration-flow
+```
 
 Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix. Local Vite dev/preview proxies `/api/v1` to the formal backend at `http://127.0.0.1:3000` by default; override with `NEEDO_API_PROXY_TARGET` or `VITE_API_PROXY_TARGET` if needed.
 

@@ -14,6 +14,33 @@ const loginIdentifierSchema = z
   .max(255)
   .transform((identifier) => identifier.toLowerCase());
 
+const registrationPasswordSchema = z
+  .string()
+  .min(8)
+  .max(128)
+  .regex(/[a-z]/, "password must include a lowercase letter")
+  .regex(/[A-Z]/, "password must include an uppercase letter")
+  .regex(/[0-9]/, "password must include a number")
+  .regex(/[^A-Za-z0-9]/, "password must include a symbol");
+
+const registrationAccountFields = {
+  email: emailSchema,
+  password: registrationPasswordSchema,
+  username: z.string().trim().min(1).max(100)
+};
+
+export const registerBodySchema = z.discriminatedUnion("accountType", [
+  z.object({
+    accountType: z.literal("customer"),
+    ...registrationAccountFields
+  }),
+  z.object({
+    accountType: z.literal("technician"),
+    city: z.string().trim().min(1).max(100),
+    ...registrationAccountFields
+  })
+]);
+
 export const loginBodySchema = z
   .object({
     email: emailSchema.optional(),
@@ -61,6 +88,7 @@ export const logoutBodySchema = z.object({
 });
 
 export type LoginBody = z.infer<typeof loginBodySchema>;
+export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type OtpSendBody = z.infer<typeof otpSendBodySchema>;
 export type OtpVerifyBody = z.infer<typeof otpVerifyBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;

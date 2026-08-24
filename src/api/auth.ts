@@ -18,6 +18,27 @@ export type OtpSendPayload = {
   cooldownSeconds: number;
 };
 
+export type RegistrationAccountType = "customer" | "technician";
+
+type RegisterAccountBaseInput = {
+  email: string;
+  password: string;
+  username: string;
+};
+
+export type RegisterAccountInput =
+  | (RegisterAccountBaseInput & { accountType: "customer" })
+  | (RegisterAccountBaseInput & { accountType: "technician"; city: string });
+
+export type RegisteredAccountPayload = {
+  id: number;
+  email: string;
+  username: string;
+  accountType: RegistrationAccountType;
+  approvalStatus: "approved" | "pending_review";
+  isActive: boolean;
+};
+
 type LegacyLoginPayload = {
   expire_time?: string;
   face?: string;
@@ -39,7 +60,7 @@ export const authEndpointPaths = {
   captcha: "/captcha",
   login: "/login",
   formalLogin: "/auth/login",
-  register: "/reg",
+  register: "/auth/register",
   refresh: "/auth/refresh",
   switchIdentity: "/auth/switch-identity",
   logout: "/auth/logout",
@@ -154,6 +175,15 @@ function normalizeLoginPayload(payload: TokenPairPayload | LegacyLoginPayload, f
 }
 
 export const authApi = {
+  async register(input: RegisterAccountInput) {
+    return httpClient.request<RegisteredAccountPayload>(authEndpointPaths.register, {
+      auth: false,
+      body: input,
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+  },
+
   async fetchCaptcha() {
     const deviceToken = await getDeviceFingerprint();
 

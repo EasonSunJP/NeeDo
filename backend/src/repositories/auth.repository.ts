@@ -68,10 +68,34 @@ export interface CreateAuditLogInput {
   metadata?: Prisma.InputJsonValue;
 }
 
+export type PublicRegistrationAccountType = "customer" | "technician";
+
+interface RegisterUserBaseData {
+  email: string;
+  ip: string;
+  passwordHash: string;
+  userAgent?: string | null;
+  username: string;
+}
+
+export type RegisterUserData =
+  | (RegisterUserBaseData & { accountType: "customer" })
+  | (RegisterUserBaseData & { accountType: "technician"; city: string });
+
+export interface RegisteredAccountRecord {
+  id: number;
+  email: string;
+  username: string;
+  accountType: PublicRegistrationAccountType;
+  approvalStatus: "approved" | "pending_review";
+  isActive: boolean;
+}
+
 export interface AuthRepositoryPort {
   findUserByEmail: (email: string) => Promise<AuthUserRecord | null>;
   findUserByLoginIdentifier: (identifier: string) => Promise<AuthUserRecord | null>;
   findUserById: (id: number) => Promise<AuthUserRecord | null>;
+  registerUser: (input: RegisterUserData) => Promise<RegisteredAccountRecord>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
   createAuditLog: (input: CreateAuditLogInput) => Promise<void>;
@@ -135,6 +159,89 @@ export class AuthRepository implements AuthRepositoryPort {
         deletedAt: null
       },
       include: authUserInclude
+    });
+  }
+
+  public registerUser(input: RegisterUserData): Promise<RegisteredAccountRecord> {
+    return this.client.$transaction(async (transaction) => {
+      const role = await transaction.role.findFirst({
+        where: {
+          code: input.accountType,
+          deletedAt: null
+        }
+      });
+
+      if (!role) {
+        throw new Error(`Registration role is missing: ${input.accountType}`);
+      }
+
+      const isCustomer = input.accountType === "customer";
+      const user = await transaction.user.create({
+        data: {
+          email: input.email,
+          passwordHash: input.passwordHash,
+          username: input.username,
+          isActive: isCustomer
+        }
+      });
+      const profile = isCustomer
+        ? await transaction.customerProfile.create({
+            data: {
+              userId: user.id,
+              displayName: input.username
+            }
+          })
+        : await transaction.technicianProfile.create({
+            data: {
+              userId: user.id,
+              displayName: input.username,
+              city: input.city,
+              status: "pending_review"
+            }
+          });
+      const scopeType = isCustomer ? "customer_profile" : "technician_profile";
+
+      await transaction.userIdentity.create({
+        data: {
+          userId: user.id,
+          type: input.accountType,
+          scopeType,
+          scopeId: profile.id,
+          displayName: input.username,
+          isDefault: true,
+          isActive: isCustomer
+        }
+      });
+      await transaction.userRole.create({
+        data: {
+          userId: user.id,
+          roleId: role.id,
+          scopeType,
+          scopeId: profile.id
+        }
+      });
+      await transaction.auditLog.create({
+        data: {
+          action: "auth.register",
+          targetType: "User",
+          targetId: user.id,
+          ip: input.ip,
+          userAgent: input.userAgent ?? null,
+          metadata: {
+            accountType: input.accountType,
+            approvalStatus: isCustomer ? "approved" : "pending_review"
+          }
+        }
+      });
+
+      return {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        accountType: input.accountType,
+        approvalStatus: isCustomer ? "approved" : "pending_review",
+        isActive: user.isActive
+      };
     });
   }
 

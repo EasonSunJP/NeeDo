@@ -205,6 +205,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           expiresIn: { type: "integer", enum: [900] }
         }
       },
+      RegisteredAccount: {
+        type: "object",
+        required: [
+          "id",
+          "email",
+          "username",
+          "accountType",
+          "approvalStatus",
+          "isActive"
+        ],
+        properties: {
+          id: { type: "integer" },
+          email: { type: "string", format: "email" },
+          username: { type: "string" },
+          accountType: { type: "string", enum: ["customer", "technician"] },
+          approvalStatus: { type: "string", enum: ["approved", "pending_review"] },
+          isActive: { type: "boolean" }
+        }
+      },
       SwitchIdentityResponse: {
         type: "object",
         required: ["accessToken", "refreshToken", "expiresIn", "me"],
@@ -1647,6 +1666,65 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Invalid credentials" },
           "429": { description: "Account locked" },
           "503": { description: "Redis auth session dependency is unavailable" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/register`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Register a customer or technician account",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["accountType", "email", "password", "username"],
+                oneOf: [
+                  {
+                    properties: { accountType: { const: "customer" } },
+                    required: ["accountType", "email", "password", "username"]
+                  },
+                  {
+                    properties: { accountType: { const: "technician" } },
+                    required: ["accountType", "city", "email", "password", "username"]
+                  }
+                ],
+                properties: {
+                  accountType: { type: "string", enum: ["customer", "technician"] },
+                  city: { type: "string", minLength: 1, maxLength: 100 },
+                  email: { type: "string", format: "email", maxLength: 255 },
+                  password: {
+                    type: "string",
+                    minLength: 8,
+                    maxLength: 128,
+                    pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).+$"
+                  },
+                  username: { type: "string", minLength: 1, maxLength: 100 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Registered account",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/RegisteredAccount" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "Invalid registration input" },
+          "409": { description: "Email already exists" }
         }
       }
     },

@@ -10,6 +10,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/ready");
     expect(response.body.paths).toHaveProperty("/api/v1/metrics");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/login");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/register");
     expect(response.body.paths).not.toHaveProperty("/api/v1/auth/test-login");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/send");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/verify");
@@ -164,6 +165,28 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("Follow");
     expect(response.body.components.schemas).toHaveProperty("Notification");
     expect(response.body.components.schemas).toHaveProperty("RealtimeUnreadCounts");
+
+    const registrationPath = response.body.paths["/api/v1/auth/register"].post;
+    expect(registrationPath.security).toBeUndefined();
+    expect(
+      registrationPath.requestBody.content["application/json"].schema.properties.accountType
+    ).toEqual({ type: "string", enum: ["customer", "technician"] });
+    expect(registrationPath.requestBody.content["application/json"].schema.oneOf).toEqual([
+      {
+        properties: { accountType: { const: "customer" } },
+        required: ["accountType", "email", "password", "username"]
+      },
+      {
+        properties: { accountType: { const: "technician" } },
+        required: ["accountType", "city", "email", "password", "username"]
+      }
+    ]);
+    expect(
+      registrationPath.responses["201"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/RegisteredAccount" });
+    expect(response.body.components.schemas.RegisteredAccount.properties).not.toHaveProperty(
+      "passwordHash"
+    );
 
     const orderFinanceSchema = response.body.components.schemas.OrderFinanceDetail;
     expect(orderFinanceSchema.properties).toMatchObject({
