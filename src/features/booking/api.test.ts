@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAuthTokens } from "../../api/httpClient";
-import { bookingApi } from "./api";
+import { bookingApi, mapBookingOrderToDomainOrder, type BookingOrder } from "./api";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -9,7 +9,11 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-function createBookingResponse(orderType: "booking" | "request") {
+function createBookingResponse(orderType: "booking" | "request"): {
+  code: number;
+  message: string;
+  data: BookingOrder;
+} {
   return {
     code: 0,
     message: "success",
@@ -138,5 +142,16 @@ describe("bookingApi", () => {
       expect.objectContaining({ method: "POST" })
     );
     expect(lastRequestBody()).toEqual({ reason: "客户退款", reference: "REF-001" });
+  });
+
+  it("preserves formal entity IDs when mapping an API order for navigation", () => {
+    const order = mapBookingOrderToDomainOrder(createBookingResponse("booking").data);
+
+    expect(order).toMatchObject({
+      serviceId: "12",
+      shopId: "7",
+      technicianProfileId: "9",
+      scheduleSlotId: "33"
+    });
   });
 });

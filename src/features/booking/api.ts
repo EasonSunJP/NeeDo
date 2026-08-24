@@ -125,6 +125,15 @@ export function formatApiOrderDateTime(value: string) {
 export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
   return {
     id: String(order.id),
+    serviceId: order.serviceId ? String(order.serviceId) : undefined,
+    technicianServiceId: order.technicianServiceId
+      ? String(order.technicianServiceId)
+      : undefined,
+    shopId: String(order.shopId),
+    technicianProfileId: order.technicianProfileId
+      ? String(order.technicianProfileId)
+      : undefined,
+    scheduleSlotId: String(order.scheduleSlotId),
     orderNo: order.orderNo,
     mode: order.fulfillmentMode,
     status: order.status,

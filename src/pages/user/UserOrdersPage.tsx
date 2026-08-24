@@ -1,40 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import { AppIcon, PrimaryButton, SecondaryButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
+import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { services } from "../../data/mock";
 import { bookingApi, mapBookingOrderToDomainOrder } from "../../features/booking/api";
-import { cn, statusLabel } from "../../lib/utils";
-import { ServiceReviewPrompt, type ServiceReviewSubmission, type ServiceReviewTag } from "../../shared/order-detail/ServiceSessionUi";
-import { SocialProfileMiniCard } from "../../shared/profile-card";
-import { useEntityStore } from "../../state/entityStore";
-import { dismissOrderServiceReview, submitOrderServiceUserReview } from "../../state/orderServiceSessionStore";
-import { useUserOrders } from "../../state/userOrderStore";
-import type { Order, ServiceItem, Store, Technician } from "../../types/domain";
+import { cn, statusLabel, yen } from "../../lib/utils";
+import type { Order } from "../../types/domain";
 
-const fullscreenHeaderClassName =
-  "";
+const fullscreenHeaderClassName = "";
 const surfaceCardClassName =
   "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_92%,#f7f7f2)] p-2.5 shadow-panel";
-const deletedOrdersStorageKey = "needo.user.orders.deleted.v1";
-const deleteAnimationDurationMs = 360;
 const initialOrderRenderCount = 12;
 const orderRenderBatchSize = 12;
-const orderReviewTags: ServiceReviewTag[] = [
-  { label: "氛围很好", count: 8, kind: "chip" },
-  { label: "服务细致", count: 6, kind: "chip" },
-  { label: "还会再约", count: 5, kind: "chip" },
-  { label: "准时到达", count: 4, kind: "chip" }
-];
-
-type OrderProvider =
-  | { type: "store"; store: Store }
-  | { type: "technician"; technician: Technician };
 
 function parseOrderDateTime(value: string) {
   const [datePart, timePart = "00:00"] = value.split(" ");
@@ -47,10 +30,7 @@ function parseOrderDateTime(value: string) {
 function getOrderSortValue(order: Order) {
   const bookedTime = parseOrderDateTime(order.bookedAt).getTime();
 
-  if (Number.isFinite(bookedTime) && bookedTime > 0) {
-    return bookedTime;
-  }
-
+  if (Number.isFinite(bookedTime) && bookedTime > 0) return bookedTime;
   const createdTime = parseOrderDateTime(order.createdAt).getTime();
   return Number.isFinite(createdTime) ? createdTime : 0;
 }
@@ -60,18 +40,11 @@ function sortOrdersNewestFirst(orderList: Order[]) {
 }
 
 function getStatusTone(status: Order["status"]) {
-  if (status === "completed") {
-    return "green" as const;
-  }
-
+  if (status === "completed") return "green" as const;
   if (status === "cancelled" || status === "refunded" || status === "refunding") {
     return "red" as const;
   }
-
-  if (status === "inService") {
-    return "blue" as const;
-  }
-
+  if (status === "inService") return "blue" as const;
   return "yellow" as const;
 }
 
@@ -79,136 +52,67 @@ function getModeLabel(mode: Order["mode"]) {
   return mode === "home" ? "上门服务" : "到店服务";
 }
 
-function normalizeOrderServiceName(value: string) {
-  return value.replace(/\s+\d+\s*分钟/g, "").trim();
+function getProviderName(order: Order) {
+  return order.mode === "store"
+    ? order.storeName ?? "服务店铺"
+    : order.technicianName ?? order.storeName ?? "服务技师";
 }
 
-function findServiceForOrder(order: Order): ServiceItem {
-  const normalizedOrderName = normalizeOrderServiceName(order.itemName);
-
-  return services.find((service) =>
-    order.itemName.includes(service.name) ||
-    service.name.includes(normalizedOrderName) ||
-    service.packages.some((item) => order.itemName.includes(item.name))
-  ) ?? services[0]!;
+function getProviderDetailPath(order: Order) {
+  if (order.mode === "store" && order.shopId) return `/stores/${order.shopId}`;
+  if (order.technicianProfileId) return `/profiles/technician/${order.technicianProfileId}`;
+  return null;
 }
 
-function findPackageForOrder(order: Order, service: ServiceItem) {
-  const durationMatch = order.itemName.match(/(\d+)\s*分钟/);
-  const duration = durationMatch ? Number(durationMatch[1]) : undefined;
-
-  return service.packages.find((item) =>
-    order.itemName.includes(item.name) ||
-    item.price === order.amount ||
-    (typeof duration === "number" && item.durationMinutes === duration)
-  ) ?? service.packages[0];
-}
-
-function resolveOrderProvider(order: Order, stores: Store[], technicians: Technician[]): OrderProvider | null {
-  if (order.mode === "store") {
-    const store = stores.find((item) => item.name === order.storeName);
-    return store ? { type: "store", store } : null;
-  }
-
-  const technician = technicians.find((item) => item.name === order.technicianName || item.nickname === order.technicianName);
-  return technician ? { type: "technician", technician } : null;
-}
-
-function getProviderDetailPath(provider: OrderProvider | null) {
-  if (!provider) {
-    return null;
-  }
-
-  return provider.type === "store" ? `/stores/${provider.store.id}` : `/profiles/technician/${provider.technician.id}`;
-}
-
-function getOrderBaseDurationMinutes(order: Order) {
-  const service = findServiceForOrder(order);
-  return findPackageForOrder(order, service)?.durationMinutes ?? 60;
-}
-
-function getOrderReviewRewardMaxNdp(order: Order) {
-  return Math.max(0, Math.round(order.amount / 100));
-}
-
-function getRebookPath(order: Order, provider: OrderProvider | null) {
-  const service = findServiceForOrder(order);
-  const selectedPackage = findPackageForOrder(order, service);
+function getRebookPath(order: Order) {
+  if (!order.serviceId) return null;
   const params = new URLSearchParams();
 
-  if (selectedPackage?.id) {
-    params.set("package", selectedPackage.id);
-  }
-
-  if (provider?.type === "store") {
-    params.set("store", provider.store.id);
-  } else if (provider?.type === "technician") {
-    params.set("mode", "home");
-    params.set("technician", provider.technician.id);
-  }
-
+  if (order.shopId) params.set("store", order.shopId);
+  if (order.mode === "home") params.set("mode", "home");
+  if (order.technicianProfileId) params.set("technician", order.technicianProfileId);
   const query = params.toString();
-  return `/checkout/${service.id}${query ? `?${query}` : ""}`;
+
+  return `/checkout/${order.serviceId}${query ? `?${query}` : ""}`;
 }
 
-function readDeletedOrderIds() {
-  if (typeof window === "undefined") {
-    return [] as string[];
+function describeOrderLoadError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前身份没有查看预约的权限";
+    if (error.status >= 500) return "预约服务暂时不可用，请稍后重试";
   }
 
-  try {
-    const raw = window.localStorage.getItem(deletedOrdersStorageKey);
-
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return Array.from(new Set(parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0)));
-  } catch {
-    return [];
-  }
+  return "预约加载失败，请检查网络后重试";
 }
 
-function OrderProviderInfoCard({
-  className,
-  detailTo,
-  orderNo,
-  provider
-}: {
-  className?: string;
-  detailTo?: string | null;
-  orderNo?: string;
-  provider: OrderProvider | null;
-}) {
-  if (!provider) {
-    return null;
-  }
-
-  const sharedProps = {
-    className: cn("user-orders-provider-card shadow-none", className),
-    detailTo: detailTo ?? undefined
-  };
-
-  return (
-    <div className="relative">
-      {provider.type === "store" ? (
-        <SocialProfileMiniCard showShareAction store={provider.store} {...sharedProps} />
-      ) : (
-        <SocialProfileMiniCard showShareAction technician={provider.technician} {...sharedProps} />
-      )}
-      {orderNo ? (
-        <span className="pointer-events-none absolute left-3.5 bottom-3 z-30 max-w-36 truncate text-[9px] font-normal leading-none text-[color:var(--client-muted)]">
-          {orderNo}
-        </span>
-      ) : null}
+function OrderProviderInfoCard({ order }: { order: Order }) {
+  const detailTo = getProviderDetailPath(order);
+  const providerName = getProviderName(order);
+  const avatar =
+    order.mode === "store"
+      ? "/images/generated/stores/store-cafe-consult.jpg"
+      : "/images/generated/profiles/ai-profile-01.jpg";
+  const card = (
+    <div className="user-orders-provider-card grid grid-cols-[58px_minmax(0,1fr)] gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_86%,var(--client-bg)_14%)] p-3 shadow-none">
+      <AvatarImage alt={providerName} className="h-[58px] w-[58px]" src={avatar} />
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-black text-[color:var(--client-text)]">{providerName}</p>
+            <p className="mt-1 line-clamp-1 text-xs font-bold text-[color:var(--client-muted)]">{order.itemName}</p>
+          </div>
+          <strong className="shrink-0 text-sm font-black text-[color:var(--client-primary)]">{yen(order.amount)}</strong>
+        </div>
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-3 text-[10px] font-bold text-[color:var(--client-muted)]">
+          <span className="truncate">{order.city} · {order.area}</span>
+          <span className="max-w-36 shrink-0 truncate font-normal">{order.orderNo}</span>
+        </div>
+      </div>
     </div>
   );
+
+  return detailTo ? <Link to={detailTo}>{card}</Link> : card;
 }
 
 function OrderActionButton({
@@ -217,7 +121,7 @@ function OrderActionButton({
   onClick,
   tone
 }: {
-  icon: "calendar" | "chat" | "check" | "star";
+  icon: "calendar" | "check";
   label: string;
   onClick: () => void;
   tone: "primary" | "secondary";
@@ -238,37 +142,17 @@ function OrderActionButton({
   );
 }
 
-function OrderDeleteIcon({ className }: { className?: string }) {
-  return (
-    <img
-      alt=""
-      aria-hidden="true"
-      className={cn("user-orders-delete-icon pointer-events-none block object-contain", className)}
-      decoding="async"
-      src="/images/generated/ui/order-delete-ai-icon.png"
-    />
-  );
-}
-
 export function UserOrdersPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { stores, technicians } = useEntityStore();
-  const [deletedOrderIds, setDeletedOrderIds] = useState<string[]>(() => readDeletedOrderIds());
-  const [deletingOrderIds, setDeletingOrderIds] = useState<string[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [queryStatus, setQueryStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [queryError, setQueryError] = useState("");
+  const [queryRevision, setQueryRevision] = useState(0);
   const [renderedOrderLimit, setRenderedOrderLimit] = useState(initialOrderRenderCount);
-  const [reviewingOrderId, setReviewingOrderId] = useState<string | null>(null);
-  const localOrders = useUserOrders();
-  const [apiOrders, setApiOrders] = useState<Order[] | null>(null);
-  const shouldUseLegacyOrderFallback = import.meta.env.DEV || import.meta.env.VITE_NEEDO_STATIC_DEMO === "true";
-  const orders = apiOrders && (apiOrders.length > 0 || !shouldUseLegacyOrderFallback) ? apiOrders : localOrders;
   const scrollRootRef = useRef<HTMLElement | null>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
-  const deletingOrderIdSetRef = useRef<Set<string>>(new Set());
-  const deleteTimerIdsRef = useRef<number[]>([]);
-  const hasDeletedOrderInSessionRef = useRef(false);
-  const deletedOrderIdSet = useMemo(() => new Set(deletedOrderIds), [deletedOrderIds]);
-  const visibleOrders = useMemo(() => sortOrdersNewestFirst(orders.filter((order) => !deletedOrderIdSet.has(order.id))), [deletedOrderIdSet, orders]);
+  const visibleOrders = useMemo(() => sortOrdersNewestFirst(orders), [orders]);
   const renderedOrders = useMemo(
     () => visibleOrders.slice(0, Math.min(renderedOrderLimit, visibleOrders.length)),
     [renderedOrderLimit, visibleOrders]
@@ -279,142 +163,74 @@ export function UserOrdersPage() {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setApiOrders(null);
+      setOrders([]);
+      setQueryStatus("idle");
       return;
     }
 
     let active = true;
+    setQueryStatus("loading");
+    setQueryError("");
 
-    bookingApi
-      .listOrders({ page: 1, pageSize: 50 })
+    bookingApi.listOrders({ page: 1, pageSize: 100 })
       .then((data) => {
-        if (active) {
-          setApiOrders(data.list.map(mapBookingOrderToDomainOrder));
-        }
+        if (!active) return;
+        setOrders(data.list.map(mapBookingOrderToDomainOrder));
+        setQueryStatus("success");
       })
-      .catch(() => {
-        if (active) {
-          setApiOrders(null);
-        }
+      .catch((error: unknown) => {
+        if (!active) return;
+        setOrders([]);
+        setQueryError(describeOrderLoadError(error));
+        setQueryStatus("error");
       });
 
     return () => {
       active = false;
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, queryRevision]);
 
   useEffect(() => {
-    setRenderedOrderLimit((current) => Math.min(Math.max(current, initialOrderRenderCount), Math.max(visibleOrders.length, initialOrderRenderCount)));
+    setRenderedOrderLimit((current) =>
+      Math.min(
+        Math.max(current, initialOrderRenderCount),
+        Math.max(visibleOrders.length, initialOrderRenderCount)
+      )
+    );
   }, [visibleOrders.length]);
-
-  useEffect(() => {
-    const hasNoVisibleOrders = visibleOrders.length === 0;
-
-    if (hasDeletedOrderInSessionRef.current || deletedOrderIds.length === 0 || orders.length === 0 || !hasNoVisibleOrders) {
-      return;
-    }
-
-    setDeletedOrderIds([]);
-  }, [deletedOrderIds.length, orders.length, visibleOrders.length]);
 
   useEffect(() => {
     const trigger = loadMoreTriggerRef.current;
 
-    if (!trigger || renderedOrderLimit >= visibleOrders.length || typeof window === "undefined" || typeof window.IntersectionObserver !== "function") {
+    if (
+      !trigger ||
+      renderedOrderLimit >= visibleOrders.length ||
+      typeof window === "undefined" ||
+      typeof window.IntersectionObserver !== "function"
+    ) {
       return;
     }
 
     const observer = new window.IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          loadMoreOrders();
-        }
+        if (entries.some((entry) => entry.isIntersecting)) loadMoreOrders();
       },
-      {
-        root: scrollRootRef.current,
-        rootMargin: "720px 0px",
-        threshold: 0.01
-      }
+      { root: scrollRootRef.current, rootMargin: "720px 0px", threshold: 0.01 }
     );
-
     observer.observe(trigger);
-
     return () => observer.disconnect();
   }, [loadMoreOrders, renderedOrderLimit, visibleOrders.length]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    window.localStorage.setItem(deletedOrdersStorageKey, JSON.stringify(deletedOrderIds));
-  }, [deletedOrderIds]);
-
-  useEffect(
-    () => () => {
-      deletingOrderIdSetRef.current.clear();
-      deleteTimerIdsRef.current.forEach((timerId) => window.clearTimeout(timerId));
-    },
-    []
-  );
-
   const closePage = () => {
-    if (typeof window !== "undefined" && typeof window.history.state?.idx === "number" && window.history.state.idx > 0) {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.history.state?.idx === "number" &&
+      window.history.state.idx > 0
+    ) {
       navigate(-1);
       return;
     }
-
     navigate("/", { replace: true });
-  };
-
-  const deleteOrder = (orderId: string) => {
-    if (deletedOrderIdSet.has(orderId) || deletingOrderIdSetRef.current.has(orderId)) {
-      return;
-    }
-
-    hasDeletedOrderInSessionRef.current = true;
-    deletingOrderIdSetRef.current.add(orderId);
-    setDeletingOrderIds((current) => [...current, orderId]);
-
-    if (typeof window === "undefined") {
-      setDeletedOrderIds((current) => (current.includes(orderId) ? current : [...current, orderId]));
-      setDeletingOrderIds((current) => current.filter((item) => item !== orderId));
-      deletingOrderIdSetRef.current.delete(orderId);
-      return;
-    }
-
-    const timerId = window.setTimeout(() => {
-      setDeletedOrderIds((current) => (current.includes(orderId) ? current : [...current, orderId]));
-      setDeletingOrderIds((current) => current.filter((item) => item !== orderId));
-      deletingOrderIdSetRef.current.delete(orderId);
-      deleteTimerIdsRef.current = deleteTimerIdsRef.current.filter((item) => item !== timerId);
-    }, deleteAnimationDurationMs);
-
-    deleteTimerIdsRef.current.push(timerId);
-  };
-  const reviewingOrder = useMemo(() => visibleOrders.find((order) => order.id === reviewingOrderId) ?? null, [reviewingOrderId, visibleOrders]);
-  const reviewingProvider = useMemo(
-    () => (reviewingOrder ? resolveOrderProvider(reviewingOrder, stores, technicians) : null),
-    [reviewingOrder, stores, technicians]
-  );
-  const closeReviewPrompt = () => {
-    if (reviewingOrder) {
-      dismissOrderServiceReview(reviewingOrder.id, getOrderBaseDurationMinutes(reviewingOrder), "user");
-    }
-
-    setReviewingOrderId(null);
-  };
-  const submitReviewPrompt = (submission: ServiceReviewSubmission) => {
-    if (!reviewingOrder) {
-      return;
-    }
-
-    submitOrderServiceUserReview(reviewingOrder.id, getOrderBaseDurationMinutes(reviewingOrder), {
-      rating: submission.rating,
-      tags: submission.tags,
-      maxRewardNdp: getOrderReviewRewardMaxNdp(reviewingOrder)
-    });
-    setReviewingOrderId(null);
   };
 
   return (
@@ -430,114 +246,83 @@ export function UserOrdersPage() {
         />
 
         <main ref={scrollRootRef} className="scrollbar-none min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-8 pt-[calc(env(safe-area-inset-top)+86px)]">
-          <section>
-            {visibleOrders.length > 0 ? (
-              <>
-                {renderedOrders.map((order) => {
-                  const isDeleting = deletingOrderIds.includes(order.id);
-                  const provider = resolveOrderProvider(order, stores, technicians);
-                  const providerDetailPath = getProviderDetailPath(provider);
+          {queryStatus === "loading" ? (
+            <section className={cn(surfaceCardClassName, "text-center")} aria-live="polite">
+              <AppIcon className="mx-auto h-6 w-6 animate-spin text-[color:var(--client-primary)]" name="clock" />
+              <p className="mt-3 text-sm font-black text-[color:var(--client-text)]">正在加载预约</p>
+            </section>
+          ) : null}
 
-                  return (
-                    <div
-                      className={cn(
-                        "user-orders-delete-item mb-3 origin-top overflow-hidden",
-                        isDeleting && "pointer-events-none",
-                        "last:mb-0"
-                      )}
-                      data-deleting={isDeleting ? "true" : "false"}
-                      key={order.id}
-                    >
-                      <div className={cn(surfaceCardClassName, "user-orders-delete-card relative overflow-hidden")}>
-                        <div className={cn("transition-opacity", isDeleting && "opacity-70")}>
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <Badge tone={getStatusTone(order.status)}>{statusLabel(order.status)}</Badge>
-                              <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
-                                {getModeLabel(order.mode)}
-                              </span>
-                            </div>
-                            <button
-                              aria-label={`${isDeleting ? "删除中" : "删除订单"} ${order.orderNo}`}
-                              className={cn(
-                                "user-orders-delete-button grid h-10 w-10 shrink-0 place-items-center appearance-none rounded-full border bg-transparent outline-none ring-0 transition active:scale-[0.97]",
-                                isDeleting
-                                  ? "opacity-50"
-                                  : "opacity-100"
-                              )}
-                              disabled={isDeleting}
-                              onClick={() => deleteOrder(order.id)}
-                              type="button"
-                            >
-                              <OrderDeleteIcon />
-                            </button>
-                          </div>
+          {queryStatus === "error" ? (
+            <section className={cn(surfaceCardClassName, "text-center")} role="alert">
+              <TitleWithInfo
+                as="h2"
+                className="justify-center"
+                info={queryError}
+                label="预约加载失败"
+                title="暂时无法显示预约"
+                titleClassName="text-xl font-black text-[color:var(--client-text)]"
+              />
+              <PrimaryButton className="mt-4 w-full" onClick={() => setQueryRevision((current) => current + 1)}>
+                重新加载预约
+              </PrimaryButton>
+            </section>
+          ) : null}
 
-                          <div className="mt-2.5">
-                            <OrderProviderInfoCard
-                              detailTo={providerDetailPath}
-                              orderNo={order.orderNo}
-                              provider={provider}
-                            />
-                          </div>
+          {queryStatus === "success" && visibleOrders.length > 0 ? (
+            <section>
+              {renderedOrders.map((order) => {
+                const rebookPath = getRebookPath(order);
 
-                          <div className="user-orders-action-row mt-2.5 grid grid-cols-3 gap-1.5">
-                            <OrderActionButton icon="chat" label="评论" onClick={() => setReviewingOrderId(order.id)} tone="secondary" />
-                            <OrderActionButton icon="check" label="详细" onClick={() => navigate(`/orders/${order.id}`)} tone="secondary" />
-                            <OrderActionButton
-                              icon="calendar"
-                              label="再次预约"
-                              onClick={() => navigate(getRebookPath(order, provider))}
-                              tone="primary"
-                            />
-                          </div>
-                        </div>
+                return (
+                  <div className="user-orders-order-item mb-3 last:mb-0" key={order.id}>
+                    <div className={cn(surfaceCardClassName, "relative overflow-hidden")}>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Badge tone={getStatusTone(order.status)}>{statusLabel(order.status)}</Badge>
+                        <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
+                          {getModeLabel(order.mode)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2.5"><OrderProviderInfoCard order={order} /></div>
+
+                      <div className={cn("user-orders-action-row mt-2.5 grid gap-1.5", rebookPath ? "grid-cols-2" : "grid-cols-1")}>
+                        <OrderActionButton icon="check" label="详细" onClick={() => navigate(`/orders/${order.id}`)} tone="secondary" />
+                        {rebookPath ? (
+                          <OrderActionButton icon="calendar" label="再次预约" onClick={() => navigate(rebookPath)} tone="primary" />
+                        ) : null}
                       </div>
                     </div>
-                  );
-                })}
-                {renderedOrderLimit < visibleOrders.length ? (
-                  <div ref={loadMoreTriggerRef} className="pt-1">
-                    <button
-                      className="focus-ring h-11 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 text-sm font-black text-[color:var(--client-primary)]"
-                      onClick={loadMoreOrders}
-                      type="button"
-                    >
-                      加载更多预约
-                    </button>
                   </div>
-                ) : null}
-              </>
-            ) : (
-              <section className={cn(surfaceCardClassName, "text-center")}>
-                <TitleWithInfo
-                  as="h2"
-                  className="justify-center"
-                  info="等有新的预约进入当前状态后，这里会自动同步显示。"
-                  label="空订单说明"
-                  title="这一栏暂时还没有订单"
-                  titleClassName="text-xl font-black text-[color:var(--client-text)]"
-                />
-              </section>
-            )}
-          </section>
-        </main>
-        {reviewingOrder ? (
-          <ServiceReviewPrompt
-            message={`${reviewingOrder.storeName ?? reviewingOrder.technicianName ?? reviewingOrder.itemName} 的本次体验。`}
-            onSkip={closeReviewPrompt}
-            onSubmit={submitReviewPrompt}
-            submitHint={`评价后预计可获得 0~${getOrderReviewRewardMaxNdp(reviewingOrder)}NDP`}
-            submitLabel="提交评价"
-            tagOptions={orderReviewTags}
-            title="写评论"
-            topContent={
-              <OrderProviderInfoCard
-                provider={reviewingProvider}
+                );
+              })}
+              {renderedOrderLimit < visibleOrders.length ? (
+                <div ref={loadMoreTriggerRef} className="pt-1">
+                  <button
+                    className="focus-ring h-11 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)] px-4 text-sm font-black text-[color:var(--client-primary)]"
+                    onClick={loadMoreOrders}
+                    type="button"
+                  >
+                    加载更多预约
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {queryStatus === "success" && visibleOrders.length === 0 ? (
+            <section className={cn(surfaceCardClassName, "text-center")}>
+              <TitleWithInfo
+                as="h2"
+                className="justify-center"
+                info="新的预约创建后会从服务器自动同步到这里。"
+                label="空订单说明"
+                title="这一栏暂时还没有订单"
+                titleClassName="text-xl font-black text-[color:var(--client-text)]"
               />
-            }
-          />
-        ) : null}
+            </section>
+          ) : null}
+        </main>
       </MobileFullscreenPage>
     </MobileShell>
   );
