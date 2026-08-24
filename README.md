@@ -130,6 +130,8 @@ The technician portal's visible order tab is also identity-scoped to the formal 
 
 Authenticated customer identities now receive an API-backed “My” page. The profile comes from the real customer profile record, each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`. The editable local profile is retained only for explicit frontend-preview sessions until a protected customer self-profile update contract is introduced.
 
+The operations dashboard now renders the protected backoffice aggregate for metrics, orders, schedule inventory, financial totals, shops, and technicians. City trends, field jobs, risk scores, and merchant-health scoring stay visibly disabled until formal aggregate contracts exist; the production dashboard no longer substitutes demo metrics for these modules.
+
 ## Current Scope
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。
