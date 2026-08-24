@@ -134,6 +134,8 @@ The operations dashboard now renders the protected backoffice aggregate for metr
 
 The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
 
+The common Booking order API now enforces the same active-identity boundary for reads and state transitions: customers see their own orders, merchant identities see only their current shop, technician identities see only their assigned profile, and only global platform identities can operate across shops. Out-of-scope detail and mutation requests are returned as not found.
+
 ## Current Scope
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。

@@ -85,7 +85,7 @@ With strict mode enabled, known static-demo endpoints still return static data, 
 
 ## Suggested Next Micro-Steps
 
-1. Merchant-admin order scope hardening: bind merchant order actions to the current `shop` identity, then add API tests.
+1. Completed: common order list/detail/transition access now binds merchant identities to the current shop, technician identities to the current technician profile, customers to their own user, and global access to platform identities only; service and repository regression tests cover the scope filters.
 2. Static strict-mode acceptance pass: run selected critical routes with `VITE_NEEDO_STATIC_DEMO_STRICT=true` locally and list missing API/static adapters.
 3. Backoffice/merchant scheduling data-source switch: connect one dispatch-center read view to the existing formal schedule API.
 4. IM/Social backend ownership plan: choose the smallest non-realtime REST slice before opening WebSocket/SSE behavior.

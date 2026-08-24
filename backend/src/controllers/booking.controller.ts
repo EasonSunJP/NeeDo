@@ -1,5 +1,4 @@
 import type { NextFunction, Request, Response } from "express";
-import type { AuthenticatedAccessContext } from "../services/auth.service";
 import type { BookingService } from "../services/booking.service";
 import { successResponse } from "../utils/api-response";
 import {
@@ -257,12 +256,7 @@ export class BookingController {
   };
 
   private getActor(response: Response) {
-    const auth = response.locals.auth as AuthenticatedAccessContext;
-
-    return {
-      userId: auth.userId,
-      roles: auth.roles
-    };
+    return getAuthenticatedAccess(response);
   }
 
   private getOrderId(request: Request): number {

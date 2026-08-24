@@ -13,7 +13,7 @@ Implemented:
 - Booking order state transitions: pending, confirmed, inService, completed, cancelled.
 - Slot capacity and active-order conflict checks to prevent oversell.
 - Order status history records for every creation and transition.
-- Customer order list/detail/transition access is scoped to the authenticated customer user. If a customer passes another `customerUserId` in the order list query, the service overrides it with the token user id. Other customers' order detail/transition attempts return `error.order.not_found`.
+- Order list/detail/transition access is scoped from the active authenticated identity: customers by `customer_user_id`, merchants by `shop_id`, technicians by `technician_profile_id`, and platform identities by their global operations role. Client-supplied filters cannot widen this scope. Out-of-scope detail or transition attempts return `error.order.not_found`.
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
 - Merchant and technician schedule portals create, block, restore, and soft-delete formal slots; the shared calendar reads the same backend records.
 - Booking orders persist `onsite` or `bank_transfer` payment selection and the formal manual-payment lifecycle.
@@ -93,7 +93,9 @@ Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_
 Access boundary:
 
 - Customer actors are limited to their own `booking_orders.customer_user_id`.
-- Platform and service-provider roles keep the current backend handling lane for operational order transitions.
+- Merchant actors are limited to the `booking_orders.shop_id` derived from the active `scopeType=shop` identity.
+- Technician actors are limited to the `booking_orders.technician_profile_id` derived from the active `scopeType=technician_profile` identity.
+- Only platform identities with global operations roles can list or operate across shops.
 - Merchant schedule mutations derive `shop_id` from the authenticated shop identity and ignore client-supplied shop scope.
 - Technician schedule mutations derive `technician_profile_id` from the authenticated technician identity and ignore client-supplied technician scope.
 

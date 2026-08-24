@@ -26,6 +26,9 @@ import type { PaginatedResponse } from "../utils/pagination";
 export interface AuthenticatedBookingActor {
   userId: number;
   roles: string[];
+  currentIdentityType?: string;
+  currentIdentityScopeType?: string | null;
+  currentIdentityScopeId?: number | null;
 }
 
 export interface BookingCreateInput extends Omit<BookingCreateRepositoryInput, "customerUserId"> {
@@ -529,33 +532,45 @@ export class BookingService {
     actor: AuthenticatedBookingActor,
     input: OrderListInput
   ): OrderListInput {
-    if (this.canBypassCustomerOrderScope(actor)) {
+    if (this.isPlatformOrderActor(actor)) {
       return input;
+    }
+
+    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
+      return { ...input, shopId: actor.currentIdentityScopeId };
+    }
+
+    if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
+      return { ...input, technicianProfileId: actor.currentIdentityScopeId };
     }
 
     return {
       ...input,
-      customerUserId: actor.userId
+      customerUserId: actor.userId,
+      shopId: undefined,
+      technicianProfileId: undefined
     };
   }
 
   private canAccessOrder(actor: AuthenticatedBookingActor, order: BookingOrderPayload): boolean {
-    return order.customerUserId === actor.userId || this.canBypassCustomerOrderScope(actor);
+    if (this.isPlatformOrderActor(actor)) return true;
+    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
+      return order.shopId === actor.currentIdentityScopeId;
+    }
+    if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
+      return order.technicianProfileId === actor.currentIdentityScopeId;
+    }
+    return order.customerUserId === actor.userId;
   }
 
-  private canBypassCustomerOrderScope(actor: AuthenticatedBookingActor): boolean {
-    return actor.roles.some((role) =>
-      [
-        "platform_admin",
-        "admin",
-        "operator",
-        "finance",
-        "support",
-        "merchant_owner",
-        "merchant_staff",
-        "technician"
-      ].includes(role)
+  private isPlatformOrderActor(actor: AuthenticatedBookingActor): boolean {
+    const hasPlatformRole = actor.roles.some((role) =>
+      ["platform_admin", "admin", "operator", "finance", "support"].includes(role)
     );
+
+    if (!hasPlatformRole) return false;
+    if (!actor.currentIdentityScopeType && !actor.currentIdentityType) return true;
+    return actor.currentIdentityScopeType === "global" || actor.currentIdentityType === "platform" || actor.currentIdentityType === "platform_admin";
   }
 
   private moneyToInteger(value: string): number {

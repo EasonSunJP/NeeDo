@@ -180,6 +180,54 @@ describe("BookingService state machine", () => {
     });
   });
 
+  it("scopes merchant and technician order lists to the active identity", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const service = new BookingService(repository);
+
+    await service.listOrders({
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11
+    }, { page: 1, pageSize: 20 });
+    expect(repository.listOrders).toHaveBeenLastCalledWith({
+      shopId: 11,
+      page: 1,
+      pageSize: 20
+    });
+
+    await service.listOrders({
+      userId: 3,
+      roles: ["technician"],
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 17
+    }, { page: 1, pageSize: 20 });
+    expect(repository.listOrders).toHaveBeenLastCalledWith({
+      technicianProfileId: 17,
+      page: 1,
+      pageSize: 20
+    });
+  });
+
+  it("hides orders outside the active merchant and technician identity scope", async () => {
+    const merchantService = new BookingService(createRepository({ ...makeOrder("pending"), shopId: 99 }));
+    const technicianService = new BookingService(createRepository({ ...makeOrder("confirmed"), technicianProfileId: 99 }));
+
+    await expect(merchantService.getOrder({
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 11
+    }, 1)).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+
+    await expect(technicianService.transitionOrder({
+      userId: 3,
+      roles: ["technician"],
+      currentIdentityScopeType: "technician_profile",
+      currentIdentityScopeId: 17
+    }, 1, "start")).rejects.toMatchObject({ code: ERROR_CODES.NOT_FOUND });
+  });
+
   it("hides other customers' orders from customer actors", async () => {
     const repository = createRepository({ ...makeOrder("pending"), customerUserId: 999 });
     const service = new BookingService(repository);
@@ -243,7 +291,12 @@ describe("BookingService state machine", () => {
         return undefined;
       })
     };
-    const providerActor = { userId: 2, roles: ["merchant_owner"] };
+    const providerActor = {
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 1
+    };
 
     await new BookingService(createRepository(makeOrder("pending")), ledgerService).transitionOrder(
       providerActor,
@@ -341,7 +394,12 @@ describe("BookingService state machine", () => {
       createRepository(makeOrder("pending")),
       undefined,
       notificationService
-    ).transitionOrder({ userId: 2, roles: ["merchant_owner"] }, 1, "confirm");
+    ).transitionOrder({
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 1
+    }, 1, "confirm");
 
     expect(notificationService.notifyOrderStatusChanged).toHaveBeenCalledWith(
       expect.objectContaining({

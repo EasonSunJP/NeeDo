@@ -62,6 +62,8 @@ export type RefundManualPaymentRepositoryInput = ManualPaymentScope & {
 
 export interface OrderListInput extends PaginationInput {
   customerUserId?: number;
+  shopId?: number;
+  technicianProfileId?: number;
   status?: BookingOrderStatusPayload;
 }
 
@@ -583,6 +585,8 @@ export class BookingRepository implements BookingRepositoryPort {
     const where: Prisma.BookingOrderWhereInput = {
       deletedAt: null,
       ...(input.customerUserId ? { customerUserId: input.customerUserId } : {}),
+      ...(input.shopId ? { shopId: input.shopId } : {}),
+      ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}),
       ...(input.status ? { status: this.statusToDb(input.status) } : {})
     };
     const [list, total] = await Promise.all([
