@@ -82,6 +82,27 @@ The shared Apifox login/register/captcha endpoints are legacy pre-login routes, 
 
 Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in through `POST /api/v1/auth/login` with `username/email + password`; the shared local/staging test username is `admin` and the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. The public frontend test-account shortcut enters the user portal, so the shared test account is seeded with both platform-admin and customer identities.
 
+## Local Three-Month Simulation Data
+
+The local-only simulation seed creates an isolated, deterministic cohort for real API and portal acceptance: 10 published shops, 100 published technicians (exactly 10 per shop), 100 customers, 30 services, 2,600 schedule slots, and three calendar months of completed, cancelled, in-service, confirmed, and pending bookings. Completed bookings include confirmed onsite payments and order-finance records; customers receive wallet seed-credit ledger entries, and every simulated booking creates a recipient notification.
+
+The script refuses production/non-local deployments, remote MySQL hosts, and production-looking database names. It also requires `ALLOW_SIMULATION_SEED=true`. Each account gets a unique deterministic password derived from `SIMULATION_DEFAULT_PASSWORD`, or from the existing local `TEST_USER_DEFAULT_PASSWORD` when the simulation-specific seed is not configured. No password is hardcoded or committed.
+
+```bash
+cd backend
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:simulation
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:simulation-data
+```
+
+The account CSV is written to ignored `outputs/NeeDo_模拟账号_2026-06至08.csv`. Create the formatted XLSX companion with the command below. On first run it creates an ignored local tooling virtual environment under `backend/.data/` and installs the pinned `openpyxl` version from `backend/requirements-simulation.txt`:
+
+```bash
+cd backend
+npm run export:simulation-accounts-xlsx
+```
+
+Both account files contain `account_type`, `shop_name`, `display_name`, `email`, `password`, `status`, and `notes`. They are local credentials and must never be committed, published, or used in production.
+
 Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the public client login page immediately enter the frontend portals (`/`, `/merchant`, `/technician`, `/afirieito`) without calling an auth API. This is only for short-term preview access while API routing is unstable; backend routes such as `/admin` and `/merchant-admin` still reject the temporary frontend session.
 
 ## Formal Schedule Inventory
