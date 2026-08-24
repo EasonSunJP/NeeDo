@@ -4858,6 +4858,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/social/posts/{id}`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Get one visible social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Visible social post" },
+          "404": { description: "Post is missing or not visible to the current user" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/social/follows`]: {
       post: {
         tags: ["Step 13 Realtime"],

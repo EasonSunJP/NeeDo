@@ -573,6 +573,14 @@ const createFixture = async () => {
       }
     ),
     listSocialPosts: jest.fn(async () => listPage(socialPosts)),
+    getSocialPost: jest.fn(async (userId: number, postId: number) => {
+      const post = socialPosts.find((item) => item.id === postId);
+      if (!post) return null;
+      const canRead = post.visibility === "public" || post.authorUserId === userId || follows.some(
+        (follow) => follow.followerUserId === userId && follow.followingUserId === post.authorUserId
+      );
+      return canRead ? post : null;
+    }),
     createFollow: jest.fn(async (input: { followerUserId: number; followingUserId: number }) => {
       const existing = follows.find(
         (follow) =>
@@ -809,6 +817,23 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       authorUserId: 1,
       content: "A quiet recovery note"
     });
+
+    await request(fixture.app)
+      .get("/api/v1/social/posts/1")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          id: 1,
+          authorUserId: 1,
+          content: "A quiet recovery note"
+        });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/social/posts/999")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(404);
 
     await request(fixture.app)
       .post("/api/v1/social/follows")

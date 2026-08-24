@@ -204,6 +204,7 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: SocialPostListInput
   ) => Promise<PaginatedResponse<SocialPostPayload>>;
+  getSocialPost: (userId: number, postId: number) => Promise<SocialPostPayload | null>;
   createFollow: (input: CreateFollowInput) => Promise<FollowPayload>;
   deleteFollow: (followerUserId: number, followingUserId: number) => Promise<{ deleted: boolean }>;
   listNotifications: (
@@ -642,6 +643,31 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async getSocialPost(userId: number, postId: number): Promise<SocialPostPayload | null> {
+    const socialPost = await this.client.socialPost.findFirst({
+      where: {
+        id: postId,
+        deletedAt: null,
+        OR: [
+          { visibility: SocialPostVisibility.PUBLIC },
+          { authorUserId: userId },
+          {
+            author: {
+              followers: {
+                some: {
+                  followerUserId: userId,
+                  deletedAt: null
+                }
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    return socialPost ? this.mapSocialPost(socialPost) : null;
   }
 
   public async createFollow(input: CreateFollowInput): Promise<FollowPayload> {

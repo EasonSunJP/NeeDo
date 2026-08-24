@@ -121,6 +121,9 @@ export const realtimeApi = {
   listSocialPosts(query: PageQuery & { authorUserId?: number } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", { query });
   },
+  getSocialPost(id: number) {
+    return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`);
+  },
   createSocialPost(input: { content: string; visibility?: RealtimeSocialPost["visibility"] }) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });
   },

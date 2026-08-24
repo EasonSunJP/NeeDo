@@ -196,8 +196,7 @@ export function FormalSocialPostDetailPage() {
     setLoading(true);
     setError("");
     try {
-      const page = await realtimeApi.listSocialPosts({ page: 1, pageSize: 100 });
-      setPost(page.list.find((item) => item.id === numericId) ?? null);
+      setPost(await realtimeApi.getSocialPost(numericId));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {

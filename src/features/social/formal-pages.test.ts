@@ -7,6 +7,7 @@ const routeSource = readFileSync(new URL("./route-pages.tsx", import.meta.url), 
 describe("formal social pages", () => {
   it("reads posts and notifications from the formal realtime API", () => {
     expect(formalSource).toContain("realtimeApi.listSocialPosts");
+    expect(formalSource).toContain("realtimeApi.getSocialPost");
     expect(formalSource).toContain("realtimeApi.listNotifications");
     expect(formalSource).toContain("subscribeRealtimeEvents");
     expect(formalSource).not.toContain("localStorage");

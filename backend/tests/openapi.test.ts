@@ -155,6 +155,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/accept");
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/reject");
     expect(response.body.paths).toHaveProperty("/api/v1/social/posts");
+    expect(response.body.paths).toHaveProperty("/api/v1/social/posts/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/social/follows");
     expect(response.body.paths).toHaveProperty("/api/v1/social/follows/{targetUserId}");
     expect(response.body.paths).toHaveProperty("/api/v1/notifications");
