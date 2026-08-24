@@ -18,6 +18,7 @@ import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembers
 import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
 import { updateCustomerEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { Customer, Technician } from "../../types/domain";
+import { FormalUserCenterPage } from "./FormalUserCenterPage";
 
 const orderShortcuts = [
   { label: "待付款", count: 1, to: "/orders" },
@@ -421,7 +422,7 @@ function AvatarCropEditor({
   );
 }
 
-export function UserCenterPage() {
+function LegacyUserCenterPage() {
   const navigate = useNavigate();
   const { session } = useAuth();
   const { customers, technicians } = useEntityStore();
@@ -1011,4 +1012,18 @@ export function UserCenterPage() {
       </div>
     </MobileShell>
   );
+}
+
+export function UserCenterPage() {
+  const { session } = useAuth();
+
+  if (
+    session?.currentIdentity.type === "customer" &&
+    session.currentIdentity.scopeId &&
+    session.loginMethod !== "frontend-bypass"
+  ) {
+    return <FormalUserCenterPage customerProfileId={session.currentIdentity.scopeId} />;
+  }
+
+  return <LegacyUserCenterPage />;
 }

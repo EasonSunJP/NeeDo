@@ -32,6 +32,14 @@ describe("walletApi", () => {
     });
   });
 
+  it("reads the current identity wallet without accepting an owner id", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await walletApi.getMyWallet();
+
+    expect(httpClient.request).toHaveBeenCalledWith("/wallets/me");
+  });
+
   it("lists and reviews requests through the backoffice API", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
 

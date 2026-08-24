@@ -128,6 +128,8 @@ Numeric checkout routes load the formal service detail and current bookable sche
 
 The technician portal's visible order tab is also identity-scoped to the formal order API. Technicians accept pending orders, start confirmed service, complete active service, or cancel eligible orders through the protected state-machine endpoints. Every returned status history is rendered from the database; the formal panel does not use the legacy service-session store or browser-local order mutations.
 
+Authenticated customer identities now receive an API-backed “My” page. The profile comes from the real customer profile record, each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`. The editable local profile is retained only for explicit frontend-preview sessions until a protected customer self-profile update contract is introduced.
+
 ## Current Scope
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。

@@ -4,6 +4,17 @@ export type WalletOwnerType = "user" | "shop" | "platform";
 export type WalletAdjustmentType = "topup" | "withdrawal";
 export type WalletAdjustmentStatus = "pending" | "approved" | "rejected";
 
+export type Wallet = {
+  id: number;
+  ownerType: WalletOwnerType;
+  ownerId: number;
+  currency: "NDP";
+  availableBalance: number;
+  frozenBalance: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type WalletAdjustmentRequest = {
   id: number;
   type: WalletAdjustmentType;
@@ -49,6 +60,9 @@ export type WalletAdjustmentListQuery = {
 };
 
 export const walletApi = {
+  getMyWallet() {
+    return httpClient.request<Wallet>("/wallets/me");
+  },
   createAdjustment(input: CreateWalletAdjustmentInput) {
     return httpClient.request<WalletAdjustmentRequest>("/wallet-adjustments", {
       body: input,
