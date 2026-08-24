@@ -134,6 +134,8 @@ The operations dashboard now renders the protected backoffice aggregate for metr
 
 The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
 
+The shared merchant-admin shell now follows the same authenticated scope. Its account name, shop status, pending-order count, avatar, and service GMV come from the active session and `/api/v1/merchant-admin/dashboard`; it shows a retryable error state instead of falling back to demo shop or order data.
+
 The operations and merchant inventory routes are explicit production capability gates. They do not render sample stock, low-stock alerts, replenishment suggestions, purchase drafts, or browser-local inventory mutations. Activation requires formal item, location, and stock-movement tables; transactional purchase, transfer, count, receipt, and issue state machines; idempotency, inventory locking, RBAC, and audit evidence; plus alert, aggregate, and export contracts.
 
 The operations and merchant floor-control routes are also explicit production capability gates. They do not expose sample rooms, beds, workstations, utilization, revenue, booking occupancy, or browser-local layout edits. Activation requires versioned floor-area and resource records, shop-scoped draft/publish/rollback APIs, coordinate validation, optimistic locking, RBAC and audit evidence, and live occupancy derived from formal Booking and Schedule data.
