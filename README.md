@@ -132,6 +132,8 @@ Authenticated customer identities now receive an API-backed “My” page. The p
 
 The operations dashboard now renders the protected backoffice aggregate for metrics, orders, schedule inventory, financial totals, shops, and technicians. City trends, field jobs, risk scores, and merchant-health scoring stay visibly disabled until formal aggregate contracts exist; the production dashboard no longer substitutes demo metrics for these modules.
 
+The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
+
 ## Current Scope
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。
