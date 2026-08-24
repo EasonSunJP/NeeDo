@@ -126,6 +126,8 @@ The check refuses production flags and remote database hosts, covers idempotent 
 
 Numeric checkout routes load the formal service detail and current bookable schedule inventory, then create the reservation through the authenticated Booking API. A successful submission navigates directly to the persisted numeric order without copying it into browser storage. The customer reservation list reads only the paginated Booking API. Numeric reservation detail routes load the formal order, payment state, and complete status history from the backend, and customer cancellation is submitted through the protected order-status endpoint. Browser-local order creation, hiding, deletion, review mutation, and mock-order merging are not used in this formal lane. Legacy nonnumeric demo links remain isolated compatibility.
 
+The technician portal's visible order tab is also identity-scoped to the formal order API. Technicians accept pending orders, start confirmed service, complete active service, or cancel eligible orders through the protected state-machine endpoints. Every returned status history is rendered from the database; the formal panel does not use the legacy service-session store or browser-local order mutations.
+
 ## Current Scope
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。
