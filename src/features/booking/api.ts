@@ -94,6 +94,35 @@ export type AvailabilityQuery = {
   to: string;
 };
 
+export type ManagedScheduleScope = "merchant-admin" | "technician";
+
+export type ManagedScheduleSlotQuery = {
+  from: string;
+  page?: number;
+  pageSize?: number;
+  serviceId?: number;
+  technicianProfileId?: number;
+  technicianServiceId?: number;
+  status?: BookingScheduleSlot["status"];
+  to: string;
+};
+
+export type CreateManagedScheduleSlotInput = {
+  capacity?: number;
+  endsAt: string;
+  serviceId?: number;
+  startsAt: string;
+  technicianProfileId?: number | null;
+  technicianServiceId?: number;
+};
+
+export type UpdateManagedScheduleSlotInput = {
+  capacity?: number;
+  endsAt?: string;
+  startsAt?: string;
+  status?: "available" | "blocked";
+};
+
 export type CreateBookingInput = {
   fulfillmentMode: FulfillmentMode;
   note?: string;
@@ -219,6 +248,26 @@ export const bookingApi = {
     return httpClient.request<BookingOrder>(`/${surface}/orders/${id}/payment/refund`, {
       body: input,
       method: "POST"
+    });
+  },
+  listManagedScheduleSlots(scope: ManagedScheduleScope, query: ManagedScheduleSlotQuery) {
+    return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>(`/${scope}/schedule/slots`, { query });
+  },
+  createManagedScheduleSlot(scope: ManagedScheduleScope, input: CreateManagedScheduleSlotInput) {
+    return httpClient.request<BookingScheduleSlot>(`/${scope}/schedule/slots`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  updateManagedScheduleSlot(scope: ManagedScheduleScope, id: number, input: UpdateManagedScheduleSlotInput) {
+    return httpClient.request<BookingScheduleSlot>(`/${scope}/schedule/slots/${id}`, {
+      body: input,
+      method: "PATCH"
+    });
+  },
+  deleteManagedScheduleSlot(scope: ManagedScheduleScope, id: number) {
+    return httpClient.request<BookingScheduleSlot>(`/${scope}/schedule/slots/${id}`, {
+      method: "DELETE"
     });
   }
 };

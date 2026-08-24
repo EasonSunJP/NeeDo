@@ -144,6 +144,59 @@ describe("bookingApi", () => {
     expect(lastRequestBody()).toEqual({ reason: "客户退款", reference: "REF-001" });
   });
 
+  it("calls the authenticated merchant schedule-slot CRUD endpoints", async () => {
+    const slot = {
+      id: 33,
+      serviceId: 12,
+      technicianServiceId: null,
+      shopId: 7,
+      technicianProfileId: 9,
+      startsAt: "2026-08-26T01:00:00.000Z",
+      endsAt: "2026-08-26T02:00:00.000Z",
+      capacity: 1,
+      bookedCount: 0,
+      status: "available" as const,
+      serviceName: "Shiatsu Recovery",
+      shopName: "GINZA Calm Body Lab",
+      technicianName: "佐藤 美咲",
+      priceAmount: "8800.00",
+      currency: "JPY",
+      durationMinutes: 60
+    };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [slot], total: 1, page: 1, page_size: 20 } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: slot }, 201))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { ...slot, status: "blocked" } }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: slot }));
+
+    await bookingApi.listManagedScheduleSlots("merchant-admin", {
+      from: "2026-08-25T00:00:00.000Z",
+      page: 1,
+      pageSize: 20,
+      to: "2026-09-25T00:00:00.000Z"
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/merchant-admin/schedule/slots?from=2026-08-25T00%3A00%3A00.000Z&page=1&pageSize=20&to=2026-09-25T00%3A00%3A00.000Z",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    await bookingApi.createManagedScheduleSlot("merchant-admin", {
+      serviceId: 12,
+      technicianProfileId: 9,
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      capacity: 1
+    });
+    expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/merchant-admin/schedule/slots", expect.objectContaining({ method: "POST" }));
+
+    await bookingApi.updateManagedScheduleSlot("merchant-admin", 33, { status: "blocked" });
+    expect(fetch).toHaveBeenNthCalledWith(3, "/api/v1/merchant-admin/schedule/slots/33", expect.objectContaining({ method: "PATCH" }));
+
+    await bookingApi.deleteManagedScheduleSlot("merchant-admin", 33);
+    expect(fetch).toHaveBeenNthCalledWith(4, "/api/v1/merchant-admin/schedule/slots/33", expect.objectContaining({ method: "DELETE" }));
+  });
+
   it("preserves formal entity IDs when mapping an API order for navigation", () => {
     const order = mapBookingOrderToDomainOrder(createBookingResponse("booking").data);
 
