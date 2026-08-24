@@ -278,9 +278,12 @@ describe("LoginPage real-account login", () => {
     });
   });
 
-  it("requires formal frontend login only for technician payroll redirects", () => {
+  it("requires formal frontend login for payroll and formal schedule routes", () => {
     expect(requiresFormalFrontendLogin("technician", "/technician/payroll")).toBe(true);
     expect(requiresFormalFrontendLogin("technician", "/technician/payroll?period=2026-06")).toBe(true);
+    expect(requiresFormalFrontendLogin("technician", "/technician/schedule")).toBe(true);
+    expect(requiresFormalFrontendLogin("merchant", "/merchant/schedule?tab=appointments")).toBe(true);
+    expect(requiresFormalFrontendLogin("merchant", "/merchant/orders")).toBe(true);
     expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(false);
     expect(requiresFormalFrontendLogin("merchant", "/technician/payroll")).toBe(false);
   });

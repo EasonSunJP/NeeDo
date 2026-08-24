@@ -7,8 +7,12 @@ import {
   bookingCreateBodySchema,
   orderCancelBodySchema,
   orderIdParamSchema,
-  orderListQuerySchema
+  orderListQuerySchema,
+  scheduleSlotCreateBodySchema,
+  scheduleSlotListQuerySchema,
+  scheduleSlotUpdateBodySchema
 } from "../validators/booking.validator";
+import { getAuthenticatedAccess, getRequestContext } from "../utils/request-context";
 
 export class BookingController {
   public constructor(private readonly bookingService: BookingService) {}
@@ -182,6 +186,30 @@ export class BookingController {
     } catch (error) {
       next(error);
     }
+  };
+
+  public listScheduleSlots = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.listScheduleSlots(getAuthenticatedAccess(response), scheduleSlotListQuerySchema.parse(request.query))));
+    } catch (error) { next(error); }
+  };
+
+  public createScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(201).json(successResponse(await this.bookingService.createScheduleSlot(getAuthenticatedAccess(response), scheduleSlotCreateBodySchema.parse(request.body), getRequestContext(request))));
+    } catch (error) { next(error); }
+  };
+
+  public updateScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.updateScheduleSlot(getAuthenticatedAccess(response), this.getOrderId(request), scheduleSlotUpdateBodySchema.parse(request.body), getRequestContext(request))));
+    } catch (error) { next(error); }
+  };
+
+  public deleteScheduleSlot = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.bookingService.deleteScheduleSlot(getAuthenticatedAccess(response), this.getOrderId(request), getRequestContext(request))));
+    } catch (error) { next(error); }
   };
 
   private getActor(response: Response) {

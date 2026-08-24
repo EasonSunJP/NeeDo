@@ -760,7 +760,15 @@ export function requiresFormalFrontendLogin(
   const redirectRoute = normalizeRedirectRoute(redirectPath);
   const pathname = redirectRoute?.split(/[?#]/)[0] || "";
 
-  return portal === "technician" && pathname.startsWith("/technician/payroll");
+  if (portal === "technician") {
+    return pathname.startsWith("/technician/payroll") || pathname === "/technician/schedule";
+  }
+
+  if (portal === "merchant") {
+    return pathname === "/merchant/schedule" || pathname === "/merchant/orders";
+  }
+
+  return false;
 }
 
 export function getPublicTestLoginPortal(portal: PortalScope): PortalScope {

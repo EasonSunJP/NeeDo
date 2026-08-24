@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
@@ -37,6 +37,42 @@ export interface OrderListInput extends PaginationInput {
   customerUserId?: number;
   status?: BookingOrderStatusPayload;
 }
+
+export type ScheduleScope =
+  | { scope: "merchant"; shopId: number }
+  | { scope: "technician"; technicianProfileId: number };
+
+export type ScheduleListInput = ScheduleScope & PaginationInput & {
+  from: Date;
+  to: Date;
+  serviceId?: number;
+  technicianServiceId?: number;
+  technicianProfileId?: number;
+  status?: ScheduleSlotStatusPayload;
+};
+
+export type ScheduleSlotCreateInput = ScheduleScope & {
+  serviceId?: number;
+  technicianServiceId?: number;
+  technicianProfileId?: number | null;
+  startsAt: Date;
+  endsAt: Date;
+  capacity: number;
+};
+
+export type ScheduleSlotUpdateInput = ScheduleScope & {
+  id: number;
+  startsAt?: Date;
+  endsAt?: Date;
+  capacity?: number;
+  status?: "available" | "blocked";
+};
+
+export type ScheduleSlotDeleteInput = ScheduleScope & { id: number };
+
+export type ScheduleMutationResult =
+  | { outcome: "ok"; slot: ScheduleSlotPayload }
+  | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" };
 
 export interface OrderTransitionRepositoryInput {
   id: number;
@@ -129,6 +165,10 @@ export interface BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
   ) => Promise<BookingOrderPayload | null>;
+  listScheduleSlots: (input: ScheduleListInput) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
+  createScheduleSlot: (input: ScheduleSlotCreateInput) => Promise<ScheduleMutationResult>;
+  updateScheduleSlot: (input: ScheduleSlotUpdateInput) => Promise<ScheduleMutationResult>;
+  deleteScheduleSlot: (input: ScheduleSlotDeleteInput) => Promise<ScheduleMutationResult>;
 }
 
 type DecimalLike = {
@@ -171,6 +211,7 @@ export class BookingRepository implements BookingRepositoryPort {
     const where: Prisma.ScheduleSlotWhereInput = {
       deletedAt: null,
       status: "AVAILABLE",
+      bookedCount: { lt: this.client.scheduleSlot.fields.capacity },
       ...(input.serviceId ? { serviceId: input.serviceId } : {}),
       ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
       startsAt: { gte: input.from },
@@ -215,6 +256,139 @@ export class BookingRepository implements BookingRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async listScheduleSlots(
+    input: ScheduleListInput
+  ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.ScheduleSlotWhereInput = {
+      deletedAt: null,
+      startsAt: { lt: input.to },
+      endsAt: { gt: input.from },
+      ...(input.scope === "merchant"
+        ? { shopId: input.shopId, ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}) }
+        : { technicianProfileId: input.technicianProfileId }),
+      ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+      ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
+      ...(input.status ? { status: this.slotStatusToDb(input.status) } : {})
+    };
+    const [list, total] = await Promise.all([
+      this.client.scheduleSlot.findMany({
+        where,
+        include: this.slotInclude(),
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+      }),
+      this.client.scheduleSlot.count({ where })
+    ]);
+    return buildPaginatedResponse(list.map((row) => this.mapSlot(row)), total, pagination);
+  }
+
+  public createScheduleSlot(input: ScheduleSlotCreateInput): Promise<ScheduleMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const target = await this.resolveScheduleTarget(transaction, input, input.serviceId, input.technicianServiceId, input.technicianProfileId ?? null);
+      if (!target) return { outcome: "not_found" };
+      await this.lockScheduleOwner(transaction, target.shopId, target.technicianProfileId);
+      if (!this.matchesServiceDuration(input.startsAt, input.endsAt, target.durationMinutes)) {
+        return { outcome: "duration_mismatch" };
+      }
+      if (await this.hasScheduleOverlap(transaction, target.shopId, target.technicianProfileId, target.serviceId, input.startsAt, input.endsAt)) {
+        return { outcome: "conflict" };
+      }
+      const availability = await transaction.availability.create({
+        data: {
+          shopId: target.shopId,
+          technicianProfileId: target.technicianProfileId,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          capacity: input.capacity,
+          isActive: true
+        }
+      });
+      const created = await transaction.scheduleSlot.create({
+        data: {
+          availabilityId: availability.id,
+          serviceId: target.serviceId,
+          technicianServiceId: target.technicianServiceId,
+          shopId: target.shopId,
+          technicianProfileId: target.technicianProfileId,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          capacity: input.capacity,
+          status: "AVAILABLE"
+        },
+        include: this.slotInclude()
+      });
+      return { outcome: "ok", slot: this.mapSlot(created) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+
+  public updateScheduleSlot(input: ScheduleSlotUpdateInput): Promise<ScheduleMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const existing = await transaction.scheduleSlot.findFirst({
+        where: { id: input.id, deletedAt: null, ...this.scheduleScopeWhere(input) },
+        include: this.slotInclude()
+      });
+      if (!existing || (!existing.serviceId && !existing.technicianServiceId)) return { outcome: "not_found" };
+      await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
+      const startsAt = input.startsAt ?? existing.startsAt;
+      const endsAt = input.endsAt ?? existing.endsAt;
+      const capacity = input.capacity ?? existing.capacity;
+      const timeChanged = startsAt.getTime() !== existing.startsAt.getTime() || endsAt.getTime() !== existing.endsAt.getTime();
+      if (existing.bookedCount > 0 && (timeChanged || input.status === "blocked" || capacity < existing.bookedCount)) {
+        return { outcome: "in_use" };
+      }
+      if (!this.matchesServiceDuration(startsAt, endsAt, existing.service?.durationMinutes ?? existing.technicianService?.durationMinutes ?? 0)) {
+        return { outcome: "duration_mismatch" };
+      }
+      if (timeChanged && await this.hasScheduleOverlap(transaction, existing.shopId, existing.technicianProfileId, existing.serviceId, startsAt, endsAt, existing.id)) {
+        return { outcome: "conflict" };
+      }
+      const requestedStatus = input.status ? this.slotStatusToDb(input.status) : existing.status;
+      const status = existing.bookedCount >= capacity ? "BOOKED" : requestedStatus === "BOOKED" ? "AVAILABLE" : requestedStatus;
+      if (existing.availabilityId) {
+        await transaction.availability.updateMany({
+          where: { id: existing.availabilityId, deletedAt: null },
+          data: { startsAt, endsAt, capacity, isActive: status !== "BLOCKED" }
+        });
+      }
+      const updated = await transaction.scheduleSlot.update({
+        where: { id: existing.id },
+        data: { startsAt, endsAt, capacity, status },
+        include: this.slotInclude()
+      });
+      return { outcome: "ok", slot: this.mapSlot(updated) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+
+  public deleteScheduleSlot(input: ScheduleSlotDeleteInput): Promise<ScheduleMutationResult> {
+    return this.client.$transaction(async (transaction) => {
+      const existing = await transaction.scheduleSlot.findFirst({
+        where: { id: input.id, deletedAt: null, ...this.scheduleScopeWhere(input) },
+        include: this.slotInclude()
+      });
+      if (!existing) return { outcome: "not_found" };
+      await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
+      const activeOrders = await transaction.bookingOrder.count({
+        where: { scheduleSlotId: existing.id, deletedAt: null, status: { in: [...ACTIVE_ORDER_DB_STATUSES] } }
+      });
+      if (existing.bookedCount > 0 || activeOrders > 0) return { outcome: "in_use" };
+      const deletedAt = new Date();
+      const deleted = await transaction.scheduleSlot.update({
+        where: { id: existing.id },
+        data: { status: "BLOCKED", deletedAt },
+        include: this.slotInclude()
+      });
+      if (existing.availabilityId) {
+        await transaction.availability.updateMany({
+          where: { id: existing.availabilityId, deletedAt: null },
+          data: { isActive: false, deletedAt }
+        });
+      }
+      return { outcome: "ok", slot: this.mapSlot(deleted) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
   public async createBooking(
@@ -267,15 +441,22 @@ export class BookingRepository implements BookingRepositoryPort {
         return null;
       }
 
+      await this.lockScheduleOwner(tx, slot.shopId, slot.technicianProfileId);
+
       const conflict = await tx.bookingOrder.findFirst({
         where: {
           deletedAt: null,
           status: { in: [...ACTIVE_ORDER_DB_STATUSES] },
           OR: [
-            { scheduleSlotId: slot.id },
+            {
+              customerUserId: input.customerUserId,
+              startsAt: { lt: slot.endsAt },
+              endsAt: { gt: slot.startsAt }
+            },
             ...(slot.technicianProfileId
               ? [
                   {
+                    scheduleSlotId: { not: slot.id },
                     technicianProfileId: slot.technicianProfileId,
                     startsAt: { lt: slot.endsAt },
                     endsAt: { gt: slot.startsAt }
@@ -345,7 +526,7 @@ export class BookingRepository implements BookingRepositoryPort {
       });
 
       return this.mapOrder(order);
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   }
 
   public async listOrders(input: OrderListInput): Promise<PaginatedResponse<BookingOrderPayload>> {
@@ -458,6 +639,94 @@ export class BookingRepository implements BookingRepositoryPort {
 
       return next ? this.mapOrder(next) : null;
     });
+  }
+
+  private scheduleScopeWhere(scope: ScheduleScope): Prisma.ScheduleSlotWhereInput {
+    return scope.scope === "merchant"
+      ? { shopId: scope.shopId }
+      : { technicianProfileId: scope.technicianProfileId };
+  }
+
+  private async resolveScheduleTarget(
+    transaction: Prisma.TransactionClient,
+    scope: ScheduleScope,
+    serviceId: number | undefined,
+    technicianServiceId: number | undefined,
+    requestedTechnicianProfileId: number | null
+  ): Promise<{ shopId: number; technicianProfileId: number | null; serviceId: number | null; technicianServiceId: number | null; durationMinutes: number } | null> {
+    if (Boolean(serviceId) === Boolean(technicianServiceId)) return null;
+    let shopId: number;
+    let technicianProfileId = requestedTechnicianProfileId;
+    if (scope.scope === "technician") {
+      const technician = await transaction.technicianProfile.findFirst({
+        where: { id: scope.technicianProfileId, deletedAt: null, status: "published", shopId: { not: null } },
+        select: { id: true, shopId: true }
+      });
+      if (!technician?.shopId) return null;
+      shopId = technician.shopId;
+      technicianProfileId = technician.id;
+    } else {
+      shopId = scope.shopId;
+    }
+    const shop = await transaction.shop.findFirst({ where: { id: shopId, deletedAt: null, status: "published" }, select: { id: true } });
+    if (!shop) return null;
+    if (technicianServiceId) {
+      const technicianService = await transaction.technicianService.findFirst({
+        where: { id: technicianServiceId, shopId, deletedAt: null, isActive: true, isBookable: true },
+        select: { id: true, technicianId: true, durationMinutes: true }
+      });
+      if (!technicianService || (technicianProfileId && technicianProfileId !== technicianService.technicianId)) return null;
+      technicianProfileId = technicianService.technicianId;
+      const technician = await transaction.technicianProfile.findFirst({ where: { id: technicianProfileId, shopId, deletedAt: null, status: "published" }, select: { id: true } });
+      if (!technician) return null;
+      return { shopId, technicianProfileId, serviceId: null, technicianServiceId: technicianService.id, durationMinutes: technicianService.durationMinutes };
+    }
+    const [service, technician] = await Promise.all([
+      transaction.service.findFirst({ where: { id: serviceId, shopId, deletedAt: null, status: "published" }, select: { id: true, durationMinutes: true } }),
+      technicianProfileId
+        ? transaction.technicianProfile.findFirst({ where: { id: technicianProfileId, shopId, deletedAt: null, status: "published" }, select: { id: true } })
+        : Promise.resolve(null)
+    ]);
+    if (!service || (technicianProfileId && !technician)) return null;
+    return { shopId, technicianProfileId, serviceId: service.id, technicianServiceId: null, durationMinutes: service.durationMinutes };
+  }
+
+  private async lockScheduleOwner(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    technicianProfileId: number | null
+  ): Promise<void> {
+    const updatedAt = new Date();
+    if (technicianProfileId) {
+      await transaction.technicianProfile.update({ where: { id: technicianProfileId }, data: { updatedAt } });
+      return;
+    }
+    await transaction.shop.update({ where: { id: shopId }, data: { updatedAt } });
+  }
+
+  private matchesServiceDuration(startsAt: Date, endsAt: Date, durationMinutes: number): boolean {
+    return endsAt.getTime() - startsAt.getTime() === durationMinutes * 60_000;
+  }
+
+  private async hasScheduleOverlap(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    technicianProfileId: number | null,
+    serviceId: number | null,
+    startsAt: Date,
+    endsAt: Date,
+    excludeId?: number
+  ): Promise<boolean> {
+    return Boolean(await transaction.scheduleSlot.findFirst({
+      where: {
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        ...(technicianProfileId ? { technicianProfileId } : { shopId, serviceId, technicianProfileId: null }),
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt }
+      },
+      select: { id: true }
+    }));
   }
 
   private slotInclude() {
@@ -659,6 +928,12 @@ export class BookingRepository implements BookingRepositoryPort {
     }
 
     return "available";
+  }
+
+  private slotStatusToDb(status: ScheduleSlotStatusPayload) {
+    if (status === "booked") return "BOOKED" as const;
+    if (status === "blocked") return "BLOCKED" as const;
+    return "AVAILABLE" as const;
   }
 
   private orderTypeFromDb(orderType: string): BookingOrderTypePayload {

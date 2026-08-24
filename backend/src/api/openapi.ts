@@ -768,6 +768,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           durationMinutes: { type: "integer" }
         }
       },
+      ScheduleSlotCreateInput: {
+        type: "object",
+        required: ["startsAt", "endsAt"],
+        oneOf: [{ required: ["serviceId"] }, { required: ["technicianServiceId"] }],
+        properties: {
+          serviceId: { type: "integer", minimum: 1 },
+          technicianServiceId: { type: "integer", minimum: 1 },
+          technicianProfileId: { type: ["integer", "null"], minimum: 1 },
+          startsAt: { type: "string", format: "date-time", description: "ISO 8601 timestamp with UTC or explicit offset" },
+          endsAt: { type: "string", format: "date-time", description: "ISO 8601 timestamp with UTC or explicit offset" },
+          capacity: { type: "integer", minimum: 1, maximum: 100, default: 1 }
+        }
+      },
+      ScheduleSlotUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          capacity: { type: "integer", minimum: 1, maximum: 100 },
+          status: { type: "string", enum: ["available", "blocked"] }
+        }
+      },
       OrderStatusHistory: {
         type: "object",
         required: ["id", "orderId", "fromStatus", "toStatus", "actorUserId", "reason", "createdAt"],
@@ -4275,6 +4298,22 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/merchant-admin/services/{id}`]: {
       patch: { tags: ["Master Data"], summary: "Update a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" } } } }, responses: { "200": { description: "Service updated" }, "404": { description: "Service not in current shop" } } },
       delete: { tags: ["Master Data"], summary: "Soft-delete a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Service soft-deleted" }, "404": { description: "Service not in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule/slots`]: {
+      get: { tags: ["Schedule"], summary: "Paginated schedule slots scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "technicianProfileId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "status", in: "query", schema: { type: "string", enum: ["available", "booked", "blocked"] } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Paginated shop schedule slots" } } },
+      post: { tags: ["Schedule"], summary: "Create a bookable slot in the authenticated shop", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } } } }, responses: { "201": { description: "Schedule slot created" }, "404": { description: "Service or technician not found in the current shop" }, "409": { description: "Overlapping slot or duration mismatch" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule/slots/{id}`]: {
+      patch: { tags: ["Schedule"], summary: "Update a schedule slot in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } } } }, responses: { "200": { description: "Schedule slot updated" }, "404": { description: "Slot not found in current shop" }, "409": { description: "Overlap or slot already in use" } } },
+      delete: { tags: ["Schedule"], summary: "Soft-delete an unused schedule slot in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Schedule slot soft-deleted" }, "404": { description: "Slot not found in current shop" }, "409": { description: "Slot has an active booking" } } }
+    },
+    [`${config.API_PREFIX}/technician/schedule/slots`]: {
+      get: { tags: ["Schedule"], summary: "Paginated schedule slots scoped to the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "status", in: "query", schema: { type: "string", enum: ["available", "booked", "blocked"] } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Paginated technician schedule slots" } } },
+      post: { tags: ["Schedule"], summary: "Create a bookable slot for the authenticated technician", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } } } }, responses: { "201": { description: "Schedule slot created" }, "404": { description: "Technician or shop service not found" }, "409": { description: "Overlapping slot or duration mismatch" } } }
+    },
+    [`${config.API_PREFIX}/technician/schedule/slots/{id}`]: {
+      patch: { tags: ["Schedule"], summary: "Update a schedule slot owned by the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } } } }, responses: { "200": { description: "Schedule slot updated" }, "404": { description: "Slot not found for current technician" }, "409": { description: "Overlap or slot already in use" } } },
+      delete: { tags: ["Schedule"], summary: "Soft-delete an unused slot owned by the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Schedule slot soft-deleted" }, "404": { description: "Slot not found for current technician" }, "409": { description: "Slot has an active booking" } } }
     },
     [`${config.API_PREFIX}/im/conversations`]: {
       get: {

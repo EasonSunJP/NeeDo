@@ -1818,6 +1818,30 @@ const seedCoreReadData = async (
     coverImageUrl: primaryTechnicianSeed.service.coverUrl,
     createdBy: shopOwner.id
   });
+  if (options.seedRequiredTestAccounts) {
+    const formalScheduleTechnician = await tx.user.findUnique({
+      where: { email: "technician@example.com" },
+      include: { technicianProfile: true }
+    });
+
+    if (!formalScheduleTechnician?.technicianProfile) {
+      throw new Error("Formal schedule seed failed: technician@example.com profile is missing.");
+    }
+
+    await upsertSeedTechnicianService(tx, {
+      shopId: shop.id,
+      technicianId: formalScheduleTechnician.technicianProfile.id,
+      sourceShopServiceId: shiatsuService.id,
+      name: `${shiatsuService.name} Test Technician Direct`,
+      description: "Formal technician schedule service for local and test acceptance.",
+      categoryId: shiatsuService.categoryId,
+      priceAmount: toSeedJpyAmount(shiatsuService.priceAmount),
+      currency: shiatsuService.currency,
+      durationMinutes: shiatsuService.durationMinutes,
+      coverImageUrl: primaryTechnicianSeed.service.coverUrl,
+      createdBy: formalScheduleTechnician.id
+    });
+  }
   const seedSlotStarts = [
     new Date("2026-05-26T01:00:00.000Z"),
     new Date("2026-05-26T02:30:00.000Z"),

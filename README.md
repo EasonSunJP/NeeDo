@@ -84,6 +84,18 @@ Passwordless test-login shortcuts are not part of the formal login chain. Seeded
 
 Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the public client login page immediately enter the frontend portals (`/`, `/merchant`, `/technician`, `/afirieito`) without calling an auth API. This is only for short-term preview access while API routing is unstable; backend routes such as `/admin` and `/merchant-admin` still reject the temporary frontend session.
 
+## Formal Schedule Inventory
+
+Merchant and technician schedule portals now maintain customer-bookable inventory through identity-scoped `/api/v1/*/schedule/slots` APIs. The backend derives the shop or technician profile from the active authenticated identity, validates explicit-offset ISO timestamps, prevents overlapping technician slots, and updates matching availability records transactionally. Personal calendar notes remain a separate, non-bookable compatibility lane.
+
+Verify schedule scope, exact UTC storage, overlap handling, and concurrent capacity behavior against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:schedule-flow
+```
+
+The check refuses production flags and remote database hosts, creates uniquely named temporary records, and removes those records after verification.
+
 ## Current Scope
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。
@@ -91,7 +103,7 @@ Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the
 - 运营后台：Dashboard、Analytics、Data Center、Orders、Field Jobs、CRM、Marketing、Finance、Reviews、Merchants、Roles、Travel Settings。
 - 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、UI装修、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
-- Mock 数据：覆盖核心实体与业务流程，后续可替换为 API/Prisma 数据源。
+- Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据和正式可预约排班已迁移到 API/Prisma，禁止新增正式业务 mock。
 - 多语言：用户端与后台端支持中文、日本語、English 三语切换，语言偏好会保存在本地。
 - 后台主题：运营控制台支持黑夜 / 白天两套视觉主题，可在后台顶部随时切换。
 

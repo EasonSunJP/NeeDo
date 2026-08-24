@@ -355,6 +355,8 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-admin",
     "分页读取本店真实排班"
   ),
+  createPermission("schedule:slots:list", "正式排班列表", "api", "schedule", "分页读取当前身份范围内的正式排班与可预约库存"),
+  createPermission("schedule:slots:write", "正式排班维护", "api", "schedule", "创建、更新、阻塞和软删除当前身份范围内的排班槽位"),
   createPermission(
     "merchant-admin:finance:list",
     "商户后台财务结算",
@@ -643,7 +645,9 @@ const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
   "order:start",
   "order:complete",
   "wallet:read",
-  "wallet:ledger:list"
+  "wallet:ledger:list",
+  "schedule:slots:list",
+  "schedule:slots:write"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const REALTIME_USER_PERMISSION_CODES = [

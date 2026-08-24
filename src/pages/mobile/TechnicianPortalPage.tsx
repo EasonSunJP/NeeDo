@@ -38,6 +38,7 @@ import {
 import { ScheduleSearchField } from "../../components/scheduling/ScheduleSearchField";
 import { TechnicianShiftPlanningPanel, type TechnicianPlanningStep } from "../../components/scheduling/TechnicianShiftPlanningPanel";
 import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
+import { FormalScheduleInventoryPanel } from "../../components/scheduling/FormalScheduleInventoryPanel";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
@@ -5470,6 +5471,7 @@ export function TechnicianPortalPage() {
             <div className="w-full min-w-0 max-w-full overflow-visible">
               {schedulePrimaryTab === "mySchedule" ? (
                 <div className="space-y-4">
+                  <FormalScheduleInventoryPanel scope="technician" shopId={technicianShopApiId} />
                   <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" searchQuery={scheduleSearchQuery} />
                 </div>
               ) : null}

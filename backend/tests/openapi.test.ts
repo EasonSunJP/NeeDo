@@ -128,6 +128,10 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/services");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/services/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule/slots");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule/slots/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations");
     expect(response.body.paths).toHaveProperty(
       "/api/v1/im/conversations/{conversationId}/messages"
@@ -184,6 +188,8 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("BackofficeService");
     expect(response.body.components.schemas).toHaveProperty("BackofficeServiceCreateInput");
     expect(response.body.components.schemas).toHaveProperty("BackofficeServiceUpdateInput");
+    expect(response.body.components.schemas).toHaveProperty("ScheduleSlotCreateInput");
+    expect(response.body.components.schemas).toHaveProperty("ScheduleSlotUpdateInput");
     [
       ["/api/v1/backoffice/shops/{id}", "patch"],
       ["/api/v1/backoffice/technicians/{id}", "patch"],

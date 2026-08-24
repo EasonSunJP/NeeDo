@@ -6,8 +6,16 @@ import type {
   BookingOrderStatusPayload,
   BookingRepositoryPort,
   OrderTransitionRepositoryOptions,
-  OrderListInput
+  OrderListInput,
+  ScheduleListInput,
+  ScheduleMutationResult,
+  ScheduleScope,
+  ScheduleSlotCreateInput,
+  ScheduleSlotPayload,
+  ScheduleSlotUpdateInput
 } from "../repositories/booking.repository";
+import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { AuditLogService } from "./audit-log.service";
 import type { BookingLedgerSettlementPort } from "./ledger.service";
 import type { OrderStatusNotificationPort } from "./realtime.service";
 import { AppError } from "../utils/app-error";
@@ -50,11 +58,64 @@ export class BookingService {
   public constructor(
     private readonly repository: BookingRepositoryPort,
     private readonly ledgerService?: BookingLedgerSettlementPort,
-    private readonly notificationService?: OrderStatusNotificationPort
+    private readonly notificationService?: OrderStatusNotificationPort,
+    private readonly auditLogService?: Pick<AuditLogService, "record">
   ) {}
 
   public listAvailableSlots(input: AvailabilityListInput) {
     return this.repository.listAvailableSlots(input);
+  }
+
+  public async listScheduleSlots(
+    actor: AuthenticatedAccessContext,
+    input: Omit<ScheduleListInput, keyof ScheduleScope>
+  ): Promise<PaginatedResponse<ScheduleSlotPayload>> {
+    return this.repository.listScheduleSlots({ ...this.getScheduleScope(actor), ...input });
+  }
+
+  public async createScheduleSlot(
+    actor: AuthenticatedAccessContext,
+    input: Omit<ScheduleSlotCreateInput, keyof ScheduleScope>,
+    context: AuthRequestContext
+  ): Promise<ScheduleSlotPayload> {
+    const scope = this.getScheduleScope(actor);
+    const repositoryInput: ScheduleSlotCreateInput = scope.scope === "technician"
+      ? {
+          scope: "technician",
+          technicianProfileId: scope.technicianProfileId,
+          serviceId: input.serviceId,
+          technicianServiceId: input.technicianServiceId,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          capacity: input.capacity
+        }
+      : { ...input, scope: "merchant", shopId: scope.shopId };
+    const slot = this.requireScheduleMutation(await this.repository.createScheduleSlot(repositoryInput));
+    await this.recordScheduleMutation(actor, context, scope, "create", slot);
+    return slot;
+  }
+
+  public async updateScheduleSlot(
+    actor: AuthenticatedAccessContext,
+    id: number,
+    input: Omit<ScheduleSlotUpdateInput, keyof ScheduleScope | "id">,
+    context: AuthRequestContext
+  ): Promise<ScheduleSlotPayload> {
+    const scope = this.getScheduleScope(actor);
+    const slot = this.requireScheduleMutation(await this.repository.updateScheduleSlot({ ...scope, id, ...input }));
+    await this.recordScheduleMutation(actor, context, scope, "update", slot);
+    return slot;
+  }
+
+  public async deleteScheduleSlot(
+    actor: AuthenticatedAccessContext,
+    id: number,
+    context: AuthRequestContext
+  ): Promise<ScheduleSlotPayload> {
+    const scope = this.getScheduleScope(actor);
+    const slot = this.requireScheduleMutation(await this.repository.deleteScheduleSlot({ ...scope, id }));
+    await this.recordScheduleMutation(actor, context, scope, "delete", slot);
+    return slot;
   }
 
   public async createBooking(
@@ -158,6 +219,49 @@ export class BookingService {
       code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
       message: "error.booking.slot_unavailable",
       statusCode: 409
+    });
+  }
+
+  private getScheduleScope(actor: AuthenticatedAccessContext): ScheduleScope {
+    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
+      return { scope: "merchant", shopId: actor.currentIdentityScopeId };
+    }
+    if (actor.currentIdentityScopeType === "technician_profile" && actor.currentIdentityScopeId) {
+      return { scope: "technician", technicianProfileId: actor.currentIdentityScopeId };
+    }
+    throw new AppError({ code: ERROR_CODES.IDENTITY_FORBIDDEN, message: "error.auth.identity_forbidden", statusCode: 403 });
+  }
+
+  private requireScheduleMutation(result: ScheduleMutationResult): ScheduleSlotPayload {
+    if (result.outcome === "ok") return result.slot;
+    if (result.outcome === "not_found") {
+      throw new AppError({ code: ERROR_CODES.NOT_FOUND, message: "error.schedule.slot_not_found", statusCode: 404 });
+    }
+    if (result.outcome === "in_use") {
+      throw new AppError({ code: ERROR_CODES.SCHEDULE_SLOT_IN_USE, message: "error.schedule.slot_in_use", statusCode: 409 });
+    }
+    throw new AppError({
+      code: ERROR_CODES.SCHEDULE_CONFLICT,
+      message: result.outcome === "duration_mismatch" ? "error.schedule.duration_mismatch" : "error.schedule.conflict",
+      statusCode: 409
+    });
+  }
+
+  private async recordScheduleMutation(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    scope: ScheduleScope,
+    operation: "create" | "update" | "delete",
+    slot: ScheduleSlotPayload
+  ): Promise<void> {
+    if (!this.auditLogService) throw new Error("Schedule audit log service is required");
+    await this.auditLogService.record({
+      actor,
+      action: `${scope.scope === "merchant" ? "merchant_admin" : "technician"}.schedule_slot.${operation}`,
+      targetType: "ScheduleSlot",
+      targetId: slot.id,
+      context,
+      metadata: { shopId: slot.shopId, technicianProfileId: slot.technicianProfileId }
     });
   }
 
