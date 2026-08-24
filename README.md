@@ -12,24 +12,29 @@ npm run dev
 当前仓库的开发启动方式已经拆分为：
 
 ```bash
-# 默认：同时启动前端 + mock backend
+# 默认：同时启动前端 + 正式 backend（MySQL / Redis / /api/v1）
 npm run dev
 
-# 前端
+# 同上，名称更明确
+npm run dev:formal
+
+# 只启动前端
 npm run dev:frontend
 
-# 本地 mock backend 状态服务
+# 旧的本地 mock backend 状态服务（仅兼容）
 npm run dev:backend
 
-# 一键同时启动前端 + mock backend
-npm run dev:all
+# 旧的前端 + mock backend 组合（仅兼容）
+npm run dev:legacy
 ```
 
 说明：
 
 - 当前仓库已包含正式 `backend/` 工程；登录、Auth、RBAC、User Management 必须走真实 `/api/v1` 后端。
 - 部分旧业务页面仍保留 legacy mock compatibility，例如 `src/features/im/api.ts`，不得继续扩张为新的正式实现。
-- `npm run dev:backend` 提供的是本地 mock backend 状态服务，便于联调和健康检查，不代表真实业务后端已接入。
+- 首次运行前把 `backend/.env.dev.example` 复制为未跟踪的 `backend/.env.dev`，并启动本地 MySQL/Redis、应用 migration 与 seed。
+- `npm run dev:formal` 会检查端口上是否已经是 NeeDo 正式后端/前端，安全复用正确服务，拒绝覆盖无关进程；可用 `FORMAL_BACKEND_PORT`、`FRONTEND_PORT`、`FORMAL_BACKEND_ENV_FILE` 覆盖本地配置。
+- `npm run dev:backend` 提供的是旧 mock backend 状态服务，只为静态兼容保留，不代表真实业务后端。
 - 本项目默认前端端口已改为 `5180`，避免占用其他项目正在使用的 `5173`、`5175` 和 `5176`。
 - 如果 `5180` 已被占用，Vite 会自动切到下一个可用端口。
 - Chrome 直接双击打开 `dist/*.html` 时，`file://` 模式通常不会正常执行 Vite 的 ES module 入口，表现就是白屏、进入页/聊天页/错误页背景都像“没了”。请改用 `npm run dev` 或 `npm run preview` 通过本地 HTTP 服务访问。

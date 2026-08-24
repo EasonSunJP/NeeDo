@@ -40,6 +40,11 @@ The staging stack contains:
 - `mysql`: MySQL 8.0 with UTF8MB4 defaults.
 - `redis`: password-protected Redis 7.2 with append-only persistence and LRU eviction policy.
 
+For local formal development, `npm run dev` (or `npm run dev:formal`) starts
+the real backend and Vite frontend together. It does not start the legacy mock
+backend. Override `FORMAL_BACKEND_PORT`, `FRONTEND_PORT`, or
+`FORMAL_BACKEND_ENV_FILE` when the defaults are already in use.
+
 ## Production
 
 ```bash
