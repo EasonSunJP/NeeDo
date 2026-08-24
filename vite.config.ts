@@ -270,7 +270,15 @@ export default defineConfig(({ command, mode }) => {
       proxy: apiProxy
     },
     test: {
-      exclude: ["backend/**", "dist/**", "node_modules/**", "**/node_modules/**", ".codex-*/**"]
+      exclude: [
+        "backend/**",
+        "dist/**",
+        "node_modules/**",
+        "**/node_modules/**",
+        ".codex-*/**",
+        ".worktrees/**",
+        "worktrees/**"
+      ]
     }
   };
 });
