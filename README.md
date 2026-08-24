@@ -134,6 +134,8 @@ The operations dashboard now renders the protected backoffice aggregate for metr
 
 The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
 
+The operations and merchant inventory routes are explicit production capability gates. They do not render sample stock, low-stock alerts, replenishment suggestions, purchase drafts, or browser-local inventory mutations. Activation requires formal item, location, and stock-movement tables; transactional purchase, transfer, count, receipt, and issue state machines; idempotency, inventory locking, RBAC, and audit evidence; plus alert, aggregate, and export contracts.
+
 The common Booking order API now enforces the same active-identity boundary for reads and state transitions: customers see their own orders, merchant identities see only their current shop, technician identities see only their assigned profile, and only global platform identities can operate across shops. Out-of-scope detail and mutation requests are returned as not found.
 
 Operations and merchant order aggregates now carry the persisted manual-payment state instead of returning a hard-coded unpaid value, so confirmed payments, refund-pending orders, and refunded orders remain accurate on every formal admin surface.

@@ -24,6 +24,7 @@ import { DataCenterPage } from "./pages/admin/DataCenterPage";
 import { DecorationPage } from "./pages/admin/DecorationPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
+import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
@@ -1302,7 +1303,7 @@ export default function App() {
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
-              <Route path="/admin/inventory" element={protect("admin", <Navigate replace to="/merchant-admin/inventory" />)} />
+              <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
               <Route path="/admin/floorplan" element={protect("admin", <Navigate replace to="/merchant-admin/stage-layout" />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
