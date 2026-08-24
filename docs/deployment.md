@@ -20,6 +20,10 @@ cp backend/.env.prod.example backend/.env.prod
 ```
 
 Replace all placeholder secrets and hostnames before starting services.
+The backend refuses to boot with production `NODE_ENV` when the deploy target is
+local/test, CORS includes HTTP or `.example` origins, metrics has no bearer
+token, JWT secrets are placeholders/reused, MySQL uses placeholder/local
+credentials, or Redis has no password.
 
 ## Staging
 
@@ -31,9 +35,10 @@ curl -fsS http://127.0.0.1:3000/api/v1/ready
 
 The staging stack contains:
 
+- `migrate`: one-shot Prisma migration image; the API waits for a successful exit.
 - `backend`: Node.js 22 backend container.
 - `mysql`: MySQL 8.0 with UTF8MB4 defaults.
-- `redis`: Redis 7.2 with append-only persistence and LRU eviction policy.
+- `redis`: password-protected Redis 7.2 with append-only persistence and LRU eviction policy.
 
 ## Production
 
@@ -51,6 +56,10 @@ the compose-managed MySQL/Redis with managed services. Preserve:
 - `/api/v1/metrics` as internal-only Prometheus scrape target.
 - Structured JSON logs from stdout/stderr.
 - W3C `traceparent` propagation and `x-trace-id` response headers.
+
+Compose uses `REDIS_PASSWORD` both to start Redis with `requirepass` and for its
+health check. `REDIS_URL` must contain the same URL-encoded password. Store both
+values in the deployment secret manager; do not commit a populated env file.
 
 ## Frontend And API Routing
 
@@ -87,7 +96,9 @@ fix the `/api/v1` proxy first.
 
 ## Migrations And Seed
 
-Run migrations before sending traffic to a new backend image:
+The supplied Compose stacks run the dedicated `migration` Docker target before
+the backend becomes eligible to start. For managed releases or a manual
+recovery, run migrations before sending traffic to a new backend image:
 
 ```bash
 cd backend

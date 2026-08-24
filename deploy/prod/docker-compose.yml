@@ -1,6 +1,19 @@
 name: needo-prod
 
 services:
+  migrate:
+    image: "${NEEDO_MIGRATION_IMAGE:-needo-backend-migration:prod}"
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+      target: migration
+    env_file:
+      - ${NEEDO_ENV_FILE:-../../backend/.env.prod}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     image: "${NEEDO_BACKEND_IMAGE:-needo-backend:prod}"
     build:
@@ -11,6 +24,8 @@ services:
     ports:
       - "${BACKEND_HOST_PORT:-3000}:${BACKEND_CONTAINER_PORT:-3000}"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       redis:
@@ -64,16 +79,16 @@ services:
 
   redis:
     image: redis:7.2-alpine
+    env_file:
+      - ${NEEDO_ENV_FILE:-../../backend/.env.prod}
     command:
-      - redis-server
-      - --appendonly
-      - "yes"
-      - --maxmemory-policy
-      - allkeys-lru
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"
     volumes:
       - needo_prod_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 12

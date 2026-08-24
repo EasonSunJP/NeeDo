@@ -10,14 +10,22 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
+
+FROM build AS migration
+
+ENV NODE_ENV=production
+CMD ["npm", "run", "prisma:migrate:deploy"]
+
+FROM build AS production-deps
+
 RUN npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=build /app/package*.json ./
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=production-deps /app/package*.json ./
+COPY --from=production-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 USER node
 EXPOSE 3000

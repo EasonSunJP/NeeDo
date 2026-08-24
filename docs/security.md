@@ -24,6 +24,11 @@ Step 14 hardens the production surface without changing business workflows.
   normal users.
 - Real `.env` files, DB passwords, JWT secrets, metrics bearer tokens, and OTP
   webhook URLs must be managed outside git.
+- Production startup rejects placeholder/reused JWT secrets, unauthenticated
+  Redis URLs, local database hosts, insecure CORS origins, and an unprotected
+  metrics endpoint.
+- The Compose Redis service enables `requirepass`; `REDIS_PASSWORD` and the
+  password embedded in `REDIS_URL` must come from the same secret source.
 
 ## Logs, Metrics, Tracing
 
