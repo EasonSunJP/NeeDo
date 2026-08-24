@@ -100,19 +100,7 @@ const navSections: AdminNavSection[] = [
     key: "cps",
     title: "Afirieito",
     items: [
-      { label: "Afirieito 同步总览", to: "/admin/afirieito", icon: "总", children: ["GMV", "ROI", "预算", "风险"] },
-      { label: "计划数据", to: "/admin/afirieito?module=plans", icon: "计", children: ["NDA管理后台", "商户自营", "状态同步"] },
-      { label: "配置镜像", to: "/admin/afirieito?module=wizard", icon: "建", children: ["计划规则", "佣金快照", "发布版本"] },
-      { label: "组织", to: "/admin/afirieito?module=team", icon: "组", children: ["组织层级", "权限", "目标拆分"] },
-      { label: "链接码QR", to: "/admin/afirieito?module=links", icon: "链", children: ["短链", "推广码", "QR"] },
-      { label: "素材渠道", to: "/admin/afirieito?module=materials", icon: "素", children: ["素材库", "渠道 ROI"] },
-      { label: "招商 CRM", to: "/admin/afirieito?module=crm", icon: "招", children: ["线索", "入驻", "首单", "SaaS"] },
-      { label: "追踪记录", to: "/admin/afirieito?module=tracking", icon: "追", children: ["曝光", "点击", "扫码", "注册"] },
-      { label: "归因结算", to: "/admin/afirieito?module=attribution", icon: "归", children: ["归因订单", "佣金状态机"] },
-      { label: "财务对账", to: "/admin/afirieito?module=settlement", icon: "账", children: ["结算批次", "冲正"] },
-      { label: "NDP 钱包", to: "/admin/afirieito?module=wallet", icon: "钱", children: ["钱包账本", "推广者收益", "商户预算"] },
-      { label: "风控审计", to: "/admin/afirieito?module=risk", icon: "控", children: ["风险事件", "审计日志"] },
-      { label: "推广者数据", to: "/admin/afirieito?module=promoters", icon: "推", children: ["达人", "BD", "区域代理"] }
+      { label: "Afirieito 能力状态", to: "/admin/afirieito", icon: "联", children: ["归因合同", "佣金状态机", "结算审计"] }
     ]
   },
   {
@@ -137,7 +125,7 @@ const navSections: AdminNavSection[] = [
     key: "agents",
     title: "代理",
     items: [
-      { label: "代理商管理", to: "/admin/afirieito?module=promoters", icon: "代", children: ["代理商列表", "代理商申请", "代理商设置"] }
+      { label: "代理能力状态", to: "/admin/afirieito", icon: "代", children: ["申请审核", "范围权限", "结算合同"] }
     ]
   },
   {

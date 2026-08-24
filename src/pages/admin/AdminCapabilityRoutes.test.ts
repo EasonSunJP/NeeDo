@@ -11,6 +11,11 @@ const notificationComposeSource = readFileSync(new URL("./AdminNotificationCompo
 const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapabilityGate.tsx", import.meta.url), "utf8");
 const dispatchSource = readFileSync(new URL("./AdminDispatchPage.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+const affiliateSource = readFileSync(new URL("./AffiliateAdminPage.tsx", import.meta.url), "utf8");
+const adminLayoutSource = readFileSync(
+  new URL("../../components/admin/AdminLayout.tsx", import.meta.url),
+  "utf8"
+);
 
 describe("operations timeline production capability gate", () => {
   it("does not present sample operations history as persisted records", () => {
@@ -102,5 +107,36 @@ describe("platform dispatch production capability gate", () => {
     expect(dispatchSource).toContain("跨店技师可用性、冲突锁、范围 RBAC 与不可变审计");
     expect(dispatchSource).toContain("服务端筛选、分页、聚合、SLA 与导出合同");
     expect(dispatchSource).toContain("当前不会跳转到任何单店商户工作区");
+  });
+});
+
+describe("affiliate administration production capability gate", () => {
+  it("does not mount the browser-local CPS workspace on the formal admin route", () => {
+    expect(appSource).toContain(
+      'path="/admin/afirieito" element={protect("admin", <AffiliateAdminPage />)}'
+    );
+    expect(appSource).not.toContain('import { CpsPage } from "./pages/admin/CpsPage"');
+    expect(appSource).not.toContain(
+      'path="/admin/afirieito" element={protect("admin", <CpsPage />)}'
+    );
+  });
+
+  it("collapses unsupported affiliate modules into one capability-status entry", () => {
+    expect(adminLayoutSource).toContain('label: "Afirieito 能力状态"');
+    expect(adminLayoutSource).not.toContain('/admin/afirieito?module=plans');
+    expect(adminLayoutSource).not.toContain('/admin/afirieito?module=attribution');
+    expect(adminLayoutSource).not.toContain('/admin/afirieito?module=settlement');
+    expect(adminLayoutSource).not.toContain('/admin/afirieito?module=promoters');
+  });
+
+  it("states the attribution, commission, settlement, wallet and audit prerequisites", () => {
+    expect(affiliateSource).toContain("正式 Afirieito 管理尚未启用");
+    expect(affiliateSource).toContain(
+      "AffiliateProgram、Promoter、AffiliateLink、AttributionTouch 与 CommissionClaim 表和 migration"
+    );
+    expect(affiliateSource).toContain("申请、审核、链接签发、归因、佣金锁定、冲正与结算状态机 API");
+    expect(affiliateSource).toContain("防重复归因、幂等事件、范围 RBAC、风控与不可变审计");
+    expect(affiliateSource).toContain("钱包账本、结算批次、支付凭证、对账、分页、聚合与导出合同");
+    expect(affiliateSource).toContain("当前不会展示浏览器保存的 GMV、ROI、预算、链接、佣金或结算数据");
   });
 });

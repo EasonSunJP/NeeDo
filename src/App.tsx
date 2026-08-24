@@ -10,6 +10,7 @@ import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
 import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
+import { AffiliateAdminPage } from "./pages/admin/AffiliateAdminPage";
 import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
 import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
 import { AdminNotificationComposePage } from "./pages/admin/AdminNotificationComposePage";
@@ -19,7 +20,6 @@ import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
 import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
 import { CRMPage } from "./pages/admin/CRMPage";
-import { CpsPage } from "./pages/admin/CpsPage";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { DataCenterPage } from "./pages/admin/DataCenterPage";
 import { DecorationPage } from "./pages/admin/DecorationPage";
@@ -1299,7 +1299,7 @@ export default function App() {
               <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
               <Route path="/admin/crm" element={protect("admin", <CRMPage />)} />
               <Route path="/admin/users" element={protectPermission("admin", "page:user-management", <UsersPage />)} />
-              <Route path="/admin/afirieito" element={protect("admin", <CpsPage />)} />
+              <Route path="/admin/afirieito" element={protect("admin", <AffiliateAdminPage />)} />
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
