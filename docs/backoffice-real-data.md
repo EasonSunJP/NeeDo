@@ -57,6 +57,7 @@
 - `POST /api/v1/merchant-admin/shops/:shopId/technicians/:technicianProfileId/compensation-profile/preview`
 - `GET /api/v1/merchant-admin/technicians`
 - `GET /api/v1/merchant-admin/shop`
+- `PATCH /api/v1/merchant-admin/shop`
 
 真实测试账号登录：
 

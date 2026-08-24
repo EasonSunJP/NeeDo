@@ -1991,6 +1991,7 @@ function shopPayload(index: number): BackofficeShopPayload {
     ownerUserId: index + 20,
     ownerEmail: store.accountUsername ? `${store.accountUsername}@needo.jp` : null,
     name: store.name,
+    description: store.description,
     city: store.area,
     address: store.address,
     phone: null,

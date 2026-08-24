@@ -134,6 +134,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/shop");
+    expect(response.body.paths["/api/v1/merchant-admin/shop"]).toHaveProperty("patch");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}/approve");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers");

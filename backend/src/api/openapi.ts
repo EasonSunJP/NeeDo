@@ -274,6 +274,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           isRecommended: { type: "boolean" }
         }
       },
+      MerchantShopUpdateInput: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 1,
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          address: { type: "string", minLength: 1, maxLength: 255 },
+          phone: { type: ["string", "null"], minLength: 5, maxLength: 32 }
+        }
+      },
       BackofficeTechnicianUpdateInput: {
         type: "object",
         minProperties: 1,
@@ -4552,6 +4564,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Current merchant shop payload" }
+        }
+      },
+      patch: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Update the current authenticated shop profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantShopUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Current merchant shop updated" },
+          "404": { description: "Current merchant shop not found" }
         }
       }
     },

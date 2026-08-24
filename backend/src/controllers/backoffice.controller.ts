@@ -12,7 +12,8 @@ import {
   backofficeShopIdParamSchema,
   backofficeShopUpdateBodySchema,
   backofficeTechnicianApproveBodySchema,
-  backofficeTechnicianUpdateBodySchema
+  backofficeTechnicianUpdateBodySchema,
+  merchantShopUpdateBodySchema
 } from "../validators/backoffice.validator";
 
 export class BackofficeController {
@@ -157,6 +158,9 @@ export class BackofficeController {
   );
   public updatePlatformShop = this.createMutationHandler(200, (service, request, response) =>
     service.updatePlatformShop(this.getId(request), backofficeShopUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
+  );
+  public updateMerchantShop = this.createMutationHandler(200, (service, request, response) =>
+    service.updateMerchantShop(merchantShopUpdateBodySchema.parse(request.body), getAuthenticatedAccess(response), getRequestContext(request))
   );
   public approvePlatformShop = this.createMutationHandler(200, (service, request, response) =>
     service.approvePlatformShop(this.getId(request), getAuthenticatedAccess(response), getRequestContext(request))

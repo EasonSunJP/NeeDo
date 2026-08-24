@@ -45,7 +45,9 @@ const createFixture = async () => {
     "merchant-admin:technicians:write",
     "merchant-admin:customers:list",
     "merchant-admin:services:list",
-    "merchant-admin:services:write"
+    "merchant-admin:services:write",
+    "merchant-admin:shop:read",
+    "merchant-admin:shop:write"
   ];
   const makeRole = (code: string, permissions: string[]) => ({
     code,
@@ -96,6 +98,7 @@ const createFixture = async () => {
     ownerUserId: 20,
     ownerEmail: "owner@example.com",
     name: "Aoyama Studio",
+    description: "A calm private studio",
     city: "Tokyo",
     address: "Aoyama 1-1",
     phone: null,
@@ -179,6 +182,34 @@ const createFixture = async () => {
 };
 
 describe("master data write APIs", () => {
+  it("updates only the authenticated merchant shop with validation and audit", async () => {
+    const fixture = await createFixture();
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    const response = await request(fixture.app)
+      .patch("/api/v1/merchant-admin/shop")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .send({ name: "Updated Studio", description: "Updated profile", city: "Yokohama" })
+      .expect(200);
+
+    expect(response.body.data.name).toBe("Updated Studio");
+    expect(fixture.backofficeRepository.updateShop).toHaveBeenCalledWith(11, {
+      name: "Updated Studio",
+      description: "Updated profile",
+      city: "Yokohama"
+    });
+    expect(fixture.auditLogs).toContainEqual(expect.objectContaining({
+      action: "merchant_admin.shop.update",
+      targetType: "Shop"
+    }));
+
+    await request(fixture.app)
+      .patch("/api/v1/merchant-admin/shop")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .send({ name: "" })
+      .expect(400);
+  });
+
   it("creates, updates, approves, and soft-deletes a shop with validation and audit logs", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");

@@ -43,6 +43,21 @@ describe("backofficeRealDataApi master data writes", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/services", expect.objectContaining({ method: "POST" }));
   });
 
+  it("updates the authenticated merchant shop without accepting a shop id", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await backofficeRealDataApi.updateMerchantShop({
+      name: "Updated Studio",
+      description: "Updated profile",
+      city: "Yokohama"
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/shop", {
+      body: { name: "Updated Studio", description: "Updated profile", city: "Yokohama" },
+      method: "PATCH"
+    });
+  });
+
   it.each([
     ["pending", "unpaid"],
     ["confirmed", "paid"],

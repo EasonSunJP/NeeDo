@@ -555,6 +555,13 @@ export const SYSTEM_PERMISSIONS = [
     "读取当前店铺资料"
   ),
   createPermission(
+    "merchant-admin:shop:write",
+    "商户后台店铺资料维护",
+    "api",
+    "merchant-admin",
+    "更新当前店铺的基础资料"
+  ),
+  createPermission(
     "merchant-admin:shop:pricing-mode:read",
     "商户定价模式读取",
     "api",
@@ -764,6 +771,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:services:list",
   "merchant-admin:services:write",
   "merchant-admin:shop:read",
+  "merchant-admin:shop:write",
   "merchant-admin:shop:pricing-mode:read",
   "merchant-admin:shop:pricing-mode:update",
   "menu:finance",

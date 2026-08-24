@@ -1172,6 +1172,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ownerUserId: shop.ownerUserId,
       ownerEmail: shop.owner?.email ?? null,
       name: shop.name,
+      description: shop.description,
       city: shop.city,
       address: shop.address,
       phone: shop.phone,

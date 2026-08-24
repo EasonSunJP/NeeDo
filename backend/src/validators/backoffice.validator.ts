@@ -44,14 +44,22 @@ export const backofficeShopCreateBodySchema = z.object({
   isRecommended: z.boolean().optional()
 });
 
-export const backofficeShopUpdateBodySchema = z.object({
+const merchantShopUpdateFields = {
   name: z.string().trim().min(1).max(160).optional(),
   description: z.string().trim().max(5000).nullable().optional(),
   city: z.string().trim().min(1).max(100).optional(),
   address: z.string().trim().min(1).max(255).optional(),
-  phone: z.string().trim().min(5).max(32).nullable().optional(),
+  phone: z.string().trim().min(5).max(32).nullable().optional()
+};
+
+export const backofficeShopUpdateBodySchema = z.object({
+  ...merchantShopUpdateFields,
   isRecommended: z.boolean().optional()
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+
+export const merchantShopUpdateBodySchema = z.object(merchantShopUpdateFields)
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export const backofficeTechnicianUpdateBodySchema = z.object({
   displayName: z.string().trim().min(1).max(120).optional(),
@@ -105,6 +113,7 @@ export const backofficeServiceUpdateBodySchema = z.object({
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
 export type BackofficeShopCreateBody = z.infer<typeof backofficeShopCreateBodySchema>;
 export type BackofficeShopUpdateBody = z.infer<typeof backofficeShopUpdateBodySchema>;
+export type MerchantShopUpdateBody = z.infer<typeof merchantShopUpdateBodySchema>;
 export type BackofficeTechnicianUpdateBody = z.infer<typeof backofficeTechnicianUpdateBodySchema>;
 export type BackofficeTechnicianApproveBody = z.infer<typeof backofficeTechnicianApproveBodySchema>;
 export type BackofficeCustomerUpdateBody = z.infer<typeof backofficeCustomerUpdateBodySchema>;

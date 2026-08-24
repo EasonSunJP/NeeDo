@@ -98,6 +98,7 @@ export interface BackofficeShopPayload {
   ownerUserId: number | null;
   ownerEmail: string | null;
   name: string;
+  description: string | null;
   city: string;
   address: string;
   phone: string | null;
@@ -151,6 +152,7 @@ export interface BackofficeShopCreateInput {
 }
 
 export type BackofficeShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone" | "isRecommended">>;
+export type MerchantShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">>;
 export type BackofficeTechnicianUpdateInput = Partial<Pick<BackofficeTechnicianPayload, "displayName" | "city" | "serviceArea">> & { shopId?: number | null; isRecommended?: boolean };
 export type BackofficeCustomerUpdateInput = Partial<Pick<BackofficeCustomerPayload, "displayName" | "city" | "membershipLevel" | "isPublic">> & { bio?: string | null };
 export type BackofficeServiceCreateInput = Pick<BackofficeServicePayload, "categoryId" | "name" | "city" | "serviceMode" | "priceAmount" | "durationMinutes"> & Partial<Pick<BackofficeServicePayload, "technicianProfileId" | "description" | "status" | "isRecommended" | "sortOrder">>;
@@ -239,6 +241,9 @@ export const backofficeRealDataApi = {
   },
   merchantShop() {
     return httpClient.request<PaginatedApiPayload<BackofficeShopPayload>>("/merchant-admin/shop");
+  },
+  updateMerchantShop(input: MerchantShopUpdateInput) {
+    return httpClient.request<BackofficeShopPayload>("/merchant-admin/shop", { body: input, method: "PATCH" });
   },
   createShop(input: BackofficeShopCreateInput) {
     return httpClient.request<BackofficeShopPayload>("/backoffice/shops", { body: input, method: "POST" });

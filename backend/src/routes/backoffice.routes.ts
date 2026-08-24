@@ -19,7 +19,8 @@ import {
   backofficeShopIdParamSchema,
   backofficeShopUpdateBodySchema,
   backofficeTechnicianApproveBodySchema,
-  backofficeTechnicianUpdateBodySchema
+  backofficeTechnicianUpdateBodySchema,
+  merchantShopUpdateBodySchema
 } from "../validators/backoffice.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -47,7 +48,8 @@ export const BACKOFFICE_ROUTE_PERMISSIONS = {
   merchantCustomers: "merchant-admin:customers:list",
   merchantServices: "merchant-admin:services:list",
   merchantServicesWrite: "merchant-admin:services:write",
-  merchantShop: "merchant-admin:shop:read"
+  merchantShop: "merchant-admin:shop:read",
+  merchantShopWrite: "merchant-admin:shop:write"
 } as const;
 
 export const createBackofficeRoutes = (
@@ -177,6 +179,13 @@ export const createBackofficeRoutes = (
     authenticate(),
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantShop),
     controller.merchantShop
+  );
+  router.patch(
+    "/merchant-admin/shop",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantShopWrite),
+    validateRequest({ body: merchantShopUpdateBodySchema }),
+    controller.updateMerchantShop
   );
   router.patch("/merchant-admin/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeTechnicianUpdateBodySchema }), controller.updateMerchantTechnician);
   router.post("/merchant-admin/technicians/:id/approve", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.approveMerchantTechnician);

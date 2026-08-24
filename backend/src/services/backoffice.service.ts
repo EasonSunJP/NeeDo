@@ -7,6 +7,7 @@ import type {
   BackofficeServiceUpdateBody,
   BackofficeShopCreateBody,
   BackofficeShopUpdateBody,
+  MerchantShopUpdateBody,
   BackofficeTechnicianApproveBody,
   BackofficeTechnicianUpdateBody
 } from "../validators/backoffice.validator";
@@ -127,6 +128,7 @@ export interface BackofficeShopPayload {
   ownerUserId: number | null;
   ownerEmail: string | null;
   name: string;
+  description: string | null;
   city: string;
   address: string;
   phone: string | null;
@@ -457,6 +459,23 @@ export class BackofficeService {
     const shop = this.requireResult(await this.repository.updateShop(id, input), "error.shop.not_found");
     await this.record(actor, context, "backoffice.shop.update", "Shop", {
       shopId: id,
+      changedFields: Object.keys(input)
+    });
+    return shop;
+  }
+
+  public async updateMerchantShop(
+    input: MerchantShopUpdateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeShopPayload> {
+    const scope = this.getMerchantScope(actor);
+    const shop = this.requireResult(
+      await this.repository.updateShop(scope.shopId, input),
+      "error.shop.not_found"
+    );
+    await this.record(actor, context, "merchant_admin.shop.update", "Shop", {
+      shopId: scope.shopId,
       changedFields: Object.keys(input)
     });
     return shop;
