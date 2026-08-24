@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType } from "react";
-import { isStaticDemoMode } from "../../api/staticDemo";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
 import { isFrontendBypassSession } from "../../auth/rbac";
 import {

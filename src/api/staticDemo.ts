@@ -68,6 +68,8 @@ import type {
   CoreTechnicianCard,
   CoreTechnicianDetail
 } from "../features/core-read/api";
+import { isStaticDemoMode, isStaticDemoStrictMode } from "./staticDemoMode";
+export { isStaticDemoMode, isStaticDemoStrictMode } from "./staticDemoMode";
 import type {
   PaginatedData,
   PermissionPayload,
@@ -117,23 +119,6 @@ const staticOrderIncomeReports = new Map<number, {
   confirmedAt: string | null;
   moneyTimeline: MoneyTimelineEvent[];
 }>();
-
-function isEnabledFlag(value: string | undefined) {
-  return ["1", "static", "true", "yes"].includes((value ?? "").trim().toLowerCase());
-}
-
-export function isStaticDemoMode() {
-  const isDedicatedStaticBuild = import.meta.env.VITE_NEEDO_BUILD_TARGET === "static-demo";
-  if (import.meta.env.PROD && !isDedicatedStaticBuild) {
-    return false;
-  }
-
-  return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO);
-}
-
-export function isStaticDemoStrictMode() {
-  return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO_STRICT) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO_STRICT);
-}
 
 function clone<TValue>(value: TValue): TValue {
   return JSON.parse(JSON.stringify(value)) as TValue;
