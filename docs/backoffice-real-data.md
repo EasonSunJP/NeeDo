@@ -24,8 +24,10 @@
 
 - `/api/v1/backoffice/schedule`
 - `/api/v1/merchant-admin/schedule`
+- `GET/POST /api/v1/merchant-admin/schedule/slots`
+- `PATCH/DELETE /api/v1/merchant-admin/schedule/slots/:id`
 
-现有调度 UI 仍使用原本的排班工作台组件，下一批可把这些组件的数据源切换到上述接口。
+商户电脑后台调度中心已完成正式数据切换：现状页分页读取当前 `shop` 身份范围的 `ScheduleSlot`；排班页支持按正式服务时长创建时段、阻塞/恢复和软删除，所有写操作都由后端做范围校验、冲突校验和审计。预约一览统一进入正式订单中心。旧 `dispatch-center` 浏览器 store、静态订单和模拟预测不再从正式商户后台路由进入；自动/智能排班在规则版本、审批状态机和优化器合同完成前显示生产保护页。
 
 ## 新增 API
 
@@ -362,6 +364,8 @@ Step 12E 不新建 Request 大厅、调度大厅、退款状态机或前端入�
 - `src/pages/merchant-admin/MerchantAdminDashboardPage.tsx`
 - `src/pages/merchant-admin/MerchantAdminOrdersPage.tsx`
 - `src/pages/merchant-admin/MerchantAdminPeoplePage.tsx`
+- `src/pages/merchant-admin/dispatch-center/DispatchCenterRoutePages.tsx`
+- `src/pages/merchant-admin/dispatch-center/MerchantScheduleManagementPanel.tsx`
 - `src/components/merchant-admin/MerchantStoreOperationsWorkspace.tsx`
 - `src/pages/mobile/TechnicianPayrollPage.tsx`
 - `src/pages/auth/LoginPage.tsx`
@@ -377,4 +381,4 @@ Step 12E 不新建 Request 大厅、调度大厅、退款状态机或前端入�
 - 本次不重做后台 UI。
 - 本次不做银行代付、税务/发票、文件上传和多级复杂审批；工资调整只覆盖基础申请、提交、审批/驳回、申诉处理、支付记录确认和锁定应用。
 - 本次只做 Request dispatch fee 的后端/API/账本适配，不做 Request 大厅、复杂调度、退款、商户违约赔付或前端入口。
-- 旧后台周边模块仍可能保留 legacy mock compatibility；已接入的核心指标、订单、财务、技师、店铺数据优先走真实 API。
+- 旧后台周边模块仍可能保留 legacy mock compatibility；正式运营/商户后台的核心指标、订单、排班、财务、技师、店铺入口不再使用这些兼容数据。
