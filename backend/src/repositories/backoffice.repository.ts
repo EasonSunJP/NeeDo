@@ -870,6 +870,18 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       deletedAt: null,
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
       ...(input.status ? { status: this.orderStatusToDb(input.status) } : {}),
+      ...(input.keyword
+        ? {
+            OR: [
+              { orderNo: { contains: input.keyword } },
+              { customer: { username: { contains: input.keyword } } },
+              { customer: { email: { contains: input.keyword } } },
+              { service: { name: { contains: input.keyword } } },
+              { shop: { name: { contains: input.keyword } } },
+              { technicianProfile: { displayName: { contains: input.keyword } } }
+            ]
+          }
+        : {}),
       ...(input.from || input.to
         ? {
             startsAt: {
@@ -889,6 +901,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       deletedAt: null,
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
       ...(input.status ? { status: this.scheduleStatusToDb(input.status) } : {}),
+      ...(input.keyword
+        ? {
+            OR: [
+              { service: { name: { contains: input.keyword } } },
+              { shop: { name: { contains: input.keyword } } },
+              { technicianProfile: { displayName: { contains: input.keyword } } }
+            ]
+          }
+        : {}),
       ...(input.from || input.to
         ? {
             startsAt: {
@@ -907,7 +928,18 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       deletedAt: null,
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
-      ...(input.status ? { status: input.status } : {})
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.keyword
+        ? {
+            OR: [
+              { displayName: { contains: input.keyword } },
+              { city: { contains: input.keyword } },
+              { serviceArea: { contains: input.keyword } },
+              { user: { email: { contains: input.keyword } } },
+              { shop: { name: { contains: input.keyword } } }
+            ]
+          }
+        : {})
     };
   }
 
@@ -915,7 +947,18 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       deletedAt: null,
       ...(scope.scope === "merchant" ? { id: scope.shopId } : {}),
-      ...(input.status ? { status: input.status } : {})
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.keyword
+        ? {
+            OR: [
+              { name: { contains: input.keyword } },
+              { description: { contains: input.keyword } },
+              { city: { contains: input.keyword } },
+              { address: { contains: input.keyword } },
+              { owner: { email: { contains: input.keyword } } }
+            ]
+          }
+        : {})
     };
   }
 
@@ -927,6 +970,16 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       deletedAt: null,
       ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}),
       ...(input.status ? { settlementStatus: input.status } : {}),
+      ...(input.keyword
+        ? {
+            OR: [
+              { paymentChannel: { contains: input.keyword } },
+              { bookingOrder: { orderNo: { contains: input.keyword } } },
+              { bookingOrder: { shop: { name: { contains: input.keyword } } } },
+              { bookingOrder: { technicianProfile: { displayName: { contains: input.keyword } } } }
+            ]
+          }
+        : {}),
       ...(input.from || input.to
         ? {
             createdAt: {
