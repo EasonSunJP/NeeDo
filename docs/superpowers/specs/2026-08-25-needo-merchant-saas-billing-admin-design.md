@@ -298,6 +298,7 @@
 建议新增以下运营后台路由：
 
 - `GET /api/v1/backoffice/merchant-accounts`
+- `POST /api/v1/backoffice/merchant-accounts`
 - `GET /api/v1/backoffice/merchant-accounts/:id`
 - `PATCH /api/v1/backoffice/merchant-accounts/:id/billing-profile`
 - `PATCH /api/v1/backoffice/merchant-accounts/:id/payment-responsibility`
