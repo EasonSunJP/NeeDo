@@ -19,6 +19,7 @@ describe("master data pages", () => {
     const source = read("./TechniciansPage.tsx");
     expect(source).not.toContain("../../data/mock");
     expect(source).not.toContain("virtualSeeds");
+    expect(source).not.toContain("TechnicianProfilePanel");
     expect(source).toContain("backofficeRealDataApi.approveTechnician");
     expect(source).toContain("backofficeRealDataApi.updateTechnician");
   });

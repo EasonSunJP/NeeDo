@@ -10,7 +10,6 @@ import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { TechnicianListModule } from "../../components/admin/TechnicianListModule";
-import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
@@ -47,7 +46,6 @@ export function TechniciansPage() {
   useEffect(() => { void load(); }, [load]);
 
   const selectedRecord = technicians.find((technician) => technician.id === selectedId) ?? null;
-  const selectedTechnician = selectedRecord ? mapBackofficeTechnician(selectedRecord) : null;
   const mappedTechnicians = useMemo(() => technicians.map(mapBackofficeTechnician), [technicians]);
   const mappedShops = useMemo(() => shops.map(mapBackofficeStore), [shops]);
 
@@ -84,9 +82,8 @@ export function TechniciansPage() {
       </ModuleShell>
 
       <Drawer open={Boolean(selectedRecord)} title="技师集中详情" onClose={() => setSelectedId(null)}>
-        {selectedRecord && selectedTechnician ? <div className="space-y-5">
+        {selectedRecord ? <div className="space-y-5">
           <DetailGrid items={[{ label: "技师 ID", value: selectedRecord.id }, { label: "登录邮箱", value: selectedRecord.email }, { label: "状态", value: selectedRecord.status }, { label: "所属店铺", value: selectedRecord.shopName ?? "未分配" }, { label: "审核时间", value: selectedRecord.verifiedAt ?? "未审核" }, { label: "创建时间", value: selectedRecord.createdAt }]} />
-          <TechnicianProfilePanel technician={selectedTechnician} />
           {(["displayName", "city", "serviceArea"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))} value={draft[field]} /></label>)}
           <label className="block"><span className="mb-2 block text-sm font-black">所属店铺</span><select className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, shopId: event.target.value }))} value={draft.shopId}><option value="">未分配</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select></label>
           <div className="flex flex-wrap gap-2">
