@@ -111,6 +111,23 @@ npm run export:simulation-accounts-xlsx
 
 Both account files contain `account_type`, `shop_name`, `display_name`, `email`, `password`, `status`, and `notes`. They are local credentials and must never be committed, published, or used in production.
 
+## Formal Local Acceptance And Release
+
+The normal local formal entry is `npm run dev`, which starts the Express/MySQL/
+Redis backend and the Vite frontend together. After startup, use the role-specific
+entries below instead of the static-demo build:
+
+- Operations: `http://127.0.0.1:5180/pf-admin.html#/admin`
+- Merchant: `http://127.0.0.1:5180/store-admin.html#/merchant-admin`
+- Customer: `http://127.0.0.1:5180/user.html#/`
+- Technician: `http://127.0.0.1:5180/technician.html#/technician`
+
+Run `npm run verify:production-build` before handoff. The complete local,
+staging, production, rollback, deferred-provider, and credential-handling gates
+are in `docs/production-release-checklist.md`. Local acceptance is a release
+candidate check; it is not evidence of a public deployment or any 1k–100k
+capacity tier.
+
 Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the public client login page immediately enter the frontend portals (`/`, `/merchant`, `/technician`, `/afirieito`) without calling an auth API. This is only for short-term preview access while API routing is unstable; backend routes such as `/admin` and `/merchant-admin` still reject the temporary frontend session.
 
 ## Formal Schedule Inventory
