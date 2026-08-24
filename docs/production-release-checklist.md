@@ -25,18 +25,20 @@ for presentation compatibility.
 
 ## 2. Local Formal Gate
 
-- [ ] `npm test`
-- [ ] `npm run lint`
-- [ ] `npm run verify:production-build`
-- [ ] `npm --prefix backend test`
-- [ ] `npm --prefix backend run lint`
-- [ ] `npm --prefix backend run build`
-- [ ] `ENV_FILE=.env.dev npm --prefix backend run audit:database-indexes`
-- [ ] `ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:simulation-data`
-- [ ] `SMOKE_BASE_URL=<formal-api> SMOKE_EMAIL=<least-privilege-account> SMOKE_PASSWORD=<secret> npm run verify:production-smoke`
-- [ ] Browser acceptance completed for all four role entries with no new runtime errors
-- [ ] Account CSV/XLSX exists under ignored `outputs/` and is absent from Git
-- [ ] `git diff --check` is clean
+Verified on 2026-08-25 against local MySQL `needo_dev` and local Redis:
+
+- [x] `npm test` — 151 files, 723 tests
+- [x] `npm run lint`
+- [x] `npm run verify:production-build` — 8 HTML entries, 22 assets
+- [x] `npm --prefix backend test` — 54 suites, 213 tests
+- [x] `npm --prefix backend run lint`
+- [x] `npm --prefix backend run build`
+- [x] `ENV_FILE=.env.dev npm --prefix backend run audit:database-indexes` — 56 tables, 436 indexes, 122 foreign keys, zero findings
+- [x] `ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:simulation-data` — 10 shops, 100 technicians, 100 customers, 2,600 schedule slots, 1,801 bookings, status `ok`
+- [x] `SMOKE_BASE_URL=<formal-api> SMOKE_EMAIL=<least-privilege-account> SMOKE_PASSWORD=<secret> npm run verify:production-smoke` — 8 checks
+- [x] Browser acceptance completed for all four role entries with no new runtime errors
+- [x] Account CSV/XLSX exists under ignored `outputs/` and is absent from Git; the XLSX ZIP structure and rendered first/summary pages were inspected
+- [x] `git diff --check` is clean
 
 The local Step 14 latency run is documented in
 `load-tests/reports/2026-08-25-local-development-baseline.md`. It does not
@@ -104,4 +106,3 @@ incompatible, HTTP 5xx reaches 1%, payment/ledger consistency fails, or the
 accepted latency thresholds fail. Preserve logs and metrics, shift traffic to
 the previous healthy image, and restore a database only from a tested backup
 when the failed release performed irreversible writes.
-
