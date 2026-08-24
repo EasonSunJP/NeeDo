@@ -179,6 +179,7 @@ import {
 } from "./features/im/route-pages";
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
+import { RealtimeUnreadCountsProvider } from "./features/realtime/useRealtimeUnreadCounts";
 import {
   SocialComposerPage,
   SocialDraftsPage,
@@ -976,7 +977,8 @@ export default function App() {
   return (
     <RootErrorBoundary>
       <AuthProvider>
-        <I18nProvider>
+        <RealtimeUnreadCountsProvider>
+          <I18nProvider>
           <ClientThemeProvider>
             <I18nRuntime>
               <EntityStoreBootstrap />
@@ -1318,7 +1320,8 @@ export default function App() {
               </SocialProvider>
             </I18nRuntime>
           </ClientThemeProvider>
-        </I18nProvider>
+          </I18nProvider>
+        </RealtimeUnreadCountsProvider>
       </AuthProvider>
     </RootErrorBoundary>
   );

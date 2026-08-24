@@ -9,8 +9,7 @@ import {
 } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import type { ImRoleType } from "../../features/im/model";
-import { useImStore } from "../../features/im/store";
-import { useSocial } from "../../features/social/context";
+import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
 import type { SocialPortalScope } from "../../features/social/types";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -245,8 +244,7 @@ export function MobileShell({
     ...(isNight || darkLiquidGlassNavThemes.has(theme) ? { "--client-edge-mask-rgb": "0 0 0" } : null)
   } as CSSProperties;
   const portalRole = getClientPortalRole(location.pathname);
-  const imStore = useImStore(portalRole);
-  const social = useSocial();
+  const realtimeCounts = useRealtimeUnreadCounts();
   const resolvedNavItems = navItems ?? getDefaultNavItems(location.pathname);
   const isSpecialBlack = theme === "special-black";
   const displayedNavItems = showBottomNav ? resolvedNavItems : [];
@@ -259,11 +257,10 @@ export function MobileShell({
   const visibleItems = featuredItem
     ? [...normalItems.slice(0, splitIndex), null, ...normalItems.slice(splitIndex)]
     : normalItems;
-  const socialActorKey = social.getActorForScope(portalRole);
   const navNotificationCounts: NavigationNotificationCounts = {
-    contacts: imStore.friendRequests.filter((request) => request.status === "pending").length,
-    messages: imStore.conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0),
-    moments: social.getUnreadNotificationCount(socialActorKey)
+    contacts: realtimeCounts.friendRequests,
+    messages: realtimeCounts.conversations,
+    moments: realtimeCounts.notifications
   };
   const featuredItemNotificationCount = featuredItem
     ? getNavItemNotificationCount(featuredItem, portalRole, navNotificationCounts)
