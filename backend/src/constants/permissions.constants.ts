@@ -328,6 +328,12 @@ export const SYSTEM_PERMISSIONS = [
     "backoffice",
     "分页读取运营后台店铺"
   ),
+  createPermission("backoffice:shops:write", "运营店铺维护", "api", "backoffice", "创建、更新、审核和软删除店铺及店铺账号"),
+  createPermission("backoffice:technicians:write", "运营技师维护", "api", "backoffice", "更新、归属、审核和软删除技师"),
+  createPermission("backoffice:customers:list", "运营客户列表", "api", "backoffice", "分页读取客户资料"),
+  createPermission("backoffice:customers:write", "运营客户维护", "api", "backoffice", "更新和软删除客户资料"),
+  createPermission("backoffice:services:list", "运营服务列表", "api", "backoffice", "分页读取店铺服务"),
+  createPermission("backoffice:services:write", "运营服务维护", "api", "backoffice", "创建、更新和软删除店铺服务"),
   createPermission(
     "merchant-admin:dashboard:read",
     "商户后台 Dashboard",
@@ -517,6 +523,10 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-admin",
     "分页读取本店技师"
   ),
+  createPermission("merchant-admin:technicians:write", "商户技师维护", "api", "merchant-admin", "更新、审核和移除本店技师"),
+  createPermission("merchant-admin:customers:list", "商户客户列表", "api", "merchant-admin", "分页读取与本店有预约关系的客户"),
+  createPermission("merchant-admin:services:list", "商户服务列表", "api", "merchant-admin", "分页读取本店服务"),
+  createPermission("merchant-admin:services:write", "商户服务维护", "api", "merchant-admin", "创建、更新和软删除本店服务"),
   createPermission(
     "merchant-admin:shop:read",
     "商户后台店铺资料",
@@ -680,7 +690,13 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:finance-order:read",
   "backoffice:payroll:read",
   "backoffice:technicians:list",
+  "backoffice:technicians:write",
   "backoffice:shops:list",
+  "backoffice:shops:write",
+  "backoffice:customers:list",
+  "backoffice:customers:write",
+  "backoffice:services:list",
+  "backoffice:services:write",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -711,6 +727,10 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:payroll-adjustment:write",
   "merchant-admin:payroll-adjustment:approve",
   "merchant-admin:technicians:list",
+  "merchant-admin:technicians:write",
+  "merchant-admin:customers:list",
+  "merchant-admin:services:list",
+  "merchant-admin:services:write",
   "merchant-admin:shop:read",
   "merchant-admin:shop:pricing-mode:read",
   "merchant-admin:shop:pricing-mode:update",

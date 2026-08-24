@@ -1,5 +1,15 @@
+import { hash } from "bcryptjs";
 import { ERROR_CODES } from "../constants/error-codes";
-import type { BackofficeListQuery } from "../validators/backoffice.validator";
+import type {
+  BackofficeCustomerUpdateBody,
+  BackofficeListQuery,
+  BackofficeServiceCreateBody,
+  BackofficeServiceUpdateBody,
+  BackofficeShopCreateBody,
+  BackofficeShopUpdateBody,
+  BackofficeTechnicianApproveBody,
+  BackofficeTechnicianUpdateBody
+} from "../validators/backoffice.validator";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
@@ -125,6 +135,51 @@ export interface BackofficeShopPayload {
   createdAt: string;
 }
 
+export interface BackofficeCustomerPayload {
+  id: number;
+  userId: number;
+  displayName: string;
+  email: string;
+  city: string | null;
+  membershipLevel: string;
+  isPublic: boolean;
+  bookingCount: number;
+  createdAt: string;
+}
+
+export interface BackofficeServicePayload {
+  id: number;
+  categoryId: number;
+  categoryName: string;
+  shopId: number;
+  technicianProfileId: number | null;
+  name: string;
+  description: string | null;
+  city: string;
+  serviceMode: string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  status: string;
+  isRecommended: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackofficeShopCreateData extends Omit<BackofficeShopCreateBody, "ownerPassword"> {
+  ownerPasswordHash: string;
+}
+
+export type ScopedTechnicianUpdateInput = BackofficeScope &
+  BackofficeTechnicianUpdateBody & { technicianId: number };
+export type ScopedTechnicianApprovalInput = BackofficeScope &
+  BackofficeTechnicianApproveBody & { technicianId: number; approvedAt: Date };
+export type ScopedEntityInput = BackofficeScope & { id: number };
+export type ScopedServiceCreateInput = BackofficeScope & BackofficeServiceCreateBody & { shopId: number };
+export type ScopedServiceUpdateInput = BackofficeScope &
+  BackofficeServiceUpdateBody & { serviceId: number };
+
 export interface BackofficeDashboardPayload {
   metrics: BackofficeMetricPayload[];
   orders: BackofficeOrderPayload[];
@@ -172,9 +227,31 @@ export interface BackofficeRepositoryPort {
   listShops: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeShopPayload>>;
+  findUserByEmail: (email: string) => Promise<{ id: number } | null>;
+  createShop: (input: BackofficeShopCreateData) => Promise<BackofficeShopPayload>;
+  updateShop: (id: number, input: BackofficeShopUpdateBody) => Promise<BackofficeShopPayload | null>;
+  approveShop: (id: number, approvedAt: Date) => Promise<BackofficeShopPayload | null>;
+  softDeleteShop: (id: number) => Promise<BackofficeShopPayload | null>;
+  updateTechnician: (input: ScopedTechnicianUpdateInput) => Promise<BackofficeTechnicianPayload | null>;
+  approveTechnician: (input: ScopedTechnicianApprovalInput) => Promise<BackofficeTechnicianPayload | null>;
+  softDeleteTechnician: (input: ScopedEntityInput) => Promise<BackofficeTechnicianPayload | null>;
+  listCustomers: (
+    input: BackofficeScope & BackofficeListQuery
+  ) => Promise<PaginatedResponse<BackofficeCustomerPayload>>;
+  getCustomer: (input: ScopedEntityInput) => Promise<BackofficeCustomerPayload | null>;
+  updateCustomer: (id: number, input: BackofficeCustomerUpdateBody) => Promise<BackofficeCustomerPayload | null>;
+  softDeleteCustomer: (id: number) => Promise<BackofficeCustomerPayload | null>;
+  listServices: (
+    input: BackofficeScope & BackofficeListQuery
+  ) => Promise<PaginatedResponse<BackofficeServicePayload>>;
+  createService: (input: ScopedServiceCreateInput) => Promise<BackofficeServicePayload>;
+  updateService: (input: ScopedServiceUpdateInput) => Promise<BackofficeServicePayload | null>;
+  softDeleteService: (input: ScopedEntityInput) => Promise<BackofficeServicePayload | null>;
 }
 
 export class BackofficeService {
+  private static readonly BCRYPT_ROUNDS = 12;
+
   public constructor(
     private readonly repository: BackofficeRepositoryPort,
     private readonly auditLogService: AuditLogService
@@ -340,6 +417,358 @@ export class BackofficeService {
     });
 
     return this.repository.listShops({ ...scope, page: 1, pageSize: 1 });
+  }
+
+  public async createPlatformShop(
+    input: BackofficeShopCreateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeShopPayload> {
+    if (await this.repository.findUserByEmail(input.ownerEmail)) {
+      throw this.emailExistsError();
+    }
+
+    let shop: BackofficeShopPayload;
+    try {
+      shop = await this.repository.createShop({
+        ...input,
+        ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS)
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw this.emailExistsError();
+      }
+      throw error;
+    }
+    await this.record(actor, context, "backoffice.shop.create", "Shop", {
+      shopId: shop.id,
+      ownerUserId: shop.ownerUserId
+    });
+
+    return shop;
+  }
+
+  public async updatePlatformShop(
+    id: number,
+    input: BackofficeShopUpdateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeShopPayload> {
+    const shop = this.requireResult(await this.repository.updateShop(id, input), "error.shop.not_found");
+    await this.record(actor, context, "backoffice.shop.update", "Shop", {
+      shopId: id,
+      changedFields: Object.keys(input)
+    });
+    return shop;
+  }
+
+  public async approvePlatformShop(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeShopPayload> {
+    const shop = this.requireResult(await this.repository.approveShop(id, new Date()), "error.shop.not_found");
+    await this.record(actor, context, "backoffice.shop.approve", "Shop", { shopId: id });
+    return shop;
+  }
+
+  public async deletePlatformShop(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeShopPayload> {
+    const shop = this.requireResult(await this.repository.softDeleteShop(id), "error.shop.not_found");
+    await this.record(actor, context, "backoffice.shop.delete", "Shop", { shopId: id });
+    return shop;
+  }
+
+  public async updatePlatformTechnician(
+    technicianId: number,
+    input: BackofficeTechnicianUpdateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianPayload> {
+    const technician = this.requireResult(
+      await this.repository.updateTechnician({ scope: "platform", technicianId, ...input }),
+      "error.technician.not_found"
+    );
+    await this.record(actor, context, "backoffice.technician.update", "TechnicianProfile", {
+      technicianId,
+      changedFields: Object.keys(input)
+    });
+    return technician;
+  }
+
+  public async updateMerchantTechnician(
+    technicianId: number,
+    input: BackofficeTechnicianUpdateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianPayload> {
+    const scope = this.getMerchantScope(actor);
+    const safeInput: Omit<BackofficeTechnicianUpdateBody, "shopId"> = {
+      ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+      ...(input.city !== undefined ? { city: input.city } : {}),
+      ...(input.serviceArea !== undefined ? { serviceArea: input.serviceArea } : {}),
+      ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {})
+    };
+    const technician = this.requireResult(
+      await this.repository.updateTechnician({ ...scope, technicianId, ...safeInput }),
+      "error.technician.not_found"
+    );
+    await this.record(actor, context, "merchant_admin.technician.update", "TechnicianProfile", {
+      technicianId,
+      shopId: scope.shopId,
+      changedFields: Object.keys(safeInput)
+    });
+    return technician;
+  }
+
+  public async approvePlatformTechnician(
+    technicianId: number,
+    input: BackofficeTechnicianApproveBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianPayload> {
+    const technician = this.requireResult(
+      await this.repository.approveTechnician({
+        scope: "platform",
+        technicianId,
+        shopId: input.shopId,
+        approvedAt: new Date()
+      }),
+      "error.technician.not_found"
+    );
+    await this.record(actor, context, "backoffice.technician.approve", "TechnicianProfile", {
+      technicianId,
+      shopId: technician.shopId
+    });
+    return technician;
+  }
+
+  public async approveMerchantTechnician(
+    technicianId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianPayload> {
+    const scope = this.getMerchantScope(actor);
+    const technician = this.requireResult(
+      await this.repository.approveTechnician({ ...scope, technicianId, approvedAt: new Date() }),
+      "error.technician.not_found"
+    );
+    await this.record(actor, context, "merchant_admin.technician.approve", "TechnicianProfile", {
+      technicianId,
+      shopId: scope.shopId
+    });
+    return technician;
+  }
+
+  public async deletePlatformTechnician(
+    technicianId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianPayload> {
+    return this.deleteTechnician({ scope: "platform" }, technicianId, actor, context, "backoffice.technician.delete");
+  }
+
+  public async deleteMerchantTechnician(
+    technicianId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianPayload> {
+    return this.deleteTechnician(this.getMerchantScope(actor), technicianId, actor, context, "merchant_admin.technician.delete");
+  }
+
+  public async listPlatformCustomers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeListQuery
+  ): Promise<PaginatedResponse<BackofficeCustomerPayload>> {
+    await this.record(actor, context, "backoffice.customers.list", "CustomerProfile");
+    return this.repository.listCustomers({ scope: "platform", ...input });
+  }
+
+  public async listMerchantCustomers(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeListQuery
+  ): Promise<PaginatedResponse<BackofficeCustomerPayload>> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.customers.list", "CustomerProfile", { shopId: scope.shopId });
+    return this.repository.listCustomers({ ...scope, ...input });
+  }
+
+  public async getPlatformCustomer(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeCustomerPayload> {
+    await this.record(actor, context, "backoffice.customer.read", "CustomerProfile", { customerProfileId: id });
+    return this.requireResult(await this.repository.getCustomer({ scope: "platform", id }), "error.customer.not_found");
+  }
+
+  public async getMerchantCustomer(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeCustomerPayload> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.customer.read", "CustomerProfile", { customerProfileId: id, shopId: scope.shopId });
+    return this.requireResult(await this.repository.getCustomer({ ...scope, id }), "error.customer.not_found");
+  }
+
+  public async updatePlatformCustomer(
+    id: number,
+    input: BackofficeCustomerUpdateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeCustomerPayload> {
+    const customer = this.requireResult(await this.repository.updateCustomer(id, input), "error.customer.not_found");
+    await this.record(actor, context, "backoffice.customer.update", "CustomerProfile", { customerProfileId: id, changedFields: Object.keys(input) });
+    return customer;
+  }
+
+  public async deletePlatformCustomer(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeCustomerPayload> {
+    const customer = this.requireResult(await this.repository.softDeleteCustomer(id), "error.customer.not_found");
+    await this.record(actor, context, "backoffice.customer.delete", "CustomerProfile", { customerProfileId: id });
+    return customer;
+  }
+
+  public async listPlatformServices(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeListQuery
+  ): Promise<PaginatedResponse<BackofficeServicePayload>> {
+    await this.record(actor, context, "backoffice.services.list", "Service");
+    return this.repository.listServices({ scope: "platform", ...input });
+  }
+
+  public async listMerchantServices(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: BackofficeListQuery
+  ): Promise<PaginatedResponse<BackofficeServicePayload>> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.services.list", "Service", { shopId: scope.shopId });
+    return this.repository.listServices({ ...scope, ...input });
+  }
+
+  public async createPlatformService(
+    shopId: number,
+    input: BackofficeServiceCreateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeServicePayload> {
+    return this.createService({ scope: "platform", shopId, ...input }, actor, context, "backoffice.service.create");
+  }
+
+  public async createMerchantService(
+    input: BackofficeServiceCreateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeServicePayload> {
+    const scope = this.getMerchantScope(actor);
+    return this.createService({ ...scope, ...input }, actor, context, "merchant_admin.service.create");
+  }
+
+  public async updatePlatformService(
+    serviceId: number,
+    input: BackofficeServiceUpdateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeServicePayload> {
+    return this.updateService({ scope: "platform", serviceId, ...input }, actor, context, "backoffice.service.update");
+  }
+
+  public async updateMerchantService(
+    serviceId: number,
+    input: BackofficeServiceUpdateBody,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeServicePayload> {
+    const scope = this.getMerchantScope(actor);
+    return this.updateService({ ...scope, serviceId, ...input }, actor, context, "merchant_admin.service.update");
+  }
+
+  public async deletePlatformService(
+    serviceId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeServicePayload> {
+    return this.deleteService({ scope: "platform" }, serviceId, actor, context, "backoffice.service.delete");
+  }
+
+  public async deleteMerchantService(
+    serviceId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeServicePayload> {
+    return this.deleteService(this.getMerchantScope(actor), serviceId, actor, context, "merchant_admin.service.delete");
+  }
+
+  private async deleteTechnician(
+    scope: BackofficeScope,
+    technicianId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    action: string
+  ): Promise<BackofficeTechnicianPayload> {
+    const technician = this.requireResult(await this.repository.softDeleteTechnician({ ...scope, id: technicianId }), "error.technician.not_found");
+    await this.record(actor, context, action, "TechnicianProfile", { technicianId, ...(scope.scope === "merchant" ? { shopId: scope.shopId } : {}) });
+    return technician;
+  }
+
+  private async createService(
+    input: ScopedServiceCreateInput,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    action: string
+  ): Promise<BackofficeServicePayload> {
+    const service = await this.repository.createService(input);
+    await this.record(actor, context, action, "Service", { serviceId: service.id, shopId: service.shopId });
+    return service;
+  }
+
+  private async updateService(
+    input: ScopedServiceUpdateInput,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    action: string
+  ): Promise<BackofficeServicePayload> {
+    const service = this.requireResult(await this.repository.updateService(input), "error.service.not_found");
+    await this.record(actor, context, action, "Service", { serviceId: input.serviceId, shopId: service.shopId, changedFields: Object.keys(input).filter((key) => !["scope", "shopId", "serviceId"].includes(key)) });
+    return service;
+  }
+
+  private async deleteService(
+    scope: BackofficeScope,
+    serviceId: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    action: string
+  ): Promise<BackofficeServicePayload> {
+    const service = this.requireResult(await this.repository.softDeleteService({ ...scope, id: serviceId }), "error.service.not_found");
+    await this.record(actor, context, action, "Service", { serviceId, shopId: service.shopId });
+    return service;
+  }
+
+  private requireResult<T>(value: T | null, message: string): T {
+    if (!value) {
+      throw new AppError({ code: ERROR_CODES.NOT_FOUND, message, statusCode: 404 });
+    }
+    return value;
+  }
+
+  private emailExistsError(): AppError {
+    return new AppError({ code: ERROR_CODES.EMAIL_ALREADY_EXISTS, message: "error.user.email_exists", statusCode: 409 });
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
   }
 
   private getMerchantScope(

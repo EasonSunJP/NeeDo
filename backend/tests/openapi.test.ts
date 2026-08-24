@@ -54,6 +54,15 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{id}/approve");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians/{id}/approve");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/customers");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/customers/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{shopId}/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/services/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/dashboard");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule");
@@ -113,6 +122,12 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/shop");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}/approve");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/services/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations");
     expect(response.body.paths).toHaveProperty(
       "/api/v1/im/conversations/{conversationId}/messages"
@@ -165,6 +180,23 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("Follow");
     expect(response.body.components.schemas).toHaveProperty("Notification");
     expect(response.body.components.schemas).toHaveProperty("RealtimeUnreadCounts");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeCustomer");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeService");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeServiceCreateInput");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeServiceUpdateInput");
+    [
+      ["/api/v1/backoffice/shops/{id}", "patch"],
+      ["/api/v1/backoffice/technicians/{id}", "patch"],
+      ["/api/v1/backoffice/customers/{id}", "patch"],
+      ["/api/v1/backoffice/shops/{shopId}/services", "post"],
+      ["/api/v1/backoffice/services/{id}", "patch"],
+      ["/api/v1/merchant-admin/technicians/{id}", "patch"],
+      ["/api/v1/merchant-admin/services", "post"],
+      ["/api/v1/merchant-admin/services/{id}", "patch"]
+    ].forEach(([path, method]) => {
+      expect(response.body.paths[path][method].requestBody.required).toBe(true);
+      expect(response.body.paths[path][method].requestBody.content).toHaveProperty("application/json");
+    });
 
     const registrationPath = response.body.paths["/api/v1/auth/register"].post;
     expect(registrationPath.security).toBeUndefined();

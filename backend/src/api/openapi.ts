@@ -224,6 +224,102 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           isActive: { type: "boolean" }
         }
       },
+      BackofficeCustomer: {
+        type: "object",
+        required: ["id", "userId", "displayName", "email", "membershipLevel", "isPublic", "bookingCount", "createdAt"],
+        properties: {
+          id: { type: "integer" },
+          userId: { type: "integer" },
+          displayName: { type: "string" },
+          email: { type: "string", format: "email" },
+          city: { type: ["string", "null"] },
+          membershipLevel: { type: "string" },
+          isPublic: { type: "boolean" },
+          bookingCount: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      BackofficeService: {
+        type: "object",
+        required: ["id", "categoryId", "categoryName", "shopId", "name", "city", "serviceMode", "priceAmount", "currency", "durationMinutes", "status", "isRecommended", "sortOrder", "createdAt", "updatedAt"],
+        properties: {
+          id: { type: "integer" },
+          categoryId: { type: "integer" },
+          categoryName: { type: "string" },
+          shopId: { type: "integer" },
+          technicianProfileId: { type: ["integer", "null"] },
+          name: { type: "string" },
+          description: { type: ["string", "null"] },
+          city: { type: "string" },
+          serviceMode: { type: "string", enum: ["store", "home"] },
+          priceAmount: { type: "number", minimum: 0 },
+          currency: { type: "string", enum: ["JPY"] },
+          durationMinutes: { type: "integer", minimum: 1 },
+          status: { type: "string" },
+          isRecommended: { type: "boolean" },
+          sortOrder: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      BackofficeShopUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          address: { type: "string", minLength: 1, maxLength: 255 },
+          phone: { type: ["string", "null"], maxLength: 50 },
+          isRecommended: { type: "boolean" }
+        }
+      },
+      BackofficeTechnicianUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          serviceArea: { type: ["string", "null"], maxLength: 255 },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          isRecommended: { type: "boolean" }
+        }
+      },
+      BackofficeCustomerUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          bio: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: ["string", "null"], maxLength: 100 },
+          membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
+          isPublic: { type: "boolean" }
+        }
+      },
+      BackofficeServiceInputFields: {
+        type: "object",
+        properties: {
+          categoryId: { type: "integer", minimum: 1 },
+          technicianProfileId: { type: ["integer", "null"], minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          serviceMode: { type: "string", enum: ["store", "home"] },
+          priceAmount: { type: "number", minimum: 0, maximum: 99999999 },
+          durationMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+          status: { type: "string", enum: ["draft", "published", "paused"] },
+          isRecommended: { type: "boolean" },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000000 }
+        }
+      },
+      BackofficeServiceCreateInput: {
+        allOf: [{ $ref: "#/components/schemas/BackofficeServiceInputFields" }],
+        required: ["categoryId", "name", "city", "serviceMode", "priceAmount", "durationMinutes"]
+      },
+      BackofficeServiceUpdateInput: {
+        allOf: [{ $ref: "#/components/schemas/BackofficeServiceInputFields" }],
+        minProperties: 1
+      },
       SwitchIdentityResponse: {
         type: "object",
         required: ["accessToken", "refreshToken", "expiresIn", "me"],
@@ -3124,7 +3220,56 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Paginated backoffice shops" }
         }
+      },
+      post: {
+        tags: ["Master Data"],
+        summary: "Create a pending shop and merchant owner account",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["ownerEmail", "ownerUsername", "ownerPassword", "name", "city", "address"],
+            properties: {
+              ownerEmail: { type: "string", format: "email" }, ownerUsername: { type: "string" }, ownerPassword: { type: "string", minLength: 8 },
+              name: { type: "string", maxLength: 160 }, description: { type: ["string", "null"] }, city: { type: "string" }, address: { type: "string" }, phone: { type: ["string", "null"] }, isRecommended: { type: "boolean" }
+            }
+          } } }
+        },
+        responses: { "201": { description: "Pending shop created" }, "409": { description: "Owner email already exists" } }
       }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeShopUpdateInput" } } } }, responses: { "200": { description: "Shop updated" }, "404": { description: "Shop not found" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Shop soft-deleted" }, "404": { description: "Shop not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{id}/approve`]: {
+      post: { tags: ["Master Data"], summary: "Approve a shop and activate its owner identity", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Shop approved" }, "404": { description: "Shop not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/technicians/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update or assign a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not found" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/technicians/{id}/approve`]: {
+      post: { tags: ["Master Data"], summary: "Approve and optionally assign a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { content: { "application/json": { schema: { type: "object", properties: { shopId: { type: "integer", minimum: 1 } } } } } }, responses: { "200": { description: "Technician approved" }, "404": { description: "Technician or shop not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/customers`]: {
+      get: { tags: ["Master Data"], summary: "Paginated customer profiles", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated customers" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/customers/{id}`]: {
+      get: { tags: ["Master Data"], summary: "Customer profile detail", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Customer detail" }, "404": { description: "Customer not found" } } },
+      patch: { tags: ["Master Data"], summary: "Update a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeCustomerUpdateInput" } } } }, responses: { "200": { description: "Customer updated" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Customer soft-deleted" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/services`]: {
+      get: { tags: ["Master Data"], summary: "Paginated shop services", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated services" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{shopId}/services`]: {
+      post: { tags: ["Master Data"], summary: "Create a service for a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" } } } }, responses: { "201": { description: "Service created" }, "404": { description: "Shop, category, or technician not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/services/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a shop service", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" } } } }, responses: { "200": { description: "Service updated" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a shop service", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Service soft-deleted" } } }
     },
     [`${config.API_PREFIX}/merchant-admin/dashboard`]: {
       get: {
@@ -4109,6 +4254,27 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "200": { description: "Current merchant shop payload" }
         }
       }
+    },
+    [`${config.API_PREFIX}/merchant-admin/technicians/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not in current shop" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/technicians/{id}/approve`]: {
+      post: { tags: ["Master Data"], summary: "Approve an already assigned technician in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician approved" }, "404": { description: "Technician not in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/customers`]: {
+      get: { tags: ["Master Data"], summary: "Paginated customers with bookings in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped customers" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/customers/{id}`]: {
+      get: { tags: ["Master Data"], summary: "Customer detail scoped by bookings in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Scoped customer detail" }, "404": { description: "Customer not visible to current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/services`]: {
+      get: { tags: ["Master Data"], summary: "Paginated services in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped services" } } },
+      post: { tags: ["Master Data"], summary: "Create a service in the authenticated shop", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" } } } }, responses: { "201": { description: "Service created" }, "404": { description: "Category or technician not found in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/services/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" } } } }, responses: { "200": { description: "Service updated" }, "404": { description: "Service not in current shop" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Service soft-deleted" }, "404": { description: "Service not in current shop" } } }
     },
     [`${config.API_PREFIX}/im/conversations`]: {
       get: {
