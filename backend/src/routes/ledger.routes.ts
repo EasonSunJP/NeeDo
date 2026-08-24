@@ -8,8 +8,13 @@ import { validateRequest } from "../middlewares/validate-request.middleware";
 import { LedgerRepository } from "../repositories/ledger.repository";
 import { LedgerService } from "../services/ledger.service";
 import {
+  createWalletAdjustmentRequestBodySchema,
   financeReconciliationListQuerySchema,
   ledgerTransactionListQuerySchema,
+  reviewWalletAdjustmentRequestBodySchema,
+  walletAdjustmentIdParamSchema,
+  walletAdjustmentListQuerySchema,
+  walletAdjustmentMineQuerySchema,
   walletIdParamSchema,
   walletLedgerQuerySchema
 } from "../validators/ledger.validator";
@@ -18,6 +23,10 @@ import { createAuthServiceForRoutes } from "./auth-service.factory";
 export const LEDGER_ROUTE_PERMISSIONS = {
   walletRead: "wallet:read",
   walletLedgerList: "wallet:ledger:list",
+  walletAdjustmentCreate: "wallet:adjustment:create",
+  walletAdjustmentList: "wallet:adjustment:list",
+  backofficeWalletAdjustmentList: "backoffice:wallet-adjustment:list",
+  backofficeWalletAdjustmentReview: "backoffice:wallet-adjustment:review",
   ledgerList: "finance:ledger:list",
   reconciliationList: "finance:reconciliation:list",
   reconciliationExport: "finance:reconciliation:export"
@@ -36,6 +45,37 @@ export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependenc
     authenticate(),
     authorize(LEDGER_ROUTE_PERMISSIONS.walletRead),
     controller.getMyWallet
+  );
+  router.post(
+    "/wallet-adjustments",
+    authenticate(),
+    authorize(LEDGER_ROUTE_PERMISSIONS.walletAdjustmentCreate),
+    validateRequest({ body: createWalletAdjustmentRequestBodySchema }),
+    controller.createWalletAdjustmentRequest
+  );
+  router.get(
+    "/wallet-adjustments/me",
+    authenticate(),
+    authorize(LEDGER_ROUTE_PERMISSIONS.walletAdjustmentList),
+    validateRequest({ query: walletAdjustmentMineQuerySchema }),
+    controller.listMyWalletAdjustmentRequests
+  );
+  router.get(
+    "/backoffice/wallet-adjustments",
+    authenticate(),
+    authorize(LEDGER_ROUTE_PERMISSIONS.backofficeWalletAdjustmentList),
+    validateRequest({ query: walletAdjustmentListQuerySchema }),
+    controller.listWalletAdjustmentRequests
+  );
+  router.post(
+    "/backoffice/wallet-adjustments/:id/review",
+    authenticate(),
+    authorize(LEDGER_ROUTE_PERMISSIONS.backofficeWalletAdjustmentReview),
+    validateRequest({
+      params: walletAdjustmentIdParamSchema,
+      body: reviewWalletAdjustmentRequestBodySchema
+    }),
+    controller.reviewWalletAdjustmentRequest
   );
   router.get(
     "/wallets/:id/ledger",

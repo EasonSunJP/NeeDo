@@ -108,6 +108,20 @@ ENV_FILE=.env.dev npm --prefix backend run check:manual-payment-flow
 
 The check refuses production or remote database targets and deletes only the uniquely named records it creates.
 
+## Formal NDP Top-up and Withdrawal Review
+
+Customer, technician, and merchant identities can submit NDP top-up or withdrawal requests through the formal wallet API. The backend derives the target user or shop wallet from the active identity; clients cannot select another wallet owner. Operations and finance review requests through protected backoffice APIs. Approval atomically changes the available NDP balance, writes one immutable ledger entry, creates finance reconciliation and audit evidence, and links the request to that transaction. Rejection does not change the wallet, duplicate approval is idempotent, and insufficient withdrawals roll back completely.
+
+External bank/card/payout APIs remain deferred. The current production workflow records the manually verified bank reference and review note.
+
+Verify this lifecycle against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:wallet-adjustment-flow
+```
+
+The check refuses production flags and remote database hosts, covers idempotent create/review, approved top-up and withdrawal, insufficient-balance rollback, rejection without mutation, ledger entries and reconciliation, then removes its uniquely named records.
+
 ## Current Scope
 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。
@@ -115,7 +129,7 @@ The check refuses production or remote database targets and deletes only the uni
 - 运营后台：Dashboard、Analytics、Data Center、Orders、Field Jobs、CRM、Marketing、Finance、Reviews、Merchants、Roles、Travel Settings。
 - 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、UI装修、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
-- Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班和线下收款已迁移到 API/Prisma，禁止新增正式业务 mock。
+- Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班、线下收款和 NDP 充值提现审核已迁移到 API/Prisma，禁止新增正式业务 mock。
 - 多语言：用户端与后台端支持中文、日本語、English 三语切换，语言偏好会保存在本地。
 - 后台主题：运营控制台支持黑夜 / 白天两套视觉主题，可在后台顶部随时切换。
 

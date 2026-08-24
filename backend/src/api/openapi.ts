@@ -915,6 +915,47 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           updatedAt: { type: "string", format: "date-time" }
         }
       },
+      WalletAdjustmentRequest: {
+        type: "object",
+        required: [
+          "id",
+          "type",
+          "status",
+          "ownerType",
+          "ownerId",
+          "walletId",
+          "amountNdp",
+          "idempotencyKey",
+          "bankReference",
+          "note",
+          "requestedById",
+          "reviewedById",
+          "reviewedAt",
+          "reviewNote",
+          "ledgerTransactionId",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          type: { type: "string", enum: ["topup", "withdrawal"] },
+          status: { type: "string", enum: ["pending", "approved", "rejected"] },
+          ownerType: { type: "string", enum: ["user", "shop", "platform"] },
+          ownerId: { type: "integer" },
+          walletId: { type: "integer" },
+          amountNdp: { type: "integer", minimum: 1 },
+          idempotencyKey: { type: "string", maxLength: 160 },
+          bankReference: { type: ["string", "null"], maxLength: 120 },
+          note: { type: ["string", "null"], maxLength: 500 },
+          requestedById: { type: "integer" },
+          reviewedById: { type: ["integer", "null"] },
+          reviewedAt: { type: ["string", "null"], format: "date-time" },
+          reviewNote: { type: ["string", "null"], maxLength: 500 },
+          ledgerTransactionId: { type: ["integer", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
       WalletLedger: {
         type: "object",
         required: [
@@ -3184,6 +3225,93 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         responses: {
           "200": { description: "Paginated wallet ledger entries" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/wallet-adjustments`]: {
+      post: {
+        tags: ["Ledger"],
+        summary: "Submit an NDP top-up or withdrawal request for the active identity wallet",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["type", "amountNdp", "idempotencyKey"],
+                properties: {
+                  type: { type: "string", enum: ["topup", "withdrawal"] },
+                  amountNdp: { type: "integer", minimum: 1, maximum: 100000000 },
+                  idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+                  bankReference: { type: ["string", "null"], maxLength: 120 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Pending wallet adjustment request created" },
+          "409": { description: "Idempotency key reused with different input" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/wallet-adjustments/me`]: {
+      get: {
+        tags: ["Ledger"],
+        summary: "List wallet adjustment requests for the active identity wallet",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated wallet adjustment requests" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/wallet-adjustments`]: {
+      get: {
+        tags: ["Finance"],
+        summary: "List wallet adjustment requests for operations review",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "ownerType", in: "query", schema: { type: "string", enum: ["user", "shop", "platform"] } },
+          { name: "ownerId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "type", in: "query", schema: { type: "string", enum: ["topup", "withdrawal"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "rejected"] } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated platform wallet adjustment requests" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/wallet-adjustments/{id}/review`]: {
+      post: {
+        tags: ["Finance"],
+        summary: "Approve or reject a pending wallet adjustment request",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["action", "note"],
+                properties: {
+                  action: { type: "string", enum: ["approve", "reject"] },
+                  note: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Request reviewed; approval atomically mutates the wallet and ledger" },
+          "404": { description: "Wallet adjustment request not found" },
+          "409": { description: "Invalid request state or insufficient available balance" }
         }
       }
     },

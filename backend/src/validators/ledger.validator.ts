@@ -33,6 +33,35 @@ export const walletLedgerQuerySchema = z.object({
   ...paginationQuerySchema
 });
 
+export const createWalletAdjustmentRequestBodySchema = z.object({
+  type: z.enum(["topup", "withdrawal"]),
+  amountNdp: z.number().int().positive().max(100_000_000),
+  idempotencyKey: z.string().trim().min(8).max(160),
+  bankReference: z.string().trim().min(1).max(120).nullable().optional(),
+  note: z.string().trim().min(1).max(500).nullable().optional()
+});
+
+export const walletAdjustmentIdParamSchema = z.object({
+  id: z.coerce.number().int().positive()
+});
+
+export const walletAdjustmentMineQuerySchema = z.object({
+  ...paginationQuerySchema
+});
+
+export const walletAdjustmentListQuerySchema = z.object({
+  ...paginationQuerySchema,
+  ownerType: z.enum(["user", "shop", "platform"]).optional(),
+  ownerId: z.coerce.number().int().positive().optional(),
+  type: z.enum(["topup", "withdrawal"]).optional(),
+  status: z.enum(["pending", "approved", "rejected"]).optional()
+});
+
+export const reviewWalletAdjustmentRequestBodySchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  note: z.string().trim().min(1).max(500)
+});
+
 export const ledgerTransactionListQuerySchema = withValidDateRange(
   z.object({
     ...paginationQuerySchema,
@@ -44,6 +73,8 @@ export const ledgerTransactionListQuerySchema = withValidDateRange(
         "booking_cancel_unfreeze",
         "booking_complete_settlement",
         "booking_merchant_cancel_compensation",
+        "manual_topup_approved",
+        "manual_withdrawal_approved",
         "seed_credit"
       ])
       .optional()
@@ -61,5 +92,14 @@ export const financeReconciliationListQuerySchema = withValidDateRange(
 
 export type WalletIdParams = z.infer<typeof walletIdParamSchema>;
 export type WalletLedgerQuery = z.infer<typeof walletLedgerQuerySchema>;
+export type CreateWalletAdjustmentRequestBody = z.infer<
+  typeof createWalletAdjustmentRequestBodySchema
+>;
+export type WalletAdjustmentIdParams = z.infer<typeof walletAdjustmentIdParamSchema>;
+export type WalletAdjustmentMineQuery = z.infer<typeof walletAdjustmentMineQuerySchema>;
+export type WalletAdjustmentListQuery = z.infer<typeof walletAdjustmentListQuerySchema>;
+export type ReviewWalletAdjustmentRequestBody = z.infer<
+  typeof reviewWalletAdjustmentRequestBodySchema
+>;
 export type LedgerTransactionListQuery = z.infer<typeof ledgerTransactionListQuerySchema>;
 export type FinanceReconciliationListQuery = z.infer<typeof financeReconciliationListQuerySchema>;

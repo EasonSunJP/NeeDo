@@ -1,6 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import type { AuthenticatedAccessContext } from "./auth.service";
 import type {
   FeeCalculationResult,
   FeeCalculationService,
@@ -21,6 +22,8 @@ export type LedgerTransactionType =
   | "booking_cancel_unfreeze"
   | "booking_complete_settlement"
   | "booking_merchant_cancel_compensation"
+  | "manual_topup_approved"
+  | "manual_withdrawal_approved"
   | "seed_credit";
 export type LedgerTransactionStatus = "applied";
 export type FinanceReconciliationStatus = "pending" | "exported";
@@ -43,6 +46,49 @@ export interface WalletPayload {
   frozenBalance: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export type WalletAdjustmentType = "topup" | "withdrawal";
+export type WalletAdjustmentStatus = "pending" | "approved" | "rejected";
+
+export interface WalletAdjustmentRequestPayload {
+  id: number;
+  type: WalletAdjustmentType;
+  status: WalletAdjustmentStatus;
+  ownerType: WalletOwnerType;
+  ownerId: number;
+  walletId: number;
+  amountNdp: number;
+  idempotencyKey: string;
+  bankReference: string | null;
+  note: string | null;
+  requestedById: number;
+  reviewedById: number | null;
+  reviewedAt: Date | null;
+  reviewNote: string | null;
+  ledgerTransactionId: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateWalletAdjustmentRequestInput {
+  type: WalletAdjustmentType;
+  amountNdp: number;
+  idempotencyKey: string;
+  bankReference?: string | null;
+  note?: string | null;
+}
+
+export interface WalletAdjustmentRequestListInput extends PaginationInput {
+  ownerType?: WalletOwnerType;
+  ownerId?: number;
+  type?: WalletAdjustmentType;
+  status?: WalletAdjustmentStatus;
+}
+
+export interface ReviewWalletAdjustmentRequestInput {
+  action: "approve" | "reject";
+  note: string;
 }
 
 export interface WalletLedgerPayload {
@@ -170,7 +216,10 @@ export interface FinanceReconciliationListInput extends PaginationInput {
 
 export interface LedgerRepositoryPort {
   runInTransaction: <T>(
-    handler: (repository: LedgerRepositoryPort) => Promise<T>,
+    handler: (
+      repository: LedgerRepositoryPort,
+      transactionClient?: LedgerTransactionClient
+    ) => Promise<T>,
     transactionClient?: LedgerTransactionClient
   ) => Promise<T>;
   findTransactionByIdempotencyKey: (
@@ -218,9 +267,39 @@ export interface LedgerRepositoryPort {
   createAuditLog: (input: {
     actorUserId: number | null;
     action: string;
+    targetType?: string;
     targetId: number;
     metadata?: unknown;
   }) => Promise<void>;
+  findWalletAdjustmentByIdempotencyKey?: (
+    idempotencyKey: string
+  ) => Promise<WalletAdjustmentRequestPayload | null>;
+  createWalletAdjustmentRequest?: (input: {
+    type: WalletAdjustmentType;
+    ownerType: WalletOwnerType;
+    ownerId: number;
+    walletId: number;
+    amountNdp: number;
+    idempotencyKey: string;
+    bankReference?: string | null;
+    note?: string | null;
+    requestedById: number;
+  }) => Promise<WalletAdjustmentRequestPayload>;
+  listWalletAdjustmentRequests?: (
+    input: WalletAdjustmentRequestListInput
+  ) => Promise<PaginatedResponse<WalletAdjustmentRequestPayload>>;
+  lockWalletAdjustmentRequest?: (id: number) => Promise<WalletAdjustmentRequestPayload | null>;
+  approveWalletAdjustmentRequest?: (input: {
+    id: number;
+    reviewedById: number;
+    reviewNote: string;
+    ledgerTransactionId: number;
+  }) => Promise<WalletAdjustmentRequestPayload>;
+  rejectWalletAdjustmentRequest?: (input: {
+    id: number;
+    reviewedById: number;
+    reviewNote: string;
+  }) => Promise<WalletAdjustmentRequestPayload>;
   findWalletHoldByIdempotencyKey?: (idempotencyKey: string) => Promise<WalletHoldPayload | null>;
   findWalletHold?: (input: {
     bookingOrderId: number;
@@ -1101,11 +1180,199 @@ export class LedgerService implements BookingLedgerSettlementPort {
     });
   }
 
-  public async getMyWallet(ownerId: number): Promise<WalletPayload> {
+  public createWalletAdjustmentRequest(
+    actor: AuthenticatedAccessContext,
+    input: CreateWalletAdjustmentRequestInput
+  ): Promise<WalletAdjustmentRequestPayload> {
+    return this.repository.runInTransaction(async (repository) => {
+      this.assertWalletAdjustmentRepository(repository);
+      const owner = this.walletOwnerForActor(actor);
+      const existing = await repository.findWalletAdjustmentByIdempotencyKey!(
+        input.idempotencyKey
+      );
+
+      if (existing) {
+        if (
+          existing.ownerType !== owner.ownerType ||
+          existing.ownerId !== owner.ownerId ||
+          existing.type !== input.type ||
+          existing.amountNdp !== input.amountNdp ||
+          existing.bankReference !== (input.bankReference ?? null) ||
+          existing.note !== (input.note ?? null)
+        ) {
+          throw this.walletAdjustmentConflictError();
+        }
+
+        return existing;
+      }
+
+      const wallet = await repository.getOrCreateWallet({
+        ...owner,
+        currency: CURRENCY
+      });
+      const created = await repository.createWalletAdjustmentRequest!({
+        ...input,
+        ...owner,
+        walletId: wallet.id,
+        requestedById: actor.userId
+      });
+      await repository.createAuditLog({
+        actorUserId: actor.userId,
+        action: "wallet.adjustment.requested",
+        targetType: "wallet_adjustment_request",
+        targetId: created.id,
+        metadata: {
+          type: created.type,
+          ownerType: created.ownerType,
+          ownerId: created.ownerId,
+          amountNdp: created.amountNdp
+        }
+      });
+
+      return created;
+    });
+  }
+
+  public listMyWalletAdjustmentRequests(
+    actor: AuthenticatedAccessContext,
+    input: PaginationInput
+  ): Promise<PaginatedResponse<WalletAdjustmentRequestPayload>> {
+    this.assertWalletAdjustmentRepository(this.repository);
+    const owner = this.walletOwnerForActor(actor);
+
+    return this.repository.listWalletAdjustmentRequests!({ ...input, ...owner });
+  }
+
+  public listWalletAdjustmentRequests(
+    actor: AuthenticatedAccessContext,
+    input: WalletAdjustmentRequestListInput
+  ): Promise<PaginatedResponse<WalletAdjustmentRequestPayload>> {
+    this.assertPlatformReviewer(actor);
+    this.assertWalletAdjustmentRepository(this.repository);
+
+    return this.repository.listWalletAdjustmentRequests!(input);
+  }
+
+  public reviewWalletAdjustmentRequest(
+    actor: AuthenticatedAccessContext,
+    id: number,
+    input: ReviewWalletAdjustmentRequestInput
+  ): Promise<WalletAdjustmentRequestPayload> {
+    this.assertPlatformReviewer(actor);
+
+    return this.repository.runInTransaction(async (repository) => {
+      this.assertWalletAdjustmentRepository(repository);
+      const request = await repository.lockWalletAdjustmentRequest!(id);
+
+      if (!request) {
+        throw new AppError({
+          code: ERROR_CODES.WALLET_ADJUSTMENT_NOT_FOUND,
+          message: "error.wallet.adjustment_not_found",
+          statusCode: 404
+        });
+      }
+      if (request.status !== "pending") {
+        if (
+          (input.action === "approve" && request.status === "approved") ||
+          (input.action === "reject" && request.status === "rejected")
+        ) {
+          return request;
+        }
+
+        throw this.walletAdjustmentInvalidStateError();
+      }
+
+      if (input.action === "reject") {
+        const rejected = await repository.rejectWalletAdjustmentRequest!({
+          id: request.id,
+          reviewedById: actor.userId,
+          reviewNote: input.note
+        });
+        await repository.createAuditLog({
+          actorUserId: actor.userId,
+          action: "wallet.adjustment.rejected",
+          targetType: "wallet_adjustment_request",
+          targetId: request.id,
+          metadata: { type: request.type, amountNdp: request.amountNdp, note: input.note }
+        });
+
+        return rejected;
+      }
+
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: request.ownerType,
+        ownerId: request.ownerId,
+        currency: CURRENCY
+      });
+      const availableDelta = request.type === "topup" ? request.amountNdp : -request.amountNdp;
+      const updatedWallet = await repository.applyWalletDelta({
+        walletId: wallet.id,
+        availableDelta,
+        frozenDelta: 0,
+        ...(request.type === "withdrawal"
+          ? { requireAvailableAtLeast: request.amountNdp }
+          : {})
+      });
+
+      if (!updatedWallet) {
+        if (request.type === "withdrawal") {
+          throw this.insufficientAvailableError();
+        }
+        throw this.walletMutationError();
+      }
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey: `wallet-adjustment:${request.id}:approved`,
+        type:
+          request.type === "topup"
+            ? "manual_topup_approved"
+            : "manual_withdrawal_approved",
+        referenceType: "wallet_adjustment_request",
+        referenceId: request.id,
+        actorUserId: actor.userId,
+        amount: request.amountNdp,
+        metadata: {
+          ownerType: request.ownerType,
+          ownerId: request.ownerId,
+          bankReference: request.bankReference,
+          reviewNote: input.note
+        }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: wallet.id,
+        direction: request.type === "topup" ? "available_credit" : "available_debit",
+        amount: request.amountNdp,
+        availableDelta,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedWallet.availableBalance,
+        frozenBalanceAfter: updatedWallet.frozenBalance,
+        reason:
+          request.type === "topup"
+            ? "manual_topup_approved"
+            : "manual_withdrawal_approved"
+      });
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: `ledger.wallet_adjustment.${request.type}.approved`,
+        expectedAmount: request.amountNdp,
+        actualAmount: request.amountNdp
+      });
+
+      return repository.approveWalletAdjustmentRequest!({
+        id: request.id,
+        reviewedById: actor.userId,
+        reviewNote: input.note,
+        ledgerTransactionId: transaction.id
+      });
+    });
+  }
+
+  public async getMyWallet(actor: AuthenticatedAccessContext): Promise<WalletPayload> {
+    const owner = this.walletOwnerForReadActor(actor);
+
     if (this.repository.findWallet) {
       const existing = await this.repository.findWallet({
-        ownerType: "user",
-        ownerId,
+        ...owner,
         currency: CURRENCY
       });
 
@@ -1115,8 +1382,7 @@ export class LedgerService implements BookingLedgerSettlementPort {
     }
 
     const wallet = await this.repository.getOrCreateWallet({
-      ownerType: "user",
-      ownerId,
+      ...owner,
       currency: CURRENCY
     });
 
@@ -1144,11 +1410,30 @@ export class LedgerService implements BookingLedgerSettlementPort {
     return wallet;
   }
 
-  public listWalletLedger(
+  public async listWalletLedger(
+    actor: AuthenticatedAccessContext,
     input: WalletLedgerListInput
   ): Promise<PaginatedResponse<WalletLedgerPayload>> {
-    if (!this.repository.listWalletLedger) {
+    if (!this.repository.listWalletLedger || !this.repository.findWallet) {
       throw this.repositoryUnavailableError();
+    }
+
+    if (
+      actor.currentIdentityScopeType !== "global" &&
+      actor.currentIdentityScopeType !== "platform"
+    ) {
+      const wallet = await this.repository.findWallet({
+        ...this.walletOwnerForReadActor(actor),
+        currency: CURRENCY
+      });
+
+      if (!wallet || wallet.id !== input.walletId) {
+        throw new AppError({
+          code: ERROR_CODES.WALLET_NOT_FOUND,
+          message: "error.wallet.not_found",
+          statusCode: 404
+        });
+      }
     }
 
     return this.repository.listWalletLedger(input);
@@ -1209,6 +1494,62 @@ export class LedgerService implements BookingLedgerSettlementPort {
     });
   }
 
+  private assertWalletAdjustmentRepository(repository: LedgerRepositoryPort): void {
+    if (
+      !repository.findWalletAdjustmentByIdempotencyKey ||
+      !repository.createWalletAdjustmentRequest ||
+      !repository.listWalletAdjustmentRequests ||
+      !repository.lockWalletAdjustmentRequest ||
+      !repository.approveWalletAdjustmentRequest ||
+      !repository.rejectWalletAdjustmentRequest
+    ) {
+      throw this.repositoryUnavailableError();
+    }
+  }
+
+  private walletOwnerForActor(
+    actor: AuthenticatedAccessContext
+  ): { ownerType: WalletOwnerType; ownerId: number } {
+    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
+      return { ownerType: "shop", ownerId: actor.currentIdentityScopeId };
+    }
+    if (
+      actor.currentIdentityScopeType === "global" ||
+      actor.currentIdentityScopeType === "platform"
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
+    }
+
+    return { ownerType: "user", ownerId: actor.userId };
+  }
+
+  private walletOwnerForReadActor(
+    actor: AuthenticatedAccessContext
+  ): { ownerType: WalletOwnerType; ownerId: number } {
+    if (actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId) {
+      return { ownerType: "shop", ownerId: actor.currentIdentityScopeId };
+    }
+
+    return { ownerType: "user", ownerId: actor.userId };
+  }
+
+  private assertPlatformReviewer(actor: AuthenticatedAccessContext): void {
+    if (
+      actor.currentIdentityScopeType !== "global" &&
+      actor.currentIdentityScopeType !== "platform"
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_FORBIDDEN,
+        message: "error.identity.forbidden",
+        statusCode: 403
+      });
+    }
+  }
+
   private insufficientAvailableError(): AppError {
     return new AppError({
       code: ERROR_CODES.WALLET_INSUFFICIENT_AVAILABLE,
@@ -1229,6 +1570,22 @@ export class LedgerService implements BookingLedgerSettlementPort {
     return new AppError({
       code: ERROR_CODES.WALLET_MUTATION_FAILED,
       message: "error.wallet.mutation_failed",
+      statusCode: 409
+    });
+  }
+
+  private walletAdjustmentConflictError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.WALLET_ADJUSTMENT_CONFLICT,
+      message: "error.wallet.adjustment_conflict",
+      statusCode: 409
+    });
+  }
+
+  private walletAdjustmentInvalidStateError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.WALLET_ADJUSTMENT_INVALID_STATE,
+      message: "error.wallet.adjustment_invalid_state",
       statusCode: 409
     });
   }

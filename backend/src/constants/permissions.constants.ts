@@ -227,6 +227,10 @@ export const SYSTEM_PERMISSIONS = [
 
   createPermission("wallet:read", "查看钱包", "api", "wallet", "查看 NDP 钱包余额"),
   createPermission("wallet:ledger:list", "钱包流水", "api", "wallet", "分页查看 NDP 钱包流水"),
+  createPermission("wallet:adjustment:create", "提交钱包申请", "api", "wallet", "提交 NDP 充值或提现申请"),
+  createPermission("wallet:adjustment:list", "钱包申请记录", "api", "wallet", "分页查看本人或本店的 NDP 申请"),
+  createPermission("backoffice:wallet-adjustment:list", "钱包申请审核列表", "api", "finance", "分页查看全平台 NDP 充值提现申请"),
+  createPermission("backoffice:wallet-adjustment:review", "审核钱包申请", "api", "finance", "批准或拒绝 NDP 充值提现申请"),
   createPermission(
     "finance:ledger:list",
     "财务账本流水",
@@ -646,7 +650,9 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "order:read",
   "order:cancel",
   "wallet:read",
-  "wallet:ledger:list"
+  "wallet:ledger:list",
+  "wallet:adjustment:create",
+  "wallet:adjustment:list"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
@@ -660,6 +666,8 @@ const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
   "order:complete",
   "wallet:read",
   "wallet:ledger:list",
+  "wallet:adjustment:create",
+  "wallet:adjustment:list",
   "schedule:slots:list",
   "schedule:slots:write"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -690,6 +698,8 @@ const FINANCE_PERMISSION_CODES = [
   "finance:ledger:list",
   "finance:reconciliation:list",
   "finance:reconciliation:export",
+  "backoffice:wallet-adjustment:list",
+  "backoffice:wallet-adjustment:review",
   "finance:fee-rule:list",
   "finance:fee-rule:preview",
   "finance:calculation-log:list",
@@ -707,6 +717,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:finance:export",
   "backoffice:finance-order:read",
   "backoffice:order-payment:write",
+  "backoffice:wallet-adjustment:list",
+  "backoffice:wallet-adjustment:review",
   "backoffice:payroll:read",
   "backoffice:technicians:list",
   "backoffice:technicians:write",

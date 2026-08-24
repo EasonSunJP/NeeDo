@@ -27,6 +27,19 @@ interface DatabaseSchemaColumnRow {
 }
 
 export const FINANCE_READINESS_SCHEMA_COLUMNS: readonly FinanceReadinessSchemaColumn[] = [
+  { table: "wallet_adjustment_requests", column: "id" },
+  { table: "wallet_adjustment_requests", column: "type" },
+  { table: "wallet_adjustment_requests", column: "status" },
+  { table: "wallet_adjustment_requests", column: "owner_type" },
+  { table: "wallet_adjustment_requests", column: "owner_id" },
+  { table: "wallet_adjustment_requests", column: "wallet_id" },
+  { table: "wallet_adjustment_requests", column: "amount_ndp" },
+  { table: "wallet_adjustment_requests", column: "idempotency_key" },
+  { table: "wallet_adjustment_requests", column: "requested_by_id" },
+  { table: "wallet_adjustment_requests", column: "reviewed_by_id" },
+  { table: "wallet_adjustment_requests", column: "reviewed_at" },
+  { table: "wallet_adjustment_requests", column: "ledger_transaction_id" },
+  { table: "wallet_adjustment_requests", column: "deleted_at" },
   { table: "booking_orders", column: "payment_method" },
   { table: "booking_orders", column: "payment_status" },
   { table: "booking_orders", column: "payment_amount_jpy" },
