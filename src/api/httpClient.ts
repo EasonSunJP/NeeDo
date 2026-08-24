@@ -96,7 +96,7 @@ function appendQuery(url: string, query?: HttpClientRequestOptions["query"]) {
   return queryString ? `${url}?${queryString}` : url;
 }
 
-function buildApiUrl(path: string, query?: HttpClientRequestOptions["query"], baseUrl?: string) {
+export function buildApiUrl(path: string, query?: HttpClientRequestOptions["query"], baseUrl?: string) {
   return appendQuery(`${getRequestBaseUrl(baseUrl)}${normalizePath(path)}`, query);
 }
 
