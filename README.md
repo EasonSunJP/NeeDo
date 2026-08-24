@@ -64,6 +64,9 @@ Step 07 has added the frontend side of formal Auth / RBAC while keeping the exis
 
 Auth behavior:
 
+- Normal development and production frontends use formal password login by
+  default. Captcha/legacy login is available only through `npm run dev:static`
+  or the dedicated static-demo build.
 - Access Token is kept in memory only.
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
@@ -151,7 +154,7 @@ The technician portal's visible order tab is also identity-scoped to the formal 
 
 Authenticated customer identities now receive an API-backed “My” page. The profile comes from the real customer profile record, each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`. The editable local profile is retained only for explicit frontend-preview sessions until a protected customer self-profile update contract is introduced.
 
-The operations dashboard now renders the protected backoffice aggregate for metrics, orders, schedule inventory, financial totals, shops, and technicians. City trends, field jobs, risk scores, and merchant-health scoring stay visibly disabled until formal aggregate contracts exist; the production dashboard no longer substitutes demo metrics for these modules.
+The operations dashboard now renders the protected backoffice aggregate for metrics, orders, schedule inventory, financial totals, shops, and technicians. Headline technician volume uses an exact scoped database count rather than the six-row preview list length. City trends, field jobs, risk scores, and merchant-health scoring stay visibly disabled until formal aggregate contracts exist; the production dashboard no longer substitutes demo metrics for these modules.
 
 The operations timeline route is an explicit production capability gate. It does not present sample events, owners, cities, priorities, or handling states as persisted work. Activation requires formal event and incident records, audited assignment and resolution state machines, cross-city RBAC, and server-side filter, pagination, aggregate, and export contracts.
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { authApi } from "../../api/auth";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
 import { isFrontendBypassSession } from "../../auth/rbac";
@@ -751,9 +752,10 @@ export function getPostLoginRoute(portal: PortalScope, redirectPath: string | nu
 export function requiresFormalFrontendLogin(
   portal: PortalScope,
   redirectPath: string | null,
-  isProduction = import.meta.env.PROD
+  isProduction = import.meta.env.PROD,
+  isStaticDemo = isStaticDemoMode()
 ) {
-  if (isProduction) {
+  if (isProduction || !isStaticDemo) {
     return true;
   }
 

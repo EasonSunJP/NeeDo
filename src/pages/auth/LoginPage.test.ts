@@ -278,14 +278,16 @@ describe("LoginPage real-account login", () => {
     });
   });
 
-  it("requires formal frontend login for payroll and formal schedule routes", () => {
+  it("requires formal login by default and keeps route exceptions only in an explicit static demo", () => {
     expect(requiresFormalFrontendLogin("technician", "/technician/payroll")).toBe(true);
     expect(requiresFormalFrontendLogin("technician", "/technician/payroll?period=2026-06")).toBe(true);
     expect(requiresFormalFrontendLogin("technician", "/technician/schedule")).toBe(true);
     expect(requiresFormalFrontendLogin("merchant", "/merchant/schedule?tab=appointments")).toBe(true);
     expect(requiresFormalFrontendLogin("merchant", "/merchant/orders")).toBe(true);
-    expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(false);
-    expect(requiresFormalFrontendLogin("merchant", "/technician/payroll")).toBe(false);
+    expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(true);
+    expect(requiresFormalFrontendLogin("merchant", "/technician/payroll")).toBe(true);
+    expect(requiresFormalFrontendLogin("technician", "/technician", false, true)).toBe(false);
+    expect(requiresFormalFrontendLogin("merchant", "/technician/payroll", false, true)).toBe(false);
   });
 
   it("shows continue when the current session or remembered authorization has the requested portal identity", () => {

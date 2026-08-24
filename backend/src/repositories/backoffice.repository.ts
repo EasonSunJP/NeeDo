@@ -144,6 +144,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       availableSlots,
       bookedSlots,
       financeAggregate,
+      technicianCount,
       techniciansPage,
       shopsPage
     ] = await Promise.all([
@@ -188,6 +189,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           releasedNdp: true
         }
       }),
+      this.client.technicianProfile.count({ where: technicianWhere }),
       this.client.technicianProfile.findMany({
         where: technicianWhere,
         include: this.technicianInclude(),
@@ -238,9 +240,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         },
         {
           label: "技师数量",
-          value: String(techniciansPage.length),
+          value: String(technicianCount),
           change: "TechnicianProfile",
-          tone: techniciansPage.length > 0 ? "good" : "neutral"
+          tone: technicianCount > 0 ? "good" : "neutral"
         }
       ],
       orders: latestOrders.map((order) => this.mapOrder(order)),

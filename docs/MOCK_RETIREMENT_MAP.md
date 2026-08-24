@@ -6,6 +6,7 @@
 ## 1. Retirement Policy
 
 - Existing mock/demo/local state can remain as legacy compatibility until its assigned step.
+- Normal local development and production login use formal `/api/v1/auth/*`; captcha/legacy login is limited to an explicit static-demo runtime.
 - Current online static pages keep permissive static-demo fallback behavior by default. Do not enable `VITE_NEEDO_STATIC_DEMO_STRICT=true` in the online static demo build unless the goal is to catch missing API coverage during development acceptance.
 - Do not add new mock data sources, fake backend endpoints, or placeholder APIs in later formal-development steps.
 - When a module is retired, replace it with a real API contract, validation, pagination where applicable, RBAC where protected, tests, and documentation.
