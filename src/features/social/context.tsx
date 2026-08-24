@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
+import { isFrontendBypassSession } from "../../auth/rbac";
 import { demoTechnicianAvatar, imageBank } from "../../data/mock";
 import { getTechnicianReviewDisplayTags } from "../../lib/detailProfiles";
 import { useEntityStore } from "../../state/entityStore";
@@ -1196,7 +1198,7 @@ function injectNotification(
   ];
 }
 
-export function SocialProvider({ children }: { children: ReactNode }) {
+function LegacySocialProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const { customers, stores, technicians, revision: entityRevision } = useEntityStore();
 
@@ -1960,6 +1962,87 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   }, [actorByScope, composerProfileKeys, profileList, profiles, state]);
 
   return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;
+}
+
+const formalSocialUnavailableState: SocialState = {
+  drafts: {},
+  follows: {},
+  interactions: {},
+  notifications: [],
+  posts: [],
+  profileOverrides: {},
+  refreshedAt: ""
+};
+
+const formalSocialActorByScope: Record<SocialPortalScope, string> = {
+  merchant: "formal:merchant",
+  technician: "formal:technician",
+  user: "formal:user"
+};
+
+function formalSocialMutationUnavailable(..._args: unknown[]): never {
+  throw new Error("error.feature_unavailable");
+}
+
+const formalSocialCompatibilityValue: SocialContextValue = {
+  actorByScope: formalSocialActorByScope,
+  clearDraft: formalSocialMutationUnavailable,
+  composerProfileKeys: [],
+  createPost: formalSocialMutationUnavailable,
+  deletePost: formalSocialMutationUnavailable,
+  ensureMutualFollow: formalSocialMutationUnavailable,
+  getActorForScope: (scope) => formalSocialActorByScope[scope],
+  getAncestors: () => [],
+  getFollowers: () => [],
+  getFollowing: () => [],
+  getInteractionState: (postId) => ({
+    bookmarked: false,
+    followingAuthor: false,
+    liked: false,
+    postId,
+    reposted: false,
+    shared: false
+  }),
+  getNotifications: () => [],
+  getPostById: () => undefined,
+  getProfilePosts: () => [],
+  getRelatedPosts: () => [],
+  getReplies: () => [],
+  getTagFeed: () => [],
+  getTimeline: () => [],
+  getTimelineFeed: () => [],
+  getTrendingTags: () => [],
+  getUnreadNotificationCount: () => 0,
+  incrementView: formalSocialMutationUnavailable,
+  markNotificationsRead: formalSocialMutationUnavailable,
+  markShared: formalSocialMutationUnavailable,
+  profileList: [],
+  profiles: {},
+  refreshFeeds: formalSocialMutationUnavailable,
+  saveDraft: formalSocialMutationUnavailable,
+  search: () => ({ posts: [], profiles: [], tags: [] }),
+  state: formalSocialUnavailableState,
+  toggleBookmark: formalSocialMutationUnavailable,
+  toggleFollow: formalSocialMutationUnavailable,
+  toggleLike: formalSocialMutationUnavailable,
+  togglePinPost: formalSocialMutationUnavailable,
+  toggleRepost: formalSocialMutationUnavailable,
+  updatePost: formalSocialMutationUnavailable,
+  updateProfileOverride: formalSocialMutationUnavailable
+};
+
+function FormalSocialCompatibilityProvider({ children }: { children: ReactNode }) {
+  return <SocialContext.Provider value={formalSocialCompatibilityValue}>{children}</SocialContext.Provider>;
+}
+
+export function SocialProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
+
+  if (isStaticDemoMode() && isFrontendBypassSession(session)) {
+    return <LegacySocialProvider>{children}</LegacySocialProvider>;
+  }
+
+  return <FormalSocialCompatibilityProvider>{children}</FormalSocialCompatibilityProvider>;
 }
 
 export function useSocial() {
