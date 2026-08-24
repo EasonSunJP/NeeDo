@@ -69,7 +69,12 @@ export class SseRealtimeEventGateway implements RealtimeEventGatewayPort {
   }
 
   private formatEvent(eventName: string, payload: unknown): string {
-    return `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+    const rawEventId = payload && typeof payload === "object" && "id" in payload
+      ? (payload as { id?: unknown }).id
+      : undefined;
+    const eventId = typeof rawEventId === "string" ? rawEventId.replace(/[\r\n]/g, "") : "";
+
+    return `${eventId ? `id: ${eventId}\n` : ""}event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
   }
 
   private createEventId(): string {
