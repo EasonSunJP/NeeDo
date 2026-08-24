@@ -51,7 +51,7 @@ import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirm
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { fieldJobs, orders } from "../../data/mock";
-import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages";
+import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";
 import { pricingModeApi, type ShopPricingMode, type TechnicianServicePayload } from "../../features/pricing-mode/api";
 import { useSocial } from "../../features/social/context";

@@ -41,7 +41,7 @@ import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWith
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { imageBank, orders, settlements } from "../../data/mock";
 import { DispatchOverviewWorkspace } from "../../features/dispatch-center/components/OverviewWorkspace";
-import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages";
+import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";
 import { useImStore } from "../../features/im/store";
 import { MerchantPrimaryNavCarousel } from "../../features/merchant-navigation/MerchantPrimaryNavCarousel";

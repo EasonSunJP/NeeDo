@@ -176,7 +176,7 @@ import {
   ImOrganizationContactsPage,
   ImSearchPage,
   ImServiceAccountsPage
-} from "./features/im/pages";
+} from "./features/im/route-pages";
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
 import { SocialComposerPage } from "./features/social/pages/SocialComposerPage";
