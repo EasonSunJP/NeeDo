@@ -55,9 +55,13 @@ const optionalUrlSchema = z.preprocess((value) => {
   return value;
 }, z.string().url().optional());
 
-const envSchema = z.object({
+const envSchema = z
+  .object({
   NODE_ENV: z.enum(["development", "test", "production"]),
   DEPLOY_ENV: z.enum(["local", "test", "staging", "prod"]).default("local"),
+  ALLOW_TEST_LOGIN: booleanSchema.default(false),
+  ALLOW_DEMO_SEED: booleanSchema.default(false),
+  ALLOW_SIMULATION_SEED: booleanSchema.default(false),
   SERVICE_NAME: z.string().min(1),
   PORT: z.coerce.number().int().min(1).max(65535),
   API_PREFIX: z.string().regex(/^\/api\/v[0-9]+$/),
@@ -103,7 +107,28 @@ const envSchema = z.object({
   AUTH_OTP_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
   AUTH_OTP_EMAIL_WEBHOOK_URL: optionalUrlSchema,
   AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
-});
+  })
+  .superRefine((value, context) => {
+    if (value.NODE_ENV !== "production") {
+      return;
+    }
+
+    const unsafeFlags = [
+      ["ALLOW_TEST_LOGIN", value.ALLOW_TEST_LOGIN],
+      ["ALLOW_DEMO_SEED", value.ALLOW_DEMO_SEED],
+      ["ALLOW_SIMULATION_SEED", value.ALLOW_SIMULATION_SEED]
+    ] as const;
+
+    for (const [flag, enabled] of unsafeFlags) {
+      if (enabled) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${flag} must be false when NODE_ENV=production`,
+          path: [flag]
+        });
+      }
+    }
+  });
 
 const parsedEnv = envSchema.safeParse(normalizedProcessEnv);
 

@@ -171,6 +171,10 @@ export const authApi = {
   },
 
   async login(email: string, password: string, captchaCode?: string) {
+    if (import.meta.env.PROD) {
+      return authApi.loginFormal(email, password);
+    }
+
     const normalizedCaptchaCode = captchaCode?.trim();
     const deviceToken = await getDeviceFingerprint();
     const body = new FormData();

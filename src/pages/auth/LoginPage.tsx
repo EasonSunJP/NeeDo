@@ -116,6 +116,7 @@ type TestCredentialEnv = {
 };
 
 type FrontendLoginEnv = TestCredentialEnv & {
+  PROD?: boolean;
   VITE_NEEDO_FRONTEND_AUTH_BYPASS?: string;
 };
 
@@ -202,6 +203,10 @@ export function resolveTestLoginCredentials(
 }
 
 export function isFrontendAuthBypassEnabled(env: FrontendLoginEnv) {
+  if (env.PROD) {
+    return false;
+  }
+
   const value = env.VITE_NEEDO_FRONTEND_AUTH_BYPASS?.trim().toLowerCase();
 
   return value === "1" || value === "true" || value === "yes";
@@ -671,7 +676,15 @@ export function getPostLoginRoute(portal: PortalScope, redirectPath: string | nu
   return redirectRoute;
 }
 
-export function requiresFormalFrontendLogin(portal: PortalScope, redirectPath: string | null) {
+export function requiresFormalFrontendLogin(
+  portal: PortalScope,
+  redirectPath: string | null,
+  isProduction = import.meta.env.PROD
+) {
+  if (isProduction) {
+    return true;
+  }
+
   const redirectRoute = normalizeRedirectRoute(redirectPath);
   const pathname = redirectRoute?.split(/[?#]/)[0] || "";
 

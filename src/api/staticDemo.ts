@@ -123,6 +123,11 @@ function isEnabledFlag(value: string | undefined) {
 }
 
 export function isStaticDemoMode() {
+  const isDedicatedStaticBuild = import.meta.env.VITE_NEEDO_BUILD_TARGET === "static-demo";
+  if (import.meta.env.PROD && !isDedicatedStaticBuild) {
+    return false;
+  }
+
   return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO);
 }
 

@@ -10,7 +10,7 @@
     "dev:backend": "node scripts/mock-backend.mjs",
     "dev:all": "node scripts/dev-all.mjs",
     "build": "tsc -b && vite build",
-    "build:static": "tsc -b && VITE_NEEDO_STATIC_DEMO=true vite build",
+    "build:static": "tsc -b && NEEDO_BUILD_TARGET=static-demo VITE_NEEDO_BUILD_TARGET=static-demo VITE_NEEDO_STATIC_DEMO=true vite build",
     "preview": "vite preview --host 0.0.0.0",
     "preview:static": "vite preview --host 0.0.0.0",
     "lint": "tsc -b --noEmit",

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error Vitest runs in Node; the app tsconfig does not include Node types.
 import { readFileSync } from "fs";
 import source from "./ShopAnalyticsDashboard.tsx?raw";
 

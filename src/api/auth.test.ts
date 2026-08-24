@@ -82,6 +82,35 @@ describe("authApi endpoint paths", () => {
     });
   });
 
+  it("uses the formal auth login URI in production even when legacy auth variables are present", async () => {
+    vi.stubEnv("PROD", true);
+    vi.stubEnv("VITE_LEGACY_AUTH_BASE_URL", "/legacy-auth");
+    vi.stubEnv("VITE_LEGACY_AUTHORIZATION", "Bearer unsafe-production-token");
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresIn: 900
+    });
+
+    await authApi.login("user@example.com", "S3cure-password!");
+
+    expect(httpClient.request).toHaveBeenCalledWith(
+      authEndpointPaths.formalLogin,
+      expect.objectContaining({
+        auth: false,
+        body: {
+          username: "user@example.com",
+          password: "S3cure-password!"
+        },
+        method: "POST",
+        retryOnUnauthorized: false
+      })
+    );
+    const [, options] = vi.mocked(httpClient.request).mock.calls[0] ?? [];
+    expect(options?.baseUrl).toBeUndefined();
+    expect(options?.headers).toBeUndefined();
+  });
+
   it("switches identity with the stored refresh token and persists the rotated token pair", async () => {
     vi.mocked(getStoredRefreshToken).mockReturnValueOnce("stored-refresh-token");
     vi.mocked(httpClient.request).mockResolvedValueOnce({

@@ -1,5 +1,8 @@
 process.env.NODE_ENV = "test";
 process.env.DEPLOY_ENV = "test";
+process.env.ALLOW_TEST_LOGIN = "true";
+process.env.ALLOW_DEMO_SEED = "true";
+process.env.ALLOW_SIMULATION_SEED = "true";
 process.env.SERVICE_NAME = "needo-backend";
 process.env.PORT = "3101";
 process.env.API_PREFIX = "/api/v1";

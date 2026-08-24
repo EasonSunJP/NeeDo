@@ -1037,6 +1037,9 @@ export const CORE_READ_DEMO_TECHNICIAN_SEEDS: CoreReadDemoTechnicianSeed[] = [
 const isLocalLikeEnv = (env: NodeJS.ProcessEnv): boolean =>
   env.NODE_ENV === "development" || env.NODE_ENV === "test" || env.DEPLOY_ENV === "local";
 
+const isEnabledSeedFlag = (value: string | undefined): boolean =>
+  ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
+
 export const getTestUserSeedPassword = (env: NodeJS.ProcessEnv = process.env): string => {
   const testUserPassword = env.TEST_USER_DEFAULT_PASSWORD?.trim();
   if (testUserPassword) {
@@ -1076,7 +1079,14 @@ export const getAdminSeedConfig = (env: NodeJS.ProcessEnv = process.env): AdminS
 };
 
 export const shouldSeedRequiredTestAccounts = (env: NodeJS.ProcessEnv = process.env): boolean =>
-  env.DEPLOY_ENV !== "prod";
+  env.NODE_ENV !== "production" &&
+  (env.DEPLOY_ENV === "local" || env.DEPLOY_ENV === "test") &&
+  isEnabledSeedFlag(env.ALLOW_TEST_LOGIN);
+
+export const shouldSeedCoreReadDemoData = (env: NodeJS.ProcessEnv = process.env): boolean =>
+  env.NODE_ENV !== "production" &&
+  (env.DEPLOY_ENV === "local" || env.DEPLOY_ENV === "test") &&
+  isEnabledSeedFlag(env.ALLOW_DEMO_SEED);
 
 const createSeedPrismaClient = (): PrismaClient =>
   new PrismaClient({
@@ -2990,6 +3000,7 @@ export const seedUserManagement = async (
   const adminConfig = getAdminSeedConfig();
   const adminPasswordHash = await hash(adminConfig.password, BCRYPT_ROUNDS);
   const seedTestAccounts = shouldSeedRequiredTestAccounts();
+  const seedCoreReadDemo = shouldSeedCoreReadDemoData();
   const testUserPasswordHash = seedTestAccounts
     ? await hash(getTestUserSeedPassword(), BCRYPT_ROUNDS)
     : null;
@@ -3160,51 +3171,53 @@ export const seedUserManagement = async (
       });
     }
 
-    const customerRole = roleByCode.get("customer");
-    if (!customerRole) {
-      throw new Error("Admin user seed failed: missing customer role.");
-    }
-
-    const adminCustomerProfile = await tx.customerProfile.upsert({
-      where: { userId: adminUser.id },
-      create: {
-        userId: adminUser.id,
-        displayName: adminConfig.username,
-        bio: "Default test customer identity for the shared local and staging test account.",
-        city: "Tokyo",
-        membershipLevel: "standard",
-        isPublic: false
-      },
-      update: {
-        displayName: adminConfig.username,
-        bio: "Default test customer identity for the shared local and staging test account.",
-        city: "Tokyo",
-        membershipLevel: "standard",
-        isPublic: false,
-        deletedAt: null
+    if (seedCoreReadDemo || seedTestAccounts) {
+      const customerRole = roleByCode.get("customer");
+      if (!customerRole) {
+        throw new Error("Admin user seed failed: missing customer role.");
       }
-    });
 
-    await upsertSeedIdentity(tx, {
-      userId: adminUser.id,
-      type: "customer",
-      scopeType: "customer_profile",
-      scopeId: adminCustomerProfile.id,
-      displayName: adminCustomerProfile.displayName,
-      isDefault: false
-    });
+      const adminCustomerProfile = await tx.customerProfile.upsert({
+        where: { userId: adminUser.id },
+        create: {
+          userId: adminUser.id,
+          displayName: adminConfig.username,
+          bio: "Default local test customer identity.",
+          city: "Tokyo",
+          membershipLevel: "standard",
+          isPublic: false
+        },
+        update: {
+          displayName: adminConfig.username,
+          bio: "Default local test customer identity.",
+          city: "Tokyo",
+          membershipLevel: "standard",
+          isPublic: false,
+          deletedAt: null
+        }
+      });
 
-    await assignSeedRole(tx, {
-      userId: adminUser.id,
-      roleId: customerRole.id,
-      scopeType: "customer_profile",
-      scopeId: adminCustomerProfile.id
-    });
+      await upsertSeedIdentity(tx, {
+        userId: adminUser.id,
+        type: "customer",
+        scopeType: "customer_profile",
+        scopeId: adminCustomerProfile.id,
+        displayName: adminCustomerProfile.displayName,
+        isDefault: false
+      });
 
-    await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
-      seedRequiredTestAccounts: seedTestAccounts,
-      testUserPasswordHash
-    });
+      await assignSeedRole(tx, {
+        userId: adminUser.id,
+        roleId: customerRole.id,
+        scopeType: "customer_profile",
+        scopeId: adminCustomerProfile.id
+      });
+
+      await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
+        seedRequiredTestAccounts: seedTestAccounts,
+        testUserPasswordHash
+      });
+    }
   });
 };
 
@@ -3213,7 +3226,7 @@ const runSeed = async (): Promise<void> => {
 
   try {
     await seedUserManagement(prisma);
-    console.log("User Management and Step 08 core read seed completed.");
+    console.log("User Management seed completed.");
   } finally {
     await prisma.$disconnect();
   }
