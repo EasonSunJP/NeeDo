@@ -300,6 +300,7 @@ const createAuthFixture = async () => {
     ]
   };
   const users = [passwordUser, customerUser, disabledUser, noPermissionUser, multiPortalUser];
+  const registrations: Array<Record<string, unknown>> = [];
 
   const repository = {
     findUserByEmail: jest.fn(
@@ -314,6 +315,19 @@ const createAuthFixture = async () => {
     findUserById: jest.fn(
       async (id: number) => users.find((item) => item.id === id && !item.deletedAt) ?? null
     ),
+    registerUser: jest.fn(async (input: Record<string, unknown>) => {
+      registrations.push(input);
+      const accountType = input.accountType as "customer" | "technician";
+
+      return {
+        id: 100 + registrations.length,
+        email: input.email as string,
+        username: input.username as string,
+        accountType,
+        approvalStatus: accountType === "technician" ? "pending_review" : "approved",
+        isActive: accountType === "customer"
+      };
+    }),
     updateLastLoginAt: jest.fn(async (id: number, loggedInAt: Date) => {
       const user = users.find((item) => item.id === id);
       if (user) {
@@ -348,6 +362,7 @@ const createAuthFixture = async () => {
     deliveredOtps,
     loginLogs,
     auditLogs,
+    registrations,
     user: passwordUser,
     customerUser,
     disabledUser,
@@ -357,6 +372,107 @@ const createAuthFixture = async () => {
 };
 
 describe("Step 05 Auth / OTP / Token / Session", () => {
+  it("registers a customer with a hashed password and no sensitive response fields", async () => {
+    const fixture = await createAuthFixture();
+
+    const response = await request(fixture.app).post("/api/v1/auth/register").send({
+      accountType: "customer",
+      email: "New.Customer@Example.com",
+      password: "Customer.2026!",
+      username: "New Customer"
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      code: 0,
+      message: "success",
+      data: {
+        id: 101,
+        email: "new.customer@example.com",
+        username: "New Customer",
+        accountType: "customer",
+        approvalStatus: "approved",
+        isActive: true
+      }
+    });
+    expect(response.body.data).not.toHaveProperty("password");
+    expect(response.body.data).not.toHaveProperty("passwordHash");
+    expect(fixture.registrations).toHaveLength(1);
+    expect(fixture.registrations[0]).toMatchObject({
+      accountType: "customer",
+      email: "new.customer@example.com",
+      username: "New Customer",
+      ip: expect.any(String)
+    });
+    expect(fixture.registrations[0]?.passwordHash).not.toBe("Customer.2026!");
+  });
+
+  it("registers a technician as inactive and pending review", async () => {
+    const fixture = await createAuthFixture();
+
+    const response = await request(fixture.app).post("/api/v1/auth/register").send({
+      accountType: "technician",
+      city: "Tokyo",
+      email: "technician.application@example.com",
+      password: "Technician.2026!",
+      username: "Technician Applicant"
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      accountType: "technician",
+      approvalStatus: "pending_review",
+      email: "technician.application@example.com",
+      isActive: false
+    });
+    expect(fixture.registrations[0]).toMatchObject({
+      accountType: "technician",
+      city: "Tokyo"
+    });
+  });
+
+  it("rejects duplicate registration emails", async () => {
+    const fixture = await createAuthFixture();
+
+    const response = await request(fixture.app).post("/api/v1/auth/register").send({
+      accountType: "customer",
+      email: "customer@example.com",
+      password: "Customer.2026!",
+      username: "Duplicate Customer"
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      code: ERROR_CODES.EMAIL_ALREADY_EXISTS,
+      message: "error.user.email_exists",
+      data: null
+    });
+    expect(fixture.repository.registerUser).not.toHaveBeenCalled();
+  });
+
+  it("rejects weak registration passwords and missing technician cities", async () => {
+    const fixture = await createAuthFixture();
+
+    const weakPasswordResponse = await request(fixture.app).post("/api/v1/auth/register").send({
+      accountType: "customer",
+      email: "weak@example.com",
+      password: "password",
+      username: "Weak Password"
+    });
+    const missingCityResponse = await request(fixture.app).post("/api/v1/auth/register").send({
+      accountType: "technician",
+      email: "missing.city@example.com",
+      password: "Technician.2026!",
+      username: "Missing City"
+    });
+
+    expect(weakPasswordResponse.status).toBe(400);
+    expect(weakPasswordResponse.body.code).toBe(ERROR_CODES.VALIDATION);
+    expect(missingCityResponse.status).toBe(400);
+    expect(missingCityResponse.body.code).toBe(ERROR_CODES.VALIDATION);
+    expect(fixture.repository.registerUser).not.toHaveBeenCalled();
+  });
+
   it("does not expose a passwordless test-login endpoint", async () => {
     const fixture = await createAuthFixture();
 

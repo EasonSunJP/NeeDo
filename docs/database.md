@@ -140,6 +140,28 @@ The seed is idempotent: rerunning it restores deleted system roles, permissions,
 role-permission assignments, the admin account, the admin platform identity, and
 the admin role assignment.
 
+## Local Simulation Dataset
+
+After migrations and the formal User Management seed are applied, the separate simulation seed can populate the local database without enabling demo data in production:
+
+```bash
+cd backend
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:simulation
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:simulation-data
+```
+
+Safety and repeatability rules:
+
+- only `DEPLOY_ENV=local|test` and localhost MySQL are accepted;
+- `NODE_ENV=production`, remote hosts, and production-looking database names are rejected;
+- account emails and `SIM3M-` order numbers form the isolated simulation namespace;
+- reruns replace only the cohort's schedules, services, bookings, financials, status history, and notifications;
+- customer seed-credit transactions and wallet-ledger entries are idempotent, so reruns do not credit another 5,000 NDP;
+- passwords use bcrypt with 12 rounds and are unique per account, derived from a local environment secret and email;
+- credential exports are stored under ignored `outputs/` and are never part of Git.
+
+`npm run check:simulation-data` independently queries MySQL and verifies account/profile/role prerequisites, 10 technicians per shop, services, schedule range, every booking-status count, status history, completed-order financials, wallets, seed ledger entries, notifications, and representative password hashes.
+
 ## Soft Delete Rules
 
 Business tables introduced in future steps must include:

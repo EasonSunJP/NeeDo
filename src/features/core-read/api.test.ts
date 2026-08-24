@@ -124,18 +124,19 @@ describe("core read API adapter", () => {
       latitude: "35.6721000",
       longitude: "139.7239000",
       mediaAssets: [{ id: 1, url: coreService.shop.coverUrl!, mimeType: "image/jpeg", usageType: "cover", width: 1200, height: 800, altText: null, sortOrder: 10 }],
-      services: [coreService],
+      services: [],
       technicians: [coreService.technician],
       createdAt: coreService.createdAt,
       updatedAt: coreService.updatedAt
     } satisfies CoreShopDetail);
     const technician = mapCoreTechnicianToTechnician({
       ...coreService.technician,
+      shop: coreService.shop,
       bio: "Certified body care technician.",
       serviceArea: "Minato, Shibuya",
       yearsExperience: 8,
       mediaAssets: [],
-      services: [coreService],
+      services: [],
       createdAt: coreService.createdAt,
       updatedAt: coreService.updatedAt
     } satisfies CoreTechnicianDetail);

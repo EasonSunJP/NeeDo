@@ -46,7 +46,7 @@ export type AdminNotice = {
   };
 };
 
-const officialNoticeStorageKey = "needo.admin.official-notices.v1";
+export const officialNoticeStorageKey = "needo.admin.official-notices.v1";
 
 function getOfficialNoticeStorage() {
   if (typeof window === "undefined" || !("localStorage" in window)) {

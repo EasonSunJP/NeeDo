@@ -6,17 +6,24 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { BookingRepository } from "../repositories/booking.repository";
+import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
 import { BookingService } from "../services/booking.service";
+import { AuditLogService } from "../services/audit-log.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
 import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
+  manualPaymentConfirmBodySchema,
+  manualPaymentRefundBodySchema,
   orderCancelBodySchema,
   orderIdParamSchema,
-  orderListQuerySchema
+  orderListQuerySchema,
+  scheduleSlotCreateBodySchema,
+  scheduleSlotListQuerySchema,
+  scheduleSlotUpdateBodySchema
 } from "../validators/booking.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -27,7 +34,11 @@ export const BOOKING_ROUTE_PERMISSIONS = {
   confirm: "order:confirm",
   cancel: "order:cancel",
   start: "order:start",
-  complete: "order:complete"
+  complete: "order:complete",
+  merchantPaymentWrite: "merchant-admin:order-payment:write",
+  backofficePaymentWrite: "backoffice:order-payment:write",
+  scheduleList: "schedule:slots:list",
+  scheduleWrite: "schedule:slots:write"
 } as const;
 
 export const createBookingRoutes = (config: AppConfig, dependencies: AppDependencies): Router => {
@@ -48,7 +59,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
   const bookingService = new BookingService(
     dependencies.bookingRepository ?? new BookingRepository(),
     ledgerService,
-    dependencies.realtimeService
+    dependencies.realtimeService,
+    new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
   );
   const controller = new BookingController(bookingService);
 
@@ -106,6 +118,40 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     validateRequest({ params: orderIdParamSchema }),
     controller.completeOrder
   );
+  router.post(
+    "/merchant-admin/orders/:id/payment/confirm",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.merchantPaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentConfirmBodySchema }),
+    controller.confirmManualPayment
+  );
+  router.post(
+    "/merchant-admin/orders/:id/payment/refund",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.merchantPaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentRefundBodySchema }),
+    controller.refundManualPayment
+  );
+  router.post(
+    "/backoffice/orders/:id/payment/confirm",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.backofficePaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentConfirmBodySchema }),
+    controller.confirmManualPayment
+  );
+  router.post(
+    "/backoffice/orders/:id/payment/refund",
+    authenticate(),
+    authorize(BOOKING_ROUTE_PERMISSIONS.backofficePaymentWrite),
+    validateRequest({ params: orderIdParamSchema, body: manualPaymentRefundBodySchema }),
+    controller.refundManualPayment
+  );
+  ["/merchant-admin/schedule/slots", "/technician/schedule/slots"].forEach((path) => {
+    router.get(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleList), validateRequest({ query: scheduleSlotListQuerySchema }), controller.listScheduleSlots);
+    router.post(path, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ body: scheduleSlotCreateBodySchema }), controller.createScheduleSlot);
+    router.patch(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema, body: scheduleSlotUpdateBodySchema }), controller.updateScheduleSlot);
+    router.delete(`${path}/:id`, authenticate(), authorize(BOOKING_ROUTE_PERMISSIONS.scheduleWrite), validateRequest({ params: orderIdParamSchema }), controller.deleteScheduleSlot);
+  });
 
   return router;
 };

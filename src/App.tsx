@@ -10,7 +10,9 @@ import { AdminLoginPage } from "./pages/auth/AdminLoginPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { BusinessCpsAdminPage } from "./pages/business-cps/BusinessCpsAdminPage";
 import { AnalyticsPage } from "./pages/admin/AnalyticsPage";
+import { AffiliateAdminPage } from "./pages/admin/AffiliateAdminPage";
 import { AdminDocsPage } from "./pages/admin/AdminDocsPage";
+import { AdminDispatchPage } from "./pages/admin/AdminDispatchPage";
 import { AdminNotificationComposePage } from "./pages/admin/AdminNotificationComposePage";
 import { AdminNotificationsPage } from "./pages/admin/AdminNotificationsPage";
 import { AdminSupportPage } from "./pages/admin/AdminSupportPage";
@@ -18,12 +20,13 @@ import { AvatarBadgesPage } from "./pages/admin/AvatarBadgesPage";
 import { CarouselPage } from "./pages/admin/CarouselPage";
 import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
 import { CRMPage } from "./pages/admin/CRMPage";
-import { CpsPage } from "./pages/admin/CpsPage";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { DataCenterPage } from "./pages/admin/DataCenterPage";
 import { DecorationPage } from "./pages/admin/DecorationPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
+import { FloorplanPage } from "./pages/admin/FloorplanPage";
+import { InventoryPage } from "./pages/admin/InventoryPage";
 import { MarketingPage } from "./pages/admin/MarketingPage";
 import { MerchantsPage } from "./pages/admin/MerchantsPage";
 import { NeedoDemandAdminPage, NeedoInfoAdminPage } from "./pages/admin/NeedoExchangeAdminPage";
@@ -173,17 +176,20 @@ import {
   ImOrganizationContactsPage,
   ImSearchPage,
   ImServiceAccountsPage
-} from "./features/im/pages";
+} from "./features/im/route-pages";
 import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
-import { SocialComposerPage } from "./features/social/pages/SocialComposerPage";
-import { SocialDraftsPage } from "./features/social/pages/SocialDraftsPage";
-import { SocialMediaViewerPage } from "./features/social/pages/SocialMediaViewerPage";
-import { SocialNotificationsPage } from "./features/social/pages/SocialNotificationsPage";
-import { SocialPostDetailPage } from "./features/social/pages/SocialPostDetailPage";
-import { SocialRelationshipsPage } from "./features/social/pages/SocialRelationshipsPage";
-import { SocialRepostPage } from "./features/social/pages/SocialRepostPage";
-import { SocialSearchPage } from "./features/social/pages/SocialSearchPage";
+import { RealtimeUnreadCountsProvider } from "./features/realtime/useRealtimeUnreadCounts";
+import {
+  SocialComposerPage,
+  SocialDraftsPage,
+  SocialMediaViewerPage,
+  SocialNotificationsPage,
+  SocialPostDetailPage,
+  SocialRelationshipsPage,
+  SocialRepostPage,
+  SocialSearchPage
+} from "./features/social/route-pages";
 import {
   backendManagementSystemBgUrl,
   businessBgUrl,
@@ -971,7 +977,8 @@ export default function App() {
   return (
     <RootErrorBoundary>
       <AuthProvider>
-        <I18nProvider>
+        <RealtimeUnreadCountsProvider>
+          <I18nProvider>
           <ClientThemeProvider>
             <I18nRuntime>
               <EntityStoreBootstrap />
@@ -1292,18 +1299,18 @@ export default function App() {
               <Route path="/admin/orders" element={protect("admin", <OrdersAdminPage />)} />
               <Route path="/admin/orders/demands" element={protect("admin", <NeedoDemandAdminPage />)} />
               <Route path="/admin/orders/info" element={protect("admin", <NeedoInfoAdminPage />)} />
-              <Route path="/admin/dispatch" element={protect("admin", <Navigate replace to="/merchant-admin/dispatch-center/current" />)} />
+              <Route path="/admin/dispatch" element={protect("admin", <AdminDispatchPage />)} />
               <Route path="/admin/field-jobs" element={protect("admin", <FieldJobsPage />)} />
               <Route path="/admin/crm" element={protect("admin", <CRMPage />)} />
               <Route path="/admin/users" element={protectPermission("admin", "page:user-management", <UsersPage />)} />
-              <Route path="/admin/afirieito" element={protect("admin", <CpsPage />)} />
+              <Route path="/admin/afirieito" element={protect("admin", <AffiliateAdminPage />)} />
               <Route path="/admin/cps" element={protect("admin", <LegacyAdminAfirieitoRedirect />)} />
               <Route path="/admin/marketing" element={protect("admin", <MarketingPage />)} />
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
-              <Route path="/admin/inventory" element={protect("admin", <Navigate replace to="/merchant-admin/inventory" />)} />
-              <Route path="/admin/floorplan" element={protect("admin", <Navigate replace to="/merchant-admin/stage-layout" />)} />
+              <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
+              <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />
               <Route path="/admin/permissions" element={protectPermission("admin", "page:permission-management", <PermissionsPage />)} />
               <Route path="/admin/travel-settings" element={protect("admin", <TravelSettingsPage />)} />
@@ -1313,7 +1320,8 @@ export default function App() {
               </SocialProvider>
             </I18nRuntime>
           </ClientThemeProvider>
-        </I18nProvider>
+          </I18nProvider>
+        </RealtimeUnreadCountsProvider>
       </AuthProvider>
     </RootErrorBoundary>
   );

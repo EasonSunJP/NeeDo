@@ -346,6 +346,11 @@ export interface OrderTimeline {
 
 export interface Order {
   id: string;
+  serviceId?: string;
+  technicianServiceId?: string;
+  shopId?: string;
+  technicianProfileId?: string;
+  scheduleSlotId?: string;
   orderNo: string;
   mode: FulfillmentMode;
   status: OrderStatus;

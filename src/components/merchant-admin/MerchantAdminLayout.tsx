@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { backofficeRealDataApi, type BackofficeDashboardPayload } from "../../api/backofficeRealData";
 import { useAuth } from "../../auth/AuthProvider";
 import type { FeaturePermission } from "../../auth/featurePermissions";
-import { merchantAdminDemo } from "../../data/merchantAdmin";
 import { cn, yen } from "../../lib/utils";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, normalizeAdminTheme, sharedAdminThemeOptions, type AdminTheme } from "../../theme/AdminTheme";
 import { AdminAccountMenu } from "../admin/AdminAccountMenu";
@@ -46,8 +46,8 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
       { label: "点单 / オーダー", to: "/merchant-admin/dine/orders", icon: "点", children: ["新单", "KDS", "上菜", "收银"], permission: "store.dine-in.order.view" },
       { label: "菜单 / メニュー", to: "/merchant-admin/menu", icon: "菜", children: ["商品", "售罄", "制作区", "设施限定"], permission: "store.dine-in.menu.view" },
       { label: "场控 / 店内", to: "/merchant-admin/floor", icon: "店", children: ["桌台", "包厢", "床位", "QR"], permission: "store.dine-in.floor.view" },
-      { label: "场控布局", to: "/merchant-admin/stage-layout", icon: "场", children: ["区域状态", "包间利用", "预约占用"], permission: "store.stage-layout.view" },
-      { label: "库存管理", to: "/merchant-admin/inventory", icon: "库", children: ["耗材余量", "预警", "补货建议"], permission: "store.inventory.view" },
+      { label: "场控布局", to: "/merchant-admin/stage-layout", icon: "场", children: ["能力门禁", "版本 API", "占用合同"], permission: "store.stage-layout.view" },
+      { label: "库存管理", to: "/merchant-admin/inventory", icon: "库", children: ["能力门禁", "库存锁", "移动审计"], permission: "store.inventory.view" },
       { label: "财务结算", to: "/merchant-admin/finance", icon: "¥", children: ["店铺流水", "结算单", "分账"] }
     ]
   },
@@ -64,24 +64,24 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     key: "people",
     title: "人员与顾客",
     items: [
-      { label: "员工列表", to: "/merchant-admin/people?module=staff", icon: "员", children: ["员工列表", "状态", "评价"] },
-      { label: "用户管理", to: "/merchant-admin/people?module=customers", icon: "客", children: ["到店顾客", "复购", "会员种类"] },
-      { label: "评价中心", to: "/merchant-admin/people?module=reviews", icon: "评", children: ["店铺评价", "员工评价", "待回复"] }
+      { label: "员工列表", to: "/merchant-admin/people?module=staff", icon: "员", children: ["正式技师", "状态", "店铺范围"] },
+      { label: "用户管理", to: "/merchant-admin/people?module=customers", icon: "客", children: ["正式客户", "预约次数", "公开状态"] },
+      { label: "评价中心", to: "/merchant-admin/people?module=reviews", icon: "评", children: ["能力门禁", "Review 表", "回复审计"] }
     ]
   },
   {
     key: "design",
     title: "UI装修",
     items: [
-      { label: "店铺 UI 装修", to: "/merchant-admin/design", icon: "店", children: ["详情页首屏", "图文区块", "菜单布局"] },
-      { label: "信息卡装修", to: "/merchant-admin/design?module=cards", icon: "卡", children: ["店铺卡", "套餐卡", "员工卡"] }
+      { label: "店铺 UI 装修", to: "/merchant-admin/design", icon: "店", children: ["能力门禁", "版本 API", "媒体审计"] },
+      { label: "信息卡装修", to: "/merchant-admin/design?module=cards", icon: "卡", children: ["能力门禁", "发布版本", "回滚"] }
     ]
   },
   {
     key: "settings",
     title: "门店设置",
     items: [
-      { label: "门店设置", to: "/merchant-admin/settings", icon: "设", children: ["营业时间", "资质文件", "管理员"] }
+      { label: "门店设置", to: "/merchant-admin/settings", icon: "设", children: ["基础资料", "数据库状态", "待接入能力"] }
     ]
   },
   {
@@ -171,9 +171,12 @@ function getInitialThemeState(): AdminThemeState {
 }
 
 export function MerchantAdminLayout({ children }: { children: ReactNode }) {
-  const { canAccessFeature } = useAuth();
+  const { canAccessFeature, session } = useAuth();
   const [{ theme, preferenceMode }, setThemeState] = useState<AdminThemeState>(getInitialThemeState);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
+  const [summaryStatus, setSummaryStatus] = useState<"loading" | "success" | "error">("loading");
+  const [summaryRevision, setSummaryRevision] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const visibleSections = useMemo(
@@ -189,7 +192,16 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
   const routeSectionKey = getSectionForRoute(location.pathname, location.search, visibleSections);
   const [activeSectionKey, setActiveSectionKey] = useState(routeSectionKey);
   const activeSection = visibleSections.find((section) => section.key === activeSectionKey) ?? visibleSections[0] ?? merchantAdminSections[0];
-  const pendingOrders = useMemo(() => merchantAdminDemo.orders.filter((order) => ["pending", "confirmed", "scheduled"].includes(order.status)).length, []);
+  const currentShop = dashboard?.shops[0] ?? null;
+  const accountName = currentShop?.name ?? session?.username ?? "当前店铺";
+  const pendingOrders = dashboard
+    ? dashboard.orders.filter((order) => ["pending", "confirmed", "scheduled"].includes(order.status)).length
+    : null;
+  const shopStatus = currentShop
+    ? `${currentShop.city} · ${currentShop.status}`
+    : summaryStatus === "loading"
+      ? "正在加载正式店铺资料"
+      : "店铺摘要加载失败";
 
   const setTheme = (nextTheme: AdminTheme) => {
     setThemeState({
@@ -214,13 +226,34 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
     setActiveSectionKey(routeSectionKey);
   }, [routeSectionKey]);
 
+  useEffect(() => {
+    let activeRequest = true;
+    setSummaryStatus("loading");
+
+    backofficeRealDataApi.dashboard("merchant-admin")
+      .then((payload) => {
+        if (!activeRequest) return;
+        setDashboard(payload);
+        setSummaryStatus("success");
+      })
+      .catch(() => {
+        if (!activeRequest) return;
+        setDashboard(null);
+        setSummaryStatus("error");
+      });
+
+    return () => {
+      activeRequest = false;
+    };
+  }, [session?.currentIdentity.id, summaryRevision]);
+
   return (
     <div className={cn("admin-shell merchant-admin-shell min-h-screen bg-paper text-ink", `admin-theme-${theme}`)}>
       <aside className="admin-sidebar fixed left-0 top-0 hidden h-screen w-64 border-r border-line bg-white p-4 lg:block">
         <div className="flex h-full flex-col">
           <div className="admin-brand rounded-lg p-4 text-white">
             <div className="flex items-center gap-3">
-              <AdminAccountMenu accountName={merchantAdminDemo.store.name} fallbackEmail="store-admin@needo.jp" loginPath="/login/merchant-admin" portal="merchant" roleLabel="店铺管理员" />
+              <AdminAccountMenu accountName={accountName} fallbackEmail={session?.email} loginPath="/login/merchant-admin" portal="merchant" roleLabel="店铺管理员" />
               <NavLink className="min-w-0 flex-1 text-white" to="/merchant-admin">
                 <p className="text-xs font-bold text-mint">NeeDo 商户后台</p>
                 <h1 className="mt-1 text-lg font-black">商户后台</h1>
@@ -230,22 +263,37 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
 
           <section className="admin-profile mt-4 rounded-lg border border-line bg-paper p-3">
             <div className="flex items-center gap-3">
-              <img alt={merchantAdminDemo.store.name} className="avatar-shape h-11 w-11 object-cover" src={merchantAdminDemo.store.cover} />
+              {session?.avatarUrl ? (
+                <img alt={accountName} className="avatar-shape h-11 w-11 object-cover" src={session.avatarUrl} />
+              ) : (
+                <span className="avatar-shape grid h-11 w-11 shrink-0 place-items-center bg-moss text-sm font-black text-white" aria-hidden="true">
+                  {accountName.trim().slice(0, 1).toUpperCase() || "店"}
+                </span>
+              )}
               <div className="min-w-0">
-                <p className="truncate text-sm font-black">{merchantAdminDemo.store.name}</p>
-                <p className="mt-1 text-xs text-ink/45">{merchantAdminDemo.store.area} · {merchantAdminDemo.store.openStatus}</p>
+                <p className="truncate text-sm font-black">{accountName}</p>
+                <p className="mt-1 text-xs text-ink/45">{shopStatus}</p>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="rounded-md bg-white px-2 py-2">
                 <p className="text-[11px] text-ink/45">待处理</p>
-                <strong className="text-sm">{pendingOrders}</strong>
+                <strong className="text-sm">{pendingOrders ?? "—"}</strong>
               </div>
               <div className="rounded-md bg-white px-2 py-2">
-                <p className="text-[11px] text-ink/45">月流水</p>
-                <strong className="text-sm">{yen(merchantAdminDemo.orders.reduce((sum, order) => sum + order.amount, 0))}</strong>
+                <p className="text-[11px] text-ink/45">服务 GMV</p>
+                <strong className="text-sm">{dashboard ? yen(dashboard.finance.estimatedServiceGmvJpy) : "—"}</strong>
               </div>
             </div>
+            {summaryStatus === "error" ? (
+              <button
+                className="mt-2 w-full rounded-md border border-coral/30 bg-coral/5 px-2 py-2 text-xs font-black text-coral"
+                onClick={() => setSummaryRevision((current) => current + 1)}
+                type="button"
+              >
+                重新加载店铺摘要
+              </button>
+            ) : null}
           </section>
 
           <section className="admin-sidebar-search mt-4 rounded-lg border border-line bg-paper p-3">

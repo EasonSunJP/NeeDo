@@ -9,6 +9,7 @@ import type {
   OtpSendBody,
   OtpVerifyBody,
   RefreshBody,
+  RegisterBody,
   SwitchIdentityBody
 } from "../validators/auth.validator";
 
@@ -31,6 +32,20 @@ export class AuthController {
             await this.authService.login(loginIdentifier, password, this.getContext(request))
           )
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public register = async (
+    request: BodyRequest<RegisterBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(201)
+        .json(successResponse(await this.authService.register(request.body, this.getContext(request))));
     } catch (error) {
       next(error);
     }

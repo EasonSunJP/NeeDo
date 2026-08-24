@@ -229,6 +229,15 @@ type IntegrationStatus = "enabled" | "disabled" | "misconfigured";
 - 每个模拟账号使用唯一可追踪密码；清单只写入受忽略的输出目录，不加入 Git。
 - 正式生产密码和正式用户密码绝不导出。
 
+### 11.4 2026-08-25 本地实现结果
+
+- 独立命名空间 `needo_three_month_v1` 已实现，账号使用 `sim.*@needo.local`，订单使用 `SIM3M-`。
+- 当前确定性结果：10 店铺、100 技师、100 用户、30 服务、2,600 排班、1,801 订单。
+- 订单状态分布：完成 1,214、取消 487、服务中 33、待确认 50、已确认 17。
+- 已写入 6,013 条状态历史、1,214 条完成订单财务记录、100 个用户钱包与种子账本、1,801 条订单通知。
+- 重复执行后上述数量不翻倍，100 个钱包仍各为 5,000 NDP，账本交易与分录仍各 100 条。
+- 账号 CSV/XLSX 共 210 个账号，每个密码唯一；输出目录已加入 `.gitignore`。
+
 ## 12. 错误、幂等与并发
 
 - 统一错误分类：validation、unauthenticated、forbidden、not_found、conflict、provider_unavailable、rate_limited、internal。

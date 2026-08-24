@@ -177,8 +177,8 @@ function buildCoreTechnicianSocialPosts(detail: CoreTechnicianDetail): SocialPos
 
 function buildCoreTechnicianRelatedShopEntries(detail: CoreTechnicianDetail): TechnicianRelatedShopEntry[] {
   const seenShopIds = new Set<number>();
-  const shops = detail.services
-    .map((service) => service.shop)
+  const shops = [detail.shop, ...detail.services.map((service) => service.shop)]
+    .filter((shop): shop is NonNullable<CoreTechnicianDetail["shop"]> => Boolean(shop))
     .filter((shop) => {
       if (seenShopIds.has(shop.id)) {
         return false;

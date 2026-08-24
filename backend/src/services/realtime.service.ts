@@ -178,20 +178,45 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return friendRequest;
   }
 
-  public createSocialPost(
+  public async createSocialPost(
     auth: AuthenticatedAccessContext,
     input: Omit<CreateSocialPostInput, "authorUserId">
   ) {
-    return this.repository.createSocialPost({
+    const post = await this.repository.createSocialPost({
       authorUserId: auth.userId,
       content: input.content,
       media: input.media,
       visibility: input.visibility
     });
+    const recipientUserIds = Array.from(
+      new Set([auth.userId, ...(await this.repository.listFollowerUserIds(auth.userId))])
+    );
+
+    for (const recipientUserId of recipientUserIds) {
+      this.eventGateway.publish({
+        id: this.createEventId(),
+        type: "social.post.created",
+        recipientUserId,
+        payload: post,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return post;
   }
 
   public listSocialPosts(auth: AuthenticatedAccessContext, input: SocialPostListInput) {
     return this.repository.listSocialPosts(auth.userId, input);
+  }
+
+  public async getSocialPost(auth: AuthenticatedAccessContext, postId: number) {
+    const post = await this.repository.getSocialPost(auth.userId, postId);
+
+    if (!post) {
+      throw this.notFoundError("error.realtime.social_post_not_found");
+    }
+
+    return post;
   }
 
   public async createFollow(

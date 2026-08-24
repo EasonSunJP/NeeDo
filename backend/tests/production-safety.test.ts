@@ -1,0 +1,108 @@
+import { shouldSeedRequiredTestAccounts } from "../prisma/seed";
+
+describe("production safety", () => {
+  const originalEnv = { ...process.env };
+
+  const setValidProductionEnv = (): void => {
+    process.env = {
+      ...originalEnv,
+      NODE_ENV: "production",
+      DEPLOY_ENV: "prod",
+      ALLOW_TEST_LOGIN: "false",
+      ALLOW_DEMO_SEED: "false",
+      ALLOW_SIMULATION_SEED: "false",
+      CORS_ALLOWED_ORIGINS: "https://needo.dackou.com",
+      METRICS_ENABLED: "true",
+      METRICS_BEARER_TOKEN: "production-metrics-token-with-32-characters",
+      DATABASE_URL: "mysql://needo_prod:strong-db-password@mysql:3306/needo_prod",
+      REDIS_URL: "redis://:strong-redis-password@redis:6379",
+      AUTH_ACCESS_TOKEN_SECRET: "production-access-secret-with-32-characters",
+      AUTH_REFRESH_TOKEN_SECRET: "production-refresh-secret-with-32-characters"
+    };
+  };
+
+  const importEnv = async (): Promise<void> => {
+    await jest.isolateModulesAsync(async () => {
+      await import("../src/config/env");
+    });
+  };
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    jest.resetModules();
+  });
+
+  it("requires an explicit allow flag before seeding test accounts", () => {
+    expect(
+      shouldSeedRequiredTestAccounts({
+        NODE_ENV: "development",
+        DEPLOY_ENV: "local"
+      })
+    ).toBe(false);
+    expect(
+      shouldSeedRequiredTestAccounts({
+        NODE_ENV: "development",
+        DEPLOY_ENV: "local",
+        ALLOW_TEST_LOGIN: "true"
+      })
+    ).toBe(true);
+  });
+
+  it("never seeds test accounts in staging or production runtimes", () => {
+    expect(
+      shouldSeedRequiredTestAccounts({
+        NODE_ENV: "production",
+        DEPLOY_ENV: "staging",
+        ALLOW_TEST_LOGIN: "true"
+      })
+    ).toBe(false);
+    expect(
+      shouldSeedRequiredTestAccounts({
+        NODE_ENV: "production",
+        DEPLOY_ENV: "prod",
+        ALLOW_TEST_LOGIN: "true"
+      })
+    ).toBe(false);
+  });
+
+  it.each(["ALLOW_TEST_LOGIN", "ALLOW_DEMO_SEED", "ALLOW_SIMULATION_SEED"])(
+    "rejects %s in production",
+    async (unsafeFlag) => {
+      process.env = {
+        ...originalEnv,
+        NODE_ENV: "production",
+        DEPLOY_ENV: "prod",
+        ALLOW_TEST_LOGIN: "false",
+        ALLOW_DEMO_SEED: "false",
+        ALLOW_SIMULATION_SEED: "false",
+        [unsafeFlag]: "true"
+      };
+
+      await expect(
+        importEnv()
+      ).rejects.toThrow(unsafeFlag);
+    }
+  );
+
+  it("accepts a complete production environment", async () => {
+    setValidProductionEnv();
+
+    await expect(importEnv()).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ["local deploy target", { DEPLOY_ENV: "local" }, "DEPLOY_ENV"],
+    ["insecure CORS origin", { CORS_ALLOWED_ORIGINS: "http://needo.example" }, "CORS_ALLOWED_ORIGINS"],
+    ["placeholder CORS origin", { CORS_ALLOWED_ORIGINS: "https://needo.example" }, "CORS_ALLOWED_ORIGINS"],
+    ["missing metrics token", { METRICS_BEARER_TOKEN: "" }, "METRICS_BEARER_TOKEN"],
+    ["placeholder access secret", { AUTH_ACCESS_TOKEN_SECRET: "replace-with-prod-access-token-secret-32chars-min" }, "AUTH_ACCESS_TOKEN_SECRET"],
+    ["reused token secrets", { AUTH_REFRESH_TOKEN_SECRET: "production-access-secret-with-32-characters" }, "AUTH_REFRESH_TOKEN_SECRET"],
+    ["placeholder database credentials", { DATABASE_URL: "mysql://needo_prod:replace-with-password@mysql:3306/needo_prod" }, "DATABASE_URL"],
+    ["unauthenticated Redis", { REDIS_URL: "redis://redis:6379" }, "REDIS_URL"]
+  ])("rejects %s", async (_label, overrides, expectedField) => {
+    setValidProductionEnv();
+    Object.assign(process.env, overrides);
+
+    await expect(importEnv()).rejects.toThrow(expectedField);
+  });
+});

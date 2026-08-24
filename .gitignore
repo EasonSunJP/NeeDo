@@ -5,6 +5,7 @@ dist/
 .worktrees/
 .data/
 exports/
+outputs/
 .env
 .env.*
 !.env.example

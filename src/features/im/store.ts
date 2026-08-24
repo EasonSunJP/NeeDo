@@ -1,4 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
+import { useAuth } from "../../auth/AuthProvider";
+import { isFrontendBypassSession } from "../../auth/rbac";
 import { useEntityStore } from "../../state/entityStore";
 import { createImApi, installImMockServer, subscribeImRealtime } from "./api";
 import {
@@ -63,6 +66,10 @@ type ImSnapshot = {
   activeConversationId?: string;
   ui: UiState;
 };
+
+function formalImMutationUnavailable(..._args: unknown[]): never {
+  throw new Error("error.feature_unavailable");
+}
 
 function createInitialSnapshot(): ImSnapshot {
   return {
@@ -842,6 +849,8 @@ function createScopedStore(scope: ImRoleType) {
   }
 
   function useStore() {
+    const { session } = useAuth();
+    const legacyEnabled = isStaticDemoMode() && isFrontendBypassSession(session);
     const entityRevision = useEntityStore().revision;
     const storeSnapshot = useSyncExternalStore(
       (listener) => {
@@ -852,18 +861,22 @@ function createScopedStore(scope: ImRoleType) {
     );
 
     useEffect(() => {
+      if (!legacyEnabled) {
+        return;
+      }
+
       void hydrateStore();
-    }, []);
+    }, [legacyEnabled]);
 
     useEffect(() => {
-      if (storeSnapshot.status !== "ready") {
+      if (!legacyEnabled || storeSnapshot.status !== "ready") {
         return;
       }
 
       void refreshAccountEntities(entityRevision);
-    }, [entityRevision, storeSnapshot.status]);
+    }, [entityRevision, legacyEnabled, storeSnapshot.status]);
 
-    return {
+    const legacyValue = {
       ...storeSnapshot,
       hydrate: hydrateStore,
       loadConversation,
@@ -900,6 +913,48 @@ function createScopedStore(scope: ImRoleType) {
       rememberSearchTerm,
       clearSearchHistory
     };
+
+    if (!legacyEnabled) {
+      return {
+        ...createInitialSnapshot(),
+        hydrate: formalImMutationUnavailable,
+        loadConversation: formalImMutationUnavailable,
+        loadMessages: formalImMutationUnavailable,
+        setActiveConversation: formalImMutationUnavailable,
+        setDraft: formalImMutationUnavailable,
+        sendMessage: formalImMutationUnavailable,
+        estimateTagMessageCampaign: formalImMutationUnavailable,
+        sendTagMessageCampaign: formalImMutationUnavailable,
+        resendMessage: formalImMutationUnavailable,
+        recallMessage: formalImMutationUnavailable,
+        forwardMessage: formalImMutationUnavailable,
+        pinConversation: formalImMutationUnavailable,
+        muteConversation: formalImMutationUnavailable,
+        updateConversationPrivacy: formalImMutationUnavailable,
+        updateConversationGroupInfo: formalImMutationUnavailable,
+        markConversationRead: formalImMutationUnavailable,
+        deleteConversation: formalImMutationUnavailable,
+        clearConversation: formalImMutationUnavailable,
+        ensureDirectConversation: formalImMutationUnavailable,
+        createGroupConversation: formalImMutationUnavailable,
+        addConversationMembers: formalImMutationUnavailable,
+        removeConversationMember: formalImMutationUnavailable,
+        addContact: formalImMutationUnavailable,
+        updateRemark: formalImMutationUnavailable,
+        updateContactTags: formalImMutationUnavailable,
+        updateConversationTags: formalImMutationUnavailable,
+        blockContact: formalImMutationUnavailable,
+        unblockContact: formalImMutationUnavailable,
+        deleteContact: formalImMutationUnavailable,
+        acceptFriendRequest: formalImMutationUnavailable,
+        rejectFriendRequest: formalImMutationUnavailable,
+        search: formalImMutationUnavailable,
+        rememberSearchTerm: formalImMutationUnavailable,
+        clearSearchHistory: formalImMutationUnavailable
+      } as typeof legacyValue;
+    }
+
+    return legacyValue;
   }
 
   return {

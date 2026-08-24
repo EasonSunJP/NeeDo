@@ -12,24 +12,29 @@ npm run dev
 当前仓库的开发启动方式已经拆分为：
 
 ```bash
-# 默认：同时启动前端 + mock backend
+# 默认：同时启动前端 + 正式 backend（MySQL / Redis / /api/v1）
 npm run dev
 
-# 前端
+# 同上，名称更明确
+npm run dev:formal
+
+# 只启动前端
 npm run dev:frontend
 
-# 本地 mock backend 状态服务
+# 旧的本地 mock backend 状态服务（仅兼容）
 npm run dev:backend
 
-# 一键同时启动前端 + mock backend
-npm run dev:all
+# 旧的前端 + mock backend 组合（仅兼容）
+npm run dev:legacy
 ```
 
 说明：
 
 - 当前仓库已包含正式 `backend/` 工程；登录、Auth、RBAC、User Management 必须走真实 `/api/v1` 后端。
 - 部分旧业务页面仍保留 legacy mock compatibility，例如 `src/features/im/api.ts`，不得继续扩张为新的正式实现。
-- `npm run dev:backend` 提供的是本地 mock backend 状态服务，便于联调和健康检查，不代表真实业务后端已接入。
+- 首次运行前把 `backend/.env.dev.example` 复制为未跟踪的 `backend/.env.dev`，并启动本地 MySQL/Redis、应用 migration 与 seed。
+- `npm run dev:formal` 会检查端口上是否已经是 NeeDo 正式后端/前端，安全复用正确服务，拒绝覆盖无关进程；可用 `FORMAL_BACKEND_PORT`、`FRONTEND_PORT`、`FORMAL_BACKEND_ENV_FILE` 覆盖本地配置。
+- `npm run dev:backend` 提供的是旧 mock backend 状态服务，只为静态兼容保留，不代表真实业务后端。
 - 本项目默认前端端口已改为 `5180`，避免占用其他项目正在使用的 `5173`、`5175` 和 `5176`。
 - 如果 `5180` 已被占用，Vite 会自动切到下一个可用端口。
 - Chrome 直接双击打开 `dist/*.html` 时，`file://` 模式通常不会正常执行 Vite 的 ES module 入口，表现就是白屏、进入页/聊天页/错误页背景都像“没了”。请改用 `npm run dev` 或 `npm run preview` 通过本地 HTTP 服务访问。
@@ -64,9 +69,20 @@ Step 07 has added the frontend side of formal Auth / RBAC while keeping the exis
 
 Auth behavior:
 
+- Normal development and production frontends use formal password login by
+  default. Captcha/legacy login is available only through `npm run dev:static`
+  or the dedicated static-demo build.
 - Access Token is kept in memory only.
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
+- Public registration uses `POST /api/v1/auth/register` and only accepts customer or technician accounts. Customers are activated immediately; technicians remain inactive with a `pending_review` profile until the protected management workflow approves them.
+- Merchant and operations accounts do not have public self-registration and continue to be created through protected management APIs.
+
+Verify the registration transaction against the configured local, non-production MySQL database (the check rejects remote/production targets and removes only the uniquely named rows it creates):
+
+```bash
+npm --prefix backend run check:registration-flow
+```
 
 Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix. Local Vite dev/preview proxies `/api/v1` to the formal backend at `http://127.0.0.1:3000` by default; override with `NEEDO_API_PROXY_TARGET` or `VITE_API_PROXY_TARGET` if needed.
 
@@ -74,7 +90,121 @@ The shared Apifox login/register/captcha endpoints are legacy pre-login routes, 
 
 Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in through `POST /api/v1/auth/login` with `username/email + password`; the shared local/staging test username is `admin` and the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. The public frontend test-account shortcut enters the user portal, so the shared test account is seeded with both platform-admin and customer identities.
 
+## Local Three-Month Simulation Data
+
+The local-only simulation seed creates an isolated, deterministic cohort for real API and portal acceptance: 10 published shops, 100 published technicians (exactly 10 per shop), 100 customers, 30 services, 2,600 schedule slots, and three calendar months of completed, cancelled, in-service, confirmed, and pending bookings. Completed bookings include confirmed onsite payments and order-finance records; customers receive wallet seed-credit ledger entries, and every simulated booking creates a recipient notification.
+
+The script refuses production/non-local deployments, remote MySQL hosts, and production-looking database names. It also requires `ALLOW_SIMULATION_SEED=true`. Each account gets a unique deterministic password derived from `SIMULATION_DEFAULT_PASSWORD`, or from the existing local `TEST_USER_DEFAULT_PASSWORD` when the simulation-specific seed is not configured. No password is hardcoded or committed.
+
+```bash
+cd backend
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:simulation
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:simulation-data
+```
+
+The account CSV is written to ignored `outputs/NeeDo_模拟账号_2026-06至08.csv`. Create the formatted XLSX companion with the command below. On first run it creates an ignored local tooling virtual environment under `backend/.data/` and installs the pinned `openpyxl` version from `backend/requirements-simulation.txt`:
+
+```bash
+cd backend
+npm run export:simulation-accounts-xlsx
+```
+
+Both account files contain `account_type`, `shop_name`, `display_name`, `email`, `password`, `status`, and `notes`. They are local credentials and must never be committed, published, or used in production.
+
+## Formal Local Acceptance And Release
+
+The normal local formal entry is `npm run dev`, which starts the Express/MySQL/
+Redis backend and the Vite frontend together. After startup, use the role-specific
+entries below instead of the static-demo build:
+
+- Operations: `http://127.0.0.1:5180/pf-admin.html#/admin`
+- Merchant: `http://127.0.0.1:5180/store-admin.html#/merchant-admin`
+- Customer: `http://127.0.0.1:5180/user.html#/`
+- Technician: `http://127.0.0.1:5180/technician.html#/technician`
+
+Run `npm run verify:production-build` before handoff. The complete local,
+staging, production, rollback, deferred-provider, and credential-handling gates
+are in `docs/production-release-checklist.md`. Local acceptance is a release
+candidate check; it is not evidence of a public deployment or any 1k–100k
+capacity tier.
+
 Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the public client login page immediately enter the frontend portals (`/`, `/merchant`, `/technician`, `/afirieito`) without calling an auth API. This is only for short-term preview access while API routing is unstable; backend routes such as `/admin` and `/merchant-admin` still reject the temporary frontend session.
+
+## Formal Schedule Inventory
+
+Merchant and technician schedule portals now maintain customer-bookable inventory through identity-scoped `/api/v1/*/schedule/slots` APIs. The backend derives the shop or technician profile from the active authenticated identity, validates explicit-offset ISO timestamps, prevents overlapping technician slots, and updates matching availability records transactionally. Personal calendar notes remain a separate, non-bookable compatibility lane.
+
+Verify schedule scope, exact UTC storage, overlap handling, and concurrent capacity behavior against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:schedule-flow
+```
+
+The check refuses production flags and remote database hosts, creates uniquely named temporary records, and removes those records after verification.
+
+## Formal Manual Payments
+
+Booking orders now persist the selected `onsite` or `bank_transfer` method and a formal payment lifecycle: `pending → confirmed → refundPending → refunded`. Merchant routes derive the shop from the active identity; backoffice routes require platform payment-write permission. Confirmation records the exact JPY amount, confirmer, time, reference and note, while cancellation moves an already confirmed payment to `refundPending`. Identical confirmation and refund retries are idempotent, and the order-finance timeline is synchronized transactionally.
+
+Verify the migration, merchant scope, amount validation, idempotent retries, cancellation and refund synchronization against local MySQL:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:manual-payment-flow
+```
+
+The check refuses production or remote database targets and deletes only the uniquely named records it creates.
+
+## Formal NDP Top-up and Withdrawal Review
+
+Customer, technician, and merchant identities can submit NDP top-up or withdrawal requests through the formal wallet API. The backend derives the target user or shop wallet from the active identity; clients cannot select another wallet owner. Operations and finance review requests through protected backoffice APIs. Approval atomically changes the available NDP balance, writes one immutable ledger entry, creates finance reconciliation and audit evidence, and links the request to that transaction. Rejection does not change the wallet, duplicate approval is idempotent, and insufficient withdrawals roll back completely.
+
+External bank/card/payout APIs remain deferred. The current production workflow records the manually verified bank reference and review note.
+
+Verify this lifecycle against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:wallet-adjustment-flow
+```
+
+The check refuses production flags and remote database hosts, covers idempotent create/review, approved top-up and withdrawal, insufficient-balance rollback, rejection without mutation, ledger entries and reconciliation, then removes its uniquely named records.
+
+## Formal Customer Reservations
+
+Numeric checkout routes load the formal service detail and current bookable schedule inventory, then create the reservation through the authenticated Booking API. A successful submission navigates directly to the persisted numeric order without copying it into browser storage. The customer reservation list reads only the paginated Booking API. Numeric reservation detail routes load the formal order, payment state, and complete status history from the backend, and customer cancellation is submitted through the protected order-status endpoint. Browser-local order creation, hiding, deletion, review mutation, and mock-order merging are not used in this formal lane. Legacy nonnumeric demo links remain isolated compatibility.
+
+The technician portal's visible order tab is also identity-scoped to the formal order API. Technicians accept pending orders, start confirmed service, complete active service, or cancel eligible orders through the protected state-machine endpoints. Every returned status history is rendered from the database; the formal panel does not use the legacy service-session store or browser-local order mutations.
+
+Authenticated customer identities now receive an API-backed “My” page. The profile comes from the real customer profile record, each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`. The editable local profile is retained only for explicit frontend-preview sessions until a protected customer self-profile update contract is introduced.
+
+The operations dashboard now renders the protected backoffice aggregate for metrics, orders, schedule inventory, financial totals, shops, and technicians. Headline technician volume uses an exact scoped database count rather than the six-row preview list length. City trends, field jobs, risk scores, and merchant-health scoring stay visibly disabled until formal aggregate contracts exist; the production dashboard no longer substitutes demo metrics for these modules.
+
+The operations timeline route is an explicit production capability gate. It does not present sample events, owners, cities, priorities, or handling states as persisted work. Activation requires formal event and incident records, audited assignment and resolution state machines, cross-city RBAC, and server-side filter, pagination, aggregate, and export contracts.
+
+The platform dispatch route is also an explicit capability gate. An operations identity is never redirected into a merchant-scoped dispatch workspace. Cross-shop dispatch remains unavailable until persisted dispatch jobs, assignments and exceptions; assignment/reassignment/escalation state machines; cross-shop technician availability and conflict locks; platform RBAC, audit, SLA, pagination, aggregate and export contracts are complete.
+
+The operations travel-settings route is an explicit external-provider capability gate. It does not label bundled city fares, distance calculations, transport modes, imports, or saves as active configuration. Store and order address/latitude/longitude fields remain usable through formal APIs, while maps, navigation, route estimates and automatic travel pricing stay disabled until provider configuration, timeout/rate-limit/cache behavior, stable `provider_unavailable` errors, versioned travel-policy approval, RBAC, audit and export contracts exist.
+
+The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
+
+The operations Afirieito route is an explicit attribution-and-settlement capability gate. It no longer mounts the browser-local CPS workspace or exposes separate fake GMV, ROI, budget, link, promoter, wallet, risk and settlement modules in the admin navigation. Activation requires persisted affiliate programs, promoters, links, attribution touches and commission claims; audited attribution/commission/reversal/settlement lifecycles; wallet and payout reconciliation; scope RBAC, fraud controls, pagination, aggregates and exports. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
+
+The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
+
+The official-notice list and compose routes are explicit delivery capability gates. They do not show bundled update history or browser-stored drafts, attachments, target accounts, and schedules as sent notices. The existing Notification table remains available for recipient-side event notifications; administrator broadcasts additionally require persisted notices, audience snapshots, per-recipient delivery attempts, idempotent workers, retry and failure receipts, attachment storage, RBAC, and audit evidence.
+
+The operations support route is an explicit support-case capability gate. It does not publish unverified hard-coded email, LINE, phone or hours, and it does not expose inert copy/on-call actions as working support. Activation requires persisted tickets, messages, attachments and on-call policies; audited assignment, SLA, escalation, resolution, close and reopen states; tenant RBAC, PII masking, attachment authorization, delivery receipts, search, pagination, SLA aggregates and exports. Official contact channels must come from reviewed versioned configuration.
+
+The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
+
+The shared merchant-admin shell now follows the same authenticated scope. Its account name, shop status, pending-order count, avatar, and service GMV come from the active session and `/api/v1/merchant-admin/dashboard`; it shows a retryable error state instead of falling back to demo shop or order data.
+
+The operations and merchant inventory routes are explicit production capability gates. They do not render sample stock, low-stock alerts, replenishment suggestions, purchase drafts, or browser-local inventory mutations. Activation requires formal item, location, and stock-movement tables; transactional purchase, transfer, count, receipt, and issue state machines; idempotency, inventory locking, RBAC, and audit evidence; plus alert, aggregate, and export contracts.
+
+The operations and merchant floor-control routes are also explicit production capability gates. They do not expose sample rooms, beds, workstations, utilization, revenue, booking occupancy, or browser-local layout edits. Activation requires versioned floor-area and resource records, shop-scoped draft/publish/rollback APIs, coordinate validation, optimistic locking, RBAC and audit evidence, and live occupancy derived from formal Booking and Schedule data.
+
+The common Booking order API now enforces the same active-identity boundary for reads and state transitions: customers see their own orders, merchant identities see only their current shop, technician identities see only their assigned profile, and only global platform identities can operate across shops. Out-of-scope detail and mutation requests are returned as not found.
+
+Operations and merchant order aggregates now carry the persisted manual-payment state instead of returning a hard-coded unpaid value, so confirmed payments, refund-pending orders, and refunded orders remain accurate on every formal admin surface.
 
 ## Current Scope
 
@@ -83,7 +213,7 @@ Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the
 - 运营后台：Dashboard、Analytics、Data Center、Orders、Field Jobs、CRM、Marketing、Finance、Reviews、Merchants、Roles、Travel Settings。
 - 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、UI装修、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
-- Mock 数据：覆盖核心实体与业务流程，后续可替换为 API/Prisma 数据源。
+- Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班、用户正式预约列表/详情、线下收款和 NDP 充值提现审核已迁移到 API/Prisma，禁止新增正式业务 mock。
 - 多语言：用户端与后台端支持中文、日本語、English 三语切换，语言偏好会保存在本地。
 - 后台主题：运营控制台支持黑夜 / 白天两套视觉主题，可在后台顶部随时切换。
 
@@ -1573,6 +1703,30 @@ npm test
   - 订单 / 财务 / 营销 / 风控
   - 店铺与商家管理
   - 系统设置与权限管理
+
+当前正式化边界：运营后台“数据大盘”与“分析中心”只读取受权限保护的数据库聚合。分析中心先提供当前财务、供给、订单、店铺和技师快照；复购、留存、渠道、评价、城市和排行榜等历史趋势在时间序列聚合 API 完成前明确禁用，不生成演示折线或虚构增长率。
+
+“数据管理中心”已改为正式数据只读入口，通过后端分页和关键词过滤读取订单、客户、技师、店铺、服务、排班与结算。库存、评价及历史全屏图表在正式表结构、RBAC、审计和分页合同完成前保持禁用，不再回退到浏览器 mock 或本地资料覆盖层。
+
+独立“评价中心”同样采用能力门禁：Review 表与 migration、分页搜索 RBAC API、回复和风控审计日志完成前，只展示明确的上线条件，不展示模拟评分、评价内容、回复状态、差评预警或敏感评价数字。
+
+商户后台“经营驾驶舱”已按当前登录店铺隔离读取正式聚合，只显示当前财务、供给、订单与技师快照。复购、留存、渠道、评价、员工排行、同比和环比在店铺级时间序列合同完成前明确禁用，不再复用演示经营仪表盘。
+
+商户后台“订单中心”已接入按当前店铺强制隔离的服务端分页、正式订单状态机、线下收款确认和退款接口。取消订单、确认收款和确认退款采用二次点击确认；冲突、越权、网络失败和空数据都有明确状态，不再跳转到 mock 消息或调度流程。
+
+商户店铺基础资料现支持 `PATCH /api/v1/merchant-admin/shop`：店铺 ID 只从当前活动店铺身份取得，商户可更新名称、简介、城市、地址和电话，不能通过请求体切换店铺或修改平台推荐状态；每次修改都经过 Zod、RBAC 和审计日志。图片、营业时段、证件和展示装修仍需独立数据表及文件接口，当前不写入浏览器伪数据。
+
+商户后台“人员与顾客”现直接使用当前店铺范围内的正式分页 API。技师可在店铺范围内更新、审核和软删除，客户只显示后端已有的档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
+
+商户“店铺 UI 装修/信息卡装修”已改为正式能力门禁。在店铺展示配置表、草稿/发布/版本 API、MediaAsset 上传与删除审计、用户端正式读取和回滚完成前，不再把装修、轮播图或展示文案保存到浏览器，也不再显示虚假的“已发布到本店”。
+
+运营“营销中心”已移除模拟优惠券、活动量、GMV、ROI、归因和页面内存创建。现有 `FeeCampaign` 只参与平台费用计算，不被冒充为用户营销模型；通用营销将在 Campaign/Coupon/Redemption 数据表、状态机、领取核销、归因审计和聚合导出合同完成后开放。
+
+运营后台“订单中心”现在使用全平台正式分页、订单状态机及受保护的运营收款/退款接口。改期、派单、改价、打印和虚构聊天/时间线在正式合同上线前不再作为可用按钮展示，避免运营人员误以为操作已写入数据库。
+
+“上门工单中心”已改为能力门禁：FieldJob 数据表、派工状态机、照片与异常记录、导航和审计链路完成前，不显示模拟地址、报价、技师和工单状态，也不开放不会落库的创建、派工、上传或完工操作。
+
+运营后台旧“客户 CRM”入口现在统一进入受 `menu:user-management` 权限保护的正式客户档案工作区。当前只展示并维护数据库已有的姓名、邮箱、城市、会员等级、公开状态、预约数和创建时间；在正式聚合合同完成前，不再从浏览器数据推算 LTV、流失风险、标签、动态或下次预约。
 
 ### 权限点变化
 

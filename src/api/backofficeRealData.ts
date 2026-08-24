@@ -8,7 +8,7 @@ export interface BackofficeOrderPayload {
   id: number;
   orderNo: string;
   status: string;
-  paymentStatus: "unpaid";
+  paymentStatus: "pending" | "confirmed" | "refundPending" | "refunded";
   customerUserId: number;
   customerName: string;
   serviceId: number;
@@ -98,6 +98,7 @@ export interface BackofficeShopPayload {
   ownerUserId: number | null;
   ownerEmail: string | null;
   name: string;
+  description: string | null;
   city: string;
   address: string;
   phone: string | null;
@@ -105,6 +106,57 @@ export interface BackofficeShopPayload {
   isRecommended: boolean;
   createdAt: string;
 }
+
+export interface BackofficeCustomerPayload {
+  id: number;
+  userId: number;
+  displayName: string;
+  email: string;
+  city: string | null;
+  membershipLevel: string;
+  isPublic: boolean;
+  bookingCount: number;
+  createdAt: string;
+}
+
+export interface BackofficeServicePayload {
+  id: number;
+  categoryId: number;
+  categoryName: string;
+  shopId: number;
+  technicianProfileId: number | null;
+  name: string;
+  description: string | null;
+  city: string;
+  serviceMode: "store" | "home" | string;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  status: string;
+  isRecommended: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BackofficeShopCreateInput {
+  ownerEmail: string;
+  ownerUsername: string;
+  ownerPassword: string;
+  name: string;
+  description?: string | null;
+  city: string;
+  address: string;
+  phone?: string | null;
+  isRecommended?: boolean;
+}
+
+export type BackofficeShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone" | "isRecommended">>;
+export type MerchantShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">>;
+export type BackofficeTechnicianUpdateInput = Partial<Pick<BackofficeTechnicianPayload, "displayName" | "city" | "serviceArea">> & { shopId?: number | null; isRecommended?: boolean };
+export type BackofficeCustomerUpdateInput = Partial<Pick<BackofficeCustomerPayload, "displayName" | "city" | "membershipLevel" | "isPublic">> & { bio?: string | null };
+export type BackofficeServiceCreateInput = Pick<BackofficeServicePayload, "categoryId" | "name" | "city" | "serviceMode" | "priceAmount" | "durationMinutes"> & Partial<Pick<BackofficeServicePayload, "technicianProfileId" | "description" | "status" | "isRecommended" | "sortOrder">>;
+export type BackofficeServiceUpdateInput = Partial<BackofficeServiceCreateInput>;
 
 export interface BackofficeDashboardPayload {
   metrics: Metric[];
@@ -146,6 +198,9 @@ type ListQuery = {
   status?: string;
   from?: string;
   to?: string;
+  keyword?: string;
+  shopId?: number;
+  categoryId?: number;
 };
 
 const scopePrefix = (scope: BackofficeScope) => (scope === "merchant-admin" ? "/merchant-admin" : "/backoffice");
@@ -186,6 +241,55 @@ export const backofficeRealDataApi = {
   },
   merchantShop() {
     return httpClient.request<PaginatedApiPayload<BackofficeShopPayload>>("/merchant-admin/shop");
+  },
+  updateMerchantShop(input: MerchantShopUpdateInput) {
+    return httpClient.request<BackofficeShopPayload>("/merchant-admin/shop", { body: input, method: "PATCH" });
+  },
+  createShop(input: BackofficeShopCreateInput) {
+    return httpClient.request<BackofficeShopPayload>("/backoffice/shops", { body: input, method: "POST" });
+  },
+  updateShop(id: number, input: BackofficeShopUpdateInput) {
+    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}`, { body: input, method: "PATCH" });
+  },
+  approveShop(id: number) {
+    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}/approve`, { method: "POST" });
+  },
+  deleteShop(id: number) {
+    return httpClient.request<BackofficeShopPayload>(`/backoffice/shops/${id}`, { method: "DELETE" });
+  },
+  updateTechnician(scope: BackofficeScope, id: number, input: BackofficeTechnicianUpdateInput) {
+    return httpClient.request<BackofficeTechnicianPayload>(`${scopePrefix(scope)}/technicians/${id}`, { body: input, method: "PATCH" });
+  },
+  approveTechnician(scope: BackofficeScope, id: number, input: { shopId?: number } = {}) {
+    return httpClient.request<BackofficeTechnicianPayload>(`${scopePrefix(scope)}/technicians/${id}/approve`, { body: input, method: "POST" });
+  },
+  deleteTechnician(scope: BackofficeScope, id: number) {
+    return httpClient.request<BackofficeTechnicianPayload>(`${scopePrefix(scope)}/technicians/${id}`, { method: "DELETE" });
+  },
+  customers(scope: BackofficeScope, query?: ListQuery) {
+    return httpClient.request<PaginatedApiPayload<BackofficeCustomerPayload>>(`${scopePrefix(scope)}/customers`, { query });
+  },
+  customer(scope: BackofficeScope, id: number) {
+    return httpClient.request<BackofficeCustomerPayload>(`${scopePrefix(scope)}/customers/${id}`);
+  },
+  updateCustomer(id: number, input: BackofficeCustomerUpdateInput) {
+    return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, { body: input, method: "PATCH" });
+  },
+  deleteCustomer(id: number) {
+    return httpClient.request<BackofficeCustomerPayload>(`/backoffice/customers/${id}`, { method: "DELETE" });
+  },
+  services(scope: BackofficeScope, query?: ListQuery) {
+    return httpClient.request<PaginatedApiPayload<BackofficeServicePayload>>(`${scopePrefix(scope)}/services`, { query });
+  },
+  createService(scope: BackofficeScope, input: BackofficeServiceCreateInput, shopId?: number) {
+    const path = scope === "merchant-admin" ? "/merchant-admin/services" : `/backoffice/shops/${shopId}/services`;
+    return httpClient.request<BackofficeServicePayload>(path, { body: input, method: "POST" });
+  },
+  updateService(scope: BackofficeScope, id: number, input: BackofficeServiceUpdateInput) {
+    return httpClient.request<BackofficeServicePayload>(`${scopePrefix(scope)}/services/${id}`, { body: input, method: "PATCH" });
+  },
+  deleteService(scope: BackofficeScope, id: number) {
+    return httpClient.request<BackofficeServicePayload>(`${scopePrefix(scope)}/services/${id}`, { method: "DELETE" });
   }
 };
 
@@ -203,7 +307,12 @@ export function mapBackofficeOrder(row: BackofficeOrderPayload): Order {
     city: "",
     area: "",
     amount: row.priceAmount,
-    paymentStatus: row.paymentStatus,
+    paymentStatus:
+      row.paymentStatus === "confirmed" || row.paymentStatus === "refundPending"
+        ? "paid"
+        : row.paymentStatus === "refunded"
+          ? "refunded"
+          : "unpaid",
     bookedAt: formatDateTime(row.startsAt),
     createdAt: formatDateTime(row.createdAt),
     source: "web",

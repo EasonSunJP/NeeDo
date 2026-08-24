@@ -2,6 +2,8 @@ import { httpClient } from "../../api/httpClient";
 import type { FulfillmentMode, Order } from "../../types/domain";
 
 export type BookingOrderStatus = "pending" | "confirmed" | "inService" | "completed" | "cancelled";
+export type ManualPaymentMethod = "onsite" | "bank_transfer";
+export type ManualPaymentStatus = "pending" | "confirmed" | "refundPending" | "refunded";
 
 export type BookingScheduleSlot = {
   id: number;
@@ -27,7 +29,17 @@ export type BookingOrder = {
   orderNo: string;
   orderType: "booking" | "request";
   status: BookingOrderStatus;
-  paymentStatus: "unpaid";
+  paymentMethod: ManualPaymentMethod;
+  paymentStatus: ManualPaymentStatus;
+  paymentAmountJpy: number;
+  paymentConfirmedById: number | null;
+  paymentConfirmedAt: string | null;
+  paymentReference: string | null;
+  paymentNote: string | null;
+  paymentRefundedById: number | null;
+  paymentRefundedAt: string | null;
+  paymentRefundReference: string | null;
+  paymentRefundReason: string | null;
   customerUserId: number;
   serviceId: number | null;
   technicianServiceId: number | null;
@@ -82,10 +94,40 @@ export type AvailabilityQuery = {
   to: string;
 };
 
+export type ManagedScheduleScope = "merchant-admin" | "technician";
+
+export type ManagedScheduleSlotQuery = {
+  from: string;
+  page?: number;
+  pageSize?: number;
+  serviceId?: number;
+  technicianProfileId?: number;
+  technicianServiceId?: number;
+  status?: BookingScheduleSlot["status"];
+  to: string;
+};
+
+export type CreateManagedScheduleSlotInput = {
+  capacity?: number;
+  endsAt: string;
+  serviceId?: number;
+  startsAt: string;
+  technicianProfileId?: number | null;
+  technicianServiceId?: number;
+};
+
+export type UpdateManagedScheduleSlotInput = {
+  capacity?: number;
+  endsAt?: string;
+  startsAt?: string;
+  status?: "available" | "blocked";
+};
+
 export type CreateBookingInput = {
   fulfillmentMode: FulfillmentMode;
   note?: string;
   orderType?: "booking" | "request";
+  paymentMethod?: ManualPaymentMethod;
   scheduleSlotId: number;
 } & ({ serviceId: number; technicianServiceId?: never } | { serviceId?: never; technicianServiceId: number });
 
@@ -112,6 +154,15 @@ export function formatApiOrderDateTime(value: string) {
 export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
   return {
     id: String(order.id),
+    serviceId: order.serviceId ? String(order.serviceId) : undefined,
+    technicianServiceId: order.technicianServiceId
+      ? String(order.technicianServiceId)
+      : undefined,
+    shopId: String(order.shopId),
+    technicianProfileId: order.technicianProfileId
+      ? String(order.technicianProfileId)
+      : undefined,
+    scheduleSlotId: String(order.scheduleSlotId),
     orderNo: order.orderNo,
     mode: order.fulfillmentMode,
     status: order.status,
@@ -123,8 +174,13 @@ export function mapBookingOrderToDomainOrder(order: BookingOrder): Order {
     city: "东京",
     area: order.shopName,
     amount: Number.parseFloat(order.priceAmount) || 0,
-    paymentStatus: "unpaid",
-    paymentMethod: "offline",
+    paymentStatus:
+      order.paymentStatus === "confirmed" || order.paymentStatus === "refundPending"
+        ? "paid"
+        : order.paymentStatus === "refunded"
+          ? "refunded"
+          : "unpaid",
+    paymentMethod: order.paymentMethod === "onsite" ? "cash" : "offline",
     bookedAt: formatApiOrderDateTime(order.startsAt),
     createdAt: formatApiOrderDateTime(order.createdAt),
     source: "app",
@@ -143,7 +199,8 @@ export const bookingApi = {
     return httpClient.request<BookingOrder>("/bookings", {
       body: {
         ...input,
-        orderType: input.orderType ?? "booking"
+        orderType: input.orderType ?? "booking",
+        paymentMethod: input.paymentMethod ?? "onsite"
       }
     });
   },
@@ -167,5 +224,50 @@ export const bookingApi = {
   },
   completeOrder(id: number) {
     return httpClient.request<BookingOrder>(`/orders/${id}/complete`, { method: "POST" });
+  },
+  confirmManualPayment(
+    surface: "merchant-admin" | "backoffice",
+    id: number,
+    input: {
+      method: ManualPaymentMethod;
+      amountJpy: number;
+      reference?: string | null;
+      note?: string | null;
+    }
+  ) {
+    return httpClient.request<BookingOrder>(`/${surface}/orders/${id}/payment/confirm`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  refundManualPayment(
+    surface: "merchant-admin" | "backoffice",
+    id: number,
+    input: { reason: string; reference?: string | null }
+  ) {
+    return httpClient.request<BookingOrder>(`/${surface}/orders/${id}/payment/refund`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  listManagedScheduleSlots(scope: ManagedScheduleScope, query: ManagedScheduleSlotQuery) {
+    return httpClient.request<PaginatedBookingData<BookingScheduleSlot>>(`/${scope}/schedule/slots`, { query });
+  },
+  createManagedScheduleSlot(scope: ManagedScheduleScope, input: CreateManagedScheduleSlotInput) {
+    return httpClient.request<BookingScheduleSlot>(`/${scope}/schedule/slots`, {
+      body: input,
+      method: "POST"
+    });
+  },
+  updateManagedScheduleSlot(scope: ManagedScheduleScope, id: number, input: UpdateManagedScheduleSlotInput) {
+    return httpClient.request<BookingScheduleSlot>(`/${scope}/schedule/slots/${id}`, {
+      body: input,
+      method: "PATCH"
+    });
+  },
+  deleteManagedScheduleSlot(scope: ManagedScheduleScope, id: number) {
+    return httpClient.request<BookingScheduleSlot>(`/${scope}/schedule/slots/${id}`, {
+      method: "DELETE"
+    });
   }
 };

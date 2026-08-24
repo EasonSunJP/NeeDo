@@ -1,326 +1,242 @@
-import { useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { backofficeRealDataApi, mapBackofficeMerchant, mapBackofficeStore } from "../../api/backofficeRealData";
+import {
+  backofficeRealDataApi,
+  type BackofficeServiceCreateInput,
+  type BackofficeServicePayload,
+  type BackofficeShopCreateInput,
+  type BackofficeShopPayload
+} from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
-import { StoreEntitySyncEditor } from "../../components/admin/EntitySyncEditor";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
-import { FilterBar } from "../../components/ui/FilterBar";
-import { HorizontalScrollArea } from "../../components/ui/HorizontalScrollArea";
 import { Tabs } from "../../components/ui/Tabs";
-import { serviceCategories, services } from "../../data/mock";
+import { coreReadApi, type CoreCategory } from "../../features/core-read/api";
 import { yen } from "../../lib/utils";
-import type { Merchant, ServiceCategory, ServiceItem, Store } from "../../types/domain";
 
-const tabs = ["店铺列表", "店铺分类", "入驻审核", "服务项目", "营业配置", "图片标签"];
-
-const categoryPalette = ["#39c27f", "#f58b50", "#4b7cff", "#e85f72", "#9a6cff", "#24a8b8", "#d9a32f", "#59687a"];
-
-function isStoreRow(value: Merchant | Store | ServiceItem | ServiceCategory): value is Store {
-  return "merchantId" in value && "openStatus" in value;
-}
+const tabs = ["店铺列表", "入驻审核", "服务项目", "店铺分类"];
+const emptyShopForm: BackofficeShopCreateInput = {
+  ownerEmail: "",
+  ownerUsername: "",
+  ownerPassword: "",
+  name: "",
+  city: "",
+  address: ""
+};
+const emptyServiceForm: BackofficeServiceCreateInput = {
+  categoryId: 0,
+  name: "",
+  city: "",
+  serviceMode: "store",
+  priceAmount: 0,
+  durationMinutes: 60,
+  status: "draft"
+};
+const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 export function MerchantsPage() {
   const [searchParams] = useSearchParams();
   const [active, setActive] = useState(searchParams.get("module") === "categories" ? "店铺分类" : "店铺列表");
-  const [selected, setSelected] = useState<Merchant | Store | ServiceItem | ServiceCategory | null>(null);
-  const [categoryRows, setCategoryRows] = useState(serviceCategories);
-  const [realStores, setRealStores] = useState<Store[]>([]);
-  const [realMerchants, setRealMerchants] = useState<Merchant[]>([]);
+  const [shops, setShops] = useState<BackofficeShopPayload[]>([]);
+  const [services, setServices] = useState<BackofficeServicePayload[]>([]);
+  const [categories, setCategories] = useState<CoreCategory[]>([]);
+  const [selectedShop, setSelectedShop] = useState<BackofficeShopPayload | null>(null);
+  const [selectedService, setSelectedService] = useState<BackofficeServicePayload | null>(null);
+  const [shopForm, setShopForm] = useState(emptyShopForm);
+  const [shopDraft, setShopDraft] = useState({ name: "", city: "", address: "" });
+  const [serviceForm, setServiceForm] = useState(emptyServiceForm);
+  const [serviceDraft, setServiceDraft] = useState(emptyServiceForm);
+  const [serviceShopId, setServiceShopId] = useState(0);
+  const [createShopOpen, setCreateShopOpen] = useState(false);
+  const [createServiceOpen, setCreateServiceOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (searchParams.get("module") === "categories") {
-      setActive("店铺分类");
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [shopPage, servicePage, categoryPage] = await Promise.all([
+        backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100 }),
+        backofficeRealDataApi.services("backoffice", { page: 1, pageSize: 100 }),
+        coreReadApi.listCategories({ page: 1, pageSize: 100 })
+      ]);
+      setShops(shopPage.list);
+      setServices(servicePage.list);
+      setCategories(categoryPage.list);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setLoading(false);
     }
-  }, [searchParams]);
-
-  useEffect(() => {
-    let activeRequest = true;
-
-    backofficeRealDataApi.shops("backoffice").then((response) => {
-      if (activeRequest) {
-        setRealStores(response.list.map(mapBackofficeStore));
-        setRealMerchants(response.list.map(mapBackofficeMerchant));
-      }
-    }).catch(() => {
-      if (activeRequest) {
-        setRealStores([]);
-        setRealMerchants([]);
-      }
-    });
-
-    return () => {
-      activeRequest = false;
-    };
   }, []);
 
-  const addCategory = () => {
-    setCategoryRows((current) => [
-      {
-        id: `category-${Date.now()}`,
-        name: "新增分类",
-        icon: "新",
-        mode: "both",
-        hot: false
-      },
-      ...current
-    ]);
+  useEffect(() => { void load(); }, [load]);
+
+  const mutate = async (action: () => Promise<unknown>) => {
+    setSaving(true);
+    setError("");
+    try {
+      await action();
+      await load();
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openShop = (shop: BackofficeShopPayload) => {
+    setSelectedShop(shop);
+    setShopDraft({ name: shop.name, city: shop.city, address: shop.address });
+  };
+
+  const createShop = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void mutate(async () => {
+      await backofficeRealDataApi.createShop(shopForm);
+      setShopForm(emptyShopForm);
+      setCreateShopOpen(false);
+    });
+  };
+
+  const saveShop = () => {
+    if (!selectedShop) return;
+    void mutate(async () => setSelectedShop(await backofficeRealDataApi.updateShop(selectedShop.id, shopDraft)));
+  };
+
+  const openService = (service: BackofficeServicePayload) => {
+    setSelectedService(service);
+    setServiceDraft({
+      categoryId: service.categoryId,
+      technicianProfileId: service.technicianProfileId,
+      name: service.name,
+      description: service.description,
+      city: service.city,
+      serviceMode: service.serviceMode,
+      priceAmount: service.priceAmount,
+      durationMinutes: service.durationMinutes,
+      status: service.status,
+      isRecommended: service.isRecommended,
+      sortOrder: service.sortOrder
+    });
+  };
+
+  const createService = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!serviceShopId || !serviceForm.categoryId) return;
+    void mutate(async () => {
+      await backofficeRealDataApi.createService("backoffice", serviceForm, serviceShopId);
+      setServiceForm(emptyServiceForm);
+      setServiceShopId(0);
+      setCreateServiceOpen(false);
+    });
+  };
+
+  const saveService = () => {
+    if (!selectedService) return;
+    void mutate(async () => setSelectedService(await backofficeRealDataApi.updateService("backoffice", selectedService.id, serviceDraft)));
   };
 
   return (
     <AdminLayout>
-      <ModuleShell
-        title="店铺与商家管理"
-        description="覆盖多门店资料、营业时间、服务区域、图片、项目菜单、标签、状态开关、入驻资质审核与服务上下架。"
-        actions={<Button>新增商家</Button>}
-      >
+      <ModuleShell title="店铺与商家管理" description="店铺账号、审核、基础资料与服务项目全部读取和写入正式数据库。" actions={<Button onClick={() => setCreateShopOpen(true)}>新增店铺</Button>}>
         <Tabs active={active} items={tabs} onChange={setActive} />
-        <div className="mt-4">
-          <FilterBar
-            actions
-            searchPlaceholder="搜索商家、门店、类目、区域"
-            filters={[
-              { label: "城市", options: [{ label: "东京", value: "tokyo" }, { label: "大阪", value: "osaka" }] },
-              { label: "状态", options: [{ label: "营业中", value: "open" }, { label: "待审核", value: "pending" }] },
-              { label: "类目", options: serviceCategories.map((item) => ({ label: item.name, value: item.id })) }
-            ]}
-          />
-        </div>
+        {error ? <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+        {loading ? <p className="mt-6 text-sm font-bold text-ink/50">正在读取正式数据...</p> : null}
 
-        {active === "店铺列表" && (
+        {active === "店铺列表" ? (
           <div className="mt-4 grid gap-4 xl:grid-cols-2">
-            {realStores.map((store) => (
-              <article className="overflow-hidden rounded-lg border border-line bg-white shadow-panel" key={store.id}>
-                <div className="grid gap-0 md:grid-cols-[220px,1fr]">
-                  <img alt={store.name} className="h-full min-h-[230px] w-full object-cover" src={store.cover} />
-                  <div className="flex min-w-0 flex-col p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-moss">{store.area} · {store.businessHours}</p>
-                        <h2 className="mt-1 truncate text-xl font-black">{store.name}</h2>
-                        <p className="mt-1 text-xs font-bold text-ink/45">ID {store.systemId}</p>
-                        {store.accountUsername ? <p className="mt-1 text-xs font-bold text-coral">测试账号 {store.accountUsername}</p> : null}
-                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-ink/55">{store.description}</p>
-                      </div>
-                      <Badge tone={store.openStatus === "open" ? "green" : "yellow"}>{store.openStatus}</Badge>
-                    </div>
-                    <div className="mt-4 grid grid-cols-3 gap-2">
-                      {[
-                        ["评分", store.rating],
-                        ["评论", store.reviewCount],
-                        ["价格", store.priceLabel]
-                      ].map(([label, value]) => (
-                        <div className="rounded-lg bg-paper p-3" key={label}>
-                          <p className="text-[11px] font-bold text-ink/45">{label}</p>
-                          <strong className="mt-1 block truncate text-sm">{value}</strong>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {store.tags.slice(0, 5).map((tag) => (
-                        <Badge key={tag}>{tag}</Badge>
-                      ))}
-                    </div>
-                    <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                      <Button size="sm" onClick={() => setSelected(store)}>查看详情</Button>
-                      <Button size="sm" variant="secondary" onClick={() => setSelected(store)}>编辑资料</Button>
-                      <Button size="sm" variant="secondary" onClick={() => setSelected(store)}>营业设置</Button>
-                    </div>
-                  </div>
+            {shops.map((shop) => (
+              <article className="rounded-lg border border-line bg-white p-5 shadow-panel" key={shop.id}>
+                <div className="flex items-start justify-between gap-4">
+                  <div><p className="text-xs font-bold text-ink/45">店铺 #{shop.id} · {shop.city}</p><h2 className="mt-1 text-xl font-black">{shop.name}</h2><p className="mt-2 text-sm text-ink/60">{shop.address}</p><p className="mt-1 text-xs font-bold text-moss">{shop.ownerEmail ?? "尚未绑定负责人"}</p></div>
+                  <Badge tone={shop.status === "published" ? "green" : "yellow"}>{shop.status}</Badge>
                 </div>
+                <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => openShop(shop)} size="sm">集中详情</Button>{shop.status !== "published" ? <Button onClick={() => void mutate(() => backofficeRealDataApi.approveShop(shop.id))} size="sm" variant="secondary">审核通过</Button> : null}</div>
               </article>
             ))}
+            {!loading && shops.length === 0 ? <p className="text-sm text-ink/50">暂无店铺数据。</p> : null}
           </div>
-        )}
+        ) : null}
 
-        {active === "店铺分类" && (
-          <section className="mt-4 space-y-5">
-            <div className="rounded-lg border border-line bg-white p-4 shadow-panel">
-              <div className="flex flex-wrap items-center gap-4">
-                <label className="flex items-center gap-3 text-sm font-bold text-ink/65">
-                  输入查询
-                  <span className="flex h-10 w-[260px] items-center rounded-lg border border-line bg-paper px-3">
-                    <input className="min-w-0 flex-1 bg-transparent outline-none" placeholder="请输入搜索内容" />
-                    <span className="text-xs text-ink/35">0 / 10</span>
-                  </span>
-                </label>
-                <label className="flex items-center gap-3 text-sm font-bold text-ink/65">
-                  分类状态
-                  <select className="h-10 rounded-lg border border-line bg-paper px-3 outline-none">
-                    <option>全部</option>
-                    <option>启用</option>
-                    <option>禁用</option>
-                  </select>
-                </label>
-                <Button size="sm">搜索</Button>
-                <Button size="sm" variant="secondary">重置</Button>
-              </div>
-            </div>
+        {active === "入驻审核" ? <div className="mt-4"><DataTable columns={[
+          { key: "name", title: "店铺", render: (row: BackofficeShopPayload) => row.name },
+          { key: "owner", title: "负责人账号", render: (row: BackofficeShopPayload) => row.ownerEmail ?? "未绑定" },
+          { key: "city", title: "城市", render: (row: BackofficeShopPayload) => row.city },
+          { key: "status", title: "审核状态", render: (row: BackofficeShopPayload) => <Badge tone={row.status === "published" ? "green" : "yellow"}>{row.status}</Badge> }
+        ]} footerPlacement="inline" onView={openShop} rows={shops.filter((shop) => shop.status !== "archived")} /></div> : null}
 
-            <div className="rounded-lg border border-line bg-white p-4 shadow-panel">
-              <Button onClick={addCategory}>添加分类</Button>
-              <HorizontalScrollArea ariaLabel="店铺分类表格横向滚动区域" className="mt-5">
-                <table className="w-full min-w-[820px] border-collapse text-left text-sm">
-                  <thead className="bg-paper text-xs font-bold text-ink/55">
-                    <tr>
-                      <th className="border-b border-line px-4 py-3">ID</th>
-                      <th className="border-b border-line px-4 py-3">分类名称</th>
-                      <th className="border-b border-line px-4 py-3">分类图标</th>
-                      <th className="border-b border-line px-4 py-3">分类状态</th>
-                      <th className="border-b border-line px-4 py-3">排序编号</th>
-                      <th className="border-b border-line px-4 py-3">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {categoryRows.map((category, index) => (
-                      <tr className="border-b border-line last:border-b-0" key={category.id}>
-                        <td className="px-4 py-4 text-ink/65">{index + 1}</td>
-                        <td className="px-4 py-4 font-bold">{category.name}</td>
-                        <td className="px-4 py-4">
-                          <span
-                            className="grid h-10 w-10 place-items-center rounded-lg text-sm font-black text-white shadow-panel"
-                            style={{ background: categoryPalette[index % categoryPalette.length] }}
-                          >
-                            {category.icon}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <Badge tone={category.hot ? "green" : "neutral"}>{category.hot ? "启用" : "启用"}</Badge>
-                        </td>
-                        <td className="px-4 py-4 font-bold">{index + 1}</td>
-                        <td className="px-4 py-4">
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="secondary" onClick={() => setSelected(category)}>编辑</Button>
-                            <Button size="sm" variant="ghost" onClick={() => setCategoryRows((current) => current.filter((item) => item.id !== category.id))}>
-                              删除
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </HorizontalScrollArea>
-            </div>
-          </section>
-        )}
+        {active === "服务项目" ? <div className="mt-4 space-y-4"><div className="flex justify-end"><Button onClick={() => setCreateServiceOpen(true)} variant="secondary">新增服务项目</Button></div><DataTable columns={[
+          { key: "name", title: "服务项目", render: (row: BackofficeServicePayload) => row.name },
+          { key: "shop", title: "店铺", render: (row: BackofficeServicePayload) => shops.find((shop) => shop.id === row.shopId)?.name ?? `#${row.shopId}` },
+          { key: "category", title: "分类", render: (row: BackofficeServicePayload) => row.categoryName },
+          { key: "mode", title: "模式", render: (row: BackofficeServicePayload) => row.serviceMode },
+          { key: "price", title: "价格", render: (row: BackofficeServicePayload) => yen(row.priceAmount) },
+          { key: "duration", title: "时长", render: (row: BackofficeServicePayload) => `${row.durationMinutes} 分钟` },
+          { key: "status", title: "状态", render: (row: BackofficeServicePayload) => <Badge tone={row.status === "published" ? "green" : "neutral"}>{row.status}</Badge> }
+        ]} footerPlacement="inline" onView={openService} rows={services} /></div> : null}
 
-        {active === "入驻审核" && (
-          <div className="mt-4">
-            <DataTable<Merchant>
-              columns={[
-                { key: "name", title: "商家名称", render: (row) => row.name },
-                { key: "city", title: "地区申请", render: (row) => row.city },
-                { key: "categories", title: "服务类目申请", render: (row) => row.categories.join("、") },
-                { key: "documents", title: "营业资质", render: (row) => row.documents.join("、") },
-                { key: "status", title: "状态", render: (row) => <Badge tone={row.status === "pending" ? "yellow" : "green"}>{row.status}</Badge> }
-              ]}
-              footerPlacement="inline"
-                rows={realMerchants}
-              onView={setSelected}
-            />
-          </div>
-        )}
-
-        {active === "服务项目" && (
-          <div className="mt-4 grid gap-5 xl:grid-cols-[1.2fr,0.8fr]">
-            <DataTable<ServiceItem>
-              columns={[
-                { key: "name", title: "服务项目", render: (row) => row.name },
-                { key: "mode", title: "模式", render: (row) => row.mode },
-                { key: "price", title: "价格", render: (row) => yen(row.priceFrom) },
-                { key: "duration", title: "套餐", render: (row) => `${row.packages.length} 个` },
-                { key: "areas", title: "可售区域", render: (row) => row.serviceAreas.join("、") },
-                { key: "status", title: "上下架", render: () => <Badge tone="green">上架</Badge> }
-              ]}
-              footerPlacement="inline"
-              rows={services}
-              onView={setSelected}
-            />
-            <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-              <h2 className="font-bold">服务类目</h2>
-              <div className="mt-3 grid gap-2">
-                <DataTable<ServiceCategory>
-                  columns={[
-                    { key: "name", title: "类目", render: (row) => row.name },
-                    { key: "mode", title: "模式", render: (row) => row.mode },
-                    { key: "hot", title: "运营", render: (row) => <Badge tone={row.hot ? "red" : "neutral"}>{row.hot ? "热门" : "常规"}</Badge> }
-                  ]}
-                  footerPlacement="inline"
-                  rows={serviceCategories}
-                  pageSize={6}
-                />
-              </div>
-            </section>
-          </div>
-        )}
-
-        {active === "营业配置" && (
-          <section className="mt-4 grid gap-3 md:grid-cols-3">
-            {realStores.map((store) => (
-              <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={store.id}>
-                <h2 className="font-bold">{store.name}</h2>
-                <p className="mt-2 text-sm text-ink/60">营业时间：{store.businessHours}</p>
-                <p className="mt-1 text-sm text-ink/60">服务区域：{store.area} 周边 5km</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="secondary">编辑时间</Button>
-                  <Button size="sm" variant="secondary">配置区域</Button>
-                  <Button size="sm" variant="secondary">状态开关</Button>
-                </div>
-              </article>
-            ))}
-          </section>
-        )}
-
-        {active === "图片标签" && (
-          <section className="mt-4 grid gap-4 md:grid-cols-2">
-            {realStores.map((store) => (
-              <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={store.id}>
-                <img alt={store.name} className="h-40 w-full rounded-lg object-cover" src={store.cover} />
-                <h2 className="mt-3 font-bold">{store.name}</h2>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {store.tags.map((tag) => (
-                    <Badge key={tag}>{tag}</Badge>
-                  ))}
-                </div>
-                <Button className="mt-3" size="sm" variant="secondary">管理图片与标签</Button>
-              </article>
-            ))}
-          </section>
-        )}
+        {active === "店铺分类" ? <div className="mt-4"><DataTable columns={[
+          { key: "id", title: "ID", render: (row: CoreCategory) => row.id },
+          { key: "code", title: "代码", render: (row: CoreCategory) => row.code },
+          { key: "name", title: "分类名称", render: (row: CoreCategory) => row.name },
+          { key: "ja", title: "日本語", render: (row: CoreCategory) => row.nameJa ?? "-" },
+          { key: "status", title: "状态", render: (row: CoreCategory) => <Badge tone={row.isActive ? "green" : "neutral"}>{row.isActive ? "启用" : "停用"}</Badge> }
+        ]} footerPlacement="inline" rows={categories} /></div> : null}
       </ModuleShell>
 
-      <Drawer open={Boolean(selected)} title="商家 / 门店详情" onClose={() => setSelected(null)}>
-        {selected && (
-          <div className="space-y-5">
-            {isStoreRow(selected) ? <StoreEntitySyncEditor key={selected.id} store={selected} /> : null}
-            <DetailGrid
-              items={[
-                ...(("systemId" in selected && selected.systemId)
-                  ? [{ label: "系统ID", value: selected.systemId }]
-                  : []),
-                ...(("accountUsername" in selected && selected.accountUsername)
-                  ? [{ label: "联动账号", value: selected.accountUsername }]
-                  : []),
-                ...Object.entries(selected)
-                  .filter(([label]) => !["accountUsername", "systemId"].includes(label))
-                  .slice(0, 12)
-                  .map(([label, value]) => ({ label, value: Array.isArray(value) ? value.join("、") : String(value) }))
-              ]}
-            />
+      <Drawer open={createShopOpen} title="创建店铺与负责人账号" onClose={() => setCreateShopOpen(false)}>
+        <form className="space-y-4" onSubmit={createShop}>
+          {(["name", "city", "address", "ownerUsername", "ownerEmail", "ownerPassword"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setShopForm((current) => ({ ...current, [field]: event.target.value }))} required type={field === "ownerEmail" ? "email" : field === "ownerPassword" ? "password" : "text"} value={shopForm[field] ?? ""} /></label>)}
+          <p className="text-xs leading-5 text-ink/50">负责人账号在店铺审核通过前保持禁用。密码至少 8 位，并包含大小写字母、数字和符号。</p>
+          <Button disabled={saving} type="submit">{saving ? "保存中..." : "创建待审核店铺"}</Button>
+        </form>
+      </Drawer>
+
+      <Drawer open={createServiceOpen} title="创建服务项目" onClose={() => setCreateServiceOpen(false)}>
+        <form className="space-y-4" onSubmit={createService}>
+          <label className="block"><span className="mb-2 block text-sm font-black">店铺</span><select className={inputClassName} onChange={(event) => setServiceShopId(Number(event.target.value))} required value={serviceShopId}><option value={0}>请选择店铺</option>{shops.filter((shop) => shop.status === "published").map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select></label>
+          <label className="block"><span className="mb-2 block text-sm font-black">分类</span><select className={inputClassName} onChange={(event) => setServiceForm((current) => ({ ...current, categoryId: Number(event.target.value) }))} required value={serviceForm.categoryId}><option value={0}>请选择分类</option>{categories.filter((category) => category.isActive).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="block"><span className="mb-2 block text-sm font-black">服务名称</span><input className={inputClassName} onChange={(event) => setServiceForm((current) => ({ ...current, name: event.target.value }))} required value={serviceForm.name} /></label>
+          <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} onChange={(event) => setServiceForm((current) => ({ ...current, city: event.target.value }))} required value={serviceForm.city} /></label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block"><span className="mb-2 block text-sm font-black">服务模式</span><select className={inputClassName} onChange={(event) => setServiceForm((current) => ({ ...current, serviceMode: event.target.value }))} value={serviceForm.serviceMode}><option value="store">到店</option><option value="home">上门</option></select></label>
+            <label className="block"><span className="mb-2 block text-sm font-black">状态</span><select className={inputClassName} onChange={(event) => setServiceForm((current) => ({ ...current, status: event.target.value }))} value={serviceForm.status}><option value="draft">草稿</option><option value="published">发布</option><option value="paused">暂停</option></select></label>
+            <label className="block"><span className="mb-2 block text-sm font-black">价格（日元）</span><input className={inputClassName} min={0} onChange={(event) => setServiceForm((current) => ({ ...current, priceAmount: Number(event.target.value) }))} required type="number" value={serviceForm.priceAmount} /></label>
+            <label className="block"><span className="mb-2 block text-sm font-black">时长（分钟）</span><input className={inputClassName} min={1} onChange={(event) => setServiceForm((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} required type="number" value={serviceForm.durationMinutes} /></label>
           </div>
-        )}
-        <div className="mt-5 flex flex-wrap gap-2">
-          {["编辑资料", "审核通过", "审核拒绝", "服务区域", "项目菜单", "状态开关", "审核记录"].map((action) => (
-            <Button key={action} size="sm" variant={action === "审核拒绝" ? "danger" : "secondary"} onClick={() => selected && isStoreRow(selected) && setSelected(selected)}>
-              {action}
-            </Button>
-          ))}
-        </div>
+          <Button disabled={saving || !serviceShopId || !serviceForm.categoryId} type="submit">{saving ? "保存中..." : "创建服务项目"}</Button>
+        </form>
+      </Drawer>
+
+      <Drawer open={Boolean(selectedShop)} title="店铺集中详情" onClose={() => setSelectedShop(null)}>
+        {selectedShop ? <div className="space-y-5">
+          <DetailGrid items={[{ label: "店铺 ID", value: selectedShop.id }, { label: "负责人账号", value: selectedShop.ownerEmail ?? "未绑定" }, { label: "状态", value: selectedShop.status }, { label: "电话", value: selectedShop.phone ?? "未设置" }, { label: "推荐", value: selectedShop.isRecommended ? "是" : "否" }, { label: "创建时间", value: selectedShop.createdAt }]} />
+          {(["name", "city", "address"] as const).map((field) => <label className="block" key={field}><span className="mb-2 block text-sm font-black">{field}</span><input className={inputClassName} onChange={(event) => setShopDraft((current) => ({ ...current, [field]: event.target.value }))} value={shopDraft[field]} /></label>)}
+          <div className="flex flex-wrap gap-2"><Button disabled={saving} onClick={saveShop}>保存资料</Button>{selectedShop.status !== "published" ? <Button disabled={saving} onClick={() => void mutate(async () => setSelectedShop(await backofficeRealDataApi.approveShop(selectedShop.id)))} variant="secondary">审核通过</Button> : null}<Button disabled={saving} onClick={() => void mutate(async () => { await backofficeRealDataApi.deleteShop(selectedShop.id); setSelectedShop(null); })} variant="danger">软删除</Button></div>
+        </div> : null}
+      </Drawer>
+
+      <Drawer open={Boolean(selectedService)} title="服务项目详情" onClose={() => setSelectedService(null)}>
+        {selectedService ? <div className="space-y-5">
+          <DetailGrid items={[{ label: "服务 ID", value: selectedService.id }, { label: "店铺 ID", value: selectedService.shopId }, { label: "创建时间", value: selectedService.createdAt }, { label: "更新时间", value: selectedService.updatedAt }]} />
+          <label className="block"><span className="mb-2 block text-sm font-black">分类</span><select className={inputClassName} onChange={(event) => setServiceDraft((current) => ({ ...current, categoryId: Number(event.target.value) }))} value={serviceDraft.categoryId}><option value={0}>请选择分类</option>{categories.filter((category) => category.isActive).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="block"><span className="mb-2 block text-sm font-black">服务名称</span><input className={inputClassName} onChange={(event) => setServiceDraft((current) => ({ ...current, name: event.target.value }))} value={serviceDraft.name} /></label>
+          <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} onChange={(event) => setServiceDraft((current) => ({ ...current, city: event.target.value }))} value={serviceDraft.city} /></label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block"><span className="mb-2 block text-sm font-black">服务模式</span><select className={inputClassName} onChange={(event) => setServiceDraft((current) => ({ ...current, serviceMode: event.target.value }))} value={serviceDraft.serviceMode}><option value="store">到店</option><option value="home">上门</option></select></label>
+            <label className="block"><span className="mb-2 block text-sm font-black">状态</span><select className={inputClassName} onChange={(event) => setServiceDraft((current) => ({ ...current, status: event.target.value }))} value={serviceDraft.status}><option value="draft">草稿</option><option value="published">发布</option><option value="paused">暂停</option></select></label>
+            <label className="block"><span className="mb-2 block text-sm font-black">价格（日元）</span><input className={inputClassName} min={0} onChange={(event) => setServiceDraft((current) => ({ ...current, priceAmount: Number(event.target.value) }))} type="number" value={serviceDraft.priceAmount} /></label>
+            <label className="block"><span className="mb-2 block text-sm font-black">时长（分钟）</span><input className={inputClassName} min={1} onChange={(event) => setServiceDraft((current) => ({ ...current, durationMinutes: Number(event.target.value) }))} type="number" value={serviceDraft.durationMinutes} /></label>
+          </div>
+          <div className="flex flex-wrap gap-2"><Button disabled={saving} onClick={saveService}>保存服务</Button><Button disabled={saving} onClick={() => void mutate(async () => { await backofficeRealDataApi.deleteService("backoffice", selectedService.id); setSelectedService(null); })} variant="danger">软删除服务</Button></div>
+        </div> : null}
       </Drawer>
     </AdminLayout>
   );

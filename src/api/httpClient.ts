@@ -1,6 +1,9 @@
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
-import { resolveStaticDemoDataUrl, resolveStaticDemoRequest } from "./staticDemo";
+import {
+  resolveLoadedStaticDemoDataUrl,
+  resolveLoadedStaticDemoRequest
+} from "./staticDemoLoader";
 
 export type ApiSuccessResponse<TData> = {
   code: 0;
@@ -96,7 +99,7 @@ function appendQuery(url: string, query?: HttpClientRequestOptions["query"]) {
   return queryString ? `${url}?${queryString}` : url;
 }
 
-function buildApiUrl(path: string, query?: HttpClientRequestOptions["query"], baseUrl?: string) {
+export function buildApiUrl(path: string, query?: HttpClientRequestOptions["query"], baseUrl?: string) {
   return appendQuery(`${getRequestBaseUrl(baseUrl)}${normalizePath(path)}`, query);
 }
 
@@ -248,7 +251,7 @@ async function sendRequest<TData>(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<TData> {
-  const staticResult = await resolveStaticDemoRequest<TData>(path, options);
+  const staticResult = await resolveLoadedStaticDemoRequest<TData>(path, options);
 
   if (staticResult.handled) {
     return staticResult.data;
@@ -309,7 +312,7 @@ async function sendCsvExportRequest(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<HttpClientCsvExportPayload> {
-  const staticResult = await resolveStaticDemoRequest<HttpClientCsvExportPayload>(path, options);
+  const staticResult = await resolveLoadedStaticDemoRequest<HttpClientCsvExportPayload>(path, options);
 
   if (staticResult.handled) {
     return staticResult.data;
@@ -371,7 +374,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 async function sendDataUrlRequest(path: string, options: HttpClientRequestOptions): Promise<string> {
-  const staticResult = resolveStaticDemoDataUrl(path);
+  const staticResult = await resolveLoadedStaticDemoDataUrl(path);
 
   if (staticResult.handled) {
     return staticResult.data;

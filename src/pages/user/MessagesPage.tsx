@@ -1,4 +1,4 @@
-import { ImMessagesEntryPage } from "../../features/im/pages";
+import { ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";
 
 export function MessagesPage() {

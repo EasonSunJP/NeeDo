@@ -1,8 +1,12 @@
 import { randomInt, timingSafeEqual } from "crypto";
-import { compare } from "bcryptjs";
+import { compare, hash } from "bcryptjs";
 import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
-import type { AuthRepositoryPort, AuthUserRecord } from "../repositories/auth.repository";
+import type {
+  AuthRepositoryPort,
+  AuthUserRecord,
+  RegisteredAccountRecord
+} from "../repositories/auth.repository";
 import { AppError } from "../utils/app-error";
 import type { OtpDeliveryClient } from "./auth-otp-delivery.service";
 import type { AuthSessionStore } from "./auth-session.store";
@@ -77,6 +81,18 @@ interface LoginFailureInput {
   context: AuthRequestContext;
 }
 
+interface RegisterAccountBaseInput {
+  email: string;
+  password: string;
+  username: string;
+}
+
+export type RegisterAccountInput =
+  | (RegisterAccountBaseInput & { accountType: "customer" })
+  | (RegisterAccountBaseInput & { accountType: "technician"; city: string });
+
+const BCRYPT_ROUNDS = 12;
+
 export class AuthService {
   private readonly tokenService: AuthTokenService;
 
@@ -130,6 +146,38 @@ export class AuthService {
     await this.sessionStore.clearFailedLogin(context.ip, loginIdentifier);
 
     return this.completeSuccessfulLogin(user, context);
+  }
+
+  public async register(
+    input: RegisterAccountInput,
+    context: AuthRequestContext
+  ): Promise<RegisteredAccountRecord> {
+    const email = this.normalizeEmail(input.email);
+    if (await this.repository.findUserByEmail(email)) {
+      throw this.emailAlreadyExistsError();
+    }
+
+    try {
+      const registrationData = {
+        email,
+        ip: context.ip,
+        passwordHash: await hash(input.password, BCRYPT_ROUNDS),
+        userAgent: context.userAgent,
+        username: input.username.trim()
+      };
+
+      return await this.repository.registerUser(
+        input.accountType === "technician"
+          ? { ...registrationData, accountType: "technician", city: input.city }
+          : { ...registrationData, accountType: "customer" }
+      );
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw this.emailAlreadyExistsError();
+      }
+
+      throw error;
+    }
   }
 
   public async sendOtp(emailInput: string): Promise<OtpSendPayload> {
@@ -568,6 +616,23 @@ export class AuthService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private emailAlreadyExistsError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.EMAIL_ALREADY_EXISTS,
+      message: "error.user.email_exists",
+      statusCode: 409
+    });
+  }
+
+  private isUniqueConstraintError(error: unknown): boolean {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002"
+    );
   }
 
   private normalizeLoginIdentifier(identifier: string): string {

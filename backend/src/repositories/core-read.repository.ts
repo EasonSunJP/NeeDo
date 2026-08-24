@@ -128,6 +128,7 @@ export interface ShopDetailPayload extends ShopCardPayload {
 }
 
 export interface TechnicianDetailPayload extends TechnicianCardPayload {
+  shop: ShopCardPayload | null;
   bio: string | null;
   serviceArea: string | null;
   yearsExperience: number;
@@ -194,6 +195,7 @@ type ShopDetailRecord = ShopCardRecord & {
 };
 
 type TechnicianDetailRecord = TechnicianCardRecord & {
+  shop: ShopCardRecord | null;
   services: ServiceCardRecord[];
 };
 
@@ -362,6 +364,9 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       },
       include: {
         ...this.technicianCardInclude(),
+        shop: {
+          include: this.shopCardInclude()
+        },
         services: {
           where: { deletedAt: null, status: PUBLISHED_STATUS },
           include: this.serviceCardInclude(),
@@ -590,6 +595,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   private mapTechnicianDetail(technician: TechnicianDetailRecord): TechnicianDetailPayload {
     return {
       ...this.mapTechnicianCard(technician),
+      shop: technician.shop ? this.mapShopCard(technician.shop) : null,
       bio: technician.bio,
       serviceArea: technician.serviceArea,
       yearsExperience: technician.yearsExperience,

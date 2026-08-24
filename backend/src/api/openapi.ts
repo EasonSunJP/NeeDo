@@ -205,6 +205,133 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           expiresIn: { type: "integer", enum: [900] }
         }
       },
+      RegisteredAccount: {
+        type: "object",
+        required: [
+          "id",
+          "email",
+          "username",
+          "accountType",
+          "approvalStatus",
+          "isActive"
+        ],
+        properties: {
+          id: { type: "integer" },
+          email: { type: "string", format: "email" },
+          username: { type: "string" },
+          accountType: { type: "string", enum: ["customer", "technician"] },
+          approvalStatus: { type: "string", enum: ["approved", "pending_review"] },
+          isActive: { type: "boolean" }
+        }
+      },
+      BackofficeCustomer: {
+        type: "object",
+        required: ["id", "userId", "displayName", "email", "membershipLevel", "isPublic", "bookingCount", "createdAt"],
+        properties: {
+          id: { type: "integer" },
+          userId: { type: "integer" },
+          displayName: { type: "string" },
+          email: { type: "string", format: "email" },
+          city: { type: ["string", "null"] },
+          membershipLevel: { type: "string" },
+          isPublic: { type: "boolean" },
+          bookingCount: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      BackofficeService: {
+        type: "object",
+        required: ["id", "categoryId", "categoryName", "shopId", "name", "city", "serviceMode", "priceAmount", "currency", "durationMinutes", "status", "isRecommended", "sortOrder", "createdAt", "updatedAt"],
+        properties: {
+          id: { type: "integer" },
+          categoryId: { type: "integer" },
+          categoryName: { type: "string" },
+          shopId: { type: "integer" },
+          technicianProfileId: { type: ["integer", "null"] },
+          name: { type: "string" },
+          description: { type: ["string", "null"] },
+          city: { type: "string" },
+          serviceMode: { type: "string", enum: ["store", "home"] },
+          priceAmount: { type: "number", minimum: 0 },
+          currency: { type: "string", enum: ["JPY"] },
+          durationMinutes: { type: "integer", minimum: 1 },
+          status: { type: "string" },
+          isRecommended: { type: "boolean" },
+          sortOrder: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      BackofficeShopUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          address: { type: "string", minLength: 1, maxLength: 255 },
+          phone: { type: ["string", "null"], maxLength: 50 },
+          isRecommended: { type: "boolean" }
+        }
+      },
+      MerchantShopUpdateInput: {
+        type: "object",
+        additionalProperties: false,
+        minProperties: 1,
+        properties: {
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          address: { type: "string", minLength: 1, maxLength: 255 },
+          phone: { type: ["string", "null"], minLength: 5, maxLength: 32 }
+        }
+      },
+      BackofficeTechnicianUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          serviceArea: { type: ["string", "null"], maxLength: 255 },
+          shopId: { type: ["integer", "null"], minimum: 1 },
+          isRecommended: { type: "boolean" }
+        }
+      },
+      BackofficeCustomerUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          bio: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: ["string", "null"], maxLength: 100 },
+          membershipLevel: { type: "string", minLength: 1, maxLength: 50 },
+          isPublic: { type: "boolean" }
+        }
+      },
+      BackofficeServiceInputFields: {
+        type: "object",
+        properties: {
+          categoryId: { type: "integer", minimum: 1 },
+          technicianProfileId: { type: ["integer", "null"], minimum: 1 },
+          name: { type: "string", minLength: 1, maxLength: 160 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          city: { type: "string", minLength: 1, maxLength: 100 },
+          serviceMode: { type: "string", enum: ["store", "home"] },
+          priceAmount: { type: "number", minimum: 0, maximum: 99999999 },
+          durationMinutes: { type: "integer", minimum: 1, maximum: 1440 },
+          status: { type: "string", enum: ["draft", "published", "paused"] },
+          isRecommended: { type: "boolean" },
+          sortOrder: { type: "integer", minimum: 0, maximum: 1000000 }
+        }
+      },
+      BackofficeServiceCreateInput: {
+        allOf: [{ $ref: "#/components/schemas/BackofficeServiceInputFields" }],
+        required: ["categoryId", "name", "city", "serviceMode", "priceAmount", "durationMinutes"]
+      },
+      BackofficeServiceUpdateInput: {
+        allOf: [{ $ref: "#/components/schemas/BackofficeServiceInputFields" }],
+        minProperties: 1
+      },
       SwitchIdentityResponse: {
         type: "object",
         required: ["accessToken", "refreshToken", "expiresIn", "me"],
@@ -561,6 +688,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           {
             type: "object",
             required: [
+              "shop",
               "bio",
               "serviceArea",
               "yearsExperience",
@@ -570,6 +698,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "updatedAt"
             ],
             properties: {
+              shop: {
+                anyOf: [
+                  { $ref: "#/components/schemas/ShopCard" },
+                  { type: "null" }
+                ]
+              },
               bio: { type: ["string", "null"] },
               serviceArea: { type: ["string", "null"] },
               yearsExperience: { type: "integer" },
@@ -653,6 +787,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           durationMinutes: { type: "integer" }
         }
       },
+      ScheduleSlotCreateInput: {
+        type: "object",
+        required: ["startsAt", "endsAt"],
+        oneOf: [{ required: ["serviceId"] }, { required: ["technicianServiceId"] }],
+        properties: {
+          serviceId: { type: "integer", minimum: 1 },
+          technicianServiceId: { type: "integer", minimum: 1 },
+          technicianProfileId: { type: ["integer", "null"], minimum: 1 },
+          startsAt: { type: "string", format: "date-time", description: "ISO 8601 timestamp with UTC or explicit offset" },
+          endsAt: { type: "string", format: "date-time", description: "ISO 8601 timestamp with UTC or explicit offset" },
+          capacity: { type: "integer", minimum: 1, maximum: 100, default: 1 }
+        }
+      },
+      ScheduleSlotUpdateInput: {
+        type: "object",
+        minProperties: 1,
+        properties: {
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          capacity: { type: "integer", minimum: 1, maximum: 100 },
+          status: { type: "string", enum: ["available", "blocked"] }
+        }
+      },
       OrderStatusHistory: {
         type: "object",
         required: ["id", "orderId", "fromStatus", "toStatus", "actorUserId", "reason", "createdAt"],
@@ -679,7 +836,17 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "orderNo",
           "orderType",
           "status",
+          "paymentMethod",
           "paymentStatus",
+          "paymentAmountJpy",
+          "paymentConfirmedById",
+          "paymentConfirmedAt",
+          "paymentReference",
+          "paymentNote",
+          "paymentRefundedById",
+          "paymentRefundedAt",
+          "paymentRefundReference",
+          "paymentRefundReason",
           "customerUserId",
           "serviceId",
           "shopId",
@@ -707,7 +874,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "string",
             enum: ["pending", "confirmed", "inService", "completed", "cancelled"]
           },
-          paymentStatus: { type: "string", enum: ["unpaid"] },
+          paymentMethod: { type: "string", enum: ["onsite", "bank_transfer"] },
+          paymentStatus: {
+            type: "string",
+            enum: ["pending", "confirmed", "refundPending", "refunded"]
+          },
+          paymentAmountJpy: { type: "integer", minimum: 0 },
+          paymentConfirmedById: { type: ["integer", "null"] },
+          paymentConfirmedAt: { type: ["string", "null"], format: "date-time" },
+          paymentReference: { type: ["string", "null"], maxLength: 120 },
+          paymentNote: { type: ["string", "null"], maxLength: 500 },
+          paymentRefundedById: { type: ["integer", "null"] },
+          paymentRefundedAt: { type: ["string", "null"], format: "date-time" },
+          paymentRefundReference: { type: ["string", "null"], maxLength: 120 },
+          paymentRefundReason: { type: ["string", "null"], maxLength: 500 },
           customerUserId: { type: "integer" },
           serviceId: { type: "integer" },
           shopId: { type: "integer" },
@@ -750,6 +930,47 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           currency: { type: "string", enum: ["NDP"] },
           availableBalance: { type: "integer" },
           frozenBalance: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      WalletAdjustmentRequest: {
+        type: "object",
+        required: [
+          "id",
+          "type",
+          "status",
+          "ownerType",
+          "ownerId",
+          "walletId",
+          "amountNdp",
+          "idempotencyKey",
+          "bankReference",
+          "note",
+          "requestedById",
+          "reviewedById",
+          "reviewedAt",
+          "reviewNote",
+          "ledgerTransactionId",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          type: { type: "string", enum: ["topup", "withdrawal"] },
+          status: { type: "string", enum: ["pending", "approved", "rejected"] },
+          ownerType: { type: "string", enum: ["user", "shop", "platform"] },
+          ownerId: { type: "integer" },
+          walletId: { type: "integer" },
+          amountNdp: { type: "integer", minimum: 1 },
+          idempotencyKey: { type: "string", maxLength: 160 },
+          bankReference: { type: ["string", "null"], maxLength: 120 },
+          note: { type: ["string", "null"], maxLength: 500 },
+          requestedById: { type: "integer" },
+          reviewedById: { type: ["integer", "null"] },
+          reviewedAt: { type: ["string", "null"], format: "date-time" },
+          reviewNote: { type: ["string", "null"], maxLength: 500 },
+          ledgerTransactionId: { type: ["integer", "null"] },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
         }
@@ -1647,6 +1868,65 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "401": { description: "Invalid credentials" },
           "429": { description: "Account locked" },
           "503": { description: "Redis auth session dependency is unavailable" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/register`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Register a customer or technician account",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["accountType", "email", "password", "username"],
+                oneOf: [
+                  {
+                    properties: { accountType: { const: "customer" } },
+                    required: ["accountType", "email", "password", "username"]
+                  },
+                  {
+                    properties: { accountType: { const: "technician" } },
+                    required: ["accountType", "city", "email", "password", "username"]
+                  }
+                ],
+                properties: {
+                  accountType: { type: "string", enum: ["customer", "technician"] },
+                  city: { type: "string", minLength: 1, maxLength: 100 },
+                  email: { type: "string", format: "email", maxLength: 255 },
+                  password: {
+                    type: "string",
+                    minLength: 8,
+                    maxLength: 128,
+                    pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).+$"
+                  },
+                  username: { type: "string", minLength: 1, maxLength: 100 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Registered account",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/RegisteredAccount" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "Invalid registration input" },
+          "409": { description: "Email already exists" }
         }
       }
     },
@@ -2642,6 +2922,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                   scheduleSlotId: { type: "integer", minimum: 1 },
                   orderType: { type: "string", enum: ["booking", "request"] },
                   fulfillmentMode: { type: "string", enum: ["home", "store"] },
+                  paymentMethod: {
+                    type: "string",
+                    enum: ["onsite", "bank_transfer"],
+                    default: "onsite"
+                  },
                   note: { type: "string", maxLength: 500 }
                 }
               }
@@ -2801,6 +3086,127 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/confirm`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Confirm an onsite or bank-transfer payment in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["method", "amountJpy"],
+                properties: {
+                  method: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  amountJpy: { type: "integer", minimum: 1, maximum: 100000000 },
+                  reference: { type: ["string", "null"], maxLength: 120 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment confirmed or identical retry returned" },
+          "403": { description: "Order is outside the authenticated shop scope" },
+          "409": { description: "Payment state, amount, or retry conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/orders/{id}/payment/refund`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Mark an authenticated-shop manual payment refunded",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason"],
+                properties: {
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  reference: { type: ["string", "null"], maxLength: 120 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment marked refunded or identical retry returned" },
+          "409": { description: "Payment is not refundable from its current state" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/payment/confirm`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Confirm an onsite or bank-transfer payment as platform operations",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["method", "amountJpy"],
+                properties: {
+                  method: { type: "string", enum: ["onsite", "bank_transfer"] },
+                  amountJpy: { type: "integer", minimum: 1, maximum: 100000000 },
+                  reference: { type: ["string", "null"], maxLength: 120 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment confirmed or identical retry returned" },
+          "409": { description: "Payment state, amount, or retry conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/orders/{id}/payment/refund`]: {
+      post: {
+        tags: ["Booking Payments"],
+        summary: "Mark a manual payment refunded as platform operations",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason"],
+                properties: {
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  reference: { type: ["string", "null"], maxLength: 120 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment marked refunded or identical retry returned" },
+          "409": { description: "Payment is not refundable from its current state" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/wallets/me`]: {
       get: {
         tags: ["Ledger"],
@@ -2838,6 +3244,93 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         responses: {
           "200": { description: "Paginated wallet ledger entries" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/wallet-adjustments`]: {
+      post: {
+        tags: ["Ledger"],
+        summary: "Submit an NDP top-up or withdrawal request for the active identity wallet",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["type", "amountNdp", "idempotencyKey"],
+                properties: {
+                  type: { type: "string", enum: ["topup", "withdrawal"] },
+                  amountNdp: { type: "integer", minimum: 1, maximum: 100000000 },
+                  idempotencyKey: { type: "string", minLength: 8, maxLength: 160 },
+                  bankReference: { type: ["string", "null"], maxLength: 120 },
+                  note: { type: ["string", "null"], maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Pending wallet adjustment request created" },
+          "409": { description: "Idempotency key reused with different input" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/wallet-adjustments/me`]: {
+      get: {
+        tags: ["Ledger"],
+        summary: "List wallet adjustment requests for the active identity wallet",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated wallet adjustment requests" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/wallet-adjustments`]: {
+      get: {
+        tags: ["Finance"],
+        summary: "List wallet adjustment requests for operations review",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "ownerType", in: "query", schema: { type: "string", enum: ["user", "shop", "platform"] } },
+          { name: "ownerId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "type", in: "query", schema: { type: "string", enum: ["topup", "withdrawal"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "rejected"] } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated platform wallet adjustment requests" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/wallet-adjustments/{id}/review`]: {
+      post: {
+        tags: ["Finance"],
+        summary: "Approve or reject a pending wallet adjustment request",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["action", "note"],
+                properties: {
+                  action: { type: "string", enum: ["approve", "reject"] },
+                  note: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Request reviewed; approval atomically mutates the wallet and ledger" },
+          "404": { description: "Wallet adjustment request not found" },
+          "409": { description: "Invalid request state or insufficient available balance" }
         }
       }
     },
@@ -3046,7 +3539,56 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Paginated backoffice shops" }
         }
+      },
+      post: {
+        tags: ["Master Data"],
+        summary: "Create a pending shop and merchant owner account",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["ownerEmail", "ownerUsername", "ownerPassword", "name", "city", "address"],
+            properties: {
+              ownerEmail: { type: "string", format: "email" }, ownerUsername: { type: "string" }, ownerPassword: { type: "string", minLength: 8 },
+              name: { type: "string", maxLength: 160 }, description: { type: ["string", "null"] }, city: { type: "string" }, address: { type: "string" }, phone: { type: ["string", "null"] }, isRecommended: { type: "boolean" }
+            }
+          } } }
+        },
+        responses: { "201": { description: "Pending shop created" }, "409": { description: "Owner email already exists" } }
       }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeShopUpdateInput" } } } }, responses: { "200": { description: "Shop updated" }, "404": { description: "Shop not found" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Shop soft-deleted" }, "404": { description: "Shop not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{id}/approve`]: {
+      post: { tags: ["Master Data"], summary: "Approve a shop and activate its owner identity", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Shop approved" }, "404": { description: "Shop not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/technicians/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update or assign a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not found" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/technicians/{id}/approve`]: {
+      post: { tags: ["Master Data"], summary: "Approve and optionally assign a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { content: { "application/json": { schema: { type: "object", properties: { shopId: { type: "integer", minimum: 1 } } } } } }, responses: { "200": { description: "Technician approved" }, "404": { description: "Technician or shop not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/customers`]: {
+      get: { tags: ["Master Data"], summary: "Paginated customer profiles", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated customers" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/customers/{id}`]: {
+      get: { tags: ["Master Data"], summary: "Customer profile detail", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Customer detail" }, "404": { description: "Customer not found" } } },
+      patch: { tags: ["Master Data"], summary: "Update a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeCustomerUpdateInput" } } } }, responses: { "200": { description: "Customer updated" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Customer soft-deleted" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/services`]: {
+      get: { tags: ["Master Data"], summary: "Paginated shop services", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated services" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{shopId}/services`]: {
+      post: { tags: ["Master Data"], summary: "Create a service for a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" } } } }, responses: { "201": { description: "Service created" }, "404": { description: "Shop, category, or technician not found" } } }
+    },
+    [`${config.API_PREFIX}/backoffice/services/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a shop service", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" } } } }, responses: { "200": { description: "Service updated" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a shop service", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Service soft-deleted" } } }
     },
     [`${config.API_PREFIX}/merchant-admin/dashboard`]: {
       get: {
@@ -4030,7 +4572,61 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Current merchant shop payload" }
         }
+      },
+      patch: {
+        tags: ["Step 12 Merchant Admin"],
+        summary: "Update the current authenticated shop profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantShopUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Current merchant shop updated" },
+          "404": { description: "Current merchant shop not found" }
+        }
       }
+    },
+    [`${config.API_PREFIX}/merchant-admin/technicians/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not in current shop" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/technicians/{id}/approve`]: {
+      post: { tags: ["Master Data"], summary: "Approve an already assigned technician in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician approved" }, "404": { description: "Technician not in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/customers`]: {
+      get: { tags: ["Master Data"], summary: "Paginated customers with bookings in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped customers" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/customers/{id}`]: {
+      get: { tags: ["Master Data"], summary: "Customer detail scoped by bookings in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Scoped customer detail" }, "404": { description: "Customer not visible to current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/services`]: {
+      get: { tags: ["Master Data"], summary: "Paginated services in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped services" } } },
+      post: { tags: ["Master Data"], summary: "Create a service in the authenticated shop", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" } } } }, responses: { "201": { description: "Service created" }, "404": { description: "Category or technician not found in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/services/{id}`]: {
+      patch: { tags: ["Master Data"], summary: "Update a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" } } } }, responses: { "200": { description: "Service updated" }, "404": { description: "Service not in current shop" } } },
+      delete: { tags: ["Master Data"], summary: "Soft-delete a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Service soft-deleted" }, "404": { description: "Service not in current shop" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule/slots`]: {
+      get: { tags: ["Schedule"], summary: "Paginated schedule slots scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "technicianProfileId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "status", in: "query", schema: { type: "string", enum: ["available", "booked", "blocked"] } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Paginated shop schedule slots" } } },
+      post: { tags: ["Schedule"], summary: "Create a bookable slot in the authenticated shop", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } } } }, responses: { "201": { description: "Schedule slot created" }, "404": { description: "Service or technician not found in the current shop" }, "409": { description: "Overlapping slot or duration mismatch" } } }
+    },
+    [`${config.API_PREFIX}/merchant-admin/schedule/slots/{id}`]: {
+      patch: { tags: ["Schedule"], summary: "Update a schedule slot in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } } } }, responses: { "200": { description: "Schedule slot updated" }, "404": { description: "Slot not found in current shop" }, "409": { description: "Overlap or slot already in use" } } },
+      delete: { tags: ["Schedule"], summary: "Soft-delete an unused schedule slot in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Schedule slot soft-deleted" }, "404": { description: "Slot not found in current shop" }, "409": { description: "Slot has an active booking" } } }
+    },
+    [`${config.API_PREFIX}/technician/schedule/slots`]: {
+      get: { tags: ["Schedule"], summary: "Paginated schedule slots scoped to the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "status", in: "query", schema: { type: "string", enum: ["available", "booked", "blocked"] } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Paginated technician schedule slots" } } },
+      post: { tags: ["Schedule"], summary: "Create a bookable slot for the authenticated technician", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } } } }, responses: { "201": { description: "Schedule slot created" }, "404": { description: "Technician or shop service not found" }, "409": { description: "Overlapping slot or duration mismatch" } } }
+    },
+    [`${config.API_PREFIX}/technician/schedule/slots/{id}`]: {
+      patch: { tags: ["Schedule"], summary: "Update a schedule slot owned by the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } } } }, responses: { "200": { description: "Schedule slot updated" }, "404": { description: "Slot not found for current technician" }, "409": { description: "Overlap or slot already in use" } } },
+      delete: { tags: ["Schedule"], summary: "Soft-delete an unused slot owned by the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Schedule slot soft-deleted" }, "404": { description: "Slot not found for current technician" }, "409": { description: "Slot has an active booking" } } }
     },
     [`${config.API_PREFIX}/im/conversations`]: {
       get: {
@@ -4266,6 +4862,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": { description: "Created social post" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/posts/{id}`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Get one visible social post",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Visible social post" },
+          "404": { description: "Post is missing or not visible to the current user" }
         }
       }
     },

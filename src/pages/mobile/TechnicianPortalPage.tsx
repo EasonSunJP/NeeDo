@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
 import { ApiClientError } from "../../api/httpClient";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import {
   createCustomContactCategoryDraft,
   CustomContactCategoryEditor,
@@ -38,7 +39,9 @@ import {
 import { ScheduleSearchField } from "../../components/scheduling/ScheduleSearchField";
 import { TechnicianShiftPlanningPanel, type TechnicianPlanningStep } from "../../components/scheduling/TechnicianShiftPlanningPanel";
 import { UnifiedUserCalendar } from "../../components/scheduling/UnifiedUserCalendar";
+import { FormalScheduleInventoryPanel } from "../../components/scheduling/FormalScheduleInventoryPanel";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
+import { FormalTechnicianOrdersPanel } from "../../components/technician/FormalTechnicianOrdersPanel";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Button } from "../../components/ui/Button";
 import { ChartPointerTooltip, resolveChartPointerState, type ChartPointerState } from "../../components/ui/ChartPointerTooltip";
@@ -49,7 +52,9 @@ import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirm
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { fieldJobs, orders } from "../../data/mock";
-import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/pages";
+import { coreReadApi, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";
 import { pricingModeApi, type ShopPricingMode, type TechnicianServicePayload } from "../../features/pricing-mode/api";
 import { useSocial } from "../../features/social/context";
@@ -103,7 +108,6 @@ import { ContactInfoDetailText, ServiceCountdownPill, ServiceReviewPrompt, type 
 type TechnicianView = "tasks" | "schedule" | "moments" | "contacts" | "messages" | "me" | "workDetail";
 type WorkStatus = "出勤" | "移动中" | "服务中" | "休息" | "退勤";
 type TechnicianTasksPanelTab = "schedule" | "orders";
-type TechnicianTaskOrderTab = "pending" | "active" | "done";
 type TechnicianMeTab = "info" | "services" | "data";
 type TechnicianStorePricingMode = "store" | "technician";
 type TechnicianServiceEditorId = number | "default" | "draft";
@@ -293,14 +297,6 @@ const technicianTaskCardClassName =
   "focus-ring cursor-pointer overflow-hidden rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_96%,white_4%)] shadow-panel transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_34%,var(--client-line))] hover:bg-[color:var(--client-elevated)]";
 const technicianTaskSecondaryActionClassName =
   "focus-ring inline-flex h-10 items-center justify-center rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] text-sm font-black text-[color:var(--client-text)] transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_38%,var(--client-line))] hover:text-[color:var(--client-primary-strong)]";
-
-function getTaskOrderTabLabel(tab: TechnicianTaskOrderTab) {
-  return tab === "active" ? "进行中" : tab === "pending" ? "待确认" : "已收尾";
-}
-
-function getTaskOrderTabTone(tab: TechnicianTaskOrderTab): "green" | "yellow" | "neutral" {
-  return tab === "active" ? "green" : tab === "pending" ? "yellow" : "neutral";
-}
 
 function getTechnicianOrderAddress(order: Order) {
   return order.mode === "home" ? `${order.city}${order.area}` : order.storeName ?? order.area;
@@ -2191,6 +2187,19 @@ function getTechnicianView(view?: string): TechnicianView {
   return "tasks";
 }
 
+function getFormalTechnicianProfileId(session: AuthSession | null) {
+  if (
+    isStaticDemoMode() ||
+    session?.portal !== "technician" ||
+    session.currentIdentity.scopeType !== "technician_profile"
+  ) {
+    return null;
+  }
+
+  const profileId = session.currentIdentity.scopeId;
+  return profileId && Number.isInteger(profileId) && profileId > 0 ? profileId : null;
+}
+
 function getRouteWorkMode(_value?: string | null): TechWorkMode {
   return "store";
 }
@@ -2771,12 +2780,27 @@ export function TechnicianPortalPage() {
   const { isNight } = useClientTheme();
   const { language } = useI18n();
   const { customers, stores, technicians } = useEntityStore();
-  const baseTech = technicians.find((technician) => technician.id === session?.linkedTechnicianId) ?? technicians[0];
+  const formalTechnicianProfileId = getFormalTechnicianProfileId(session);
+  const formalTechnicianProfileQuery = useCoreReadQuery(
+    () => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null,
+    [formalTechnicianProfileId]
+  );
+  const formalTechnician = useMemo(
+    () => formalTechnicianProfileQuery.data ? mapCoreTechnicianToTechnician(formalTechnicianProfileQuery.data) : null,
+    [formalTechnicianProfileQuery.data]
+  );
+  const formalStore = useMemo(
+    () => formalTechnicianProfileQuery.data?.shop
+      ? mapCoreShopToStore(formalTechnicianProfileQuery.data.shop)
+      : null,
+    [formalTechnicianProfileQuery.data]
+  );
+  const baseTech = formalTechnician ?? technicians.find((technician) => technician.id === session?.linkedTechnicianId) ?? technicians[0];
   const linkedCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId);
   const defaultAreaSelection = useRef(getDefaultAreaSelection()).current;
   const defaultLineSelection = useRef(getDefaultLineSelection()).current;
   const nextJob = fieldJobs[0];
-  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
+  const store = formalStore ?? stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const taskOrderCodeSectionRef = useRef<HTMLElement | null>(null);
   const taskOrderCodeInputRef = useRef<HTMLInputElement | null>(null);
@@ -2785,9 +2809,7 @@ export function TechnicianPortalPage() {
   const selfieInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<WorkStatus>("休息");
   const [tasksPanelTab, setTasksPanelTab] = useState<TechnicianTasksPanelTab>("schedule");
-  const [taskOrderTab, setTaskOrderTab] = useState<TechnicianTaskOrderTab>("pending");
   const [selectedTaskOrder, setSelectedTaskOrder] = useState<Order | null>(null);
-  const [acceptedTaskOrderIds, setAcceptedTaskOrderIds] = useState<string[]>([]);
   const [statusTimelineRecords, setStatusTimelineRecords] = useState<TechnicianStatusTimelineRecord[]>([]);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
   const [schedulePrimaryTab, setSchedulePrimaryTab] = useState<"mySchedule" | "planning">("mySchedule");
@@ -3322,30 +3344,7 @@ export function TechnicianPortalPage() {
         isEstimated: isEstimatedSchedulePlanType(planType)
       };
     });
-  const acceptedTaskOrderIdSet = new Set(acceptedTaskOrderIds);
-  const acceptedTaskScheduleEvents: TechnicianScheduleEvent[] = orders
-    .filter((order) => acceptedTaskOrderIdSet.has(order.id))
-    .map((order, index) => {
-      const [, rawStartTime = "10:00"] = order.bookedAt.split(" ");
-      const startTime = rawStartTime.slice(0, 5) || "10:00";
-
-      return {
-        id: `accepted-task-${order.id}`,
-        staffId: baseTech.id,
-        date: todayDate,
-        startTime,
-        endTime: addClockMinutes(startTime, order.itemName.includes("90") ? 90 : 120),
-        status: "booked",
-        orderId: order.id,
-        workMode: "store",
-        title: getNeedoAppBookingTitle(order.id, order.itemName) ?? order.itemName,
-        place: getTechnicianOrderAddress(order),
-        customer: order.customerName,
-        amount: order.amount,
-        note: index === 0 ? "已承接，下一步可以打开导航并同步到达状态。" : "已承接，已进入今日排班展示。"
-      };
-    });
-  const scheduleEvents = [...baseScheduleEvents, ...acceptedTaskScheduleEvents]
+  const scheduleEvents = baseScheduleEvents
     .filter((event) => event.staffId === baseTech.id)
     .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
   const workAnalyticsSeedEvents = useMemo<TechnicianScheduleEvent[]>(
@@ -3363,21 +3362,6 @@ export function TechnicianPortalPage() {
       [...scheduleEvents, ...workAnalyticsSeedEvents].sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`)),
     [scheduleEvents, workAnalyticsSeedEvents]
   );
-  const taskOrderGroups = {
-    pending: orders.filter((order) => ["scheduled", "confirmed", "pendingDispatch", "dispatched", "pending"].includes(order.status) && !acceptedTaskOrderIdSet.has(order.id)),
-    active: orders.filter((order) => ["inService", "active"].includes(order.status)),
-    done: orders.filter((order) => !["scheduled", "confirmed", "pendingDispatch", "dispatched", "pending", "inService", "active"].includes(order.status))
-  };
-  const visibleTaskOrders = taskOrderGroups[taskOrderTab].slice(0, 4);
-  const canAcceptSelectedTaskOrder = Boolean(
-    selectedTaskOrder && tasksPanelTab === "orders" && taskOrderTab === "pending" && !acceptedTaskOrderIdSet.has(selectedTaskOrder.id)
-  );
-  const handleAcceptTaskOrder = (order: Order) => {
-    setAcceptedTaskOrderIds((current) => current.includes(order.id) ? current : [...current, order.id]);
-    setSelectedTaskOrder(null);
-    setTasksPanelTab("schedule");
-    setOrderContactLog(`已承接 ${order.itemName}：`, order, "，订单已加入今日仅排班展示。");
-  };
   const shareTaskOrder = (order: Order) => {
     void shareContent({
       title: order.itemName,
@@ -3481,7 +3465,6 @@ export function TechnicianPortalPage() {
       technicianStatusOrderIds.add(event.orderId);
     }
   });
-  acceptedTaskOrderIds.forEach((orderId) => technicianStatusOrderIds.add(orderId));
   technicianStatusOrderIds.add(nextServiceOrder.id);
   technicianStatusOrderIds.add(upcomingServiceOrder.id);
   if (currentServiceOrder) {
@@ -5419,43 +5402,7 @@ export function TechnicianPortalPage() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {([
-                      ["pending", "待确认"],
-                      ["done", "已收尾"]
-                    ] as const).map(([value, label]) => (
-                      <button
-                        className={cn(
-                          "flex w-full items-center justify-center rounded-full border px-3 py-2 text-sm font-black transition",
-                          taskOrderTab === value
-                            ? "border-transparent bg-[color:var(--client-primary)] text-[#090806]"
-                            : "border-white/10 bg-white/[0.06] text-white/62 hover:bg-white/[0.1]"
-                        )}
-                        key={value}
-                        onClick={() => setTaskOrderTab(value)}
-                        type="button"
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="space-y-3">
-                    {visibleTaskOrders.map((order) => (
-                      <div className="space-y-2" key={order.id}>
-                        <OrderServiceMiniCard
-                          contactTo={getMessagePath("technician", getTechnicianCustomerConversationId(order.customerId), "/technician/tasks")}
-                          dark
-                          onOpenDetails={() => openTaskOrderDetails(order)}
-                          order={order}
-                          provider={baseTech}
-                          topTags={[{ label: getTaskOrderTabLabel(taskOrderTab), tone: getTaskOrderTabTone(taskOrderTab) }]}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <FormalTechnicianOrdersPanel />
               )}
             </section>
 
@@ -5470,6 +5417,7 @@ export function TechnicianPortalPage() {
             <div className="w-full min-w-0 max-w-full overflow-visible">
               {schedulePrimaryTab === "mySchedule" ? (
                 <div className="space-y-4">
+                  <FormalScheduleInventoryPanel scope="technician" shopId={technicianShopApiId} />
                   <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" searchQuery={scheduleSearchQuery} />
                 </div>
               ) : null}

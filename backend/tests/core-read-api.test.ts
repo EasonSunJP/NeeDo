@@ -91,6 +91,7 @@ describe("Step 08 core read API", () => {
       })),
       findTechnicianDetail: jest.fn(async () => ({
         ...technicianCard,
+        shop: shopCard,
         bio: "Certified body care technician.",
         serviceArea: "Minato, Shibuya",
         yearsExperience: 8,
@@ -186,6 +187,7 @@ describe("Step 08 core read API", () => {
     expect(technicianResponse.body.data).toMatchObject({
       id: 1,
       displayName: "Mika Tanaka",
+      shop: shopCard,
       yearsExperience: 8,
       services: [serviceCard]
     });

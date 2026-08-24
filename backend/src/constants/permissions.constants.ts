@@ -187,6 +187,20 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("order:cancel", "取消订单", "api", "order", "取消 Booking 订单"),
   createPermission("order:start", "开始服务", "api", "order", "将订单切换为服务中"),
   createPermission("order:complete", "完成服务", "api", "order", "将订单切换为已完成"),
+  createPermission(
+    "merchant-admin:order-payment:write",
+    "商户线下收款维护",
+    "api",
+    "order",
+    "确认或标记退款本店订单的到店及银行转账收款"
+  ),
+  createPermission(
+    "backoffice:order-payment:write",
+    "运营线下收款维护",
+    "api",
+    "order",
+    "运营确认或标记退款订单的到店及银行转账收款"
+  ),
 
   createPermission("conversation:list", "会话列表", "api", "im", "分页查看 IM 会话"),
   createPermission("conversation:create", "创建会话", "api", "im", "创建 IM 单聊或群聊会话"),
@@ -213,6 +227,10 @@ export const SYSTEM_PERMISSIONS = [
 
   createPermission("wallet:read", "查看钱包", "api", "wallet", "查看 NDP 钱包余额"),
   createPermission("wallet:ledger:list", "钱包流水", "api", "wallet", "分页查看 NDP 钱包流水"),
+  createPermission("wallet:adjustment:create", "提交钱包申请", "api", "wallet", "提交 NDP 充值或提现申请"),
+  createPermission("wallet:adjustment:list", "钱包申请记录", "api", "wallet", "分页查看本人或本店的 NDP 申请"),
+  createPermission("backoffice:wallet-adjustment:list", "钱包申请审核列表", "api", "finance", "分页查看全平台 NDP 充值提现申请"),
+  createPermission("backoffice:wallet-adjustment:review", "审核钱包申请", "api", "finance", "批准或拒绝 NDP 充值提现申请"),
   createPermission(
     "finance:ledger:list",
     "财务账本流水",
@@ -328,6 +346,12 @@ export const SYSTEM_PERMISSIONS = [
     "backoffice",
     "分页读取运营后台店铺"
   ),
+  createPermission("backoffice:shops:write", "运营店铺维护", "api", "backoffice", "创建、更新、审核和软删除店铺及店铺账号"),
+  createPermission("backoffice:technicians:write", "运营技师维护", "api", "backoffice", "更新、归属、审核和软删除技师"),
+  createPermission("backoffice:customers:list", "运营客户列表", "api", "backoffice", "分页读取客户资料"),
+  createPermission("backoffice:customers:write", "运营客户维护", "api", "backoffice", "更新和软删除客户资料"),
+  createPermission("backoffice:services:list", "运营服务列表", "api", "backoffice", "分页读取店铺服务"),
+  createPermission("backoffice:services:write", "运营服务维护", "api", "backoffice", "创建、更新和软删除店铺服务"),
   createPermission(
     "merchant-admin:dashboard:read",
     "商户后台 Dashboard",
@@ -349,6 +373,8 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-admin",
     "分页读取本店真实排班"
   ),
+  createPermission("schedule:slots:list", "正式排班列表", "api", "schedule", "分页读取当前身份范围内的正式排班与可预约库存"),
+  createPermission("schedule:slots:write", "正式排班维护", "api", "schedule", "创建、更新、阻塞和软删除当前身份范围内的排班槽位"),
   createPermission(
     "merchant-admin:finance:list",
     "商户后台财务结算",
@@ -517,12 +543,23 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-admin",
     "分页读取本店技师"
   ),
+  createPermission("merchant-admin:technicians:write", "商户技师维护", "api", "merchant-admin", "更新、审核和移除本店技师"),
+  createPermission("merchant-admin:customers:list", "商户客户列表", "api", "merchant-admin", "分页读取与本店有预约关系的客户"),
+  createPermission("merchant-admin:services:list", "商户服务列表", "api", "merchant-admin", "分页读取本店服务"),
+  createPermission("merchant-admin:services:write", "商户服务维护", "api", "merchant-admin", "创建、更新和软删除本店服务"),
   createPermission(
     "merchant-admin:shop:read",
     "商户后台店铺资料",
     "api",
     "merchant-admin",
     "读取当前店铺资料"
+  ),
+  createPermission(
+    "merchant-admin:shop:write",
+    "商户后台店铺资料维护",
+    "api",
+    "merchant-admin",
+    "更新当前店铺的基础资料"
   ),
   createPermission(
     "merchant-admin:shop:pricing-mode:read",
@@ -620,7 +657,9 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   "order:read",
   "order:cancel",
   "wallet:read",
-  "wallet:ledger:list"
+  "wallet:ledger:list",
+  "wallet:adjustment:create",
+  "wallet:adjustment:list"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
@@ -633,7 +672,11 @@ const SERVICE_PROVIDER_ORDER_PERMISSION_CODES = [
   "order:start",
   "order:complete",
   "wallet:read",
-  "wallet:ledger:list"
+  "wallet:ledger:list",
+  "wallet:adjustment:create",
+  "wallet:adjustment:list",
+  "schedule:slots:list",
+  "schedule:slots:write"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const REALTIME_USER_PERMISSION_CODES = [
@@ -662,6 +705,8 @@ const FINANCE_PERMISSION_CODES = [
   "finance:ledger:list",
   "finance:reconciliation:list",
   "finance:reconciliation:export",
+  "backoffice:wallet-adjustment:list",
+  "backoffice:wallet-adjustment:review",
   "finance:fee-rule:list",
   "finance:fee-rule:preview",
   "finance:calculation-log:list",
@@ -678,9 +723,18 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:finance:list",
   "backoffice:finance:export",
   "backoffice:finance-order:read",
+  "backoffice:order-payment:write",
+  "backoffice:wallet-adjustment:list",
+  "backoffice:wallet-adjustment:review",
   "backoffice:payroll:read",
   "backoffice:technicians:list",
+  "backoffice:technicians:write",
   "backoffice:shops:list",
+  "backoffice:shops:write",
+  "backoffice:customers:list",
+  "backoffice:customers:write",
+  "backoffice:services:list",
+  "backoffice:services:write",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -696,6 +750,7 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:finance:export",
   "merchant-admin:finance-order:read",
   "merchant-admin:finance-income-report:write",
+  "merchant-admin:order-payment:write",
   "merchant-admin:finance-rules:read",
   "merchant-admin:finance-rules:write",
   "merchant-admin:finance-rules:preview",
@@ -711,7 +766,12 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:payroll-adjustment:write",
   "merchant-admin:payroll-adjustment:approve",
   "merchant-admin:technicians:list",
+  "merchant-admin:technicians:write",
+  "merchant-admin:customers:list",
+  "merchant-admin:services:list",
+  "merchant-admin:services:write",
   "merchant-admin:shop:read",
+  "merchant-admin:shop:write",
   "merchant-admin:shop:pricing-mode:read",
   "merchant-admin:shop:pricing-mode:update",
   "menu:finance",
@@ -745,6 +805,7 @@ export const buildRolePermissionAssignments = (): Record<
     "backoffice:finance:list",
     "backoffice:finance:export",
     "backoffice:finance-order:read",
+    "backoffice:order-payment:write",
     "backoffice:payroll:read",
     "menu:admin-settings",
     "page:admin-settings"

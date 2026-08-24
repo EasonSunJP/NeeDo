@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error -- Vitest runs this source guard in Node; frontend tsconfig intentionally omits Node types.
 import { readFileSync } from "node:fs";
 import homePageSource from "./HomePage.tsx?raw";
 
@@ -29,6 +28,17 @@ describe("HomePage technician recommendations", () => {
     expect(homePageSource).toContain("homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? legacyStores");
     expect(homePageSource).toContain("homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? legacyTechnicians");
     expect(homePageSource).toContain("hasStaticHomeContent ? null : homeRecommendationsQuery.error");
+  });
+});
+
+describe("HomePage authenticated customer identity", () => {
+  it("loads the formal customer profile instead of falling back to the first demo customer", () => {
+    expect(homePageSource).toContain("getFormalCustomerProfileId(session)");
+    expect(homePageSource).toContain("coreReadApi.getCustomerProfile(formalCustomerProfileId)");
+    expect(homePageSource).toContain("mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)");
+    expect(homePageSource).toContain("isStaticDemoMode()");
+    expect(homePageSource).toContain("const currentCustomer = formalCustomerProfileQuery.data");
+    expect(homePageSource).toContain(": legacyCurrentCustomer");
   });
 });
 

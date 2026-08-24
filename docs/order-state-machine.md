@@ -8,12 +8,15 @@ Step 12E extends the same backend order table/API lane to accept `orderType = re
 Implemented:
 
 - Public schedule availability read API.
+- Identity-scoped merchant and technician schedule inventory list/create/update/delete APIs.
 - Authenticated Booking creation from a concrete available slot.
 - Booking order state transitions: pending, confirmed, inService, completed, cancelled.
 - Slot capacity and active-order conflict checks to prevent oversell.
 - Order status history records for every creation and transition.
-- Customer order list/detail/transition access is scoped to the authenticated customer user. If a customer passes another `customerUserId` in the order list query, the service overrides it with the token user id. Other customers' order detail/transition attempts return `error.order.not_found`.
+- Order list/detail/transition access is scoped from the active authenticated identity: customers by `customer_user_id`, merchants by `shop_id`, technicians by `technician_profile_id`, and platform identities by their global operations role. Client-supplied filters cannot widen this scope. Out-of-scope detail or transition attempts return `error.order.not_found`.
 - Frontend checkout/orders API lane for numeric backend ids, with legacy local demo ids left intact.
+- Merchant and technician schedule portals create, block, restore, and soft-delete formal slots; the shared calendar reads the same backend records.
+- Booking orders persist `onsite` or `bank_transfer` payment selection and the formal manual-payment lifecycle.
 
 Reserved only:
 
@@ -49,6 +52,16 @@ Additional pricing-mode migration:
 backend/prisma/migrations/20260602103000_shop_technician_pricing_rate/migration.sql
 ```
 
+Manual-payment migration:
+
+```text
+backend/prisma/migrations/20260825014000_manual_payment_flow/migration.sql
+```
+
+`booking_orders` now also stores payment method/status, exact JPY amount, confirmation and refund actors/timestamps, references, notes and refund reason. Existing rows are backfilled from the immutable order price snapshot.
+
+Backoffice and merchant-admin order list payloads expose the persisted manual-payment state as `pending`, `confirmed`, `refundPending`, or `refunded`. The frontend adapter maps these values to its existing unpaid/paid/refunded display vocabulary; it no longer hard-codes every order as unpaid.
+
 ## APIs
 
 Public:
@@ -68,14 +81,25 @@ Authenticated:
 - `POST /api/v1/orders/:id/complete`
 - `GET /api/v1/shops/:shopId/pricing-mode`
 - `PUT /api/v1/shops/:shopId/pricing-mode`
+- `GET|POST /api/v1/merchant-admin/schedule/slots`
+- `PATCH|DELETE /api/v1/merchant-admin/schedule/slots/:id`
+- `GET|POST /api/v1/technician/schedule/slots`
+- `PATCH|DELETE /api/v1/technician/schedule/slots/:id`
+- `POST /api/v1/merchant-admin/orders/:id/payment/confirm`
+- `POST /api/v1/merchant-admin/orders/:id/payment/refund`
+- `POST /api/v1/backoffice/orders/:id/payment/confirm`
+- `POST /api/v1/backoffice/orders/:id/payment/refund`
 
-Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:start`, and `order:complete`.
+Protected endpoints require the Step 10 RBAC permissions seeded through `SYSTEM_PERMISSIONS`, such as `booking:create`, `order:list`, `order:read`, `order:confirm`, `order:cancel`, `order:start`, `order:complete`, `schedule:slots:list`, and `schedule:slots:write`.
 
 Access boundary:
 
 - Customer actors are limited to their own `booking_orders.customer_user_id`.
-- Platform and service-provider roles keep the current backend handling lane for operational order transitions.
-- Merchant/shop-specific order scoping still needs the later merchant-admin real-data/API slice to bind operations to the current shop identity.
+- Merchant actors are limited to the `booking_orders.shop_id` derived from the active `scopeType=shop` identity.
+- Technician actors are limited to the `booking_orders.technician_profile_id` derived from the active `scopeType=technician_profile` identity.
+- Only platform identities with global operations roles can list or operate across shops.
+- Merchant schedule mutations derive `shop_id` from the authenticated shop identity and ignore client-supplied shop scope.
+- Technician schedule mutations derive `technician_profile_id` from the authenticated technician identity and ignore client-supplied technician scope.
 
 ## State Machine
 
@@ -111,9 +135,11 @@ Booking creation uses a transaction:
 
 - The selected slot must be active, available, not soft-deleted, and tied to a published service and shop.
 - `booked_count` must be lower than `capacity`.
-- An active order cannot already occupy the same slot.
+- The same customer cannot hold another active overlapping order.
 - A technician cannot have another active overlapping order.
+- A slot may accept multiple distinct customers up to capacity. An assigned technician remains protected from active orders on other overlapping slots, while the same capacity-enabled slot can host a group booking.
 - On successful booking, the slot `booked_count` increments and the slot becomes `booked` when capacity is reached.
+- Schedule creation locks the owning technician or shop inside the transaction before overlap checks, and booking uses the same owner lock plus a conditional slot increment.
 
 Oversell or conflict returns:
 
@@ -125,6 +151,15 @@ Oversell or conflict returns:
 }
 ```
 
+## Manual Payment Rules
+
+- Initial methods are limited to `onsite` and `bank_transfer`; no external gateway can create a paid transaction.
+- A payment can be confirmed only after the order is confirmed and before/after service completion. The confirmed amount must equal the order price snapshot.
+- Merchant mutations are restricted to the authenticated shop. Operations/finance mutations require a platform identity and the backoffice payment-write permission.
+- Repeating the exact same confirmation or refund returns the existing order without another mutation or audit event. A different retry returns a stable conflict.
+- Cancelling a confirmed paid order changes payment status to `refundPending`. A cancelled `refundPending` payment or a completed confirmed payment can be marked `refunded`.
+- Confirmation and refund update the order plus `order_financials` money timeline in one database transaction. Each applied action also writes an audit log.
+
 ## Frontend Integration
 
 The frontend is connected incrementally:
@@ -133,5 +168,25 @@ The frontend is connected incrementally:
 - Numeric checkout submissions create real Booking orders through `/api/v1/bookings`.
 - `/orders` loads API orders for authenticated users and falls back to legacy local orders if unavailable.
 - `/orders/:orderId` fetches API detail for numeric ids and keeps legacy local detail behavior for existing demo ids.
+- Merchant and technician schedule pages use `FormalScheduleInventoryPanel` for formal slot mutations and `UnifiedUserCalendar` for the shared backend projection.
+- Personal, non-bookable calendar notes remain in the legacy local calendar lane; they are not presented as customer-bookable inventory.
 
 This keeps Step 10 focused on the transaction chain without opening Request, wallet, IM, Social, or subscription flows.
+
+## Real database acceptance
+
+Run only against a local, non-production MySQL database:
+
+```text
+ENV_FILE=.env.dev npm run check:schedule-flow
+```
+
+The check creates isolated temporary identities and verifies merchant/technician scope, exact UTC storage for a `+09:00` source time, overlap rejection, slot mutation lifecycle, capacity-one concurrent booking, capacity-two pooled booking, and exact cleanup. The script refuses production environment flags and non-local database hosts.
+
+Manual payment acceptance uses the same local-only boundary:
+
+```text
+ENV_FILE=.env.dev npm run check:manual-payment-flow
+```
+
+It verifies amount matching, cross-shop hiding, confirmation/refund idempotency, `refundPending` cancellation behavior and order-finance synchronization before exact cleanup.

@@ -1,37 +1,164 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
+import { ApiClientError } from "../../api/httpClient";
+import {
+  backofficeRealDataApi,
+  type BackofficeCustomerPayload,
+  type BackofficeFinanceSettlementPayload,
+  type BackofficeOrderPayload,
+  type BackofficeScheduleSlotPayload,
+  type BackofficeServicePayload,
+  type BackofficeShopPayload,
+  type BackofficeTechnicianPayload,
+  type PaginatedApiPayload
+} from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
-import { CustomerEntitySyncEditor, StoreEntitySyncEditor, TechnicianEntitySyncEditor } from "../../components/admin/EntitySyncEditor";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable, type Column } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
-import { FilterBar } from "../../components/ui/FilterBar";
 import { Tabs } from "../../components/ui/Tabs";
-import { inventoryItems, merchants, orders, reviews, settlements } from "../../data/mock";
-import { statusLabel, yen } from "../../lib/utils";
-import { CustomerMembershipBadge } from "../../shared/profile-card";
-import { useEntityStore } from "../../state/entityStore";
-import type { Customer, InventoryItem, Merchant, Order, Review, Settlement, Store, Technician } from "../../types/domain";
-import { DataBigScreenPage } from "./DataBigScreenPage";
+import { yen } from "../../lib/utils";
 
-type DataTab = "订单数据" | "客户数据" | "员工/技师数据" | "门店数据" | "商家数据" | "库存数据" | "评价数据" | "结算数据";
-type AnyRow = Order | Customer | Technician | Store | Merchant | InventoryItem | Review | Settlement;
+type DataTab = "订单数据" | "客户数据" | "员工/技师数据" | "门店数据" | "服务数据" | "排班数据" | "库存数据" | "评价数据" | "结算数据";
+type SupportedDataTab = Exclude<DataTab, "库存数据" | "评价数据">;
+type DataCenterRow =
+  | BackofficeOrderPayload
+  | BackofficeCustomerPayload
+  | BackofficeTechnicianPayload
+  | BackofficeShopPayload
+  | BackofficeServicePayload
+  | BackofficeScheduleSlotPayload
+  | BackofficeFinanceSettlementPayload;
 
-const tabs: DataTab[] = ["订单数据", "客户数据", "员工/技师数据", "门店数据", "商家数据", "库存数据", "评价数据", "结算数据"];
+const tabs: DataTab[] = ["订单数据", "客户数据", "员工/技师数据", "门店数据", "服务数据", "排班数据", "库存数据", "评价数据", "结算数据"];
+const unsupportedTabs = new Set<DataTab>(["库存数据", "评价数据"]);
+const pageSize = 20;
 
-function isCustomerRow(row: AnyRow): row is Customer {
-  return "memberLevel" in row && "churnRisk" in row && "ltv" in row;
+function describeDataCenterError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前身份没有读取数据中心的权限";
+    if (error.status >= 500) return "数据中心服务暂时不可用，请稍后重试";
+  }
+  return "数据加载失败，请检查网络后重试";
 }
 
-function isTechnicianRow(row: AnyRow): row is Technician {
-  return "acceptRate" in row && "serviceAreas" in row && "storeId" in row;
+function isSupportedTab(tab: DataTab): tab is SupportedDataTab {
+  return !unsupportedTabs.has(tab);
 }
 
-function isStoreRow(row: AnyRow): row is Store {
-  return "openStatus" in row && "merchantId" in row && "businessHours" in row;
+function dataOwnerRoute(tab: SupportedDataTab) {
+  if (tab === "订单数据") return "/admin/orders";
+  if (tab === "客户数据") return "/admin/users";
+  if (tab === "员工/技师数据") return "/admin/technicians";
+  if (tab === "门店数据" || tab === "服务数据") return "/admin/merchants";
+  if (tab === "结算数据") return "/admin/finance";
+  return "/admin";
+}
+
+function statusBadge(status: string) {
+  const positive = ["published", "available", "booked", "paid", "settled", "completed"].includes(status);
+  return <Badge tone={positive ? "green" : "yellow"}>{status}</Badge>;
+}
+
+function columnsFor(tab: SupportedDataTab, onSelect: (row: DataCenterRow) => void): Column<DataCenterRow>[] {
+  const detailColumn: Column<DataCenterRow> = {
+    key: "detail",
+    title: "详情",
+    render: (row) => <Button size="sm" variant="secondary" onClick={() => onSelect(row)}>查看</Button>
+  };
+
+  if (tab === "订单数据") {
+    return [
+      { key: "order", title: "订单编号", render: (row) => (row as BackofficeOrderPayload).orderNo },
+      { key: "customer", title: "客户", render: (row) => (row as BackofficeOrderPayload).customerName },
+      { key: "service", title: "服务 / 店铺", render: (row) => `${(row as BackofficeOrderPayload).serviceName} / ${(row as BackofficeOrderPayload).shopName}` },
+      { key: "amount", title: "金额", render: (row) => yen((row as BackofficeOrderPayload).priceAmount) },
+      { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeOrderPayload).status) },
+      detailColumn
+    ];
+  }
+  if (tab === "客户数据") {
+    return [
+      { key: "name", title: "客户", render: (row) => (row as BackofficeCustomerPayload).displayName },
+      { key: "email", title: "邮箱", render: (row) => (row as BackofficeCustomerPayload).email },
+      { key: "city", title: "城市", render: (row) => (row as BackofficeCustomerPayload).city ?? "未设置" },
+      { key: "level", title: "会员等级", render: (row) => (row as BackofficeCustomerPayload).membershipLevel },
+      { key: "bookings", title: "预约数", render: (row) => (row as BackofficeCustomerPayload).bookingCount },
+      detailColumn
+    ];
+  }
+  if (tab === "员工/技师数据") {
+    return [
+      { key: "name", title: "技师", render: (row) => (row as BackofficeTechnicianPayload).displayName },
+      { key: "email", title: "邮箱", render: (row) => (row as BackofficeTechnicianPayload).email },
+      { key: "shop", title: "所属店铺", render: (row) => (row as BackofficeTechnicianPayload).shopName ?? "未绑定" },
+      { key: "city", title: "城市", render: (row) => (row as BackofficeTechnicianPayload).city },
+      { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeTechnicianPayload).status) },
+      detailColumn
+    ];
+  }
+  if (tab === "门店数据") {
+    return [
+      { key: "name", title: "店铺", render: (row) => (row as BackofficeShopPayload).name },
+      { key: "owner", title: "店主账号", render: (row) => (row as BackofficeShopPayload).ownerEmail ?? "未绑定" },
+      { key: "city", title: "城市", render: (row) => (row as BackofficeShopPayload).city },
+      { key: "address", title: "地址", render: (row) => (row as BackofficeShopPayload).address },
+      { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeShopPayload).status) },
+      detailColumn
+    ];
+  }
+  if (tab === "服务数据") {
+    return [
+      { key: "name", title: "服务", render: (row) => (row as BackofficeServicePayload).name },
+      { key: "shop", title: "店铺", render: (row) => `#${(row as BackofficeServicePayload).shopId}` },
+      { key: "category", title: "分类", render: (row) => (row as BackofficeServicePayload).categoryName },
+      { key: "price", title: "价格", render: (row) => yen((row as BackofficeServicePayload).priceAmount) },
+      { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeServicePayload).status) },
+      detailColumn
+    ];
+  }
+  if (tab === "排班数据") {
+    return [
+      { key: "service", title: "服务", render: (row) => (row as BackofficeScheduleSlotPayload).serviceName },
+      { key: "shop", title: "店铺", render: (row) => (row as BackofficeScheduleSlotPayload).shopName },
+      { key: "technician", title: "技师", render: (row) => (row as BackofficeScheduleSlotPayload).technicianName ?? "店铺统筹" },
+      { key: "time", title: "开始时间", render: (row) => new Date((row as BackofficeScheduleSlotPayload).startsAt).toLocaleString("ja-JP") },
+      { key: "capacity", title: "占用 / 容量", render: (row) => `${(row as BackofficeScheduleSlotPayload).bookedCount}/${(row as BackofficeScheduleSlotPayload).capacity}` },
+      detailColumn
+    ];
+  }
+  return [
+    { key: "order", title: "订单", render: (row) => (row as BackofficeFinanceSettlementPayload).orderNo },
+    { key: "shop", title: "店铺", render: (row) => (row as BackofficeFinanceSettlementPayload).shopName },
+    { key: "gmv", title: "服务 GMV", render: (row) => yen((row as BackofficeFinanceSettlementPayload).estimatedServiceGmvJpy) },
+    { key: "income", title: "平台 NDP 收入", render: (row) => (row as BackofficeFinanceSettlementPayload).platformNdpRevenue.toLocaleString("ja-JP") },
+    { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeFinanceSettlementPayload).status) },
+    detailColumn
+  ];
+}
+
+function detailValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "未设置";
+  if (Array.isArray(value)) return value.length ? value.map((item) => typeof item === "object" ? JSON.stringify(item) : String(item)).join("、") : "无";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function HistoricalChartsUnavailable() {
+  return (
+    <AdminLayout>
+      <ModuleShell title="历史全屏图表尚未启用" description="该入口保留用于正式时间序列分析；当前不再加载演示图表。">
+        <section className="rounded-lg border border-line bg-white p-6 shadow-panel">
+          <p className="text-sm font-bold leading-6 text-ink/60">复购、留存、渠道、城市和评价趋势需要正式聚合接口、统一时区口径与权限验收。接口完成前，本页不会生成虚构曲线。</p>
+          <Button className="mt-4" to="/admin/data" variant="secondary">返回数据中心</Button>
+        </section>
+      </ModuleShell>
+    </AdminLayout>
+  );
 }
 
 export function DataCenterPage() {
@@ -39,187 +166,150 @@ export function DataCenterPage() {
   const module = searchParams.get("module");
 
   if (module === "big-screen" || module === "charts" || module === "fullscreen-charts") {
-    return <DataBigScreenPage backLabel="返回数据中心" backTo="/admin/data" />;
+    return <HistoricalChartsUnavailable />;
   }
-
-  if (module === "cities") {
-    return <Navigate replace to="/admin/cities" />;
-  }
-
+  if (module === "cities") return <Navigate replace to="/admin/cities" />;
   return <DataCenterTablePage />;
 }
 
 function DataCenterTablePage() {
-  const { customers, stores, technicians, revision: entityRevision } = useEntityStore();
   const [active, setActive] = useState<DataTab>("订单数据");
-  const [selected, setSelected] = useState<AnyRow | null>(null);
+  const [selected, setSelected] = useState<DataCenterRow | null>(null);
+  const [rows, setRows] = useState<DataCenterRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "success" | "error">("loading");
+  const [loadError, setLoadError] = useState("");
+  const [revision, setRevision] = useState(0);
 
-  const config = useMemo(() => {
-    if (active === "订单数据") {
-      const getCustomerDisplayName = (order: Order) => {
-        const customer = customers.find((item) => item.id === order.customerId);
-        return customer?.nickname ? `${customer.nickname} / ${customer.name}` : customer?.name ?? order.customerName;
-      };
-      return {
-        rows: orders,
-        columns: [
-          { key: "orderNo", title: "订单编号", render: (row: Order) => row.orderNo },
-          { key: "customer", title: "客户", render: (row: Order) => getCustomerDisplayName(row) },
-          { key: "item", title: "服务", render: (row: Order) => row.itemName },
-          { key: "status", title: "状态", render: (row: Order) => <Badge tone="yellow">{statusLabel(row.status)}</Badge> },
-          { key: "amount", title: "金额", render: (row: Order) => yen(row.amount) }
-        ] as Column<Order>[]
-      };
+  useEffect(() => {
+    if (!isSupportedTab(active)) {
+      setRows([]);
+      setTotal(0);
+      setLoadStatus("idle");
+      return;
     }
-    if (active === "客户数据") {
-      return {
-        rows: customers,
-        columns: [
-          { key: "name", title: "客户", render: (row: Customer) => row.nickname ? `${row.nickname} / ${row.name}` : row.name },
-          {
-            key: "level",
-            title: "等级",
-            render: (row: Customer) => (
-              <CustomerMembershipBadge
-                className="h-9 w-9"
-                fallbackClassName="text-xs font-black text-ink/60"
-                imageClassName="h-9 w-9"
-                level={row.memberLevel}
-              />
-            )
-          },
-          { key: "ltv", title: "LTV", render: (row: Customer) => yen(row.ltv) },
-          { key: "orders", title: "订单数", render: (row: Customer) => row.orderCount },
-          { key: "risk", title: "流失风险", render: (row: Customer) => <Badge tone={row.churnRisk === "high" ? "red" : "green"}>{row.churnRisk}</Badge> }
-        ] as Column<Customer>[]
-      };
-    }
-    if (active === "员工/技师数据") {
-      return {
-        rows: technicians,
-        columns: [
-          { key: "name", title: "姓名", render: (row: Technician) => row.nickname ? `${row.nickname} / ${row.name}` : row.name },
-          { key: "status", title: "状态", render: (row: Technician) => <Badge tone={row.status === "available" ? "green" : "yellow"}>{row.status}</Badge> },
-          { key: "rating", title: "评分", render: (row: Technician) => row.rating },
-          { key: "income", title: "收入", render: (row: Technician) => yen(row.income) },
-          { key: "accept", title: "接单率", render: (row: Technician) => `${row.acceptRate}%` }
-        ] as Column<Technician>[]
-      };
-    }
-    if (active === "门店数据") {
-      return {
-        rows: stores,
-        columns: [
-          { key: "name", title: "店铺", render: (row: Store) => row.name },
-          { key: "area", title: "区域", render: (row: Store) => row.area },
-          { key: "rating", title: "评分", render: (row: Store) => row.rating },
-          { key: "price", title: "价格", render: (row: Store) => row.priceLabel },
-          { key: "status", title: "状态", render: (row: Store) => <Badge tone={row.openStatus === "open" ? "green" : "yellow"}>{row.openStatus}</Badge> }
-        ] as Column<Store>[]
-      };
-    }
-    if (active === "商家数据") {
-      return {
-        rows: merchants,
-        columns: [
-          { key: "name", title: "商家", render: (row: Merchant) => row.name },
-          { key: "city", title: "城市", render: (row: Merchant) => row.city },
-          { key: "categories", title: "类目", render: (row: Merchant) => row.categories.join("、") },
-          { key: "commission", title: "佣金", render: (row: Merchant) => `${row.commissionRate}%` },
-          { key: "status", title: "状态", render: (row: Merchant) => <Badge tone={row.status === "pending" ? "yellow" : "green"}>{row.status}</Badge> }
-        ] as Column<Merchant>[]
-      };
-    }
-    if (active === "库存数据") {
-      return {
-        rows: inventoryItems,
-        columns: [
-          { key: "name", title: "物料", render: (row: InventoryItem) => row.name },
-          { key: "store", title: "门店", render: (row: InventoryItem) => row.storeName },
-          { key: "stock", title: "库存", render: (row: InventoryItem) => `${row.stock}${row.unit}` },
-          { key: "warning", title: "预警线", render: (row: InventoryItem) => `${row.warningLine}${row.unit}` },
-          { key: "status", title: "状态", render: (row: InventoryItem) => <Badge tone={row.stock < row.warningLine ? "red" : "green"}>{row.stock < row.warningLine ? "预警" : "正常"}</Badge> }
-        ] as Column<InventoryItem>[]
-      };
-    }
-    if (active === "评价数据") {
-      const getCustomerDisplayName = (name: string) => {
-        const customer = customers.find((item) => item.name === name || item.nickname === name);
-        return customer?.nickname ? `${customer.nickname} / ${customer.name}` : customer?.name ?? name;
-      };
-      const getTargetDisplayName = (name: string) => {
-        const technician = technicians.find((item) => item.name === name || item.nickname === name);
-        return technician?.nickname ? `${technician.nickname} / ${technician.name}` : technician?.name ?? name;
-      };
-      return {
-        rows: reviews,
-        columns: [
-          { key: "customer", title: "客户", render: (row: Review) => getCustomerDisplayName(row.customerName) },
-          { key: "target", title: "对象", render: (row: Review) => getTargetDisplayName(row.targetName) },
-          { key: "rating", title: "评分", render: (row: Review) => row.rating },
-          { key: "tone", title: "类型", render: (row: Review) => <Badge tone={row.tone === "negative" ? "red" : "green"}>{row.tone}</Badge> },
-          { key: "replied", title: "回复", render: (row: Review) => (row.replied ? "已回复" : "未回复") }
-        ] as Column<Review>[]
-      };
-    }
-    return {
-      rows: settlements,
-      columns: [
-        { key: "merchant", title: "商家", render: (row: Settlement) => row.merchantName },
-        { key: "period", title: "周期", render: (row: Settlement) => row.period },
-        { key: "gross", title: "流水", render: (row: Settlement) => yen(row.grossAmount) },
-        { key: "payable", title: "应结", render: (row: Settlement) => yen(row.payableAmount) },
-        { key: "status", title: "状态", render: (row: Settlement) => <Badge tone="yellow">{row.status}</Badge> }
-      ] as Column<Settlement>[]
+
+    let request: Promise<PaginatedApiPayload<DataCenterRow>>;
+    const query = { page, pageSize, keyword: keyword || undefined };
+    if (active === "订单数据") request = backofficeRealDataApi.orders("backoffice", query) as Promise<PaginatedApiPayload<DataCenterRow>>;
+    else if (active === "客户数据") request = backofficeRealDataApi.customers("backoffice", query) as Promise<PaginatedApiPayload<DataCenterRow>>;
+    else if (active === "员工/技师数据") request = backofficeRealDataApi.technicians("backoffice", query) as Promise<PaginatedApiPayload<DataCenterRow>>;
+    else if (active === "门店数据") request = backofficeRealDataApi.shops("backoffice", query) as Promise<PaginatedApiPayload<DataCenterRow>>;
+    else if (active === "服务数据") request = backofficeRealDataApi.services("backoffice", query) as Promise<PaginatedApiPayload<DataCenterRow>>;
+    else if (active === "排班数据") request = backofficeRealDataApi.schedule("backoffice", query) as Promise<PaginatedApiPayload<DataCenterRow>>;
+    else request = backofficeRealDataApi.financeSettlements("backoffice", query) as Promise<PaginatedApiPayload<DataCenterRow>>;
+
+    let current = true;
+    setLoadStatus("loading");
+    setLoadError("");
+    request.then((payload) => {
+      if (!current) return;
+      setRows(payload.list);
+      setTotal(payload.total);
+      setLoadStatus("success");
+    }).catch((error: unknown) => {
+      if (!current) return;
+      setRows([]);
+      setTotal(0);
+      setLoadError(describeDataCenterError(error));
+      setLoadStatus("error");
+    });
+    return () => {
+      current = false;
     };
-  }, [active, customers, entityRevision, stores, technicians]);
+  }, [active, keyword, page, revision]);
+
+  const columns = useMemo(
+    () => isSupportedTab(active) ? columnsFor(active, setSelected) : [],
+    [active]
+  );
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const changeTab = (next: string) => {
+    setActive(next as DataTab);
+    setPage(1);
+    setSelected(null);
+  };
+  const submitSearch = () => {
+    setPage(1);
+    setKeyword(searchDraft.trim());
+  };
 
   return (
     <AdminLayout>
-      <ModuleShell
-        title="数据管理中心"
-        description="订单、客户、员工、门店、商家、库存、评价、结算统一表格管理，支持搜索、筛选、排序、分页、导出和批量操作。"
-        actions={(
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button to="/admin/data?module=big-screen" variant="dark">全屏图表</Button>
-            <Button>新建数据</Button>
-          </div>
+      <ModuleShell title="数据管理中心" description="受权限保护的正式数据只读入口。搜索与翻页直接请求后端，不再合并浏览器 mock 或本地覆盖层。">
+        <Tabs active={active} items={tabs} onChange={changeTab} />
+
+        {unsupportedTabs.has(active) ? (
+          <section className="mt-4 rounded-lg border border-line bg-paper p-6">
+            <h2 className="font-black text-ink">库存和评价数据接口尚未启用</h2>
+            <p className="mt-2 text-sm font-bold leading-6 text-ink/55">正式表结构、权限、分页查询和审计日志完成前，不展示旧库存或评价样例，也不允许新增、编辑、导出或批量操作。</p>
+          </section>
+        ) : (
+          <>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                aria-label="搜索当前数据集"
+                className="focus-ring h-10 min-w-0 flex-1 rounded-lg border border-line bg-white px-3 text-sm font-bold text-ink"
+                placeholder="输入名称、邮箱、订单号或店铺关键词"
+                value={searchDraft}
+                onChange={(event) => setSearchDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") submitSearch();
+                }}
+              />
+              <Button onClick={submitSearch}>搜索正式数据</Button>
+              {keyword ? <Button variant="secondary" onClick={() => { setSearchDraft(""); setKeyword(""); setPage(1); }}>清除搜索</Button> : null}
+            </div>
+
+            {loadStatus === "loading" ? (
+              <section className="mt-4 rounded-lg border border-line bg-white px-5 py-10 text-center shadow-panel" aria-live="polite">
+                <p className="text-sm font-black text-ink">正在从正式数据库加载数据</p>
+              </section>
+            ) : null}
+            {loadStatus === "error" ? (
+              <section className="mt-4 rounded-lg border border-coral/30 bg-coral/5 px-5 py-8 text-center shadow-panel" role="alert">
+                <h2 className="font-black text-ink">当前数据集加载失败</h2>
+                <p className="mt-2 text-sm font-bold text-ink/55">{loadError}</p>
+                <Button className="mt-4" onClick={() => setRevision((value) => value + 1)}>重新加载当前数据</Button>
+              </section>
+            ) : null}
+            {loadStatus === "success" && rows.length === 0 ? (
+              <section className="mt-4 rounded-lg border border-dashed border-line bg-white px-5 py-10 text-center">
+                <p className="text-sm font-black text-ink/55">当前数据集没有真实记录</p>
+              </section>
+            ) : null}
+            {loadStatus === "success" && rows.length > 0 ? (
+              <div className="mt-4">
+                <DataTable<DataCenterRow> columns={columns} footerPlacement="inline" pageSize={pageSize} rows={rows} showFooterActions={false} />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-paper px-4 py-3">
+                  <span className="text-sm font-bold text-ink/55">服务器共 {total} 条，第 {page} / {totalPages} 页</span>
+                  <div className="flex gap-2">
+                    <Button disabled={page <= 1} size="sm" variant="secondary" onClick={() => setPage((value) => Math.max(1, value - 1))}>上一页</Button>
+                    <Button disabled={page >= totalPages} size="sm" variant="secondary" onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>下一页</Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
-      >
-        <Tabs active={active} items={tabs} onChange={(item) => setActive(item as DataTab)} />
-        <div className="mt-4">
-          <FilterBar
-            filters={[
-              { label: "城市", options: [{ label: "东京", value: "tokyo" }, { label: "大阪", value: "osaka" }] },
-              { label: "状态", options: [{ label: "启用", value: "active" }, { label: "待审核", value: "pending" }] },
-              { label: "时间", options: [{ label: "今日", value: "today" }, { label: "近30天", value: "30d" }] }
-            ]}
-          />
-        </div>
-        <div className="mt-4">
-          <DataTable rows={config.rows as AnyRow[]} columns={config.columns as Column<AnyRow>[]} onView={setSelected} />
-        </div>
       </ModuleShell>
 
       <Drawer open={Boolean(selected)} title={`${active}详情`} onClose={() => setSelected(null)}>
-        {selected && (
-          <div className="space-y-5">
-            {isCustomerRow(selected) ? <CustomerEntitySyncEditor key={selected.id} customer={selected} /> : null}
-            {isTechnicianRow(selected) ? <TechnicianEntitySyncEditor key={selected.id} technician={selected} /> : null}
-            {isStoreRow(selected) ? <StoreEntitySyncEditor key={selected.id} store={selected} /> : null}
-            <DetailGrid
-              items={Object.entries(selected)
-                .slice(0, 12)
-                .map(([label, value]) => ({ label, value: Array.isArray(value) ? value.join("、") : String(value) }))}
-            />
-          </div>
-        )}
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Button disabled variant="secondary">
-            {selected && (isCustomerRow(selected) || isTechnicianRow(selected) || isStoreRow(selected)) ? "使用上方表单保存并同步" : "当前记录为只读 mock 数据"}
-          </Button>
-          <Button variant="secondary">导出记录</Button>
-        </div>
+        {selected ? (
+          <>
+            <DetailGrid items={Object.entries(selected).slice(0, 16).map(([label, value]) => ({ label, value: detailValue(value) }))} />
+            {isSupportedTab(active) ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button to={dataOwnerRoute(active)}>前往所属管理模块</Button>
+                <Button variant="secondary" onClick={() => setSelected(null)}>关闭</Button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </Drawer>
     </AdminLayout>
   );

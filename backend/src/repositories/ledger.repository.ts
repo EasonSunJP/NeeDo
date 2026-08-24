@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
   FinanceReconciliationExportPayload,
@@ -16,6 +16,10 @@ import type {
   WalletLedgerDirection,
   WalletLedgerListInput,
   WalletLedgerPayload,
+  WalletAdjustmentRequestListInput,
+  WalletAdjustmentRequestPayload,
+  WalletAdjustmentStatus,
+  WalletAdjustmentType,
   WalletHoldPayload,
   WalletHoldStatus,
   WalletLookupInput,
@@ -48,23 +52,32 @@ type FinanceReconciliationRecord = Prisma.FinanceReconciliationGetPayload<{
 }>;
 
 type WalletHoldRecord = Prisma.WalletHoldGetPayload<Record<string, never>>;
+type WalletAdjustmentRequestRecord = Prisma.WalletAdjustmentRequestGetPayload<
+  Record<string, never>
+>;
 
 export class LedgerRepository implements LedgerRepositoryPort {
   public constructor(private readonly client: LedgerPrismaClient = prisma) {}
 
   public async runInTransaction<T>(
-    handler: (repository: LedgerRepositoryPort) => Promise<T>,
+    handler: (
+      repository: LedgerRepositoryPort,
+      transactionClient?: LedgerTransactionClient
+    ) => Promise<T>,
     transactionClient?: LedgerTransactionClient
   ): Promise<T> {
     if (transactionClient) {
-      return handler(new LedgerRepository(transactionClient as LedgerPrismaClient));
+      return handler(
+        new LedgerRepository(transactionClient as LedgerPrismaClient),
+        transactionClient
+      );
     }
 
     if (this.canStartTransaction(this.client)) {
-      return this.client.$transaction((tx) => handler(new LedgerRepository(tx)));
+      return this.client.$transaction((tx) => handler(new LedgerRepository(tx), tx));
     }
 
-    return handler(this);
+    return handler(this, this.client);
   }
 
   public async findTransactionByIdempotencyKey(
@@ -215,6 +228,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
   public async createAuditLog(input: {
     actorUserId: number | null;
     action: string;
+    targetType?: string;
     targetId: number;
     metadata?: unknown;
   }): Promise<void> {
@@ -222,11 +236,128 @@ export class LedgerRepository implements LedgerRepositoryPort {
       data: {
         actorId: input.actorUserId,
         action: input.action,
-        targetType: "ledger_transaction",
+        targetType: input.targetType ?? "ledger_transaction",
         targetId: input.targetId,
         metadata: input.metadata as Prisma.InputJsonValue | undefined
       }
     });
+  }
+
+  public async findWalletAdjustmentByIdempotencyKey(
+    idempotencyKey: string
+  ): Promise<WalletAdjustmentRequestPayload | null> {
+    const request = await this.client.walletAdjustmentRequest.findFirst({
+      where: { idempotencyKey, deletedAt: null }
+    });
+
+    return request ? this.mapWalletAdjustmentRequest(request) : null;
+  }
+
+  public async createWalletAdjustmentRequest(input: {
+    type: WalletAdjustmentType;
+    ownerType: WalletOwnerType;
+    ownerId: number;
+    walletId: number;
+    amountNdp: number;
+    idempotencyKey: string;
+    bankReference?: string | null;
+    note?: string | null;
+    requestedById: number;
+  }): Promise<WalletAdjustmentRequestPayload> {
+    const request = await this.client.walletAdjustmentRequest.create({
+      data: {
+        type: this.walletAdjustmentTypeToDb(input.type),
+        ownerType: this.ownerTypeToDb(input.ownerType),
+        ownerId: input.ownerId,
+        walletId: input.walletId,
+        amountNdp: input.amountNdp,
+        idempotencyKey: input.idempotencyKey,
+        bankReference: input.bankReference ?? null,
+        note: input.note ?? null,
+        requestedById: input.requestedById
+      }
+    });
+
+    return this.mapWalletAdjustmentRequest(request);
+  }
+
+  public async listWalletAdjustmentRequests(
+    input: WalletAdjustmentRequestListInput
+  ): Promise<PaginatedResponse<WalletAdjustmentRequestPayload>> {
+    const pagination = toPrismaPagination(input);
+    const where: Prisma.WalletAdjustmentRequestWhereInput = {
+      deletedAt: null,
+      ...(input.ownerType ? { ownerType: this.ownerTypeToDb(input.ownerType) } : {}),
+      ...(input.ownerId ? { ownerId: input.ownerId } : {}),
+      ...(input.type ? { type: this.walletAdjustmentTypeToDb(input.type) } : {}),
+      ...(input.status ? { status: this.walletAdjustmentStatusToDb(input.status) } : {})
+    };
+    const [list, total] = await Promise.all([
+      this.client.walletAdjustmentRequest.findMany({
+        where,
+        skip: pagination.skip,
+        take: pagination.take,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.walletAdjustmentRequest.count({ where })
+    ]);
+
+    return buildPaginatedResponse(
+      list.map((request) => this.mapWalletAdjustmentRequest(request)),
+      total,
+      pagination
+    );
+  }
+
+  public async lockWalletAdjustmentRequest(
+    id: number
+  ): Promise<WalletAdjustmentRequestPayload | null> {
+    await this.client.$queryRaw(
+      Prisma.sql`SELECT id FROM wallet_adjustment_requests WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    );
+    const request = await this.client.walletAdjustmentRequest.findFirst({
+      where: { id, deletedAt: null }
+    });
+
+    return request ? this.mapWalletAdjustmentRequest(request) : null;
+  }
+
+  public async approveWalletAdjustmentRequest(input: {
+    id: number;
+    reviewedById: number;
+    reviewNote: string;
+    ledgerTransactionId: number;
+  }): Promise<WalletAdjustmentRequestPayload> {
+    const request = await this.client.walletAdjustmentRequest.update({
+      where: { id: input.id },
+      data: {
+        status: "APPROVED",
+        reviewedById: input.reviewedById,
+        reviewedAt: new Date(),
+        reviewNote: input.reviewNote,
+        ledgerTransactionId: input.ledgerTransactionId
+      }
+    });
+
+    return this.mapWalletAdjustmentRequest(request);
+  }
+
+  public async rejectWalletAdjustmentRequest(input: {
+    id: number;
+    reviewedById: number;
+    reviewNote: string;
+  }): Promise<WalletAdjustmentRequestPayload> {
+    const request = await this.client.walletAdjustmentRequest.update({
+      where: { id: input.id },
+      data: {
+        status: "REJECTED",
+        reviewedById: input.reviewedById,
+        reviewedAt: new Date(),
+        reviewNote: input.reviewNote
+      }
+    });
+
+    return this.mapWalletAdjustmentRequest(request);
   }
 
   public async findWalletHoldByIdempotencyKey(
@@ -662,6 +793,30 @@ export class LedgerRepository implements LedgerRepositoryPort {
     };
   }
 
+  private mapWalletAdjustmentRequest(
+    request: WalletAdjustmentRequestRecord
+  ): WalletAdjustmentRequestPayload {
+    return {
+      id: request.id,
+      type: this.walletAdjustmentTypeFromDb(request.type),
+      status: this.walletAdjustmentStatusFromDb(request.status),
+      ownerType: this.ownerTypeFromDb(request.ownerType),
+      ownerId: request.ownerId,
+      walletId: request.walletId,
+      amountNdp: request.amountNdp,
+      idempotencyKey: request.idempotencyKey,
+      bankReference: request.bankReference,
+      note: request.note,
+      requestedById: request.requestedById,
+      reviewedById: request.reviewedById,
+      reviewedAt: request.reviewedAt,
+      reviewNote: request.reviewNote,
+      ledgerTransactionId: request.ledgerTransactionId,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt
+    };
+  }
+
   private mergeStringArrays(existing: unknown, incoming: string[] | undefined): string[] {
     const values = new Set<string>();
 
@@ -727,6 +882,12 @@ export class LedgerRepository implements LedgerRepositoryPort {
     if (type === "booking_merchant_cancel_compensation") {
       return "BOOKING_MERCHANT_CANCEL_COMPENSATION" as const;
     }
+    if (type === "manual_topup_approved") {
+      return "MANUAL_TOPUP_APPROVED" as const;
+    }
+    if (type === "manual_withdrawal_approved") {
+      return "MANUAL_WITHDRAWAL_APPROVED" as const;
+    }
     if (type === "seed_credit") {
       return "SEED_CREDIT" as const;
     }
@@ -743,6 +904,12 @@ export class LedgerRepository implements LedgerRepositoryPort {
     }
     if (type === "BOOKING_MERCHANT_CANCEL_COMPENSATION") {
       return "booking_merchant_cancel_compensation";
+    }
+    if (type === "MANUAL_TOPUP_APPROVED") {
+      return "manual_topup_approved";
+    }
+    if (type === "MANUAL_WITHDRAWAL_APPROVED") {
+      return "manual_withdrawal_approved";
     }
     if (type === "SEED_CREDIT") {
       return "seed_credit";
@@ -795,6 +962,36 @@ export class LedgerRepository implements LedgerRepositoryPort {
 
   private reconciliationStatusFromDb(status: string): FinanceReconciliationStatus {
     return status === "EXPORTED" ? "exported" : "pending";
+  }
+
+  private walletAdjustmentTypeToDb(type: WalletAdjustmentType) {
+    return type === "withdrawal" ? ("WITHDRAWAL" as const) : ("TOPUP" as const);
+  }
+
+  private walletAdjustmentTypeFromDb(type: string): WalletAdjustmentType {
+    return type === "WITHDRAWAL" ? "withdrawal" : "topup";
+  }
+
+  private walletAdjustmentStatusToDb(status: WalletAdjustmentStatus) {
+    if (status === "approved") {
+      return "APPROVED" as const;
+    }
+    if (status === "rejected") {
+      return "REJECTED" as const;
+    }
+
+    return "PENDING" as const;
+  }
+
+  private walletAdjustmentStatusFromDb(status: string): WalletAdjustmentStatus {
+    if (status === "APPROVED") {
+      return "approved";
+    }
+    if (status === "REJECTED") {
+      return "rejected";
+    }
+
+    return "pending";
   }
 
   private feeTypeFromDb(value: string): FeeType {

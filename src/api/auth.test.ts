@@ -48,7 +48,7 @@ describe("authApi endpoint paths", () => {
     expect((options?.body as FormData).get("password")).toBe("secret");
     expect((options?.body as FormData).get("type")).toBe("username");
     expect(authEndpointPaths.login).toBe("/login");
-    expect(authEndpointPaths.register).toBe("/reg");
+    expect(authEndpointPaths.register).toBe("/auth/register");
     expect(setAuthTokens).toHaveBeenCalledWith({
       accessToken: "access-token",
       refreshToken: "refresh-token"
@@ -80,6 +80,80 @@ describe("authApi endpoint paths", () => {
       accessToken: "access-token",
       refreshToken: "refresh-token"
     });
+  });
+
+  it("registers through the formal API without creating an authenticated session", async () => {
+    const registrationApi = authApi as unknown as {
+      register?: (input: {
+        accountType: "customer";
+        email: string;
+        password: string;
+        username: string;
+      }) => Promise<unknown>;
+    };
+    expect(authEndpointPaths.register).toBe("/auth/register");
+    expect(registrationApi.register).toBeTypeOf("function");
+    if (!registrationApi.register) {
+      return;
+    }
+
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      id: 101,
+      email: "new.customer@example.com",
+      username: "New Customer",
+      accountType: "customer",
+      approvalStatus: "approved",
+      isActive: true
+    });
+
+    await registrationApi.register({
+      accountType: "customer",
+      email: "new.customer@example.com",
+      password: "Customer.2026!",
+      username: "New Customer"
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith("/auth/register", {
+      auth: false,
+      body: {
+        accountType: "customer",
+        email: "new.customer@example.com",
+        password: "Customer.2026!",
+        username: "New Customer"
+      },
+      method: "POST",
+      retryOnUnauthorized: false
+    });
+    expect(setAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it("uses the formal auth login URI in production even when legacy auth variables are present", async () => {
+    vi.stubEnv("PROD", true);
+    vi.stubEnv("VITE_LEGACY_AUTH_BASE_URL", "/legacy-auth");
+    vi.stubEnv("VITE_LEGACY_AUTHORIZATION", "Bearer unsafe-production-token");
+    vi.mocked(httpClient.request).mockResolvedValueOnce({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      expiresIn: 900
+    });
+
+    await authApi.login("user@example.com", "S3cure-password!");
+
+    expect(httpClient.request).toHaveBeenCalledWith(
+      authEndpointPaths.formalLogin,
+      expect.objectContaining({
+        auth: false,
+        body: {
+          username: "user@example.com",
+          password: "S3cure-password!"
+        },
+        method: "POST",
+        retryOnUnauthorized: false
+      })
+    );
+    const [, options] = vi.mocked(httpClient.request).mock.calls[0] ?? [];
+    expect(options?.baseUrl).toBeUndefined();
+    expect(options?.headers).toBeUndefined();
   });
 
   it("switches identity with the stored refresh token and persists the rotated token pair", async () => {

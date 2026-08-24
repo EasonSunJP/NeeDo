@@ -30,6 +30,7 @@ export class HealthService {
 
   public async getHealth(): Promise<HealthPayload> {
     const redis = await this.getRedisHealth();
+    this.recordDependencyHealth("redis", redis);
 
     return {
       status: redis.status === "ok" ? "ok" : "degraded",
@@ -43,6 +44,8 @@ export class HealthService {
 
   public async getReadiness(): Promise<ReadinessPayload> {
     const [database, redis] = await Promise.all([this.getDatabaseHealth(), this.getRedisHealth()]);
+    this.recordDependencyHealth("database", database);
+    this.recordDependencyHealth("redis", redis);
     const ready = database.status === "ok" && redis.status === "ok";
 
     return {
@@ -83,5 +86,18 @@ export class HealthService {
         message: error instanceof Error ? error.message : "Unknown database health check error"
       };
     }
+  }
+
+  private recordDependencyHealth(
+    dependency: "database" | "redis",
+    status: DatabaseHealthStatus | RedisHealthStatus
+  ): void {
+    this.dependencies.metricsService?.recordDependencyHealth({
+      dependency,
+      status: status.status,
+      latencyMs: "latencyMs" in status ? status.latencyMs : undefined,
+      poolSize: "poolSize" in status ? status.poolSize : undefined,
+      healthyClients: "healthyClients" in status ? status.healthyClients : undefined
+    });
   }
 }

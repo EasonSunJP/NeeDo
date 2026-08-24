@@ -82,6 +82,17 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).not.toContain("demoAuthAccount.password");
   });
 
+  it("offers formal customer and technician registration without exposing merchant or admin self-registration", () => {
+    expect(loginPageSource).toContain('type LoginPanelMode = "welcome" | "account" | "register"');
+    expect(loginPageSource).toContain('activePortal === "technician" ? "technician" : "customer"');
+    expect(loginPageSource).toContain('activePortal === "user" || activePortal === "technician"');
+    expect(loginPageSource).toContain("await authApi.register");
+    expect(loginPageSource).toContain('panelMode === "register"');
+    expect(loginPageSource).toContain("registrationCity");
+    expect(loginPageSource).not.toContain('accountType: "merchant"');
+    expect(loginPageSource).not.toContain('accountType: "admin"');
+  });
+
   it("labels the public test credential action as skip verification login", () => {
     expect(loginPageSource).toContain('testCredentialLogin: "跳过验证登录"');
   });
@@ -267,11 +278,16 @@ describe("LoginPage real-account login", () => {
     });
   });
 
-  it("requires formal frontend login only for technician payroll redirects", () => {
+  it("requires formal login by default and keeps route exceptions only in an explicit static demo", () => {
     expect(requiresFormalFrontendLogin("technician", "/technician/payroll")).toBe(true);
     expect(requiresFormalFrontendLogin("technician", "/technician/payroll?period=2026-06")).toBe(true);
-    expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(false);
-    expect(requiresFormalFrontendLogin("merchant", "/technician/payroll")).toBe(false);
+    expect(requiresFormalFrontendLogin("technician", "/technician/schedule")).toBe(true);
+    expect(requiresFormalFrontendLogin("merchant", "/merchant/schedule?tab=appointments")).toBe(true);
+    expect(requiresFormalFrontendLogin("merchant", "/merchant/orders")).toBe(true);
+    expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(true);
+    expect(requiresFormalFrontendLogin("merchant", "/technician/payroll")).toBe(true);
+    expect(requiresFormalFrontendLogin("technician", "/technician", false, true)).toBe(false);
+    expect(requiresFormalFrontendLogin("merchant", "/technician/payroll", false, true)).toBe(false);
   });
 
   it("shows continue when the current session or remembered authorization has the requested portal identity", () => {

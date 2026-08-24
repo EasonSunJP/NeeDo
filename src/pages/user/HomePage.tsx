@@ -17,9 +17,16 @@ import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { SpecialBlackFlatIcon, SpecialBlackIcon, type SpecialBlackFlatIconName } from "../../components/mobile/SpecialBlackIcon";
 import { CloseIconButton } from "../../components/ui/CloseIconButton";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { useAuth } from "../../auth/AuthProvider";
+import { useAuth, type AuthSession } from "../../auth/AuthProvider";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { serviceCategories, services as legacyServices } from "../../data/mock";
-import { coreReadApi, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
+import {
+  coreReadApi,
+  mapCoreCustomerToCustomer,
+  mapCoreServiceToServiceItem,
+  mapCoreShopToStore,
+  mapCoreTechnicianToTechnician
+} from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
@@ -80,6 +87,19 @@ type ReminderState = {
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, "");
+}
+
+function getFormalCustomerProfileId(session: AuthSession | null) {
+  if (
+    isStaticDemoMode() ||
+    session?.portal !== "user" ||
+    session.currentIdentity.scopeType !== "customer_profile"
+  ) {
+    return null;
+  }
+
+  const profileId = session.currentIdentity.scopeId;
+  return profileId && Number.isInteger(profileId) && profileId > 0 ? profileId : null;
 }
 
 function getLocationTokens(location: HomeLocationOption) {
@@ -1104,7 +1124,15 @@ export function HomePage() {
   const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
   const { customers, stores: legacyStores, technicians: legacyTechnicians, revision: entityRevision } = useEntityStore();
   const userOrders = useUserOrders();
-  const currentCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const formalCustomerProfileId = getFormalCustomerProfileId(session);
+  const formalCustomerProfileQuery = useCoreReadQuery(
+    () => formalCustomerProfileId ? coreReadApi.getCustomerProfile(formalCustomerProfileId) : null,
+    [formalCustomerProfileId]
+  );
+  const legacyCurrentCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
+  const currentCustomer = formalCustomerProfileQuery.data
+    ? mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)
+    : legacyCurrentCustomer;
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
   const homeRecommendationsQuery = useCoreReadQuery(() => coreReadApi.getHomeRecommendations({ limit: 20 }), []);
   const apiServices = useMemo(

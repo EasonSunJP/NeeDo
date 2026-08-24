@@ -3,83 +3,43 @@ import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 
-const contactChannels = [
-  {
-    title: "官方邮箱",
-    value: "support@needo.jp",
-    note: "适用于支付异常、资料审核、合同结算、发票和系统问题。",
-    badge: "Email"
-  },
-  {
-    title: "LINE Official",
-    value: "@needo_support",
-    note: "适用于店铺、技师和平台代理商的日常咨询与值班联络。",
-    badge: "LINE"
-  },
-  {
-    title: "客服电话",
-    value: "+81 3-6824-7788",
-    note: "工作日 10:00 - 19:00，紧急工单和节假日值班以官方通知为准。",
-    badge: "Call"
-  }
-];
-
-const supportRules = [
-  "支付失败、退款延迟、结算异常：优先邮件并附订单号。",
-  "IM 风控、投诉升级、站外交易风险：优先 LINE 值班群同步。",
-  "用户安全、技师安全、SOS 异常：直接拨打客服电话并同步后台工单。"
+const requirements = [
+  "SupportTicket、SupportMessage、SupportAttachment 与 OnCallPolicy 表和 migration",
+  "创建、分派、优先级、SLA、升级、解决、关闭与重开状态机 API",
+  "租户范围 RBAC、敏感信息脱敏、附件权限与不可变审计",
+  "通知投递、值班配置、服务端搜索、分页、SLA 聚合与导出"
 ];
 
 export function AdminSupportPage() {
   return (
     <AdminLayout>
       <ModuleShell
-        title="官方客服"
-        description="这里用于查看怎么联系 NeeDo 官方团队，包括邮件、LINE 和电话。客服 icon 打开的是这张联系方式页面，不再跳去评价或业务模块。"
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary">复制联系信息</Button>
-            <Button>打开值班说明</Button>
-          </div>
-        }
+        title="客服与支持"
+        description="正式客服必须由可追踪工单、消息、附件、SLA 和值班策略驱动。"
+        actions={<Badge tone="yellow">未启用</Badge>}
       >
-        <section className="grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
-          <div className="space-y-4">
-            {contactChannels.map((channel) => (
-              <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={channel.title}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black">{channel.title}</h2>
-                      <Badge tone="yellow">{channel.badge}</Badge>
-                    </div>
-                    <p className="mt-3 text-xl font-black text-moss">{channel.value}</p>
-                    <p className="mt-2 text-sm leading-6 text-ink/60">{channel.note}</p>
-                  </div>
-                  <Button variant="secondary" size="sm">复制</Button>
-                </div>
+        <section className="rounded-lg border border-line bg-white p-6 shadow-panel">
+          <div className="max-w-3xl">
+            <h2 className="text-xl font-black text-ink">正式客服工单与值班联系尚未启用</h2>
+            <p className="mt-3 text-sm font-bold leading-7 text-ink/60">
+              当前不会展示未经验证的联系方式、模拟工单、SLA 或值班状态，也不会开放没有数据库、权限、投递回执和审计证据的创建、分派、升级、回复、解决或附件操作。
+            </p>
+            <p className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm font-bold leading-6 text-yellow-900">
+              官方邮箱、LINE、电话和工作时间必须来自版本化配置，并经过运营审核与发布；在该配置存在前，前端不能硬编码或推测联系方式。人身安全等紧急情况应使用当地法定紧急服务，不能依赖未启用的平台工单。
+            </p>
+          </div>
+          <div className="mt-6 grid gap-3 md:grid-cols-2">
+            {requirements.map((requirement, index) => (
+              <article className="rounded-lg border border-line bg-paper p-4" key={requirement}>
+                <span className="text-xs font-black text-moss">上线条件 {index + 1}</span>
+                <p className="mt-2 text-sm font-black text-ink">{requirement}</p>
               </article>
             ))}
           </div>
-
-          <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-            <h2 className="text-lg font-black">联系建议</h2>
-            <div className="mt-4 space-y-3">
-              {supportRules.map((rule) => (
-                <article className="rounded-lg border border-line bg-paper p-3" key={rule}>
-                  <p className="text-sm leading-6 text-ink/70">{rule}</p>
-                </article>
-              ))}
-            </div>
-
-            <div className="mt-5 rounded-lg bg-paper p-4">
-              <p className="text-xs font-black uppercase tracking-[0.12em] text-ink/45">值班说明</p>
-              <p className="mt-3 text-sm leading-7 text-ink/65">
-                正常情况下，后台运营与店铺咨询建议优先使用邮件或 LINE Official。
-                如果涉及人身安全、在途异常、服务中断或大额支付问题，请先电话联系，再补充后台工单与邮件材料。
-              </p>
-            </div>
-          </section>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Button to="/admin/docs" variant="secondary">查看操作文档</Button>
+            <Button to="/admin/docs/api" variant="secondary">查看正式 API 文档</Button>
+          </div>
         </section>
       </ModuleShell>
     </AdminLayout>

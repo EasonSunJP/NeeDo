@@ -10,6 +10,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/ready");
     expect(response.body.paths).toHaveProperty("/api/v1/metrics");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/login");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/register");
     expect(response.body.paths).not.toHaveProperty("/api/v1/auth/test-login");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/send");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/verify");
@@ -43,6 +44,18 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/cancel");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/start");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/complete");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/orders/{id}/payment/confirm"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/merchant-admin/orders/{id}/payment/refund"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/backoffice/orders/{id}/payment/confirm"
+    );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/backoffice/orders/{id}/payment/refund"
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/me");
     expect(response.body.paths).toHaveProperty("/api/v1/wallets/{id}/ledger");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/ledger/transactions");
@@ -53,6 +66,15 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{id}/approve");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians/{id}/approve");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/customers");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/customers/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{shopId}/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/services/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/dashboard");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/orders");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule");
@@ -112,6 +134,17 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/shop");
+    expect(response.body.paths["/api/v1/merchant-admin/shop"]).toHaveProperty("patch");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}/approve");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/services");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/services/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule/slots");
+    expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/schedule/slots/{id}");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots");
+    expect(response.body.paths).toHaveProperty("/api/v1/technician/schedule/slots/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations");
     expect(response.body.paths).toHaveProperty(
       "/api/v1/im/conversations/{conversationId}/messages"
@@ -122,6 +155,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/accept");
     expect(response.body.paths).toHaveProperty("/api/v1/im/friend-requests/{id}/reject");
     expect(response.body.paths).toHaveProperty("/api/v1/social/posts");
+    expect(response.body.paths).toHaveProperty("/api/v1/social/posts/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/social/follows");
     expect(response.body.paths).toHaveProperty("/api/v1/social/follows/{targetUserId}");
     expect(response.body.paths).toHaveProperty("/api/v1/notifications");
@@ -143,6 +177,7 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(response.body.components.schemas).toHaveProperty("ServiceCard");
     expect(response.body.components.schemas).toHaveProperty("ShopDetail");
+    expect(response.body.components.schemas.TechnicianDetail.allOf[1].required).toContain("shop");
     expect(response.body.components.schemas).toHaveProperty("CustomerProfile");
     expect(response.body.components.schemas).toHaveProperty("ScheduleSlot");
     expect(response.body.components.schemas).toHaveProperty("BookingOrder");
@@ -164,6 +199,47 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("Follow");
     expect(response.body.components.schemas).toHaveProperty("Notification");
     expect(response.body.components.schemas).toHaveProperty("RealtimeUnreadCounts");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeCustomer");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeService");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeServiceCreateInput");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeServiceUpdateInput");
+    expect(response.body.components.schemas).toHaveProperty("ScheduleSlotCreateInput");
+    expect(response.body.components.schemas).toHaveProperty("ScheduleSlotUpdateInput");
+    [
+      ["/api/v1/backoffice/shops/{id}", "patch"],
+      ["/api/v1/backoffice/technicians/{id}", "patch"],
+      ["/api/v1/backoffice/customers/{id}", "patch"],
+      ["/api/v1/backoffice/shops/{shopId}/services", "post"],
+      ["/api/v1/backoffice/services/{id}", "patch"],
+      ["/api/v1/merchant-admin/technicians/{id}", "patch"],
+      ["/api/v1/merchant-admin/services", "post"],
+      ["/api/v1/merchant-admin/services/{id}", "patch"]
+    ].forEach(([path, method]) => {
+      expect(response.body.paths[path][method].requestBody.required).toBe(true);
+      expect(response.body.paths[path][method].requestBody.content).toHaveProperty("application/json");
+    });
+
+    const registrationPath = response.body.paths["/api/v1/auth/register"].post;
+    expect(registrationPath.security).toBeUndefined();
+    expect(
+      registrationPath.requestBody.content["application/json"].schema.properties.accountType
+    ).toEqual({ type: "string", enum: ["customer", "technician"] });
+    expect(registrationPath.requestBody.content["application/json"].schema.oneOf).toEqual([
+      {
+        properties: { accountType: { const: "customer" } },
+        required: ["accountType", "email", "password", "username"]
+      },
+      {
+        properties: { accountType: { const: "technician" } },
+        required: ["accountType", "city", "email", "password", "username"]
+      }
+    ]);
+    expect(
+      registrationPath.responses["201"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/RegisteredAccount" });
+    expect(response.body.components.schemas.RegisteredAccount.properties).not.toHaveProperty(
+      "passwordHash"
+    );
 
     const orderFinanceSchema = response.body.components.schemas.OrderFinanceDetail;
     expect(orderFinanceSchema.properties).toMatchObject({

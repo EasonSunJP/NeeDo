@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerE
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/AuthProvider";
 import type { ImRoleType } from "../../features/im/model";
-import { useImStore } from "../../features/im/store";
-import { useSocial } from "../../features/social/context";
-import type { SocialPortalScope } from "../../features/social/types";
+import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { readNeedoExternalInfoPosts, subscribeNeedoExternalInfoPosts, type NeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { cn } from "../../lib/utils";
@@ -821,10 +819,8 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const petAssetReadiness = useNeedoPetAssetReadiness();
   const location = useLocation();
   const navigate = useNavigate();
-  const social = useSocial();
   const clientRole = getClientRole(location.pathname, session?.portal);
-  const imRole = clientRole ?? "user";
-  const imStore = useImStore(imRole);
+  const realtimeCounts = useRealtimeUnreadCounts();
   const [care, setCare] = useState<PetCareState>(() => readCareState());
   const [externalInfoPosts, setExternalInfoPosts] = useState<NeedoExternalInfoPost[]>(() => readNeedoExternalInfoPosts());
   const [panelOpen, setPanelOpen] = useState(false);
@@ -1070,23 +1066,21 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
     }
 
     const prefix = getRolePrefix(clientRole);
-    const socialRole: SocialPortalScope = clientRole;
-    const socialActorKey = social.getActorForScope(socialRole);
     const items: ReminderItem[] = [
       {
-        count: imStore.conversations.reduce((sum, conversation) => sum + conversation.unreadCount, 0),
+        count: realtimeCounts.conversations,
         label: "聊天未读",
         path: `${prefix}/messages`,
         type: "messages"
       },
       {
-        count: imStore.friendRequests.filter((request) => request.status === "pending").length,
+        count: realtimeCounts.friendRequests,
         label: "好友申请",
         path: `${prefix}/contacts/requests`,
         type: "contacts"
       },
       {
-        count: social.getUnreadNotificationCount(socialActorKey),
+        count: realtimeCounts.notifications,
         label: "动态提醒",
         path: `${prefix}/moments/notifications`,
         type: "moments"
@@ -1096,7 +1090,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
     return items
       .filter((item) => item.count > 0)
       .map((item) => ({ ...item }));
-  }, [clientRole, imStore.conversations, imStore.friendRequests, social]);
+  }, [clientRole, realtimeCounts]);
 
   const latestExternalInfoTitle = useMemo(() => getLatestExternalInfoTitle(externalInfoPosts), [externalInfoPosts]);
   const totalReminderCount = reminders.reduce((sum, item) => sum + item.count, 0);

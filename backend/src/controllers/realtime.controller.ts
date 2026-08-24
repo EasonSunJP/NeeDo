@@ -17,6 +17,7 @@ import {
   notificationIdParamSchema,
   notificationListQuerySchema,
   socialPostCreateBodySchema,
+  socialPostIdParamSchema,
   socialPostListQuerySchema
 } from "../validators/realtime.validator";
 
@@ -130,6 +131,12 @@ export class RealtimeController {
       ),
     201
   );
+
+  public getSocialPost = this.createHandler((request, response) => {
+    const params = socialPostIdParamSchema.parse(request.params);
+
+    return this.service.getSocialPost(getAuthenticatedAccess(response), params.id);
+  });
 
   public createFollow = this.createHandler(
     (request, response) =>

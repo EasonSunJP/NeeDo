@@ -51,7 +51,7 @@ describe("user management seed contract", () => {
 
   it("uses the correct password source for admin and required test accounts", () => {
     expect(() => getAdminSeedConfig({ NODE_ENV: "development", DEPLOY_ENV: "local" })).toThrow(
-      "TEST_USER_DEFAULT_PASSWORD or ADMIN_DEFAULT_PASSWORD"
+      "ADMIN_DEFAULT_PASSWORD"
     );
 
     expect(
@@ -68,14 +68,14 @@ describe("user management seed contract", () => {
 
     expect(
       getAdminSeedConfig({
-        NODE_ENV: "staging",
+        NODE_ENV: "production",
         DEPLOY_ENV: "staging",
         ADMIN_DEFAULT_PASSWORD: "admin-bootstrap-password",
         TEST_USER_DEFAULT_PASSWORD: "test-user-password"
       })
     ).toMatchObject({
       email: "admin@example.com",
-      password: "test-user-password"
+      password: "admin-bootstrap-password"
     });
     expect(
       getAdminSeedConfig({
@@ -162,13 +162,21 @@ describe("user management seed contract", () => {
     ).toThrow("TEST_USER_DEFAULT_PASSWORD");
   });
 
-  it("seeds required test accounts in local and staging but not production", () => {
-    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "development", DEPLOY_ENV: "local" })).toBe(
-      true
-    );
-    expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "staging" })).toBe(
-      true
-    );
+  it("seeds required test accounts only with an explicit local or test flag", () => {
+    expect(
+      shouldSeedRequiredTestAccounts({
+        NODE_ENV: "development",
+        DEPLOY_ENV: "local",
+        ALLOW_TEST_LOGIN: "true"
+      })
+    ).toBe(true);
+    expect(
+      shouldSeedRequiredTestAccounts({
+        NODE_ENV: "production",
+        DEPLOY_ENV: "staging",
+        ALLOW_TEST_LOGIN: "true"
+      })
+    ).toBe(false);
     expect(shouldSeedRequiredTestAccounts({ NODE_ENV: "production", DEPLOY_ENV: "prod" })).toBe(
       false
     );

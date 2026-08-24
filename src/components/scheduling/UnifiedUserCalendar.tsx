@@ -8,7 +8,8 @@ import { HolidayCornerBadge } from "./HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "./ScheduleDraftRangeBlock";
 import { AvatarImage } from "../ui/AvatarImage";
 import { ConversationListItem } from "../ui/ConversationListItem";
-import { orders } from "../../data/mock";
+import { bookingApi, mapBookingOrderToDomainOrder, type BookingScheduleSlot } from "../../features/booking/api";
+import { mapScheduleSlotToCalendarItem, schedulingApi } from "../../features/scheduling/api";
 import { useDispatchCenterStore } from "../../features/dispatch-center/store";
 import type { DispatchArrangement } from "../../features/dispatch-center/domain";
 import { getDisplayName, type ContactRelation, type Conversation, type ImRoleType, type ImUser } from "../../features/im/model";
@@ -503,8 +504,8 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
   }));
 }
 
-function getOrderEvents(currentCustomer: Customer): UnifiedCalendarEvent[] {
-  return orders
+function getOrderEvents(currentCustomer: Customer, orderRows: Order[]): UnifiedCalendarEvent[] {
+  return orderRows
     .filter((order) => order.customerId === currentCustomer.id && order.status !== "cancelled" && order.status !== "refunded")
     .map((order): UnifiedCalendarEvent | null => {
       const schedule = normalizeDateTimeFromOrder(order);
@@ -535,14 +536,34 @@ function getOrderEvents(currentCustomer: Customer): UnifiedCalendarEvent[] {
     .filter((event): event is UnifiedCalendarEvent => Boolean(event));
 }
 
-function getRelevantTechnicianIds(arrangements: DispatchArrangement[], currentCustomer: Customer, technicians: Technician[]) {
+function getFormalScheduleEvents(slots: BookingScheduleSlot[], scope: "merchant" | "technician"): UnifiedCalendarEvent[] {
+  return slots.map((slot) => {
+    const item = mapScheduleSlotToCalendarItem(slot);
+    return {
+      id: item.id,
+      sourceId: scope,
+      calendarId: slot.technicianProfileId ? getTechnicianCalendarLaneId(String(slot.technicianProfileId)) : "merchant:unassigned",
+      calendarLabel: slot.technicianName ?? "未指定技师",
+      date: item.date,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      title: item.title,
+      subtitle: item.subtitle,
+      badge: item.badge,
+      readOnly: true,
+      detailTargetType: "none"
+    };
+  });
+}
+
+function getRelevantTechnicianIds(arrangements: DispatchArrangement[], currentCustomer: Customer, technicians: Technician[], orderRows: Order[]) {
   const relevantIds = new Set(
     arrangements
       .filter((arrangement) => arrangement.customerId === currentCustomer.id && arrangement.technicianId)
       .map((arrangement) => arrangement.technicianId as string)
   );
 
-  orders
+  orderRows
     .filter((order) => order.customerId === currentCustomer.id && order.technicianName)
     .forEach((order) => {
       const technician = technicians.find((item) => item.name === order.technicianName || item.nickname === order.technicianName);
@@ -749,9 +770,10 @@ function getTechnicianEvents(
   relevantTechnicianIds: Set<string>,
   snapshot: ReturnType<typeof useTechnicianScheduleStore>,
   stores: ReturnType<typeof useEntityStore>["stores"],
-  technicians: Technician[]
+  technicians: Technician[],
+  orderRows: Order[]
 ): UnifiedCalendarEvent[] {
-  const customerOrderIds = new Set(orders.filter((order) => order.customerId === currentCustomer.id).map((order) => order.id));
+  const customerOrderIds = new Set(orderRows.filter((order) => order.customerId === currentCustomer.id).map((order) => order.id));
   const bookingEvents = snapshot.bookings
     .filter((booking) => booking.customerName === currentCustomer.name || (booking.orderId && customerOrderIds.has(booking.orderId)))
     .map((booking): UnifiedCalendarEvent => ({
@@ -893,9 +915,10 @@ function getMerchantEvents(
   technicianSnapshot: ReturnType<typeof useTechnicianScheduleStore>,
   scheduleSnapshot: ReturnType<typeof useScheduleStore>,
   stores: ReturnType<typeof useEntityStore>["stores"],
-  technicians: Technician[]
+  technicians: Technician[],
+  orderRows: Order[]
 ): UnifiedCalendarEvent[] {
-  const customerOrderIds = new Set(orders.filter((order) => order.customerId === currentCustomer.id).map((order) => order.id));
+  const customerOrderIds = new Set(orderRows.filter((order) => order.customerId === currentCustomer.id).map((order) => order.id));
   const arrangementEvents = arrangements
     .filter((arrangement) => arrangement.customerId === currentCustomer.id && arrangement.status !== "cancelled")
     .map((arrangement): UnifiedCalendarEvent => ({
@@ -1437,13 +1460,14 @@ function getUserSyncContactOptions(
   arrangements: DispatchArrangement[],
   relevantTechnicianIds: Set<string>,
   stores: ReturnType<typeof useEntityStore>["stores"],
-  technicians: Technician[]
+  technicians: Technician[],
+  orderRows: Order[]
 ) {
   if (!currentCustomer) {
     return [];
   }
 
-  const customerOrders = orders.filter((order) => order.customerId === currentCustomer.id);
+  const customerOrders = orderRows.filter((order) => order.customerId === currentCustomer.id);
   const storeIds = new Set(
     arrangements
       .filter((arrangement) => arrangement.customerId === currentCustomer.id)
@@ -4781,6 +4805,10 @@ export function UnifiedUserCalendar({
   const [activeEvent, setActiveEvent] = useState<UnifiedCalendarEvent | null>(null);
   const [googleConnectionStatus, setGoogleConnectionStatus] = useState<GoogleCalendarConnectionStatus | null>(null);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<MerchantAppointmentStatusFilter>("all");
+  const [formalOrders, setFormalOrders] = useState<Order[]>([]);
+  const [formalScheduleSlots, setFormalScheduleSlots] = useState<BookingScheduleSlot[]>([]);
+  const [formalDataLoading, setFormalDataLoading] = useState(false);
+  const [formalDataError, setFormalDataError] = useState("");
   const period = getCalendarPeriod(view, anchorDate, agendaDateWindow);
   const googleCalendarActorId = getGoogleCalendarActorId(activeScope, currentCustomer, currentTechnician, currentStore);
   const appointmentStatusFilterLabel =
@@ -4790,6 +4818,42 @@ export function UnifiedUserCalendar({
     [activeScope, currentCustomer, currentStore, currentTechnician]
   );
   const imConfig = getImRoleConfig(imScope);
+
+  useEffect(() => {
+    let alive = true;
+    const loadFormalData = async () => {
+      setFormalDataLoading(true);
+      setFormalDataError("");
+      try {
+        if (activeScope === "user") {
+          const response = await bookingApi.listOrders({ page: 1, pageSize: 100 });
+          if (alive) {
+            setFormalOrders(response.list.map(mapBookingOrderToDomainOrder));
+            setFormalScheduleSlots([]);
+          }
+          return;
+        }
+        const from = parseDateKey(period.startDate);
+        const to = parseDateKey(period.endDate);
+        to.setDate(to.getDate() + 1);
+        const response = await schedulingApi.listSlots(activeScope === "merchant" ? "merchant-admin" : "technician", { from, to, page: 1, pageSize: 100 });
+        if (alive) {
+          setFormalScheduleSlots(response.list);
+          setFormalOrders([]);
+        }
+      } catch (error) {
+        if (alive) {
+          setFormalDataError(error instanceof Error ? error.message : String(error));
+          setFormalOrders([]);
+          setFormalScheduleSlots([]);
+        }
+      } finally {
+        if (alive) setFormalDataLoading(false);
+      }
+    };
+    void loadFormalData();
+    return () => { alive = false; };
+  }, [activeScope, period.endDate, period.startDate]);
 
   useEffect(() => {
     writeBrowserStorage(localCalendarStorageKey, JSON.stringify(localEvents), { silent: true });
@@ -4830,8 +4894,8 @@ export function UnifiedUserCalendar({
     if (!currentCustomer) {
       return new Set<string>();
     }
-    return getRelevantTechnicianIds(dispatchSnapshot.arrangements, currentCustomer, technicians);
-  }, [activeScope, currentCustomer, currentStore, currentTechnician, dispatchSnapshot.arrangements, technicians]);
+    return getRelevantTechnicianIds(dispatchSnapshot.arrangements, currentCustomer, technicians, formalOrders);
+  }, [activeScope, currentCustomer, currentStore, currentTechnician, dispatchSnapshot.arrangements, formalOrders, technicians]);
 
   const syncContactOptions = useMemo(() => {
     const baseOptions =
@@ -4839,7 +4903,7 @@ export function UnifiedUserCalendar({
         ? getMerchantSyncContactOptions(currentStore, technicians)
         : activeScope === "technician"
         ? getTechnicianSyncContactOptions(currentTechnician, stores, technicians)
-        : getUserSyncContactOptions(currentCustomer, dispatchSnapshot.arrangements, relevantTechnicianIds, stores, technicians);
+        : getUserSyncContactOptions(currentCustomer, dispatchSnapshot.arrangements, relevantTechnicianIds, stores, technicians, formalOrders);
 
     return getCompleteSyncContactOptions(baseOptions, commonSyncContactOptions, tagSyncContactOptions, groupSyncContactOptions);
   }, [
@@ -4850,6 +4914,7 @@ export function UnifiedUserCalendar({
     currentTechnician,
     dispatchSnapshot.arrangements,
     groupSyncContactOptions,
+    formalOrders,
     relevantTechnicianIds,
     stores,
     tagSyncContactOptions,
@@ -4863,23 +4928,11 @@ export function UnifiedUserCalendar({
 
   const allEvents = useMemo(() => {
     const birthdayEvents = getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
-    const neeDoEvents = [
-      ...(activeScope === "user" && currentCustomer ? getOrderEvents(currentCustomer) : []),
-      ...(activeScope === "merchant" && currentStore
-        ? getMerchantEventsForStore(currentStore, dispatchSnapshot.arrangements, technicianSnapshot, scheduleSnapshot, customers, stores, technicians, effectiveMerchantLaneMode)
-        : activeScope === "technician" && currentTechnician
-        ? getTechnicianEventsForTechnician(currentTechnician.id, technicianSnapshot, stores, technicians)
-        : currentCustomer
-          ? getTechnicianEvents(currentCustomer, relevantTechnicianIds, technicianSnapshot, stores, technicians)
-          : []),
-      ...(activeScope === "merchant"
-        ? []
-        : activeScope === "technician" && currentTechnician
-        ? getMerchantEventsForTechnician(currentTechnician.id, dispatchSnapshot.arrangements, scheduleSnapshot, stores, technicians)
-        : currentCustomer
-          ? getMerchantEvents(currentCustomer, relevantTechnicianIds, dispatchSnapshot.arrangements, technicianSnapshot, scheduleSnapshot, stores, technicians)
-          : [])
-    ];
+    const neeDoEvents = activeScope === "user" && currentCustomer
+      ? getOrderEvents(currentCustomer, formalOrders)
+      : activeScope === "merchant" || activeScope === "technician"
+        ? getFormalScheduleEvents(formalScheduleSlots, activeScope)
+        : [];
 
     if (isMerchantAppointmentStatusMode) {
       return neeDoEvents.map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
@@ -4901,6 +4954,8 @@ export function UnifiedUserCalendar({
     currentScopeCreator,
     dispatchSnapshot.arrangements,
     effectiveMerchantLaneMode,
+    formalOrders,
+    formalScheduleSlots,
     imStore.users,
     isMerchantAppointmentStatusMode,
     localEvents,
@@ -5344,6 +5399,9 @@ export function UnifiedUserCalendar({
           搜索「{searchQuery.trim()}」 · 当前视图 {searchedVisiblePeriodEvents.length} 件
         </div>
       ) : null}
+
+      {formalDataLoading ? <div className="mt-2 rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-3 py-2 text-[11px] font-black text-[color:var(--client-muted)]">正在读取正式日程...</div> : null}
+      {formalDataError ? <div className="mt-2 rounded-[16px] border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-black text-red-700">正式日程读取失败：{formalDataError}</div> : null}
 
       {isMerchantAppointmentStatusMode ? (
         <div className="mt-3 grid grid-cols-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] p-1">

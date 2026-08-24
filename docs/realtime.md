@@ -37,6 +37,7 @@ IM:
 Social:
 
 - `GET /social/posts`
+- `GET /social/posts/:id`
 - `POST /social/posts`
 - `POST /social/follows`
 - `DELETE /social/follows/:targetUserId`
@@ -71,6 +72,18 @@ Booking state transitions call the Step 13 notification service after a successf
 
 Durable facts remain in MySQL. The SSE gateway is a delivery layer, so reconnecting clients should refresh `/realtime/unread-counts`, `/notifications`, and the relevant conversation/message page.
 
+Every event includes an SSE `id:` field. The authenticated frontend stream sends `Last-Event-ID` when reconnecting, then refreshes durable REST resources. The current in-memory gateway does not claim durable event replay; REST refresh is the recovery source of truth.
+
+Creating a social post publishes `social.post.created` to the author and current followers. Public discovery by users who do not follow the author remains REST-paginated and does not require global event fan-out.
+
 ## High-Frequency Event Boundary
 
 The database stores durable messages, social posts, requests, follows, and notifications. The realtime gateway only fans out in-memory SSE events. Message unread counts are denormalized on participant rows, avoiding per-message per-recipient notification rows and avoiding N+1 unread-count queries on conversation lists.
+
+## Frontend Runtime Boundary
+
+Formal authenticated sessions use the typed adapter in `src/features/realtime/api.ts` for IM, Social, notifications, unread counts, and SSE. The global unread-count provider owns one application-level SSE connection for navigation and pet badges.
+
+Legacy IM/Social pages and browser databases remain available only to an explicit static-demo build with a frontend-bypass session. In formal mode the legacy stores return empty read models and reject mutations with `error.feature_unavailable`, so unrelated legacy components cannot silently persist fake business state.
+
+The first production slice supports text IM and basic text Social posts. File/media upload, drafts, reply/like/repost/quote/bookmark state, relationship lists, organization contacts, blacklists, tags, service accounts, and advanced group settings remain capability-gated until their database, storage, RBAC, moderation, and audit contracts are implemented.

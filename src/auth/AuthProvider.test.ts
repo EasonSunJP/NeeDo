@@ -17,6 +17,7 @@ describe("AuthProvider legacy login bridge", () => {
     expect(authProviderSource).toContain("const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();");
     expect(authProviderSource).toContain("if (session && !shouldRefreshAccessToken)");
     expect(authProviderSource).toContain("const restorePortal = session?.portal ?? readStoredPortal();");
+    expect(authProviderSource.match(/\n\s*restoreSession\(\);/g)).toHaveLength(1);
   });
 
   it("keeps an optional auth hook for UI chrome that may render during recovery", () => {

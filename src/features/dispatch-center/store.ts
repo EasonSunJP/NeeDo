@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { fieldJobs, orders } from "../../data/mock";
 import {
   buildDemoAppointmentDispatchArrangements,
@@ -209,6 +209,7 @@ let hydrated = false;
 let storageListenerBound = false;
 let revision = 0;
 let cachedSnapshot: DispatchCenterSnapshot | null = null;
+let projectionSyncPending = false;
 
 function cloneValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -1070,7 +1071,7 @@ function hydrate() {
   const raw = readBrowserStorage(storageKey, { silent: true });
 
   if (!raw) {
-    rebuildDerivedState();
+    rebuildStateAfterHydration();
     persist();
     return;
   }
@@ -1107,7 +1108,7 @@ function hydrate() {
   const overviewRangeDataChanged = ensureOverviewRangeDemoData();
   const demoAppointmentSeedChanged = ensureDemoAppointmentSeedData();
   ensureSmartSchedulingData();
-  rebuildDerivedState();
+  rebuildStateAfterHydration();
   if (overviewRangeDataChanged || demoAppointmentSeedChanged) {
     persist();
   }
@@ -1555,12 +1556,35 @@ function syncShiftPlanningProjection() {
   });
 }
 
-function rebuildDerivedState() {
+function rebuildInternalDerivedState() {
   state.cycles = promoteDispatchCycles(state.cycles);
   buildPublishedBookableSlots();
-  syncScheduleStoreFromDispatch();
   rebuildFloatingTasks();
+}
+
+function syncExternalProjections() {
+  syncScheduleStoreFromDispatch();
   syncShiftPlanningProjection();
+}
+
+function rebuildStateAfterHydration() {
+  rebuildInternalDerivedState();
+  projectionSyncPending = true;
+}
+
+function flushHydrationProjections() {
+  if (!projectionSyncPending) {
+    return;
+  }
+
+  projectionSyncPending = false;
+  syncExternalProjections();
+}
+
+function rebuildDerivedState() {
+  rebuildInternalDerivedState();
+  projectionSyncPending = false;
+  syncExternalProjections();
 }
 
 function notify() {
@@ -1785,7 +1809,13 @@ function getPlanningProgress(cycleId: string) {
 }
 
 export function useDispatchCenterStore() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  useEffect(() => {
+    flushHydrationProjections();
+  }, [snapshot.revision]);
+
+  return snapshot;
 }
 
 export function getDispatchCenterSnapshot() {

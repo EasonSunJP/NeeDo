@@ -68,6 +68,16 @@ import type {
   CoreTechnicianCard,
   CoreTechnicianDetail
 } from "../features/core-read/api";
+import {
+  createStaticDemoPlanCategoryTranslations,
+  isStaticDemoMode,
+  isStaticDemoStrictMode
+} from "./staticDemoMode";
+export {
+  createStaticDemoPlanCategoryTranslations,
+  isStaticDemoMode,
+  isStaticDemoStrictMode
+} from "./staticDemoMode";
 import type {
   PaginatedData,
   PermissionPayload,
@@ -117,18 +127,6 @@ const staticOrderIncomeReports = new Map<number, {
   confirmedAt: string | null;
   moneyTimeline: MoneyTimelineEvent[];
 }>();
-
-function isEnabledFlag(value: string | undefined) {
-  return ["1", "static", "true", "yes"].includes((value ?? "").trim().toLowerCase());
-}
-
-export function isStaticDemoMode() {
-  return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO);
-}
-
-export function isStaticDemoStrictMode() {
-  return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO_STRICT) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO_STRICT);
-}
 
 function clone<TValue>(value: TValue): TValue {
   return JSON.parse(JSON.stringify(value)) as TValue;
@@ -746,6 +744,7 @@ function technicianDetail(id: number): CoreTechnicianDetail {
 
   return {
     ...card,
+    shop: shopCard(index),
     bio: source.bio ?? null,
     serviceArea: source.serviceAreas.join(", "),
     yearsExperience: Math.max(1, Math.round(source.orderCount / 180)),
@@ -1154,7 +1153,7 @@ function backofficeOrderPayload(orderIndex: number): BackofficeOrderPayload {
     id: orderIndex + 1,
     orderNo: order.orderNo,
     status: order.status,
-    paymentStatus: "unpaid",
+    paymentStatus: order.paymentStatus === "refunded" ? "refunded" : order.paymentStatus === "unpaid" ? "pending" : "confirmed",
     customerUserId: numberFromText(order.customerId, 1),
     customerName: order.customerName,
     serviceId: orderIndex + 1,
@@ -1986,6 +1985,7 @@ function shopPayload(index: number): BackofficeShopPayload {
     ownerUserId: index + 20,
     ownerEmail: store.accountUsername ? `${store.accountUsername}@needo.jp` : null,
     name: store.name,
+    description: store.description,
     city: store.area,
     address: store.address,
     phone: null,
@@ -2323,7 +2323,17 @@ function bookingOrder(index: number, patch: Partial<BookingOrder> = {}): Booking
     status: order.status === "scheduled" || order.status === "unpaid" || order.status === "refunding" || order.status === "refunded"
       ? "pending"
       : order.status,
-    paymentStatus: "unpaid",
+    paymentMethod: "onsite",
+    paymentStatus: "pending",
+    paymentAmountJpy: Math.round(service.priceFrom),
+    paymentConfirmedById: null,
+    paymentConfirmedAt: null,
+    paymentReference: null,
+    paymentNote: null,
+    paymentRefundedById: null,
+    paymentRefundedAt: null,
+    paymentRefundReference: null,
+    paymentRefundReason: null,
     customerUserId: numberFromText(order.customerId, 1),
     serviceId: index + 1,
     technicianServiceId: null,
@@ -2739,13 +2749,6 @@ export async function resolveStaticDemoGoogleCalendarApi<TData>(
   }
 
   return { handled: true, data: status as TData };
-}
-
-export function createStaticDemoPlanCategoryTranslations<TLocale extends string>(
-  locales: TLocale[],
-  sourceText: string
-) {
-  return Object.fromEntries(locales.map((locale) => [locale, sourceText])) as Partial<Record<TLocale, string>>;
 }
 
 function responseJson(payload: unknown, status = 200) {

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error -- Vitest runs this source guard in Node; frontend tsconfig intentionally omits Node types.
 import { readFileSync } from "node:fs";
 import appScaffoldSource from "../client-ui/AppScaffold.tsx?raw";
 import source from "./FloatingHomeHeader.tsx?raw";

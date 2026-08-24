@@ -1,134 +1,285 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { backofficeRealDataApi, mapBackofficeTechnician } from "../../api/backofficeRealData";
-import { CustomerManagementModule } from "../../components/admin/CustomerManagementModule";
-import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
+import {
+  backofficeRealDataApi,
+  type BackofficeCustomerPayload,
+  type BackofficeTechnicianPayload
+} from "../../api/backofficeRealData";
 import { DetailGrid } from "../../components/admin/DetailGrid";
-import { TechnicianEntitySyncEditor } from "../../components/admin/EntitySyncEditor";
 import { ModuleShell } from "../../components/admin/ModuleShell";
-import { TechnicianListModule } from "../../components/admin/TechnicianListModule";
-import { TechnicianProfilePanel } from "../../components/admin/TechnicianProfilePanel";
+import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { Badge } from "../../components/ui/Badge";
+import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
-import { getMerchantAdminDemo } from "../../data/merchantAdmin";
-import { useEntityStore } from "../../state/entityStore";
-import type { Review, Technician } from "../../types/domain";
 
 type PeopleModule = "staff" | "customers" | "reviews";
+type TechnicianDraft = { displayName: string; city: string; serviceArea: string };
+type ConfirmationAction = "approve" | "delete" | null;
+
+const pageSize = 20;
+const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 function normalizeModule(value: string | null): PeopleModule {
-  if (value === "customers" || value === "reviews") {
-    return value;
-  }
+  return value === "customers" || value === "reviews" ? value : "staff";
+}
 
-  return "staff";
+function technicianDraft(technician: BackofficeTechnicianPayload): TechnicianDraft {
+  return {
+    displayName: technician.displayName,
+    city: technician.city,
+    serviceArea: technician.serviceArea ?? ""
+  };
+}
+
+function statusTone(status: string): "green" | "yellow" | "red" | "neutral" {
+  if (status === "published" || status === "active") return "green";
+  if (status === "archived" || status === "suspended") return "red";
+  if (status === "pending_review" || status === "draft") return "yellow";
+  return "neutral";
 }
 
 export function MerchantAdminPeoplePage() {
-  const { customers, technicians } = useEntityStore();
-  const merchantAdminDemo = getMerchantAdminDemo();
   const [searchParams] = useSearchParams();
-  const [selectedStaff, setSelectedStaff] = useState<Technician | null>(null);
-  const [selectedReview, setSelectedReview] = useState<Review | null>(null);
-  const [realStaff, setRealStaff] = useState<Technician[]>([]);
   const module = normalizeModule(searchParams.get("module"));
-  const getCustomerDisplayName = (name: string) => {
-    const customer = customers.find((item) => item.name === name || item.nickname === name);
-    return customer?.nickname ? `${customer.nickname} / ${customer.name}` : customer?.name ?? name;
-  };
-  const getTechnicianDisplayName = (name: string) => {
-    const technician = technicians.find((item) => item.name === name || item.nickname === name);
-    return technician?.nickname ? `${technician.nickname} / ${technician.name}` : technician?.name ?? name;
-  };
+  const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
+  const [customers, setCustomers] = useState<BackofficeCustomerPayload[]>([]);
+  const [selectedTechnician, setSelectedTechnician] = useState<BackofficeTechnicianPayload | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<BackofficeCustomerPayload | null>(null);
+  const [draft, setDraft] = useState<TechnicianDraft>({ displayName: "", city: "", serviceArea: "" });
+  const [keywordInput, setKeywordInput] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmationAction, setConfirmationAction] = useState<ConfirmationAction>(null);
+
+  const load = useCallback(async () => {
+    if (module === "reviews") {
+      setTechnicians([]);
+      setCustomers([]);
+      setTotal(0);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const query = { page, pageSize, keyword: keyword || undefined };
+      if (module === "staff") {
+        const result = await backofficeRealDataApi.technicians("merchant-admin", query);
+        setTechnicians(result.list);
+        setCustomers([]);
+        setTotal(result.total);
+      } else {
+        const result = await backofficeRealDataApi.customers("merchant-admin", query);
+        setCustomers(result.list);
+        setTechnicians([]);
+        setTotal(result.total);
+      }
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : String(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, [keyword, module, page]);
 
   useEffect(() => {
-    let activeRequest = true;
+    setPage(1);
+    setSelectedTechnician(null);
+    setSelectedCustomer(null);
+    setConfirmationAction(null);
+  }, [module]);
 
-    backofficeRealDataApi.technicians("merchant-admin").then((response) => {
-      if (activeRequest) {
-        setRealStaff(response.list.map(mapBackofficeTechnician));
-      }
-    }).catch(() => {
-      if (activeRequest) {
-        setRealStaff([]);
-      }
-    });
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-    return () => {
-      activeRequest = false;
-    };
-  }, []);
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault();
+    setPage(1);
+    setKeyword(keywordInput.trim());
+  };
 
-  const config = {
-    staff: {
-      title: "员工列表",
-      description: "与平台运营后台共用同一套员工列表模块，商户侧只展示当前商户可管理的员工数据。",
-      content: (
-        <TechnicianListModule context="merchant" onSelectTechnician={setSelectedStaff} stores={merchantAdminDemo.stores} technicians={realStaff} />
-      )
-    },
-    customers: {
-      title: "用户管理",
-      description: "与平台运营后台共用同一套用户管理模块，商户侧只展示当前商户可见的顾客与订单数据。",
-      content: (
-        <CustomerManagementModule customers={merchantAdminDemo.customers} orderRows={merchantAdminDemo.orders} />
-      )
-    },
-    reviews: {
-      title: "评价中心",
-      description: "店铺后台只回复本店和本店员工相关的评价，不处理平台其他商家评价。",
-      content: (
-        <DataTable<Review>
-          columns={[
-            { key: "customerName", title: "顾客", render: (row) => getCustomerDisplayName(row.customerName) },
-            { key: "targetName", title: "评价对象", render: (row) => getTechnicianDisplayName(row.targetName) },
-            { key: "rating", title: "星级", render: (row) => `${row.rating} / 5` },
-            { key: "tone", title: "情绪", render: (row) => <Badge tone={row.tone === "positive" ? "green" : row.tone === "neutral" ? "yellow" : "red"}>{row.tone}</Badge> },
-            { key: "createdAt", title: "时间", render: (row) => row.createdAt },
-            { key: "replied", title: "回复", render: (row) => <Badge tone={row.replied ? "green" : "yellow"}>{row.replied ? "已回复" : "待回复"}</Badge> }
-          ]}
-          onView={setSelectedReview}
-          pageSize={10}
-          rows={merchantAdminDemo.reviews}
-        />
-      )
+  const openTechnician = (technician: BackofficeTechnicianPayload) => {
+    setSelectedTechnician(technician);
+    setSelectedCustomer(null);
+    setDraft(technicianDraft(technician));
+    setConfirmationAction(null);
+  };
+
+  const runMutation = async (mutation: () => Promise<BackofficeTechnicianPayload>) => {
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await mutation();
+      setSelectedTechnician(updated);
+      setDraft(technicianDraft(updated));
+      setConfirmationAction(null);
+      await load();
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
+    } finally {
+      setSaving(false);
     }
-  }[module];
+  };
+
+  const approveTechnician = async () => {
+    if (!selectedTechnician) return;
+    if (confirmationAction !== "approve") {
+      setConfirmationAction("approve");
+      return;
+    }
+    await runMutation(() => backofficeRealDataApi.approveTechnician("merchant-admin", selectedTechnician.id));
+  };
+
+  const deleteTechnician = async () => {
+    if (!selectedTechnician) return;
+    if (confirmationAction !== "delete") {
+      setConfirmationAction("delete");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await backofficeRealDataApi.deleteTechnician("merchant-admin", selectedTechnician.id);
+      setSelectedTechnician(null);
+      setConfirmationAction(null);
+      await load();
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const description = module === "staff"
+    ? "按当前活动店铺身份读取和维护真实技师档案。"
+    : module === "customers"
+      ? "只读取与当前店铺存在真实预约关系的客户档案。"
+      : "Review 数据表、回复与审核 API 完成前不展示模拟评价。";
 
   return (
     <MerchantAdminLayout>
-      <ModuleShell description={config.description} title={config.title}>
-        {config.content}
+      <ModuleShell
+        description={description}
+        title={module === "staff" ? "员工列表" : module === "customers" ? "用户管理" : "评价中心"}
+        actions={module !== "reviews" ? <Button onClick={() => void load()} variant="secondary">刷新正式数据</Button> : undefined}
+      >
+        {module !== "reviews" ? (
+          <form className="mb-4 flex gap-2 rounded-lg border border-line bg-white p-2 shadow-panel" onSubmit={submitSearch}>
+            <input className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm font-bold outline-none" maxLength={100} onChange={(event) => setKeywordInput(event.target.value)} placeholder="按姓名、城市或邮箱搜索" value={keywordInput} />
+            <Button size="sm" type="submit" variant="dark">搜索</Button>
+          </form>
+        ) : null}
 
-        <Drawer onClose={() => setSelectedStaff(null)} open={Boolean(selectedStaff)} title="员工详细信息卡">
-          {selectedStaff ? (
+        {error ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+            <span>{error}</span>
+            <Button onClick={() => void load()} size="sm" variant="secondary">重新加载本店人员数据</Button>
+          </div>
+        ) : null}
+
+        {loading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取当前店铺正式人员数据...</p> : null}
+
+        {!loading && module === "staff" ? (
+          technicians.length ? (
+            <DataTable<BackofficeTechnicianPayload>
+              columns={[
+                { key: "name", title: "技师", render: (row) => row.displayName },
+                { key: "email", title: "邮箱", render: (row) => row.email },
+                { key: "city", title: "城市", render: (row) => row.city },
+                { key: "area", title: "服务区域", render: (row) => row.serviceArea ?? "未设置" },
+                { key: "status", title: "状态", render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> }
+              ]}
+              footerPlacement="inline"
+              onView={openTechnician}
+              pageSize={pageSize}
+              rows={technicians}
+              showFooterActions={false}
+            />
+          ) : <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">本店当前没有符合条件的正式技师</p>
+        ) : null}
+
+        {!loading && module === "customers" ? (
+          customers.length ? (
+            <DataTable<BackofficeCustomerPayload>
+              columns={[
+                { key: "name", title: "客户", render: (row) => row.displayName },
+                { key: "email", title: "邮箱", render: (row) => row.email },
+                { key: "city", title: "城市", render: (row) => row.city ?? "未设置" },
+                { key: "membership", title: "会员等级", render: (row) => row.membershipLevel },
+                { key: "bookings", title: "预约数", render: (row) => row.bookingCount },
+                { key: "visibility", title: "公开资料", render: (row) => <Badge tone={row.isPublic ? "green" : "neutral"}>{row.isPublic ? "公开" : "不公开"}</Badge> }
+              ]}
+              footerPlacement="inline"
+              onView={(customer) => { setSelectedCustomer(customer); setSelectedTechnician(null); }}
+              pageSize={pageSize}
+              rows={customers}
+              showFooterActions={false}
+            />
+          ) : <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">本店当前没有符合条件的正式客户</p>
+        ) : null}
+
+        {!loading && module !== "reviews" && total > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white p-3 text-sm font-bold shadow-panel">
+            <span>共 {total} 条 · 第 {page} / {totalPages} 页</span>
+            <div className="flex gap-2">
+              <Button disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))} size="sm" variant="secondary">上一页</Button>
+              <Button disabled={page >= totalPages || loading} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} size="sm" variant="secondary">下一页</Button>
+            </div>
+          </div>
+        ) : null}
+
+        {module === "reviews" ? (
+          <section className="rounded-lg border border-line bg-white p-6 shadow-panel">
+            <Badge tone="yellow">未启用</Badge>
+            <h2 className="mt-4 text-xl font-black text-ink">正式评价功能尚未启用</h2>
+            <p className="mt-3 text-sm font-bold leading-7 text-ink/55">当前不会展示模拟评价、评分或回复操作。上线前需要 Review 表与 migration、店铺范围分页 API、回复权限和风险审计。</p>
+          </section>
+        ) : null}
+
+        <Drawer onClose={() => { setSelectedTechnician(null); setConfirmationAction(null); }} open={Boolean(selectedTechnician)} title="技师正式档案">
+          {selectedTechnician ? (
             <div className="space-y-5">
-              <TechnicianEntitySyncEditor key={selectedStaff.id} technician={selectedStaff} />
-              <TechnicianProfilePanel context="merchant" technician={selectedStaff} />
+              <DetailGrid items={[
+                { label: "技师 ID", value: selectedTechnician.id },
+                { label: "账号 ID", value: selectedTechnician.userId },
+                { label: "登录邮箱", value: selectedTechnician.email },
+                { label: "所属店铺", value: selectedTechnician.shopName ?? "未分配" },
+                { label: "状态", value: selectedTechnician.status },
+                { label: "审核时间", value: selectedTechnician.verifiedAt ?? "未审核" },
+                { label: "创建时间", value: selectedTechnician.createdAt }
+              ]} />
+              <label className="block"><span className="mb-2 block text-sm font-black">显示名称</span><input className={inputClassName} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} value={draft.displayName} /></label>
+              <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} maxLength={100} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} value={draft.city} /></label>
+              <label className="block"><span className="mb-2 block text-sm font-black">服务区域</span><input className={inputClassName} maxLength={255} onChange={(event) => setDraft((current) => ({ ...current, serviceArea: event.target.value }))} value={draft.serviceArea} /></label>
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={saving || !draft.displayName.trim() || !draft.city.trim()} onClick={() => void runMutation(() => backofficeRealDataApi.updateTechnician("merchant-admin", selectedTechnician.id, { displayName: draft.displayName.trim(), city: draft.city.trim(), serviceArea: draft.serviceArea.trim() || null }))}>{saving ? "处理中..." : "保存资料"}</Button>
+                {selectedTechnician.status !== "published" ? <Button disabled={saving} onClick={() => void approveTechnician()} variant="secondary">{confirmationAction === "approve" ? "再次点击确认审核技师" : "审核通过"}</Button> : null}
+                <Button disabled={saving} onClick={() => void deleteTechnician()} variant="danger">{confirmationAction === "delete" ? "再次点击确认移除技师" : "移除技师"}</Button>
+              </div>
             </div>
           ) : null}
         </Drawer>
 
-        <Drawer onClose={() => setSelectedReview(null)} open={Boolean(selectedReview)} title="评价详情">
-          {selectedReview ? (
-            <div className="space-y-5">
-              <DetailGrid
-                items={[
-                  { label: "顾客", value: getCustomerDisplayName(selectedReview.customerName) },
-                  { label: "评价对象", value: getTechnicianDisplayName(selectedReview.targetName) },
-                  { label: "评分", value: `${selectedReview.rating} / 5` },
-                  { label: "情绪", value: selectedReview.tone },
-                  { label: "时间", value: selectedReview.createdAt },
-                  { label: "回复状态", value: selectedReview.replied ? "已回复" : "待回复" }
-                ]}
-              />
-              <article className="rounded-lg border border-line bg-paper p-4">
-                <h3 className="font-black">评价内容</h3>
-                <p className="mt-3 text-sm leading-6 text-ink/65">{selectedReview.content}</p>
-              </article>
-            </div>
-          ) : null}
+        <Drawer onClose={() => setSelectedCustomer(null)} open={Boolean(selectedCustomer)} title="客户正式档案">
+          {selectedCustomer ? <DetailGrid items={[
+            { label: "客户档案 ID", value: selectedCustomer.id },
+            { label: "账号 ID", value: selectedCustomer.userId },
+            { label: "显示名称", value: selectedCustomer.displayName },
+            { label: "登录邮箱", value: selectedCustomer.email },
+            { label: "城市", value: selectedCustomer.city ?? "未设置" },
+            { label: "会员等级", value: selectedCustomer.membershipLevel },
+            { label: "预约数", value: selectedCustomer.bookingCount },
+            { label: "公开资料", value: selectedCustomer.isPublic ? "公开" : "不公开" },
+            { label: "创建时间", value: selectedCustomer.createdAt }
+          ]} /> : null}
         </Drawer>
       </ModuleShell>
     </MerchantAdminLayout>

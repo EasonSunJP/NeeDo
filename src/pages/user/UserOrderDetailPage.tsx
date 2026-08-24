@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   AppIcon,
@@ -13,7 +14,13 @@ import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventT
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { services } from "../../data/mock";
-import { bookingApi, isBookingApiId, mapBookingOrderToDomainOrder } from "../../features/booking/api";
+import {
+  bookingApi,
+  formatApiOrderDateTime,
+  isBookingApiId,
+  mapBookingOrderToDomainOrder,
+  type BookingOrder
+} from "../../features/booking/api";
 import { getMessagePath, getUserConversationId } from "../../lib/messageCenter";
 import { canShowServiceStartCode, getServiceStartCode } from "../../lib/serviceStartCode";
 import { cn, statusLabel, yen } from "../../lib/utils";
@@ -342,7 +349,193 @@ function OrderDetailBottomActionMask({ children }: { children: ReactNode }) {
   );
 }
 
-export function UserOrderDetailPage() {
+function describeFormalOrderError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前身份没有查看该预约的权限";
+    if (error.status === 404) return "预约不存在或已不可见";
+    if (error.status === 409) return "预约状态已经变化，请重新加载后再操作";
+    if (error.status >= 500) return "预约服务暂时不可用，请稍后重试";
+  }
+
+  return "预约详情加载失败，请检查网络后重试";
+}
+
+function formalPaymentStatusLabel(order: BookingOrder) {
+  if (order.paymentStatus === "confirmed") return "已确认收款";
+  if (order.paymentStatus === "refundPending") return "退款处理中";
+  if (order.paymentStatus === "refunded") return "已退款";
+  return "待确认收款";
+}
+
+function FormalUserOrderDetailPage({ orderId }: { orderId: number }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [order, setOrder] = useState<BookingOrder | null>(null);
+  const [queryStatus, setQueryStatus] = useState<"loading" | "success" | "error">("loading");
+  const [queryError, setQueryError] = useState("");
+  const [queryRevision, setQueryRevision] = useState(0);
+  const [cancelling, setCancelling] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const routeState = location.state as { notice?: string } | null;
+
+  useEffect(() => {
+    let active = true;
+    setQueryStatus("loading");
+    setQueryError("");
+
+    bookingApi.getOrder(orderId)
+      .then((data) => {
+        if (!active) return;
+        setOrder(data);
+        setQueryStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setOrder(null);
+        setQueryError(describeFormalOrderError(error));
+        setQueryStatus("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [orderId, queryRevision]);
+
+  const closeDetail = () => navigate("/", { replace: true });
+  const handleBack = () => navigate(-1);
+  const canCancel = order?.status === "pending" || order?.status === "confirmed";
+  const cancelOrder = async () => {
+    if (!order || !canCancel || cancelling) return;
+    setCancelling(true);
+    setActionError("");
+    try {
+      const updated = await bookingApi.cancelOrder(orderId, "客户从预约详情取消");
+      setOrder(updated);
+    } catch (error) {
+      setActionError(describeFormalOrderError(error));
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  return (
+    <PageScaffold contentClassName="space-y-4 pb-36" navItems={[]}>
+      <AppTopBar
+        closeLabel="关闭预约详情"
+        controlButtonClassName="border-transparent bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,var(--client-bg)_18%)]"
+        onBack={handleBack}
+        onClose={closeDetail}
+        title="预约详情"
+      />
+
+      {routeState?.notice ? (
+        <section className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-primary)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--client-primary)_14%,transparent)] px-4 py-3 text-sm font-black leading-6 text-[color:var(--client-text)]">
+          {routeState.notice}
+        </section>
+      ) : null}
+
+      {queryStatus === "loading" ? (
+        <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-6 text-center shadow-panel" aria-live="polite">
+          <AppIcon className="mx-auto h-7 w-7 animate-spin text-[color:var(--client-primary)]" name="clock" />
+          <p className="mt-3 text-sm font-black text-[color:var(--client-text)]">正在加载预约详情</p>
+        </section>
+      ) : null}
+
+      {queryStatus === "error" ? (
+        <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-6 text-center shadow-panel" role="alert">
+          <h2 className="text-lg font-black text-[color:var(--client-text)]">预约详情加载失败</h2>
+          <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{queryError}</p>
+          <PrimaryButton className="mt-4 w-full" onClick={() => setQueryRevision((current) => current + 1)}>
+            重新加载预约详情
+          </PrimaryButton>
+        </section>
+      ) : null}
+
+      {queryStatus === "success" && order ? (
+        <>
+          <OrderDynamicStatusCard
+            order={mapBookingOrderToDomainOrder(order)}
+            providerName={order.shopName}
+          />
+
+          <section className="rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4 shadow-panel">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-black text-[color:var(--client-muted)]">正式预约</p>
+                <h2 className="mt-1 text-xl font-black text-[color:var(--client-text)]">{order.serviceName}</h2>
+                <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">{order.shopName}</p>
+              </div>
+              <strong className="shrink-0 text-lg font-black text-[color:var(--client-primary)]">
+                {yen(order.paymentAmountJpy)}
+              </strong>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {order.serviceId ? (
+                <Link className="focus-ring rounded-[16px] border border-[color:var(--client-line)] px-3 py-3 text-center text-xs font-black text-[color:var(--client-text)]" to={`/services/${order.serviceId}`}>
+                  查看服务
+                </Link>
+              ) : <span />}
+              <Link className="focus-ring rounded-[16px] border border-[color:var(--client-line)] px-3 py-3 text-center text-xs font-black text-[color:var(--client-text)]" to={`/stores/${order.shopId}`}>
+                查看店铺
+              </Link>
+            </div>
+          </section>
+
+          <InfoTable
+            title="预约情报"
+            rows={[
+              ["预约状态", statusLabel(order.status)],
+              ["预约编号", order.orderNo],
+              ["服务方式", order.fulfillmentMode === "home" ? "上门服务" : "到店预约"],
+              ["预约时间", formatApiOrderDateTime(order.startsAt)],
+              ["结束时间", formatApiOrderDateTime(order.endsAt)],
+              ["店铺", order.shopName],
+              ["担当", order.technicianName ?? "尚未指定"],
+              ["支付方式", order.paymentMethod === "onsite" ? "现场支付" : "银行转账"],
+              ["收款状态", formalPaymentStatusLabel(order)],
+              ["备注", order.note ?? "无特别备注"]
+            ]}
+          />
+
+          <ContactEventTimelinePanel
+            title="状态记录"
+            events={order.statusHistory.map((history) => ({
+              actorName: history.actorUserId ? `用户 #${history.actorUserId}` : "系统",
+              actorRole: "预约状态",
+              atLabel: formatApiOrderDateTime(history.createdAt),
+              id: String(history.id),
+              message: history.reason ?? `${history.fromStatus ?? "created"} → ${history.toStatus}`,
+              title: statusLabel(history.toStatus),
+              tone: history.toStatus === "cancelled" ? "red" : "green"
+            }))}
+          />
+
+          {actionError ? (
+            <section className="rounded-[20px] border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-black text-red-500" role="alert">
+              {actionError}
+            </section>
+          ) : null}
+
+          {canCancel ? (
+            <OrderDetailBottomActionMask>
+              <button
+                className="focus-ring h-12 w-full rounded-[20px] bg-[linear-gradient(180deg,#ff7d72_0%,#f04f47_58%,#df332f_100%)] text-sm font-black text-white disabled:cursor-wait disabled:opacity-60"
+                disabled={cancelling}
+                onClick={() => void cancelOrder()}
+                type="button"
+              >
+                {cancelling ? "取消处理中" : "取消预约"}
+              </button>
+            </OrderDetailBottomActionMask>
+          ) : null}
+        </>
+      ) : null}
+    </PageScaffold>
+  );
+}
+
+function LegacyUserOrderDetailPage() {
   const { orderId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -786,4 +979,10 @@ export function UserOrderDetailPage() {
       ) : null}
     </PageScaffold>
   );
+}
+
+export function UserOrderDetailPage() {
+  const { orderId } = useParams();
+
+  return isBookingApiId(orderId) ? <FormalUserOrderDetailPage orderId={Number(orderId)} /> : <LegacyUserOrderDetailPage />;
 }

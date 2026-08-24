@@ -12,8 +12,20 @@ Step 11 implements the first formal NDP wallet ledger. It uses integer NDP where
 - `fee_campaigns`: campaign discounts and fee waivers applied during fee calculation.
 - `fee_calculation_logs`: calculation snapshots with applied rule IDs, adjustments, campaign discount, and explanation.
 - `wallet_holds`: locked Booking/Request fee holds created at acceptance and consumed/released by later settlement.
+- `wallet_adjustment_requests`: identity-scoped manual top-up/withdrawal requests with idempotency key, review state, reviewer evidence, and an optional approved ledger-transaction link.
 - `order_financials`: one minimal financial summary per Booking/Request order for backoffice and merchant-admin finance views.
+
+Manual service payments remain JPY records, not NDP wallet mutations. Confirming an `onsite` or `bank_transfer` payment updates the Booking payment snapshot and synchronizes the `order_financials` offline-income fields/timeline transactionally. NDP platform-fee holds and settlement remain exclusively inside `LedgerService`.
 - `audit_logs`: ledger mutations write audit rows with target type `ledger_transaction`.
+
+## Manual Top-up and Withdrawal
+
+- A customer or technician submits against its user wallet; a merchant submits against the shop wallet derived from the active identity. Platform identities cannot submit owner requests.
+- New requests stay `pending`. Operations or finance users with a platform identity can approve or reject them.
+- Approval, wallet delta, immutable ledger entry, reconciliation row, audit log, and request status change share one Prisma transaction.
+- Approved top-ups credit available NDP. Approved withdrawals debit available NDP and fail atomically when the wallet balance is insufficient.
+- Identical create and approval retries are idempotent. Rejected requests never change wallet balances.
+- No external payment API is called in this flow; bank transfer evidence remains a manually verified reference and note.
 
 ## Booking Settlement
 
@@ -53,6 +65,10 @@ Future changes should edit or version fee rules instead of adding ledger constan
 
 - `GET /api/v1/wallets/me`
 - `GET /api/v1/wallets/:id/ledger`
+- `POST /api/v1/wallet-adjustments`
+- `GET /api/v1/wallet-adjustments/me`
+- `GET /api/v1/backoffice/wallet-adjustments`
+- `POST /api/v1/backoffice/wallet-adjustments/:id/review`
 - `GET /api/v1/finance/ledger/transactions`
 - `GET /api/v1/finance/reconciliation`
 - `GET /api/v1/finance/reconciliation/export`
@@ -70,6 +86,10 @@ Finance export returns JSON containing `filename`, `contentType`, and CSV text s
 
 - `wallet:read`
 - `wallet:ledger:list`
+- `wallet:adjustment:create`
+- `wallet:adjustment:list`
+- `backoffice:wallet-adjustment:list`
+- `backoffice:wallet-adjustment:review`
 - `finance:ledger:list`
 - `finance:reconciliation:list`
 - `finance:reconciliation:export`
@@ -81,7 +101,7 @@ Finance export returns JSON containing `filename`, `contentType`, and CSV text s
 
 The `finance` role receives finance list/export access plus fee-rule read, preview, and calculation-log access. The `operator` role receives fee-rule read/preview/log access. Rule write/activation remains admin-only.
 
-Customer and service-provider roles receive wallet read/ledger access for their own wallet surfaces.
+Customer and service-provider roles receive wallet read/ledger and adjustment-request access for their identity-scoped wallet surfaces. Operator and finance roles receive adjustment review access.
 
 ## Boundaries
 
@@ -89,3 +109,4 @@ Customer and service-provider roles receive wallet read/ledger access for their 
 - No membership subscription logic.
 - No Request frontend or Request marketplace surface.
 - No direct wallet balance writes outside ledger transaction code and seed ledger initialization.
+- No automatic bank, card, or payout provider integration; manual approvals are the formal interim operating workflow.

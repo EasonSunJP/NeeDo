@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useOptionalAuth, type AuthSession } from "../../auth/AuthProvider";
 import {
+  officialNoticeStorageKey,
   readStoredOfficialNotices,
   type AdminNotice,
   type OfficialNoticeBlock
@@ -300,7 +301,15 @@ export function OfficialNoticeAutoPopup({ disabled = false }: OfficialNoticeAuto
   }, [location.pathname]);
 
   useEffect(() => {
-    const handleStorage = () => {
+    const handleStorage = (event: StorageEvent) => {
+      if (
+        event.key !== null &&
+        event.key !== dismissedStorageKey &&
+        event.key !== officialNoticeStorageKey
+      ) {
+        return;
+      }
+
       setDismissedIds(readDismissedNoticeIds());
       setRefreshKey((current) => current + 1);
     };

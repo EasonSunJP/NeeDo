@@ -20,6 +20,10 @@ cp backend/.env.prod.example backend/.env.prod
 ```
 
 Replace all placeholder secrets and hostnames before starting services.
+The backend refuses to boot with production `NODE_ENV` when the deploy target is
+local/test, CORS includes HTTP or `.example` origins, metrics has no bearer
+token, JWT secrets are placeholders/reused, MySQL uses placeholder/local
+credentials, or Redis has no password.
 
 ## Staging
 
@@ -31,9 +35,15 @@ curl -fsS http://127.0.0.1:3000/api/v1/ready
 
 The staging stack contains:
 
+- `migrate`: one-shot Prisma migration image; the API waits for a successful exit.
 - `backend`: Node.js 22 backend container.
 - `mysql`: MySQL 8.0 with UTF8MB4 defaults.
-- `redis`: Redis 7.2 with append-only persistence and LRU eviction policy.
+- `redis`: password-protected Redis 7.2 with append-only persistence and LRU eviction policy.
+
+For local formal development, `npm run dev` (or `npm run dev:formal`) starts
+the real backend and Vite frontend together. It does not start the legacy mock
+backend. Override `FORMAL_BACKEND_PORT`, `FRONTEND_PORT`, or
+`FORMAL_BACKEND_ENV_FILE` when the defaults are already in use.
 
 ## Production
 
@@ -52,6 +62,10 @@ the compose-managed MySQL/Redis with managed services. Preserve:
 - Structured JSON logs from stdout/stderr.
 - W3C `traceparent` propagation and `x-trace-id` response headers.
 
+Compose uses `REDIS_PASSWORD` both to start Redis with `requirepass` and for its
+health check. `REDIS_URL` must contain the same URL-encoded password. Store both
+values in the deployment secret manager; do not commit a populated env file.
+
 ## Frontend And API Routing
 
 The production frontend may use same-origin `VITE_API_BASE_URL=/api/v1` only
@@ -67,6 +81,17 @@ Use `deploy/prod/nginx.needo.conf.example` as the minimum routing reference:
 - The whole `dist/` directory must be uploaded together because Vite emits
   hashed asset names referenced by each HTML entry.
 
+Build and audit the formal frontend artifact with:
+
+```bash
+npm run verify:production-build
+```
+
+The audit rejects a bundled static-demo fetch interceptor, broken HTML asset
+references, and regressions beyond the current main/i18n JavaScript budgets.
+`npm run build:static` is a separate compatibility artifact and must never be
+uploaded to a formal environment.
+
 After updating the frontend bundle and Nginx, verify from outside the server:
 
 ```bash
@@ -74,6 +99,19 @@ curl -fsS https://needo.dackou.com/api/v1/health
 curl -fsS https://needo.dackou.com/api/v1/ready
 curl -fsS "https://needo.dackou.com/api/v1/home/recommendations?limit=1"
 ```
+
+The repeatable application-level smoke gate is:
+
+```bash
+SMOKE_BASE_URL=https://needo.dackou.com \
+SMOKE_EMAIL='release-smoke-account@example.invalid' \
+SMOKE_PASSWORD='read-from-secret-manager' \
+npm run verify:production-smoke
+```
+
+Use a dedicated least-privilege account. The command checks health, readiness,
+core anonymous reads, login, `/auth/me`, and logout without printing tokens or
+credentials.
 
 If the login page shows `token不能为空` or graph-captcha errors, the browser is
 still running an old frontend bundle or the API base points to the legacy
@@ -87,7 +125,9 @@ fix the `/api/v1` proxy first.
 
 ## Migrations And Seed
 
-Run migrations before sending traffic to a new backend image:
+The supplied Compose stacks run the dedicated `migration` Docker target before
+the backend becomes eligible to start. For managed releases or a manual
+recovery, run migrations before sending traffic to a new backend image:
 
 ```bash
 cd backend

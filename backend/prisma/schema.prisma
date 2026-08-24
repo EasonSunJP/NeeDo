@@ -23,6 +23,22 @@ enum BookingOrderStatus {
   @@map("booking_order_status")
 }
 
+enum ServicePaymentMethod {
+  ONSITE        @map("onsite")
+  BANK_TRANSFER @map("bank_transfer")
+
+  @@map("service_payment_method")
+}
+
+enum ServicePaymentStatus {
+  PENDING        @map("pending")
+  CONFIRMED      @map("confirmed")
+  REFUND_PENDING @map("refund_pending")
+  REFUNDED       @map("refunded")
+
+  @@map("service_payment_status")
+}
+
 enum ScheduleSlotStatus {
   AVAILABLE @map("available")
   BOOKED    @map("booked")
@@ -62,11 +78,28 @@ enum WalletOwnerType {
   @@map("wallet_owner_type")
 }
 
+enum WalletAdjustmentType {
+  TOPUP      @map("topup")
+  WITHDRAWAL @map("withdrawal")
+
+  @@map("wallet_adjustment_type")
+}
+
+enum WalletAdjustmentStatus {
+  PENDING  @map("pending")
+  APPROVED @map("approved")
+  REJECTED @map("rejected")
+
+  @@map("wallet_adjustment_status")
+}
+
 enum LedgerTransactionType {
   BOOKING_ACCEPT_FREEZE                @map("booking_accept_freeze")
   BOOKING_CANCEL_UNFREEZE              @map("booking_cancel_unfreeze")
   BOOKING_COMPLETE_SETTLEMENT          @map("booking_complete_settlement")
   BOOKING_MERCHANT_CANCEL_COMPENSATION @map("booking_merchant_cancel_compensation")
+  MANUAL_TOPUP_APPROVED                 @map("manual_topup_approved")
+  MANUAL_WITHDRAWAL_APPROVED            @map("manual_withdrawal_approved")
   SEED_CREDIT                          @map("seed_credit")
 
   @@map("ledger_transaction_type")
@@ -152,6 +185,8 @@ model User {
   loginLogs                 LoginLog[]                @relation("LoginLogUser")
   auditLogs                 AuditLog[]                @relation("AuditLogActor")
   ledgerTransactions        LedgerTransaction[]       @relation("LedgerTransactionActor")
+  requestedWalletAdjustments WalletAdjustmentRequest[] @relation("WalletAdjustmentRequestedBy")
+  reviewedWalletAdjustments  WalletAdjustmentRequest[] @relation("WalletAdjustmentReviewedBy")
   ownedShops                Shop[]                    @relation("ShopOwner")
   technicianProfile         TechnicianProfile?
   customerProfile           CustomerProfile?
@@ -162,6 +197,8 @@ model User {
   updatedTechnicianServices TechnicianService[]       @relation("TechnicianServiceUpdatedBy")
   reportedOrderFinancials   OrderFinancial[]          @relation("OrderFinancialIncomeReporter")
   confirmedOrderFinancials  OrderFinancial[]          @relation("OrderFinancialIncomeConfirmer")
+  confirmedBookingPayments  BookingOrder[]            @relation("BookingOrderPaymentConfirmer")
+  refundedBookingPayments   BookingOrder[]            @relation("BookingOrderPaymentRefunder")
   generatedPayRuns          PayRun[]                  @relation("PayRunGeneratedBy")
   approvedPayRuns           PayRun[]                  @relation("PayRunApprovedBy")
   createdPayslipLines       PayslipLine[]             @relation("PayslipLineCreatedBy")
@@ -642,6 +679,17 @@ model BookingOrder {
   endsAt                  DateTime           @map("ends_at")
   note                    String?            @db.VarChar(500)
   cancelReason            String?            @map("cancel_reason") @db.VarChar(500)
+  paymentMethod           ServicePaymentMethod @default(ONSITE) @map("payment_method")
+  paymentStatus           ServicePaymentStatus @default(PENDING) @map("payment_status")
+  paymentAmountJpy        Int                  @default(0) @map("payment_amount_jpy")
+  paymentConfirmedById    Int?                 @map("payment_confirmed_by_id")
+  paymentConfirmedAt      DateTime?            @map("payment_confirmed_at")
+  paymentReference        String?              @map("payment_reference") @db.VarChar(120)
+  paymentNote             String?              @map("payment_note") @db.VarChar(500)
+  paymentRefundedById     Int?                 @map("payment_refunded_by_id")
+  paymentRefundedAt       DateTime?            @map("payment_refunded_at")
+  paymentRefundReference  String?              @map("payment_refund_reference") @db.VarChar(120)
+  paymentRefundReason     String?               @map("payment_refund_reason") @db.VarChar(500)
   createdAt               DateTime           @default(now()) @map("created_at")
   updatedAt               DateTime           @updatedAt @map("updated_at")
   deletedAt               DateTime?          @map("deleted_at")
@@ -656,6 +704,8 @@ model BookingOrder {
   feeCalculationLogs FeeCalculationLog[]
   walletHolds        WalletHold[]
   financial          OrderFinancial?
+  paymentConfirmer   User?                @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
+  paymentRefunder    User?                @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -668,6 +718,10 @@ model BookingOrder {
   @@index([pricingModeSnapshot])
   @@index([serviceOwnerType, serviceOwnerId])
   @@index([startsAt, endsAt])
+  @@index([paymentMethod])
+  @@index([paymentStatus])
+  @@index([paymentConfirmedById])
+  @@index([paymentRefundedById])
   @@index([deletedAt])
   @@map("booking_orders")
 }
@@ -1025,7 +1079,8 @@ model Wallet {
   updatedAt        DateTime        @updatedAt @map("updated_at")
   deletedAt        DateTime?       @map("deleted_at")
 
-  ledgerEntries WalletLedger[]
+  ledgerEntries       WalletLedger[]
+  adjustmentRequests  WalletAdjustmentRequest[]
 
   @@unique([ownerType, ownerId, currency])
   @@index([ownerType, ownerId])
@@ -1053,6 +1108,7 @@ model LedgerTransaction {
   actor          User?                  @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   entries        WalletLedger[]
   reconciliation FinanceReconciliation?
+  walletAdjustmentRequest WalletAdjustmentRequest?
 
   @@index([type])
   @@index([status])
@@ -1061,6 +1117,42 @@ model LedgerTransaction {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("ledger_transactions")
+}
+
+model WalletAdjustmentRequest {
+  id                  Int                    @id @default(autoincrement())
+  type                WalletAdjustmentType
+  status              WalletAdjustmentStatus @default(PENDING)
+  ownerType           WalletOwnerType        @map("owner_type")
+  ownerId             Int                    @map("owner_id")
+  walletId            Int                    @map("wallet_id")
+  amountNdp           Int                    @map("amount_ndp")
+  idempotencyKey      String                 @unique @map("idempotency_key") @db.VarChar(160)
+  bankReference       String?                @map("bank_reference") @db.VarChar(120)
+  note                String?                @db.VarChar(500)
+  requestedById       Int                    @map("requested_by_id")
+  reviewedById        Int?                   @map("reviewed_by_id")
+  reviewedAt          DateTime?              @map("reviewed_at")
+  reviewNote          String?                @map("review_note") @db.VarChar(500)
+  ledgerTransactionId Int?                   @unique @map("ledger_transaction_id")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  deletedAt           DateTime?              @map("deleted_at")
+
+  wallet            Wallet             @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  requestedBy       User               @relation("WalletAdjustmentRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy        User?              @relation("WalletAdjustmentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  ledgerTransaction LedgerTransaction? @relation(fields: [ledgerTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([ownerType, ownerId])
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+  @@index([requestedById])
+  @@index([reviewedById])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("wallet_adjustment_requests")
 }
 
 model WalletLedger {

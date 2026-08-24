@@ -3,8 +3,13 @@ import type { AuthenticatedAccessContext } from "../services/auth.service";
 import type { LedgerService } from "../services/ledger.service";
 import { successResponse } from "../utils/api-response";
 import {
+  createWalletAdjustmentRequestBodySchema,
   financeReconciliationListQuerySchema,
   ledgerTransactionListQuerySchema,
+  reviewWalletAdjustmentRequestBodySchema,
+  walletAdjustmentIdParamSchema,
+  walletAdjustmentListQuerySchema,
+  walletAdjustmentMineQuerySchema,
   walletIdParamSchema,
   walletLedgerQuerySchema
 } from "../validators/ledger.validator";
@@ -21,8 +26,85 @@ export class LedgerController {
       response
         .status(200)
         .json(
-          successResponse(await this.ledgerService.getMyWallet(this.getActor(response).userId))
+          successResponse(await this.ledgerService.getMyWallet(this.getActor(response)))
         );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public createWalletAdjustmentRequest = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(201).json(
+        successResponse(
+          await this.ledgerService.createWalletAdjustmentRequest(
+            this.getActor(response),
+            createWalletAdjustmentRequestBodySchema.parse(request.body)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listMyWalletAdjustmentRequests = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.ledgerService.listMyWalletAdjustmentRequests(
+            this.getActor(response),
+            walletAdjustmentMineQuerySchema.parse(request.query)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public listWalletAdjustmentRequests = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.ledgerService.listWalletAdjustmentRequests(
+            this.getActor(response),
+            walletAdjustmentListQuerySchema.parse(request.query)
+          )
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public reviewWalletAdjustmentRequest = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(
+        successResponse(
+          await this.ledgerService.reviewWalletAdjustmentRequest(
+            this.getActor(response),
+            walletAdjustmentIdParamSchema.parse(request.params).id,
+            reviewWalletAdjustmentRequestBodySchema.parse(request.body)
+          )
+        )
+      );
     } catch (error) {
       next(error);
     }
@@ -36,7 +118,7 @@ export class LedgerController {
     try {
       response.status(200).json(
         successResponse(
-          await this.ledgerService.listWalletLedger({
+          await this.ledgerService.listWalletLedger(this.getActor(response), {
             walletId: walletIdParamSchema.parse(request.params).id,
             ...walletLedgerQuerySchema.parse(request.query)
           })

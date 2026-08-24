@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error -- Vitest runs this source guard in Node; frontend tsconfig intentionally omits Node types.
 import { readFileSync } from "node:fs";
 import source from "./UnifiedUserCalendar.tsx?raw";
 
@@ -84,6 +83,12 @@ describe("UnifiedUserCalendar event editor page", () => {
 });
 
 describe("UnifiedUserCalendar multi-day interactions", () => {
+  it("loads persisted orders and schedule slots without the order mock", () => {
+    expect(source).not.toContain('import { orders } from "../../data/mock"');
+    expect(source).toContain("bookingApi.listOrders");
+    expect(source).toContain("schedulingApi.listSlots");
+    expect(source).toContain("mapScheduleSlotToCalendarItem");
+  });
   it("keeps week and three-day timeline creation aligned with the day timeline", () => {
     expect(source).toContain("type MultiDayDraftRange = DraftRange &");
     expect(source).toContain("function UnifiedCalendarMultiDayTimeline");

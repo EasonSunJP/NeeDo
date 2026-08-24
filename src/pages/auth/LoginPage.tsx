@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { authApi } from "../../api/auth";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
 import { isFrontendBypassSession } from "../../auth/rbac";
@@ -12,7 +13,7 @@ import { googleAccountIconSrc } from "../../lib/googleAccountApi";
 import { cn } from "../../lib/utils";
 import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 
-type LoginPanelMode = "welcome" | "account";
+type LoginPanelMode = "welcome" | "account" | "register";
 
 type FrontendLoginCopy = {
   brand: string;
@@ -24,6 +25,18 @@ type FrontendLoginCopy = {
   testCredentialLogin: string;
   createAccount: string;
   createNotice: string;
+  registrationTitle: string;
+  registrationSubtitle: string;
+  displayNameLabel: string;
+  displayNamePlaceholder: string;
+  cityLabel: string;
+  cityPlaceholder: string;
+  registrationPasswordHint: string;
+  registerButton: string;
+  registering: string;
+  registrationCustomerSuccess: string;
+  registrationTechnicianPending: string;
+  registrationEmailExists: string;
   useAccountTitle: string;
   useAccountSubtitle: string;
   accountLabel: string;
@@ -116,6 +129,7 @@ type TestCredentialEnv = {
 };
 
 type FrontendLoginEnv = TestCredentialEnv & {
+  PROD?: boolean;
   VITE_NEEDO_FRONTEND_AUTH_BYPASS?: string;
 };
 
@@ -202,6 +216,10 @@ export function resolveTestLoginCredentials(
 }
 
 export function isFrontendAuthBypassEnabled(env: FrontendLoginEnv) {
+  if (env.PROD) {
+    return false;
+  }
+
   const value = env.VITE_NEEDO_FRONTEND_AUTH_BYPASS?.trim().toLowerCase();
 
   return value === "1" || value === "true" || value === "yes";
@@ -250,6 +268,18 @@ const loginCopy = {
     testCredentialLogin: "跳过验证登录",
     createAccount: "新建账号",
     createNotice: "新建账号流程正在准备中，请先使用已发行邮箱登录。",
+    registrationTitle: "创建 NeeDo 账号",
+    registrationSubtitle: "用户账号可立即使用；技师账号需审核后启用。",
+    displayNameLabel: "显示名称",
+    displayNamePlaceholder: "请输入姓名或昵称",
+    cityLabel: "所在城市",
+    cityPlaceholder: "例如：Tokyo",
+    registrationPasswordHint: "至少8位，并包含大小写字母、数字和符号。",
+    registerButton: "创建账号",
+    registering: "创建中...",
+    registrationCustomerSuccess: "账号创建成功，请使用邮箱和密码登录。",
+    registrationTechnicianPending: "申请已提交，运营或店铺审核后将启用技师账号。",
+    registrationEmailExists: "该邮箱已注册，请直接登录或更换邮箱。",
     useAccountTitle: "账号登录",
     useAccountSubtitle: "请输入已发行账号信息。",
     accountLabel: "邮箱",
@@ -319,6 +349,18 @@ const loginCopy = {
     testCredentialLogin: "跳過驗證登入",
     createAccount: "建立帳號",
     createNotice: "建立帳號流程正在準備中，請先使用已發行信箱登入。",
+    registrationTitle: "建立 NeeDo 帳號",
+    registrationSubtitle: "用戶帳號可立即使用；技師帳號需審核後啟用。",
+    displayNameLabel: "顯示名稱",
+    displayNamePlaceholder: "請輸入姓名或暱稱",
+    cityLabel: "所在城市",
+    cityPlaceholder: "例如：Tokyo",
+    registrationPasswordHint: "至少8位，並包含大小寫字母、數字和符號。",
+    registerButton: "建立帳號",
+    registering: "建立中...",
+    registrationCustomerSuccess: "帳號建立成功，請使用信箱和密碼登入。",
+    registrationTechnicianPending: "申請已提交，營運或店鋪審核後將啟用技師帳號。",
+    registrationEmailExists: "此信箱已註冊，請直接登入或更換信箱。",
     useAccountTitle: "帳號登入",
     useAccountSubtitle: "請輸入已發行帳號資訊。",
     accountLabel: "信箱",
@@ -388,6 +430,18 @@ const loginCopy = {
     testCredentialLogin: "認証をスキップしてログイン",
     createAccount: "新規登録",
     createNotice: "新規登録フローは準備中です。発行済みメールでログインしてください。",
+    registrationTitle: "NeeDoアカウントを作成",
+    registrationSubtitle: "ユーザーはすぐに利用できます。スタッフは審査後に有効になります。",
+    displayNameLabel: "表示名",
+    displayNamePlaceholder: "氏名またはニックネームを入力",
+    cityLabel: "活動エリア",
+    cityPlaceholder: "例：Tokyo",
+    registrationPasswordHint: "8文字以上で、大文字・小文字・数字・記号を含めてください。",
+    registerButton: "アカウントを作成",
+    registering: "作成中...",
+    registrationCustomerSuccess: "アカウントを作成しました。メールとパスワードでログインしてください。",
+    registrationTechnicianPending: "申請を受け付けました。運営または店舗の審査後にスタッフアカウントが有効になります。",
+    registrationEmailExists: "このメールは登録済みです。ログインするか別のメールを使用してください。",
     useAccountTitle: "アカウントログイン",
     useAccountSubtitle: "発行済みアカウント情報を入力してください。",
     accountLabel: "メール",
@@ -457,6 +511,18 @@ const loginCopy = {
     testCredentialLogin: "Skip verification login",
     createAccount: "Create account",
     createNotice: "Account creation is being prepared. Use an issued email for now.",
+    registrationTitle: "Create a NeeDo account",
+    registrationSubtitle: "Customer accounts are ready immediately; staff accounts require approval.",
+    displayNameLabel: "Display name",
+    displayNamePlaceholder: "Enter your name or nickname",
+    cityLabel: "City",
+    cityPlaceholder: "Example: Tokyo",
+    registrationPasswordHint: "Use at least 8 characters with upper and lowercase letters, a number, and a symbol.",
+    registerButton: "Create account",
+    registering: "Creating...",
+    registrationCustomerSuccess: "Account created. Log in with your email and password.",
+    registrationTechnicianPending: "Application submitted. Operations or a store will enable the staff account after review.",
+    registrationEmailExists: "That email is already registered. Log in or use a different email.",
     useAccountTitle: "Account login",
     useAccountSubtitle: "Enter your issued account details.",
     accountLabel: "Email",
@@ -526,6 +592,18 @@ const loginCopy = {
     testCredentialLogin: "인증 건너뛰고 로그인",
     createAccount: "새 계정 만들기",
     createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 발급된 이메일로 로그인하세요.",
+    registrationTitle: "NeeDo 계정 만들기",
+    registrationSubtitle: "사용자 계정은 즉시 사용할 수 있으며 스태프 계정은 승인 후 활성화됩니다.",
+    displayNameLabel: "표시 이름",
+    displayNamePlaceholder: "이름 또는 닉네임 입력",
+    cityLabel: "활동 도시",
+    cityPlaceholder: "예: Tokyo",
+    registrationPasswordHint: "8자 이상이며 대문자, 소문자, 숫자, 기호를 포함하세요.",
+    registerButton: "계정 만들기",
+    registering: "만드는 중...",
+    registrationCustomerSuccess: "계정이 생성되었습니다. 이메일과 비밀번호로 로그인하세요.",
+    registrationTechnicianPending: "신청이 제출되었습니다. 운영자 또는 상점 승인 후 스태프 계정이 활성화됩니다.",
+    registrationEmailExists: "이미 등록된 이메일입니다. 로그인하거나 다른 이메일을 사용하세요.",
     useAccountTitle: "계정 로그인",
     useAccountSubtitle: "발급된 계정 정보를 입력하세요.",
     accountLabel: "이메일",
@@ -671,11 +749,28 @@ export function getPostLoginRoute(portal: PortalScope, redirectPath: string | nu
   return redirectRoute;
 }
 
-export function requiresFormalFrontendLogin(portal: PortalScope, redirectPath: string | null) {
+export function requiresFormalFrontendLogin(
+  portal: PortalScope,
+  redirectPath: string | null,
+  isProduction = import.meta.env.PROD,
+  isStaticDemo = isStaticDemoMode()
+) {
+  if (isProduction || !isStaticDemo) {
+    return true;
+  }
+
   const redirectRoute = normalizeRedirectRoute(redirectPath);
   const pathname = redirectRoute?.split(/[?#]/)[0] || "";
 
-  return portal === "technician" && pathname.startsWith("/technician/payroll");
+  if (portal === "technician") {
+    return pathname.startsWith("/technician/payroll") || pathname === "/technician/schedule";
+  }
+
+  if (portal === "merchant") {
+    return pathname === "/merchant/schedule" || pathname === "/merchant/orders";
+  }
+
+  return false;
 }
 
 export function getPublicTestLoginPortal(portal: PortalScope): PortalScope {
@@ -705,6 +800,8 @@ export function LoginPage() {
   const [panelMode, setPanelMode] = useState<LoginPanelMode>("welcome");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [registrationName, setRegistrationName] = useState("");
+  const [registrationCity, setRegistrationCity] = useState("");
   const [feedback, setFeedback] = useState<LoginFeedbackState | null>(null);
   const [isLoginPending, setIsLoginPending] = useState(false);
   const [captchaImage, setCaptchaImage] = useState("");
@@ -722,6 +819,7 @@ export function LoginPage() {
   const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
   const rememberCredentialsScope = useMemo(() => getFrontendRememberCredentialsScope(activePortal), [activePortal]);
   const requiresFormalLogin = requiresFormalFrontendLogin(activePortal, redirectPath);
+  const canSelfRegister = activePortal === "user" || activePortal === "technician";
   const testCredentials = useMemo(
     () =>
       resolveTestLoginCredentials(import.meta.env as FrontendLoginEnv, activePortal, {
@@ -984,6 +1082,57 @@ export function LoginPage() {
     }
   };
 
+  const handleRegistration = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isLoginPending || !canSelfRegister) {
+      return;
+    }
+
+    clearFeedback();
+    const accountType = activePortal === "technician" ? "technician" : "customer";
+    const email = username.trim();
+    const displayName = registrationName.trim();
+    const city = registrationCity.trim();
+
+    if (!email || !displayName || !password.trim() || (accountType === "technician" && !city)) {
+      setFeedback({ key: "requiredError", tone: "error", type: "localized" });
+      return;
+    }
+
+    setIsLoginPending(true);
+
+    try {
+      const registrationData = { email, password, username: displayName };
+      const registered = await authApi.register(
+        accountType === "technician"
+          ? { ...registrationData, accountType: "technician", city }
+          : { ...registrationData, accountType: "customer" }
+      );
+      setPassword("");
+      setRegistrationCity("");
+      setRegistrationName("");
+      setPanelMode(registered.accountType === "customer" ? "account" : "welcome");
+      setFeedback({
+        message:
+          registered.approvalStatus === "pending_review"
+            ? copy.registrationTechnicianPending
+            : copy.registrationCustomerSuccess,
+        tone: "notice",
+        type: "custom"
+      });
+    } catch (registrationError) {
+      const message = registrationError instanceof Error ? registrationError.message : "";
+      setFeedback({
+        message:
+          message === "error.user.email_exists" ? copy.registrationEmailExists : message || copy.accountError,
+        tone: "error",
+        type: "custom"
+      });
+    } finally {
+      setIsLoginPending(false);
+    }
+  };
+
   const captchaControl = (
     <label className="block text-left">
       <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.captchaLabel}</span>
@@ -1028,7 +1177,7 @@ export function LoginPage() {
     >
       <main className="mx-auto flex min-h-[100dvh] w-full max-w-[440px] flex-col pb-8 pt-[calc(env(safe-area-inset-top,0px)+16px)]">
         <header className="flex min-h-11 items-center justify-between gap-3">
-          {panelMode === "account" ? (
+          {panelMode !== "welcome" ? (
             <button
               className="inline-flex h-10 items-center justify-center rounded-full px-1 text-sm font-black text-[color:var(--client-muted)]"
               onClick={() => {
@@ -1109,16 +1258,83 @@ export function LoginPage() {
                     </button>
                   </div>
                 ) : null}
-                <button
-                  className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
-                  onClick={() => {
-                    setFeedback({ key: "createNotice", tone: "notice", type: "localized" });
-                  }}
-                  type="button"
-                >
-                  {copy.createAccount}
-                </button>
+                {canSelfRegister ? (
+                  <button
+                    className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
+                    onClick={() => {
+                      setPanelMode("register");
+                      clearFeedback();
+                    }}
+                    type="button"
+                  >
+                    {copy.createAccount}
+                  </button>
+                ) : null}
               </div>
+            ) : panelMode === "register" ? (
+              <form className="space-y-5 text-left" onSubmit={handleRegistration}>
+                <div className="text-center">
+                  <h2 className="text-2xl font-black tracking-normal text-[color:var(--client-text)]">{copy.registrationTitle}</h2>
+                  <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">{copy.registrationSubtitle}</p>
+                </div>
+                <label className="block">
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.accountLabel}</span>
+                  <input
+                    autoComplete="email"
+                    className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
+                    disabled={isLoginPending}
+                    onChange={(event) => setUsername(event.target.value)}
+                    placeholder={copy.accountPlaceholder}
+                    type="email"
+                    value={username}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.displayNameLabel}</span>
+                  <input
+                    autoComplete="name"
+                    className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
+                    disabled={isLoginPending}
+                    onChange={(event) => setRegistrationName(event.target.value)}
+                    placeholder={copy.displayNamePlaceholder}
+                    value={registrationName}
+                  />
+                </label>
+                {activePortal === "technician" ? (
+                  <label className="block">
+                    <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.cityLabel}</span>
+                    <input
+                      autoComplete="address-level2"
+                      className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
+                      disabled={isLoginPending}
+                      onChange={(event) => setRegistrationCity(event.target.value)}
+                      placeholder={copy.cityPlaceholder}
+                      value={registrationCity}
+                    />
+                  </label>
+                ) : null}
+                <label className="block">
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.passwordLabel}</span>
+                  <PasswordInput
+                    autoComplete="new-password"
+                    disabled={isLoginPending}
+                    inputClassName="h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 pr-14 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder={copy.passwordPlaceholder}
+                    toggleClassName="right-3 text-[color:var(--client-muted)]"
+                    value={password}
+                    wrapperClassName="mt-2"
+                  />
+                  <span className="mt-2 block text-xs font-semibold leading-5 text-[color:var(--client-soft-muted)]">{copy.registrationPasswordHint}</span>
+                </label>
+                <button
+                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] disabled:cursor-wait disabled:opacity-70"
+                  disabled={isLoginPending}
+                  type="submit"
+                >
+                  {isLoginPending ? copy.registering : copy.registerButton}
+                </button>
+              </form>
             ) : (
               <form className="space-y-5 text-left" onSubmit={handleAccountLogin}>
                 <div className="text-center">

@@ -40,6 +40,29 @@ describe("observability middleware", () => {
     expect(response.text).toContain("process_resident_memory_bytes");
   });
 
+  it("exports dependency readiness, latency, and pool gauges", async () => {
+    const app = createApp(undefined, {
+      redisHealthCheck: async () => ({
+        status: "ok",
+        latencyMs: 4,
+        poolSize: 3,
+        healthyClients: 3
+      }),
+      databaseHealthCheck: async () => ({ status: "ok", latencyMs: 7, poolSize: 20 })
+    });
+
+    await request(app).get("/api/v1/ready").expect(200);
+    const response = await request(app).get("/api/v1/metrics").expect(200);
+
+    expect(response.text).toContain('needo_dependency_up{dependency="database"} 1');
+    expect(response.text).toContain('needo_dependency_latency_seconds{dependency="database"} 0.007');
+    expect(response.text).toContain('needo_dependency_pool_size{dependency="database"} 20');
+    expect(response.text).toContain('needo_dependency_up{dependency="redis"} 1');
+    expect(response.text).toContain('needo_dependency_latency_seconds{dependency="redis"} 0.004');
+    expect(response.text).toContain('needo_dependency_pool_size{dependency="redis"} 3');
+    expect(response.text).toContain('needo_dependency_pool_healthy{dependency="redis"} 3');
+  });
+
   it("sets public cache headers only for anonymous read APIs", () => {
     const setHeader = jest.fn();
     const next = jest.fn();
