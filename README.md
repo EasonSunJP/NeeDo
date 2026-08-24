@@ -134,6 +134,8 @@ The operations dashboard now renders the protected backoffice aggregate for metr
 
 The operations timeline route is an explicit production capability gate. It does not present sample events, owners, cities, priorities, or handling states as persisted work. Activation requires formal event and incident records, audited assignment and resolution state machines, cross-city RBAC, and server-side filter, pagination, aggregate, and export contracts.
 
+The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
+
 The merchant dashboard applies the same rule within the authenticated shop scope. It shows only the real shop identity, orders, schedule inventory, technician profiles, and finance totals. Shop design, smart dispatch, and advanced analytics links are not exposed as working features until those modules have formal contracts.
 
 The shared merchant-admin shell now follows the same authenticated scope. Its account name, shop status, pending-order count, avatar, and service GMV come from the active session and `/api/v1/merchant-admin/dashboard`; it shows a retryable error state instead of falling back to demo shop or order data.
