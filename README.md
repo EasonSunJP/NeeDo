@@ -122,9 +122,9 @@ ENV_FILE=.env.dev npm --prefix backend run check:wallet-adjustment-flow
 
 The check refuses production flags and remote database hosts, covers idempotent create/review, approved top-up and withdrawal, insufficient-balance rollback, rejection without mutation, ledger entries and reconciliation, then removes its uniquely named records.
 
-## Formal Customer Reservation History
+## Formal Customer Reservations
 
-The customer reservation list now reads only the authenticated, paginated Booking API. Numeric reservation detail routes load the formal order, payment state, and complete status history from the backend, and customer cancellation is submitted through the protected order-status endpoint. Browser-local order hiding, deletion, review mutation, and mock-order merging are not used in this formal lane. Legacy nonnumeric demo links remain isolated until their checkout compatibility slice is retired.
+Numeric checkout routes load the formal service detail and current bookable schedule inventory, then create the reservation through the authenticated Booking API. A successful submission navigates directly to the persisted numeric order without copying it into browser storage. The customer reservation list reads only the paginated Booking API. Numeric reservation detail routes load the formal order, payment state, and complete status history from the backend, and customer cancellation is submitted through the protected order-status endpoint. Browser-local order creation, hiding, deletion, review mutation, and mock-order merging are not used in this formal lane. Legacy nonnumeric demo links remain isolated compatibility.
 
 ## Current Scope
 

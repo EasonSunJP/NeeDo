@@ -21,6 +21,7 @@ import { addUserOrder } from "../../state/userOrderStore";
 import type { Order, ServicePaymentMethod, Store } from "../../types/domain";
 import type { FinalBookableSlot } from "../../types/shiftPlanning";
 import { confirmNeedoReverseBooking } from "../mobile/NeedoExchangePage";
+import { FormalCheckoutPage } from "./FormalCheckoutPage";
 
 type CheckoutProgressIcon = "package" | "mode" | "time" | "location" | "technician" | "remark";
 type CheckoutEditorSection = "package" | "fulfillment" | "time" | "location" | "technician" | "remark";
@@ -708,7 +709,7 @@ function CheckoutPeoplePicker({
   );
 }
 
-export function CheckoutPage() {
+function LegacyCheckoutPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { serviceId } = useParams();
@@ -1976,4 +1977,10 @@ export function CheckoutPage() {
       ) : null}
     </PageScaffold>
   );
+}
+
+export function CheckoutPage() {
+  const { serviceId } = useParams();
+
+  return isBookingApiId(serviceId) ? <FormalCheckoutPage serviceId={Number(serviceId)} /> : <LegacyCheckoutPage />;
 }
