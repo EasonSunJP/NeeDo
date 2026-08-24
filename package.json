@@ -21,6 +21,8 @@
     "i18n:import": "node scripts/import-i18n-workbook.mjs exports/i18n/needo-localization-workbook.xlsx",
     "i18n:screenshots": "node scripts/i18n-page-screenshot-audit.mjs",
     "verify:social-mine": "node scripts/verify-social-mine-route.mjs",
+    "audit:production-bundle": "node scripts/audit-production-bundle.mjs",
+    "verify:production-build": "npm run build && npm run audit:production-bundle",
     "verify:production-smoke": "node scripts/production-smoke.mjs",
     "perf:local-baseline": "node scripts/local-performance-baseline.mjs",
     "test": "vitest run"

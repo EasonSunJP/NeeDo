@@ -23,6 +23,18 @@ export const defaultLegacyAuthProxyPrefix = "/legacy-auth";
 export const productionBuildTarget = "production";
 export const staticDemoBuildTarget = "static-demo";
 
+export function shouldIncludeStaticDemoRuntime(
+  env: EnvMap,
+  command: "build" | "serve",
+  mode: string
+) {
+  return (
+    mode === "test" ||
+    command === "serve" ||
+    resolveBuildTarget(env, command) === staticDemoBuildTarget
+  );
+}
+
 function isEnabledFlag(value: string | undefined) {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
 }
@@ -207,6 +219,11 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     base: "./",
+    define: {
+      __NEEDO_STATIC_DEMO_BUILD__: JSON.stringify(
+        shouldIncludeStaticDemoRuntime(env, command, mode)
+      )
+    },
     plugins: [needoPortalEntryFallbackPlugin(), react()],
     build: {
       chunkSizeWarningLimit: 3600,

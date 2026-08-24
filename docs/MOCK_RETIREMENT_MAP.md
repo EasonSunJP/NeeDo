@@ -34,7 +34,7 @@
 | `src/features/business-cps/model.ts`, `logic.ts`, admin/mobile pages | Afirieito campaigns, commissions, promoters, tracking, settlement-like state | `needo.afirieito.runtime.v1`, legacy `needo.business-cps.runtime.v1`, admin draft keys | Afirieito campaign/attribution/commission/payout APIs | Step 12 |
 | `src/features/settings/portalSettingsState.ts` | Per-portal settings preferences | `needo.settings.portal.<portal>.v1` | Account/profile/settings APIs after auth is real | Step 07 and Step 12 by field |
 | `src/components/scheduling/UnifiedUserCalendar.tsx` | Local calendar events and IM tag UI | `needo.user-unified-calendar.v1` and UI keys | User calendar API and external calendar sync records | Step 10 |
-| `src/api/staticDemo.ts` | Browser-side static-demo `/api/v1/*` interception for Auth/RBAC, core read, Booking, backoffice, finance, payroll, and fallback empty responses | Enabled by `VITE_NEEDO_STATIC_DEMO=true`; permissive fallback is default. Unknown paths fall through only when `VITE_NEEDO_STATIC_DEMO_STRICT=true` or `VITE_STATIC_DEMO_STRICT=true` | Use strict mode in development acceptance to reveal missing API coverage, then retire per owning domain | Cross-cutting guardrail; default must stay permissive for current online static demo |
+| `src/api/staticDemo.ts` | Browser-side static-demo `/api/v1/*` interception for Auth/RBAC, core read, Booking, backoffice, finance, payroll, and fallback empty responses | Included only by the dedicated `build:static` target or development/test runtime. Normal `build` compiles the loader out and the release artifact audit rejects its chunk/markers. | Use strict mode in development acceptance to reveal missing API coverage, then retire per owning domain | Cross-cutting guardrail; default must stay permissive for the dedicated static demo only |
 | `scripts/mock-backend.mjs` | Local health service plus Google account/calendar and translation helper routes | Node process on port `4176`; temp JSON token stores by env path | Formal backend service, env config, API contracts | Step 02 onward; helper behavior removed or renamed when real backend owns it |
 
 ## 3. Current Direct `src/data/mock.ts` Consumers
@@ -69,6 +69,7 @@ These files import from the central mock module and should not be rewired until 
 - Tests may continue to use seed fixtures as test fixtures. Test fixtures must not become production API behavior.
 - `docs/FRONTEND_IA.md`, admin docs content, and API doc editor data are documentation/UI content, not real backend contracts.
 - Static-demo strict mode is an acceptance tool, not the default demo runtime. The default static build remains `VITE_NEEDO_STATIC_DEMO=true` only, so missing static fallback paths continue to render empty objects/lists instead of breaking the online static page.
+- `npm run build` is the formal artifact and excludes `src/api/staticDemo.ts`; `npm run build:static` is the only deployable static-demo artifact. Do not upload a static-demo artifact to a formal environment.
 
 ## 6. Guardrails For Each Retirement PR
 

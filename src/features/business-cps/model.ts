@@ -1,4 +1,7 @@
-import { createStaticDemoPlanCategoryTranslations, isStaticDemoMode } from "../../api/staticDemo";
+import {
+  createStaticDemoPlanCategoryTranslations,
+  isStaticDemoMode
+} from "../../api/staticDemoMode";
 
 export type BusinessCpsRole = "creator" | "merchant" | "bd" | "agent" | "platform";
 

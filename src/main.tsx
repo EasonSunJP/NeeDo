@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
-import { installStaticDemoFetchGuard } from "./api/staticDemo";
+import { installLoadedStaticDemoFetchGuard } from "./api/staticDemoLoader";
 import "./styles.css";
 import { getClientPwaThemeColors, getInitialClientThemeState } from "./theme/ClientThemeProvider";
 
@@ -71,7 +71,7 @@ function syncInitialClientPwaTheme() {
 
 syncDisplayMode();
 syncInitialClientPwaTheme();
-installStaticDemoFetchGuard();
+installLoadedStaticDemoFetchGuard();
 
 if (displayModeQuery) {
   if (typeof displayModeQuery.addEventListener === "function") {

@@ -29,6 +29,8 @@ Step 14 hardens the production surface without changing business workflows.
   metrics endpoint.
 - The Compose Redis service enables `requirepass`; `REDIS_PASSWORD` and the
   password embedded in `REDIS_URL` must come from the same secret source.
+- The formal frontend build compiles out the static-demo API interceptor. The
+  production bundle audit fails if its chunk or runtime markers reappear.
 
 ## Logs, Metrics, Tracing
 

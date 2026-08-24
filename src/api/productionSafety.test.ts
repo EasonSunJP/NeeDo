@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import viteConfig, { resolveLegacyAuthProxyTarget } from "../../vite.config";
-import { isStaticDemoMode } from "./staticDemo";
+import viteConfig, {
+  resolveLegacyAuthProxyTarget,
+  shouldIncludeStaticDemoRuntime
+} from "../../vite.config";
+import { isStaticDemoMode } from "./staticDemoMode";
+import httpClientSource from "./httpClient.ts?raw";
+import mainSource from "../main.tsx?raw";
 import {
   isFrontendAuthBypassEnabled,
   requiresFormalFrontendLogin
@@ -35,6 +40,9 @@ describe("frontend production safety", () => {
     vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
 
     expect(isStaticDemoMode()).toBe(false);
+    expect(httpClientSource).not.toMatch(/from\s+["']\.\/staticDemo["']/);
+    expect(mainSource).not.toMatch(/from\s+["']\.\/api\/staticDemo["']/);
+    expect(httpClientSource).toContain("resolveLoadedStaticDemoRequest");
   });
 
   it("does not create a legacy auth proxy for the production target", () => {
@@ -44,6 +52,23 @@ describe("frontend production safety", () => {
         VITE_LEGACY_AUTH_PROXY_TARGET: "https://legacy.example.com"
       })
     ).toBeNull();
+  });
+
+  it("omits the static demo runtime from a production artifact", () => {
+    expect(
+      shouldIncludeStaticDemoRuntime(
+        { NEEDO_BUILD_TARGET: "production" },
+        "build",
+        "production"
+      )
+    ).toBe(false);
+    expect(
+      shouldIncludeStaticDemoRuntime(
+        { NEEDO_BUILD_TARGET: "static-demo" },
+        "build",
+        "production"
+      )
+    ).toBe(true);
   });
 
   it("rejects unsafe flags in a normal production build", () => {

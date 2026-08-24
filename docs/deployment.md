@@ -76,6 +76,17 @@ Use `deploy/prod/nginx.needo.conf.example` as the minimum routing reference:
 - The whole `dist/` directory must be uploaded together because Vite emits
   hashed asset names referenced by each HTML entry.
 
+Build and audit the formal frontend artifact with:
+
+```bash
+npm run verify:production-build
+```
+
+The audit rejects a bundled static-demo fetch interceptor, broken HTML asset
+references, and regressions beyond the current main/i18n JavaScript budgets.
+`npm run build:static` is a separate compatibility artifact and must never be
+uploaded to a formal environment.
+
 After updating the frontend bundle and Nginx, verify from outside the server:
 
 ```bash

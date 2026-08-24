@@ -68,8 +68,16 @@ import type {
   CoreTechnicianCard,
   CoreTechnicianDetail
 } from "../features/core-read/api";
-import { isStaticDemoMode, isStaticDemoStrictMode } from "./staticDemoMode";
-export { isStaticDemoMode, isStaticDemoStrictMode } from "./staticDemoMode";
+import {
+  createStaticDemoPlanCategoryTranslations,
+  isStaticDemoMode,
+  isStaticDemoStrictMode
+} from "./staticDemoMode";
+export {
+  createStaticDemoPlanCategoryTranslations,
+  isStaticDemoMode,
+  isStaticDemoStrictMode
+} from "./staticDemoMode";
 import type {
   PaginatedData,
   PermissionPayload,
@@ -2740,13 +2748,6 @@ export async function resolveStaticDemoGoogleCalendarApi<TData>(
   }
 
   return { handled: true, data: status as TData };
-}
-
-export function createStaticDemoPlanCategoryTranslations<TLocale extends string>(
-  locales: TLocale[],
-  sourceText: string
-) {
-  return Object.fromEntries(locales.map((locale) => [locale, sourceText])) as Partial<Record<TLocale, string>>;
 }
 
 function responseJson(payload: unknown, status = 200) {

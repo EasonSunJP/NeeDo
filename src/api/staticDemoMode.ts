@@ -14,3 +14,12 @@ export function isStaticDemoMode() {
 export function isStaticDemoStrictMode() {
   return isEnabledFlag(import.meta.env.VITE_NEEDO_STATIC_DEMO_STRICT) || isEnabledFlag(import.meta.env.VITE_STATIC_DEMO_STRICT);
 }
+
+export function createStaticDemoPlanCategoryTranslations<TLocale extends string>(
+  locales: TLocale[],
+  sourceText: string
+) {
+  return Object.fromEntries(locales.map((locale) => [locale, sourceText])) as Partial<
+    Record<TLocale, string>
+  >;
+}
