@@ -16,6 +16,7 @@ const adminLayoutSource = readFileSync(
   new URL("../../components/admin/AdminLayout.tsx", import.meta.url),
   "utf8"
 );
+const travelSource = readFileSync(new URL("./TravelSettingsPage.tsx", import.meta.url), "utf8");
 
 describe("operations timeline production capability gate", () => {
   it("does not present sample operations history as persisted records", () => {
@@ -138,5 +139,27 @@ describe("affiliate administration production capability gate", () => {
     expect(affiliateSource).toContain("防重复归因、幂等事件、范围 RBAC、风控与不可变审计");
     expect(affiliateSource).toContain("钱包账本、结算批次、支付凭证、对账、分页、聚合与导出合同");
     expect(affiliateSource).toContain("当前不会展示浏览器保存的 GMV、ROI、预算、链接、佣金或结算数据");
+  });
+});
+
+describe("travel and map provider production capability gate", () => {
+  it("does not present static fare tables or inert save/import actions as enabled settings", () => {
+    expect(travelSource).not.toContain("areaTravelFareRules");
+    expect(travelSource).not.toContain("buildDistanceFarePreview");
+    expect(travelSource).not.toContain("DataTable");
+    expect(travelSource).not.toContain("导入城市车费");
+    expect(travelSource).not.toContain("保存出行规则");
+  });
+
+  it("states the deferred provider and formal policy prerequisites", () => {
+    expect(travelSource).toContain("地图、导航与出行计费尚未启用");
+    expect(travelSource).toContain("ExternalProviderConfig、TravelPolicy 与 RouteEstimate 表和 migration");
+    expect(travelSource).toContain("地址、经纬度、出行方式与人工交通费上限的正式配置 API");
+    expect(travelSource).toContain(
+      "地图/路线供应商适配器、限流、超时、缓存与 provider_unavailable 合同"
+    );
+    expect(travelSource).toContain("计费版本、审批、范围 RBAC、审计、分页与导出");
+    expect(travelSource).toContain("当前不会展示静态城市车费、试算结果或“已启用”交通方式");
+    expect(travelSource).toContain("地址和经纬度基础数据仍可由正式店铺/订单接口保存");
   });
 });

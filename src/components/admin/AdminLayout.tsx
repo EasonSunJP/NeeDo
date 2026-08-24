@@ -143,7 +143,7 @@ const navSections: AdminNavSection[] = [
       { label: "城市设置", to: "/admin/cities", icon: "城", children: ["城市管理", "城市投票"] },
       { label: "角色管理", to: "/admin/roles", icon: "角", permission: "menu:role-management", children: ["角色列表", "分配权限"] },
       { label: "权限管理", to: "/admin/permissions", icon: "权", permission: "menu:permission-management", children: ["权限列表", "权限树"] },
-      { label: "出行设置", to: "/admin/travel-settings", icon: "行", children: ["打车设置", "电车设置", "公交价格", "城市车费"] }
+      { label: "出行能力状态", to: "/admin/travel-settings", icon: "行", children: ["地址基础数据", "供应商未配置", "出行合同"] }
     ]
   },
   {
