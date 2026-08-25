@@ -163,8 +163,13 @@ function getRequestHeader(headers: PortalDevRequest["headers"], name: string) {
 
 function acceptsHtml(req: PortalDevRequest) {
   const accept = getRequestHeader(req.headers, "accept");
+  const destination = getRequestHeader(req.headers, "sec-fetch-dest").trim().toLowerCase();
 
-  return !accept || accept.includes("text/html") || accept.includes("*/*");
+  if (destination && destination !== "document" && destination !== "iframe") {
+    return false;
+  }
+
+  return accept.includes("text/html");
 }
 
 function resolvePortalEntryPath(pathname: string) {
@@ -173,7 +178,7 @@ function resolvePortalEntryPath(pathname: string) {
   )?.fileName;
 }
 
-function rewritePortalEntryRequest(req: PortalDevRequest, _res: unknown, next: () => void) {
+export function rewritePortalEntryRequest(req: PortalDevRequest, _res: unknown, next: () => void) {
   if (!req.url || !acceptsHtml(req)) {
     next();
     return;

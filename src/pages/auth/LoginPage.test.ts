@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isBackendAccountForAnotherPortal, resolveAdminDefaultCredentials, resolveAdminTestLoginCredentials, resolveBackendLoginTarget } from "./AdminLoginPage";
-import { getPostLoginRoute, getPublicTestLoginPortal, requiresFormalFrontendLogin, resolveLoginErrorMessage, resolveLoginFeedbackMessage, resolveTestLoginCredentials, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
+import { isBackendAccountForAnotherPortal, resolveBackendLoginTarget } from "./AdminLoginPage";
+import { getPostLoginRoute, requiresFormalFrontendLogin, resolveLoginErrorMessage, resolveLoginFeedbackMessage, type LoginErrorCopy, type LoginFeedbackCopy, type LoginFeedbackState } from "./LoginPage";
 import appSource from "../../App.tsx?raw";
 import adminLoginPageSource from "./AdminLoginPage.tsx?raw";
 import loginPageSource from "./LoginPage.tsx?raw";
 import userManagementSource from "../admin/UserManagementWorkspace.tsx?raw";
 import cpsAccountManagementSource from "../cps-admin/CpsAccountManagementPage.tsx?raw";
+import developmentEnvExampleSource from "../../../.env.development.example?raw";
+import translationsSource from "../../i18n/translations.ts?raw";
 
 const zhCopy = {
   accountError: "账号错误",
@@ -49,6 +51,7 @@ describe("LoginPage feedback localization", () => {
   });
 
   it("maps low-level network and routing errors to readable login messages", () => {
+    expect(resolveLoginErrorMessage("error.auth.invalid_credentials", zhLoginErrorCopy)).toBe("账号错误");
     expect(resolveLoginErrorMessage("error.network.timeout", zhLoginErrorCopy)).toBe("后端没有响应");
     expect(resolveLoginErrorMessage("error.dependency.redis_unavailable", zhLoginErrorCopy)).toBe("登录服务依赖未启动");
     expect(resolveLoginErrorMessage("Internal Server Error", zhLoginErrorCopy)).toBe("登录服务依赖未启动");
@@ -61,13 +64,18 @@ describe("LoginPage feedback localization", () => {
 });
 
 describe("LoginPage real-account login", () => {
-  it("offers an env-driven test credential autofill without calling a test login API", () => {
-    expect(loginPageSource).toContain("VITE_TEST_LOGIN_EMAIL");
-    expect(loginPageSource).toContain("VITE_TEST_LOGIN_PASSWORD");
-    expect(loginPageSource).toContain("VITE_TEST_LOGIN_CUSTOMER_EMAIL");
-    expect(loginPageSource).toContain("VITE_TEST_LOGIN_TECHNICIAN_EMAIL");
-    expect(loginPageSource).toContain("fillTestCredentials");
-    expect(loginPageSource).toContain("continueWithTestCredentials");
+  it("does not bundle or render frontend test credential shortcuts", () => {
+    [loginPageSource, adminLoginPageSource, developmentEnvExampleSource].forEach((source) => {
+      expect(source).not.toContain("VITE_TEST_LOGIN_");
+    });
+    expect(loginPageSource).not.toContain("fillTestCredentials");
+    expect(loginPageSource).not.toContain("continueWithTestCredentials");
+    expect(loginPageSource).not.toContain("testCredentialFill");
+    expect(loginPageSource).not.toContain("testCredentialLogin");
+    expect(adminLoginPageSource).not.toContain("continueWithTestCredentials");
+    expect(adminLoginPageSource).not.toContain("testCredentialLogin");
+    const removedShortcutLabels = ["测试账号登录", "測試帳號登入", "填入测试账号", "填入測試帳號"];
+    expect(removedShortcutLabels.filter((label) => translationsSource.includes(label))).toEqual([]);
     expect(loginPageSource).toContain("authApi.fetchCaptcha");
     expect(loginPageSource).toContain("captchaCode");
     expect(loginPageSource).toContain("captchaRequiredError");
@@ -93,33 +101,20 @@ describe("LoginPage real-account login", () => {
     expect(loginPageSource).not.toContain('accountType: "admin"');
   });
 
-  it("labels the public test credential action as skip verification login", () => {
-    expect(loginPageSource).toContain('testCredentialLogin: "跳过验证登录"');
-  });
-
-  it("lets the non-formal public test credential action bypass the captcha requirement", () => {
-    const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[/)?.[0] ?? "";
-
-    expect(testCredentialAction).toContain("await enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal))");
-    expect(testCredentialAction).not.toContain("captchaRequiredError");
-    expect(testCredentialAction).not.toContain("normalizedCaptchaCode");
-  });
-
   it("uses formal password login for technician payroll redirects instead of frontend bypass", () => {
-    const testCredentialAction = loginPageSource.match(/const continueWithTestCredentials = useCallback\(async \(\) => \{[\s\S]*?\n  \}, \[/)?.[0] ?? "";
-
     expect(loginPageSource).toContain("const requiresFormalLogin = requiresFormalFrontendLogin(activePortal, redirectPath);");
     expect(loginPageSource).toContain("const shouldBypassFrontendLogin = !requiresFormalLogin && isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);");
     expect(loginPageSource).toContain("const hasBlockedFormalFrontendBypass = requiresFormalLogin && isFrontendBypassSession(session);");
     expect(loginPageSource).toContain("const hasActiveAccess = (isAuthenticated && canAccess(activePortal) && !hasBlockedFormalFrontendBypass) || hasRememberedActivePortal;");
     expect(loginPageSource).toContain("{requiresFormalLogin ? null : captchaControl}");
-    expect(testCredentialAction).toContain("if (requiresFormalLogin && testCredentials)");
-    expect(testCredentialAction).toContain("await loginWithFormalPassword(activePortal, testCredentials.email, testCredentials.password)");
+    expect(loginPageSource).toContain("await loginWithFormalPassword(activePortal, normalizedUsername, normalizedPassword)");
   });
 
-  it("can temporarily skip the frontend login page without waiting for an API response", () => {
+  it("keeps the explicit static-demo bypass automatic and invisible", () => {
     expect(loginPageSource).toContain("isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv)");
-    expect(loginPageSource).toContain("void continueWithTestCredentials();");
+    expect(loginPageSource).toContain("void continueWithFrontendBypass();");
+    expect(loginPageSource).toContain("await enterFrontendWithoutAuthentication(activePortal)");
+    expect(loginPageSource).not.toContain("canUseTestCredentialAction");
   });
 
   it("does not point production login failures back to the formal /api/v1 backend path", () => {
@@ -151,11 +146,11 @@ describe("LoginPage real-account login", () => {
     expect(appSource).toContain('"/login/afirieito-admin"');
   });
 
-  it("offers real test-account login on backend login screens", () => {
-    expect(adminLoginPageSource).toContain("resolveAdminTestLoginCredentials");
-    expect(adminLoginPageSource).toContain("continueWithTestCredentials");
-    expect(adminLoginPageSource).toContain("testCredentialLogin");
-    expect(adminLoginPageSource).toContain("VITE_TEST_LOGIN_BUSINESS_EMAIL");
+  it("keeps backend login screens on manual formal credentials", () => {
+    expect(adminLoginPageSource).not.toContain("resolveAdminTestLoginCredentials");
+    expect(adminLoginPageSource).not.toContain("continueWithTestCredentials");
+    expect(adminLoginPageSource).not.toContain("testCredentialLogin");
+    expect(adminLoginPageSource).not.toContain("VITE_TEST_LOGIN_");
     expect(adminLoginPageSource).toContain('"afirieito-admin"');
   });
 
@@ -176,59 +171,13 @@ describe("LoginPage real-account login", () => {
     expect(adminLoginPageSource).toContain("!isFrontendBypassSession(session)");
   });
 
-  it("prefills operations admin login fields from configured test credentials", () => {
-    expect(
-      resolveAdminDefaultCredentials(
-        {
-          VITE_TEST_LOGIN_ADMIN_EMAIL: "admin",
-          VITE_TEST_LOGIN_ADMIN_PASSWORD: "Admin.2026"
-        },
-        "admin",
-        "admin@example.com"
-      )
-    ).toEqual({
-      email: "admin",
-      password: "Admin.2026"
-    });
+  it("starts backend login with the portal email and a blank password", () => {
+    expect(adminLoginPageSource).toContain("useState<string>(config.defaultEmail)");
+    expect(adminLoginPageSource).toContain('useState<string>("")');
+    expect(adminLoginPageSource).not.toContain("defaultCredentials");
   });
 
-  it("keeps backend test credentials portal-specific even when env files still contain the shared admin account", () => {
-    const staleSharedEnv = {
-      VITE_TEST_LOGIN_EMAIL: "admin",
-      VITE_TEST_LOGIN_PASSWORD: "Admin.2026",
-      VITE_TEST_LOGIN_MERCHANT_EMAIL: "admin",
-      VITE_TEST_LOGIN_MERCHANT_PASSWORD: "Admin.2026",
-      VITE_TEST_LOGIN_BUSINESS_EMAIL: "admin",
-      VITE_TEST_LOGIN_BUSINESS_PASSWORD: "Admin.2026"
-    };
-
-    expect(resolveAdminTestLoginCredentials(staleSharedEnv, "merchant-admin")).toEqual({
-      email: "merchant@example.com",
-      password: "Admin.2026"
-    });
-    expect(resolveAdminTestLoginCredentials(staleSharedEnv, "afirieito-admin")).toEqual({
-      email: "affiliate@example.com",
-      password: "Admin.2026"
-    });
-    expect(resolveAdminDefaultCredentials(staleSharedEnv, "merchant-admin", "merchant-owner@example.com")).toEqual({
-      email: "merchant@example.com",
-      password: "Admin.2026"
-    });
-  });
-
-  it("honors explicitly configured portal credentials and rejects remembered accounts from another backend", () => {
-    expect(
-      resolveAdminTestLoginCredentials(
-        {
-          VITE_TEST_LOGIN_MERCHANT_EMAIL: "custom-merchant@example.com",
-          VITE_TEST_LOGIN_MERCHANT_PASSWORD: "Merchant.2026"
-        },
-        "merchant-admin"
-      )
-    ).toEqual({
-      email: "custom-merchant@example.com",
-      password: "Merchant.2026"
-    });
+  it("rejects remembered accounts from another backend", () => {
     expect(isBackendAccountForAnotherPortal("merchant-admin", "admin")).toBe(true);
     expect(isBackendAccountForAnotherPortal("merchant-admin", "admin@example.com")).toBe(true);
     expect(isBackendAccountForAnotherPortal("merchant-admin", "merchant@example.com")).toBe(false);
@@ -241,41 +190,6 @@ describe("LoginPage real-account login", () => {
     expect(getPostLoginRoute("business", "/NDA-admin")).toBe("/NDA-admin");
     expect(getPostLoginRoute("user", "/orders")).toBe("/orders");
     expect(getPostLoginRoute("admin", "/login/merchant?redirect=%2Fmerchant")).toBe("/admin");
-  });
-
-  it("keeps the public test-account shortcut inside the current frontend portal", () => {
-    expect(getPublicTestLoginPortal("user")).toBe("user");
-    expect(getPublicTestLoginPortal("business")).toBe("business");
-    expect(loginPageSource).toContain("enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal)");
-  });
-
-  it("falls back to formal seeded frontend test accounts when stale env still points to admin", () => {
-    const staleSharedEnv = {
-      VITE_TEST_LOGIN_EMAIL: "admin",
-      VITE_TEST_LOGIN_PASSWORD: "Admin.2026",
-      VITE_TEST_LOGIN_TECHNICIAN_EMAIL: "admin",
-      VITE_TEST_LOGIN_TECHNICIAN_PASSWORD: "Admin.2026"
-    };
-
-    expect(resolveTestLoginCredentials(staleSharedEnv, "technician")).toEqual({
-      email: "seed.technician@needo.local",
-      password: "Admin.2026"
-    });
-    expect(resolveTestLoginCredentials(staleSharedEnv, "technician", { preferFormalAccount: true })).toEqual({
-      email: "technician@example.com",
-      password: "Admin.2026"
-    });
-    expect(resolveTestLoginCredentials(
-      {
-        VITE_TEST_LOGIN_TECHNICIAN_EMAIL: "seed.technician@needo.local",
-        VITE_TEST_LOGIN_TECHNICIAN_PASSWORD: "Admin.2026"
-      },
-      "technician",
-      { preferFormalAccount: true }
-    )).toEqual({
-      email: "technician@example.com",
-      password: "Admin.2026"
-    });
   });
 
   it("requires formal login by default and keeps route exceptions only in an explicit static demo", () => {

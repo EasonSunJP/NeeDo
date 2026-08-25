@@ -22,6 +22,7 @@ import {
   IM_ASSISTANT_WELCOME_MESSAGE_ID,
   makeSeedImDatabase,
   markConversationReadMutation,
+  markConversationUnreadMutation,
   normalizeDisappearingCountdown,
   paginateMessages,
   recallMessageMutation,
@@ -1487,7 +1488,9 @@ async function handleConversationRequest(scope: ImRoleType, url: URL, method: st
   }
 
   if (method === "PATCH" && conversationId && action === "read") {
-    const conversation = markConversationReadMutation(database, conversationId);
+    const conversation = body.markUnread === true
+      ? markConversationUnreadMutation(database, conversationId)
+      : markConversationReadMutation(database, conversationId);
 
     if (!conversation) {
       return notFound("Conversation not found");
@@ -1950,10 +1953,10 @@ export function createImApi(scope: ImRoleType) {
       body: JSON.stringify({ isMuted })
     });
   },
-  markConversationRead(conversationId: string) {
+  markConversationRead(conversationId: string, markUnread = false) {
       return requestIm<{ conversation: Conversation }>(scope, `/api/im/conversations/${conversationId}/read`, {
       method: "PATCH",
-      body: JSON.stringify({})
+      body: JSON.stringify({ markUnread })
     });
   },
   deleteConversation(conversationId: string) {
@@ -1971,6 +1974,21 @@ export function createImApi(scope: ImRoleType) {
       method: "POST",
       body: JSON.stringify(payload)
     });
+  },
+  setMessageReaction(
+    conversationId: string,
+    messageId: string,
+    emoji: string,
+    reacted: boolean
+  ) {
+      return requestIm<{ message: ConversationMessage }>(
+        scope,
+        `/api/im/conversations/${conversationId}/messages/${messageId}/reactions`,
+        {
+          method: reacted ? "PUT" : "DELETE",
+          body: JSON.stringify({ emoji })
+        }
+      );
   },
   estimateTagMessageCampaign(input: TagMessageCampaignInput) {
       return requestIm<TagMessageCampaignEstimate>(scope, "/api/im/messages/campaigns/estimate", {

@@ -32,17 +32,29 @@ describe("CategoryPage technician showcase card", () => {
     expect(categoryPageSource).toContain('className="mt-4 grid grid-cols-3 gap-2"');
   });
 
+  it("does not apply the default category to a custom keyword search", () => {
+    expect(categoryPageSource).toContain(
+      'const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0;'
+    );
+    expect(categoryPageSource).toContain(
+      'const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");'
+    );
+    expect(categoryPageSource).toContain(
+      "const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;"
+    );
+  });
+
   it("shows up to 20 technician cards and routes cards through the technician dynamic path", () => {
     expect(categoryPageSource).toContain('pageSize: 40');
     expect(categoryPageSource).toContain('entityFilter === "technician" ? 20');
-    expect(categoryPageSource).toContain('const searchCategoryId = entityFilter === "technician" && !hasExplicitCategoryScope ? undefined : apiCategoryId;');
     expect(categoryPageSource).toContain("getTechnicianDynamicPath(item.technician)");
   });
 
-  it("keeps static category content visible when core-read data is unavailable", () => {
-    expect(categoryPageSource).toContain("searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? legacyServices");
-    expect(categoryPageSource).toContain("return legacyStores;");
-    expect(categoryPageSource).toContain("return legacyTechnicians;");
-    expect(categoryPageSource).toContain("hasStaticSearchContent ? null : categoryQuery.error ?? searchQuery.error");
+  it("keeps legacy category content exclusive to explicit static-demo mode", () => {
+    expect(categoryPageSource).toContain("const allowLegacyCoreReadData = isStaticDemoMode();");
+    expect(categoryPageSource).toContain("allowLegacyCoreReadData ? legacyServices : []");
+    expect(categoryPageSource).toContain("return allowLegacyCoreReadData ? legacyStores : [];");
+    expect(categoryPageSource).toContain("return allowLegacyCoreReadData ? legacyTechnicians : [];");
+    expect(categoryPageSource).toContain("if (!allowLegacyCoreReadData)");
   });
 });

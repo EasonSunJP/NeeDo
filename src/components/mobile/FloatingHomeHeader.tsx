@@ -5,7 +5,7 @@ const floatingHeaderFrameGapPx = 8;
 
 export const floatingHeaderLiquidGlassClassName = "client-liquid-glass-header";
 export const floatingHeaderGlassPanelClassName =
-  `${floatingHeaderLiquidGlassClassName} client-floating-header-glass-frame !rounded-b-[28px] !rounded-t-none !border-transparent !px-0 !pb-0 !shadow-none`;
+  `${floatingHeaderLiquidGlassClassName} client-floating-header-glass-frame !rounded-[28px] !border-transparent !px-0 !pb-0 !shadow-none`;
 export const floatingHeaderInnerClassName = "px-3 pb-3";
 export const floatingHeaderPillSurfaceClassName =
   "rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] shadow-[0_12px_30px_rgba(0,0,0,0.07)]";
@@ -91,7 +91,7 @@ export function FloatingHomeHeader({
             ref={panelRef}
             className={cn(
               floatingHeaderLiquidGlassClassName,
-              "safe-header-top rounded-b-[28px] border px-4 pb-3 backdrop-blur-2xl backdrop-saturate-150",
+              "safe-header-top rounded-[28px] border px-4 pb-3 backdrop-blur-2xl backdrop-saturate-150",
               dark
                 ? "border-white/10 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-top-chrome-bg)_28%,transparent),color-mix(in_srgb,var(--client-bg)_10%,transparent))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_42px_color-mix(in_srgb,var(--client-bg)_22%,transparent)]"
                 : "border-[color:color-mix(in_srgb,var(--client-line)_52%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--client-surface)_34%,transparent),color-mix(in_srgb,var(--client-bg)_8%,transparent))] text-[color:var(--client-text)] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--client-elevated)_22%,transparent),0_18px_40px_color-mix(in_srgb,var(--client-bg)_18%,transparent)]",

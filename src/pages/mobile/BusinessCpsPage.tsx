@@ -803,7 +803,7 @@ function MobilePromoterFormModal({
 function BusinessCpsFloatingHeader({ onOpenMore }: { onOpenMore: () => void }) {
   return (
     <FloatingHomeHeader
-      panelClassName="business-cps-header-panel client-floating-header-glass-frame rounded-b-[28px] rounded-t-none border-transparent px-4 pb-4 shadow-none"
+      panelClassName="business-cps-header-panel client-floating-header-glass-frame rounded-[28px] border-transparent px-4 pb-4 shadow-none"
       spacerClassName="h-[calc(env(safe-area-inset-top)+144px)]"
       stacked
     >

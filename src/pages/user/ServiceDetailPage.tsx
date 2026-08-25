@@ -11,6 +11,7 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { services as legacyServices } from "../../data/mock";
 import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
@@ -121,7 +122,7 @@ function ServiceDetailContent() {
     [apiId]
   );
   const legacyService = useMemo(
-    () => (!apiId && id ? legacyServices.find((item) => item.id === id) ?? null : null),
+    () => (isStaticDemoMode() && !apiId && id ? legacyServices.find((item) => item.id === id) ?? null : null),
     [apiId, id]
   );
   const service = useMemo(
@@ -156,6 +157,10 @@ function ServiceDetailContent() {
 
   if (apiId && serviceQuery.error) {
     return <ServiceDetailStatus description={serviceQuery.error} title="服务读取失败" />;
+  }
+
+  if (!apiId && !isStaticDemoMode()) {
+    return <ServiceDetailStatus description="请从真实店铺或服务列表重新选择可预约项目。" title="服务链接不可用" />;
   }
 
   if (!service) {

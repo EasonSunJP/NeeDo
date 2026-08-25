@@ -343,10 +343,10 @@ export function SocialComposerPage() {
     }
 
     setIsPublishing(true);
-    await new Promise((resolve) => window.setTimeout(resolve, 260));
-
-    const nextPost = editPostId
-      ? updatePost({
+    setMediaError("");
+    try {
+      const nextPost = await (editPostId
+        ? updatePost({
           actorKey: initialAuthorKey,
           postId: editPostId,
           text,
@@ -359,8 +359,8 @@ export function SocialComposerPage() {
           locationLabel: locationLabel || undefined,
           audienceProfileKeys,
           postType: editPost?.postType ?? postType
-        })
-      : createPost({
+          })
+        : createPost({
           authorKey: initialAuthorKey,
           media,
           quotePostId,
@@ -374,13 +374,16 @@ export function SocialComposerPage() {
           locationLabel: locationLabel || undefined,
           audienceProfileKeys,
           postType
-        });
+          }));
 
-    clearDraft(draftKey);
-    setIsPublishing(false);
-
-    if (nextPost) {
-      navigate(socialPaths.timeline(scope), { replace: true });
+      if (nextPost) {
+        clearDraft(draftKey);
+        navigate(socialPaths.timeline(scope), { replace: true });
+      }
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsPublishing(false);
     }
   };
 

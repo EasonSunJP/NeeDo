@@ -43,19 +43,22 @@ const idPathParameter = (name = "id") => ({
   schema: { type: "integer", minimum: 1 }
 });
 
+const merchantPreviewShopHeaderParameter = {
+  name: "X-NeeDo-Merchant-Preview-Shop-Id",
+  in: "header",
+  required: false,
+  description:
+    "Operations-admin read-only preview shop scope. Requires backoffice merchant read access; any non-GET request carrying this header is rejected.",
+  schema: { type: "integer", minimum: 1 }
+};
+
 const billingProfileRequestBody = {
   required: true,
   content: {
     "application/json": {
       schema: {
         type: "object",
-        required: [
-          "billingCadence",
-          "monthlyFeeJpy",
-          "cadenceLocked",
-          "amountLocked",
-          "version"
-        ],
+        required: ["billingCadence", "monthlyFeeJpy", "cadenceLocked", "amountLocked", "version"],
         properties: {
           billingCadence: { type: "string", enum: ["monthly", "annual", "free"] },
           monthlyFeeJpy: { type: "integer", minimum: 0, maximum: 10000000 },
@@ -68,7 +71,6 @@ const billingProfileRequestBody = {
     }
   }
 };
-
 
 export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   openapi: "3.1.0",
@@ -290,6 +292,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "type",
           "content",
           "metadata",
+          "reactions",
           "createdAt"
         ],
         properties: {
@@ -299,7 +302,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           type: { type: "string", enum: ["text", "system", "orderStatus"] },
           content: { type: ["string", "null"] },
           metadata: {},
+          reactions: {
+            type: "array",
+            items: { $ref: "#/components/schemas/RealtimeMessageReaction" }
+          },
           createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      RealtimeMessageReaction: {
+        type: "object",
+        required: ["emoji", "people", "reactedByMe"],
+        properties: {
+          emoji: { type: "string", minLength: 1, maxLength: 32 },
+          people: {
+            type: "array",
+            items: { $ref: "#/components/schemas/RealtimeParticipant" }
+          },
+          reactedByMe: { type: "boolean" }
         }
       },
       RealtimeConversation: {
@@ -431,14 +450,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       RegisteredAccount: {
         type: "object",
-        required: [
-          "id",
-          "email",
-          "username",
-          "accountType",
-          "approvalStatus",
-          "isActive"
-        ],
+        required: ["id", "email", "username", "accountType", "approvalStatus", "isActive"],
         properties: {
           id: { type: "integer" },
           email: { type: "string", format: "email" },
@@ -450,7 +462,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       BackofficeCustomer: {
         type: "object",
-        required: ["id", "userId", "displayName", "email", "membershipLevel", "isPublic", "bookingCount", "createdAt"],
+        required: [
+          "id",
+          "userId",
+          "displayName",
+          "email",
+          "membershipLevel",
+          "isPublic",
+          "bookingCount",
+          "createdAt"
+        ],
         properties: {
           id: { type: "integer" },
           userId: { type: "integer" },
@@ -840,7 +861,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       BackofficeService: {
         type: "object",
-        required: ["id", "categoryId", "categoryName", "shopId", "name", "city", "serviceMode", "priceAmount", "currency", "durationMinutes", "status", "isRecommended", "sortOrder", "createdAt", "updatedAt"],
+        required: [
+          "id",
+          "categoryId",
+          "categoryName",
+          "shopId",
+          "name",
+          "city",
+          "serviceMode",
+          "priceAmount",
+          "currency",
+          "durationMinutes",
+          "status",
+          "isRecommended",
+          "sortOrder",
+          "createdAt",
+          "updatedAt"
+        ],
         properties: {
           id: { type: "integer" },
           categoryId: { type: "integer" },
@@ -1298,10 +1335,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             ],
             properties: {
               shop: {
-                anyOf: [
-                  { $ref: "#/components/schemas/ShopCard" },
-                  { type: "null" }
-                ]
+                anyOf: [{ $ref: "#/components/schemas/ShopCard" }, { type: "null" }]
               },
               bio: { type: ["string", "null"] },
               serviceArea: { type: ["string", "null"] },
@@ -1394,8 +1428,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           serviceId: { type: "integer", minimum: 1 },
           technicianServiceId: { type: "integer", minimum: 1 },
           technicianProfileId: { type: ["integer", "null"], minimum: 1 },
-          startsAt: { type: "string", format: "date-time", description: "ISO 8601 timestamp with UTC or explicit offset" },
-          endsAt: { type: "string", format: "date-time", description: "ISO 8601 timestamp with UTC or explicit offset" },
+          startsAt: {
+            type: "string",
+            format: "date-time",
+            description: "ISO 8601 timestamp with UTC or explicit offset"
+          },
+          endsAt: {
+            type: "string",
+            format: "date-time",
+            description: "ISO 8601 timestamp with UTC or explicit offset"
+          },
           capacity: { type: "integer", minimum: 1, maximum: 100, default: 1 }
         }
       },
@@ -2464,88 +2506,90 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
-    [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/trial/extensions`]: {
-      post: {
-        tags: ["Merchant SaaS Billing"],
-        summary: "Add one of at most three administrator trial extensions",
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "subjectType",
-            in: "path",
+    [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/trial/extensions`]:
+      {
+        post: {
+          tags: ["Merchant SaaS Billing"],
+          summary: "Add one of at most three administrator trial extensions",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "subjectType",
+              in: "path",
+              required: true,
+              schema: { type: "string", enum: ["merchant_account", "shop"] }
+            },
+            idPathParameter("subjectId")
+          ],
+          requestBody: {
             required: true,
-            schema: { type: "string", enum: ["merchant_account", "shop"] }
-          },
-          idPathParameter("subjectId")
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["reason", "version"],
-                properties: {
-                  quickMonths: { type: "integer", enum: [1, 2, 3] },
-                  days: { type: "integer", minimum: 1, maximum: 1095 },
-                  paidFrom: { type: "string", format: "date-time" },
-                  reason: { type: "string", minLength: 1, maxLength: 500 },
-                  version: { type: "integer", minimum: 1 }
-                },
-                anyOf: [
-                  { required: ["quickMonths"] },
-                  { required: ["days"] },
-                  { required: ["paidFrom"] }
-                ]
-              }
-            }
-          }
-        },
-        responses: {
-          "200": jsonDataResponse("Extended trial profile", {
-            $ref: "#/components/schemas/SaasBillingCard"
-          }),
-          "409": { description: "Trial inactive, extension limit, or version conflict" }
-        }
-      }
-    },
-    [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/trial/interrupt`]: {
-      post: {
-        tags: ["Merchant SaaS Billing"],
-        summary: "Permanently interrupt the only trial",
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "subjectType",
-            in: "path",
-            required: true,
-            schema: { type: "string", enum: ["merchant_account", "shop"] }
-          },
-          idPathParameter("subjectId")
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["reason", "version"],
-                properties: {
-                  reason: { type: "string", minLength: 1, maxLength: 500 },
-                  version: { type: "integer", minimum: 1 }
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["reason", "version"],
+                  properties: {
+                    quickMonths: { type: "integer", enum: [1, 2, 3] },
+                    days: { type: "integer", minimum: 1, maximum: 1095 },
+                    paidFrom: { type: "string", format: "date-time" },
+                    reason: { type: "string", minLength: 1, maxLength: 500 },
+                    version: { type: "integer", minimum: 1 }
+                  },
+                  anyOf: [
+                    { required: ["quickMonths"] },
+                    { required: ["days"] },
+                    { required: ["paidFrom"] }
+                  ]
                 }
               }
             }
+          },
+          responses: {
+            "200": jsonDataResponse("Extended trial profile", {
+              $ref: "#/components/schemas/SaasBillingCard"
+            }),
+            "409": { description: "Trial inactive, extension limit, or version conflict" }
           }
-        },
-        responses: {
-          "200": jsonDataResponse("Interrupted trial profile", {
-            $ref: "#/components/schemas/SaasBillingCard"
-          }),
-          "409": { description: "Trial inactive or version conflict" }
         }
-      }
-    },
+      },
+    [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/trial/interrupt`]:
+      {
+        post: {
+          tags: ["Merchant SaaS Billing"],
+          summary: "Permanently interrupt the only trial",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "subjectType",
+              in: "path",
+              required: true,
+              schema: { type: "string", enum: ["merchant_account", "shop"] }
+            },
+            idPathParameter("subjectId")
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["reason", "version"],
+                  properties: {
+                    reason: { type: "string", minLength: 1, maxLength: 500 },
+                    version: { type: "integer", minimum: 1 }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "200": jsonDataResponse("Interrupted trial profile", {
+              $ref: "#/components/schemas/SaasBillingCard"
+            }),
+            "409": { description: "Trial inactive or version conflict" }
+          }
+        }
+      },
     [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/free-periods`]: {
       get: {
         tags: ["Merchant SaaS Billing"],
@@ -2696,39 +2740,40 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
-    [`${config.API_PREFIX}/backoffice/entities/{subjectType}/{subjectId}/suspensions/{suspensionId}/release`]: {
-      post: {
-        tags: ["Merchant SaaS Billing"],
-        summary: "Release a manual suspension without restoring previously blocked slots",
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: "subjectType",
-            in: "path",
+    [`${config.API_PREFIX}/backoffice/entities/{subjectType}/{subjectId}/suspensions/{suspensionId}/release`]:
+      {
+        post: {
+          tags: ["Merchant SaaS Billing"],
+          summary: "Release a manual suspension without restoring previously blocked slots",
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: "subjectType",
+              in: "path",
+              required: true,
+              schema: { type: "string", enum: ["merchant_account", "shop"] }
+            },
+            idPathParameter("subjectId"),
+            idPathParameter("suspensionId")
+          ],
+          requestBody: {
             required: true,
-            schema: { type: "string", enum: ["merchant_account", "shop"] }
-          },
-          idPathParameter("subjectId"),
-          idPathParameter("suspensionId")
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["reason"],
-                properties: { reason: { type: "string", minLength: 1, maxLength: 500 } }
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["reason"],
+                  properties: { reason: { type: "string", minLength: 1, maxLength: 500 } }
+                }
               }
             }
+          },
+          responses: {
+            "200": { description: "Suspension released; blocked availability stays blocked" },
+            "404": { description: "Active suspension not found" }
           }
-        },
-        responses: {
-          "200": { description: "Suspension released; blocked availability stays blocked" },
-          "404": { description: "Active suspension not found" }
         }
-      }
-    },
+      },
     [`${config.API_PREFIX}/health`]: {
       get: {
         tags: ["System"],
@@ -4377,10 +4422,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         summary: "List wallet adjustment requests for operations review",
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: "ownerType", in: "query", schema: { type: "string", enum: ["user", "shop", "platform"] } },
+          {
+            name: "ownerType",
+            in: "query",
+            schema: { type: "string", enum: ["user", "shop", "platform"] }
+          },
           { name: "ownerId", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "type", in: "query", schema: { type: "string", enum: ["topup", "withdrawal"] } },
-          { name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "rejected"] } },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["pending", "approved", "rejected"] }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
@@ -4411,7 +4464,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         },
         responses: {
-          "200": { description: "Request reviewed; approval atomically mutates the wallet and ledger" },
+          "200": {
+            description: "Request reviewed; approval atomically mutates the wallet and ledger"
+          },
           "404": { description: "Wallet adjustment request not found" },
           "409": { description: "Invalid request state or insufficient available balance" }
         }
@@ -4629,24 +4684,86 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: {
-            type: "object",
-            required: ["ownerEmail", "ownerUsername", "ownerPassword", "name", "city", "address"],
-            properties: {
-              ownerEmail: { type: "string", format: "email" }, ownerUsername: { type: "string" }, ownerPassword: { type: "string", minLength: 8 },
-              name: { type: "string", maxLength: 160 }, description: { type: ["string", "null"] }, city: { type: "string" }, address: { type: "string" }, phone: { type: ["string", "null"] }, isRecommended: { type: "boolean" }
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: [
+                  "ownerEmail",
+                  "ownerUsername",
+                  "ownerPassword",
+                  "name",
+                  "city",
+                  "address"
+                ],
+                properties: {
+                  ownerEmail: { type: "string", format: "email" },
+                  ownerUsername: { type: "string" },
+                  ownerPassword: { type: "string", minLength: 8 },
+                  name: { type: "string", maxLength: 160 },
+                  description: { type: ["string", "null"] },
+                  city: { type: "string" },
+                  address: { type: "string" },
+                  phone: { type: ["string", "null"] },
+                  isRecommended: { type: "boolean" }
+                }
+              }
             }
-          } } }
+          }
         },
-        responses: { "201": { description: "Pending shop created" }, "409": { description: "Owner email already exists" } }
+        responses: {
+          "201": { description: "Pending shop created" },
+          "409": { description: "Owner email already exists" }
+        }
       }
     },
     [`${config.API_PREFIX}/backoffice/shops/{id}`]: {
-      patch: { tags: ["Master Data"], summary: "Update a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeShopUpdateInput" } } } }, responses: { "200": { description: "Shop updated" }, "404": { description: "Shop not found" } } },
-      delete: { tags: ["Master Data"], summary: "Soft-delete a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Shop soft-deleted" }, "404": { description: "Shop not found" } } }
+      patch: {
+        tags: ["Master Data"],
+        summary: "Update a shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeShopUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Shop updated" },
+          "404": { description: "Shop not found" }
+        }
+      },
+      delete: {
+        tags: ["Master Data"],
+        summary: "Soft-delete a shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Shop soft-deleted" },
+          "404": { description: "Shop not found" }
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/shops/{id}/approve`]: {
-      post: { tags: ["Master Data"], summary: "Approve a shop and activate its owner identity", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Shop approved" }, "404": { description: "Shop not found" } } }
+      post: {
+        tags: ["Master Data"],
+        summary: "Approve a shop and activate its owner identity",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Shop approved" },
+          "404": { description: "Shop not found" }
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/technicians/{id}`]: {
       get: {
@@ -4661,35 +4778,174 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "404": { description: "Technician not found" }
         }
       },
-      patch: { tags: ["Master Data"], summary: "Update or assign a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not found" } } },
-      delete: { tags: ["Master Data"], summary: "Soft-delete a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not found" } } }
+      patch: {
+        tags: ["Master Data"],
+        summary: "Update or assign a technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Technician updated" },
+          "404": { description: "Technician not found" }
+        }
+      },
+      delete: {
+        tags: ["Master Data"],
+        summary: "Soft-delete a technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Technician soft-deleted" },
+          "404": { description: "Technician not found" }
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/technicians/{id}/approve`]: {
-      post: { tags: ["Master Data"], summary: "Approve and optionally assign a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { content: { "application/json": { schema: { type: "object", properties: { shopId: { type: "integer", minimum: 1 } } } } } }, responses: { "200": { description: "Technician approved" }, "404": { description: "Technician or shop not found" } } }
+      post: {
+        tags: ["Master Data"],
+        summary: "Approve and optionally assign a technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: { type: "object", properties: { shopId: { type: "integer", minimum: 1 } } }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Technician approved" },
+          "404": { description: "Technician or shop not found" }
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/customers`]: {
-      get: { tags: ["Master Data"], summary: "Paginated customer profiles", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated customers" } } }
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated customer profiles",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Paginated customers" } }
+      }
     },
     [`${config.API_PREFIX}/backoffice/customers/{id}`]: {
-      get: { tags: ["Master Data"], summary: "Customer profile detail", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": jsonDataResponse("Customer detail", { $ref: "#/components/schemas/BackofficeCustomerDetail" }), "404": { description: "Customer not found" } } },
-      patch: { tags: ["Master Data"], summary: "Update a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeCustomerUpdateInput" } } } }, responses: { "200": { description: "Customer updated" } } },
-      delete: { tags: ["Master Data"], summary: "Soft-delete a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Customer soft-deleted" } } }
+      get: {
+        tags: ["Master Data"],
+        summary: "Customer profile detail",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Customer detail", {
+            $ref: "#/components/schemas/BackofficeCustomerDetail"
+          }),
+          "404": { description: "Customer not found" }
+        }
+      },
+      patch: {
+        tags: ["Master Data"],
+        summary: "Update a customer profile",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeCustomerUpdateInput" }
+            }
+          }
+        },
+        responses: { "200": { description: "Customer updated" } }
+      },
+      delete: {
+        tags: ["Master Data"],
+        summary: "Soft-delete a customer profile",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Customer soft-deleted" } }
+      }
     },
     [`${config.API_PREFIX}/backoffice/services`]: {
-      get: { tags: ["Master Data"], summary: "Paginated shop services", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated services" } } }
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated shop services",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Paginated services" } }
+      }
     },
     [`${config.API_PREFIX}/backoffice/shops/{shopId}/services`]: {
-      post: { tags: ["Master Data"], summary: "Create a service for a shop", security: [{ bearerAuth: [] }], parameters: [{ name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" } } } }, responses: { "201": { description: "Service created" }, "404": { description: "Shop, category, or technician not found" } } }
+      post: {
+        tags: ["Master Data"],
+        summary: "Create a service for a shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "shopId", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Service created" },
+          "404": { description: "Shop, category, or technician not found" }
+        }
+      }
     },
     [`${config.API_PREFIX}/backoffice/services/{id}`]: {
-      patch: { tags: ["Master Data"], summary: "Update a shop service", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" } } } }, responses: { "200": { description: "Service updated" } } },
-      delete: { tags: ["Master Data"], summary: "Soft-delete a shop service", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Service soft-deleted" } } }
+      patch: {
+        tags: ["Master Data"],
+        summary: "Update a shop service",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" }
+            }
+          }
+        },
+        responses: { "200": { description: "Service updated" } }
+      },
+      delete: {
+        tags: ["Master Data"],
+        summary: "Soft-delete a shop service",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: { "200": { description: "Service soft-deleted" } }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/dashboard`]: {
       get: {
         tags: ["Step 12 Merchant Admin"],
         summary: "Merchant dashboard scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
+        parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "Merchant dashboard payload" },
           "403": { description: "Missing merchant scope or permission" }
@@ -4701,6 +4957,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Merchant Admin"],
         summary: "Paginated real booking orders scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
+        parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "Paginated merchant orders" }
         }
@@ -4711,6 +4968,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Merchant Admin"],
         summary: "Paginated real schedule slots scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
+        parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "Paginated merchant schedule slots" }
         }
@@ -5634,6 +5892,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Merchant Admin"],
         summary: "Paginated real finance reconciliation rows scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
+        parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "Paginated merchant finance settlements" }
         }
@@ -5644,6 +5903,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Merchant Admin"],
         summary: "Export merchant finance settlements as CSV content",
         security: [{ bearerAuth: [] }],
+        parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "CSV export payload" }
         }
@@ -5654,6 +5914,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Merchant Admin"],
         summary: "Paginated real technician profiles scoped to the authenticated shop",
         security: [{ bearerAuth: [] }],
+        parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "Paginated merchant technicians" }
         }
@@ -5664,6 +5925,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Step 12 Merchant Admin"],
         summary: "Current authenticated shop profile",
         security: [{ bearerAuth: [] }],
+        parameters: [merchantPreviewShopHeaderParameter],
         responses: {
           "200": { description: "Current merchant shop payload" }
         }
@@ -5699,41 +5961,296 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "404": { description: "Technician not in current shop" }
         }
       },
-      patch: { tags: ["Master Data"], summary: "Update a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not in current shop" } } },
-      delete: { tags: ["Master Data"], summary: "Soft-delete a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not in current shop" } } }
+      patch: {
+        tags: ["Master Data"],
+        summary: "Update a technician scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Technician updated" },
+          "404": { description: "Technician not in current shop" }
+        }
+      },
+      delete: {
+        tags: ["Master Data"],
+        summary: "Soft-delete a technician scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Technician soft-deleted" },
+          "404": { description: "Technician not in current shop" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/technicians/{id}/approve`]: {
-      post: { tags: ["Master Data"], summary: "Approve an already assigned technician in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician approved" }, "404": { description: "Technician not in current shop" } } }
+      post: {
+        tags: ["Master Data"],
+        summary: "Approve an already assigned technician in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Technician approved" },
+          "404": { description: "Technician not in current shop" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/customers`]: {
-      get: { tags: ["Master Data"], summary: "Paginated customers with bookings in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped customers" } } }
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated customers with bookings in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Paginated scoped customers" } }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/customers/{id}`]: {
-      get: { tags: ["Master Data"], summary: "Customer detail scoped by bookings in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": jsonDataResponse("Scoped customer detail", { $ref: "#/components/schemas/BackofficeCustomerDetail" }), "404": { description: "Customer not visible to current shop" } } }
+      get: {
+        tags: ["Master Data"],
+        summary: "Customer detail scoped by bookings in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Scoped customer detail", {
+            $ref: "#/components/schemas/BackofficeCustomerDetail"
+          }),
+          "404": { description: "Customer not visible to current shop" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/services`]: {
-      get: { tags: ["Master Data"], summary: "Paginated services in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped services" } } },
-      post: { tags: ["Master Data"], summary: "Create a service in the authenticated shop", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" } } } }, responses: { "201": { description: "Service created" }, "404": { description: "Category or technician not found in current shop" } } }
+      get: {
+        tags: ["Master Data"],
+        summary: "Paginated services in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Paginated scoped services" } }
+      },
+      post: {
+        tags: ["Master Data"],
+        summary: "Create a service in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeServiceCreateInput" }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Service created" },
+          "404": { description: "Category or technician not found in current shop" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/services/{id}`]: {
-      patch: { tags: ["Master Data"], summary: "Update a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" } } } }, responses: { "200": { description: "Service updated" }, "404": { description: "Service not in current shop" } } },
-      delete: { tags: ["Master Data"], summary: "Soft-delete a service in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Service soft-deleted" }, "404": { description: "Service not in current shop" } } }
+      patch: {
+        tags: ["Master Data"],
+        summary: "Update a service in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/BackofficeServiceUpdateInput" }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Service updated" },
+          "404": { description: "Service not in current shop" }
+        }
+      },
+      delete: {
+        tags: ["Master Data"],
+        summary: "Soft-delete a service in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Service soft-deleted" },
+          "404": { description: "Service not in current shop" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/schedule/slots`]: {
-      get: { tags: ["Schedule"], summary: "Paginated schedule slots scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "technicianProfileId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "status", in: "query", schema: { type: "string", enum: ["available", "booked", "blocked"] } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Paginated shop schedule slots" } } },
-      post: { tags: ["Schedule"], summary: "Create a bookable slot in the authenticated shop", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } } } }, responses: { "201": { description: "Schedule slot created" }, "404": { description: "Service or technician not found in the current shop" }, "409": { description: "Overlapping slot or duration mismatch" } } }
+      get: {
+        tags: ["Schedule"],
+        summary: "Paginated schedule slots scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "technicianProfileId", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["available", "booked", "blocked"] }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated shop schedule slots" } }
+      },
+      post: {
+        tags: ["Schedule"],
+        summary: "Create a bookable slot in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } }
+          }
+        },
+        responses: {
+          "201": { description: "Schedule slot created" },
+          "404": { description: "Service or technician not found in the current shop" },
+          "409": { description: "Overlapping slot or duration mismatch" }
+        }
+      }
     },
     [`${config.API_PREFIX}/merchant-admin/schedule/slots/{id}`]: {
-      patch: { tags: ["Schedule"], summary: "Update a schedule slot in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } } } }, responses: { "200": { description: "Schedule slot updated" }, "404": { description: "Slot not found in current shop" }, "409": { description: "Overlap or slot already in use" } } },
-      delete: { tags: ["Schedule"], summary: "Soft-delete an unused schedule slot in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Schedule slot soft-deleted" }, "404": { description: "Slot not found in current shop" }, "409": { description: "Slot has an active booking" } } }
+      patch: {
+        tags: ["Schedule"],
+        summary: "Update a schedule slot in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } }
+          }
+        },
+        responses: {
+          "200": { description: "Schedule slot updated" },
+          "404": { description: "Slot not found in current shop" },
+          "409": { description: "Overlap or slot already in use" }
+        }
+      },
+      delete: {
+        tags: ["Schedule"],
+        summary: "Soft-delete an unused schedule slot in the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Schedule slot soft-deleted" },
+          "404": { description: "Slot not found in current shop" },
+          "409": { description: "Slot has an active booking" }
+        }
+      }
     },
     [`${config.API_PREFIX}/technician/schedule/slots`]: {
-      get: { tags: ["Schedule"], summary: "Paginated schedule slots scoped to the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "from", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "to", in: "query", required: true, schema: { type: "string", format: "date-time" } }, { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "status", in: "query", schema: { type: "string", enum: ["available", "booked", "blocked"] } }, { name: "page", in: "query", schema: { type: "integer", minimum: 1 } }, { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }], responses: { "200": { description: "Paginated technician schedule slots" } } },
-      post: { tags: ["Schedule"], summary: "Create a bookable slot for the authenticated technician", security: [{ bearerAuth: [] }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } } } }, responses: { "201": { description: "Schedule slot created" }, "404": { description: "Technician or shop service not found" }, "409": { description: "Overlapping slot or duration mismatch" } } }
+      get: {
+        tags: ["Schedule"],
+        summary: "Paginated schedule slots scoped to the authenticated technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["available", "booked", "blocked"] }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: { "200": { description: "Paginated technician schedule slots" } }
+      },
+      post: {
+        tags: ["Schedule"],
+        summary: "Create a bookable slot for the authenticated technician",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotCreateInput" } }
+          }
+        },
+        responses: {
+          "201": { description: "Schedule slot created" },
+          "404": { description: "Technician or shop service not found" },
+          "409": { description: "Overlapping slot or duration mismatch" }
+        }
+      }
     },
     [`${config.API_PREFIX}/technician/schedule/slots/{id}`]: {
-      patch: { tags: ["Schedule"], summary: "Update a schedule slot owned by the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } } } }, responses: { "200": { description: "Schedule slot updated" }, "404": { description: "Slot not found for current technician" }, "409": { description: "Overlap or slot already in use" } } },
-      delete: { tags: ["Schedule"], summary: "Soft-delete an unused slot owned by the authenticated technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Schedule slot soft-deleted" }, "404": { description: "Slot not found for current technician" }, "409": { description: "Slot has an active booking" } } }
+      patch: {
+        tags: ["Schedule"],
+        summary: "Update a schedule slot owned by the authenticated technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/ScheduleSlotUpdateInput" } }
+          }
+        },
+        responses: {
+          "200": { description: "Schedule slot updated" },
+          "404": { description: "Slot not found for current technician" },
+          "409": { description: "Overlap or slot already in use" }
+        }
+      },
+      delete: {
+        tags: ["Schedule"],
+        summary: "Soft-delete an unused slot owned by the authenticated technician",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": { description: "Schedule slot soft-deleted" },
+          "404": { description: "Slot not found for current technician" },
+          "409": { description: "Slot has an active booking" }
+        }
+      }
     },
     [`${config.API_PREFIX}/im/conversations`]: {
       get: {
@@ -5775,6 +6292,59 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": { description: "Created conversation" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}`]: {
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Hide a conversation from the current participant without deleting shared messages",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Conversation hidden for the current participant" },
+          "404": { description: "Conversation not found for current participant" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/preferences`]: {
+      patch: {
+        tags: ["Step 13 Realtime"],
+        summary: "Update the current participant's pin or mute preferences",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  isPinned: { type: "boolean" },
+                  isMuted: { type: "boolean" }
+                },
+                minProperties: 1
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated participant preferences" },
+          "404": { description: "Conversation not found for current participant" }
         }
       }
     },
@@ -5834,6 +6404,78 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}/reactions`]: {
+      put: {
+        tags: ["Step 13 Realtime"],
+        summary: "Add the current user's reaction to an IM message",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "messageId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["emoji"],
+                properties: { emoji: { type: "string", minLength: 1, maxLength: 32 } }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated message with persisted reactions" },
+          "404": { description: "Conversation or message not found" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Remove the current user's reaction from an IM message",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "messageId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["emoji"],
+                properties: { emoji: { type: "string", minLength: 1, maxLength: 32 } }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated message after reaction removal" },
+          "404": { description: "Conversation or message not found" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/im/conversations/{conversationId}/read`]: {
       post: {
         tags: ["Step 13 Realtime"],
@@ -5849,6 +6491,25 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         responses: {
           "200": { description: "Conversation read state" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/unread`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Mark a conversation as unread for the current user",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Conversation unread state" },
+          "404": { description: "Conversation not found for current participant" }
         }
       }
     },

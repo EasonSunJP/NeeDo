@@ -98,8 +98,8 @@ enum LedgerTransactionType {
   BOOKING_CANCEL_UNFREEZE              @map("booking_cancel_unfreeze")
   BOOKING_COMPLETE_SETTLEMENT          @map("booking_complete_settlement")
   BOOKING_MERCHANT_CANCEL_COMPENSATION @map("booking_merchant_cancel_compensation")
-  MANUAL_TOPUP_APPROVED                 @map("manual_topup_approved")
-  MANUAL_WITHDRAWAL_APPROVED            @map("manual_withdrawal_approved")
+  MANUAL_TOPUP_APPROVED                @map("manual_topup_approved")
+  MANUAL_WITHDRAWAL_APPROVED           @map("manual_withdrawal_approved")
   SEED_CREDIT                          @map("seed_credit")
 
   @@map("ledger_transaction_type")
@@ -180,51 +180,52 @@ model User {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  identities                UserIdentity[]
-  userRoles                 UserRole[]
-  loginLogs                 LoginLog[]                @relation("LoginLogUser")
-  auditLogs                 AuditLog[]                @relation("AuditLogActor")
-  ledgerTransactions        LedgerTransaction[]       @relation("LedgerTransactionActor")
-  requestedWalletAdjustments WalletAdjustmentRequest[] @relation("WalletAdjustmentRequestedBy")
-  reviewedWalletAdjustments  WalletAdjustmentRequest[] @relation("WalletAdjustmentReviewedBy")
-  ownedShops                Shop[]                    @relation("ShopOwner")
-  technicianProfile         TechnicianProfile?
-  customerProfile           CustomerProfile?
-  bookingOrders             BookingOrder[]            @relation("BookingOrderCustomer")
-  orderHistories            OrderStatusHistory[]      @relation("OrderStatusHistoryActor")
-  pricingModeUpdates        Shop[]                    @relation("ShopPricingModeUpdatedBy")
-  createdTechnicianServices TechnicianService[]       @relation("TechnicianServiceCreatedBy")
-  updatedTechnicianServices TechnicianService[]       @relation("TechnicianServiceUpdatedBy")
-  reportedOrderFinancials   OrderFinancial[]          @relation("OrderFinancialIncomeReporter")
-  confirmedOrderFinancials  OrderFinancial[]          @relation("OrderFinancialIncomeConfirmer")
-  confirmedBookingPayments  BookingOrder[]            @relation("BookingOrderPaymentConfirmer")
-  refundedBookingPayments   BookingOrder[]            @relation("BookingOrderPaymentRefunder")
-  generatedPayRuns          PayRun[]                  @relation("PayRunGeneratedBy")
-  approvedPayRuns           PayRun[]                  @relation("PayRunApprovedBy")
-  createdPayslipLines       PayslipLine[]             @relation("PayslipLineCreatedBy")
-  createdPayoutRecords      PayoutRecord[]            @relation("PayoutRecordCreatedBy")
+  identities                  UserIdentity[]
+  userRoles                   UserRole[]
+  loginLogs                   LoginLog[]                 @relation("LoginLogUser")
+  auditLogs                   AuditLog[]                 @relation("AuditLogActor")
+  ledgerTransactions          LedgerTransaction[]        @relation("LedgerTransactionActor")
+  requestedWalletAdjustments  WalletAdjustmentRequest[]  @relation("WalletAdjustmentRequestedBy")
+  reviewedWalletAdjustments   WalletAdjustmentRequest[]  @relation("WalletAdjustmentReviewedBy")
+  ownedShops                  Shop[]                     @relation("ShopOwner")
+  technicianProfile           TechnicianProfile?
+  customerProfile             CustomerProfile?
+  bookingOrders               BookingOrder[]             @relation("BookingOrderCustomer")
+  orderHistories              OrderStatusHistory[]       @relation("OrderStatusHistoryActor")
+  pricingModeUpdates          Shop[]                     @relation("ShopPricingModeUpdatedBy")
+  createdTechnicianServices   TechnicianService[]        @relation("TechnicianServiceCreatedBy")
+  updatedTechnicianServices   TechnicianService[]        @relation("TechnicianServiceUpdatedBy")
+  reportedOrderFinancials     OrderFinancial[]           @relation("OrderFinancialIncomeReporter")
+  confirmedOrderFinancials    OrderFinancial[]           @relation("OrderFinancialIncomeConfirmer")
+  confirmedBookingPayments    BookingOrder[]             @relation("BookingOrderPaymentConfirmer")
+  refundedBookingPayments     BookingOrder[]             @relation("BookingOrderPaymentRefunder")
+  generatedPayRuns            PayRun[]                   @relation("PayRunGeneratedBy")
+  approvedPayRuns             PayRun[]                   @relation("PayRunApprovedBy")
+  createdPayslipLines         PayslipLine[]              @relation("PayslipLineCreatedBy")
+  createdPayoutRecords        PayoutRecord[]             @relation("PayoutRecordCreatedBy")
   requestedPayrollAdjustments PayrollAdjustmentRequest[] @relation("PayrollAdjustmentRequestedBy")
   approvedPayrollAdjustments  PayrollAdjustmentRequest[] @relation("PayrollAdjustmentApprovedBy")
   rejectedPayrollAdjustments  PayrollAdjustmentRequest[] @relation("PayrollAdjustmentRejectedBy")
-  createdConversations      Conversation[]            @relation("ConversationCreator")
-  conversationParticipants  ConversationParticipant[]
-  sentMessages              Message[]                 @relation("MessageSender")
-  ownedContacts             Contact[]                 @relation("ContactOwner")
-  contactEntries            Contact[]                 @relation("ContactUser")
-  sentFriendRequests        FriendRequest[]           @relation("FriendRequestRequester")
-  receivedFriendRequests    FriendRequest[]           @relation("FriendRequestTarget")
-  socialPosts               SocialPost[]              @relation("SocialPostAuthor")
-  following                 Follow[]                  @relation("FollowFollower")
-  followers                 Follow[]                  @relation("FollowFollowing")
-  receivedNotifications     Notification[]            @relation("NotificationRecipient")
-  actedNotifications        Notification[]            @relation("NotificationActor")
-  ownedMerchantAccounts      MerchantAccount[]          @relation("MerchantAccountOwner")
-  createdMerchantMemberships MerchantShopMembership[]   @relation("MerchantMembershipCreatedBy")
-  removedMerchantMemberships MerchantShopMembership[]   @relation("MerchantMembershipRemovedBy")
-  createdSaasFreePeriods     SaasFreePeriod[]           @relation("SaasFreePeriodCreatedBy")
-  reviewedSaasPayments       SaasPayment[]              @relation("SaasPaymentReviewedBy")
-  createdEntitySuspensions   EntitySuspension[]         @relation("EntitySuspensionCreatedBy")
-  releasedEntitySuspensions  EntitySuspension[]         @relation("EntitySuspensionReleasedBy")
+  createdConversations        Conversation[]             @relation("ConversationCreator")
+  conversationParticipants    ConversationParticipant[]
+  sentMessages                Message[]                  @relation("MessageSender")
+  messageReactions            MessageReaction[]
+  ownedContacts               Contact[]                  @relation("ContactOwner")
+  contactEntries              Contact[]                  @relation("ContactUser")
+  sentFriendRequests          FriendRequest[]            @relation("FriendRequestRequester")
+  receivedFriendRequests      FriendRequest[]            @relation("FriendRequestTarget")
+  socialPosts                 SocialPost[]               @relation("SocialPostAuthor")
+  following                   Follow[]                   @relation("FollowFollower")
+  followers                   Follow[]                   @relation("FollowFollowing")
+  receivedNotifications       Notification[]             @relation("NotificationRecipient")
+  actedNotifications          Notification[]             @relation("NotificationActor")
+  ownedMerchantAccounts       MerchantAccount[]          @relation("MerchantAccountOwner")
+  createdMerchantMemberships  MerchantShopMembership[]   @relation("MerchantMembershipCreatedBy")
+  removedMerchantMemberships  MerchantShopMembership[]   @relation("MerchantMembershipRemovedBy")
+  createdSaasFreePeriods      SaasFreePeriod[]           @relation("SaasFreePeriodCreatedBy")
+  reviewedSaasPayments        SaasPayment[]              @relation("SaasPaymentReviewedBy")
+  createdEntitySuspensions    EntitySuspension[]         @relation("EntitySuspensionCreatedBy")
+  releasedEntitySuspensions   EntitySuspension[]         @relation("EntitySuspensionReleasedBy")
 
   @@index([email])
   @@index([phone])
@@ -261,46 +262,46 @@ model Category {
 }
 
 model Shop {
-  id                   Int             @id @default(autoincrement())
-  ownerUserId          Int?            @map("owner_user_id")
-  name                 String          @db.VarChar(160)
-  description          String?         @db.Text
-  city                 String          @db.VarChar(100)
-  address              String          @db.VarChar(255)
-  latitude             Decimal?        @db.Decimal(10, 7)
-  longitude            Decimal?        @db.Decimal(10, 7)
-  phone                String?         @db.VarChar(32)
-  status               String          @default("published") @db.VarChar(50)
-  isRecommended        Boolean         @default(false) @map("is_recommended")
-  pricingMode          ShopPricingMode @default(MERCHANT) @map("pricing_mode")
-  technicianPricingRatePercent Int     @default(100) @map("technician_pricing_rate_percent")
-  pricingModeUpdatedAt DateTime?       @map("pricing_mode_updated_at")
-  pricingModeUpdatedBy Int?            @map("pricing_mode_updated_by")
-  createdAt            DateTime        @default(now()) @map("created_at")
-  updatedAt            DateTime        @updatedAt @map("updated_at")
-  deletedAt            DateTime?       @map("deleted_at")
+  id                           Int             @id @default(autoincrement())
+  ownerUserId                  Int?            @map("owner_user_id")
+  name                         String          @db.VarChar(160)
+  description                  String?         @db.Text
+  city                         String          @db.VarChar(100)
+  address                      String          @db.VarChar(255)
+  latitude                     Decimal?        @db.Decimal(10, 7)
+  longitude                    Decimal?        @db.Decimal(10, 7)
+  phone                        String?         @db.VarChar(32)
+  status                       String          @default("published") @db.VarChar(50)
+  isRecommended                Boolean         @default(false) @map("is_recommended")
+  pricingMode                  ShopPricingMode @default(MERCHANT) @map("pricing_mode")
+  technicianPricingRatePercent Int             @default(100) @map("technician_pricing_rate_percent")
+  pricingModeUpdatedAt         DateTime?       @map("pricing_mode_updated_at")
+  pricingModeUpdatedBy         Int?            @map("pricing_mode_updated_by")
+  createdAt                    DateTime        @default(now()) @map("created_at")
+  updatedAt                    DateTime        @updatedAt @map("updated_at")
+  deletedAt                    DateTime?       @map("deleted_at")
 
-  owner              User?               @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  pricingModeUpdater User?               @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
-  services           Service[]
-  technicianServices TechnicianService[]
-  technicians        TechnicianProfile[]
-  mediaAssets        MediaAsset[]
-  reviewSummary      ReviewSummary?
-  availabilities     Availability[]
-  scheduleSlots      ScheduleSlot[]
-  bookingOrders      BookingOrder[]
-  financeRuleSets    ShopFinanceRuleSet[]
+  owner                User?                           @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  pricingModeUpdater   User?                           @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
+  services             Service[]
+  technicianServices   TechnicianService[]
+  technicians          TechnicianProfile[]
+  mediaAssets          MediaAsset[]
+  reviewSummary        ReviewSummary?
+  availabilities       Availability[]
+  scheduleSlots        ScheduleSlot[]
+  bookingOrders        BookingOrder[]
+  financeRuleSets      ShopFinanceRuleSet[]
   compensationProfiles TechnicianCompensationProfile[]
-  payRuns             PayRun[]
-  payslips            Payslip[]
-  payoutRecords       PayoutRecord[]
-  payrollAdjustments  PayrollAdjustmentRequest[]
-  merchantMemberships MerchantShopMembership[]
-  saasBillingProfiles SaasBillingProfile[]
-  payerSaasInvoices   SaasInvoice[]
-  saasInvoiceLines    SaasInvoiceLine[]
-  entitySuspensions   EntitySuspension[]
+  payRuns              PayRun[]
+  payslips             Payslip[]
+  payoutRecords        PayoutRecord[]
+  payrollAdjustments   PayrollAdjustmentRequest[]
+  merchantMemberships  MerchantShopMembership[]
+  saasBillingProfiles  SaasBillingProfile[]
+  payerSaasInvoices    SaasInvoice[]
+  saasInvoiceLines     SaasInvoiceLine[]
+  entitySuspensions    EntitySuspension[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -313,28 +314,28 @@ model Shop {
 }
 
 model ShopFinanceRuleSet {
-  id                        Int       @id @default(autoincrement())
-  shopId                    Int       @map("shop_id")
-  name                      String    @db.VarChar(160)
-  status                    String    @default("active") @db.VarChar(40)
-  wageMode                  String    @default("commission") @map("wage_mode") @db.VarChar(60)
-  baseSalaryJpy             Int       @default(0) @map("base_salary_jpy")
-  hourlyRateJpy             Int       @default(0) @map("hourly_rate_jpy")
-  dailyRateJpy              Int       @default(0) @map("daily_rate_jpy")
-  fixedOrderPayJpy          Int       @default(0) @map("fixed_order_pay_jpy")
-  commissionRateBps         Int       @default(6000) @map("commission_rate_bps")
-  guaranteedMinimumJpy      Int       @default(0) @map("guaranteed_minimum_jpy")
-  ndpFeeBearer              String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
-  technicianNdpShareBps     Int       @default(0) @map("technician_ndp_share_bps")
-  bonusRulesJson            Json?     @map("bonus_rules_json")
-  deductionRulesJson        Json?     @map("deduction_rules_json")
-  effectiveFrom             DateTime? @map("effective_from")
-  effectiveTo               DateTime? @map("effective_to")
-  createdById               Int?      @map("created_by_id")
-  updatedById               Int?      @map("updated_by_id")
-  createdAt                 DateTime  @default(now()) @map("created_at")
-  updatedAt                 DateTime  @updatedAt @map("updated_at")
-  deletedAt                 DateTime? @map("deleted_at")
+  id                    Int       @id @default(autoincrement())
+  shopId                Int       @map("shop_id")
+  name                  String    @db.VarChar(160)
+  status                String    @default("active") @db.VarChar(40)
+  wageMode              String    @default("commission") @map("wage_mode") @db.VarChar(60)
+  baseSalaryJpy         Int       @default(0) @map("base_salary_jpy")
+  hourlyRateJpy         Int       @default(0) @map("hourly_rate_jpy")
+  dailyRateJpy          Int       @default(0) @map("daily_rate_jpy")
+  fixedOrderPayJpy      Int       @default(0) @map("fixed_order_pay_jpy")
+  commissionRateBps     Int       @default(6000) @map("commission_rate_bps")
+  guaranteedMinimumJpy  Int       @default(0) @map("guaranteed_minimum_jpy")
+  ndpFeeBearer          String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
+  technicianNdpShareBps Int       @default(0) @map("technician_ndp_share_bps")
+  bonusRulesJson        Json?     @map("bonus_rules_json")
+  deductionRulesJson    Json?     @map("deduction_rules_json")
+  effectiveFrom         DateTime? @map("effective_from")
+  effectiveTo           DateTime? @map("effective_to")
+  createdById           Int?      @map("created_by_id")
+  updatedById           Int?      @map("updated_by_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Restrict)
 
@@ -350,30 +351,30 @@ model ShopFinanceRuleSet {
 }
 
 model TechnicianCompensationProfile {
-  id                        Int       @id @default(autoincrement())
-  shopId                    Int       @map("shop_id")
-  technicianProfileId       Int       @map("technician_profile_id")
-  name                      String    @db.VarChar(160)
-  status                    String    @default("active") @db.VarChar(40)
-  version                   Int       @default(1)
-  wageMode                  String    @default("commission") @map("wage_mode") @db.VarChar(60)
-  baseSalaryJpy             Int       @default(0) @map("base_salary_jpy")
-  hourlyRateJpy             Int       @default(0) @map("hourly_rate_jpy")
-  dailyRateJpy              Int       @default(0) @map("daily_rate_jpy")
-  fixedOrderPayJpy          Int       @default(0) @map("fixed_order_pay_jpy")
-  commissionRateBps         Int       @default(6000) @map("commission_rate_bps")
-  guaranteedMinimumJpy      Int       @default(0) @map("guaranteed_minimum_jpy")
-  ndpFeeBearer              String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
-  technicianNdpShareBps     Int       @default(0) @map("technician_ndp_share_bps")
-  bonusRulesJson            Json?     @map("bonus_rules_json")
-  deductionRulesJson        Json?     @map("deduction_rules_json")
-  effectiveFrom             DateTime? @map("effective_from")
-  effectiveTo               DateTime? @map("effective_to")
-  createdById               Int?      @map("created_by_id")
-  updatedById               Int?      @map("updated_by_id")
-  createdAt                 DateTime  @default(now()) @map("created_at")
-  updatedAt                 DateTime  @updatedAt @map("updated_at")
-  deletedAt                 DateTime? @map("deleted_at")
+  id                    Int       @id @default(autoincrement())
+  shopId                Int       @map("shop_id")
+  technicianProfileId   Int       @map("technician_profile_id")
+  name                  String    @db.VarChar(160)
+  status                String    @default("active") @db.VarChar(40)
+  version               Int       @default(1)
+  wageMode              String    @default("commission") @map("wage_mode") @db.VarChar(60)
+  baseSalaryJpy         Int       @default(0) @map("base_salary_jpy")
+  hourlyRateJpy         Int       @default(0) @map("hourly_rate_jpy")
+  dailyRateJpy          Int       @default(0) @map("daily_rate_jpy")
+  fixedOrderPayJpy      Int       @default(0) @map("fixed_order_pay_jpy")
+  commissionRateBps     Int       @default(6000) @map("commission_rate_bps")
+  guaranteedMinimumJpy  Int       @default(0) @map("guaranteed_minimum_jpy")
+  ndpFeeBearer          String    @default("shop") @map("ndp_fee_bearer") @db.VarChar(40)
+  technicianNdpShareBps Int       @default(0) @map("technician_ndp_share_bps")
+  bonusRulesJson        Json?     @map("bonus_rules_json")
+  deductionRulesJson    Json?     @map("deduction_rules_json")
+  effectiveFrom         DateTime? @map("effective_from")
+  effectiveTo           DateTime? @map("effective_to")
+  createdById           Int?      @map("created_by_id")
+  updatedById           Int?      @map("updated_by_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
 
   shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
@@ -408,19 +409,19 @@ model TechnicianProfile {
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  shop               Shop?               @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  services           Service[]
-  technicianServices TechnicianService[]
-  mediaAssets        MediaAsset[]
-  reviewSummary      ReviewSummary?
-  availabilities     Availability[]
-  scheduleSlots      ScheduleSlot[]
-  bookingOrders      BookingOrder[]
+  user                 User                            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shop                 Shop?                           @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  services             Service[]
+  technicianServices   TechnicianService[]
+  mediaAssets          MediaAsset[]
+  reviewSummary        ReviewSummary?
+  availabilities       Availability[]
+  scheduleSlots        ScheduleSlot[]
+  bookingOrders        BookingOrder[]
   compensationProfiles TechnicianCompensationProfile[]
-  payslips            Payslip[]
-  payoutRecords       PayoutRecord[]
-  payrollAdjustments  PayrollAdjustmentRequest[]
+  payslips             Payslip[]
+  payoutRecords        PayoutRecord[]
+  payrollAdjustments   PayrollAdjustmentRequest[]
 
   @@index([shopId])
   @@index([city])
@@ -667,30 +668,30 @@ model ScheduleSlot {
 }
 
 model BookingOrder {
-  id                      Int                @id @default(autoincrement())
-  orderNo                 String             @unique @map("order_no") @db.VarChar(40)
-  orderType               OrderType          @default(BOOKING) @map("order_type")
-  customerUserId          Int                @map("customer_user_id")
-  serviceId               Int?               @map("service_id")
-  technicianServiceId     Int?               @map("technician_service_id")
-  shopId                  Int                @map("shop_id")
-  technicianProfileId     Int?               @map("technician_profile_id")
-  scheduleSlotId          Int                @map("schedule_slot_id")
-  status                  BookingOrderStatus @default(PENDING)
-  fulfillmentMode         String             @default("store") @map("fulfillment_mode") @db.VarChar(50)
-  priceAmount             Decimal            @map("price_amount") @db.Decimal(10, 2)
-  currency                String             @default("JPY") @db.VarChar(3)
-  pricingModeSnapshot     ShopPricingMode    @default(MERCHANT) @map("pricing_mode_snapshot")
-  serviceOwnerType        ServiceOwnerType   @default(SHOP) @map("service_owner_type")
-  serviceOwnerId          Int?               @map("service_owner_id")
-  serviceNameSnapshot     String?            @map("service_name_snapshot") @db.VarChar(160)
-  servicePriceSnapshot    Decimal?           @map("service_price_snapshot") @db.Decimal(10, 2)
-  serviceDurationSnapshot Int?               @map("service_duration_snapshot")
-  serviceSnapshotJson     Json?              @map("service_snapshot_json")
-  startsAt                DateTime           @map("starts_at")
-  endsAt                  DateTime           @map("ends_at")
-  note                    String?            @db.VarChar(500)
-  cancelReason            String?            @map("cancel_reason") @db.VarChar(500)
+  id                      Int                  @id @default(autoincrement())
+  orderNo                 String               @unique @map("order_no") @db.VarChar(40)
+  orderType               OrderType            @default(BOOKING) @map("order_type")
+  customerUserId          Int                  @map("customer_user_id")
+  serviceId               Int?                 @map("service_id")
+  technicianServiceId     Int?                 @map("technician_service_id")
+  shopId                  Int                  @map("shop_id")
+  technicianProfileId     Int?                 @map("technician_profile_id")
+  scheduleSlotId          Int                  @map("schedule_slot_id")
+  status                  BookingOrderStatus   @default(PENDING)
+  fulfillmentMode         String               @default("store") @map("fulfillment_mode") @db.VarChar(50)
+  priceAmount             Decimal              @map("price_amount") @db.Decimal(10, 2)
+  currency                String               @default("JPY") @db.VarChar(3)
+  pricingModeSnapshot     ShopPricingMode      @default(MERCHANT) @map("pricing_mode_snapshot")
+  serviceOwnerType        ServiceOwnerType     @default(SHOP) @map("service_owner_type")
+  serviceOwnerId          Int?                 @map("service_owner_id")
+  serviceNameSnapshot     String?              @map("service_name_snapshot") @db.VarChar(160)
+  servicePriceSnapshot    Decimal?             @map("service_price_snapshot") @db.Decimal(10, 2)
+  serviceDurationSnapshot Int?                 @map("service_duration_snapshot")
+  serviceSnapshotJson     Json?                @map("service_snapshot_json")
+  startsAt                DateTime             @map("starts_at")
+  endsAt                  DateTime             @map("ends_at")
+  note                    String?              @db.VarChar(500)
+  cancelReason            String?              @map("cancel_reason") @db.VarChar(500)
   paymentMethod           ServicePaymentMethod @default(ONSITE) @map("payment_method")
   paymentStatus           ServicePaymentStatus @default(PENDING) @map("payment_status")
   paymentAmountJpy        Int                  @default(0) @map("payment_amount_jpy")
@@ -701,18 +702,18 @@ model BookingOrder {
   paymentRefundedById     Int?                 @map("payment_refunded_by_id")
   paymentRefundedAt       DateTime?            @map("payment_refunded_at")
   paymentRefundReference  String?              @map("payment_refund_reference") @db.VarChar(120)
-  paymentRefundReason     String?               @map("payment_refund_reason") @db.VarChar(500)
-  createdAt               DateTime           @default(now()) @map("created_at")
-  updatedAt               DateTime           @updatedAt @map("updated_at")
-  deletedAt               DateTime?          @map("deleted_at")
+  paymentRefundReason     String?              @map("payment_refund_reason") @db.VarChar(500)
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+  deletedAt               DateTime?            @map("deleted_at")
 
-  customer          User                 @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
-  service           Service?             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  technicianService TechnicianService?   @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
-  shop              Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile TechnicianProfile?   @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  scheduleSlot      ScheduleSlot         @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
-  statusHistory     OrderStatusHistory[]
+  customer           User                 @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  service            Service?             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService  TechnicianService?   @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
+  shop               Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile  TechnicianProfile?   @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  scheduleSlot       ScheduleSlot         @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
+  statusHistory      OrderStatusHistory[]
   feeCalculationLogs FeeCalculationLog[]
   walletHolds        WalletHold[]
   financial          OrderFinancial?
@@ -787,6 +788,9 @@ model ConversationParticipant {
   userId            Int       @map("user_id")
   role              String    @default("member") @db.VarChar(50)
   unreadCount       Int       @default(0) @map("unread_count")
+  isPinned          Boolean   @default(false) @map("is_pinned")
+  isMuted           Boolean   @default(false) @map("is_muted")
+  hiddenAt          DateTime? @map("hidden_at")
   lastReadMessageId Int?      @map("last_read_message_id")
   lastReadAt        DateTime? @map("last_read_at")
   createdAt         DateTime  @default(now()) @map("created_at")
@@ -800,6 +804,7 @@ model ConversationParticipant {
   @@unique([conversationId, userId])
   @@index([conversationId])
   @@index([userId])
+  @@index([userId, hiddenAt])
   @@index([lastReadMessageId])
   @@index([deletedAt])
   @@map("conversation_participants")
@@ -819,6 +824,7 @@ model Message {
   conversation Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   sender       User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
   readMarkers  ConversationParticipant[] @relation("ParticipantLastReadMessage")
+  reactions    MessageReaction[]
 
   @@index([conversationId, id])
   @@index([senderUserId])
@@ -826,6 +832,25 @@ model Message {
   @@index([createdAt])
   @@index([deletedAt])
   @@map("messages")
+}
+
+model MessageReaction {
+  id        Int       @id @default(autoincrement())
+  messageId Int       @map("message_id")
+  userId    Int       @map("user_id")
+  emoji     String    @db.VarChar(64)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("message_reactions")
 }
 
 model Contact {
@@ -1091,8 +1116,8 @@ model Wallet {
   updatedAt        DateTime        @updatedAt @map("updated_at")
   deletedAt        DateTime?       @map("deleted_at")
 
-  ledgerEntries       WalletLedger[]
-  adjustmentRequests  WalletAdjustmentRequest[]
+  ledgerEntries      WalletLedger[]
+  adjustmentRequests WalletAdjustmentRequest[]
 
   @@unique([ownerType, ownerId, currency])
   @@index([ownerType, ownerId])
@@ -1117,9 +1142,9 @@ model LedgerTransaction {
   updatedAt      DateTime                @updatedAt @map("updated_at")
   deletedAt      DateTime?               @map("deleted_at")
 
-  actor          User?                  @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  entries        WalletLedger[]
-  reconciliation FinanceReconciliation?
+  actor                   User?                    @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  entries                 WalletLedger[]
+  reconciliation          FinanceReconciliation?
   walletAdjustmentRequest WalletAdjustmentRequest?
 
   @@index([type])
@@ -1283,18 +1308,18 @@ model PlatformFeeRule {
 }
 
 model PlatformFeeTier {
-  id                      Int      @id @default(autoincrement())
-  ruleId                  Int      @map("rule_id")
-  tierBasis               String   @default("monthly_completed_orders") @map("tier_basis") @db.VarChar(60)
-  tierMode                String   @default("progressive") @map("tier_mode") @db.VarChar(40)
-  minValue                Int      @default(0) @map("min_value")
-  maxValue                Int?     @map("max_value")
-  feeAmountNdp            Int?     @map("fee_amount_ndp")
-  adjustmentAmountNdp     Int?     @map("adjustment_amount_ndp")
-  adjustmentPercent       Decimal? @map("adjustment_percent") @db.Decimal(8, 4)
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
-  deletedAt               DateTime? @map("deleted_at")
+  id                  Int       @id @default(autoincrement())
+  ruleId              Int       @map("rule_id")
+  tierBasis           String    @default("monthly_completed_orders") @map("tier_basis") @db.VarChar(60)
+  tierMode            String    @default("progressive") @map("tier_mode") @db.VarChar(40)
+  minValue            Int       @default(0) @map("min_value")
+  maxValue            Int?      @map("max_value")
+  feeAmountNdp        Int?      @map("fee_amount_ndp")
+  adjustmentAmountNdp Int?      @map("adjustment_amount_ndp")
+  adjustmentPercent   Decimal?  @map("adjustment_percent") @db.Decimal(8, 4)
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
   rule PlatformFeeRule @relation(fields: [ruleId], references: [id], onDelete: Restrict)
 
@@ -1396,23 +1421,23 @@ model FeeCalculationLog {
 }
 
 model WalletHold {
-  id                Int       @id @default(autoincrement())
+  id                Int             @id @default(autoincrement())
   ownerType         WalletOwnerType @map("owner_type")
-  ownerId           Int       @map("owner_id")
-  bookingOrderId    Int       @map("booking_order_id")
-  feeType           String    @map("fee_type") @db.VarChar(60)
-  holdAmountNdp     Int       @default(0) @map("hold_amount_ndp")
-  capturedAmountNdp Int       @default(0) @map("captured_amount_ndp")
-  releasedAmountNdp Int       @default(0) @map("released_amount_ndp")
-  status            String    @default("active") @db.VarChar(40)
-  idempotencyKey    String    @unique @map("idempotency_key") @db.VarChar(180)
-  calculationLogId  Int?      @map("calculation_log_id")
+  ownerId           Int             @map("owner_id")
+  bookingOrderId    Int             @map("booking_order_id")
+  feeType           String          @map("fee_type") @db.VarChar(60)
+  holdAmountNdp     Int             @default(0) @map("hold_amount_ndp")
+  capturedAmountNdp Int             @default(0) @map("captured_amount_ndp")
+  releasedAmountNdp Int             @default(0) @map("released_amount_ndp")
+  status            String          @default("active") @db.VarChar(40)
+  idempotencyKey    String          @unique @map("idempotency_key") @db.VarChar(180)
+  calculationLogId  Int?            @map("calculation_log_id")
   metadata          Json?
-  capturedAt        DateTime? @map("captured_at")
-  releasedAt        DateTime? @map("released_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  deletedAt         DateTime? @map("deleted_at")
+  capturedAt        DateTime?       @map("captured_at")
+  releasedAt        DateTime?       @map("released_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  deletedAt         DateTime?       @map("deleted_at")
 
   bookingOrder BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
 
@@ -1463,9 +1488,9 @@ model OrderFinancial {
   updatedAt                           DateTime  @updatedAt @map("updated_at")
   deletedAt                           DateTime? @map("deleted_at")
 
-  bookingOrder          BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
-  serviceIncomeReporter User?        @relation("OrderFinancialIncomeReporter", fields: [serviceIncomeReportedById], references: [id], onDelete: SetNull)
-  serviceIncomeConfirmer User?       @relation("OrderFinancialIncomeConfirmer", fields: [serviceIncomeConfirmedById], references: [id], onDelete: SetNull)
+  bookingOrder           BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  serviceIncomeReporter  User?        @relation("OrderFinancialIncomeReporter", fields: [serviceIncomeReportedById], references: [id], onDelete: SetNull)
+  serviceIncomeConfirmer User?        @relation("OrderFinancialIncomeConfirmer", fields: [serviceIncomeConfirmedById], references: [id], onDelete: SetNull)
 
   @@index([orderType])
   @@index([customerUserId])
@@ -1483,30 +1508,30 @@ model OrderFinancial {
 }
 
 model PayRun {
-  id                    Int       @id @default(autoincrement())
-  shopId                Int       @map("shop_id")
-  periodStart           DateTime  @map("period_start")
-  periodEnd             DateTime  @map("period_end")
-  status                String    @default("draft") @db.VarChar(40)
-  totalBaseSalaryJpy    Int       @default(0) @map("total_base_salary_jpy")
-  totalCommissionJpy    Int       @default(0) @map("total_commission_jpy")
-  totalBonusJpy         Int       @default(0) @map("total_bonus_jpy")
-  totalAllowanceJpy     Int       @default(0) @map("total_allowance_jpy")
-  totalDeductionJpy     Int       @default(0) @map("total_deduction_jpy")
-  totalNetPayJpy        Int       @default(0) @map("total_net_pay_jpy")
-  paidAmountJpy         Int       @default(0) @map("paid_amount_jpy")
-  unpaidAmountJpy       Int       @default(0) @map("unpaid_amount_jpy")
-  generatedById         Int?      @map("generated_by_id")
-  approvedById          Int?      @map("approved_by_id")
-  lockedAt              DateTime? @map("locked_at")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  deletedAt             DateTime? @map("deleted_at")
+  id                 Int       @id @default(autoincrement())
+  shopId             Int       @map("shop_id")
+  periodStart        DateTime  @map("period_start")
+  periodEnd          DateTime  @map("period_end")
+  status             String    @default("draft") @db.VarChar(40)
+  totalBaseSalaryJpy Int       @default(0) @map("total_base_salary_jpy")
+  totalCommissionJpy Int       @default(0) @map("total_commission_jpy")
+  totalBonusJpy      Int       @default(0) @map("total_bonus_jpy")
+  totalAllowanceJpy  Int       @default(0) @map("total_allowance_jpy")
+  totalDeductionJpy  Int       @default(0) @map("total_deduction_jpy")
+  totalNetPayJpy     Int       @default(0) @map("total_net_pay_jpy")
+  paidAmountJpy      Int       @default(0) @map("paid_amount_jpy")
+  unpaidAmountJpy    Int       @default(0) @map("unpaid_amount_jpy")
+  generatedById      Int?      @map("generated_by_id")
+  approvedById       Int?      @map("approved_by_id")
+  lockedAt           DateTime? @map("locked_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
 
-  shop        Shop      @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  generatedBy User?     @relation("PayRunGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
-  approvedBy  User?     @relation("PayRunApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  payslips    Payslip[]
+  shop                      Shop                       @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  generatedBy               User?                      @relation("PayRunGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  approvedBy                User?                      @relation("PayRunApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  payslips                  Payslip[]
   appliedPayrollAdjustments PayrollAdjustmentRequest[] @relation("PayrollAdjustmentAppliedPayRun")
 
   @@index([shopId])
@@ -1519,38 +1544,38 @@ model PayRun {
 }
 
 model Payslip {
-  id                            Int       @id @default(autoincrement())
-  payRunId                      Int       @map("pay_run_id")
-  shopId                        Int       @map("shop_id")
-  technicianProfileId           Int       @map("technician_profile_id")
-  technicianUserId              Int?      @map("technician_user_id")
-  compensationProfileId         Int?      @map("compensation_profile_id")
-  periodStart                   DateTime  @map("period_start")
-  periodEnd                     DateTime  @map("period_end")
-  status                        String    @default("draft") @db.VarChar(40)
-  disputeStatus                 String    @default("none") @map("dispute_status") @db.VarChar(40)
-  disputeReason                 String?   @map("dispute_reason") @db.VarChar(500)
-  baseSalaryJpy                 Int       @default(0) @map("base_salary_jpy")
-  annualSalaryProratedJpy       Int       @default(0) @map("annual_salary_prorated_jpy")
-  dailyWageJpy                  Int       @default(0) @map("daily_wage_jpy")
-  hourlyWageJpy                 Int       @default(0) @map("hourly_wage_jpy")
-  commissionJpy                 Int       @default(0) @map("commission_jpy")
-  guaranteeTopupJpy             Int       @default(0) @map("guarantee_topup_jpy")
-  bonusJpy                      Int       @default(0) @map("bonus_jpy")
-  allowanceJpy                  Int       @default(0) @map("allowance_jpy")
-  deductionJpy                  Int       @default(0) @map("deduction_jpy")
-  platformFeeShareDeductionJpy  Int       @default(0) @map("platform_fee_share_deduction_jpy")
-  netPayJpy                     Int       @default(0) @map("net_pay_jpy")
-  paidAmountJpy                 Int       @default(0) @map("paid_amount_jpy")
-  unpaidAmountJpy               Int       @default(0) @map("unpaid_amount_jpy")
-  confirmedAt                   DateTime? @map("confirmed_at")
-  disputedAt                    DateTime? @map("disputed_at")
-  disputeResolvedAt             DateTime? @map("dispute_resolved_at")
-  disputeResolvedById           Int?      @map("dispute_resolved_by_id")
-  disputeResolutionNote         String?   @map("dispute_resolution_note") @db.VarChar(500)
-  createdAt                     DateTime  @default(now()) @map("created_at")
-  updatedAt                     DateTime  @updatedAt @map("updated_at")
-  deletedAt                     DateTime? @map("deleted_at")
+  id                           Int       @id @default(autoincrement())
+  payRunId                     Int       @map("pay_run_id")
+  shopId                       Int       @map("shop_id")
+  technicianProfileId          Int       @map("technician_profile_id")
+  technicianUserId             Int?      @map("technician_user_id")
+  compensationProfileId        Int?      @map("compensation_profile_id")
+  periodStart                  DateTime  @map("period_start")
+  periodEnd                    DateTime  @map("period_end")
+  status                       String    @default("draft") @db.VarChar(40)
+  disputeStatus                String    @default("none") @map("dispute_status") @db.VarChar(40)
+  disputeReason                String?   @map("dispute_reason") @db.VarChar(500)
+  baseSalaryJpy                Int       @default(0) @map("base_salary_jpy")
+  annualSalaryProratedJpy      Int       @default(0) @map("annual_salary_prorated_jpy")
+  dailyWageJpy                 Int       @default(0) @map("daily_wage_jpy")
+  hourlyWageJpy                Int       @default(0) @map("hourly_wage_jpy")
+  commissionJpy                Int       @default(0) @map("commission_jpy")
+  guaranteeTopupJpy            Int       @default(0) @map("guarantee_topup_jpy")
+  bonusJpy                     Int       @default(0) @map("bonus_jpy")
+  allowanceJpy                 Int       @default(0) @map("allowance_jpy")
+  deductionJpy                 Int       @default(0) @map("deduction_jpy")
+  platformFeeShareDeductionJpy Int       @default(0) @map("platform_fee_share_deduction_jpy")
+  netPayJpy                    Int       @default(0) @map("net_pay_jpy")
+  paidAmountJpy                Int       @default(0) @map("paid_amount_jpy")
+  unpaidAmountJpy              Int       @default(0) @map("unpaid_amount_jpy")
+  confirmedAt                  DateTime? @map("confirmed_at")
+  disputedAt                   DateTime? @map("disputed_at")
+  disputeResolvedAt            DateTime? @map("dispute_resolved_at")
+  disputeResolvedById          Int?      @map("dispute_resolved_by_id")
+  disputeResolutionNote        String?   @map("dispute_resolution_note") @db.VarChar(500)
+  createdAt                    DateTime  @default(now()) @map("created_at")
+  updatedAt                    DateTime  @updatedAt @map("updated_at")
+  deletedAt                    DateTime? @map("deleted_at")
 
   payRun              PayRun                         @relation(fields: [payRunId], references: [id], onDelete: Restrict)
   shop                Shop                           @relation(fields: [shopId], references: [id], onDelete: Restrict)
@@ -1574,26 +1599,26 @@ model Payslip {
 }
 
 model PayslipLine {
-  id            Int      @id @default(autoincrement())
-  payslipId     Int      @map("payslip_id")
-  lineType      String   @map("line_type") @db.VarChar(60)
-  title         String   @db.VarChar(180)
-  amountJpy     Int      @default(0) @map("amount_jpy")
-  quantity      Decimal  @default(1) @db.Decimal(10, 2)
-  unitAmountJpy Int      @default(0) @map("unit_amount_jpy")
-  formulaText   String?  @map("formula_text") @db.VarChar(255)
-  sourceType    String   @default("manual") @map("source_type") @db.VarChar(60)
-  sourceId      Int?     @map("source_id")
-  ruleId        String?  @map("rule_id") @db.VarChar(120)
-  orderId       Int?     @map("order_id")
-  explanation   String?  @db.VarChar(500)
-  createdById   Int?     @map("created_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id            Int       @id @default(autoincrement())
+  payslipId     Int       @map("payslip_id")
+  lineType      String    @map("line_type") @db.VarChar(60)
+  title         String    @db.VarChar(180)
+  amountJpy     Int       @default(0) @map("amount_jpy")
+  quantity      Decimal   @default(1) @db.Decimal(10, 2)
+  unitAmountJpy Int       @default(0) @map("unit_amount_jpy")
+  formulaText   String?   @map("formula_text") @db.VarChar(255)
+  sourceType    String    @default("manual") @map("source_type") @db.VarChar(60)
+  sourceId      Int?      @map("source_id")
+  ruleId        String?   @map("rule_id") @db.VarChar(120)
+  orderId       Int?      @map("order_id")
+  explanation   String?   @db.VarChar(500)
+  createdById   Int?      @map("created_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
 
-  payslip   Payslip @relation(fields: [payslipId], references: [id], onDelete: Restrict)
-  createdBy User?   @relation("PayslipLineCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  payslip                   Payslip                    @relation(fields: [payslipId], references: [id], onDelete: Restrict)
+  createdBy                 User?                      @relation("PayslipLineCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   appliedPayrollAdjustments PayrollAdjustmentRequest[] @relation("PayrollAdjustmentAppliedLine")
 
   @@index([payslipId])
@@ -1630,13 +1655,13 @@ model PayrollAdjustmentRequest {
   updatedAt            DateTime  @updatedAt @map("updated_at")
   deletedAt            DateTime? @map("deleted_at")
 
-  shop                Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile   TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
-  requestedBy         User              @relation("PayrollAdjustmentRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
-  approvedBy          User?             @relation("PayrollAdjustmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  rejectedBy          User?             @relation("PayrollAdjustmentRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
-  appliedPayRun       PayRun?           @relation("PayrollAdjustmentAppliedPayRun", fields: [appliedPayRunId], references: [id], onDelete: SetNull)
-  appliedPayslipLine  PayslipLine?      @relation("PayrollAdjustmentAppliedLine", fields: [appliedPayslipLineId], references: [id], onDelete: SetNull)
+  shop               Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile  TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  requestedBy        User              @relation("PayrollAdjustmentRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy         User?             @relation("PayrollAdjustmentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedBy         User?             @relation("PayrollAdjustmentRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  appliedPayRun      PayRun?           @relation("PayrollAdjustmentAppliedPayRun", fields: [appliedPayRunId], references: [id], onDelete: SetNull)
+  appliedPayslipLine PayslipLine?      @relation("PayrollAdjustmentAppliedLine", fields: [appliedPayslipLineId], references: [id], onDelete: SetNull)
 
   @@index([shopId])
   @@index([technicianProfileId])
@@ -1686,6 +1711,7 @@ model PayoutRecord {
   @@index([deletedAt])
   @@map("payout_records")
 }
+
 model MerchantAccount {
   id                    Int       @id @default(autoincrement())
   code                  String    @unique @db.VarChar(100)

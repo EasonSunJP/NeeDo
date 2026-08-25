@@ -3,6 +3,13 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { backofficeRealDataApi, type BackofficeDashboardPayload } from "../../api/backofficeRealData";
 import { useAuth } from "../../auth/AuthProvider";
 import type { FeaturePermission } from "../../auth/featurePermissions";
+import {
+  clearMerchantAdminPreview,
+  getMerchantAdminPreview,
+  setMerchantAdminPreviewShop
+} from "../../auth/merchantAdminPreview";
+import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
+import { useI18n } from "../../i18n/I18nProvider";
 import { cn, yen } from "../../lib/utils";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, normalizeAdminTheme, sharedAdminThemeOptions, type AdminTheme } from "../../theme/AdminTheme";
 import { AdminAccountMenu } from "../admin/AdminAccountMenu";
@@ -172,22 +179,26 @@ function getInitialThemeState(): AdminThemeState {
 
 export function MerchantAdminLayout({ children }: { children: ReactNode }) {
   const { canAccessFeature, session } = useAuth();
+  const { language } = useI18n();
+  const t = (source: string) => translateMerchantBillingText(source, language);
   const [{ theme, preferenceMode }, setThemeState] = useState<AdminThemeState>(getInitialThemeState);
+  const [preview, setPreview] = useState(getMerchantAdminPreview);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<"loading" | "success" | "error">("loading");
   const [summaryRevision, setSummaryRevision] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
+  const readOnlyPreview = preview && session?.allowedPortals.includes("admin") ? preview : null;
   const visibleSections = useMemo(
     () =>
       merchantAdminSections
         .map((section) => ({
           ...section,
-          items: section.items.filter((item) => !item.permission || canAccessFeature("merchant", item.permission))
+          items: section.items.filter((item) => !item.permission || readOnlyPreview || canAccessFeature("merchant", item.permission))
         }))
         .filter((section) => section.items.length > 0),
-    [canAccessFeature]
+    [canAccessFeature, readOnlyPreview]
   );
   const routeSectionKey = getSectionForRoute(location.pathname, location.search, visibleSections);
   const [activeSectionKey, setActiveSectionKey] = useState(routeSectionKey);
@@ -245,7 +256,21 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
     return () => {
       activeRequest = false;
     };
-  }, [session?.currentIdentity.id, summaryRevision]);
+  }, [readOnlyPreview?.selectedShopId, session?.currentIdentity.id, summaryRevision]);
+
+  const changePreviewShop = (shopId: number) => {
+    const next = setMerchantAdminPreviewShop(shopId);
+    if (!next) return;
+    setPreview(next);
+    navigate(0);
+  };
+
+  const exitPreview = () => {
+    const returnTo = readOnlyPreview?.returnTo ?? "/admin/merchants";
+    clearMerchantAdminPreview();
+    setPreview(null);
+    navigate(returnTo);
+  };
 
   return (
     <div className={cn("admin-shell merchant-admin-shell min-h-screen bg-paper text-ink", `admin-theme-${theme}`)}>
@@ -452,7 +477,37 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="admin-main w-full px-4 pb-6 pt-32 md:px-5 md:pt-36 lg:pt-28 2xl:px-6">{children}</main>
+        <main className="admin-main w-full px-4 pb-6 pt-32 md:px-5 md:pt-36 lg:pt-28 2xl:px-6">
+          {readOnlyPreview ? (
+            <section className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky/35 bg-sky/10 px-4 py-3 shadow-panel">
+              <span className="shrink-0 rounded-full bg-sky px-3 py-1 text-xs font-black text-white">{t("只读代看")}</span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black text-ink">{readOnlyPreview.subjectName}</p>
+                <p className="mt-0.5 text-xs font-semibold text-ink/55">{t("可查看真实数据，所有修改请求都会被系统拦截")}</p>
+              </div>
+              {readOnlyPreview.shops.length > 1 ? (
+                <label className="flex items-center gap-2 text-xs font-black text-ink/60">
+                  {t("切换查看店铺")}
+                  <select
+                    className="focus-ring h-9 max-w-[240px] rounded-lg border border-line bg-white px-3 text-xs font-bold text-ink"
+                    value={readOnlyPreview.selectedShopId}
+                    onChange={(event) => changePreviewShop(Number(event.target.value))}
+                  >
+                    {readOnlyPreview.shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              <button
+                className="focus-ring h-9 shrink-0 rounded-full border border-sky/40 bg-white px-4 text-xs font-black text-[#245a80]"
+                onClick={exitPreview}
+                type="button"
+              >
+                {t("退出只读代看")}
+              </button>
+            </section>
+          ) : null}
+          {children}
+        </main>
       </div>
     </div>
   );

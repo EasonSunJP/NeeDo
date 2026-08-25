@@ -4,9 +4,12 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
 
 describe("formal IM legacy-store gate", () => {
-  it("hydrates the browser mock store only for explicit static bypass sessions", () => {
-    expect(source).toContain("isStaticDemoMode() && isFrontendBypassSession(session)");
-    expect(source).toContain("if (!legacyEnabled)");
-    expect(source).toContain("formalImMutationUnavailable");
+  it("selects the mock adapter only for explicit static bypass sessions", () => {
+    expect(source).toContain(
+      "isStaticDemoMode() && isFrontendBypassSession(session)",
+    );
+    expect(source).toContain("createFormalImApi");
+    expect(source).toContain("installMockServer: legacyEnabled");
+    expect(source).not.toContain("formalImMutationUnavailable");
   });
 });

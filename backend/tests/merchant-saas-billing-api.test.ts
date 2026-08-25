@@ -139,8 +139,7 @@ const createFixture = async () => {
     "auth:refresh",
     "auth:logout",
     "backoffice:merchant-accounts:list",
-    "backoffice:merchant-accounts:read",
-    "backoffice:saas-billing:read"
+    "backoffice:merchant-accounts:read"
   ]);
   const users = [
     { id: 1, email: "admin@example.com", username: "Admin", role: adminRole },
@@ -415,6 +414,21 @@ describe("merchant SaaS billing backoffice API", () => {
       .expect(403)
       .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
     expect(fixture.merchantSaasBillingRepository.updateBillingProfile).not.toHaveBeenCalled();
+  });
+
+  it("loads trial and payment history with merchant-account detail read access", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("viewer@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/billing-subjects/merchant_account/5/free-periods?page=1&pageSize=100")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/saas-invoices?page=1&pageSize=100&payerType=merchant_account")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
   });
 
   it("validates and audits an optimistic billing-profile update", async () => {

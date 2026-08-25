@@ -2,6 +2,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { ERROR_CODES } from "../constants/error-codes";
 import type { AuthService } from "../services/auth.service";
 import { AppError } from "../utils/app-error";
+import { merchantPreviewShopHeaderSchema } from "../validators/merchant-preview.validator";
 
 export interface AuthenticateOptions {
   requiredPermission?: string;
@@ -13,15 +14,62 @@ export const createAuthenticateMiddleware =
   async (request: Request, response: Response, next: NextFunction): Promise<void> => {
     try {
       const token = getBearerToken(request);
-      response.locals.auth = await authService.authenticateAccessToken(
+      const auth = await authService.authenticateAccessToken(
         token,
         options.requiredPermission
       );
+      response.locals.auth = applyReadOnlyMerchantPreview(request, auth);
       next();
     } catch (error) {
       next(error);
     }
   };
+
+const merchantPreviewHeader = "x-needo-merchant-preview-shop-id";
+const safePreviewMethods = new Set(["GET", "HEAD", "OPTIONS"]);
+
+const applyReadOnlyMerchantPreview = <TAuth extends {
+  permissions: string[];
+  currentIdentityScopeType?: string | null;
+  currentIdentityScopeId?: number | null;
+}>(request: Request, auth: TAuth): TAuth => {
+  const headerValue = request.get(merchantPreviewHeader);
+  if (!headerValue) return auth;
+
+  if (!auth.permissions.includes("backoffice:merchant-accounts:read")) {
+    throw new AppError({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.forbidden",
+      statusCode: 403
+    });
+  }
+
+  const parsed = merchantPreviewShopHeaderSchema.safeParse(headerValue);
+  if (!parsed.success) {
+    throw new AppError({
+      code: ERROR_CODES.VALIDATION,
+      message: "error.validation",
+      statusCode: 400,
+      cause: parsed.error
+    });
+  }
+
+  if (!safePreviewMethods.has(request.method.toUpperCase())) {
+    throw new AppError({
+      code: ERROR_CODES.FORBIDDEN,
+      message: "error.merchant_preview.read_only",
+      statusCode: 403
+    });
+  }
+
+  return {
+    ...auth,
+    currentIdentityScopeType: "shop",
+    currentIdentityScopeId: parsed.data,
+    isReadOnlyMerchantPreview: true,
+    merchantPreviewShopId: parsed.data
+  };
+};
 
 const getBearerToken = (request: Request): string => {
   const authorization = request.get("authorization");

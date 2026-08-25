@@ -21,4 +21,17 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain("店铺摘要加载失败");
     expect(source).toContain("重新加载店铺摘要");
   });
+
+  it("shows the operations preview banner, shop selector, and explicit return action", () => {
+    expect(source).toContain("只读代看");
+    expect(source).toContain("切换查看店铺");
+    expect(source).toContain("退出只读代看");
+    expect(source).toContain("setMerchantAdminPreviewShop");
+    expect(source).toContain("clearMerchantAdminPreview");
+  });
+
+  it("reloads the active merchant page after a group preview shop changes", () => {
+    expect(source).toContain("setMerchantAdminPreviewShop(shopId)");
+    expect(source).toContain("navigate(0)");
+  });
 });

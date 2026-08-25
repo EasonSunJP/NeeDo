@@ -13,7 +13,6 @@
 | 黑金版 | `black-gold` | `noir-gold` | night | 纯黑 / 石墨底、香槟金高光。 |
 | 活力黑白版 | `vital-mono` | `black-white`、`lively-black-white`、`vital-black-white` | day | 白灰主界面、深黑模块、亮蓝点缀。 |
 | 冷酷黑灰版 | `cool-black-gray` | `black-gray`、`cool-gray`、`cold-black-gray` | night | 深石墨黑灰、青蓝电光。 |
-| 特殊黑 | `special-black` | `special-dark`、`特殊黑` | night | 蓝黑暗底、半透明石墨面板、蓝色发光主按钮、粉橙绿细状态光。 |
 | 霓虹粉紫版 | `neon-pink` | `lovely-neon` | night | 深蓝黑底、粉紫霓虹、蓝紫玻璃感。 |
 
 执行约定：
@@ -171,33 +170,7 @@
 | 标签主色 | `--client-primary` | `#18d2f0` |
 | 标签辅色 | `--client-primary-soft` | `rgba(24, 210, 240, 0.17)` |
 
-## 8. 特殊黑 `special-black`
-
-`special-black` 是特殊 UI 分支，严格参考蓝黑半透明任务 App 参考图。该分支允许静态 PNG、半透明色、渐变和阴影发光，但禁止实时 `backdrop-filter` 模糊、反射、折射等物理运算效果。
-
-| 参数 | CSS token | 色值 |
-|---|---|---|
-| 页面背景色 | `--client-bg` | `#060a12` |
-| 顶部系统背景色 | `--client-top-chrome-bg` | `#060a12` |
-| 文本主色 | `--client-text` | `#f7f9ff` |
-| 文本辅色 | `--client-muted` | `rgba(218, 226, 244, 0.66)` |
-| 边框主色 | `--client-line` | `rgba(119, 146, 205, 0.16)` |
-| 卡片背景色 | `--client-surface` | `rgba(19, 25, 39, 0.78)` |
-| 卡片高层背景色 | `--client-elevated` | `rgba(29, 38, 58, 0.86)` |
-| 卡片标题文本色 | `--client-text` | `#f7f9ff` |
-| 描述文本色 | `--client-muted` | `rgba(218, 226, 244, 0.66)` |
-| 列表背景色 | `--client-bg-soft` | `rgba(14, 20, 32, 0.86)` |
-| 列表标题色 | `--client-text` | `#f7f9ff` |
-| 列表边框色 | `--client-line` | `rgba(119, 146, 205, 0.16)` |
-| 按钮主色 | `--client-primary` | `#5f8dff` |
-| 主按钮文字色 | `--client-needo-text` | `#ffffff` |
-| 按钮警告色 | `--client-warning` | `#ffa83f` |
-| 按钮成功色 | `--client-success` | `#39f47a` |
-| 按钮信息色 | `--client-info` | `#5f8dff` |
-| 标签主色 | `--client-primary` | `#5f8dff` |
-| 标签辅色 | `--client-primary-soft` | `rgba(95, 141, 255, 0.19)` |
-
-## 9. 霓虹粉紫版 `neon-pink`
+## 8. 霓虹粉紫版 `neon-pink`
 
 | 参数 | CSS token | 色值 |
 |---|---|---|

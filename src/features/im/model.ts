@@ -277,6 +277,15 @@ export type ConversationMessage = {
   recalledAt?: string;
   clientSeq: number;
   ext?: MessageExt;
+  reactions?: Array<{
+    emoji: string;
+    people: Array<{
+      id: string;
+      name: string;
+      avatar?: string;
+    }>;
+    reactedByMe?: boolean;
+  }>;
 };
 
 export type ReadCursor = {
@@ -1465,6 +1474,14 @@ export function markConversationReadMutation(database: ImDatabase, conversationI
   expireDisappearingMessagesMutation(database, conversationId);
 
   return getConversationById(database, conversationId) ?? conversation;
+}
+
+export function markConversationUnreadMutation(database: ImDatabase, conversationId: string) {
+  const conversation = getConversationById(database, conversationId);
+  if (!conversation) return undefined;
+
+  conversation.unreadCount = Math.max(1, conversation.unreadCount);
+  return conversation;
 }
 
 export function toggleConversationPinMutation(database: ImDatabase, conversationId: string, isPinned: boolean) {

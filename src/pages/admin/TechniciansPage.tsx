@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   mapBackofficeStore,
@@ -13,6 +14,7 @@ import { ModuleShell } from "../../components/admin/ModuleShell";
 import { TechnicianListModule } from "../../components/admin/TechnicianListModule";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -27,6 +29,8 @@ const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 
 
 export function TechniciansPage() {
   const { language } = useOptionalI18n();
+  const [searchParams] = useSearchParams();
+  const isReviewMode = searchParams.get("module") === "review";
   const languageRef = useRef(language);
   languageRef.current = language;
   const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
@@ -45,7 +49,11 @@ export function TechniciansPage() {
     setError("");
     try {
       const [technicianPage, shopPage] = await Promise.all([
-        backofficeRealDataApi.technicians("backoffice", { page: 1, pageSize: 100 }),
+        backofficeRealDataApi.technicians("backoffice", {
+          page: 1,
+          pageSize: 100,
+          status: isReviewMode ? "pending_review" : undefined
+        }),
         backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100 })
       ]);
       setTechnicians(technicianPage.list);
@@ -56,7 +64,7 @@ export function TechniciansPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isReviewMode]);
 
   const technicianDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeTechnicianDetailPayload>({
     onError: (detailError) => {
@@ -97,6 +105,7 @@ export function TechniciansPage() {
   useEffect(() => { void load(); }, [load]);
 
   const mappedTechnicians = useMemo(() => technicians.map(mapBackofficeTechnician), [technicians]);
+  const reviewTechnicians = useMemo(() => technicians.filter((item) => item.status === "pending_review"), [technicians]);
   const mappedShops = useMemo(() => shops.map(mapBackofficeStore), [shops]);
 
   const openTechnician = (technician: Technician) => {
@@ -146,13 +155,45 @@ export function TechniciansPage() {
 
   return (
     <AdminLayout>
-      <ModuleShell title="技师管理" description="只展示数据库中的真实技师账号；待审核、店铺归属、资料更新和软删除均写入正式 API。">
+      <ModuleShell
+        actions={isReviewMode ? <></> : undefined}
+        title={isReviewMode ? "技师资料审核" : "技师管理"}
+        description={isReviewMode
+          ? "审核用户端提交的技师申请；这里只显示正式数据库中待审核的技师资料。"
+          : "只展示数据库中的真实技师账号；待审核、店铺归属、资料更新和软删除均写入正式 API。"}
+      >
         {error ? <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
         {loading ? <p className="text-sm font-bold text-ink/50">正在读取正式技师数据...</p> : null}
-        <section className="mb-4 grid gap-3 md:grid-cols-3">
-          {[{ label: "全部技师", value: technicians.length }, { label: "待审核", value: technicians.filter((item) => item.status === "pending_review").length }, { label: "已发布", value: technicians.filter((item) => item.status === "published").length }].map((metric) => <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={metric.label}><p className="text-sm font-bold text-ink/50">{metric.label}</p><strong className="mt-2 block text-3xl font-black">{metric.value}</strong></article>)}
-        </section>
-        <TechnicianListModule context="platform" onSelectTechnician={openTechnician} stores={mappedShops} technicians={mappedTechnicians} />
+        {isReviewMode ? (
+          !loading && !error && reviewTechnicians.length === 0 ? (
+            <section className="rounded-lg border border-dashed border-line bg-white px-5 py-12 text-center shadow-panel">
+              <p className="text-base font-black text-ink">暂无待审核的技师申请</p>
+              <p className="mt-2 text-sm font-bold text-ink/50">用户端提交的新申请会进入这里。</p>
+            </section>
+          ) : reviewTechnicians.length > 0 ? (
+            <DataTable<BackofficeTechnicianPayload>
+              columns={[
+                { key: "applicant", title: "申请人", render: (row) => <button className="font-black text-moss hover:underline" onClick={() => openTechnician(mapBackofficeTechnician(row))} type="button">{row.displayName}</button> },
+                { key: "email", title: "邮箱", render: (row) => row.email },
+                { key: "city", title: "城市", render: (row) => row.city },
+                { key: "type", title: "申请类型", render: (row) => row.shopId ? row.shopName ?? "店铺所属技师" : "个人技师" },
+                { key: "submittedAt", title: "创建时间", render: (row) => row.createdAt },
+                { key: "status", title: "状态", render: () => <Badge tone="yellow">待审核</Badge> }
+              ]}
+              onView={(row) => openTechnician(mapBackofficeTechnician(row))}
+              pageSize={10}
+              rows={reviewTechnicians}
+              showFooterActions={false}
+            />
+          ) : null
+        ) : (
+          <>
+            <section className="mb-4 grid gap-3 md:grid-cols-3">
+              {[{ label: "全部技师", value: technicians.length }, { label: "待审核", value: technicians.filter((item) => item.status === "pending_review").length }, { label: "已发布", value: technicians.filter((item) => item.status === "published").length }].map((metric) => <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={metric.label}><p className="text-sm font-bold text-ink/50">{metric.label}</p><strong className="mt-2 block text-3xl font-black">{metric.value}</strong></article>)}
+            </section>
+            <TechnicianListModule context="platform" onSelectTechnician={openTechnician} stores={mappedShops} technicians={mappedTechnicians} />
+          </>
+        )}
       </ModuleShell>
 
       <Drawer open={selectedTechnicianId !== null} title="技师集中详情" onClose={closeTechnician}>

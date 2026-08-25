@@ -110,6 +110,22 @@ describe("user management seed contract", () => {
     ]);
   });
 
+  it("assigns an appropriate generated avatar to every fixed test account", () => {
+    expect(
+      TEST_USER_ACCOUNTS.every((account) => account.avatarUrl.startsWith("/images/generated/"))
+    ).toBe(true);
+
+    const avatarByEmail = new Map(
+      TEST_USER_ACCOUNTS.map((account) => [account.email, account.avatarUrl])
+    );
+    expect(avatarByEmail.get("merchant@example.com")).toMatch(/^\/images\/generated\/stores\//);
+    expect(
+      TEST_USER_ACCOUNTS.filter((account) => account.email !== "merchant@example.com").every(
+        (account) => account.avatarUrl.startsWith("/images/generated/profiles/")
+      )
+    ).toBe(true);
+  });
+
   it("funds customer seed wallets enough for Request dispatch-fee smoke flows", () => {
     expect(DEFAULT_REQUEST_DISPATCH_FEE_NDP).toBe(500);
     expect(CUSTOMER_REQUEST_WALLET_SEED_NDP).toBeGreaterThanOrEqual(

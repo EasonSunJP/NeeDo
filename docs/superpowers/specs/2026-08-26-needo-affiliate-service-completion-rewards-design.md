@@ -241,7 +241,16 @@
 - 冻结、捕获、解冻 LedgerTransaction
 - 唯一 idempotency key
 
-### 7.8 钱包扩展
+### 7.8 `AffiliateRiskEvent`
+
+- 可选关联 Task、Claim、Attribution、Reward
+- 风险规则码、主体类型与主体 ID
+- 风险等级：`low | medium | high | critical`
+- 状态：`open | reviewing | released | rejected`
+- 证据 JSON、冻结 NDP、审核人、审核时间和处理原因
+- 风险证据只允许追加和状态迁移，不允许物理删除或覆盖原始证据
+
+### 7.9 钱包扩展
 
 `WalletOwnerType` 增加 `MERCHANT_ACCOUNT`：
 

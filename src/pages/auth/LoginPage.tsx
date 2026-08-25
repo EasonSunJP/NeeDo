@@ -21,8 +21,6 @@ type FrontendLoginCopy = {
   welcomeSubtitle: string;
   gmailLogin: string;
   accountLogin: string;
-  testCredentialFill: string;
-  testCredentialLogin: string;
   createAccount: string;
   createNotice: string;
   registrationTitle: string;
@@ -93,6 +91,10 @@ export function resolveLoginFeedbackMessage(feedback: LoginFeedbackState | null,
 export function resolveLoginErrorMessage(message: string | undefined, copy: LoginErrorCopy) {
   const normalizedMessage = message?.trim();
 
+  if (normalizedMessage === "error.auth.invalid_credentials") {
+    return copy.accountError;
+  }
+
   if (message === "error.network.timeout") {
     return copy.networkTimeoutError;
   }
@@ -113,107 +115,10 @@ export function resolveLoginErrorMessage(message: string | undefined, copy: Logi
   return message || copy.accountError;
 }
 
-type TestCredentialEnv = {
-  VITE_TEST_LOGIN_EMAIL?: string;
-  VITE_TEST_LOGIN_PASSWORD?: string;
-  VITE_TEST_LOGIN_ADMIN_EMAIL?: string;
-  VITE_TEST_LOGIN_ADMIN_PASSWORD?: string;
-  VITE_TEST_LOGIN_CUSTOMER_EMAIL?: string;
-  VITE_TEST_LOGIN_CUSTOMER_PASSWORD?: string;
-  VITE_TEST_LOGIN_MERCHANT_EMAIL?: string;
-  VITE_TEST_LOGIN_MERCHANT_PASSWORD?: string;
-  VITE_TEST_LOGIN_BUSINESS_EMAIL?: string;
-  VITE_TEST_LOGIN_BUSINESS_PASSWORD?: string;
-  VITE_TEST_LOGIN_TECHNICIAN_EMAIL?: string;
-  VITE_TEST_LOGIN_TECHNICIAN_PASSWORD?: string;
-};
-
-type FrontendLoginEnv = TestCredentialEnv & {
+type FrontendLoginEnv = {
   PROD?: boolean;
   VITE_NEEDO_FRONTEND_AUTH_BYPASS?: string;
 };
-
-const defaultPublicTestLoginEmail: Partial<Record<PortalScope, string>> = {
-  merchant: "merchant@example.com",
-  technician: "seed.technician@needo.local",
-  business: "affiliate@example.com"
-};
-
-const formalFrontendTestLoginEmail: Partial<Record<PortalScope, string>> = {
-  technician: "technician@example.com"
-};
-
-function getPortalTestLoginCredentials(env: TestCredentialEnv, portal: PortalScope) {
-  if (portal === "admin") {
-    return {
-      email: env.VITE_TEST_LOGIN_ADMIN_EMAIL,
-      password: env.VITE_TEST_LOGIN_ADMIN_PASSWORD
-    };
-  }
-
-  if (portal === "merchant") {
-    return {
-      email: env.VITE_TEST_LOGIN_MERCHANT_EMAIL,
-      password: env.VITE_TEST_LOGIN_MERCHANT_PASSWORD
-    };
-  }
-
-  if (portal === "business") {
-    return {
-      email: env.VITE_TEST_LOGIN_BUSINESS_EMAIL,
-      password: env.VITE_TEST_LOGIN_BUSINESS_PASSWORD
-    };
-  }
-
-  if (portal === "technician") {
-    return {
-      email: env.VITE_TEST_LOGIN_TECHNICIAN_EMAIL,
-      password: env.VITE_TEST_LOGIN_TECHNICIAN_PASSWORD
-    };
-  }
-
-  if (portal === "user") {
-    return {
-      email: env.VITE_TEST_LOGIN_CUSTOMER_EMAIL,
-      password: env.VITE_TEST_LOGIN_CUSTOMER_PASSWORD
-    };
-  }
-
-  return {
-    email: undefined,
-    password: undefined
-  };
-}
-
-export function resolveTestLoginCredentials(
-  env: TestCredentialEnv,
-  portal: PortalScope,
-  options: { preferFormalAccount?: boolean } = {}
-) {
-  const portalCredentials = getPortalTestLoginCredentials(env, portal);
-  const sharedEmail = env.VITE_TEST_LOGIN_EMAIL?.trim();
-  const portalEmail = portalCredentials.email?.trim();
-  const defaultPortalEmail = defaultPublicTestLoginEmail[portal];
-  const formalPortalEmail = formalFrontendTestLoginEmail[portal];
-  const shouldUseFormalDefault =
-    options.preferFormalAccount &&
-    Boolean(formalPortalEmail) &&
-    (!portalEmail || portalEmail === sharedEmail || portalEmail === defaultPortalEmail || portalEmail === "admin");
-  const email = shouldUseFormalDefault
-    ? formalPortalEmail
-    : portal === "user"
-    ? portalEmail || sharedEmail
-    : !portalEmail || portalEmail === sharedEmail
-      ? defaultPortalEmail
-      : portalEmail;
-  const password = portalCredentials.password?.trim() || env.VITE_TEST_LOGIN_PASSWORD?.trim();
-
-  if (!email || !password) {
-    return null;
-  }
-
-  return { email, password };
-}
 
 export function isFrontendAuthBypassEnabled(env: FrontendLoginEnv) {
   if (env.PROD) {
@@ -264,8 +169,6 @@ const loginCopy = {
     welcomeSubtitle: "用一个账号连接消息、预约和工作协作。",
     gmailLogin: "使用 Google 登录",
     accountLogin: "使用邮箱登录",
-    testCredentialFill: "填入测试账号",
-    testCredentialLogin: "跳过验证登录",
     createAccount: "新建账号",
     createNotice: "新建账号流程正在准备中，请先使用已发行邮箱登录。",
     registrationTitle: "创建 NeeDo 账号",
@@ -345,8 +248,6 @@ const loginCopy = {
     welcomeSubtitle: "用一個帳號連接訊息、預約和工作協作。",
     gmailLogin: "使用 Google 登入",
     accountLogin: "使用信箱登入",
-    testCredentialFill: "填入測試帳號",
-    testCredentialLogin: "跳過驗證登入",
     createAccount: "建立帳號",
     createNotice: "建立帳號流程正在準備中，請先使用已發行信箱登入。",
     registrationTitle: "建立 NeeDo 帳號",
@@ -426,8 +327,6 @@ const loginCopy = {
     welcomeSubtitle: "メッセージ、予約、仕事の連絡をひとつのアカウントで。",
     gmailLogin: "Googleでログイン",
     accountLogin: "メールでログイン",
-    testCredentialFill: "テストアカウントを入力",
-    testCredentialLogin: "認証をスキップしてログイン",
     createAccount: "新規登録",
     createNotice: "新規登録フローは準備中です。発行済みメールでログインしてください。",
     registrationTitle: "NeeDoアカウントを作成",
@@ -507,8 +406,6 @@ const loginCopy = {
     welcomeSubtitle: "Messages, bookings, and work updates in one account.",
     gmailLogin: "Continue with Google",
     accountLogin: "Log in with email",
-    testCredentialFill: "Fill test account",
-    testCredentialLogin: "Skip verification login",
     createAccount: "Create account",
     createNotice: "Account creation is being prepared. Use an issued email for now.",
     registrationTitle: "Create a NeeDo account",
@@ -588,8 +485,6 @@ const loginCopy = {
     welcomeSubtitle: "메시지, 예약, 업무 연락을 하나의 계정으로 연결합니다.",
     gmailLogin: "Google로 로그인",
     accountLogin: "이메일로 로그인",
-    testCredentialFill: "테스트 계정 입력",
-    testCredentialLogin: "인증 건너뛰고 로그인",
     createAccount: "새 계정 만들기",
     createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 발급된 이메일로 로그인하세요.",
     registrationTitle: "NeeDo 계정 만들기",
@@ -773,10 +668,6 @@ export function requiresFormalFrontendLogin(
   return false;
 }
 
-export function getPublicTestLoginPortal(portal: PortalScope): PortalScope {
-  return portal;
-}
-
 export function LoginPage() {
   const { portal } = useParams();
   const [searchParams] = useSearchParams();
@@ -820,15 +711,7 @@ export function LoginPage() {
   const rememberCredentialsScope = useMemo(() => getFrontendRememberCredentialsScope(activePortal), [activePortal]);
   const requiresFormalLogin = requiresFormalFrontendLogin(activePortal, redirectPath);
   const canSelfRegister = activePortal === "user" || activePortal === "technician";
-  const testCredentials = useMemo(
-    () =>
-      resolveTestLoginCredentials(import.meta.env as FrontendLoginEnv, activePortal, {
-        preferFormalAccount: requiresFormalLogin
-      }),
-    [activePortal, requiresFormalLogin]
-  );
   const shouldBypassFrontendLogin = !requiresFormalLogin && isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);
-  const canUseTestCredentialAction = Boolean(testCredentials || shouldBypassFrontendLogin);
   const hasRememberedActivePortal = hasRememberedPortalAuthorization(activePortal);
   const hasBlockedFormalFrontendBypass = requiresFormalLogin && isFrontendBypassSession(session);
   const hasActiveAccess = (isAuthenticated && canAccess(activePortal) && !hasBlockedFormalFrontendBypass) || hasRememberedActivePortal;
@@ -967,18 +850,8 @@ export function LoginPage() {
     }
   };
 
-  const fillTestCredentials = () => {
-    if (!testCredentials || isLoginPending) {
-      return;
-    }
-
-    setUsername(testCredentials.email);
-    setPassword(testCredentials.password);
-    clearFeedback();
-  };
-
-  const continueWithTestCredentials = useCallback(async () => {
-    if (!canUseTestCredentialAction || isLoginPending) {
+  const continueWithFrontendBypass = useCallback(async () => {
+    if (!shouldBypassFrontendLogin || isLoginPending) {
       return;
     }
 
@@ -986,18 +859,7 @@ export function LoginPage() {
     setIsLoginPending(true);
 
     try {
-      if (requiresFormalLogin && testCredentials) {
-        const result = await loginWithFormalPassword(activePortal, testCredentials.email, testCredentials.password);
-        if (!result.ok) {
-          setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
-          return;
-        }
-
-        openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
-        return;
-      }
-
-      const result = await enterFrontendWithoutAuthentication(getPublicTestLoginPortal(activePortal));
+      const result = await enterFrontendWithoutAuthentication(activePortal);
       if (!result.ok) {
         setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
         return;
@@ -1009,14 +871,11 @@ export function LoginPage() {
     }
   }, [
     activePortal,
-    canUseTestCredentialAction,
     copy,
     enterFrontendWithoutAuthentication,
     isLoginPending,
-    loginWithFormalPassword,
     redirectPath,
-    requiresFormalLogin,
-    testCredentials
+    shouldBypassFrontendLogin
   ]);
 
   useEffect(() => {
@@ -1024,8 +883,8 @@ export function LoginPage() {
       return;
     }
 
-    void continueWithTestCredentials();
-  }, [continueWithTestCredentials, hasActiveAccess, isLoginPending, shouldBypassFrontendLogin]);
+    void continueWithFrontendBypass();
+  }, [continueWithFrontendBypass, hasActiveAccess, isLoginPending, shouldBypassFrontendLogin]);
 
   const handleAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1246,18 +1105,6 @@ export function LoginPage() {
                 >
                   {copy.accountLogin}
                 </button>
-                {canUseTestCredentialAction ? (
-                  <div className="space-y-3">
-                    <button
-                      className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"
-                      disabled={isLoginPending}
-                      onClick={continueWithTestCredentials}
-                      type="button"
-                    >
-                      {isLoginPending ? copy.loginPending : copy.testCredentialLogin}
-                    </button>
-                  </div>
-                ) : null}
                 {canSelfRegister ? (
                   <button
                     className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
@@ -1393,16 +1240,6 @@ export function LoginPage() {
                     wrapperClassName="mt-2"
                   />
                 </label>
-                {testCredentials ? (
-                  <button
-                    className="h-11 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] px-4 text-sm font-black text-[color:var(--client-muted)] disabled:cursor-wait disabled:opacity-70"
-                    disabled={isLoginPending}
-                    onClick={fillTestCredentials}
-                    type="button"
-                  >
-                    {copy.testCredentialFill}
-                  </button>
-                ) : null}
                 {requiresFormalLogin ? null : captchaControl}
                 <button
                   className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"

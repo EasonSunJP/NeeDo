@@ -64,7 +64,7 @@ import {
   padNumber,
   timeToMinutes
 } from "../technician-schedule/model";
-import { createImApi } from "./api";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import {
   ContactSummaryCard,
   ContactRow,
@@ -1297,13 +1297,12 @@ function useImRuntime() {
   const scope = useImScope();
   const config = getImRoleConfig(scope);
   const store = useImStore(scope);
-  const api = useMemo(() => createImApi(scope), [scope]);
 
   return {
     scope,
     config,
     store,
-    api
+    api: store.api
   };
 }
 
@@ -1441,6 +1440,7 @@ export function ImConversationListPage() {
   const pinnedCollapsedStorageKey = `needo.im.messages.pinned-collapsed.v2.${scope}`;
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
+  const [conversationActionError, setConversationActionError] = useState("");
   const [pinnedCollapsed, setPinnedCollapsed] = useState(() => {
     if (typeof window === "undefined") {
       return false;
@@ -1451,6 +1451,12 @@ export function ImConversationListPage() {
   const openConversation = (conversationId: string) => {
     store.setActiveConversation(conversationId);
     navigate(config.routes.conversation(conversationId));
+  };
+  const runConversationAction = (action: () => Promise<void>) => {
+    setConversationActionError("");
+    void action().catch(() => {
+      setConversationActionError("会话操作失败，请稍后重试");
+    });
   };
 
   const updateFilterParams = (nextQuery: string, nextTags: string[], options: { replace?: boolean } = { replace: true }) => {
@@ -1713,28 +1719,38 @@ export function ImConversationListPage() {
             label: pinActionLabel,
             tone: "warning",
             width: 66,
-            onClick: () => void store.pinConversation(conversation.id, !conversation.isPinned)
+            onClick: () =>
+              runConversationAction(() =>
+                store.pinConversation(conversation.id, !conversation.isPinned)
+              )
           },
           {
             key: "read",
             label: conversation.unreadCount > 0 ? "已读" : "未读",
             tone: "neutral",
             width: 58,
-            onClick: () => void store.markConversationRead(conversation.id)
+            onClick: () =>
+              runConversationAction(() =>
+                store.markConversationRead(conversation.id, conversation.unreadCount === 0)
+              )
           },
           {
             key: "mute",
             label: conversation.isMuted ? "提醒" : "免打扰",
             tone: "neutral",
             width: 66,
-            onClick: () => void store.muteConversation(conversation.id, !conversation.isMuted)
+            onClick: () =>
+              runConversationAction(() =>
+                store.muteConversation(conversation.id, !conversation.isMuted)
+              )
           },
           {
             key: "delete",
             label: "删除",
             tone: "danger",
             width: 64,
-            onClick: () => void store.deleteConversation(conversation.id)
+            onClick: () =>
+              runConversationAction(() => store.deleteConversation(conversation.id))
           }
         ]}
         avatar={getConversationAvatar(store, conversation)}
@@ -1796,6 +1812,14 @@ export function ImConversationListPage() {
           />
         }
       >
+        {conversationActionError ? (
+          <div
+            className="mb-3 rounded-2xl border border-red-400/35 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200"
+            role="alert"
+          >
+            {conversationActionError}
+          </div>
+        ) : null}
         {conversations.length === 0 ? (
           <ImEmptyState
             action={<Button size="md" to={config.routes.contacts}>去通讯录发起聊天</Button>}
@@ -4190,6 +4214,17 @@ export function ImConversationRoomPage({
   }, [conversation?.draftText, conversationId]);
 
   useEffect(() => {
+    const next: ImMessageReactionState = {};
+    messages.forEach((message) => {
+      if (!message.reactions || message.reactions.length === 0) return;
+      next[message.id] = Object.fromEntries(
+        message.reactions.map((summary) => [summary.emoji, summary.people])
+      );
+    });
+    setMessageReactions(next);
+  }, [messages]);
+
+  useEffect(() => {
     if (!textareaRef.current) {
       return;
     }
@@ -5154,6 +5189,9 @@ export function ImConversationRoomPage({
   };
 
   const toggleMessageReaction = (message: ConversationMessage, reaction: string, closeAfter = true) => {
+    const previousState = messageReactions;
+    const currentPeople = messageReactions[message.id]?.[reaction] ?? [];
+    const reactedByMe = currentPeople.some((person) => person.id === currentReactionPerson.id);
     setMessageReactions((current) => {
       const groups = current[message.id] ?? {};
       const people = groups[reaction] ?? [];
@@ -5181,6 +5219,25 @@ export function ImConversationRoomPage({
     if (closeAfter) {
       closeMessageMenu();
     }
+
+    if (isStaticDemoMode()) {
+      return;
+    }
+
+    void api
+      .setMessageReaction(conversationId, message.id, reaction, !reactedByMe)
+      .then(({ message: savedMessage }) => {
+        setMessageReactions((current) => {
+          const next = { ...current };
+          const groups = Object.fromEntries(
+            (savedMessage.reactions ?? []).map((summary) => [summary.emoji, summary.people])
+          );
+          if (Object.keys(groups).length > 0) next[message.id] = groups;
+          else delete next[message.id];
+          return next;
+        });
+      })
+      .catch(() => setMessageReactions(previousState));
   };
 
   const getMessageReactionSummaries = (messageId: string): ImMessageReactionSummary[] =>

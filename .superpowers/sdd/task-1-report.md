@@ -1,50 +1,154 @@
-# Task 1 實現報告：新版資料與披露鎖定
+# Task 1 Report — Formal Profile Detail Repository Aggregation
 
-## 狀態
+## Status
 
-完成。Task 1 只新增 premium roadshow 的資料層與聚焦測試，沒有修改頁面設計、既有 PPT builder 或任何輸出 PPT。
+DONE
 
-## 修改文件
+Commit: `9c953ee feat: aggregate formal profile details`
 
-- `scripts/needo-roadshow-premium/content.mjs`
-  - 從 `scripts/needo-roadshow/data.mjs` 匯入 `financing`、`scenarios`、`economics`、`market`、`sources` 與既有 34 頁標題。
-  - 匯出 `premiumSlides`，每筆固定包含 `page`、`title`、`statement`、`mode`、`source`。
-  - 鎖定 34 頁順序與七頁深色頁：2、10、16、19、26、31、34。
-  - 將融資條件、三種情境、單位經濟、市場數據、合規邊界、內部資料披露與來源標記放入相應頁面的 statement/source。
-  - 加入 34 頁數量與既有標題數量不一致時的明確錯誤檢查。
-- `scripts/needo-roadshow-premium/data.test.mjs`
-  - 新增資料鎖定測試，覆蓋 34 頁、深色頁位置、融資條件與一般／激進店鋪情境。
+## Implementation
 
-## TDD 證據
+- Added formal profile-detail payload contracts while preserving the existing paginated technician and customer list payloads unchanged.
+- Added `getTechnicianDetail(input)` and `getCustomerDetail(input)` to the backoffice repository port and implementation.
+- Detail reads first verify the profile is active (not soft-deleted) and, for merchants, belongs to the caller's shop.
+- Account payloads use explicit selections only and never select `passwordHash`. Merchant results restrict roles to the current shop and identities to the current shop or the selected profile's global identity.
+- Technician details aggregate scoped booking status/revenue, calculate intersected UTC day/week/month schedule minutes, return no more than 12 future schedule slots, merge/deduplicate active technician and legacy services, select the active compensation profile, and return bounded scoped audit history plus real lifecycle timestamps.
+- Customer details aggregate scoped booking status/completed spend, return the next booking and at most 10 recent bookings, and return the same bounded scoped account/review/audit information.
+- Merchant audit reads require the selected target or profile/user metadata **and** matching `metadata.shopId`, preventing cross-shop audit exposure.
 
-1. 先建立測試並執行 `npm test -- scripts/needo-roadshow-premium/data.test.mjs`。
-2. RED 已確認：Vitest 報告 `Cannot find module './content.mjs'`。
-3. 建立 `content.mjs` 後再次執行聚焦測試，結果為 2 tests passed。
-4. 最終完整測試僅執行一次，結果如下：
+## Files
 
-   - `Test Files 112 passed (112)`
-   - `Tests 578 passed (578)`
+- Modified: `backend/src/services/backoffice.service.ts`
+- Modified: `backend/src/repositories/backoffice.repository.ts`
+- Created: `backend/tests/backoffice-profile-detail-repository.test.ts`
 
-## 範圍與顧慮
+## TDD Evidence
 
-- 未生成、修改或驗證任何 PPT/PDF 輸出，符合本任務不得越界修改頁面設計或輸出的限制。
-- `S5`、`S6`、`S7` 仍明確標示為 NeeDo 內部模型／重算／商談資料，不被表述為第三方審計或已實現收入。
-- `100+ 店鋪使用意向` 保留為商談訊號，statement 明確說明不等同簽約、付費或 GMV。
-- 工作區原有無關未提交修改已保留，未被暫存。
+### RED
 
-## 審查修復（第二輪）
+Command:
 
-- CPS 與透明點單頁面現在明確標示為「可操作原型」；目前尚無真實歸因 GMV 或 CPS 收入，且不納入核心模型，須待正式後端、交易與渠道數據驗證。
-- 成人性服務邊界已在第 8、9、23、30、31 頁鎖定：現行條款禁止；未來若評估屬獨立受監管市場，需要獨立產品、法務與監管評估，不進入核心模型。
-- 第 27、28 頁新增 `section: "appendix"`，保守情境明確標示僅附錄；其餘頁面標示 `section: "main"`。
-- 融資共用文案改用 `financing.round`，Pre-A 在第 2、25、26 頁均可由下游識別；並移除第 2 頁殘餘 `",`。
-- `premiumSlides.title` 直接取自 `slideTitles[index]`，新增逐項一致性測試，避免輸出標題偏離既有資料源。
-- 修復後聚焦測試為 6 tests passed；完整 `npm test` 將在本輪提交前執行一次。
+```bash
+cd backend && npm test -- --runTestsByPath tests/backoffice-profile-detail-repository.test.ts
+```
 
-## 可重現性修復（第三輪）
+Output:
 
-- `scripts/needo-roadshow/data.mjs` 已作為必要且自包含的既有資料基線納入提交；未跟蹤的舊 roadshow 目錄其餘文件沒有加入。
-- `premiumSlides` 的標題只由 imported `slideTitles[index]` 生成；map 不再解構或使用任何 title 欄位。
-- 提交後會以 `git archive` 解壓至臨時目錄，只读取已提交文件執行 `node --test scripts/needo-roadshow-premium/data.test.mjs`，確認不依賴工作區髒文件。
-- 聚焦測試改為依環境選擇 Vitest 或原生 `node:test` suite，保留 `npm test` 與乾淨檢出 `node --test` 的雙重可執行性。
-- `premiumSlideDefinitions` 現已改為 34 個三元組 `[mode, statement, sourceIds]`，完全移除重複標題字串；新增結構測試確保定義表沒有 `title` 欄位，輸出標題唯一取自 `slideTitles[index]`。
+```text
+FAIL tests/backoffice-profile-detail-repository.test.ts
+Property 'getTechnicianDetail' does not exist on type 'BackofficeRepository'.
+Property 'getCustomerDetail' does not exist on type 'BackofficeRepository'.
+Test Suites: 1 failed, 1 total
+Tests:       0 total
+```
+
+This was the expected failure: the required repository methods did not yet exist.
+
+### GREEN
+
+Command:
+
+```bash
+cd backend && npm test -- --runTestsByPath tests/backoffice-profile-detail-repository.test.ts tests/backoffice-repository-search.test.ts
+```
+
+Output:
+
+```text
+PASS tests/backoffice-profile-detail-repository.test.ts
+PASS tests/backoffice-repository-search.test.ts
+Test Suites: 2 passed, 2 total
+Tests:       8 passed, 8 total
+Snapshots:   0 total
+```
+
+Build command:
+
+```bash
+cd backend && npm run build
+```
+
+Output:
+
+```text
+> @needo/backend@0.1.0 build
+> tsc -p tsconfig.build.json
+```
+
+## Self-review
+
+- Reviewed the exact Task 1 diff and ran `git diff --check`; no whitespace errors were reported.
+- Confirmed the three-file commit contains no schema or migration changes and no modifications to the implementation plan or progress ledger.
+- Confirmed each merchant query includes the derived `shopId` where applicable: profile verification, booking aggregates/lists, schedule, services, compensation, and audit records.
+- Confirmed list contracts (`BackofficeTechnicianPayload` and `BackofficeCustomerPayload`) remain unchanged.
+- Confirmed the focused regression suite and TypeScript build pass after the final scope-hardening changes.
+
+## Concerns
+
+None. This task deliberately adds repository contracts only; routes/controllers and frontend consumption are deferred to the following approved tasks.
+
+## Review Fix Follow-up
+
+Commit: `efc8468 fix: harden formal profile detail scope`
+
+### Reviewer findings addressed
+
+- Merchant account output now includes seed-compatible `technician_profile` or `customer_profile` identity and role records only when their scope ID matches the selected profile. Other profile IDs remain excluded.
+- Technician audit lookup now recognizes the established `metadata.technicianId` key in addition to `technicianProfileId`, typed profile targets, user targets, and the existing customer-profile metadata key. Merchant reads still require matching `metadata.shopId`.
+- Technician schedule aggregation now reads the union of the current UTC week and current UTC month, so a week crossing a month boundary cannot lose valid schedule intervals. Day/week/month totals are still computed by interval intersection.
+- Customer `nextBooking` now limits future records to `PENDING`, `CONFIRMED`, and `IN_SERVICE`; completed and cancelled terminal orders are excluded.
+- The focused repository test now covers merchant customer-profile verification, sensitive-field exclusion, role/identity filtering, audit mapping and scope query, week-boundary intersections, terminal next-booking exclusion, service deduplication, bounded schedule/audit reads, and formal empty sections.
+
+### Follow-up RED
+
+Command:
+
+```bash
+cd backend && npm test -- --runTestsByPath tests/backoffice-profile-detail-repository.test.ts
+```
+
+Output:
+
+```text
+FAIL tests/backoffice-profile-detail-repository.test.ts
+4 failing regression tests:
+- seed-compatible technician_profile/customer_profile identities were omitted
+- metadata.technicianId was absent from the scoped audit query
+- the schedule read started at 2026-09-01 rather than the current week start of 2026-08-31
+- a completed future order was selected as nextBooking instead of the confirmed order
+Test Suites: 1 failed, 1 total
+Tests:       4 failed, 4 passed, 8 total
+```
+
+### Follow-up GREEN
+
+Command:
+
+```bash
+cd backend && npm test -- --runTestsByPath tests/backoffice-profile-detail-repository.test.ts tests/backoffice-repository-search.test.ts
+```
+
+Output:
+
+```text
+PASS tests/backoffice-profile-detail-repository.test.ts
+PASS tests/backoffice-repository-search.test.ts
+Test Suites: 2 passed, 2 total
+Tests:       13 passed, 13 total
+Snapshots:   0 total
+```
+
+Build command:
+
+```bash
+cd backend && npm run build
+```
+
+Output:
+
+```text
+> @needo/backend@0.1.0 build
+> tsc -p tsconfig.build.json
+```
+
+`git diff --check` also completed with no output.

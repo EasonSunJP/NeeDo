@@ -88,13 +88,13 @@ Set `VITE_API_BASE_URL` when the real backend is served from a different origin.
 
 The shared Apifox login/register/captcha endpoints are legacy pre-login routes, not formal `/api/v1/auth/*` routes. Local development keeps the formal backend on `/api/v1` and routes only legacy captcha traffic through `VITE_LEGACY_AUTH_BASE_URL=/legacy-auth`; Vite proxies that prefix to `VITE_LEGACY_AUTH_PROXY_TARGET`. Formal password login must use `POST /api/v1/auth/login` so the returned access token can pass `/api/v1/auth/me`. The Apifox public pre-login bearer belongs in `VITE_API_PUBLIC_AUTHORIZATION` when legacy Apifox traffic needs it; keep the real value in local or deployment env files, not source.
 
-Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in through `POST /api/v1/auth/login` with `username/email + password`; the shared local/staging test username is `admin` and the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. The public frontend test-account shortcut enters the user portal, so the shared test account is seeded with both platform-admin and customer identities.
+Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in manually through `POST /api/v1/auth/login` with `username/email + password`; the shared local/staging test username is `admin` and the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. Login pages do not bundle `VITE_TEST_LOGIN_*` credentials and do not expose test-account autofill or one-click login controls.
 
 ## Local Three-Month Simulation Data
 
-The local-only simulation seed creates an isolated, deterministic cohort for real API and portal acceptance: 10 published shops, 100 published technicians (exactly 10 per shop), 100 customers, 30 services, 2,600 schedule slots, and three calendar months of completed, cancelled, in-service, confirmed, and pending bookings. Completed bookings include confirmed onsite payments and order-finance records; customers receive wallet seed-credit ledger entries, and every simulated booking creates a recipient notification.
+The local-only simulation seed creates an isolated, deterministic cohort for real API and portal acceptance: 10 published shops, 100 published technicians (exactly 10 per shop), 100 customers, 30 services, 2,600 schedule slots, and three calendar months of completed, cancelled, in-service, confirmed, and pending bookings. Completed bookings include confirmed onsite payments and order-finance records; customers receive wallet seed-credit ledger entries, and every simulated booking creates a recipient notification. The same seed also writes 210 direct conversations, 860 dated messages, and 420 bidirectional contacts to the formal Prisma/MySQL IM tables. Every simulated customer receives one technician conversation and one shop-owner conversation; `sim.customer.100@needo.local` is expanded to 12 real linked contacts/conversations and 68 cross-month messages for focused IM acceptance. The shared `customer@example.com` preview account is kept as an active formal customer with a profile, wallet, and two real preview conversations.
 
-The script refuses production/non-local deployments, remote MySQL hosts, and production-looking database names. It also requires `ALLOW_SIMULATION_SEED=true`. Each account gets a unique deterministic password derived from `SIMULATION_DEFAULT_PASSWORD`, or from the existing local `TEST_USER_DEFAULT_PASSWORD` when the simulation-specific seed is not configured. No password is hardcoded or committed.
+The script refuses production/non-local deployments, remote MySQL hosts, and production-looking database names. It also requires `ALLOW_SIMULATION_SEED=true`. All formal test accounts use the same local password supplied through `SIMULATION_DEFAULT_PASSWORD`, or through the existing local `TEST_USER_DEFAULT_PASSWORD` when the simulation-specific value is not configured. No password is hardcoded or committed.
 
 ```bash
 cd backend
@@ -102,14 +102,22 @@ ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run seed:simulation
 ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm run check:simulation-data
 ```
 
-The account CSV is written to ignored `outputs/NeeDo_模拟账号_2026-06至08.csv`. Create the formatted XLSX companion with the command below. On first run it creates an ignored local tooling virtual environment under `backend/.data/` and installs the pinned `openpyxl` version from `backend/requirements-simulation.txt`:
+The isolated formal Social seed updates the 210 simulation accounts plus the six fixed role-entry accounts without replacing booking/order data. It assigns realistic shop and person names, persists 15 posts per account (text, single image, multi-image, video, and quote), and creates exactly 36 mutual friends per account across shop service accounts, technicians, and general users.
+
+```bash
+cd backend
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true SIMULATION_DEFAULT_PASSWORD=<shared-local-test-password> npm run seed:formal-social-test
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true SIMULATION_DEFAULT_PASSWORD=<shared-local-test-password> npm run check:formal-social-test
+```
+
+The account CSV is written to ignored `outputs/NeeDo_正式测试账号_2026-08-25.csv`. Create the formatted XLSX companion with the command below. On first run it creates an ignored local tooling virtual environment under `backend/.data/` and installs the pinned `openpyxl` version from `backend/requirements-simulation.txt`:
 
 ```bash
 cd backend
 npm run export:simulation-accounts-xlsx
 ```
 
-Both account files contain `account_type`, `shop_name`, `display_name`, `email`, `password`, `status`, and `notes`. They are local credentials and must never be committed, published, or used in production.
+Both account files contain `account_type`, `needo_id`, `nickname`, `email`, and `password`. They are local credentials and must never be committed, published, or used in production.
 
 ## Formal Local Acceptance And Release
 
@@ -292,10 +300,6 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
   - 活力黑白版
   - 白色主界面 + 深黑模块 + 亮蓝点缀
   - 对应白天语义 `day`
-- `special-black`
-  - 特殊黑
-  - 蓝黑暗底 + 半透明石墨面板 + 蓝色发光主按钮
-  - 对应夜间语义 `night`，该分支禁用实时模糊 / 折射类视觉运算
 - `jade-light`
   - 白绿版
   - 清爽白底 + 克制绿色主色
@@ -950,6 +954,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 基础资料：名称、认证、handle、bio、位置、生日 / 成立日、加入时间、关注 / 粉丝
 - 用户 / 技师 / 店铺扩展字段不再拆成顶部大卡片，而是收进同一套 header 的轻量扩展信息行里
 - tabs 固定吸附，默认使用 `动态 / 回复 / 媒体 / 喜欢`
+
 ### Profile Header 补齐内容
 
 - `UnifiedProfileTopBar` 现在使用固定置顶双层标题结构：
@@ -1374,6 +1379,8 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 未读、草稿、置顶、免打扰、群聊和系统消息数据来源
 - 会话点击跳转与房间页功能
 - 路由前缀与后端 / mock API 接口
+
+正式账号的左滑置顶、免打扰、已读/未读和个人删除状态由 `/api/v1/im/conversations/*` 持久化；删除只隐藏当前账号的会话，不会删除对方的会话或共享消息，新消息会使会话重新出现。
 
 ### Role-Based Config
 

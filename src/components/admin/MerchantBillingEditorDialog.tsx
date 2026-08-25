@@ -38,6 +38,14 @@ function freePeriodLabel(periodType: string) {
   return "首次免费试用";
 }
 
+function invoiceStatusLabel(status: string) {
+  if (status === "paid") return "已付款";
+  if (status === "void") return "已作废";
+  if (status === "overdue") return "已逾期";
+  if (status === "open") return "待付款";
+  return status;
+}
+
 export function MerchantBillingEditorDialog({
   card,
   open,
@@ -291,7 +299,7 @@ export function MerchantBillingEditorDialog({
                   <div className="mt-3 flex flex-wrap justify-between gap-2">
                     <div className="flex min-w-[260px] flex-1 gap-2">
                       <input aria-label={t("解除试用理由（解除后不可恢复）")} className={fieldClass} maxLength={500} value={interruptReason} onChange={(event) => setInterruptReason(event.target.value)} />
-                      <Button disabled={busy || !interruptReason.trim()} size="sm" variant="danger" onClick={interruptTrial}>{t("解除试用")}</Button>
+                      <Button className="whitespace-nowrap" disabled={busy || !interruptReason.trim()} size="sm" variant="danger" onClick={interruptTrial}>{t("解除试用")}</Button>
                     </div>
                     <Button disabled={busy || card.billing.extensionCount >= 3 || !trialReason.trim() || (extensionKind === "paidFrom" && !paidFrom)} onClick={extendTrial}>{t("确认追加")}</Button>
                   </div>
@@ -319,6 +327,60 @@ export function MerchantBillingEditorDialog({
               <strong className="text-ink">Stripe</strong> · {t("已切换为支付接口模式；正式密钥与 Webhook 上线时配置。")}
             </section>
           )}
+
+          <section className="rounded-xl border border-line bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-black">{t("历史付费记录")}</h3>
+                <p className="mt-1 text-xs text-ink/50">{t("按账单列出应付金额、计费期间与实际收款记录。")}</p>
+              </div>
+              <span className="rounded-full bg-paper px-3 py-1 text-xs font-black text-ink/55">{invoices.length} {t("条记录")}</span>
+            </div>
+            {invoices.length ? (
+              <div className="mt-3 overflow-x-auto rounded-lg border border-line">
+                <table className="w-full min-w-[720px] border-collapse text-left text-xs">
+                  <thead className="bg-paper text-ink/50">
+                    <tr>
+                      <th className="px-3 py-2 font-black">{t("账单编号")}</th>
+                      <th className="px-3 py-2 font-black">{t("计费期间")}</th>
+                      <th className="px-3 py-2 font-black">{t("应付金额")}</th>
+                      <th className="px-3 py-2 font-black">{t("账单状态")}</th>
+                      <th className="px-3 py-2 font-black">{t("付款记录")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {invoices.map((invoice) => (
+                      <tr className="align-top" key={invoice.id}>
+                        <td className="px-3 py-3 font-black text-ink">{invoice.invoiceNo}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-ink/60">
+                          {new Date(invoice.periodStartsAt).toLocaleDateString(locale)} → {new Date(invoice.periodEndsAt).toLocaleDateString(locale)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 font-black">{formatJpy(invoice.amountJpy, language)}</td>
+                        <td className="px-3 py-3">
+                          <span className="rounded-full bg-paper px-2 py-1 font-black text-ink/65">{t(invoiceStatusLabel(invoice.status))}</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          {invoice.payments.length ? (
+                            <div className="space-y-2">
+                              {invoice.payments.map((payment) => (
+                                <div key={payment.id}>
+                                  <p className="font-black text-ink">{formatJpy(payment.amountJpy, language)} · {payment.provider === "manual" ? t("人工审核") : "Stripe"}</p>
+                                  <p className="mt-0.5 text-ink/50">
+                                    {new Date(payment.receivedAt).toLocaleString(locale)}
+                                    {payment.externalReference ? ` · ${payment.externalReference}` : ""}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : <span className="text-ink/40">{t("未收款")}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p className="mt-3 rounded-lg bg-paper px-3 py-3 text-sm text-ink/45">{t("暂无历史付费记录")}</p>}
+          </section>
         </div>
       </section>
     </div>

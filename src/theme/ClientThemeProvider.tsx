@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 
-export type ClientTheme = "light-green" | "dark-green" | "black-gold" | "vital-mono" | "cool-black-gray" | "special-black" | "neon-pink";
+export type ClientTheme = "light-green" | "dark-green" | "black-gold" | "vital-mono" | "cool-black-gray" | "neon-pink";
 export type LegacyClientTheme = "day" | "night";
 export type ClientThemePreferenceMode = "auto" | "manual";
 
@@ -59,10 +59,6 @@ const clientPwaThemeColors: Record<ClientTheme, ClientPwaThemeColors> = {
     themeColor: "#0a0d10",
     statusBackground: "#0a0d10"
   },
-  "special-black": {
-    themeColor: "#030509",
-    statusBackground: "#030509"
-  },
   "neon-pink": {
     themeColor: "#080a1a",
     statusBackground: "#080a1a"
@@ -75,13 +71,6 @@ type LegacyMediaQueryList = MediaQueryList & {
 };
 
 export const clientThemes: ClientThemeDefinition[] = [
-  {
-    id: "special-black",
-    legacyMode: "night",
-    label: "特殊黑",
-    shortLabel: "特殊黑",
-    description: "蓝黑暗底配半透明石墨面板、蓝色发光主按钮和粉橙绿细状态光，不使用实时模糊或折射运算。"
-  },
   {
     id: "vital-mono",
     legacyMode: "day",
@@ -140,7 +129,7 @@ function normalizeTheme(theme: string | null | undefined): ClientTheme {
   }
 
   if (theme === "special-black" || theme === "special-dark" || theme === "特殊黑") {
-    return "special-black";
+    return "cool-black-gray";
   }
 
   if (theme === "black-white" || theme === "lively-black-white" || theme === "vital-black-white" || theme === "vital-mono") {

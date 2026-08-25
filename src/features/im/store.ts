@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/AuthProvider";
 import { isFrontendBypassSession } from "../../auth/rbac";
 import { useEntityStore } from "../../state/entityStore";
 import { createImApi, installImMockServer, subscribeImRealtime } from "./api";
+import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
   applyConversationDraft,
   buildMessagePreview,
@@ -67,10 +68,6 @@ type ImSnapshot = {
   ui: UiState;
 };
 
-function formalImMutationUnavailable(..._args: unknown[]): never {
-  throw new Error("error.feature_unavailable");
-}
-
 function createInitialSnapshot(): ImSnapshot {
   return {
     status: "idle",
@@ -97,8 +94,15 @@ function getUiStorageKey(scope: ImRoleType) {
   return `needo.im.ui.v2.${scope}`;
 }
 
-function createScopedStore(scope: ImRoleType) {
-  const api = createImApi(scope);
+type ScopedStoreBackend = {
+  api: ReturnType<typeof createImApi>;
+  installMockServer: boolean;
+  subscribeUpdates?: (onUpdate: () => void) => () => void;
+  syncAccountEntities: boolean;
+};
+
+function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
+  const { api } = backend;
   const listeners = new Set<() => void>();
   let realtimeUnsubscribe: (() => void) | null = null;
   let hydrated = false;
@@ -223,9 +227,9 @@ function createScopedStore(scope: ImRoleType) {
     };
   }
 
-  async function markConversationRead(conversationId: string) {
+  async function markConversationRead(conversationId: string, markUnread = false) {
     await hydrateStore();
-    const response = await api.markConversationRead(conversationId);
+    const response = await api.markConversationRead(conversationId, markUnread);
     upsertConversation(response.conversation);
     emit();
   }
@@ -314,7 +318,9 @@ function createScopedStore(scope: ImRoleType) {
     }
 
     hydrating = (async () => {
-      installImMockServer();
+      if (backend.installMockServer) {
+        installImMockServer();
+      }
 
       setSnapshot((current) => ({
         ...current,
@@ -338,7 +344,9 @@ function createScopedStore(scope: ImRoleType) {
         };
 
         if (!realtimeUnsubscribe) {
-          realtimeUnsubscribe = subscribeImRealtime(scope, syncRealtime);
+          realtimeUnsubscribe = backend.subscribeUpdates
+            ? backend.subscribeUpdates(() => void refreshBootstrap())
+            : subscribeImRealtime(scope, syncRealtime);
         }
 
         hydrated = true;
@@ -816,12 +824,10 @@ function createScopedStore(scope: ImRoleType) {
     emit();
   }
 
-  async function refreshAccountEntities(entityRevision: number) {
-    if (!hydrated || snapshot.status !== "ready" || lastEntityRevision === entityRevision) {
+  async function refreshBootstrap() {
+    if (!hydrated || snapshot.status !== "ready") {
       return;
     }
-
-    lastEntityRevision = entityRevision;
 
     if (entityRefresh) {
       return entityRefresh;
@@ -848,9 +854,17 @@ function createScopedStore(scope: ImRoleType) {
     return entityRefresh;
   }
 
+  async function refreshAccountEntities(entityRevision: number) {
+    if (!hydrated || snapshot.status !== "ready" || lastEntityRevision === entityRevision) {
+      return;
+    }
+
+    lastEntityRevision = entityRevision;
+
+    return refreshBootstrap();
+  }
+
   function useStore() {
-    const { session } = useAuth();
-    const legacyEnabled = isStaticDemoMode() && isFrontendBypassSession(session);
     const entityRevision = useEntityStore().revision;
     const storeSnapshot = useSyncExternalStore(
       (listener) => {
@@ -861,23 +875,20 @@ function createScopedStore(scope: ImRoleType) {
     );
 
     useEffect(() => {
-      if (!legacyEnabled) {
-        return;
-      }
-
       void hydrateStore();
-    }, [legacyEnabled]);
+    }, []);
 
     useEffect(() => {
-      if (!legacyEnabled || storeSnapshot.status !== "ready") {
+      if (!backend.syncAccountEntities || storeSnapshot.status !== "ready") {
         return;
       }
 
       void refreshAccountEntities(entityRevision);
-    }, [entityRevision, legacyEnabled, storeSnapshot.status]);
+    }, [entityRevision, storeSnapshot.status]);
 
-    const legacyValue = {
+    return {
       ...storeSnapshot,
+      api,
       hydrate: hydrateStore,
       loadConversation,
       loadMessages,
@@ -913,48 +924,6 @@ function createScopedStore(scope: ImRoleType) {
       rememberSearchTerm,
       clearSearchHistory
     };
-
-    if (!legacyEnabled) {
-      return {
-        ...createInitialSnapshot(),
-        hydrate: formalImMutationUnavailable,
-        loadConversation: formalImMutationUnavailable,
-        loadMessages: formalImMutationUnavailable,
-        setActiveConversation: formalImMutationUnavailable,
-        setDraft: formalImMutationUnavailable,
-        sendMessage: formalImMutationUnavailable,
-        estimateTagMessageCampaign: formalImMutationUnavailable,
-        sendTagMessageCampaign: formalImMutationUnavailable,
-        resendMessage: formalImMutationUnavailable,
-        recallMessage: formalImMutationUnavailable,
-        forwardMessage: formalImMutationUnavailable,
-        pinConversation: formalImMutationUnavailable,
-        muteConversation: formalImMutationUnavailable,
-        updateConversationPrivacy: formalImMutationUnavailable,
-        updateConversationGroupInfo: formalImMutationUnavailable,
-        markConversationRead: formalImMutationUnavailable,
-        deleteConversation: formalImMutationUnavailable,
-        clearConversation: formalImMutationUnavailable,
-        ensureDirectConversation: formalImMutationUnavailable,
-        createGroupConversation: formalImMutationUnavailable,
-        addConversationMembers: formalImMutationUnavailable,
-        removeConversationMember: formalImMutationUnavailable,
-        addContact: formalImMutationUnavailable,
-        updateRemark: formalImMutationUnavailable,
-        updateContactTags: formalImMutationUnavailable,
-        updateConversationTags: formalImMutationUnavailable,
-        blockContact: formalImMutationUnavailable,
-        unblockContact: formalImMutationUnavailable,
-        deleteContact: formalImMutationUnavailable,
-        acceptFriendRequest: formalImMutationUnavailable,
-        rejectFriendRequest: formalImMutationUnavailable,
-        search: formalImMutationUnavailable,
-        rememberSearchTerm: formalImMutationUnavailable,
-        clearSearchHistory: formalImMutationUnavailable
-      } as typeof legacyValue;
-    }
-
-    return legacyValue;
   }
 
   return {
@@ -962,17 +931,27 @@ function createScopedStore(scope: ImRoleType) {
   };
 }
 
-const scopedStores = new Map<ImRoleType, ReturnType<typeof createScopedStore>>();
+const scopedStores = new Map<string, ReturnType<typeof createScopedStore>>();
 
-function getScopedStore(scope: ImRoleType) {
-  const existing = scopedStores.get(scope);
+function getScopedStore(
+  scope: ImRoleType,
+  legacyEnabled: boolean,
+  currentUser: { avatarUrl: string | null; id: number; username: string }
+) {
+  const key = legacyEnabled ? `${scope}:static-demo` : `${scope}:formal:${currentUser.id}`;
+  const existing = scopedStores.get(key);
 
   if (existing) {
     return existing;
   }
 
-  const created = createScopedStore(scope);
-  scopedStores.set(scope, created);
+  const created = createScopedStore(scope, {
+    api: legacyEnabled ? createImApi(scope) : createFormalImApi({ currentUser, scope }),
+    installMockServer: legacyEnabled,
+    subscribeUpdates: legacyEnabled ? undefined : subscribeFormalImUpdates,
+    syncAccountEntities: legacyEnabled
+  });
+  scopedStores.set(key, created);
   return created;
 }
 
@@ -1028,7 +1007,15 @@ export function canRecall(snapshotData: ImSnapshot, message: ConversationMessage
 }
 
 export function useImStore(scope: ImRoleType = "user") {
-  return getScopedStore(scope).useStore();
+  const { session } = useAuth();
+  const legacyEnabled = isStaticDemoMode() && isFrontendBypassSession(session);
+  const currentUser = {
+    id: session?.id ?? 0,
+    username: session?.username ?? "",
+    avatarUrl: session?.avatarUrl ?? null
+  };
+
+  return getScopedStore(scope, legacyEnabled, currentUser).useStore();
 }
 
 export type ImStoreHook = ReturnType<typeof useImStore>;

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
-import { IconButton } from "../../components/client-ui/AppScaffold";
+import { IconButton, PrimaryButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { userNavItems } from "../../components/mobile/navItems";
@@ -11,6 +12,9 @@ import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirm
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { reviews, stores } from "../../data/mock";
+import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
+import { coreReadApi, mapCoreCustomerToCustomer, type CoreCustomerProfile } from "../../features/core-read/api";
+import { walletApi, type Wallet } from "../../features/wallet/api";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
@@ -18,15 +22,30 @@ import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembers
 import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
 import { updateCustomerEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { Customer, Technician } from "../../types/domain";
-import { FormalUserCenterPage } from "./FormalUserCenterPage";
 
-const orderShortcuts = [
+const legacyOrderShortcuts = [
   { label: "待付款", count: 1, to: "/orders" },
   { label: "待服务", count: 3, to: "/orders" },
   { label: "进行中", count: 2, to: "/orders" },
   { label: "已完成", count: 18, to: "/orders" },
   { label: "已取消", count: 1, to: "/orders" }
 ];
+
+const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "cancelled"] as const satisfies readonly BookingOrderStatus[];
+type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
+type FormalUserCenterData = {
+  orderCounts: FormalOrderCounts;
+  profile: CoreCustomerProfile;
+  wallet: Wallet;
+};
+
+const emptyFormalOrderCounts: FormalOrderCounts = {
+  pending: 0,
+  confirmed: 0,
+  inService: 0,
+  completed: 0,
+  cancelled: 0
+};
 
 const accountSettings = [
   { label: "账号设置", caption: "手机号、邮箱、登录密码", to: "/me/settings/account" },
@@ -103,6 +122,17 @@ const avatarCropFrameSize = 240;
 const avatarCropOutputSize = 512;
 const userProfileNameMaxCharacters = 13;
 const userProfileNameMaxBytes = 26;
+
+function describeUserCenterError(error: unknown) {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前身份没有读取个人数据的权限";
+    if (error.status === 404) return "用户资料不存在或已不可见";
+    if (error.status >= 500) return "个人数据服务暂时不可用，请稍后重试";
+  }
+
+  return "个人数据加载失败，请检查网络后重试";
+}
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -422,12 +452,110 @@ function AvatarCropEditor({
   );
 }
 
-function LegacyUserCenterPage() {
+function UserCenterDataStatus({
+  error,
+  loading,
+  onRetry
+}: {
+  error?: string;
+  loading?: boolean;
+  onRetry?: () => void;
+}) {
+  const navigate = useNavigate();
+
+  return (
+    <MobileShell navItems={userNavItems} navPanelStyle="plain" showTopEdgeMask={false}>
+      <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
+        <MobileFullscreenHeader
+          action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
+          info="账号资料、订单入口与服务权益都统一收在这里。"
+          onBack={() => navigate("/", { replace: true })}
+          showSpacer={false}
+          title="个人中心"
+        />
+        <main className="px-4 pb-[calc(132px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
+          <section className={cn(pagePanelClassName, "py-8 text-center")} aria-live="polite" role={error ? "alert" : undefined}>
+            <h1 className="text-lg font-black text-[color:var(--client-text)]">
+              {loading ? "正在加载我的正式数据" : "我的数据加载失败"}
+            </h1>
+            {error ? <p className="mt-2 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{error}</p> : null}
+            {error && onRetry ? (
+              <PrimaryButton className="mt-4 w-full" onClick={onRetry}>
+                重新加载我的数据
+              </PrimaryButton>
+            ) : null}
+          </section>
+        </main>
+      </div>
+    </MobileShell>
+  );
+}
+
+function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: number }) {
+  const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
+  const [loadError, setLoadError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const [formalData, setFormalData] = useState<FormalUserCenterData | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoadStatus("loading");
+    setLoadError("");
+
+    Promise.all([
+      coreReadApi.getCustomerProfile(customerProfileId),
+      walletApi.getMyWallet(),
+      Promise.all(
+        formalOrderStatuses.map(async (status) => {
+          const page = await bookingApi.listOrders({ page: 1, pageSize: 1, status });
+          return [status, page.total] as const;
+        })
+      )
+    ])
+      .then(([profile, wallet, counts]) => {
+        if (!active) return;
+        setFormalData({
+          profile,
+          wallet,
+          orderCounts: { ...emptyFormalOrderCounts, ...Object.fromEntries(counts) }
+        });
+        setLoadStatus("success");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setFormalData(null);
+        setLoadError(describeUserCenterError(error));
+        setLoadStatus("error");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customerProfileId, revision]);
+
+  if (loadStatus === "loading") {
+    return <UserCenterDataStatus loading />;
+  }
+
+  if (loadStatus === "error" || !formalData) {
+    return <UserCenterDataStatus error={loadError} onRetry={() => setRevision((current) => current + 1)} />;
+  }
+
+  return <CompleteUserCenterPage formalData={formalData} />;
+}
+
+function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterData }) {
   const navigate = useNavigate();
   const { session } = useAuth();
   const { customers, technicians } = useEntityStore();
-  const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
-  const linkedTechnician = technicians.find((technician) => technician.id === session?.linkedTechnicianId);
+  const entityCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
+  const currentCustomer = useMemo(
+    () => (formalData ? mapCoreCustomerToCustomer(formalData.profile) : entityCustomer),
+    [entityCustomer, formalData]
+  );
+  const linkedTechnician = formalData
+    ? undefined
+    : technicians.find((technician) => technician.id === session?.linkedTechnicianId);
   const userProfile = useMemo(() => buildUserProfile(currentCustomer, linkedTechnician), [currentCustomer, linkedTechnician]);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -463,8 +591,10 @@ function LegacyUserCenterPage() {
       : userProfile;
   const displayName = limitUserProfileName(profileNameOverride.trim() || getUserProfileDisplayName(currentCustomer, linkedTechnician, profileDraft, savedProfilePreview));
   const profileNameEditorWidth = getUserProfileNameEditorWidth(profileNameOverride || displayName);
-  const points = currentCustomer.points ?? 18420;
-  const usageCount = currentCustomer.orderCount;
+  const points = formalData?.wallet.availableBalance ?? currentCustomer.points ?? 18420;
+  const usageCount = formalData
+    ? Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0)
+    : currentCustomer.orderCount;
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
   const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
@@ -474,12 +604,21 @@ function LegacyUserCenterPage() {
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
   const bioInputRef = useRef<HTMLTextAreaElement>(null);
+  const orderShortcuts = formalData
+    ? [
+        { label: "待确认", count: formalData.orderCounts.pending, to: "/orders" },
+        { label: "待服务", count: formalData.orderCounts.confirmed, to: "/orders" },
+        { label: "进行中", count: formalData.orderCounts.inService, to: "/orders" },
+        { label: "已完成", count: formalData.orderCounts.completed, to: "/orders" },
+        { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" }
+      ]
+    : legacyOrderShortcuts;
   const serviceTools: Array<{ label: string; info: string; value: number | string; to: string }> = [
-    { label: "我的收藏", info: "店铺、技师、服务", value: stores.length, to: "/categories?type=store" },
-    { label: "我的地址", info: "家庭、公司、常用地址", value: 4, to: "/checkout/svc-clean-1" },
-    { label: "我的评价", info: "已评价与待回复", value: reviews.length, to: "/me" },
-    { label: "周期预约", info: "保洁、护理、家电维护", value: 2, to: "/categories?type=service" },
-    { label: "会员", info: "老人、儿童、共同居住人", value: 3, to: "/me" },
+    { label: "我的收藏", info: "店铺、技师、服务", value: formalData ? "—" : stores.length, to: "/categories?type=store" },
+    { label: "我的地址", info: "家庭、公司、常用地址", value: formalData ? "—" : 4, to: "/checkout/svc-clean-1" },
+    { label: "我的评价", info: "已评价与待回复", value: formalData ? "—" : reviews.length, to: "/me" },
+    { label: "周期预约", info: "保洁、护理、家电维护", value: formalData ? "—" : 2, to: "/categories?type=service" },
+    { label: "会员", info: "老人、儿童、共同居住人", value: formalData ? "—" : 3, to: "/me" },
     { label: "KYC身份验证", info: "实名、证件、本人确认", value: "去", to: "/me/settings/verification" }
   ];
   const startProfileEdit = () => {
@@ -655,12 +794,21 @@ function LegacyUserCenterPage() {
           <div className="space-y-4">
             <section className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
               <div className="relative">
-                <IconButton
-                  className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
-                  icon="edit"
-                  label={isEditingProfile ? "收起编辑" : "编辑资料"}
-                  onClick={isEditingProfile ? cancelProfileEdit : startProfileEdit}
-                />
+                {formalData ? (
+                  <IconButton
+                    className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
+                    icon="settings"
+                    label="打开账号设置"
+                    to="/me/settings/account"
+                  />
+                ) : (
+                  <IconButton
+                    className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
+                    icon="edit"
+                    label={isEditingProfile ? "收起编辑" : "编辑资料"}
+                    onClick={isEditingProfile ? cancelProfileEdit : startProfileEdit}
+                  />
+                )}
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="shrink-0">
                     <div className="relative h-36 w-36">
@@ -811,7 +959,7 @@ function LegacyUserCenterPage() {
 
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   {[
-                    { label: "积分", value: points.toLocaleString("en-US") },
+                    { label: formalData ? "NDP" : "积分", value: points.toLocaleString("en-US") },
                     { label: "利用次数", value: `${usageCount}` },
                     { label: "信用值", value: creditScore, suffix: "/5" }
                   ].map((item) => (
@@ -1022,8 +1170,8 @@ export function UserCenterPage() {
     session.currentIdentity.scopeId &&
     session.loginMethod !== "frontend-bypass"
   ) {
-    return <FormalUserCenterPage customerProfileId={session.currentIdentity.scopeId} />;
+    return <FormalUserCenterDataGate customerProfileId={session.currentIdentity.scopeId} />;
   }
 
-  return <LegacyUserCenterPage />;
+  return <CompleteUserCenterPage />;
 }

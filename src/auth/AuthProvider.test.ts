@@ -12,6 +12,14 @@ describe("AuthProvider legacy login bridge", () => {
     expect(authProviderSource).toContain("JSON.stringify(nextSession)");
   });
 
+  it("discards a stored frontend bypass session outside explicit static demo mode", () => {
+    expect(authProviderSource).toContain("isStaticDemoMode");
+    expect(authProviderSource).toContain(
+      "isFrontendBypassSession(storedSession) && !isStaticDemoMode()"
+    );
+    expect(authProviderSource).toContain("removeBrowserStorage(legacySessionStorageKey");
+  });
+
   it("refreshes the memory-only access token when a stored session is restored", () => {
     expect(authProviderSource).toContain("getAccessToken");
     expect(authProviderSource).toContain("const shouldRefreshAccessToken = Boolean(getStoredRefreshToken()) && !getAccessToken();");

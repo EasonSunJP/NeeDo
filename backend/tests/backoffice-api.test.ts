@@ -133,6 +133,7 @@ const createFixture = async () => {
     "backoffice:finance:export",
     "backoffice:technicians:list",
     "backoffice:shops:list",
+    "backoffice:merchant-accounts:read",
     "merchant-admin:dashboard:read",
     "merchant-admin:orders:list",
     "merchant-admin:schedule:list",
@@ -140,10 +141,11 @@ const createFixture = async () => {
     "merchant-admin:finance:export",
     "merchant-admin:technicians:list",
     "merchant-admin:shop:read",
+    "merchant-admin:shop:write",
     "menu:dashboard",
     "page:dashboard"
   ].map(makePermission);
-  const readOnlyPermissions = ["auth:me", "auth:refresh", "auth:logout"].map((code, index) =>
+  const readOnlyPermissions = ["auth:me", "auth:refresh", "auth:logout", "backoffice:merchant-accounts:read"].map((code, index) =>
     makePermission(code, 100 + index)
   );
   const adminRole = {
@@ -392,6 +394,11 @@ const createFixture = async () => {
       total: 1,
       page: 1,
       page_size: 20
+    })),
+    updateShop: jest.fn(async (id: number, input: { name?: string }) => ({
+      id,
+      name: input.name ?? "Aoyama Care Studio",
+      status: "published"
     }))
   };
   const app = createApp(undefined, {
@@ -500,5 +507,43 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         })
       ])
     );
+  });
+
+  it("lets an operations administrator preview a selected shop through merchant-admin reads", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("viewer@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/orders")
+      .set("Authorization", `Bearer ${token}`)
+      .set("X-NeeDo-Merchant-Preview-Shop-Id", "22")
+      .expect(200);
+
+    expect(fixture.backofficeRepository.listOrders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "merchant",
+        shopId: 22
+      })
+    );
+  });
+
+  it("rejects every write attempted from an operations read-only merchant preview", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    await request(fixture.app)
+      .patch("/api/v1/merchant-admin/shop")
+      .set("Authorization", `Bearer ${token}`)
+      .set("X-NeeDo-Merchant-Preview-Shop-Id", "22")
+      .send({ name: "Must not be saved" })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.FORBIDDEN,
+          message: "error.merchant_preview.read_only"
+        });
+      });
+
+    expect(fixture.backofficeRepository.updateShop).not.toHaveBeenCalled();
   });
 });

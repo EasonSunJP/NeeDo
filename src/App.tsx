@@ -2,6 +2,7 @@ import { Component, useEffect, useState, type CSSProperties, type ReactElement, 
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
+import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
 import { isFrontendBypassSession } from "./auth/rbac";
 import { I18nProvider, I18nRuntime } from "./i18n/I18nProvider";
 import { ClientThemeProvider, getClientThemeClassName, getClientThemeModeClassName, getInitialClientThemeState, isNightClientTheme, useClientTheme } from "./theme/ClientThemeProvider";
@@ -814,13 +815,19 @@ function RequirePortalAuth({
   const location = useLocation();
   const [isPortalRestorePending, setIsPortalRestorePending] = useState(false);
   const hasDirectAccess = canAccess(portal);
+  const isOperationsMerchantPreview = Boolean(
+    portal === "merchant" &&
+      location.pathname.startsWith("/merchant-admin") &&
+      getMerchantAdminPreview() &&
+      canAccess("admin")
+  );
   const isBackendPortalRoute =
     portal === "admin" ||
     (portal === "merchant" && location.pathname.startsWith("/merchant-admin")) ||
     (portal === "business" && isBusinessAdminPath(location.pathname));
   const isTechnicianPayrollRoute = portal === "technician" && location.pathname.startsWith("/technician/payroll");
   const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;
-  const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));
+  const hasAccess = hasDirectAccess || isOperationsMerchantPreview || (!requiresDirectPortalAccess && canEnterPortal(portal));
   const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);
   const hasBlockedFrontendBypass = requiresDirectPortalAccess && isFrontendBypassSession(session);
 
@@ -895,9 +902,16 @@ function RequireFeaturePermission({
   fallbackTo?: string;
   children: ReactElement;
 }) {
-  const { canAccessFeature } = useAuth();
+  const { canAccess, canAccessFeature } = useAuth();
+  const location = useLocation();
+  const isOperationsMerchantPreview = Boolean(
+    portal === "merchant" &&
+      location.pathname.startsWith("/merchant-admin") &&
+      getMerchantAdminPreview() &&
+      canAccess("admin")
+  );
 
-  if (!canAccessFeature(portal, permission)) {
+  if (!isOperationsMerchantPreview && !canAccessFeature(portal, permission)) {
     return <Navigate replace to={fallbackTo ?? portalEntryPath[portal]} />;
   }
 

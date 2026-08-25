@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import appScaffoldSource from "../client-ui/AppScaffold.tsx?raw";
+import businessCpsSource from "../../pages/mobile/BusinessCpsPage.tsx?raw";
 import source from "./FloatingHomeHeader.tsx?raw";
 
 const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
@@ -17,8 +18,8 @@ describe("FloatingHomeHeader spacing guard", () => {
     expect(source).not.toContain("client-floating-header-frameless");
   });
 
-  it("keeps shared floating headers framed outside the dedicated special-black home branch", () => {
-    expect(source).toContain("safe-header-top rounded-b-[28px] border px-4 pb-3 backdrop-blur-2xl backdrop-saturate-150");
+  it("keeps shared floating headers on the common framed surface", () => {
+    expect(source).toContain("safe-header-top rounded-[28px] border px-4 pb-3 backdrop-blur-2xl backdrop-saturate-150");
     expect(styles).toContain(".client-shell .client-floating-header-glass-frame {");
     expect(styles).toContain("color-mix(in srgb, var(--client-top-chrome-bg) 14%, transparent) 0%");
     expect(styles).toContain("0 18px 42px color-mix(in srgb, var(--client-bg) 22%, rgba(0, 0, 0, 0.18))");
@@ -26,7 +27,20 @@ describe("FloatingHomeHeader spacing guard", () => {
     expect(styles).not.toContain(".client-shell .client-floating-header-frameless");
   });
 
-  it("keeps the original shared AppTopBar proportions for non-special-black surfaces", () => {
+  it("rounds every remaining floating top header to 28px on all four corners", () => {
+    expect(source).toContain("client-floating-header-glass-frame !rounded-[28px]");
+    expect(source).not.toContain("rounded-t-none");
+    expect(source).not.toContain("rounded-b-[28px]");
+    expect(businessCpsSource).toContain("client-floating-header-glass-frame rounded-[28px]");
+
+    const cpsTabsStart = styles.indexOf(".business-cps-segmented-tabs {");
+    const cpsTabsEnd = styles.indexOf(".business-cps-segmented-tabs .business-cps-segmented-tab", cpsTabsStart);
+    const cpsTabsStyles = styles.slice(cpsTabsStart, cpsTabsEnd);
+    expect(cpsTabsStyles).toContain("border-radius: 28px;");
+    expect(cpsTabsStyles).not.toContain("border-radius: 0 0 28px 28px;");
+  });
+
+  it("keeps the original shared AppTopBar proportions", () => {
     expect(source).toContain('export const floatingHeaderInnerClassName = "px-3 pb-3";');
     expect(appScaffoldSource).toContain("h-11 w-11 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)]");
     expect(appScaffoldSource).toContain("grid-cols-[44px_minmax(0,1fr)_auto]");
@@ -34,9 +48,4 @@ describe("FloatingHomeHeader spacing guard", () => {
     expect(appScaffoldSource).toContain("truncate text-[20px] font-black leading-none");
   });
 
-  it("keeps the dedicated special-black home header out of the shared FloatingHomeHeader default", () => {
-    expect(styles).toContain(".client-theme-special-black .special-black-home-fixed-header");
-    expect(styles).toContain("height: calc(env(safe-area-inset-top) + 124px) !important;");
-    expect(source).not.toContain("special-black-home-fixed-header");
-  });
 });

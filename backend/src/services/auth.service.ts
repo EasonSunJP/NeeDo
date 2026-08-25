@@ -52,6 +52,8 @@ export interface AuthenticatedAccessContext {
   currentIdentityScopeId?: number | null;
   roles: string[];
   permissions: string[];
+  isReadOnlyMerchantPreview?: boolean;
+  merchantPreviewShopId?: number;
 }
 
 export interface AuthIdentityPayload {

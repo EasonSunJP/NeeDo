@@ -19,8 +19,19 @@ export type RealtimeMessage = {
   createdAt: string;
   id: number;
   metadata: unknown;
+  reactions?: RealtimeMessageReaction[];
   senderUserId: number | null;
   type: "text" | "system" | "orderStatus";
+};
+
+export type RealtimeMessageReaction = {
+  emoji: string;
+  people: Array<{
+    avatarUrl: string | null;
+    userId: number;
+    username: string;
+  }>;
+  reactedByMe: boolean;
 };
 
 export type RealtimeConversation = {
@@ -31,6 +42,9 @@ export type RealtimeConversation = {
   title: string | null;
   type: "direct" | "group";
   unreadCount: number;
+  isPinned?: boolean;
+  isMuted?: boolean;
+  isHidden?: boolean;
   updatedAt: string;
 };
 
@@ -58,11 +72,20 @@ export type RealtimeFriendRequest = {
 };
 
 export type RealtimeSocialPost = {
+  author?: {
+    avatarUrl: string | null;
+    displayName: string;
+    entityType: "user" | "technician" | "shop";
+    userId: number;
+    username: string;
+  };
+  authorFollowsViewer?: boolean;
   authorUserId: number;
   content: string;
   createdAt: string;
   id: number;
   media: unknown;
+  viewerFollowsAuthor?: boolean;
   visibility: "public" | "followers";
 };
 
@@ -100,8 +123,35 @@ export const realtimeApi = {
   createMessage(conversationId: number, input: { content: string; metadata?: Record<string, unknown>; type?: RealtimeMessage["type"] }) {
     return httpClient.request<RealtimeMessage>(`/im/conversations/${conversationId}/messages`, { body: input, method: "POST" });
   },
+  setMessageReaction(conversationId: number, messageId: number, emoji: string) {
+    return httpClient.request<RealtimeMessage>(
+      `/im/conversations/${conversationId}/messages/${messageId}/reactions`,
+      { body: { emoji }, method: "PUT" }
+    );
+  },
+  removeMessageReaction(conversationId: number, messageId: number, emoji: string) {
+    return httpClient.request<RealtimeMessage>(
+      `/im/conversations/${conversationId}/messages/${messageId}/reactions`,
+      { body: { emoji }, method: "DELETE" }
+    );
+  },
   markConversationRead(conversationId: number) {
     return httpClient.request<{ conversationId: number; unreadCount: number }>(`/im/conversations/${conversationId}/read`, { method: "POST" });
+  },
+  markConversationUnread(conversationId: number) {
+    return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}/unread`, { method: "POST" });
+  },
+  updateConversationPreferences(
+    conversationId: number,
+    preferences: { isMuted?: boolean; isPinned?: boolean }
+  ) {
+    return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}/preferences`, {
+      body: preferences,
+      method: "PATCH"
+    });
+  },
+  deleteConversation(conversationId: number) {
+    return httpClient.request<RealtimeConversation>(`/im/conversations/${conversationId}`, { method: "DELETE" });
   },
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });
@@ -124,7 +174,7 @@ export const realtimeApi = {
   getSocialPost(id: number) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`);
   },
-  createSocialPost(input: { content: string; visibility?: RealtimeSocialPost["visibility"] }) {
+  createSocialPost(input: { content: string; media?: unknown; visibility?: RealtimeSocialPost["visibility"] }) {
     return httpClient.request<RealtimeSocialPost>("/social/posts", { body: input, method: "POST" });
   },
   follow(targetUserId: number) {

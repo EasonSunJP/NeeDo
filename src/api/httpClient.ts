@@ -1,6 +1,11 @@
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 import {
+  clearMerchantAdminPreview,
+  getMerchantAdminPreview,
+  merchantAdminPreviewShopHeader
+} from "../auth/merchantAdminPreview";
+import {
   resolveLoadedStaticDemoDataUrl,
   resolveLoadedStaticDemoRequest
 } from "./staticDemoLoader";
@@ -152,7 +157,7 @@ function createRequestBody(body: unknown) {
   return JSON.stringify(body);
 }
 
-async function createRequestHeaders(options: HttpClientRequestOptions) {
+async function createRequestHeaders(options: HttpClientRequestOptions, previewShopId?: number | null) {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(options.headers ?? {})
@@ -168,6 +173,10 @@ async function createRequestHeaders(options: HttpClientRequestOptions) {
 
   if (options.auth !== false && accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  if (options.auth !== false && previewShopId) {
+    headers[merchantAdminPreviewShopHeader] = String(previewShopId);
   }
 
   if (import.meta.env.VITE_ENABLE_DEVICE_TOKEN_HEADER === "true" && !headers.token) {
@@ -187,6 +196,20 @@ async function createRequestHeaders(options: HttpClientRequestOptions) {
   }
 
   return headers;
+}
+
+function resolveRequestMethod(options: HttpClientRequestOptions): HttpMethod {
+  return options.method ?? (options.body === undefined ? "GET" : "POST");
+}
+
+function getPreviewShopId(options: HttpClientRequestOptions) {
+  return options.auth === false ? null : getMerchantAdminPreview()?.selectedShopId ?? null;
+}
+
+function assertMerchantPreviewAllows(method: HttpMethod, previewShopId: number | null) {
+  if (previewShopId && method !== "GET") {
+    throw new ApiClientError("error.merchant_preview.read_only", 403, 403);
+  }
 }
 
 function isAbortError(error: unknown) {
@@ -251,6 +274,9 @@ async function sendRequest<TData>(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<TData> {
+  const method = resolveRequestMethod(options);
+  const previewShopId = getPreviewShopId(options);
+  assertMerchantPreviewAllows(method, previewShopId);
   const staticResult = await resolveLoadedStaticDemoRequest<TData>(path, options);
 
   if (staticResult.handled) {
@@ -259,8 +285,8 @@ async function sendRequest<TData>(
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
-    headers: await createRequestHeaders(options),
-    method: options.method ?? (options.body === undefined ? "GET" : "POST")
+    headers: await createRequestHeaders(options, previewShopId),
+    method
   });
   const envelope = await parseEnvelope<TData>(response);
 
@@ -312,6 +338,9 @@ async function sendCsvExportRequest(
   options: HttpClientRequestOptions,
   canRetry: boolean
 ): Promise<HttpClientCsvExportPayload> {
+  const method = resolveRequestMethod(options);
+  const previewShopId = getPreviewShopId(options);
+  assertMerchantPreviewAllows(method, previewShopId);
   const staticResult = await resolveLoadedStaticDemoRequest<HttpClientCsvExportPayload>(path, options);
 
   if (staticResult.handled) {
@@ -323,8 +352,8 @@ async function sendCsvExportRequest(
     headers: await createRequestHeaders({
       ...options,
       headers: { ...(options.headers ?? {}), Accept: "text/csv" }
-    }),
-    method: options.method ?? (options.body === undefined ? "GET" : "POST")
+    }, previewShopId),
+    method
   });
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -374,6 +403,9 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 async function sendDataUrlRequest(path: string, options: HttpClientRequestOptions): Promise<string> {
+  const method = resolveRequestMethod(options);
+  const previewShopId = getPreviewShopId(options);
+  assertMerchantPreviewAllows(method, previewShopId);
   const staticResult = await resolveLoadedStaticDemoDataUrl(path);
 
   if (staticResult.handled) {
@@ -382,8 +414,8 @@ async function sendDataUrlRequest(path: string, options: HttpClientRequestOption
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
-    headers: await createRequestHeaders(options),
-    method: options.method ?? (options.body === undefined ? "GET" : "POST")
+    headers: await createRequestHeaders(options, previewShopId),
+    method
   });
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -433,6 +465,7 @@ export function setAuthTokens(tokens: { accessToken: string; refreshToken?: stri
 
 export function clearAuthTokens() {
   accessToken = null;
+  clearMerchantAdminPreview();
   removeBrowserStorage(refreshTokenStorageKey, { silent: true });
   removeBrowserStorage(legacyAccessTokenStorageKey, { silent: true });
 }

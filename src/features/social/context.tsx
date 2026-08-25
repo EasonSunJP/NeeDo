@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
 import { isFrontendBypassSession } from "../../auth/rbac";
 import { demoTechnicianAvatar, imageBank } from "../../data/mock";
 import { getTechnicianReviewDisplayTags } from "../../lib/detailProfiles";
 import { useEntityStore } from "../../state/entityStore";
+import { realtimeApi, subscribeRealtimeEvents, type RealtimeNotification } from "../realtime/api";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import type { Customer, Store, Technician } from "../../types/domain";
 import type {
@@ -21,6 +22,11 @@ import type {
   SocialTimelineFilterTab,
   SocialUpdatePostInput
 } from "./types";
+import {
+  buildFormalSocialMediaEnvelope,
+  mapFormalSocialPost,
+  mapFormalSocialProfiles
+} from "./formal-adapter";
 import {
   canActorViewPost,
   filterTimelinePosts,
@@ -67,8 +73,8 @@ type SocialContextValue = {
   getTrendingTags: () => Array<{ tag: string; count: number }>;
   saveDraft: (draftKey: string, draft: SocialComposerDraft) => void;
   clearDraft: (draftKey: string) => void;
-  createPost: (input: SocialCreatePostInput) => SocialPost;
-  updatePost: (input: SocialUpdatePostInput) => SocialPost | undefined;
+  createPost: (input: SocialCreatePostInput) => SocialPost | Promise<SocialPost>;
+  updatePost: (input: SocialUpdatePostInput) => SocialPost | undefined | Promise<SocialPost | undefined>;
   deletePost: (postId: string, actorKey: string) => void;
   toggleLike: (postId: string, actorKey: string) => void;
   toggleBookmark: (postId: string, actorKey: string) => void;
@@ -1964,7 +1970,7 @@ function LegacySocialProvider({ children }: { children: ReactNode }) {
   return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;
 }
 
-const formalSocialUnavailableState: SocialState = {
+const emptyFormalSocialState: SocialState = {
   drafts: {},
   follows: {},
   interactions: {},
@@ -1974,65 +1980,223 @@ const formalSocialUnavailableState: SocialState = {
   refreshedAt: ""
 };
 
-const formalSocialActorByScope: Record<SocialPortalScope, string> = {
-  merchant: "formal:merchant",
-  technician: "formal:technician",
-  user: "formal:user"
-};
-
 function formalSocialMutationUnavailable(..._args: unknown[]): never {
   throw new Error("error.feature_unavailable");
 }
 
-const formalSocialCompatibilityValue: SocialContextValue = {
-  actorByScope: formalSocialActorByScope,
-  clearDraft: formalSocialMutationUnavailable,
-  composerProfileKeys: [],
-  createPost: formalSocialMutationUnavailable,
-  deletePost: formalSocialMutationUnavailable,
-  ensureMutualFollow: formalSocialMutationUnavailable,
-  getActorForScope: (scope) => formalSocialActorByScope[scope],
-  getAncestors: () => [],
-  getFollowers: () => [],
-  getFollowing: () => [],
-  getInteractionState: (postId) => ({
-    bookmarked: false,
-    followingAuthor: false,
-    liked: false,
-    postId,
-    reposted: false,
-    shared: false
-  }),
-  getNotifications: () => [],
-  getPostById: () => undefined,
-  getProfilePosts: () => [],
-  getRelatedPosts: () => [],
-  getReplies: () => [],
-  getTagFeed: () => [],
-  getTimeline: () => [],
-  getTimelineFeed: () => [],
-  getTrendingTags: () => [],
-  getUnreadNotificationCount: () => 0,
-  incrementView: formalSocialMutationUnavailable,
-  markNotificationsRead: formalSocialMutationUnavailable,
-  markShared: formalSocialMutationUnavailable,
-  profileList: [],
-  profiles: {},
-  refreshFeeds: formalSocialMutationUnavailable,
-  saveDraft: formalSocialMutationUnavailable,
-  search: () => ({ posts: [], profiles: [], tags: [] }),
-  state: formalSocialUnavailableState,
-  toggleBookmark: formalSocialMutationUnavailable,
-  toggleFollow: formalSocialMutationUnavailable,
-  toggleLike: formalSocialMutationUnavailable,
-  togglePinPost: formalSocialMutationUnavailable,
-  toggleRepost: formalSocialMutationUnavailable,
-  updatePost: formalSocialMutationUnavailable,
-  updateProfileOverride: formalSocialMutationUnavailable
-};
+function formalEntityType(identityType: string | undefined): SocialProfile["entityType"] {
+  if (identityType === "technician") return "technician";
+  if (["merchant", "merchant_owner", "merchant_staff"].includes(identityType ?? "")) return "shop";
+  return "user";
+}
 
-function FormalSocialCompatibilityProvider({ children }: { children: ReactNode }) {
-  return <SocialContext.Provider value={formalSocialCompatibilityValue}>{children}</SocialContext.Provider>;
+function mapFormalNotification(
+  notification: RealtimeNotification,
+  profiles: Record<string, SocialProfile>
+): SocialNotification {
+  const actor = Object.values(profiles).find(
+    (profile) => Number(profile.id) === notification.actorUserId
+  );
+  const payload = notification.payload && typeof notification.payload === "object"
+    ? notification.payload as Record<string, unknown>
+    : {};
+  return {
+    id: String(notification.id),
+    type: "mention",
+    actorKey: actor ? profileKey(actor) : `user:${notification.actorUserId ?? notification.recipientUserId}`,
+    recipientKey: `user:${notification.recipientUserId}`,
+    postId: typeof payload.postId === "number" ? String(payload.postId) : undefined,
+    createdAt: notification.createdAt,
+    read: Boolean(notification.readAt),
+    content: notification.body || notification.title
+  };
+}
+
+function FormalSocialProvider({ children }: { children: ReactNode }) {
+  const { session } = useAuth();
+  const [state, setState] = useState<SocialState>(emptyFormalSocialState);
+  const [profiles, setProfiles] = useState<Record<string, SocialProfile>>({});
+
+  const loadFormalSocial = useCallback(async () => {
+    if (!session) return;
+    const [timelinePage, minePage, notificationPage] = await Promise.all([
+      realtimeApi.listSocialPosts({ page: 1, pageSize: 100 }),
+      realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: session.id }),
+      realtimeApi.listNotifications({ page: 1, pageSize: 100 })
+    ]);
+    const rawPosts = [...timelinePage.list, ...minePage.list].filter(
+      (post, index, posts) => posts.findIndex((candidate) => candidate.id === post.id) === index
+    );
+    const nextPosts = sortPostsByNewest(rawPosts.map(mapFormalSocialPost));
+    const nextProfiles = mapFormalSocialProfiles(rawPosts);
+    const ownProfile = Object.values(nextProfiles).find((profile) => Number(profile.id) === session.id);
+    const fallbackEntityType = formalEntityType(session.currentIdentity?.type);
+    const fallbackProfile: SocialProfile = {
+      id: String(session.id),
+      entityType: fallbackEntityType,
+      displayName: session.username,
+      handle: session.username,
+      avatar: session.avatarUrl ?? "",
+      coverImage: session.avatarUrl ?? "",
+      bio: "NeeDo 正式账号",
+      joinedAt: session.loggedInAt,
+      verifiedStatus: fallbackEntityType === "shop" ? "business" : fallbackEntityType === "technician" ? "verified" : "none",
+      followerCount: 0,
+      followingCount: 0,
+      extraProfileFields: {}
+    };
+    const actor = ownProfile ?? fallbackProfile;
+    nextProfiles[profileKey(actor)] = actor;
+    const actorKey = profileKey(actor);
+    const follows: SocialState["follows"] = {};
+    rawPosts.forEach((post) => {
+      const mapped = mapFormalSocialPost(post);
+      const authorKey = postAuthorKey(mapped);
+      if (post.viewerFollowsAuthor) follows[actorKey] = unique([...(follows[actorKey] ?? []), authorKey]);
+      if (post.authorFollowsViewer) follows[authorKey] = unique([...(follows[authorKey] ?? []), actorKey]);
+    });
+    const notifications = notificationPage.list.map((notification) =>
+      mapFormalNotification(notification, nextProfiles)
+    );
+    setProfiles(nextProfiles);
+    setState((current) => ({
+      ...current,
+      posts: nextPosts,
+      follows,
+      notifications,
+      refreshedAt: new Date().toISOString()
+    }));
+  }, [session]);
+
+  useEffect(() => { void loadFormalSocial(); }, [loadFormalSocial]);
+  useEffect(() => {
+    if (!session) return undefined;
+
+    return subscribeRealtimeEvents({
+      onEvent: (event) => {
+        if (event.type === "social.post.created" || event.type === "notification.created" || event.type === "follow.created") {
+          void loadFormalSocial();
+        }
+      }
+    });
+  }, [loadFormalSocial, session]);
+
+  const value = useMemo<SocialContextValue>(() => {
+    const profileList = Object.values(profiles);
+    const ownProfile = session
+      ? profileList.find((profile) => Number(profile.id) === session.id)
+      : undefined;
+    const actorKey = ownProfile ? profileKey(ownProfile) : profileList[0] ? profileKey(profileList[0]) : "user:0";
+    const actorByScope: Record<SocialPortalScope, string> = {
+      user: actorKey,
+      merchant: actorKey,
+      technician: actorKey
+    };
+    const getPostById = (postId: string) => state.posts.find((post) => post.id === postId && isVisiblePost(post));
+    const getFollowing = (key: string) => (state.follows[key] ?? []).map((item) => profiles[item]).filter(Boolean);
+    const getFollowers = (key: string) => profileList.filter((profile) => (state.follows[profileKey(profile)] ?? []).includes(key));
+    const getNotifications = (key: string) => state.notifications.filter((item) => item.recipientKey === key || key === actorKey);
+    const getTrendingTags = () => {
+      const counts = new Map<string, number>();
+      state.posts.forEach((post) => post.hashtags.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1)));
+      return [...counts.entries()].map(([tag, count]) => ({ tag, count })).sort((left, right) => right.count - left.count);
+    };
+    const getTimelineFeed = (filter: SocialTimelineFilterTab, key: string, locationContext?: SocialTimelineLocationContext) =>
+      filterTimelinePosts({ posts: state.posts, profiles, follows: state.follows, actorKey: key, filter, locationContext });
+    const createPost = async (input: SocialCreatePostInput) => {
+      if (!session || input.authorKey !== actorKey) throw new Error("error.auth.forbidden");
+      if (input.visibility && !["public", "followers"].includes(input.visibility)) {
+        throw new Error("error.social.visibility_unavailable");
+      }
+      const created = await realtimeApi.createSocialPost({
+        content: input.text.trim(),
+        media: buildFormalSocialMediaEnvelope({
+          media: input.media ?? [],
+          quotePostId: input.quotePostId,
+          replyToPostId: input.replyToPostId,
+          postType: input.postType,
+          locationLabel: input.locationLabel
+        }),
+        visibility: input.visibility === "followers" ? "followers" : "public"
+      });
+      const mapped = mapFormalSocialPost(created);
+      setProfiles((current) => ({ ...current, ...mapFormalSocialProfiles([created]) }));
+      setState((current) => ({ ...current, posts: sortPostsByNewest([mapped, ...current.posts.filter((post) => post.id !== mapped.id)]) }));
+      return mapped;
+    };
+    const search = (query: string): SocialSearchResult => {
+      const normalized = query.trim().toLowerCase();
+      return {
+        profiles: profileList.filter((profile) => `${profile.displayName} ${profile.bio}`.toLowerCase().includes(normalized)),
+        posts: state.posts.filter((post) => `${post.text} ${post.hashtags.join(" ")}`.toLowerCase().includes(normalized)),
+        tags: getTrendingTags().filter((tag) => tag.tag.toLowerCase().includes(normalized))
+      };
+    };
+    return {
+      state,
+      profiles,
+      profileList,
+      composerProfileKeys: ownProfile ? [actorKey] : [],
+      actorByScope,
+      getActorForScope: (scope) => actorByScope[scope],
+      getPostById,
+      getTimeline: (tab, key) => tab === "following"
+        ? state.posts.filter((post) => (state.follows[key] ?? []).includes(postAuthorKey(post)) || postAuthorKey(post) === key)
+        : state.posts,
+      getTimelineFeed,
+      getReplies: (postId) => sortPostsByOldest(state.posts.filter((post) => post.replyToPostId === postId)),
+      getAncestors: () => [],
+      getRelatedPosts: (postId) => state.posts.filter((post) => post.quotePostId === postId || post.repostPostId === postId),
+      getProfilePosts: (key, tab) => state.posts.filter((post) => postAuthorKey(post) === key && (tab !== "media" || post.media.length > 0)),
+      getInteractionState: (postId, key) => {
+        const post = getPostById(postId);
+        return {
+          postId,
+          liked: false,
+          reposted: false,
+          bookmarked: false,
+          shared: false,
+          followingAuthor: post
+            ? (state.follows[key] ?? []).includes(postAuthorKey(post))
+            : false
+        };
+      },
+      getFollowers,
+      getFollowing,
+      getNotifications,
+      getUnreadNotificationCount: (key) => getNotifications(key).filter((item) => !item.read).length,
+      search,
+      getTagFeed: (tag) => state.posts.filter((post) => post.hashtags.some((item) => item.toLowerCase() === tag.toLowerCase())),
+      getTrendingTags,
+      saveDraft: (draftKey, draft) => setState((current) => ({ ...current, drafts: { ...current.drafts, [draftKey]: draft } })),
+      clearDraft: (draftKey) => setState((current) => {
+        const drafts = { ...current.drafts };
+        delete drafts[draftKey];
+        return { ...current, drafts };
+      }),
+      createPost,
+      updatePost: formalSocialMutationUnavailable,
+      deletePost: formalSocialMutationUnavailable,
+      toggleLike: formalSocialMutationUnavailable,
+      toggleBookmark: formalSocialMutationUnavailable,
+      toggleRepost: formalSocialMutationUnavailable,
+      markShared: () => undefined,
+      toggleFollow: (_sourceKey, targetKey) => {
+        const target = profiles[targetKey];
+        if (!target) return;
+        const currentlyFollowing = (state.follows[actorKey] ?? []).includes(targetKey);
+        void (currentlyFollowing ? realtimeApi.unfollow(Number(target.id)) : realtimeApi.follow(Number(target.id))).then(() => loadFormalSocial());
+      },
+      ensureMutualFollow: formalSocialMutationUnavailable,
+      togglePinPost: formalSocialMutationUnavailable,
+      updateProfileOverride: formalSocialMutationUnavailable,
+      incrementView: () => undefined,
+      markNotificationsRead: () => { void realtimeApi.markAllNotificationsRead().then(() => loadFormalSocial()); },
+      refreshFeeds: () => { void loadFormalSocial(); }
+    };
+  }, [loadFormalSocial, profiles, session, state]);
+
+  return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;
 }
 
 export function SocialProvider({ children }: { children: ReactNode }) {
@@ -2042,7 +2206,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     return <LegacySocialProvider>{children}</LegacySocialProvider>;
   }
 
-  return <FormalSocialCompatibilityProvider>{children}</FormalSocialCompatibilityProvider>;
+  return <FormalSocialProvider>{children}</FormalSocialProvider>;
 }
 
 export function useSocial() {

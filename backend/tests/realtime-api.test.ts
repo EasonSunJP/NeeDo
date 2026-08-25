@@ -177,6 +177,7 @@ const realtimePermissions = [
   "conversation:create",
   "message:list",
   "message:create",
+  "message:react",
   "message:read",
   "contact:list",
   "friend-request:list",
@@ -284,6 +285,10 @@ const createFixture = async () => {
     title: string | null;
     participantUserIds: number[];
     unreadByUserId: Map<number, number>;
+    preferencesByUserId: Map<
+      number,
+      { isHidden: boolean; isMuted: boolean; isPinned: boolean }
+    >;
     createdAt: Date;
     updatedAt: Date;
   }> = [];
@@ -295,6 +300,11 @@ const createFixture = async () => {
     content: string;
     metadata: unknown;
     createdAt: Date;
+  }> = [];
+  const messageReactions: Array<{
+    messageId: number;
+    userId: number;
+    emoji: string;
   }> = [];
   const contacts: Array<{
     id: number;
@@ -338,6 +348,31 @@ const createFixture = async () => {
     createdAt: Date;
   }> = [];
 
+  const mapMessage = (message: (typeof messages)[number], viewerUserId: number) => {
+    const grouped = new Map<string, Array<{ userId: number; username: string; avatarUrl: null }>>();
+    messageReactions
+      .filter((reaction) => reaction.messageId === message.id)
+      .forEach((reaction) => {
+        const people = grouped.get(reaction.emoji) ?? [];
+        const user = users.find((candidate) => candidate.id === reaction.userId);
+        people.push({
+          userId: reaction.userId,
+          username: user?.username ?? "Unknown",
+          avatarUrl: null
+        });
+        grouped.set(reaction.emoji, people);
+      });
+
+    return {
+      ...message,
+      reactions: Array.from(grouped.entries()).map(([emoji, people]) => ({
+        emoji,
+        people,
+        reactedByMe: people.some((person) => person.userId === viewerUserId)
+      }))
+    };
+  };
+
   const mapConversation = (conversation: (typeof conversations)[number], userId: number) => {
     const lastMessage = messages
       .filter((message) => message.conversationId === conversation.id)
@@ -352,8 +387,13 @@ const createFixture = async () => {
         username: users.find((user) => user.id === participantUserId)?.username ?? "Unknown",
         avatarUrl: null
       })),
-      lastMessage: lastMessage ?? null,
+      lastMessage: lastMessage ? mapMessage(lastMessage, userId) : null,
       unreadCount: conversation.unreadByUserId.get(userId) ?? 0,
+      ...(conversation.preferencesByUserId.get(userId) ?? {
+        isHidden: false,
+        isMuted: false,
+        isPinned: false
+      }),
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
     };
@@ -386,6 +426,12 @@ const createFixture = async () => {
           title: input.title ?? null,
           participantUserIds,
           unreadByUserId: new Map(participantUserIds.map((userId) => [userId, 0])),
+          preferencesByUserId: new Map(
+            participantUserIds.map((userId) => [
+              userId,
+              { isHidden: false, isMuted: false, isPinned: false }
+            ])
+          ),
           createdAt: now,
           updatedAt: now
         };
@@ -404,7 +450,11 @@ const createFixture = async () => {
     listConversations: jest.fn(async (userId: number) =>
       listPage(
         conversations
-          .filter((conversation) => conversation.participantUserIds.includes(userId))
+          .filter(
+            (conversation) =>
+              conversation.participantUserIds.includes(userId) &&
+              !conversation.preferencesByUserId.get(userId)?.isHidden
+          )
           .map((conversation) => mapConversation(conversation, userId))
       )
     ),
@@ -441,7 +491,7 @@ const createFixture = async () => {
           );
         }
 
-        return message;
+        return mapMessage(message, input.senderUserId);
       }
     ),
     listMessages: jest.fn(
@@ -461,7 +511,7 @@ const createFixture = async () => {
           .filter((message) => (input.beforeId ? message.id < input.beforeId : true))
           .sort((left, right) => right.id - left.id);
         const pageSize = input.pageSize ?? 20;
-        const list = sorted.slice(0, pageSize);
+        const list = sorted.slice(0, pageSize).map((message) => mapMessage(message, input.userId));
 
         return {
           list,
@@ -472,6 +522,59 @@ const createFixture = async () => {
         };
       }
     ),
+    setMessageReaction: jest.fn(
+      async (input: {
+        conversationId: number;
+        messageId: number;
+        userId: number;
+        emoji: string;
+      }) => {
+        const conversation = conversations.find((item) => item.id === input.conversationId);
+        const message = messages.find(
+          (item) => item.id === input.messageId && item.conversationId === input.conversationId
+        );
+        if (!conversation?.participantUserIds.includes(input.userId) || !message) return null;
+
+        if (
+          !messageReactions.some(
+            (reaction) =>
+              reaction.messageId === input.messageId &&
+              reaction.userId === input.userId &&
+              reaction.emoji === input.emoji
+          )
+        ) {
+          messageReactions.push({
+            messageId: input.messageId,
+            userId: input.userId,
+            emoji: input.emoji
+          });
+        }
+        return mapMessage(message, input.userId);
+      }
+    ),
+    removeMessageReaction: jest.fn(
+      async (input: {
+        conversationId: number;
+        messageId: number;
+        userId: number;
+        emoji: string;
+      }) => {
+        const conversation = conversations.find((item) => item.id === input.conversationId);
+        const message = messages.find(
+          (item) => item.id === input.messageId && item.conversationId === input.conversationId
+        );
+        if (!conversation?.participantUserIds.includes(input.userId) || !message) return null;
+
+        const reactionIndex = messageReactions.findIndex(
+          (reaction) =>
+            reaction.messageId === input.messageId &&
+            reaction.userId === input.userId &&
+            reaction.emoji === input.emoji
+        );
+        if (reactionIndex >= 0) messageReactions.splice(reactionIndex, 1);
+        return mapMessage(message, input.userId);
+      }
+    ),
     markConversationRead: jest.fn(async (input: { conversationId: number; userId: number }) => {
       const conversation = conversations.find((item) => item.id === input.conversationId);
       if (!conversation?.participantUserIds.includes(input.userId)) {
@@ -480,6 +583,55 @@ const createFixture = async () => {
       conversation.unreadByUserId.set(input.userId, 0);
 
       return { conversationId: input.conversationId, unreadCount: 0 };
+    }),
+    markConversationUnread: jest.fn(
+      async (input: { conversationId: number; userId: number }) => {
+        const conversation = conversations.find((item) => item.id === input.conversationId);
+        if (!conversation?.participantUserIds.includes(input.userId)) return null;
+        conversation.unreadByUserId.set(
+          input.userId,
+          Math.max(1, conversation.unreadByUserId.get(input.userId) ?? 0)
+        );
+        return mapConversation(conversation, input.userId);
+      }
+    ),
+    updateConversationPreferences: jest.fn(
+      async (input: {
+        conversationId: number;
+        userId: number;
+        isMuted?: boolean;
+        isPinned?: boolean;
+      }) => {
+        const conversation = conversations.find((item) => item.id === input.conversationId);
+        if (!conversation?.participantUserIds.includes(input.userId)) return null;
+        const current = conversation.preferencesByUserId.get(input.userId) ?? {
+          isHidden: false,
+          isMuted: false,
+          isPinned: false
+        };
+        conversation.preferencesByUserId.set(input.userId, {
+          ...current,
+          ...(input.isMuted === undefined ? {} : { isMuted: input.isMuted }),
+          ...(input.isPinned === undefined ? {} : { isPinned: input.isPinned })
+        });
+        return mapConversation(conversation, input.userId);
+      }
+    ),
+    hideConversation: jest.fn(async (input: { conversationId: number; userId: number }) => {
+      const conversation = conversations.find((item) => item.id === input.conversationId);
+      if (!conversation?.participantUserIds.includes(input.userId)) return null;
+      const current = conversation.preferencesByUserId.get(input.userId) ?? {
+        isHidden: false,
+        isMuted: false,
+        isPinned: false
+      };
+      conversation.preferencesByUserId.set(input.userId, {
+        ...current,
+        isHidden: true,
+        isPinned: false
+      });
+      conversation.unreadByUserId.set(input.userId, 0);
+      return mapConversation(conversation, input.userId);
     }),
     listContacts: jest.fn(async (userId: number) =>
       listPage(contacts.filter((contact) => contact.ownerUserId === userId))
@@ -576,13 +728,19 @@ const createFixture = async () => {
     getSocialPost: jest.fn(async (userId: number, postId: number) => {
       const post = socialPosts.find((item) => item.id === postId);
       if (!post) return null;
-      const canRead = post.visibility === "public" || post.authorUserId === userId || follows.some(
-        (follow) => follow.followerUserId === userId && follow.followingUserId === post.authorUserId
-      );
+      const canRead =
+        post.visibility === "public" ||
+        post.authorUserId === userId ||
+        follows.some(
+          (follow) =>
+            follow.followerUserId === userId && follow.followingUserId === post.authorUserId
+        );
       return canRead ? post : null;
     }),
     listFollowerUserIds: jest.fn(async (followingUserId: number) =>
-      follows.filter((follow) => follow.followingUserId === followingUserId).map((follow) => follow.followerUserId)
+      follows
+        .filter((follow) => follow.followingUserId === followingUserId)
+        .map((follow) => follow.followerUserId)
     ),
     createFollow: jest.fn(async (input: { followerUserId: number; followingUserId: number }) => {
       const existing = follows.find(
@@ -766,6 +924,124 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .set("Authorization", `Bearer ${mikaToken}`)
       .expect(200);
     expect(unreadAfterRead.body.data.total).toBe(0);
+  });
+
+  it("keeps pin, mute, unread, and deletion state private to each conversation participant", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "direct", participantUserIds: [2] })
+      .expect(201);
+
+    await request(fixture.app)
+      .patch("/api/v1/im/conversations/1/preferences")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ isPinned: true, isMuted: true })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ isMuted: true, isPinned: true });
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/1/unread")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ unreadCount: 1 });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.list[0]).toMatchObject({
+          isHidden: false,
+          isMuted: false,
+          isPinned: false,
+          unreadCount: 0
+        });
+      });
+
+    await request(fixture.app)
+      .delete("/api/v1/im/conversations/1")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ isHidden: true, unreadCount: 0 });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ list: [], total: 0 });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ total: 1 });
+      });
+  });
+
+  it("persists message reactions and returns them when the conversation is loaded again", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "direct", participantUserIds: [2] })
+      .expect(201);
+    const messageResponse = await request(fixture.app)
+      .post("/api/v1/im/conversations/1/messages")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "text", content: "承知しました。" })
+      .expect(201);
+
+    await request(fixture.app)
+      .put(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/reactions`)
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ emoji: "😂" })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          id: messageResponse.body.data.id,
+          reactions: [
+            {
+              emoji: "😂",
+              reactedByMe: true,
+              people: [{ userId: 2, username: "Mika Technician" }]
+            }
+          ]
+        });
+      });
+
+    await request(fixture.app)
+      .get("/api/v1/im/conversations/1/messages?pageSize=20")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.list[0]).toMatchObject({
+          id: messageResponse.body.data.id,
+          reactions: [
+            {
+              emoji: "😂",
+              reactedByMe: false,
+              people: [{ userId: 2, username: "Mika Technician" }]
+            }
+          ]
+        });
+      });
   });
 
   it("handles friend requests, contacts, social posts, follows, and notification reads", async () => {

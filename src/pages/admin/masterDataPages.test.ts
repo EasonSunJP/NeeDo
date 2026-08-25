@@ -26,6 +26,9 @@ describe("master data pages", () => {
     expect(cardSource).toContain("付费模式");
     expect(cardSource).toContain("月费");
     expect(cardSource).toContain("onEditBilling");
+    expect(cardSource).toContain("切换到商户后台");
+    expect(cardSource).toContain("onOpenMerchantAdminPreview");
+    expect(pageSource).toContain("startMerchantAdminPreview");
   });
 
   it("keeps the technician page on persisted technician and shop records only", () => {

@@ -61,6 +61,7 @@ export interface SeedUserInput {
   email: string;
   username: string;
   phone?: string;
+  avatarUrl?: string;
 }
 
 interface SeedIdentityInput {
@@ -1100,6 +1101,7 @@ export const buildSeedUserUpdateData = (input: SeedUserInput, passwordHash: stri
   phone: input.phone ?? null,
   passwordHash,
   username: input.username,
+  ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
   isActive: true,
   deletedAt: null
 });
@@ -1112,6 +1114,7 @@ const upsertSeedUser = (tx: Prisma.TransactionClient, input: SeedUserInput, pass
       phone: input.phone ?? null,
       passwordHash,
       username: input.username,
+      avatarUrl: input.avatarUrl ?? null,
       isActive: true
     },
     update: buildSeedUserUpdateData(input, passwordHash)
@@ -1259,17 +1262,17 @@ const upsertTestAccountProfile = async (
       create: {
         userId: input.userId,
         displayName: input.username,
-        bio: "Dedicated test customer identity for real login smoke checks.",
+        bio: "福岡で働く会社員です。休日はカフェ巡りと温泉、気になるウェルネスサービスを楽しんでいます。",
         city: "Tokyo",
         membershipLevel: "standard",
-        isPublic: false
+        isPublic: true
       },
       update: {
         displayName: input.username,
-        bio: "Dedicated test customer identity for real login smoke checks.",
+        bio: "福岡で働く会社員です。休日はカフェ巡りと温泉、気になるウェルネスサービスを楽しんでいます。",
         city: "Tokyo",
         membershipLevel: "standard",
-        isPublic: false,
+        isPublic: true,
         deletedAt: null
       }
     });
@@ -1301,7 +1304,8 @@ const seedRequiredTestAccounts = async (
       tx,
       {
         email: account.email,
-        username: account.username
+        username: account.username,
+        avatarUrl: account.avatarUrl
       },
       input.passwordHash
     );

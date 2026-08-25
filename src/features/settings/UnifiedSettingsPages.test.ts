@@ -118,11 +118,8 @@ describe("UnifiedSettingsPage Xiaobai asset gate", () => {
 });
 
 describe("UnifiedSettingsThemePage", () => {
-  it("lists the special black UI branch with its caption and preview swatches", () => {
-    expect(source).toContain('case "special-black":');
-    expect(source).toContain("夜间 / 特殊黑");
-    expect(source).toContain("#5f8dff");
-    expect(source).toContain("#ff4e9a");
+  it("describes the six shared client themes", () => {
+    expect(source).toContain("三端统一切换活力黑白 / 冷酷黑灰 / 白绿 / 黑绿 / 霓虹粉紫 / 黑金主题");
   });
 });
 

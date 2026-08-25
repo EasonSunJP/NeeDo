@@ -42,7 +42,6 @@ type BackendLoginCopy = {
   codeSent: string;
   gmailLogin: string;
   login: string;
-  testCredentialLogin: string;
   continue: string;
   loggedIn: string;
   loggedInAs: string;
@@ -95,7 +94,6 @@ const adminLoginCopy = {
     codeSent: "验证码已发送，请查看对应邮箱或开发环境 OTP 交付日志。",
     gmailLogin: "使用 Gmail 登录",
     login: "登录",
-    testCredentialLogin: "测试账号登录",
     continue: "进入后台",
     loggedIn: "当前已登录",
     loggedInAs: "登录账号",
@@ -144,7 +142,6 @@ const adminLoginCopy = {
     codeSent: "驗證碼已發送，請查看對應信箱或開發環境 OTP 交付日誌。",
     gmailLogin: "使用 Gmail 登入",
     login: "登入",
-    testCredentialLogin: "測試帳號登入",
     continue: "進入後台",
     loggedIn: "目前已登入",
     loggedInAs: "登入帳號",
@@ -193,7 +190,6 @@ const adminLoginCopy = {
     codeSent: "認証コードを送信しました。メールまたは開発環境の OTP 配信ログを確認してください。",
     gmailLogin: "Gmail でログイン",
     login: "ログイン",
-    testCredentialLogin: "テストアカウントでログイン",
     continue: "管理画面へ",
     loggedIn: "ログイン済み",
     loggedInAs: "ログインアカウント",
@@ -242,7 +238,6 @@ const adminLoginCopy = {
     codeSent: "Code sent. Check the mailbox or development OTP delivery logs.",
     gmailLogin: "Continue with Gmail",
     login: "Log in",
-    testCredentialLogin: "Test account login",
     continue: "Enter Admin",
     loggedIn: "Already signed in",
     loggedInAs: "Signed in as",
@@ -291,7 +286,6 @@ const adminLoginCopy = {
     codeSent: "인증코드를 보냈습니다. 메일함 또는 개발 환경 OTP 전달 로그를 확인하세요.",
     gmailLogin: "Gmail로 로그인",
     login: "로그인",
-    testCredentialLogin: "테스트 계정 로그인",
     continue: "관리자로 이동",
     loggedIn: "이미 로그인됨",
     loggedInAs: "로그인 계정",
@@ -367,21 +361,6 @@ const backendLoginConfig = {
   }
 } as const;
 
-type AdminTestCredentialEnv = {
-  VITE_TEST_LOGIN_EMAIL?: string;
-  VITE_TEST_LOGIN_PASSWORD?: string;
-  VITE_TEST_LOGIN_ADMIN_EMAIL?: string;
-  VITE_TEST_LOGIN_ADMIN_PASSWORD?: string;
-  VITE_TEST_LOGIN_MERCHANT_EMAIL?: string;
-  VITE_TEST_LOGIN_MERCHANT_PASSWORD?: string;
-  VITE_TEST_LOGIN_BUSINESS_EMAIL?: string;
-  VITE_TEST_LOGIN_BUSINESS_PASSWORD?: string;
-};
-
-function normalizeCredentialValue(value: string | undefined) {
-  return value?.trim() ?? "";
-}
-
 function normalizeAccountAlias(value: string) {
   return value.trim().toLowerCase();
 }
@@ -397,55 +376,6 @@ export function isBackendAccountForAnotherPortal(portal: AdminLoginPortal, accou
     ([aliasPortal, aliases]) =>
       aliasPortal !== portal && aliases.map(normalizeAccountAlias).includes(normalizedAccount)
   );
-}
-
-export function resolveAdminTestLoginCredentials(env: AdminTestCredentialEnv, portal: AdminLoginPortal) {
-  const portalCredentials =
-    portal === "admin"
-      ? {
-          email: env.VITE_TEST_LOGIN_ADMIN_EMAIL,
-          password: env.VITE_TEST_LOGIN_ADMIN_PASSWORD
-        }
-      : portal === "merchant-admin"
-        ? {
-            email: env.VITE_TEST_LOGIN_MERCHANT_EMAIL,
-            password: env.VITE_TEST_LOGIN_MERCHANT_PASSWORD
-          }
-        : {
-            email: env.VITE_TEST_LOGIN_BUSINESS_EMAIL,
-            password: env.VITE_TEST_LOGIN_BUSINESS_PASSWORD
-          };
-  const portalEmail = normalizeCredentialValue(portalCredentials.email);
-  const portalPassword = normalizeCredentialValue(portalCredentials.password);
-  const email = portalEmail || (portal === "admin" ? normalizeCredentialValue(env.VITE_TEST_LOGIN_EMAIL) : "");
-  const password = portalPassword || (portal === "admin" ? normalizeCredentialValue(env.VITE_TEST_LOGIN_PASSWORD) : "");
-
-  if (!email || !password) {
-    return null;
-  }
-
-  if (portal !== "admin" && isBackendAccountForAnotherPortal(portal, email)) {
-    return { email: backendDefaultLoginEmails[portal], password };
-  }
-
-  return { email, password };
-}
-
-export function resolveAdminDefaultCredentials(
-  env: AdminTestCredentialEnv,
-  portal: AdminLoginPortal,
-  fallbackEmail: string
-) {
-  const testCredentials = resolveAdminTestLoginCredentials(env, portal);
-  const fallbackDefaultEmail = fallbackEmail.trim();
-  const emailFallback = isBackendAccountForAnotherPortal(portal, fallbackDefaultEmail)
-    ? backendDefaultLoginEmails[portal]
-    : fallbackDefaultEmail;
-
-  return {
-    email: testCredentials?.email ?? emailFallback,
-    password: testCredentials?.password ?? ""
-  };
 }
 
 export function resolveBackendLoginTarget(sessionPortal: PortalScope, requestedPortal: PortalScope, nextPath: string) {
@@ -520,19 +450,15 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const { language } = useI18n();
   const copy = adminLoginCopy[language];
   const config = backendLoginConfig[portal];
-  const defaultCredentials = useMemo(
-    () => resolveAdminDefaultCredentials(import.meta.env as AdminTestCredentialEnv, portal, config.defaultEmail),
-    [config.defaultEmail, portal]
-  );
   const theme = useMemo(() => getInitialBackendLoginTheme(portal), [portal]);
   const requestedMode = normalizeMode(searchParams.get("mode"));
   const scanStatus = searchParams.get("scan");
   const qrParam = searchParams.get("qr");
   const [mode, setMode] = useState<LoginMode>(requestedMode);
-  const [account, setAccount] = useState<string>(defaultCredentials.email);
-  const [password, setPassword] = useState<string>(defaultCredentials.password);
+  const [account, setAccount] = useState<string>(config.defaultEmail);
+  const [password, setPassword] = useState<string>("");
   const [rememberCredentials, setRememberCredentials] = useState(false);
-  const [codeEmail, setCodeEmail] = useState<string>(defaultCredentials.email);
+  const [codeEmail, setCodeEmail] = useState<string>(config.defaultEmail);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState("");
@@ -542,10 +468,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const hasAccess = isAuthenticated && canAccess(config.authPortal) && !isFrontendBypassSession(session);
   const qrToken = adminLoginQrTokens[portal];
   const rememberCredentialsScope = useMemo(() => getAdminRememberCredentialsScope(portal), [portal]);
-  const testCredentials = useMemo(
-    () => resolveAdminTestLoginCredentials(import.meta.env as AdminTestCredentialEnv, portal),
-    [portal]
-  );
   const navigateToBackendSession = useCallback(
     (sessionPortal: PortalScope) => {
       const target = resolveBackendLoginTarget(sessionPortal, config.authPortal, nextPath);
@@ -578,10 +500,10 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     }
 
     setRememberCredentials(canUseRememberedCredentials);
-    setAccount(canUseRememberedCredentials && remembered.account.trim() ? remembered.account : defaultCredentials.email);
-    setPassword(canUseRememberedCredentials && remembered.password.trim() ? remembered.password : defaultCredentials.password);
-    setCodeEmail(defaultCredentials.email);
-  }, [defaultCredentials.email, defaultCredentials.password, portal, rememberCredentialsScope]);
+    setAccount(canUseRememberedCredentials && remembered.account.trim() ? remembered.account : config.defaultEmail);
+    setPassword(canUseRememberedCredentials && remembered.password.trim() ? remembered.password : "");
+    setCodeEmail(config.defaultEmail);
+  }, [config.defaultEmail, portal, rememberCredentialsScope]);
 
   useEffect(() => {
     if (!rememberCredentials) {
@@ -626,22 +548,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     }
 
     const result = await loginWithFormalPassword(config.authPortal, account, password);
-    if (!result.ok) {
-      setError(result.message || copy.accountError);
-      return;
-    }
-
-    navigateToBackendSession(result.session.portal);
-  };
-
-  const continueWithTestCredentials = async () => {
-    if (!testCredentials) {
-      return;
-    }
-
-    setError("");
-    const result = await loginWithFormalPassword(config.authPortal, testCredentials.email, testCredentials.password);
-
     if (!result.ok) {
       setError(result.message || copy.accountError);
       return;
@@ -834,11 +740,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                     <button className="admin-login-primary w-full text-base" type="submit">
                       {copy.login}
                     </button>
-                    {testCredentials ? (
-                      <button className="admin-login-secondary w-full px-4 text-base" onClick={continueWithTestCredentials} type="button">
-                        {copy.testCredentialLogin}
-                      </button>
-                    ) : null}
                     <button className="admin-login-secondary flex w-full items-center justify-center gap-3 px-4 text-base" onClick={continueWithGmail} type="button">
                       <span className="grid h-8 w-8 place-items-center rounded-md bg-[color:color-mix(in_srgb,var(--admin-muted-surface)_86%,var(--admin-surface))] text-base font-black text-[color:var(--admin-danger)]">G</span>
                       {copy.gmailLogin}

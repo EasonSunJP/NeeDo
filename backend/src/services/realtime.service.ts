@@ -10,9 +10,11 @@ import type {
   CreateSocialPostInput,
   FriendRequestListInput,
   ListMessagesInput,
+  MessageReactionMutationInput,
   NotificationListInput,
   RealtimeRepositoryPort,
-  SocialPostListInput
+  SocialPostListInput,
+  UpdateConversationPreferencesInput
 } from "../repositories/realtime.repository";
 import type { AuthenticatedAccessContext } from "./auth.service";
 import type { RealtimeEventGatewayPort } from "./realtime-event.gateway";
@@ -98,6 +100,44 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return messages;
   }
 
+  public async setMessageReaction(
+    auth: AuthenticatedAccessContext,
+    input: Omit<MessageReactionMutationInput, "userId">
+  ) {
+    const message = await this.repository.setMessageReaction({
+      ...input,
+      userId: auth.userId
+    });
+    if (!message) throw this.notFoundError("error.realtime.message_not_found");
+
+    await this.publishToConversation(
+      input.conversationId,
+      "message.reaction.updated",
+      message,
+      auth.userId
+    );
+    return message;
+  }
+
+  public async removeMessageReaction(
+    auth: AuthenticatedAccessContext,
+    input: Omit<MessageReactionMutationInput, "userId">
+  ) {
+    const message = await this.repository.removeMessageReaction({
+      ...input,
+      userId: auth.userId
+    });
+    if (!message) throw this.notFoundError("error.realtime.message_not_found");
+
+    await this.publishToConversation(
+      input.conversationId,
+      "message.reaction.updated",
+      message,
+      auth.userId
+    );
+    return message;
+  }
+
   public async markConversationRead(auth: AuthenticatedAccessContext, conversationId: number) {
     const result = await this.repository.markConversationRead({
       conversationId,
@@ -117,6 +157,36 @@ export class RealtimeService implements OrderStatusNotificationPort {
     });
 
     return result;
+  }
+
+  public async markConversationUnread(auth: AuthenticatedAccessContext, conversationId: number) {
+    const conversation = await this.repository.markConversationUnread({
+      conversationId,
+      userId: auth.userId
+    });
+    if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
+    return conversation;
+  }
+
+  public async updateConversationPreferences(
+    auth: AuthenticatedAccessContext,
+    input: Omit<UpdateConversationPreferencesInput, "userId">
+  ) {
+    const conversation = await this.repository.updateConversationPreferences({
+      ...input,
+      userId: auth.userId
+    });
+    if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
+    return conversation;
+  }
+
+  public async hideConversation(auth: AuthenticatedAccessContext, conversationId: number) {
+    const conversation = await this.repository.hideConversation({
+      conversationId,
+      userId: auth.userId
+    });
+    if (!conversation) throw this.notFoundError("error.realtime.conversation_not_found");
+    return conversation;
   }
 
   public listContacts(auth: AuthenticatedAccessContext, input: PaginationInput) {

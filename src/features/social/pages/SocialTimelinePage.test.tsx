@@ -84,6 +84,11 @@ describe("SocialTimelinePage", () => {
     expect(source).not.toMatch(/nextFilter === "mine"[\s\S]*navigate\(/);
   });
 
+  it("defaults to the populated friends timeline while preserving the nearby and mine filters", () => {
+    expect(source).toMatch(/typeof window === "undefined"\) \{\s*return "friends";/);
+    expect(source).toContain('? raw : "friends"');
+  });
+
   it("filters timeline posts by typed text, hashtags, mentions, and author profile without leaving the page", () => {
     expect(filterSocialTimelinePostsByQuery(posts, profiles, "排版").map((post) => post.id)).toEqual(["post-layout"]);
     expect(filterSocialTimelinePostsByQuery(posts, profiles, "#动态排版测试").map((post) => post.id)).toEqual(["post-layout"]);

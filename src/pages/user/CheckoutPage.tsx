@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   AppTopBar,
@@ -1982,5 +1983,9 @@ function LegacyCheckoutPage() {
 export function CheckoutPage() {
   const { serviceId } = useParams();
 
-  return isBookingApiId(serviceId) ? <FormalCheckoutPage serviceId={Number(serviceId)} /> : <LegacyCheckoutPage />;
+  if (isBookingApiId(serviceId)) {
+    return <FormalCheckoutPage serviceId={Number(serviceId)} />;
+  }
+
+  return isStaticDemoMode() ? <LegacyCheckoutPage /> : <Navigate replace to="/categories" />;
 }

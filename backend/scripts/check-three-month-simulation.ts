@@ -2,23 +2,27 @@ import { BookingOrderStatus } from "@prisma/client";
 import { compare } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   SIMULATION_END_AT,
+  SIMULATION_NAMESPACE,
   SIMULATION_ORDER_PREFIX,
   SIMULATION_START_AT,
   buildThreeMonthSimulationPlan
 } from "../src/simulation/three-month-simulation-plan";
-import {
-  deriveSimulationAccountPassword,
-  getSimulationSeedConfig
-} from "../src/simulation/simulation-seed-config";
+import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
     throw new Error(message);
   }
 };
+
+const readJsonRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 
 const main = async (): Promise<void> => {
   const envFile = process.env.ENV_FILE || ".env.dev";
@@ -36,7 +40,7 @@ const main = async (): Promise<void> => {
     const [owners, technicianUsers, customerUsers] = await Promise.all([
       prisma.user.findMany({
         where: { email: { in: ownerEmails }, isActive: true, deletedAt: null },
-        select: { id: true, email: true, passwordHash: true }
+        select: { id: true, email: true, passwordHash: true, avatarUrl: true }
       }),
       prisma.user.findMany({
         where: { email: { in: technicianEmails }, isActive: true, deletedAt: null },
@@ -44,6 +48,7 @@ const main = async (): Promise<void> => {
           id: true,
           email: true,
           passwordHash: true,
+          avatarUrl: true,
           technicianProfile: { select: { id: true, shopId: true, status: true } }
         }
       }),
@@ -53,6 +58,7 @@ const main = async (): Promise<void> => {
           id: true,
           email: true,
           passwordHash: true,
+          avatarUrl: true,
           customerProfile: { select: { id: true } }
         }
       })
@@ -77,12 +83,32 @@ const main = async (): Promise<void> => {
       "every simulation customer must have a customer profile"
     );
 
+    const plannedAvatarByEmail = new Map([
+      ...plan.shops.map((shop) => [shop.ownerEmail, shop.avatarUrl] as const),
+      ...plan.technicians.map((technician) => [technician.email, technician.avatarUrl] as const),
+      ...plan.customers.map((customer) => [customer.email, customer.avatarUrl] as const)
+    ]);
+    const simulationUsers = [...owners, ...technicianUsers, ...customerUsers];
+    assert(
+      simulationUsers.every((user) => user.avatarUrl === plannedAvatarByEmail.get(user.email)),
+      "every simulation account must use its deterministic generated avatar"
+    );
+    assert(
+      [...plannedAvatarByEmail.values()].every((avatarUrl) =>
+        existsSync(resolve(__dirname, "../..", `public${avatarUrl}`))
+      ),
+      "every simulation avatar URL must resolve to a project asset"
+    );
+
     const shops = await prisma.shop.findMany({
       where: { ownerUserId: { in: owners.map((owner) => owner.id) }, deletedAt: null },
       select: { id: true, ownerUserId: true, status: true }
     });
     assert(shops.length === 10, `expected 10 simulation shops, found ${shops.length}`);
-    assert(shops.every((shop) => shop.status === "published"), "all simulation shops must publish");
+    assert(
+      shops.every((shop) => shop.status === "published"),
+      "all simulation shops must publish"
+    );
 
     const shopIds = shops.map((shop) => shop.id);
     const technicianProfileIds = technicianUsers.flatMap((user) =>
@@ -164,7 +190,10 @@ const main = async (): Promise<void> => {
       bookings.length === plan.bookings.length,
       `expected ${plan.bookings.length} bookings, found ${bookings.length}`
     );
-    assert(customerWallets.length === 100, `expected 100 customer wallets, found ${customerWallets.length}`);
+    assert(
+      customerWallets.length === 100,
+      `expected 100 customer wallets, found ${customerWallets.length}`
+    );
     assert(
       customerWallets.every((wallet) => wallet.availableBalance >= 5_000),
       "every simulation customer wallet must retain at least its 5000 NDP seed credit"
@@ -217,6 +246,145 @@ const main = async (): Promise<void> => {
       `expected ${plan.histories.length} status-history rows, found ${historyCount}`
     );
 
+    const candidateMessages = await prisma.message.findMany({
+      where: {
+        createdAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
+        deletedAt: null
+      },
+      select: { id: true, conversationId: true, metadata: true }
+    });
+    const simulationMessages = candidateMessages.filter((message) => {
+      const metadata = readJsonRecord(message.metadata);
+      return (
+        metadata?.namespace === SIMULATION_NAMESPACE &&
+        metadata.dataset === "im" &&
+        metadata.previewCustomer === false
+      );
+    });
+    assert(
+      simulationMessages.length === plan.messages.length,
+      `expected ${plan.messages.length} simulation messages, found ${simulationMessages.length}`
+    );
+    const simulationConversationIds = [
+      ...new Set(simulationMessages.map((message) => message.conversationId))
+    ];
+    const simulationConversations = await prisma.conversation.findMany({
+      where: { id: { in: simulationConversationIds }, deletedAt: null },
+      select: {
+        id: true,
+        participants: {
+          where: { deletedAt: null },
+          select: { userId: true }
+        }
+      }
+    });
+    assert(
+      simulationConversations.length === plan.conversations.length,
+      `expected ${plan.conversations.length} simulation conversations, found ${simulationConversations.length}`
+    );
+    assert(
+      simulationConversations.every((conversation) => conversation.participants.length === 2),
+      "every simulation direct conversation must have exactly two active participants"
+    );
+    const focusedCustomer = customerUsers.find(
+      (customer) => customer.email === "sim.customer.100@needo.local"
+    );
+    assert(focusedCustomer, "focused simulation customer account is missing");
+    const focusedCustomerMessages = candidateMessages.filter((message) => {
+      const metadata = readJsonRecord(message.metadata);
+      return (
+        metadata?.namespace === SIMULATION_NAMESPACE &&
+        metadata.dataset === "im" &&
+        metadata.focusedCustomer === true &&
+        metadata.previewCustomer === false
+      );
+    });
+    const focusedCustomerConversationIds = [
+      ...new Set(focusedCustomerMessages.map((message) => message.conversationId))
+    ];
+    const focusedCustomerConversations = simulationConversations.filter((conversation) =>
+      focusedCustomerConversationIds.includes(conversation.id)
+    );
+    assert(
+      focusedCustomerConversations.length === 12,
+      `expected 12 focused customer conversations, found ${focusedCustomerConversations.length}`
+    );
+    assert(
+      focusedCustomerMessages.length === 68,
+      `expected 68 focused customer messages, found ${focusedCustomerMessages.length}`
+    );
+    assert(
+      focusedCustomerConversations.every((conversation) =>
+        conversation.participants.some((participant) => participant.userId === focusedCustomer.id)
+      ),
+      "every focused conversation must include the customer-100 formal account"
+    );
+
+    const ownerIdByKey = new Map(
+      plan.shops.flatMap((shop) => {
+        const owner = owners.find((candidate) => candidate.email === shop.ownerEmail);
+        return owner ? [[shop.key, owner.id] as const] : [];
+      })
+    );
+    const technicianIdByKey = new Map(
+      plan.technicians.flatMap((technician) => {
+        const user = technicianUsers.find((candidate) => candidate.email === technician.email);
+        return user ? [[technician.key, user.id] as const] : [];
+      })
+    );
+    const customerIdByKey = new Map(
+      plan.customers.flatMap((customer) => {
+        const user = customerUsers.find((candidate) => candidate.email === customer.email);
+        return user ? [[customer.key, user.id] as const] : [];
+      })
+    );
+    const resolveParticipantId = (
+      type: "customer" | "technician" | "shop_owner",
+      key: string
+    ): number => {
+      const source =
+        type === "customer"
+          ? customerIdByKey
+          : type === "technician"
+            ? technicianIdByKey
+            : ownerIdByKey;
+      const value = source.get(key);
+      assert(value, `missing ${type} participant id for ${key}`);
+      return value;
+    };
+    const expectedContactKeys = new Set(
+      plan.contacts.map(
+        (contact) =>
+          `${resolveParticipantId(contact.ownerType, contact.ownerKey)}:${resolveParticipantId(
+            contact.contactType,
+            contact.contactKey
+          )}`
+      )
+    );
+    const candidateContacts = await prisma.contact.findMany({
+      where: {
+        ownerUserId: {
+          in: [...ownerIdByKey.values(), ...technicianIdByKey.values(), ...customerIdByKey.values()]
+        },
+        deletedAt: null
+      },
+      select: { ownerUserId: true, contactUserId: true }
+    });
+    const simulationContacts = candidateContacts.filter((contact) =>
+      expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
+    );
+    assert(
+      simulationContacts.length === plan.contacts.length,
+      `expected ${plan.contacts.length} simulation contacts, found ${simulationContacts.length}`
+    );
+    const focusedCustomerContacts = simulationContacts.filter(
+      (contact) => contact.ownerUserId === focusedCustomer.id
+    );
+    assert(
+      focusedCustomerContacts.length === 12,
+      `expected 12 focused customer contacts, found ${focusedCustomerContacts.length}`
+    );
+
     const techniciansPerShop = new Map<number, number>();
     for (const user of technicianUsers) {
       const shopId = user.technicianProfile?.shopId;
@@ -233,12 +401,15 @@ const main = async (): Promise<void> => {
     const passwordChecks = await Promise.all(
       representativeAccounts.map((account) =>
         compare(
-          deriveSimulationAccountPassword(seedConfig.passwordSeed, account.email),
+          seedConfig.defaultPassword,
           account.passwordHash
         )
       )
     );
-    assert(passwordChecks.every(Boolean), "representative simulation passwords do not match export");
+    assert(
+      passwordChecks.every(Boolean),
+      "representative simulation passwords do not match export"
+    );
 
     const firstSlot = scheduleSlots.reduce((earliest, slot) =>
       slot.startsAt < earliest.startsAt ? slot : earliest
@@ -257,6 +428,11 @@ const main = async (): Promise<void> => {
             technicians: technicianUsers.length,
             customers: customerUsers.length,
             passwordSamplesVerified: passwordChecks.length
+          },
+          avatars: {
+            assigned: simulationUsers.length,
+            unique: new Set(simulationUsers.map((user) => user.avatarUrl)).size,
+            shopUnique: new Set(owners.map((owner) => owner.avatarUrl)).size
           },
           shops: shops.length,
           techniciansPerShop: Object.fromEntries(
@@ -282,6 +458,12 @@ const main = async (): Promise<void> => {
           statusHistories: historyCount,
           completedOrderFinancials: financials,
           notifications,
+          simulationConversations: simulationConversations.length,
+          simulationMessages: simulationMessages.length,
+          simulationContacts: simulationContacts.length,
+          focusedCustomerConversations: focusedCustomerConversations.length,
+          focusedCustomerMessages: focusedCustomerMessages.length,
+          focusedCustomerContacts: focusedCustomerContacts.length,
           status: "ok"
         },
         null,

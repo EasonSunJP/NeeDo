@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { authApi } from "../api/auth";
 import { clearAuthTokens, getAccessToken, getStoredRefreshToken, setAccessToken, setAuthExpiredHandler, setStoredRefreshToken } from "../api/httpClient";
+import { isStaticDemoMode } from "../api/staticDemoMode";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { demoAuthAccount, type PortalScope } from "./demoAccount";
 import type { FeaturePermission } from "./featurePermissions";
@@ -144,8 +145,17 @@ function readStoredAuthSession() {
 
   try {
     const parsedSession: unknown = JSON.parse(rawSession);
+    const storedSession = isStoredAuthSession(parsedSession)
+      ? normalizeAuthSessionEntityIds(parsedSession)
+      : null;
 
-    return isStoredAuthSession(parsedSession) ? normalizeAuthSessionEntityIds(parsedSession) : null;
+    if (isFrontendBypassSession(storedSession) && !isStaticDemoMode()) {
+      removeBrowserStorage(portalStorageKey, { silent: true });
+      removeBrowserStorage(legacySessionStorageKey, { silent: true });
+      return null;
+    }
+
+    return storedSession;
   } catch {
     return null;
   }

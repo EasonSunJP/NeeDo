@@ -144,22 +144,25 @@ describe("ClientThemeProvider theme boot logic", () => {
     expect(getClientThemeClassName("cool-gray")).toBe("client-theme-cool-black-gray");
   });
 
-  it("keeps the stored special black theme when manual mode is set", () => {
-    stubWindow({
-      localStorage: createStorage({
-        "needo.client.theme": "special-black",
-        "needo.client.theme.mode": "manual"
-      }),
-      matches: false
-    });
+  it.each(["special-black", "special-dark", "特殊黑"])(
+    "migrates the removed %s theme to cool black gray",
+    (storedTheme) => {
+      stubWindow({
+        localStorage: createStorage({
+          "needo.client.theme": storedTheme,
+          "needo.client.theme.mode": "manual"
+        }),
+        matches: false
+      });
 
-    expect(getInitialClientThemeState()).toEqual({
-      theme: "special-black",
-      preferenceMode: "manual"
-    });
-    expect(isNightClientTheme("special-black")).toBe(true);
-    expect(getClientThemeClassName("特殊黑")).toBe("client-theme-special-black");
-  });
+      expect(getInitialClientThemeState()).toEqual({
+        theme: "cool-black-gray",
+        preferenceMode: "manual"
+      });
+      expect(isNightClientTheme(storedTheme)).toBe(true);
+      expect(getClientThemeClassName(storedTheme)).toBe("client-theme-cool-black-gray");
+    }
+  );
 
   it("keeps the stored vital mono theme when manual mode is set", () => {
     stubWindow({
@@ -193,7 +196,14 @@ describe("ClientThemeProvider theme boot logic", () => {
   });
 
   it("orders selectable themes by the requested UI sequence", () => {
-    expect(clientThemes.map((theme) => theme.id)).toEqual(["special-black", "vital-mono", "cool-black-gray", "light-green", "dark-green", "neon-pink", "black-gold"]);
+    expect(clientThemes.map((theme) => theme.id)).toEqual([
+      "vital-mono",
+      "cool-black-gray",
+      "light-green",
+      "dark-green",
+      "neon-pink",
+      "black-gold"
+    ]);
   });
 
   it("exposes the neon theme in the selectable theme list", () => {
@@ -212,15 +222,7 @@ describe("ClientThemeProvider theme boot logic", () => {
     expect(clientThemes.map((theme) => theme.id)).toContain("cool-black-gray");
   });
 
-  it("exposes the special black theme in the selectable theme list", () => {
-    expect(clientThemes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "special-black",
-          label: "特殊黑",
-          shortLabel: "特殊黑"
-        })
-      ])
-    );
+  it("does not expose the removed special black theme", () => {
+    expect(clientThemes.map((theme) => theme.id)).not.toContain("special-black");
   });
 });

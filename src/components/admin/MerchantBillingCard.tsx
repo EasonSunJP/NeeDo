@@ -33,6 +33,7 @@ export function MerchantBillingCard({
   onToggleExpanded,
   onEditBilling,
   onOpenBusinessSettings,
+  onOpenMerchantAdminPreview,
   onViewDetails
 }: {
   card: MerchantAccountCard;
@@ -41,6 +42,7 @@ export function MerchantBillingCard({
   onToggleExpanded?: () => void;
   onEditBilling: () => void;
   onOpenBusinessSettings: () => void;
+  onOpenMerchantAdminPreview: () => void;
   onViewDetails: () => void;
 }) {
   const { language } = useI18n();
@@ -144,6 +146,14 @@ export function MerchantBillingCard({
             <Button size="sm" onClick={onViewDetails}>{t("查看详情")}</Button>
             <Button size="sm" variant="secondary" onClick={onEditBilling}>{t("计费设置")}</Button>
             <Button size="sm" variant={card.suspension ? "danger" : "secondary"} onClick={onOpenBusinessSettings}>{t("营业设置")}</Button>
+            <Button
+              disabled={Boolean(group && group.shops.length === 0)}
+              size="sm"
+              variant="dark"
+              onClick={onOpenMerchantAdminPreview}
+            >
+              {t("切换到商户后台")}
+            </Button>
             {group && onToggleExpanded ? (
               <Button className="ml-auto" size="sm" variant="ghost" onClick={onToggleExpanded}>
                 {expanded ? t("收起集团") : `${t("展开集团")} (${group.shops.length})`} {expanded ? "↑" : "↓"}

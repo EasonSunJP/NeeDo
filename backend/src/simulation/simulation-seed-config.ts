@@ -1,9 +1,7 @@
-import { createHmac } from "node:crypto";
-
 export interface SimulationSeedConfig {
   databaseUrl: string;
   databaseName: string;
-  passwordSeed: string;
+  defaultPassword: string;
 }
 
 const requireValue = (value: string | undefined, name: string): string => {
@@ -45,17 +43,9 @@ export const getSimulationSeedConfig = (
   return {
     databaseUrl,
     databaseName,
-    passwordSeed: requireValue(
+    defaultPassword: requireValue(
       env.SIMULATION_DEFAULT_PASSWORD || env.TEST_USER_DEFAULT_PASSWORD,
       "SIMULATION_DEFAULT_PASSWORD or TEST_USER_DEFAULT_PASSWORD"
     )
   };
-};
-
-export const deriveSimulationAccountPassword = (passwordSeed: string, email: string): string => {
-  const digest = createHmac("sha256", passwordSeed)
-    .update(email.trim().toLowerCase())
-    .digest("base64url")
-    .slice(0, 18);
-  return `N!${digest}a7`;
 };

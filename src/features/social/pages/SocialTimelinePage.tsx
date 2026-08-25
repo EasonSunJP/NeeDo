@@ -147,12 +147,12 @@ function timelineFilterStorageKey(scope: SocialPortalScope) {
 
 function readStoredTimelineFilter(scope: SocialPortalScope): SocialTimelineFilterTab {
   if (typeof window === "undefined") {
-    return "nearby";
+    return "friends";
   }
 
   const raw = window.localStorage.getItem(timelineFilterStorageKey(scope));
 
-  return raw === "nearby" || raw === "friends" || raw === "mine" ? raw : "nearby";
+  return raw === "nearby" || raw === "friends" || raw === "mine" ? raw : "friends";
 }
 
 function createNearbyPanelFromHomeLocation(

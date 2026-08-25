@@ -5,6 +5,7 @@ export type TestUserPortal = "admin" | "merchant" | "technician" | "customer" | 
 export interface TestUserAccountDefinition {
   email: string;
   username: string;
+  avatarUrl: string;
   roleCode: SystemRoleCode;
   identityType: "platform" | "merchant" | "technician" | "customer" | "broker";
   expectedPortal: TestUserPortal;
@@ -14,7 +15,8 @@ export interface TestUserAccountDefinition {
 export const TEST_USER_ACCOUNTS = [
   {
     email: "admin@example.com",
-    username: "admin",
+    username: "神谷 俊介",
+    avatarUrl: "/images/generated/profiles/cartoon-profile-02.png",
     roleCode: "admin",
     identityType: "platform",
     expectedPortal: "admin",
@@ -22,7 +24,8 @@ export const TEST_USER_ACCOUNTS = [
   },
   {
     email: "operator@example.com",
-    username: "NeeDo Operator",
+    username: "三浦 紗季",
+    avatarUrl: "/images/generated/profiles/ai-profile-11.jpg",
     roleCode: "operator",
     identityType: "platform",
     expectedPortal: "admin",
@@ -30,7 +33,8 @@ export const TEST_USER_ACCOUNTS = [
   },
   {
     email: "merchant@example.com",
-    username: "NeeDo Merchant Owner",
+    username: "青山プライベートケア Lino 公式受付",
+    avatarUrl: "/images/generated/stores/store-calm-body-room.jpg",
     roleCode: "merchant_owner",
     identityType: "merchant",
     expectedPortal: "merchant",
@@ -38,7 +42,8 @@ export const TEST_USER_ACCOUNTS = [
   },
   {
     email: "affiliate@example.com",
-    username: "NeeDo Afirieito Partner",
+    username: "森下 拓海",
+    avatarUrl: "/images/generated/profiles/cartoon-profile-05.png",
     roleCode: "broker",
     identityType: "broker",
     expectedPortal: "business",
@@ -46,7 +51,8 @@ export const TEST_USER_ACCOUNTS = [
   },
   {
     email: "technician@example.com",
-    username: "NeeDo Technician",
+    username: "橘 ひかり",
+    avatarUrl: "/images/generated/profiles/ai-profile-29.jpg",
     roleCode: "technician",
     identityType: "technician",
     expectedPortal: "technician",
@@ -54,7 +60,8 @@ export const TEST_USER_ACCOUNTS = [
   },
   {
     email: "customer@example.com",
-    username: "NeeDo Customer",
+    username: "望月 結菜",
+    avatarUrl: "/images/generated/profiles/ai-profile-24.jpg",
     roleCode: "customer",
     identityType: "customer",
     expectedPortal: "customer",

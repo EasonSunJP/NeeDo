@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
   type BackofficeServiceCreateInput,
@@ -28,6 +28,7 @@ import {
   type MerchantAccountCard
 } from "../../features/merchant-saas-billing/model";
 import { useI18n } from "../../i18n/I18nProvider";
+import { startMerchantAdminPreview } from "../../auth/merchantAdminPreview";
 import { yen } from "../../lib/utils";
 
 const tabs = ["店铺列表", "入驻审核", "服务项目", "店铺分类"];
@@ -54,6 +55,7 @@ export function MerchantsPage() {
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [active, setActive] = useState(searchParams.get("module") === "categories" ? "店铺分类" : "店铺列表");
   const [shops, setShops] = useState<BackofficeShopPayload[]>([]);
   const [services, setServices] = useState<BackofficeServicePayload[]>([]);
@@ -164,6 +166,21 @@ export function MerchantsPage() {
     void mutate(async () => setSelectedService(await backofficeRealDataApi.updateService("backoffice", selectedService.id, serviceDraft)));
   };
 
+  const openMerchantAdminPreview = (card: MerchantAccountCard) => {
+    const query = searchParams.toString();
+    const preview = startMerchantAdminPreview(
+      card,
+      `/admin/merchants${query ? `?${query}` : ""}`
+    );
+
+    if (!preview) {
+      setError(t("商家暂无旗下店铺，暂不能进入商户后台"));
+      return;
+    }
+
+    navigate("/merchant-admin");
+  };
+
   return (
     <AdminLayout>
       <ModuleShell title="店铺与商家管理" description="店铺账号、审核、基础资料与服务项目全部读取和写入正式数据库。" actions={<Button onClick={() => setCreateShopOpen(true)}>新增店铺</Button>}>
@@ -187,6 +204,7 @@ export function MerchantsPage() {
                 const commonProps = {
                   onEditBilling: () => setBillingEditorCard(card),
                   onOpenBusinessSettings: () => setBusinessSettingsCard(card),
+                  onOpenMerchantAdminPreview: () => openMerchantAdminPreview(card),
                   onViewDetails: () => setBillingDetailCard(card)
                 };
 
@@ -215,6 +233,7 @@ export function MerchantsPage() {
                             nested
                             onEditBilling={() => setBillingEditorCard(shop)}
                             onOpenBusinessSettings={() => setBusinessSettingsCard(shop)}
+                            onOpenMerchantAdminPreview={() => openMerchantAdminPreview(shop)}
                             onViewDetails={() => setBillingDetailCard(shop)}
                           />
                         ))}

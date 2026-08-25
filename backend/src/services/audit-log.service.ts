@@ -14,6 +14,14 @@ export class AuditLogService {
   public constructor(private readonly repository: AuditLogRepositoryPort) {}
 
   public async record(input: AuditLogRecordInput): Promise<void> {
+    const metadata = input.actor.isReadOnlyMerchantPreview
+      ? {
+          ...(input.metadata && typeof input.metadata === "object" ? input.metadata : {}),
+          readOnlyMerchantPreview: true,
+          previewShopId: input.actor.merchantPreviewShopId
+        }
+      : input.metadata;
+
     await this.repository.create({
       actorId: input.actor.userId,
       action: input.action,
@@ -21,7 +29,7 @@ export class AuditLogService {
       targetId: input.targetId ?? null,
       ip: input.context.ip,
       userAgent: input.context.userAgent,
-      metadata: input.metadata
+      metadata
     });
   }
 }

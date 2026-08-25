@@ -13,6 +13,7 @@ import {
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { services as legacyServices, stores as legacyStores, technicians as legacyTechnicians } from "../../data/mock";
 import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
@@ -429,8 +430,10 @@ export function CategoryPage() {
     [activeCategoryId, categoryQuery.data]
   );
   const searchKeyword = useMemo(() => buildDisplayLabels(appliedTagIds, appliedCustomLabels).join(" "), [appliedCustomLabels, appliedTagIds]);
-  const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0 || appliedCustomLabels.length > 0;
-  const searchCategoryId = entityFilter === "technician" && !hasExplicitCategoryScope ? undefined : apiCategoryId;
+  const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0;
+  const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");
+  const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;
+  const allowLegacyCoreReadData = isStaticDemoMode();
   const searchQuery = useCoreReadQuery(
     () =>
       coreReadApi.search({
@@ -442,13 +445,13 @@ export function CategoryPage() {
     [searchCategoryId, searchKeyword]
   );
   const apiServices = useMemo(
-    () => searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? legacyServices,
-    [searchQuery.data]
+    () => searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? (allowLegacyCoreReadData ? legacyServices : []),
+    [allowLegacyCoreReadData, searchQuery.data]
   );
   const apiStores = useMemo(
     () => {
       if (!searchQuery.data) {
-        return legacyStores;
+        return allowLegacyCoreReadData ? legacyStores : [];
       }
 
       return Array.from(new Map(searchQuery.data.list.map((service) => {
@@ -456,12 +459,12 @@ export function CategoryPage() {
         return [store.id, store] as const;
       })).values());
     },
-    [searchQuery.data]
+    [allowLegacyCoreReadData, searchQuery.data]
   );
   const apiTechnicians = useMemo(
     () => {
       if (!searchQuery.data) {
-        return legacyTechnicians;
+        return allowLegacyCoreReadData ? legacyTechnicians : [];
       }
 
       return Array.from(new Map(searchQuery.data.list.flatMap((service) => {
@@ -473,7 +476,7 @@ export function CategoryPage() {
         return [[technician.id, technician] as const];
       })).values());
     },
-    [searchQuery.data]
+    [allowLegacyCoreReadData, searchQuery.data]
   );
   const serviceByTechnicianId = useMemo(
     () => {
@@ -485,6 +488,10 @@ export function CategoryPage() {
         return new Map(entries);
       }
 
+      if (!allowLegacyCoreReadData) {
+        return new Map<string, ServiceItem>();
+      }
+
       const fallbackEntries = legacyTechnicians.map((technician, index) => [
         technician.id,
         legacyServices[index % legacyServices.length] ?? legacyServices[0]
@@ -492,7 +499,7 @@ export function CategoryPage() {
 
       return new Map(fallbackEntries);
     },
-    [searchQuery.data]
+    [allowLegacyCoreReadData, searchQuery.data]
   );
 
   useEffect(() => {

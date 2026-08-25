@@ -206,6 +206,7 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("conversation:create", "创建会话", "api", "im", "创建 IM 单聊或群聊会话"),
   createPermission("message:list", "消息历史", "api", "im", "分页查看会话消息历史"),
   createPermission("message:create", "发送消息", "api", "im", "发送 IM 消息"),
+  createPermission("message:react", "回应消息", "api", "im", "添加或移除 IM 消息表情回应"),
   createPermission("message:read", "已读消息", "api", "im", "标记会话消息已读"),
   createPermission("contact:list", "联系人列表", "api", "im", "分页查看联系人"),
   createPermission("friend-request:list", "好友申请列表", "api", "im", "分页查看好友申请"),
@@ -227,10 +228,34 @@ export const SYSTEM_PERMISSIONS = [
 
   createPermission("wallet:read", "查看钱包", "api", "wallet", "查看 NDP 钱包余额"),
   createPermission("wallet:ledger:list", "钱包流水", "api", "wallet", "分页查看 NDP 钱包流水"),
-  createPermission("wallet:adjustment:create", "提交钱包申请", "api", "wallet", "提交 NDP 充值或提现申请"),
-  createPermission("wallet:adjustment:list", "钱包申请记录", "api", "wallet", "分页查看本人或本店的 NDP 申请"),
-  createPermission("backoffice:wallet-adjustment:list", "钱包申请审核列表", "api", "finance", "分页查看全平台 NDP 充值提现申请"),
-  createPermission("backoffice:wallet-adjustment:review", "审核钱包申请", "api", "finance", "批准或拒绝 NDP 充值提现申请"),
+  createPermission(
+    "wallet:adjustment:create",
+    "提交钱包申请",
+    "api",
+    "wallet",
+    "提交 NDP 充值或提现申请"
+  ),
+  createPermission(
+    "wallet:adjustment:list",
+    "钱包申请记录",
+    "api",
+    "wallet",
+    "分页查看本人或本店的 NDP 申请"
+  ),
+  createPermission(
+    "backoffice:wallet-adjustment:list",
+    "钱包申请审核列表",
+    "api",
+    "finance",
+    "分页查看全平台 NDP 充值提现申请"
+  ),
+  createPermission(
+    "backoffice:wallet-adjustment:review",
+    "审核钱包申请",
+    "api",
+    "finance",
+    "批准或拒绝 NDP 充值提现申请"
+  ),
   createPermission(
     "finance:ledger:list",
     "财务账本流水",
@@ -346,21 +371,111 @@ export const SYSTEM_PERMISSIONS = [
     "backoffice",
     "分页读取运营后台店铺"
   ),
-  createPermission("backoffice:merchant-accounts:list", "运营后台商家账户列表", "api", "backoffice", "分页读取商家集团和独立店铺账户"),
-  createPermission("backoffice:merchant-accounts:read", "运营后台商家账户详情", "api", "backoffice", "读取商家集团、店铺、计费与封号详情"),
-  createPermission("backoffice:merchant-accounts:manage", "运营后台商家账户管理", "api", "backoffice", "管理集团从属关系和账户资料"),
-  createPermission("backoffice:saas-billing:read", "运营后台 SaaS 计费读取", "api", "backoffice", "读取试用、计费档案、账单与付款记录"),
-  createPermission("backoffice:saas-billing:write", "运营后台 SaaS 计费管理", "api", "backoffice", "修改计费周期、金额、试用期限和付款责任"),
-  createPermission("backoffice:saas-payment:review", "运营后台 SaaS 付款审核", "api", "backoffice", "审核人工付款并更新服务有效期"),
-  createPermission("backoffice:entity-suspension:write", "运营后台账户封号", "api", "backoffice", "对商家集团或店铺执行人工封号"),
-  createPermission("backoffice:entity-suspension:release", "运营后台账户解封", "api", "backoffice", "解除商家集团或店铺封号"),
-  createPermission("backoffice:entity-dissolution:write", "运营后台账户解散", "api", "backoffice", "软删除商家集团或店铺账户"),
-  createPermission("backoffice:shops:write", "运营店铺维护", "api", "backoffice", "创建、更新、审核和软删除店铺及店铺账号"),
-  createPermission("backoffice:technicians:write", "运营技师维护", "api", "backoffice", "更新、归属、审核和软删除技师"),
-  createPermission("backoffice:customers:list", "运营客户列表", "api", "backoffice", "分页读取客户资料"),
-  createPermission("backoffice:customers:write", "运营客户维护", "api", "backoffice", "更新和软删除客户资料"),
-  createPermission("backoffice:services:list", "运营服务列表", "api", "backoffice", "分页读取店铺服务"),
-  createPermission("backoffice:services:write", "运营服务维护", "api", "backoffice", "创建、更新和软删除店铺服务"),
+  createPermission(
+    "backoffice:merchant-accounts:list",
+    "运营后台商家账户列表",
+    "api",
+    "backoffice",
+    "分页读取商家集团和独立店铺账户"
+  ),
+  createPermission(
+    "backoffice:merchant-accounts:read",
+    "运营后台商家账户详情",
+    "api",
+    "backoffice",
+    "读取商家集团、店铺、计费与封号详情"
+  ),
+  createPermission(
+    "backoffice:merchant-accounts:manage",
+    "运营后台商家账户管理",
+    "api",
+    "backoffice",
+    "管理集团从属关系和账户资料"
+  ),
+  createPermission(
+    "backoffice:saas-billing:read",
+    "运营后台 SaaS 计费读取",
+    "api",
+    "backoffice",
+    "读取试用、计费档案、账单与付款记录"
+  ),
+  createPermission(
+    "backoffice:saas-billing:write",
+    "运营后台 SaaS 计费管理",
+    "api",
+    "backoffice",
+    "修改计费周期、金额、试用期限和付款责任"
+  ),
+  createPermission(
+    "backoffice:saas-payment:review",
+    "运营后台 SaaS 付款审核",
+    "api",
+    "backoffice",
+    "审核人工付款并更新服务有效期"
+  ),
+  createPermission(
+    "backoffice:entity-suspension:write",
+    "运营后台账户封号",
+    "api",
+    "backoffice",
+    "对商家集团或店铺执行人工封号"
+  ),
+  createPermission(
+    "backoffice:entity-suspension:release",
+    "运营后台账户解封",
+    "api",
+    "backoffice",
+    "解除商家集团或店铺封号"
+  ),
+  createPermission(
+    "backoffice:entity-dissolution:write",
+    "运营后台账户解散",
+    "api",
+    "backoffice",
+    "软删除商家集团或店铺账户"
+  ),
+  createPermission(
+    "backoffice:shops:write",
+    "运营店铺维护",
+    "api",
+    "backoffice",
+    "创建、更新、审核和软删除店铺及店铺账号"
+  ),
+  createPermission(
+    "backoffice:technicians:write",
+    "运营技师维护",
+    "api",
+    "backoffice",
+    "更新、归属、审核和软删除技师"
+  ),
+  createPermission(
+    "backoffice:customers:list",
+    "运营客户列表",
+    "api",
+    "backoffice",
+    "分页读取客户资料"
+  ),
+  createPermission(
+    "backoffice:customers:write",
+    "运营客户维护",
+    "api",
+    "backoffice",
+    "更新和软删除客户资料"
+  ),
+  createPermission(
+    "backoffice:services:list",
+    "运营服务列表",
+    "api",
+    "backoffice",
+    "分页读取店铺服务"
+  ),
+  createPermission(
+    "backoffice:services:write",
+    "运营服务维护",
+    "api",
+    "backoffice",
+    "创建、更新和软删除店铺服务"
+  ),
   createPermission(
     "merchant-admin:dashboard:read",
     "商户后台 Dashboard",
@@ -382,8 +497,20 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-admin",
     "分页读取本店真实排班"
   ),
-  createPermission("schedule:slots:list", "正式排班列表", "api", "schedule", "分页读取当前身份范围内的正式排班与可预约库存"),
-  createPermission("schedule:slots:write", "正式排班维护", "api", "schedule", "创建、更新、阻塞和软删除当前身份范围内的排班槽位"),
+  createPermission(
+    "schedule:slots:list",
+    "正式排班列表",
+    "api",
+    "schedule",
+    "分页读取当前身份范围内的正式排班与可预约库存"
+  ),
+  createPermission(
+    "schedule:slots:write",
+    "正式排班维护",
+    "api",
+    "schedule",
+    "创建、更新、阻塞和软删除当前身份范围内的排班槽位"
+  ),
   createPermission(
     "merchant-admin:finance:list",
     "商户后台财务结算",
@@ -552,10 +679,34 @@ export const SYSTEM_PERMISSIONS = [
     "merchant-admin",
     "分页读取本店技师"
   ),
-  createPermission("merchant-admin:technicians:write", "商户技师维护", "api", "merchant-admin", "更新、审核和移除本店技师"),
-  createPermission("merchant-admin:customers:list", "商户客户列表", "api", "merchant-admin", "分页读取与本店有预约关系的客户"),
-  createPermission("merchant-admin:services:list", "商户服务列表", "api", "merchant-admin", "分页读取本店服务"),
-  createPermission("merchant-admin:services:write", "商户服务维护", "api", "merchant-admin", "创建、更新和软删除本店服务"),
+  createPermission(
+    "merchant-admin:technicians:write",
+    "商户技师维护",
+    "api",
+    "merchant-admin",
+    "更新、审核和移除本店技师"
+  ),
+  createPermission(
+    "merchant-admin:customers:list",
+    "商户客户列表",
+    "api",
+    "merchant-admin",
+    "分页读取与本店有预约关系的客户"
+  ),
+  createPermission(
+    "merchant-admin:services:list",
+    "商户服务列表",
+    "api",
+    "merchant-admin",
+    "分页读取本店服务"
+  ),
+  createPermission(
+    "merchant-admin:services:write",
+    "商户服务维护",
+    "api",
+    "merchant-admin",
+    "创建、更新和软删除本店服务"
+  ),
   createPermission(
     "merchant-admin:shop:read",
     "商户后台店铺资料",
@@ -693,6 +844,7 @@ const REALTIME_USER_PERMISSION_CODES = [
   "conversation:create",
   "message:list",
   "message:create",
+  "message:react",
   "message:read",
   "contact:list",
   "friend-request:list",

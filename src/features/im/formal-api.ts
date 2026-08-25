@@ -1,0 +1,653 @@
+import {
+  realtimeApi,
+  subscribeRealtimeEvents,
+  type PaginatedRealtimeData,
+  type RealtimeContact,
+  type RealtimeConversation,
+  type RealtimeFriendRequest,
+  type RealtimeMessage,
+  type RealtimeParticipant,
+} from "../realtime/api";
+import type { createImApi } from "./api";
+import type {
+  ContactRelation,
+  Conversation,
+  ConversationMember,
+  ConversationMessage,
+  FriendRequest,
+  ImBootstrapPayload,
+  ImMessageType,
+  ImProfileKind,
+  ImRoleType,
+  ImUser,
+  MessageExt,
+} from "./model";
+
+type ImApi = ReturnType<typeof createImApi>;
+
+type FormalCurrentUser = {
+  avatarUrl: string | null;
+  id: number;
+  username: string;
+};
+
+type CreateFormalImApiOptions = {
+  currentUser: FormalCurrentUser;
+  scope: ImRoleType;
+};
+
+const formalRuntimeConfig = {
+  allowStrangerMessaging: false,
+  preserveConversationAfterDelete: true,
+  syncDraftAcrossDevices: false,
+  recallWindowMs: 120_000,
+  separatorThresholdMs: 300_000,
+} as const;
+
+const richMessageTypes = new Set<ImMessageType>([
+  "text",
+  "emoji",
+  "image",
+  "voice",
+  "video",
+  "file",
+  "location",
+  "contact-card",
+  "service-card",
+  "schedule-invite",
+  "system",
+  "recalled",
+]);
+
+function featureUnavailable(): never {
+  throw new Error("error.feature_unavailable");
+}
+
+function toNumericId(id: string) {
+  const value = Number(id);
+
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("error.validation.invalid_id");
+  }
+
+  return value;
+}
+
+function readMetadata(metadata: unknown) {
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+}
+
+function inferProfileKind(username: string): ImProfileKind {
+  const normalized = username.toLowerCase();
+
+  if (normalized.includes("technician") || normalized.includes("therapist")) {
+    return "technician";
+  }
+
+  if (
+    normalized.includes("shop") ||
+    normalized.includes("store") ||
+    normalized.includes("merchant")
+  ) {
+    return "store";
+  }
+
+  return "person";
+}
+
+function buildInitialAvatar(username: string, profileKind: ImProfileKind) {
+  const initials =
+    username
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "N";
+  const safeInitials = initials
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+  const colors: Record<ImProfileKind, [string, string]> = {
+    person: ["#203b52", "#84d8ff"],
+    technician: ["#173f37", "#7ce0bd"],
+    store: ["#49371d", "#ffd98b"],
+    service: ["#3c2e55", "#d6b9ff"],
+  };
+  const [background, foreground] = colors[profileKind];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><rect width="128" height="128" rx="34" fill="${background}"/><text x="64" y="74" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="38" font-weight="800" fill="${foreground}">${safeInitials}</text></svg>`;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function toImUser(participant: RealtimeParticipant): ImUser {
+  const id = String(participant.userId);
+  const profileKind = inferProfileKind(participant.username);
+
+  return {
+    id,
+    accountId: id,
+    nickname: participant.username,
+    avatar:
+      participant.avatarUrl ??
+      buildInitialAvatar(participant.username, profileKind),
+    status: "active",
+    searchableFields: [participant.username, id],
+    sortKey: participant.username,
+    profileKind,
+    entityType:
+      profileKind === "technician"
+        ? "technician"
+        : profileKind === "store"
+          ? "shop"
+          : "user",
+    source: "formal_api",
+    tags: [],
+    userIdLabel: id,
+    canCall: false,
+    canVideoCall: false,
+  };
+}
+
+function toPlaceholderUser(userId: number): ImUser {
+  return toImUser({
+    userId,
+    username: `用户 ${userId}`,
+    avatarUrl: null,
+  });
+}
+
+function toConversationMessage(message: RealtimeMessage): ConversationMessage {
+  const metadata = readMetadata(message.metadata);
+  const storedType = metadata.needoMessageType;
+  const type =
+    typeof storedType === "string" &&
+    richMessageTypes.has(storedType as ImMessageType)
+      ? (storedType as ImMessageType)
+      : message.type === "text"
+        ? "text"
+        : "system";
+  const ext = metadata.needoMessageExt;
+  const quotedMessageId = metadata.needoQuotedMessageId;
+
+  return {
+    id: String(message.id),
+    localId: String(message.id),
+    conversationId: String(message.conversationId),
+    senderId: message.senderUserId === null ? "" : String(message.senderUserId),
+    type,
+    content: message.content ?? "",
+    quotedMessageId:
+      typeof quotedMessageId === "string" ? quotedMessageId : undefined,
+    status: type === "recalled" ? "recalled" : "sent",
+    sentAt: message.createdAt,
+    clientSeq: message.id,
+    reactions: (message.reactions ?? []).map((reaction) => ({
+      emoji: reaction.emoji,
+      people: reaction.people.map((person) => ({
+        id: String(person.userId),
+        name: person.username,
+        avatar: person.avatarUrl ?? undefined,
+      })),
+      reactedByMe: reaction.reactedByMe,
+    })),
+    ext:
+      ext && typeof ext === "object" && !Array.isArray(ext)
+        ? (ext as MessageExt)
+        : undefined,
+  };
+}
+
+function getOtherParticipant(
+  conversation: RealtimeConversation,
+  currentUserId: number,
+) {
+  return conversation.participants.find(
+    (participant) => participant.userId !== currentUserId,
+  );
+}
+
+function toConversation(
+  conversation: RealtimeConversation,
+  currentUserId: number,
+): Conversation {
+  const otherParticipant = getOtherParticipant(conversation, currentUserId);
+  const isDirect = conversation.type === "direct";
+  const lastMessage = conversation.lastMessage
+    ? toConversationMessage(conversation.lastMessage)
+    : null;
+  const title =
+    conversation.title?.trim() ||
+    (isDirect ? otherParticipant?.username : undefined) ||
+    `群聊（${conversation.participants.length}）`;
+
+  return {
+    id: String(conversation.id),
+    type: isDirect ? "single" : "group",
+    title,
+    avatar: isDirect ? (otherParticipant?.avatarUrl ?? "") : "",
+    memberIds: conversation.participants.map((participant) =>
+      String(participant.userId),
+    ),
+    contactUserId:
+      isDirect && otherParticipant
+        ? String(otherParticipant.userId)
+        : undefined,
+    lastMessageId: lastMessage?.id,
+    lastMessagePreview: lastMessage?.content ?? "",
+    lastMessageTime: lastMessage?.sentAt ?? conversation.updatedAt,
+    unreadCount: conversation.unreadCount,
+    isPinned: conversation.isPinned ?? false,
+    isMuted: conversation.isMuted ?? false,
+    isDeleted: conversation.isHidden || undefined,
+    updatedAt: conversation.updatedAt,
+  };
+}
+
+function toConversationMembers(
+  conversation: RealtimeConversation,
+): ConversationMember[] {
+  return conversation.participants.map((participant, index) => ({
+    id: `${conversation.id}-${participant.userId}`,
+    conversationId: String(conversation.id),
+    userId: String(participant.userId),
+    role: index === 0 ? "owner" : "member",
+    joinedAt: conversation.createdAt,
+  }));
+}
+
+function toContact(contact: RealtimeContact): ContactRelation {
+  return {
+    id: String(contact.id),
+    ownerUserId: String(contact.ownerUserId),
+    targetUserId: String(contact.contactUserId),
+    relationStatus: "active",
+    source: contact.source,
+    remarkName: contact.nickname ?? undefined,
+    tags: [],
+    isStarred: false,
+    isBlocked: false,
+    createdAt: contact.createdAt,
+    updatedAt: contact.createdAt,
+  };
+}
+
+function toFriendRequest(friendRequest: RealtimeFriendRequest): FriendRequest {
+  return {
+    id: String(friendRequest.id),
+    fromUserId: String(friendRequest.requesterUserId),
+    toUserId: String(friendRequest.targetUserId),
+    source: "formal_api",
+    requestMessage: friendRequest.message ?? "",
+    status: friendRequest.status,
+    createdAt: friendRequest.createdAt,
+    handledAt: friendRequest.respondedAt ?? undefined,
+  };
+}
+
+async function loadAllPages<TItem>(
+  loader: (query: {
+    page: number;
+    pageSize: number;
+  }) => Promise<PaginatedRealtimeData<TItem>>,
+) {
+  const firstPage = await loader({ page: 1, pageSize: 100 });
+  const pageCount = Math.ceil(firstPage.total / 100);
+
+  if (pageCount <= 1) {
+    return firstPage.list;
+  }
+
+  const remainingPages = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) =>
+      loader({ page: index + 2, pageSize: 100 }),
+    ),
+  );
+
+  return [firstPage, ...remainingPages].flatMap((page) => page.list);
+}
+
+function buildBootstrap(
+  currentUser: FormalCurrentUser,
+  conversations: RealtimeConversation[],
+  contacts: RealtimeContact[],
+  friendRequests: RealtimeFriendRequest[],
+): ImBootstrapPayload {
+  const userMap = new Map<string, ImUser>();
+  const currentParticipant: RealtimeParticipant = {
+    userId: currentUser.id,
+    username: currentUser.username,
+    avatarUrl: currentUser.avatarUrl,
+  };
+  userMap.set(String(currentUser.id), toImUser(currentParticipant));
+  conversations.forEach((conversation) => {
+    conversation.participants.forEach((participant) => {
+      userMap.set(String(participant.userId), toImUser(participant));
+    });
+  });
+  contacts.forEach((contact) => {
+    const id = String(contact.contactUserId);
+    if (!userMap.has(id))
+      userMap.set(id, toPlaceholderUser(contact.contactUserId));
+  });
+  friendRequests.forEach((friendRequest) => {
+    [friendRequest.requesterUserId, friendRequest.targetUserId].forEach(
+      (userId) => {
+        const id = String(userId);
+        if (!userMap.has(id)) userMap.set(id, toPlaceholderUser(userId));
+      },
+    );
+  });
+
+  return {
+    currentUserId: String(currentUser.id),
+    config: formalRuntimeConfig,
+    users: Array.from(userMap.values()),
+    contacts: contacts.map(toContact),
+    friendRequests: friendRequests.map(toFriendRequest),
+    conversations: conversations.map((conversation) =>
+      toConversation(conversation, currentUser.id),
+    ),
+    members: conversations.flatMap(toConversationMembers),
+  };
+}
+
+export function createFormalImApi({
+  currentUser,
+}: CreateFormalImApiOptions): ImApi {
+  const loadConversations = () =>
+    loadAllPages((query) => realtimeApi.listConversations(query));
+  const loadContacts = () =>
+    loadAllPages((query) => realtimeApi.listContacts(query));
+  const loadFriendRequests = () =>
+    loadAllPages((query) =>
+      realtimeApi.listFriendRequests({ ...query, direction: "all" }),
+    );
+
+  const bootstrap = async () => {
+    const [conversations, contacts, friendRequests] = await Promise.all([
+      loadConversations(),
+      loadContacts(),
+      loadFriendRequests(),
+    ]);
+
+    return buildBootstrap(currentUser, conversations, contacts, friendRequests);
+  };
+
+  const findConversation = async (conversationId: string) => {
+    const conversation = (await loadConversations()).find(
+      (item) => item.id === toNumericId(conversationId),
+    );
+
+    if (!conversation) {
+      throw new Error("error.realtime.conversation_not_found");
+    }
+
+    return conversation;
+  };
+
+  const getConversation = async (conversationId: string) => {
+    const conversation = await findConversation(conversationId);
+    const users = conversation.participants.map(toImUser);
+
+    return {
+      conversation: toConversation(conversation, currentUser.id),
+      members: toConversationMembers(conversation),
+      users,
+    };
+  };
+
+  const api = {
+    bootstrap,
+    async listContacts() {
+      const contacts = await loadContacts();
+      const bootstrapPayload = await bootstrap();
+      return {
+        contacts: contacts.map(toContact),
+        users: bootstrapPayload.users,
+      };
+    },
+    addContact: featureUnavailable,
+    async getContact(contactId: string) {
+      const contacts = await loadContacts();
+      const contact = contacts.find(
+        (item) => item.id === toNumericId(contactId),
+      );
+      if (!contact) throw new Error("error.realtime.contact_not_found");
+      const bootstrapPayload = await bootstrap();
+      return {
+        contact: toContact(contact),
+        user: bootstrapPayload.users.find(
+          (user) => user.id === String(contact.contactUserId),
+        ),
+      };
+    },
+    updateRemark: featureUnavailable,
+    updateContactTags: featureUnavailable,
+    blockContact: featureUnavailable,
+    unblockContact: featureUnavailable,
+    deleteContact: featureUnavailable,
+    async listFriendRequests() {
+      const friendRequests = await loadFriendRequests();
+      const bootstrapPayload = await bootstrap();
+      return {
+        friendRequests: friendRequests.map(toFriendRequest),
+        users: bootstrapPayload.users,
+      };
+    },
+    async acceptFriendRequest(requestId: string) {
+      const request = await realtimeApi.acceptFriendRequest(
+        toNumericId(requestId),
+      );
+      const contactUserId =
+        request.requesterUserId === currentUser.id
+          ? request.targetUserId
+          : request.requesterUserId;
+      const contact = (await loadContacts()).find(
+        (item) => item.contactUserId === contactUserId,
+      );
+      return {
+        request: toFriendRequest(request),
+        contact: contact ? toContact(contact) : undefined,
+      };
+    },
+    async rejectFriendRequest(requestId: string) {
+      return {
+        friendRequest: toFriendRequest(
+          await realtimeApi.rejectFriendRequest(toNumericId(requestId)),
+        ),
+      };
+    },
+    async listConversations() {
+      const conversations = await loadConversations();
+      return {
+        conversations: conversations.map((conversation) =>
+          toConversation(conversation, currentUser.id),
+        ),
+        users: conversations.flatMap((conversation) =>
+          conversation.participants.map(toImUser),
+        ),
+      };
+    },
+    getConversation,
+    async listMessages(
+      conversationId: string,
+      cursor?: string | null,
+      limit = 30,
+    ) {
+      const response = await realtimeApi.listMessages(
+        toNumericId(conversationId),
+        {
+          beforeId: cursor ? toNumericId(cursor) : undefined,
+          pageSize: limit,
+        },
+      );
+      return {
+        messages: response.list.map(toConversationMessage),
+        nextCursor:
+          response.nextCursor === null ? null : String(response.nextCursor),
+        hasMore: response.nextCursor !== null,
+      };
+    },
+    async createConversation(
+      memberIds: string[],
+      title?: string,
+      privacyOptions?: { forceGroup?: boolean },
+    ) {
+      const type =
+        privacyOptions?.forceGroup || memberIds.length > 1 ? "group" : "direct";
+      const conversation = await realtimeApi.createConversation({
+        participantUserIds: memberIds.map(toNumericId),
+        ...(title?.trim() ? { title: title.trim() } : {}),
+        type,
+      });
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
+    updateConversationPrivacy: featureUnavailable,
+    updateConversationGroupInfo: featureUnavailable,
+    updateConversationTags: featureUnavailable,
+    addConversationMembers: featureUnavailable,
+    removeConversationMember: featureUnavailable,
+    async pinConversation(conversationId: string, isPinned: boolean) {
+      const conversation = await realtimeApi.updateConversationPreferences(
+        toNumericId(conversationId),
+        { isPinned },
+      );
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
+    async muteConversation(conversationId: string, isMuted: boolean) {
+      const conversation = await realtimeApi.updateConversationPreferences(
+        toNumericId(conversationId),
+        { isMuted },
+      );
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
+    async markConversationRead(conversationId: string, markUnread = false) {
+      if (markUnread) {
+        const conversation = await realtimeApi.markConversationUnread(
+          toNumericId(conversationId),
+        );
+        return { conversation: toConversation(conversation, currentUser.id) };
+      }
+      await realtimeApi.markConversationRead(toNumericId(conversationId));
+      const response = await getConversation(conversationId);
+      return { conversation: { ...response.conversation, unreadCount: 0 } };
+    },
+    async deleteConversation(conversationId: string) {
+      const conversation = await realtimeApi.deleteConversation(toNumericId(conversationId));
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
+    clearConversation: featureUnavailable,
+    async sendMessage(
+      type: ImMessageType,
+      payload: {
+        conversationId: string;
+        content: string;
+        quotedMessageId?: string;
+        ext?: MessageExt;
+      },
+    ) {
+      const storedType = type === "system" ? "system" : "text";
+      const metadata = {
+        needoMessageType: type,
+        ...(payload.quotedMessageId
+          ? { needoQuotedMessageId: payload.quotedMessageId }
+          : {}),
+        ...(payload.ext ? { needoMessageExt: payload.ext } : {}),
+      };
+      const message = await realtimeApi.createMessage(
+        toNumericId(payload.conversationId),
+        {
+          content: payload.content,
+          metadata,
+          type: storedType,
+        },
+      );
+      const response = await getConversation(payload.conversationId);
+      return {
+        conversation: response.conversation,
+        message: toConversationMessage(message),
+      };
+    },
+    async setMessageReaction(
+      conversationId: string,
+      messageId: string,
+      emoji: string,
+      reacted: boolean,
+    ) {
+      const message = reacted
+        ? await realtimeApi.setMessageReaction(
+            toNumericId(conversationId),
+            toNumericId(messageId),
+            emoji,
+          )
+        : await realtimeApi.removeMessageReaction(
+            toNumericId(conversationId),
+            toNumericId(messageId),
+            emoji,
+          );
+      return { message: toConversationMessage(message) };
+    },
+    estimateTagMessageCampaign: featureUnavailable,
+    sendTagMessageCampaign: featureUnavailable,
+    recallMessage: featureUnavailable,
+    resendMessage: featureUnavailable,
+    forwardMessage: featureUnavailable,
+    async search(query: string, conversationId?: string) {
+      const normalizedQuery = query.trim().toLowerCase();
+      if (!normalizedQuery)
+        return { contacts: [], conversations: [], messages: [] };
+      const bootstrapPayload = await bootstrap();
+      const conversations = bootstrapPayload.conversations.filter(
+        (conversation) =>
+          (!conversationId || conversation.id === conversationId) &&
+          `${conversation.title} ${conversation.lastMessagePreview}`
+            .toLowerCase()
+            .includes(normalizedQuery),
+      );
+      const contacts = bootstrapPayload.contacts.filter((contact) => {
+        const user = bootstrapPayload.users.find(
+          (item) => item.id === contact.targetUserId,
+        );
+        return `${contact.remarkName ?? ""} ${user?.nickname ?? ""} ${user?.userIdLabel ?? ""}`
+          .toLowerCase()
+          .includes(normalizedQuery);
+      });
+      const targetConversations = bootstrapPayload.conversations.filter(
+        (conversation) => !conversationId || conversation.id === conversationId,
+      );
+      const messagePages = await Promise.all(
+        targetConversations.map((conversation) =>
+          realtimeApi.listMessages(Number(conversation.id), { pageSize: 100 }),
+        ),
+      );
+      const messages = messagePages
+        .flatMap((page) => page.list.map(toConversationMessage))
+        .filter((message) =>
+          message.content.toLowerCase().includes(normalizedQuery),
+        );
+      return { contacts, conversations, messages };
+    },
+    uploadInit: featureUnavailable,
+    uploadComplete: featureUnavailable,
+  } satisfies ImApi;
+
+  return api;
+}
+
+export function subscribeFormalImUpdates(onUpdate: () => void) {
+  return subscribeRealtimeEvents({
+    onEvent(event) {
+      if (
+        event.type.startsWith("message.") ||
+        event.type.startsWith("conversation.") ||
+        event.type.startsWith("friend_request.") ||
+        event.type.startsWith("contact.")
+      ) {
+        onUpdate();
+      }
+    },
+  });
+}

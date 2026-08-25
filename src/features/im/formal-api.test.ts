@@ -1,0 +1,272 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { realtimeApi } from "../realtime/api";
+import { createFormalImApi } from "./formal-api";
+
+const now = "2026-08-25T10:00:00.000Z";
+
+describe("formal IM adapter", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("maps real conversations and reciprocal contacts into the original IM model", async () => {
+    vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
+      list: [
+        {
+          id: 91,
+          type: "direct",
+          title: null,
+          participants: [
+            { userId: 100, username: "sim-customer-100", avatarUrl: null },
+            {
+              userId: 201,
+              username: "sim-technician-001",
+              avatarUrl: "/avatars/tech-1.png",
+            },
+          ],
+          lastMessage: {
+            id: 501,
+            conversationId: 91,
+            senderUserId: 201,
+            type: "text",
+            content: "明天下午三点可以为您服务。",
+            metadata: null,
+            createdAt: now,
+          },
+          unreadCount: 2,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listContacts").mockResolvedValue({
+      list: [
+        {
+          id: 31,
+          ownerUserId: 100,
+          contactUserId: 201,
+          nickname: "小林技师",
+          source: "simulation_seed",
+          createdAt: now,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listFriendRequests").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+    const bootstrap = await api.bootstrap();
+
+    expect(bootstrap.currentUserId).toBe("100");
+    expect(bootstrap.conversations[0]).toMatchObject({
+      id: "91",
+      type: "single",
+      contactUserId: "201",
+      title: "sim-technician-001",
+      lastMessagePreview: "明天下午三点可以为您服务。",
+      unreadCount: 2,
+    });
+    expect(bootstrap.contacts[0]).toMatchObject({
+      id: "31",
+      ownerUserId: "100",
+      targetUserId: "201",
+      remarkName: "小林技师",
+      relationStatus: "active",
+    });
+    expect(bootstrap.users.find((user) => user.id === "201")).toMatchObject({
+      nickname: "sim-technician-001",
+      profileKind: "technician",
+      avatar: "/avatars/tech-1.png",
+    });
+    expect(bootstrap.users.find((user) => user.id === "100")?.avatar).toMatch(
+      /^data:image\/svg\+xml/,
+    );
+  });
+
+  it("persists rich text messages through the formal message endpoint", async () => {
+    const createMessage = vi
+      .spyOn(realtimeApi, "createMessage")
+      .mockResolvedValue({
+        id: 700,
+        conversationId: 91,
+        senderUserId: 100,
+        type: "text",
+        content: "已经确认，感谢。",
+        metadata: { needoMessageType: "text" },
+        createdAt: now,
+      });
+    vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
+      list: [
+        {
+          id: 91,
+          type: "direct",
+          title: null,
+          participants: [
+            { userId: 100, username: "sim-customer-100", avatarUrl: null },
+            { userId: 201, username: "sim-technician-001", avatarUrl: null },
+          ],
+          lastMessage: null,
+          unreadCount: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    });
+
+    const api = createFormalImApi({
+      currentUser: { id: 100, username: "sim-customer-100", avatarUrl: null },
+      scope: "user",
+    });
+    const result = await api.sendMessage("text", {
+      conversationId: "91",
+      content: "已经确认，感谢。",
+    });
+
+    expect(createMessage).toHaveBeenCalledWith(91, {
+      content: "已经确认，感谢。",
+      metadata: {
+        needoMessageType: "text",
+      },
+      type: "text",
+    });
+    expect(result.message).toMatchObject({
+      id: "700",
+      conversationId: "91",
+      senderId: "100",
+      status: "sent",
+    });
+  });
+
+  it("persists message reactions through the formal API and maps the saved people", async () => {
+    const setMessageReaction = vi
+      .spyOn(realtimeApi, "setMessageReaction")
+      .mockResolvedValue({
+        id: 700,
+        conversationId: 91,
+        senderUserId: 201,
+        type: "text",
+        content: "承知しました。",
+        metadata: null,
+        reactions: [
+          {
+            emoji: "😂",
+            reactedByMe: true,
+            people: [
+              {
+                userId: 100,
+                username: "sim-customer-100",
+                avatarUrl: "/avatars/customer-100.png",
+              },
+            ],
+          },
+        ],
+        createdAt: now,
+      });
+
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        username: "sim-customer-100",
+        avatarUrl: "/avatars/customer-100.png",
+      },
+      scope: "user",
+    });
+    const result = await api.setMessageReaction("91", "700", "😂", true);
+
+    expect(setMessageReaction).toHaveBeenCalledWith(91, 700, "😂");
+    expect(result.message.reactions).toEqual([
+      {
+        emoji: "😂",
+        reactedByMe: true,
+        people: [
+          {
+            id: "100",
+            name: "sim-customer-100",
+            avatar: "/avatars/customer-100.png",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("persists conversation pin, mute, unread, and personal deletion state", async () => {
+    const conversation = {
+      id: 91,
+      type: "direct" as const,
+      title: null,
+      participants: [
+        { userId: 100, username: "sim-customer-100", avatarUrl: null },
+        { userId: 201, username: "sim-technician-001", avatarUrl: null },
+      ],
+      lastMessage: null,
+      unreadCount: 0,
+      isPinned: false,
+      isMuted: false,
+      isHidden: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const updateConversationPreferences = vi.fn(
+      async (_conversationId: number, preferences: { isMuted?: boolean; isPinned?: boolean }) => ({
+        ...conversation,
+        ...preferences,
+      }),
+    );
+    const markConversationUnread = vi.fn(async () => ({
+      ...conversation,
+      unreadCount: 1,
+    }));
+    const deleteConversation = vi.fn(async () => ({
+      ...conversation,
+      isHidden: true,
+    }));
+    Object.assign(realtimeApi, {
+      updateConversationPreferences,
+      markConversationUnread,
+      deleteConversation,
+    });
+
+    const api = createFormalImApi({
+      currentUser: { id: 100, username: "sim-customer-100", avatarUrl: null },
+      scope: "user",
+    });
+
+    await expect(api.pinConversation("91", true)).resolves.toMatchObject({
+      conversation: { id: "91", isPinned: true },
+    });
+    await expect(api.muteConversation("91", true)).resolves.toMatchObject({
+      conversation: { id: "91", isMuted: true },
+    });
+    await expect(api.markConversationRead("91", true)).resolves.toMatchObject({
+      conversation: { id: "91", unreadCount: 1 },
+    });
+    await expect(api.deleteConversation("91")).resolves.toMatchObject({
+      conversation: { id: "91", isDeleted: true },
+    });
+
+    expect(updateConversationPreferences).toHaveBeenNthCalledWith(1, 91, { isPinned: true });
+    expect(updateConversationPreferences).toHaveBeenNthCalledWith(2, 91, { isMuted: true });
+    expect(markConversationUnread).toHaveBeenCalledWith(91);
+    expect(deleteConversation).toHaveBeenCalledWith(91);
+  });
+});

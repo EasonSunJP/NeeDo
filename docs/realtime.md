@@ -7,7 +7,7 @@ Step 13 adds the first production backend slice for IM, Social, and Notification
 New tables:
 
 - `conversations`: direct or group conversation shell.
-- `conversation_participants`: membership, role, `unread_count`, and last-read marker.
+- `conversation_participants`: membership, role, `unread_count`, last-read marker, per-user pin/mute preferences, and personal list hiding.
 - `messages`: durable message history with cursor pagination by message id.
 - `contacts`: user-to-user contact rows.
 - `friend_requests`: pending, accepted, and rejected friend requests.
@@ -28,6 +28,9 @@ IM:
 - `GET /im/conversations/:conversationId/messages?pageSize=20&beforeId=123`
 - `POST /im/conversations/:conversationId/messages`
 - `POST /im/conversations/:conversationId/read`
+- `POST /im/conversations/:conversationId/unread`
+- `PATCH /im/conversations/:conversationId/preferences`
+- `DELETE /im/conversations/:conversationId`
 - `GET /im/contacts`
 - `GET /im/friend-requests`
 - `POST /im/friend-requests`
@@ -54,7 +57,7 @@ Messages use cursor pagination through `beforeId`. The first page returns newest
 
 ## Unread Counts
 
-Message unread counts are stored on `conversation_participants.unread_count`. Sending a message increments other active participants in one update and resets the sender. Marking a conversation read resets only the current participant. Notification unread counts come from `notifications.read_at IS NULL`. Friend request unread counts come from pending incoming requests.
+Message unread counts are stored on `conversation_participants.unread_count`. Sending a message increments other active participants in one update and resets the sender. Marking a conversation read or unread changes only the current participant. Pin and mute are also participant preferences. Deleting a conversation sets `hidden_at` only for the current participant; it does not delete shared membership or messages, and a new message makes the conversation visible again. Notification unread counts come from `notifications.read_at IS NULL`. Friend request unread counts come from pending incoming requests.
 
 ## Order Status Notifications
 
@@ -84,6 +87,6 @@ The database stores durable messages, social posts, requests, follows, and notif
 
 Formal authenticated sessions use the typed adapter in `src/features/realtime/api.ts` for IM, Social, notifications, unread counts, and SSE. The global unread-count provider owns one application-level SSE connection for navigation and pet badges.
 
-Legacy IM/Social pages and browser databases remain available only to an explicit static-demo build with a frontend-bypass session. In formal mode the legacy stores return empty read models and reject mutations with `error.feature_unavailable`, so unrelated legacy components cannot silently persist fake business state.
+Legacy IM/Social pages and browser databases remain available only to an explicit static-demo build with a frontend-bypass session. Formal IM uses persisted APIs for conversations, messages, reactions, read/unread state, pin/mute preferences, and personal deletion. Other unsupported legacy mutations still reject with `error.feature_unavailable`, so unrelated components cannot silently persist fake business state.
 
-The first production slice supports text IM and basic text Social posts. File/media upload, drafts, reply/like/repost/quote/bookmark state, relationship lists, organization contacts, blacklists, tags, service accounts, and advanced group settings remain capability-gated until their database, storage, RBAC, moderation, and audit contracts are implemented.
+The first production slice supports text IM, conversation list preferences, and basic text Social posts. File/media upload, cross-device drafts, reply/like/repost/quote/bookmark state, relationship lists, organization contacts, blacklists, tags, service accounts, and advanced group settings remain capability-gated until their database, storage, RBAC, moderation, and audit contracts are implemented.

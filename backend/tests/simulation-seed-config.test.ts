@@ -1,5 +1,4 @@
 import {
-  deriveSimulationAccountPassword,
   getSimulationSeedConfig
 } from "../src/simulation/simulation-seed-config";
 
@@ -15,7 +14,7 @@ describe("simulation seed safety", () => {
   it("accepts an explicitly enabled local database", () => {
     expect(getSimulationSeedConfig(localEnv)).toMatchObject({
       databaseName: "needo",
-      passwordSeed: "Local-only-password!"
+      defaultPassword: "Local-only-password!"
     });
   });
 
@@ -34,21 +33,14 @@ describe("simulation seed safety", () => {
         ...localEnv,
         SIMULATION_DEFAULT_PASSWORD: "",
         TEST_USER_DEFAULT_PASSWORD: "Existing-local-test-password!"
-      }).passwordSeed
+      }).defaultPassword
     ).toBe("Existing-local-test-password!");
   });
 
-  it("derives unique strong passwords without storing account passwords in source", () => {
-    const passwords = Array.from({ length: 210 }, (_, index) =>
-      deriveSimulationAccountPassword("Local-only-password!", `sim.account.${index}@needo.local`)
+  it("uses one explicitly configured password for the local exported test cohort", () => {
+    expect(getSimulationSeedConfig(localEnv).defaultPassword).toBe(
+      localEnv.SIMULATION_DEFAULT_PASSWORD
     );
-
-    expect(new Set(passwords).size).toBe(210);
-    expect(passwords.every((password) => password.length >= 16)).toBe(true);
-    expect(passwords.every((password) => /[a-z]/.test(password))).toBe(true);
-    expect(passwords.every((password) => /[A-Z]/.test(password))).toBe(true);
-    expect(passwords.every((password) => /[0-9]/.test(password))).toBe(true);
-    expect(passwords.every((password) => /[^A-Za-z0-9]/.test(password))).toBe(true);
   });
 
   it("rejects production, remote hosts and production-looking databases", () => {

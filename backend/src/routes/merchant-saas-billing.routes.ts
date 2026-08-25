@@ -3,7 +3,7 @@ import type { AppDependencies } from "../app";
 import type { AppConfig } from "../config/env";
 import { MerchantSaasBillingController } from "../controllers/merchant-saas-billing.controller";
 import { createAuthenticateMiddleware } from "../middlewares/authenticate.middleware";
-import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
+import { createAuthorizeAnyMiddleware, createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { MerchantSaasBillingRepository } from "../repositories/merchant-saas-billing.repository";
@@ -56,6 +56,10 @@ export const createMerchantSaasBillingRoutes = (
   const authService = createAuthServiceForRoutes(config, dependencies);
   const authenticate = createAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
+  const authorizeBillingHistoryRead = createAuthorizeAnyMiddleware([
+    MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.billingRead,
+    MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.read
+  ]);
   const auditLogService = new AuditLogService(
     dependencies.auditLogRepository ?? new AuditLogRepository()
   );
@@ -143,21 +147,21 @@ export const createMerchantSaasBillingRoutes = (
   router.get(
     "/backoffice/billing-subjects/:subjectType/:subjectId/free-periods",
     authenticate(),
-    authorize(MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.billingRead),
+    authorizeBillingHistoryRead,
     validateRequest({ params: billingSubjectParamSchema, query: freePeriodListQuerySchema }),
     controller.listFreePeriods
   );
   router.get(
     "/backoffice/saas-invoices",
     authenticate(),
-    authorize(MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.billingRead),
+    authorizeBillingHistoryRead,
     validateRequest({ query: saasInvoiceListQuerySchema }),
     controller.listInvoices
   );
   router.get(
     "/backoffice/saas-invoices/:id",
     authenticate(),
-    authorize(MERCHANT_SAAS_BILLING_ROUTE_PERMISSIONS.billingRead),
+    authorizeBillingHistoryRead,
     validateRequest({ params: invoiceIdParamSchema }),
     controller.getInvoice
   );

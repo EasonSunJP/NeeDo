@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createLegacyAuthProxyConfig,
   createNeedoApiProxyConfig,
+  rewritePortalEntryRequest,
   resolveLegacyAuthProxyTarget,
   resolveNeedoApiProxyTarget
 } from "./vite.config";
@@ -55,5 +56,39 @@ describe("Needo API proxy config", () => {
       target: "https://t.dackou.com"
     });
     expect(proxy["/legacy-auth"].rewrite?.("/legacy-auth/captcha?token=abc")).toBe("/captcha?token=abc");
+  });
+});
+
+describe("NeeDo portal entry fallback", () => {
+  it("does not rewrite JavaScript requests for an admin route to an HTML entry", () => {
+    const request = {
+      headers: {
+        accept: "*/*",
+        "sec-fetch-dest": "script"
+      },
+      url: "/admin"
+    };
+    let nextCalled = false;
+
+    rewritePortalEntryRequest(request, {}, () => {
+      nextCalled = true;
+    });
+
+    expect(request.url).toBe("/admin");
+    expect(nextCalled).toBe(true);
+  });
+
+  it("keeps rewriting real document navigation to the matching portal entry", () => {
+    const request = {
+      headers: {
+        accept: "text/html,application/xhtml+xml",
+        "sec-fetch-dest": "document"
+      },
+      url: "/admin/technicians?status=active"
+    };
+
+    rewritePortalEntryRequest(request, {}, () => undefined);
+
+    expect(request.url).toBe("/pf-admin.html?status=active");
   });
 });

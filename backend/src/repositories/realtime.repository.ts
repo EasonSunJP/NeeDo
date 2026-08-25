@@ -29,6 +29,9 @@ export interface ConversationPayload {
   participants: ParticipantPayload[];
   lastMessage: MessagePayload | null;
   unreadCount: number;
+  isPinned: boolean;
+  isMuted: boolean;
+  isHidden: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,7 +43,20 @@ export interface MessagePayload {
   type: MessageTypePayload;
   content: string | null;
   metadata: unknown;
+  reactions: MessageReactionSummaryPayload[];
   createdAt: Date;
+}
+
+export interface MessageReactionPersonPayload {
+  userId: number;
+  username: string;
+  avatarUrl: string | null;
+}
+
+export interface MessageReactionSummaryPayload {
+  emoji: string;
+  people: MessageReactionPersonPayload[];
+  reactedByMe: boolean;
 }
 
 export interface MessageHistoryPayload extends PaginatedResponse<MessagePayload> {
@@ -66,6 +82,14 @@ export interface FriendRequestPayload {
   createdAt: Date;
 }
 
+export interface SocialPostAuthorPayload {
+  userId: number;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  entityType: "user" | "technician" | "shop";
+}
+
 export interface SocialPostPayload {
   id: number;
   authorUserId: number;
@@ -73,6 +97,9 @@ export interface SocialPostPayload {
   media: unknown;
   visibility: SocialPostVisibilityPayload;
   createdAt: Date;
+  author: SocialPostAuthorPayload;
+  viewerFollowsAuthor: boolean;
+  authorFollowsViewer: boolean;
 }
 
 export interface FollowPayload {
@@ -121,6 +148,20 @@ export interface CreateMessageInput {
   type: MessageTypePayload;
   content: string;
   metadata?: unknown;
+}
+
+export interface MessageReactionMutationInput {
+  conversationId: number;
+  messageId: number;
+  userId: number;
+  emoji: string;
+}
+
+export interface UpdateConversationPreferencesInput {
+  conversationId: number;
+  userId: number;
+  isPinned?: boolean;
+  isMuted?: boolean;
 }
 
 export interface FriendRequestListInput extends PaginationInput {
@@ -183,10 +224,23 @@ export interface RealtimeRepositoryPort {
   ) => Promise<PaginatedResponse<ConversationPayload>>;
   createMessage: (input: CreateMessageInput) => Promise<MessagePayload | null>;
   listMessages: (input: ListMessagesInput) => Promise<MessageHistoryPayload | null>;
+  setMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
+  removeMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
   markConversationRead: (input: {
     conversationId: number;
     userId: number;
   }) => Promise<{ conversationId: number; unreadCount: number } | null>;
+  markConversationUnread: (input: {
+    conversationId: number;
+    userId: number;
+  }) => Promise<ConversationPayload | null>;
+  updateConversationPreferences: (
+    input: UpdateConversationPreferencesInput
+  ) => Promise<ConversationPayload | null>;
+  hideConversation: (input: {
+    conversationId: number;
+    userId: number;
+  }) => Promise<ConversationPayload | null>;
   listContacts: (
     userId: number,
     input: PaginationInput
@@ -223,6 +277,37 @@ export interface RealtimeRepositoryPort {
   ) => Promise<NotificationPayload[]>;
 }
 
+const messageInclude = {
+  reactions: {
+    where: { deletedAt: null },
+    include: {
+      user: {
+        select: {
+          id: true,
+          username: true,
+          avatarUrl: true
+        }
+      }
+    },
+    orderBy: { id: "asc" as const }
+  }
+} satisfies Prisma.MessageInclude;
+
+const socialPostInclude = {
+  author: {
+    select: {
+      id: true,
+      username: true,
+      avatarUrl: true,
+      identities: {
+        where: { deletedAt: null, isActive: true },
+        select: { type: true, displayName: true, isDefault: true },
+        orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
+      }
+    }
+  }
+} satisfies Prisma.SocialPostInclude;
+
 type ConversationRecord = Prisma.ConversationGetPayload<{
   include: {
     participants: {
@@ -236,14 +321,16 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
         };
       };
     };
-    messages: true;
+    messages: {
+      include: typeof messageInclude;
+    };
   };
 }>;
 
-type MessageRecord = Prisma.MessageGetPayload<Record<string, never>>;
+type MessageRecord = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
 type ContactRecord = Prisma.ContactGetPayload<Record<string, never>>;
 type FriendRequestRecord = Prisma.FriendRequestGetPayload<Record<string, never>>;
-type SocialPostRecord = Prisma.SocialPostGetPayload<Record<string, never>>;
+type SocialPostRecord = Prisma.SocialPostGetPayload<{ include: typeof socialPostInclude }>;
 type FollowRecord = Prisma.FollowGetPayload<Record<string, never>>;
 type NotificationRecord = Prisma.NotificationGetPayload<Record<string, never>>;
 
@@ -274,7 +361,18 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         : null;
 
     if (existingDirect) {
-      return this.mapConversation(existingDirect, input.creatorUserId);
+      await this.client.conversationParticipant.updateMany({
+        where: {
+          conversationId: existingDirect.id,
+          userId: input.creatorUserId,
+          deletedAt: null
+        },
+        data: { hiddenAt: null }
+      });
+      return (
+        (await this.getConversationForUser(existingDirect.id, input.creatorUserId)) ??
+        this.mapConversation(existingDirect, input.creatorUserId)
+      );
     }
 
     const conversation = await this.client.conversation.create({
@@ -326,6 +424,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       participants: {
         some: {
           userId,
+          hiddenAt: null,
           deletedAt: null
         }
       }
@@ -371,7 +470,8 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           type: this.messageTypeToDb(input.type),
           content: input.content,
           metadata: this.toJsonValue(input.metadata)
-        }
+        },
+        include: messageInclude
       });
 
       await tx.conversation.update({
@@ -386,6 +486,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         },
         data: {
           unreadCount: 0,
+          hiddenAt: null,
           lastReadMessageId: message.id,
           lastReadAt: message.createdAt
         }
@@ -397,11 +498,12 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           deletedAt: null
         },
         data: {
-          unreadCount: { increment: 1 }
+          unreadCount: { increment: 1 },
+          hiddenAt: null
         }
       });
 
-      return this.mapMessage(message);
+      return this.mapMessage(message, input.senderUserId);
     });
   }
 
@@ -421,6 +523,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.message.findMany({
         where,
+        include: messageInclude,
         take: pageSize,
         orderBy: [{ id: "desc" }]
       }),
@@ -428,12 +531,68 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     ]);
 
     return {
-      list: list.map((message) => this.mapMessage(message)),
+      list: list.map((message) => this.mapMessage(message, input.userId)),
       total,
       page: 1,
       page_size: pageSize,
       nextCursor: total > list.length ? (list[list.length - 1]?.id ?? null) : null
     };
+  }
+
+  public async setMessageReaction(
+    input: MessageReactionMutationInput
+  ): Promise<MessagePayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const message = await this.findMessageForParticipant(tx, input);
+      if (!message) return null;
+
+      await tx.messageReaction.upsert({
+        where: {
+          messageId_userId_emoji: {
+            messageId: input.messageId,
+            userId: input.userId,
+            emoji: input.emoji
+          }
+        },
+        create: {
+          messageId: input.messageId,
+          userId: input.userId,
+          emoji: input.emoji
+        },
+        update: { deletedAt: null }
+      });
+
+      const updated = await tx.message.findUnique({
+        where: { id: input.messageId },
+        include: messageInclude
+      });
+      return updated ? this.mapMessage(updated, input.userId) : null;
+    });
+  }
+
+  public async removeMessageReaction(
+    input: MessageReactionMutationInput
+  ): Promise<MessagePayload | null> {
+    return this.client.$transaction(async (tx) => {
+      const message = await this.findMessageForParticipant(tx, input);
+      if (!message) return null;
+
+      await tx.messageReaction.updateMany({
+        where: {
+          messageId: input.messageId,
+          userId: input.userId,
+          emoji: input.emoji,
+          deletedAt: null
+        },
+        data: { deletedAt: new Date() }
+      });
+
+      const updated = await tx.message.findUnique({
+        where: { id: input.messageId },
+        include: messageInclude
+      });
+      return updated ? this.mapMessage(updated, input.userId) : null;
+    });
   }
 
   public async markConversationRead(input: {
@@ -472,6 +631,59 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       conversationId: input.conversationId,
       unreadCount: 0
     };
+  }
+
+  public async markConversationUnread(input: {
+    conversationId: number;
+    userId: number;
+  }): Promise<ConversationPayload | null> {
+    const participant = await this.client.conversationParticipant.findFirst({
+      where: {
+        conversationId: input.conversationId,
+        userId: input.userId,
+        deletedAt: null,
+        conversation: { deletedAt: null }
+      },
+      select: { id: true, unreadCount: true }
+    });
+    if (!participant) return null;
+
+    await this.client.conversationParticipant.update({
+      where: { id: participant.id },
+      data: { unreadCount: Math.max(1, participant.unreadCount), hiddenAt: null }
+    });
+    return this.getConversationForUser(input.conversationId, input.userId);
+  }
+
+  public async updateConversationPreferences(
+    input: UpdateConversationPreferencesInput
+  ): Promise<ConversationPayload | null> {
+    const participant = await this.findConversationParticipant(input.conversationId, input.userId);
+    if (!participant) return null;
+
+    await this.client.conversationParticipant.update({
+      where: { id: participant.id },
+      data: {
+        ...(input.isPinned === undefined ? {} : { isPinned: input.isPinned }),
+        ...(input.isMuted === undefined ? {} : { isMuted: input.isMuted }),
+        hiddenAt: null
+      }
+    });
+    return this.getConversationForUser(input.conversationId, input.userId);
+  }
+
+  public async hideConversation(input: {
+    conversationId: number;
+    userId: number;
+  }): Promise<ConversationPayload | null> {
+    const participant = await this.findConversationParticipant(input.conversationId, input.userId);
+    if (!participant) return null;
+
+    await this.client.conversationParticipant.update({
+      where: { id: participant.id },
+      data: { hiddenAt: new Date(), isPinned: false, unreadCount: 0 }
+    });
+    return this.getConversationForUser(input.conversationId, input.userId);
   }
 
   public async listContacts(
@@ -600,10 +812,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         content: input.content,
         media: this.toJsonValue(input.media),
         visibility: this.socialPostVisibilityToDb(input.visibility)
-      }
+      },
+      include: socialPostInclude
     });
 
-    return this.mapSocialPost(socialPost);
+    return this.mapSocialPost(socialPost, input.authorUserId, input.authorUserId);
   }
 
   public async listSocialPosts(
@@ -632,6 +845,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.socialPost.findMany({
         where,
+        include: socialPostInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
@@ -639,8 +853,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       this.client.socialPost.count({ where })
     ]);
 
+    const relationshipMap = await this.loadSocialRelationshipMap(
+      userId,
+      list.map((socialPost) => socialPost.authorUserId)
+    );
+
     return buildPaginatedResponse(
-      list.map((socialPost) => this.mapSocialPost(socialPost)),
+      list.map((socialPost) =>
+        this.mapSocialPost(
+          socialPost,
+          userId,
+          socialPost.authorUserId,
+          relationshipMap
+        )
+      ),
       total,
       pagination
     );
@@ -665,10 +891,21 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
             }
           }
         ]
-      }
+      },
+      include: socialPostInclude
     });
 
-    return socialPost ? this.mapSocialPost(socialPost) : null;
+    if (!socialPost) {
+      return null;
+    }
+
+    const relationshipMap = await this.loadSocialRelationshipMap(userId, [socialPost.authorUserId]);
+    return this.mapSocialPost(
+      socialPost,
+      userId,
+      socialPost.authorUserId,
+      relationshipMap
+    );
   }
 
   public async listFollowerUserIds(followingUserId: number): Promise<number[]> {
@@ -902,6 +1139,29 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     });
   }
 
+  private findMessageForParticipant(
+    tx: Prisma.TransactionClient,
+    input: MessageReactionMutationInput
+  ) {
+    return tx.message.findFirst({
+      where: {
+        id: input.messageId,
+        conversationId: input.conversationId,
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: input.userId,
+              deletedAt: null
+            }
+          }
+        }
+      },
+      select: { id: true }
+    });
+  }
+
   private upsertContact(tx: Prisma.TransactionClient, ownerUserId: number, contactUserId: number) {
     return tx.contact.upsert({
       where: {
@@ -938,6 +1198,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       },
       messages: {
         where: { deletedAt: null },
+        include: messageInclude,
         orderBy: { id: "desc" as const },
         take: 1
       }
@@ -961,14 +1222,30 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         username: participant.user.username,
         avatarUrl: participant.user.avatarUrl
       })),
-      lastMessage: conversation.messages[0] ? this.mapMessage(conversation.messages[0]) : null,
+      lastMessage: conversation.messages[0]
+        ? this.mapMessage(conversation.messages[0], viewerUserId)
+        : null,
       unreadCount: viewer?.unreadCount ?? 0,
+      isPinned: viewer?.isPinned ?? false,
+      isMuted: viewer?.isMuted ?? false,
+      isHidden: viewer?.hiddenAt !== null && viewer?.hiddenAt !== undefined,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt
     };
   }
 
-  private mapMessage(message: MessageRecord): MessagePayload {
+  private mapMessage(message: MessageRecord, viewerUserId: number): MessagePayload {
+    const reactions = new Map<string, MessageReactionPersonPayload[]>();
+    for (const reaction of message.reactions) {
+      const people = reactions.get(reaction.emoji) ?? [];
+      people.push({
+        userId: reaction.user.id,
+        username: reaction.user.username,
+        avatarUrl: reaction.user.avatarUrl
+      });
+      reactions.set(reaction.emoji, people);
+    }
+
     return {
       id: message.id,
       conversationId: message.conversationId,
@@ -976,6 +1253,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       type: this.messageTypeFromDb(message.type),
       content: message.content,
       metadata: message.metadata,
+      reactions: Array.from(reactions.entries()).map(([emoji, people]) => ({
+        emoji,
+        people,
+        reactedByMe: people.some((person) => person.userId === viewerUserId)
+      })),
       createdAt: message.createdAt
     };
   }
@@ -1003,14 +1285,77 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     };
   }
 
-  private mapSocialPost(socialPost: SocialPostRecord): SocialPostPayload {
+  private async loadSocialRelationshipMap(
+    viewerUserId: number,
+    authorUserIds: number[]
+  ): Promise<Set<string>> {
+    const uniqueAuthorUserIds = [...new Set(authorUserIds)];
+    if (uniqueAuthorUserIds.length === 0) {
+      return new Set();
+    }
+
+    const relationships = await this.client.follow.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          {
+            followerUserId: viewerUserId,
+            followingUserId: { in: uniqueAuthorUserIds }
+          },
+          {
+            followerUserId: { in: uniqueAuthorUserIds },
+            followingUserId: viewerUserId
+          }
+        ]
+      },
+      select: {
+        followerUserId: true,
+        followingUserId: true
+      }
+    });
+
+    return new Set(
+      relationships.map(
+        (relationship) => `${relationship.followerUserId}:${relationship.followingUserId}`
+      )
+    );
+  }
+
+  private mapSocialPost(
+    socialPost: SocialPostRecord,
+    viewerUserId: number,
+    authorUserId: number,
+    relationshipMap: Set<string> = new Set()
+  ): SocialPostPayload {
+    const identity =
+      socialPost.author.identities.find((item) =>
+        ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(item.type)
+      ) ?? socialPost.author.identities[0];
+    const entityType: SocialPostAuthorPayload["entityType"] =
+      identity?.type === "technician"
+        ? "technician"
+        : identity?.type === "merchant" || identity?.type === "merchant_owner" || identity?.type === "merchant_staff"
+          ? "shop"
+          : "user";
+
     return {
       id: socialPost.id,
       authorUserId: socialPost.authorUserId,
       content: socialPost.content,
       media: socialPost.media,
       visibility: this.socialPostVisibilityFromDb(socialPost.visibility),
-      createdAt: socialPost.createdAt
+      createdAt: socialPost.createdAt,
+      viewerFollowsAuthor:
+        viewerUserId === authorUserId || relationshipMap.has(`${viewerUserId}:${authorUserId}`),
+      authorFollowsViewer:
+        viewerUserId === authorUserId || relationshipMap.has(`${authorUserId}:${viewerUserId}`),
+      author: {
+        userId: socialPost.author.id,
+        username: socialPost.author.username,
+        displayName: identity?.displayName?.trim() || socialPost.author.username,
+        avatarUrl: socialPost.author.avatarUrl,
+        entityType
+      }
     };
   }
 

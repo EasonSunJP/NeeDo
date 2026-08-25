@@ -23,13 +23,19 @@ describe("portal identity switching boundaries", () => {
   it("keeps backend and formal finance routes on direct portal access instead of remembered frontend authorization", () => {
     expect(requirePortalAuthSource).toContain('const isTechnicianPayrollRoute = portal === "technician" && location.pathname.startsWith("/technician/payroll");');
     expect(requirePortalAuthSource).toContain("const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;");
-    expect(requirePortalAuthSource).toContain("const hasAccess = hasDirectAccess || (!requiresDirectPortalAccess && canEnterPortal(portal));");
+    expect(requirePortalAuthSource).toContain("const hasAccess = hasDirectAccess || isOperationsMerchantPreview || (!requiresDirectPortalAccess && canEnterPortal(portal));");
     expect(requirePortalAuthSource).toContain("const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);");
   });
 
   it("does not let a temporary frontend bypass session enter direct-access routes", () => {
     expect(requirePortalAuthSource).toContain("const hasBlockedFrontendBypass = requiresDirectPortalAccess && isFrontendBypassSession(session);");
     expect(requirePortalAuthSource).toContain("!isAuthenticated || !hasAccess || hasBlockedFrontendBypass");
+  });
+
+  it("admits an authenticated operations admin only when a read-only merchant preview is active", () => {
+    expect(requirePortalAuthSource).toContain("getMerchantAdminPreview");
+    expect(requirePortalAuthSource).toContain("isOperationsMerchantPreview");
+    expect(requirePortalAuthSource).toContain('canAccess("admin")');
   });
 
   it("keeps explicit identity switching inside the settings identity page", () => {

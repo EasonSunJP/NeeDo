@@ -7,6 +7,7 @@ import {
   conversationCreateBodySchema,
   conversationIdParamSchema,
   conversationListQuerySchema,
+  conversationPreferencesBodySchema,
   followCreateBodySchema,
   followTargetParamSchema,
   friendRequestCreateBodySchema,
@@ -14,6 +15,8 @@ import {
   friendRequestListQuerySchema,
   messageCreateBodySchema,
   messageListQuerySchema,
+  messageReactionBodySchema,
+  messageReactionParamSchema,
   notificationIdParamSchema,
   notificationListQuerySchema,
   socialPostCreateBodySchema,
@@ -64,10 +67,57 @@ export class RealtimeController {
     });
   }, 201);
 
+  public setMessageReaction = this.createHandler((request, response) => {
+    const params = messageReactionParamSchema.parse(request.params);
+    const body = messageReactionBodySchema.parse(request.body);
+
+    return this.service.setMessageReaction(getAuthenticatedAccess(response), {
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      emoji: body.emoji
+    });
+  });
+
+  public removeMessageReaction = this.createHandler((request, response) => {
+    const params = messageReactionParamSchema.parse(request.params);
+    const body = messageReactionBodySchema.parse(request.body);
+
+    return this.service.removeMessageReaction(getAuthenticatedAccess(response), {
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      emoji: body.emoji
+    });
+  });
+
   public markConversationRead = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
 
     return this.service.markConversationRead(
+      getAuthenticatedAccess(response),
+      params.conversationId
+    );
+  });
+
+  public markConversationUnread = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.markConversationUnread(
+      getAuthenticatedAccess(response),
+      params.conversationId
+    );
+  });
+
+  public updateConversationPreferences = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    const body = conversationPreferencesBodySchema.parse(request.body);
+    return this.service.updateConversationPreferences(getAuthenticatedAccess(response), {
+      conversationId: params.conversationId,
+      ...body
+    });
+  });
+
+  public hideConversation = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.hideConversation(
       getAuthenticatedAccess(response),
       params.conversationId
     );

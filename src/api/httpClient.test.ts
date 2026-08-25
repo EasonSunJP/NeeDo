@@ -62,7 +62,8 @@ function createFingerprintAgent(visitorId: string) {
 describe("httpClient auth tokens", () => {
   beforeEach(() => {
     vi.stubGlobal("window", {
-      localStorage: createStorage()
+      localStorage: createStorage(),
+      sessionStorage: createStorage()
     });
     vi.stubGlobal("fetch", vi.fn());
     vi.mocked(FingerprintJS.load).mockReset();
@@ -214,6 +215,54 @@ describe("httpClient auth tokens", () => {
         })
       })
     );
+  });
+
+  it("adds the selected shop scope to requests made during a read-only merchant preview", async () => {
+    setAuthTokens({ accessToken: "admin-access-token" });
+    window.sessionStorage.setItem("needo.merchant-admin.read-only-preview", JSON.stringify({
+      version: 1,
+      subjectType: "shop",
+      subjectId: 22,
+      subjectName: "Kichijoji Family Care",
+      selectedShopId: 22,
+      shops: [{ id: 22, name: "Kichijoji Family Care" }],
+      returnTo: "/admin/merchants"
+    }));
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { list: [] } }));
+
+    await httpClient.request("/merchant-admin/orders");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/merchant-admin/orders",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-NeeDo-Merchant-Preview-Shop-Id": "22"
+        })
+      })
+    );
+  });
+
+  it("blocks merchant-preview writes in the client before they reach the network", async () => {
+    setAuthTokens({ accessToken: "admin-access-token" });
+    window.sessionStorage.setItem("needo.merchant-admin.read-only-preview", JSON.stringify({
+      version: 1,
+      subjectType: "shop",
+      subjectId: 22,
+      subjectName: "Kichijoji Family Care",
+      selectedShopId: 22,
+      shops: [{ id: 22, name: "Kichijoji Family Care" }],
+      returnTo: "/admin/merchants"
+    }));
+
+    await expect(httpClient.request("/merchant-admin/shop", {
+      body: { name: "Must not be saved" },
+      method: "PATCH"
+    })).rejects.toMatchObject({
+      code: 403,
+      message: "error.merchant_preview.read_only",
+      status: 403
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("uses msg from non-NeeDo JSON API errors when message is absent", async () => {
