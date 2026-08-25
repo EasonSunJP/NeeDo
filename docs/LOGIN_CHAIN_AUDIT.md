@@ -79,9 +79,9 @@ Seed now defines the required real test accounts:
 |---|---|---|---|
 | `admin@example.com` | `admin` | `platform` | Operations admin / User Management |
 | `operator@example.com` | `operator` | `platform` | Operations admin basic features |
-| `merchant@example.com` | `merchant_owner` | `merchant` | Merchant app / merchant admin |
-| `technician@example.com` | `technician` | `technician` | Technician app |
-| `customer@example.com` | `customer` | `customer` | C-side user app |
+| `merchant@example.com` | `customer + technician + merchant_owner + scout` | `customer + technician + merchant + scout` | Identity switch acceptance, merchant app / merchant admin |
+| `technician@example.com` | `customer + technician + scout` | `customer + technician + scout` | Identity switch acceptance and technician app |
+| `customer@example.com` | `customer` | `customer` | C-side user app; technician/merchant/affiliate remain application actions |
 
 Seed password source:
 

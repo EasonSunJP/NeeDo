@@ -70,3 +70,15 @@ export const TEST_USER_ACCOUNTS = [
 ] as const satisfies readonly TestUserAccountDefinition[];
 
 export const REQUIRED_TEST_ACCOUNT_EMAILS = TEST_USER_ACCOUNTS.map((account) => account.email);
+
+export const getTestAccountSwitchIdentityTypes = (
+  identityType: TestUserAccountDefinition["identityType"]
+): readonly string[] => {
+  if (identityType === "technician") {
+    return ["customer", "technician", "scout"];
+  }
+  if (identityType === "merchant") {
+    return ["customer", "technician", "merchant", "scout"];
+  }
+  return [identityType];
+};

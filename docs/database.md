@@ -155,6 +155,7 @@ Safety and repeatability rules:
 - only `DEPLOY_ENV=local|test` and localhost MySQL are accepted;
 - `NODE_ENV=production`, remote hosts, and production-looking database names are rejected;
 - account emails and `SIM3M-` order numbers form the isolated simulation namespace;
+- identity matrix: technician accounts use `customer + technician + scout`, shop-owner accounts use `customer + technician + merchant_owner + scout`, and ordinary customer accounts use `customer` only; every scoped identity points to a persisted profile or shop and uses a stable active key;
 - reruns replace only the cohort's schedules, services, bookings, financials, status history, and notifications;
 - customer seed-credit transactions and wallet-ledger entries are idempotent, so reruns do not credit another 5,000 NDP;
 - passwords use bcrypt with 12 rounds and are unique per account, derived from a local environment secret and email;

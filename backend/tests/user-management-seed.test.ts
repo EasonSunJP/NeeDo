@@ -5,7 +5,8 @@ import {
 } from "../src/constants/permissions.constants";
 import {
   REQUIRED_TEST_ACCOUNT_EMAILS,
-  TEST_USER_ACCOUNTS
+  TEST_USER_ACCOUNTS,
+  getTestAccountSwitchIdentityTypes
 } from "../src/constants/test-login.constants";
 import {
   CUSTOMER_REQUEST_WALLET_SEED_NDP,
@@ -124,6 +125,21 @@ describe("user management seed contract", () => {
         (account) => account.avatarUrl.startsWith("/images/generated/profiles/")
       )
     ).toBe(true);
+  });
+
+  it("enables formal technician and merchant test accounts to switch all requested identities", () => {
+    expect(getTestAccountSwitchIdentityTypes("technician")).toEqual([
+      "customer",
+      "technician",
+      "scout"
+    ]);
+    expect(getTestAccountSwitchIdentityTypes("merchant")).toEqual([
+      "customer",
+      "technician",
+      "merchant",
+      "scout"
+    ]);
+    expect(getTestAccountSwitchIdentityTypes("customer")).toEqual(["customer"]);
   });
 
   it("funds customer seed wallets enough for Request dispatch-fee smoke flows", () => {
