@@ -10,7 +10,8 @@ import type {
   MerchantShopUpdateBody,
   BackofficeTechnicianApproveBody,
   BackofficeTechnicianUpdateBody,
-  TechnicianRankingQuery
+  BackofficeTechnicianRankingQuery,
+  TechnicianRankingPeriod as RankingPeriod
 } from "../validators/backoffice.validator";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
@@ -20,16 +21,13 @@ import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.serv
 const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type TechnicianRankingPeriod =
-  | "today"
-  | "last7days"
-  | "last30days"
-  | "month"
-  | "custom"
-  | "all";
+export type {
+  TechnicianRankingPeriod,
+  TechnicianRankingSort
+} from "../validators/backoffice.validator";
 
 export interface TechnicianRankingWindow {
-  period: TechnicianRankingPeriod;
+  period: RankingPeriod;
   timeZone: "Asia/Tokyo";
   fromDate: string | null;
   toDate: string | null;
@@ -86,7 +84,7 @@ const startOfTokyoCalendarDate = (value: string): Date => {
 };
 
 export const resolveTechnicianRankingWindow = (
-  input: { period?: TechnicianRankingPeriod; from?: string; to?: string },
+  input: { period?: RankingPeriod; from?: string; to?: string },
   now = new Date()
 ): TechnicianRankingWindow => {
   const period = input.period ?? "month";
@@ -277,7 +275,7 @@ export interface BackofficeTechnicianRankingPayload
 export interface BackofficeTechnicianRankingResponsePayload
   extends BackofficeTechnicianRankingPayload {
   period: {
-    key: TechnicianRankingPeriod;
+    key: RankingPeriod;
     timeZone: "Asia/Tokyo";
     from: string | null;
     to: string | null;
@@ -285,7 +283,7 @@ export interface BackofficeTechnicianRankingResponsePayload
 }
 
 export type TechnicianRankingRepositoryInput = BackofficeScope &
-  TechnicianRankingQuery & {
+  BackofficeTechnicianRankingQuery & {
     window: TechnicianRankingWindow;
   };
 
@@ -672,7 +670,7 @@ export class BackofficeService {
   public async listPlatformTechnicianRankings(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
-    input: TechnicianRankingQuery
+    input: BackofficeTechnicianRankingQuery
   ): Promise<BackofficeTechnicianRankingResponsePayload> {
     const window = resolveTechnicianRankingWindow(input);
     await this.record(actor, context, "backoffice.technician_rankings.list", "technician_ranking", {
@@ -702,7 +700,7 @@ export class BackofficeService {
   public async exportPlatformTechnicianRankings(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
-    input: TechnicianRankingQuery
+    input: BackofficeTechnicianRankingQuery
   ): Promise<BackofficeCsvExportPayload> {
     const window = resolveTechnicianRankingWindow(input);
     await this.record(

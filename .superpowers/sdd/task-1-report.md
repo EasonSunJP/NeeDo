@@ -152,3 +152,41 @@ Output:
 ```
 
 `git diff --check` also completed with no output.
+
+## 2026-08-26 — Technician ranking period and query contract audit
+
+### Scope checked
+
+- `backend/src/validators/backoffice.validator.ts`
+- `backend/src/services/backoffice.service.ts`
+- `backend/tests/technician-ranking-period.test.ts`
+
+### Changes made
+
+- Made `technicianRankingQuerySchema` strict, so unrecognised query fields are rejected.
+- Added `page: 1` and `pageSize: 20` defaults.
+- Exported `TechnicianRankingPeriod`, `TechnicianRankingSort`, and `BackofficeTechnicianRankingQuery`; retained `TechnicianRankingQuery` as a compatibility alias.
+- Added regression coverage for both query-contract requirements.
+
+### TDD and verification evidence
+
+- Baseline: the specified test command passed with 12 tests.
+- RED: after adding the two contract assertions, it failed because the defaults were absent and an `unexpected` field was accepted.
+- GREEN:
+
+```text
+npm --prefix backend test -- technician-ranking-period.test.ts --runInBand
+PASS: 1 suite, 13 tests
+
+npm --prefix backend run build
+PASS: tsc -p tsconfig.build.json (exit 0)
+```
+
+### Remaining note
+
+The integrated resolver deliberately returns the richer established window contract
+`{ period, timeZone, fromDate, toDate, fromInclusive, toExclusive }`. The brief's
+short-form `from` and `timezone` names are not literal members. Changing that shape
+would require coordinated repository/caller changes outside this task's permitted files, so
+the established contract and its existing tests were preserved.
+

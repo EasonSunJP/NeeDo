@@ -110,6 +110,8 @@ describe("technician ranking query schema", () => {
     if (!querySchema) return;
 
     expect(querySchema.parse({})).toMatchObject({
+      page: 1,
+      pageSize: 20,
       period: "month",
       sortBy: "revenue",
       sortOrder: "desc"
@@ -139,5 +141,12 @@ describe("technician ranking query schema", () => {
     if (!querySchema) return;
 
     expect(() => querySchema.parse(value)).toThrow();
+  });
+
+  it("rejects unrecognized query fields", () => {
+    expect(querySchema).toBeDefined();
+    if (!querySchema) return;
+
+    expect(() => querySchema.parse({ unexpected: "value" })).toThrow();
   });
 });

@@ -30,20 +30,30 @@ const calendarDateSchema = z
     );
   }, "Invalid calendar date");
 
+const technicianRankingPeriodSchema = z.enum([
+  "today",
+  "last7days",
+  "last30days",
+  "month",
+  "custom",
+  "all"
+]);
+const technicianRankingSortSchema = z.enum(["revenue", "completedOrders", "workingDays"]);
+
 export const technicianRankingQuerySchema = z
   .object({
-    ...paginationQuerySchema,
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(100).default(20),
     keyword: z.string().trim().max(100).optional(),
     shopId: z.coerce.number().int().positive().optional(),
     city: z.string().trim().max(100).optional(),
-    period: z
-      .enum(["today", "last7days", "last30days", "month", "custom", "all"])
-      .default("month"),
+    period: technicianRankingPeriodSchema.default("month"),
     from: calendarDateSchema.optional(),
     to: calendarDateSchema.optional(),
-    sortBy: z.enum(["revenue", "completedOrders", "workingDays"]).default("revenue"),
+    sortBy: technicianRankingSortSchema.default("revenue"),
     sortOrder: z.enum(["asc", "desc"]).default("desc")
   })
+  .strict()
   .superRefine((value, context) => {
     if (value.period === "custom") {
       if (!value.from) {
@@ -162,7 +172,10 @@ export const backofficeServiceUpdateBodySchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
-export type TechnicianRankingQuery = z.infer<typeof technicianRankingQuerySchema>;
+export type TechnicianRankingPeriod = z.infer<typeof technicianRankingPeriodSchema>;
+export type TechnicianRankingSort = z.infer<typeof technicianRankingSortSchema>;
+export type BackofficeTechnicianRankingQuery = z.infer<typeof technicianRankingQuerySchema>;
+export type TechnicianRankingQuery = BackofficeTechnicianRankingQuery;
 export type BackofficeShopCreateBody = z.infer<typeof backofficeShopCreateBodySchema>;
 export type BackofficeShopUpdateBody = z.infer<typeof backofficeShopUpdateBodySchema>;
 export type MerchantShopUpdateBody = z.infer<typeof merchantShopUpdateBodySchema>;
