@@ -1,16 +1,22 @@
 import { httpClient } from "../../api/httpClient";
-import type { CoreCustomerProfile } from "./api";
-
 export type CustomerProfileVisibility = "public" | "privateAll" | "limited" | "network";
 
-export type CustomerSelfProfile = CoreCustomerProfile & {
+export type CustomerSelfProfile = {
+  id: number;
   userId: number;
+  displayName: string;
+  city: string | null;
+  bio: string | null;
+  avatarUrl: string | null;
+  membershipLevel: string;
   gender: "female" | "male" | "private";
   age: number | null;
   heightCm: number | null;
   languages: string[];
   visibility: CustomerProfileVisibility;
   isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CustomerSelfProfileUpdate = {
