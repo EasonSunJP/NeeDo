@@ -32,12 +32,12 @@
 
 **Interfaces:**
 - Produces: `TechnicianRankingPeriod`, `TechnicianRankingSort`, `BackofficeTechnicianRankingQuery`, `resolveTechnicianRankingWindow(query, now)`.
-- The resolved window is `{ from: Date | null; toExclusive: Date | null; timezone: "Asia/Tokyo" }`.
+- The resolved window contains at least `{ from: Date | null; toExclusive: Date | null; timezone: "Asia/Tokyo" }`; richer fields are retained for repository/API metadata.
 
 - [ ] **Step 1: Write failing period tests**
 
 ```ts
-expect(resolveTechnicianRankingWindow({ period: "month" }, new Date("2026-08-25T15:30:00Z"))).toEqual({
+expect(resolveTechnicianRankingWindow({ period: "month" }, new Date("2026-08-25T15:30:00Z"))).toMatchObject({
   from: new Date("2026-07-31T15:00:00.000Z"),
   toExclusive: new Date("2026-08-31T15:00:00.000Z"),
   timezone: "Asia/Tokyo"
@@ -291,4 +291,3 @@ Run: `npm run lint && npm test && npm run build`
 - [ ] **Step 5: Run local acceptance**
 
 Start or reuse the formal local services, sign in through the operations entry, open `/admin/technicians?module=ranking`, exercise each period, all three sorts, search, shop/city filters, pagination, CSV export, error retry, empty state, and row detail. Capture and inspect desktop and narrow screenshots; verify the request path and response data in the running page.
-

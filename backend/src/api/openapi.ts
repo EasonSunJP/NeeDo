@@ -5549,6 +5549,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Step 12 Backoffice"],
         summary: "Export the filtered technician ranking as CSV content",
+        description:
+          "Uses the same Asia/Tokyo period and sort order as the ranking list. The response contains at most 5,000 rows of UTF-8 CSV content with a BOM for spreadsheet compatibility.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {

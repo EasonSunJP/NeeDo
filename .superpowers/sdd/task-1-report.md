@@ -182,11 +182,38 @@ npm --prefix backend run build
 PASS: tsc -p tsconfig.build.json (exit 0)
 ```
 
-### Remaining note
+### Historical note
 
-The integrated resolver deliberately returns the richer established window contract
-`{ period, timeZone, fromDate, toDate, fromInclusive, toExclusive }`. The brief's
-short-form `from` and `timezone` names are not literal members. Changing that shape
-would require coordinated repository/caller changes outside this task's permitted files, so
-the established contract and its existing tests were preserved.
+Before the reviewer follow-up, the integrated resolver returned the richer established
+window contract `{ period, timeZone, fromDate, toDate, fromInclusive, toExclusive }`, and
+the brief's short-form `from` and `timezone` names were not literal members. The follow-up
+has now added both compatibility aliases while retaining all rich repository/API metadata
+fields; the clarified brief and direct regression tests document that additive contract.
 
+## Reviewer follow-up — compatibility aliases and input type
+
+- Added `from` and `timezone` aliases to `TechnicianRankingWindow` and every resolver
+  return while retaining `fromInclusive`, `timeZone`, and all existing repository-facing
+  fields.
+- Changed legacy `TechnicianRankingQuery` to
+  `z.input<typeof technicianRankingQuerySchema>`; the parsed
+  `BackofficeTechnicianRankingQuery` continues to contain all required defaults.
+- Replaced the period test's `unknown`-cast module access with direct imports. Its typed
+  `const legacyInput: TechnicianRankingQuery = {}` fixture now compile-checks the intended
+  legacy input contract, and the parsed result is assigned directly to the output type.
+
+Evidence:
+
+```text
+RED: technician-ranking-period.test.ts failed with TS2739 because `{}` was rejected by
+TechnicianRankingQuery before the input-type fix.
+
+GREEN: npm --prefix backend test -- technician-ranking-period.test.ts --runInBand
+PASS: 1 suite, 14 tests
+
+API: npm --prefix backend test -- backoffice-api.test.ts --runInBand
+PASS: 1 suite, 7 tests (rerun with approved local port binding after sandbox EPERM)
+
+BUILD: npm --prefix backend run build
+PASS: tsc -p tsconfig.build.json
+```

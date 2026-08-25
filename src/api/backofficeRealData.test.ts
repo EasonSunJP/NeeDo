@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { backofficeRealDataApi, mapBackofficeOrder, type BackofficeOrderPayload } from "./backofficeRealData";
+import {
+  backofficeRealDataApi,
+  mapBackofficeOrder,
+  type BackofficeOrderPayload,
+  type BackofficeTechnicianRankingPayload,
+  type CsvExportPayload,
+  type TechnicianRankingQuery
+} from "./backofficeRealData";
 import { httpClient } from "./httpClient";
 
 vi.mock("./httpClient", () => ({ httpClient: { request: vi.fn() } }));
@@ -57,9 +64,8 @@ describe("backofficeRealDataApi master data writes", () => {
     expect(httpClient.request).toHaveBeenNthCalledWith(4, "/merchant-admin/customers/41");
   });
 
-  it("loads and exports the operations technician ranking with the same formal filters", async () => {
-    vi.mocked(httpClient.request).mockResolvedValue({});
-    const query = {
+  it("loads and exports the operations technician ranking with the complete formal query", async () => {
+    const query: TechnicianRankingQuery = {
       period: "custom" as const,
       from: "2026-08-01",
       to: "2026-08-31",
@@ -71,15 +77,35 @@ describe("backofficeRealDataApi master data writes", () => {
       page: 2,
       pageSize: 20
     };
-    const api = backofficeRealDataApi as typeof backofficeRealDataApi &
-      Record<string, (...args: never[]) => Promise<unknown>>;
+    const ranking: BackofficeTechnicianRankingPayload = {
+      list: [],
+      total: 0,
+      page: 2,
+      page_size: 20,
+      summary: {
+        technicianCount: 0,
+        completedServiceAmountJpy: 0,
+        completedOrderCount: 0,
+        workingDayCount: 0
+      },
+      period: {
+        key: "custom",
+        timeZone: "Asia/Tokyo",
+        from: "2026-08-01",
+        to: "2026-08-31"
+      }
+    };
+    const csvExport: CsvExportPayload = {
+      filename: "technician-rankings-custom-2026-08-01_2026-08-31.csv",
+      contentType: "text/csv; charset=utf-8",
+      content: "rank,displayName\n"
+    };
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce(ranking)
+      .mockResolvedValueOnce(csvExport);
 
-    expect(api.technicianRankings).toBeTypeOf("function");
-    expect(api.exportTechnicianRankings).toBeTypeOf("function");
-    if (!api.technicianRankings || !api.exportTechnicianRankings) return;
-
-    await api.technicianRankings(query as never);
-    await api.exportTechnicianRankings(query as never);
+    await expect(backofficeRealDataApi.technicianRankings(query)).resolves.toBe(ranking);
+    await expect(backofficeRealDataApi.exportTechnicianRankings(query)).resolves.toBe(csvExport);
 
     expect(httpClient.request).toHaveBeenNthCalledWith(
       1,
@@ -90,6 +116,64 @@ describe("backofficeRealDataApi master data writes", () => {
       2,
       "/backoffice/technician-rankings/export",
       { query }
+    );
+  });
+
+  it("preserves an empty ranking query for the shared http client", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await backofficeRealDataApi.technicianRankings({});
+    await backofficeRealDataApi.exportTechnicianRankings({});
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/technician-rankings", {
+      query: {}
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/technician-rankings/export",
+      { query: {} }
+    );
+  });
+
+  it("passes undefined ranking filters to the shared http client for serialization", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    const query: TechnicianRankingQuery = {
+      period: "month",
+      from: undefined,
+      to: undefined,
+      sortBy: "revenue",
+      keyword: undefined,
+      shopId: undefined,
+      city: undefined,
+      page: 1,
+      pageSize: 20
+    };
+
+    await backofficeRealDataApi.technicianRankings(query);
+    await backofficeRealDataApi.exportTechnicianRankings(query);
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/technician-rankings", {
+      query
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/technician-rankings/export",
+      { query }
+    );
+  });
+
+  it("propagates list and export errors without adapter fallback behavior", async () => {
+    const listError = new Error("error.forbidden");
+    const exportError = new Error("error.network.timeout");
+    vi.mocked(httpClient.request)
+      .mockRejectedValueOnce(listError)
+      .mockRejectedValueOnce(exportError);
+
+    await expect(backofficeRealDataApi.technicianRankings({ period: "month" })).rejects.toBe(
+      listError
+    );
+    await expect(backofficeRealDataApi.exportTechnicianRankings({ period: "month" })).rejects.toBe(
+      exportError
     );
   });
 

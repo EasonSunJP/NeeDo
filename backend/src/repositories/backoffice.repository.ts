@@ -509,13 +509,13 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       filters.push(Prisma.sql`profile.city = ${input.city}`);
     }
 
-    const orderColumn = {
-      revenue: Prisma.sql`revenue_jpy`,
-      completedOrders: Prisma.sql`completed_orders`,
-      workingDays: Prisma.sql`working_days`
-    }[input.sortBy];
     const orderDirection = input.sortOrder === "asc" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
-    const rows = await this.client.$queryRaw<TechnicianRankingDatabaseRow[]>(Prisma.sql`
+    const orderBy = {
+      revenue: Prisma.sql`revenue_jpy ${orderDirection}, completed_orders DESC, working_days DESC, technician_profile_id ASC`,
+      completedOrders: Prisma.sql`completed_orders ${orderDirection}, revenue_jpy DESC, working_days DESC, technician_profile_id ASC`,
+      workingDays: Prisma.sql`working_days ${orderDirection}, revenue_jpy DESC, completed_orders DESC, technician_profile_id ASC`
+    }[input.sortBy];
+    const technicianTotals = Prisma.sql`
       WITH technician_totals AS (
         SELECT
           profile.id AS technician_profile_id,
@@ -553,21 +553,47 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           profile.status,
           profile.verified_at
       )
+    `;
+    const rows = await this.client.$queryRaw<TechnicianRankingDatabaseRow[]>(Prisma.sql`
+      ${technicianTotals}
       SELECT
         technician_totals.*,
         ROW_NUMBER() OVER (
-          ORDER BY ${orderColumn} ${orderDirection}, completed_orders DESC, technician_profile_id ASC
+          ORDER BY ${orderBy}
         ) AS ranking_position,
         COUNT(*) OVER () AS total_technicians,
         COALESCE(SUM(revenue_jpy) OVER (), 0) AS total_revenue_jpy,
         COALESCE(SUM(completed_orders) OVER (), 0) AS total_completed_orders,
         COALESCE(SUM(working_days) OVER (), 0) AS total_working_days
       FROM technician_totals
-      ORDER BY ${orderColumn} ${orderDirection}, completed_orders DESC, technician_profile_id ASC
+      ORDER BY ${orderBy}
       LIMIT ${pagination.take} OFFSET ${pagination.skip}
     `);
 
     const first = rows[0];
+    const summary =
+      first ??
+      (
+        await this.client.$queryRaw<
+          Array<
+            Pick<
+              TechnicianRankingDatabaseRow,
+              | "total_technicians"
+              | "total_revenue_jpy"
+              | "total_completed_orders"
+              | "total_working_days"
+            >
+          >
+        >(Prisma.sql`
+          ${technicianTotals}
+          SELECT
+            COUNT(*) AS total_technicians,
+            COALESCE(SUM(revenue_jpy), 0) AS total_revenue_jpy,
+            COALESCE(SUM(completed_orders), 0) AS total_completed_orders,
+            COALESCE(SUM(working_days), 0) AS total_working_days
+          FROM technician_totals
+        `)
+      )[0];
     return {
       list: rows.map((row) => ({
         rank: this.toNumber(row.ranking_position),
@@ -592,12 +618,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         workingDayCount: this.toNumber(row.working_days)
       })),
       summary: {
-        technicianCount: this.toNumber(first?.total_technicians),
-        completedServiceAmountJpy: this.toNumber(first?.total_revenue_jpy),
-        completedOrderCount: this.toNumber(first?.total_completed_orders),
-        workingDayCount: this.toNumber(first?.total_working_days)
+        technicianCount: this.toNumber(summary?.total_technicians),
+        completedServiceAmountJpy: this.toNumber(summary?.total_revenue_jpy),
+        completedOrderCount: this.toNumber(summary?.total_completed_orders),
+        workingDayCount: this.toNumber(summary?.total_working_days)
       },
-      total: this.toNumber(first?.total_technicians),
+      total: this.toNumber(summary?.total_technicians),
       page: pagination.page,
       page_size: pagination.pageSize
     };

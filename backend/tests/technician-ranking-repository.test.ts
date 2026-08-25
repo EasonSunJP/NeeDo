@@ -19,7 +19,7 @@ const createRepository = (rows: unknown[]) => {
 };
 
 describe("BackofficeRepository technician rankings", () => {
-  it("maps final service amounts, unique orders, and unique Tokyo working days", async () => {
+  it("maps extension-inclusive final service amounts, unique orders, and unique Tokyo working days", async () => {
     const { listTechnicianRankings, queryRaw } = createRepository([
       {
         technician_profile_id: 31,
@@ -33,12 +33,12 @@ describe("BackofficeRepository technician rankings", () => {
         service_area: "Minato",
         status: "published",
         verified_at: new Date("2026-08-01T00:00:00.000Z"),
-        revenue_jpy: 15_000n,
+        revenue_jpy: 25_000n,
         completed_orders: 2n,
         working_days: 1n,
         ranking_position: 1n,
         total_technicians: 1n,
-        total_revenue_jpy: 15_000n,
+        total_revenue_jpy: 25_000n,
         total_completed_orders: 2n,
         total_working_days: 1n
       }
@@ -80,14 +80,14 @@ describe("BackofficeRepository technician rankings", () => {
           serviceArea: "Minato",
           status: "published",
           verifiedAt: "2026-08-01T00:00:00.000Z",
-          completedServiceAmountJpy: 15_000,
+          completedServiceAmountJpy: 25_000,
           completedOrderCount: 2,
           workingDayCount: 1
         }
       ],
       summary: {
         technicianCount: 1,
-        completedServiceAmountJpy: 15_000,
+        completedServiceAmountJpy: 25_000,
         completedOrderCount: 2,
         workingDayCount: 1
       },
@@ -144,5 +144,47 @@ describe("BackofficeRepository technician rankings", () => {
       page: 2,
       page_size: 10
     });
+  });
+
+  it("preserves the aggregate summary and deterministic metric tie-breakers on an empty later page", async () => {
+    const { listTechnicianRankings, queryRaw } = createRepository([]);
+    queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        total_technicians: 1n,
+        total_revenue_jpy: 25_000n,
+        total_completed_orders: 2n,
+        total_working_days: 1n
+      }
+    ]);
+    expect(listTechnicianRankings).toEqual(expect.any(Function));
+    if (!listTechnicianRankings) return;
+
+    await expect(
+      listTechnicianRankings({
+        scope: "platform",
+        period: "all",
+        sortBy: "workingDays",
+        sortOrder: "desc",
+        page: 2,
+        pageSize: 20,
+        window: resolveTechnicianRankingWindow({ period: "all" })
+      })
+    ).resolves.toEqual({
+      list: [],
+      summary: {
+        technicianCount: 1,
+        completedServiceAmountJpy: 25_000,
+        completedOrderCount: 2,
+        workingDayCount: 1
+      },
+      total: 1,
+      page: 2,
+      page_size: 20
+    });
+
+    const query = queryRaw.mock.calls[0]?.[0] as { sql?: string };
+    expect(query.sql).toContain(
+      "ORDER BY working_days DESC, revenue_jpy DESC, completed_orders DESC, technician_profile_id ASC"
+    );
   });
 });

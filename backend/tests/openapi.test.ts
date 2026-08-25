@@ -76,6 +76,48 @@ describe("GET /api/v1/openapi.json", () => {
         expect.objectContaining({ name: "sortBy" })
       ])
     );
+    const technicianRankingExport =
+      response.body.paths["/api/v1/backoffice/technician-rankings/export"].get;
+    expect(technicianRankingExport.security).toEqual([{ bearerAuth: [] }]);
+    expect(technicianRankingExport.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "period",
+          schema: expect.objectContaining({
+            enum: ["today", "last7days", "last30days", "month", "custom", "all"],
+            default: "month"
+          })
+        }),
+        expect.objectContaining({ name: "from", schema: expect.objectContaining({ format: "date" }) }),
+        expect.objectContaining({ name: "to", schema: expect.objectContaining({ format: "date" }) }),
+        expect.objectContaining({ name: "keyword", schema: expect.objectContaining({ maxLength: 100 }) }),
+        expect.objectContaining({ name: "shopId", schema: expect.objectContaining({ minimum: 1 }) }),
+        expect.objectContaining({ name: "city", schema: expect.objectContaining({ maxLength: 100 }) }),
+        expect.objectContaining({
+          name: "sortBy",
+          schema: expect.objectContaining({
+            enum: ["revenue", "completedOrders", "workingDays"],
+            default: "revenue"
+          })
+        }),
+        expect.objectContaining({
+          name: "sortOrder",
+          schema: expect.objectContaining({ enum: ["asc", "desc"], default: "desc" })
+        })
+      ])
+    );
+    expect(
+      technicianRankingExport.responses["200"].content["application/json"].schema.properties
+        .data
+    ).toMatchObject({
+      type: "object",
+      required: ["filename", "contentType", "content"],
+      properties: {
+        filename: { type: "string" },
+        contentType: { type: "string", enum: ["text/csv; charset=utf-8"] },
+        content: { type: "string" }
+      }
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/merchant-accounts");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/merchant-accounts/{id}");

@@ -525,8 +525,24 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       .expect(403)
       .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
 
+    const repositoryCallsBeforeDeniedExport =
+      fixture.backofficeRepository.listTechnicianRankings.mock.calls.length;
+    await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings/export")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
+    expect(fixture.backofficeRepository.listTechnicianRankings).toHaveBeenCalledTimes(
+      repositoryCallsBeforeDeniedExport
+    );
+
+    const listResponse = await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings?period=month&sortBy=revenue")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
     const exportResponse = await request(fixture.app)
-      .get("/api/v1/backoffice/technician-rankings/export?period=month")
+      .get("/api/v1/backoffice/technician-rankings/export?period=month&sortBy=revenue")
       .set("Authorization", `Bearer ${adminToken}`)
       .expect(200);
 
@@ -534,8 +550,11 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
       contentType: "text/csv; charset=utf-8"
     });
     expect(exportResponse.body.data.filename).toContain("technician-rankings-month");
-    expect(exportResponse.body.data.content).toContain("Mika Tanaka");
-    expect(exportResponse.body.data.content).toContain("15000");
+    expect(listResponse.body.data.period).toMatchObject({ key: "month", timeZone: "Asia/Tokyo" });
+    expect(exportResponse.body.data.content.replace(/^\uFEFF/, "").split("\n")).toEqual([
+      "rank,technicianProfileId,displayName,shopName,city,completedServiceAmountJpy,completedOrderCount,workingDayCount,averageOrderValueJpy",
+      "1,7,Mika Tanaka,Aoyama Care Studio,Tokyo,15000,2,1,7500"
+    ]);
     expect(fixture.auditLogs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -545,6 +564,268 @@ describe("Step 12 backoffice and merchant-admin real data APIs", () => {
         })
       ])
     );
+  });
+
+  it("neutralizes spreadsheet formulas and escapes CSV delimiter characters in technician ranking exports", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+
+    fixture.backofficeRepository.listTechnicianRankings.mockResolvedValue({
+      list: [
+        {
+          rank: 1,
+          technicianProfileId: 7,
+          userId: 17,
+          displayName: '=SUM(1,1)',
+          email: "mika@example.com",
+          avatarUrl: null,
+          shopId: 11,
+          shopName: '+Aoyama "Care"',
+          city: "@Tokyo",
+          serviceArea: "Minato",
+          status: "published",
+          verifiedAt: now.toISOString(),
+          completedServiceAmountJpy: 15_000,
+          completedOrderCount: 2,
+          workingDayCount: 1
+        }
+      ],
+      summary: {
+        technicianCount: 1,
+        completedServiceAmountJpy: 15_000,
+        completedOrderCount: 2,
+        workingDayCount: 1
+      },
+      total: 1,
+      page: 1,
+      page_size: 100
+    });
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings/export?period=month")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(response.body.data.content).toBe(
+      '\uFEFFrank,technicianProfileId,displayName,shopName,city,completedServiceAmountJpy,completedOrderCount,workingDayCount,averageOrderValueJpy\n1,7,"\'=SUM(1,1)","\'+Aoyama ""Care""",\'@Tokyo,15000,2,1,7500'
+    );
+  });
+
+  it("forwards the full custom ranking filter to list and export while preserving CSV order", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const rows = [
+      {
+        rank: 1,
+        technicianProfileId: 31,
+        userId: 131,
+        displayName: "Kiko Arai",
+        email: "kiko@example.com",
+        avatarUrl: null,
+        shopId: 11,
+        shopName: "Aoyama Care Studio",
+        city: "Tokyo",
+        serviceArea: "Minato",
+        status: "published",
+        verifiedAt: now.toISOString(),
+        completedServiceAmountJpy: 10_000,
+        completedOrderCount: 3,
+        workingDayCount: 1
+      },
+      {
+        rank: 2,
+        technicianProfileId: 32,
+        userId: 132,
+        displayName: "Riku Sato",
+        email: "riku@example.com",
+        avatarUrl: null,
+        shopId: 11,
+        shopName: "Aoyama Care Studio",
+        city: "Tokyo",
+        serviceArea: "Minato",
+        status: "published",
+        verifiedAt: now.toISOString(),
+        completedServiceAmountJpy: 9_000,
+        completedOrderCount: 2,
+        workingDayCount: 2
+      },
+      {
+        rank: 3,
+        technicianProfileId: 33,
+        userId: 133,
+        displayName: "Yui Mori",
+        email: "yui@example.com",
+        avatarUrl: null,
+        shopId: 11,
+        shopName: "Aoyama Care Studio",
+        city: "Tokyo",
+        serviceArea: "Minato",
+        status: "published",
+        verifiedAt: now.toISOString(),
+        completedServiceAmountJpy: 6_000,
+        completedOrderCount: 1,
+        workingDayCount: 3
+      }
+    ];
+    (fixture.backofficeRepository.listTechnicianRankings as jest.Mock).mockImplementation(
+      async (input: { page: number; pageSize: number }) => ({
+        list: input.page === 1 ? rows.slice(0, 2) : rows.slice(2),
+        summary: {
+          technicianCount: 3,
+          completedServiceAmountJpy: 25_000,
+          completedOrderCount: 6,
+          workingDayCount: 6
+        },
+        total: 3,
+        page: input.page,
+        page_size: input.pageSize
+      })
+    );
+    const query =
+      "period=custom&from=2026-08-01&to=2026-08-31&keyword=Kiko&shopId=11&city=Tokyo&sortBy=workingDays&sortOrder=asc&page=1&pageSize=2";
+
+    const listResponse = await request(fixture.app)
+      .get(`/api/v1/backoffice/technician-rankings?${query}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+    const exportResponse = await request(fixture.app)
+      .get(`/api/v1/backoffice/technician-rankings/export?${query}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    const expectedInput = {
+      scope: "platform",
+      period: "custom",
+      from: "2026-08-01",
+      to: "2026-08-31",
+      keyword: "Kiko",
+      shopId: 11,
+      city: "Tokyo",
+      sortBy: "workingDays",
+      sortOrder: "asc",
+      window: expect.objectContaining({
+        period: "custom",
+        fromInclusive: new Date("2026-07-31T15:00:00.000Z"),
+        toExclusive: new Date("2026-08-31T15:00:00.000Z")
+      })
+    };
+    expect(fixture.backofficeRepository.listTechnicianRankings).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ ...expectedInput, page: 1, pageSize: 2 })
+    );
+    expect(fixture.backofficeRepository.listTechnicianRankings).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ ...expectedInput, page: 1, pageSize: 100 })
+    );
+    expect(fixture.backofficeRepository.listTechnicianRankings).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ ...expectedInput, page: 2, pageSize: 100 })
+    );
+    expect(listResponse.body.data).toMatchObject({
+      period: { key: "custom", from: "2026-08-01", to: "2026-08-31" },
+      list: [{ technicianProfileId: 31 }, { technicianProfileId: 32 }]
+    });
+    expect(exportResponse.body.data.filename).toBe(
+      "technician-rankings-custom-2026-08-01_2026-08-31.csv"
+    );
+    expect(exportResponse.body.data.content.replace(/^\uFEFF/, "").split("\n")).toEqual([
+      "rank,technicianProfileId,displayName,shopName,city,completedServiceAmountJpy,completedOrderCount,workingDayCount,averageOrderValueJpy",
+      "1,31,Kiko Arai,Aoyama Care Studio,Tokyo,10000,3,1,3333",
+      "2,32,Riku Sato,Aoyama Care Studio,Tokyo,9000,2,2,4500",
+      "3,33,Yui Mori,Aoyama Care Studio,Tokyo,6000,1,3,6000"
+    ]);
+  });
+
+  it("stops a technician ranking export when a later page is empty despite its total", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const firstPage = {
+      list: [
+        {
+          rank: 1,
+          technicianProfileId: 7,
+          userId: 17,
+          displayName: "Mika Tanaka",
+          email: "mika@example.com",
+          avatarUrl: null,
+          shopId: 11,
+          shopName: "Aoyama Care Studio",
+          city: "Tokyo",
+          serviceArea: "Minato",
+          status: "published",
+          verifiedAt: now.toISOString(),
+          completedServiceAmountJpy: 15_000,
+          completedOrderCount: 2,
+          workingDayCount: 1
+        }
+      ],
+      summary: {
+        technicianCount: 5_001,
+        completedServiceAmountJpy: 15_000,
+        completedOrderCount: 2,
+        workingDayCount: 1
+      },
+      total: 5_001,
+      page: 1,
+      page_size: 100
+    };
+    fixture.backofficeRepository.listTechnicianRankings
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce({ ...firstPage, list: [], page: 2 });
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings/export?period=month")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(fixture.backofficeRepository.listTechnicianRankings).toHaveBeenCalledTimes(2);
+    expect(response.body.data.content.replace(/^\uFEFF/, "").split("\n")).toHaveLength(2);
+  });
+
+  it("caps technician ranking CSV exports at 5,000 rows", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    (fixture.backofficeRepository.listTechnicianRankings as jest.Mock).mockImplementation(
+      async (input: { page: number; pageSize: number }) => ({
+        list:
+          input.page <= 50
+            ? Array.from({ length: 100 }, (_, index) => ({
+                rank: (input.page - 1) * 100 + index + 1,
+                technicianProfileId: (input.page - 1) * 100 + index + 1,
+                userId: (input.page - 1) * 100 + index + 101,
+                displayName: `Technician ${input.page}-${index + 1}`,
+                email: `technician-${input.page}-${index + 1}@example.com`,
+                avatarUrl: null,
+                shopId: 11,
+                shopName: "Aoyama Care Studio",
+                city: "Tokyo",
+                serviceArea: "Minato",
+                status: "published",
+                verifiedAt: now.toISOString(),
+                completedServiceAmountJpy: 1_000,
+                completedOrderCount: 1,
+                workingDayCount: 1
+              }))
+            : [],
+        summary: {
+          technicianCount: 5_001,
+          completedServiceAmountJpy: 5_001_000,
+          completedOrderCount: 5_001,
+          workingDayCount: 5_001
+        },
+        total: 5_001,
+        page: input.page,
+        page_size: input.pageSize
+      })
+    );
+
+    const response = await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings/export?period=all")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(fixture.backofficeRepository.listTechnicianRankings).toHaveBeenCalledTimes(50);
+    expect(response.body.data.content.replace(/^\uFEFF/, "").split("\n")).toHaveLength(5_001);
   });
 
   it("serves the operations dashboard from the repository and records an audit log", async () => {

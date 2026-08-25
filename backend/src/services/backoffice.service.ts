@@ -29,8 +29,10 @@ export type {
 export interface TechnicianRankingWindow {
   period: RankingPeriod;
   timeZone: "Asia/Tokyo";
+  timezone: "Asia/Tokyo";
   fromDate: string | null;
   toDate: string | null;
+  from: Date | null;
   fromInclusive: Date | null;
   toExclusive: Date | null;
 }
@@ -92,8 +94,10 @@ export const resolveTechnicianRankingWindow = (
     return {
       period,
       timeZone: "Asia/Tokyo",
+      timezone: "Asia/Tokyo",
       fromDate: null,
       toDate: null,
+      from: null,
       fromInclusive: null,
       toExclusive: null
     };
@@ -125,12 +129,15 @@ export const resolveTechnicianRankingWindow = (
     toDate = today;
   }
 
+  const from = startOfTokyoCalendarDate(fromDate);
   return {
     period,
     timeZone: "Asia/Tokyo",
+    timezone: "Asia/Tokyo",
     fromDate,
     toDate,
-    fromInclusive: startOfTokyoCalendarDate(fromDate),
+    from,
+    fromInclusive: from,
     toExclusive: startOfTokyoCalendarDate(shiftCalendarDate(toDate, 1))
   };
 };
@@ -722,6 +729,7 @@ export class BackofficeService {
     const exportLimit = 5000;
     let page = 1;
     let total = 0;
+    let receivedRows = 0;
     do {
       const result = await this.repository.listTechnicianRankings({
         scope: "platform",
@@ -730,33 +738,36 @@ export class BackofficeService {
         pageSize,
         window
       });
-      rows.push(...result.list);
+      rows.push(...result.list.slice(0, exportLimit - rows.length));
+      receivedRows = result.list.length;
       total = result.total;
       page += 1;
-    } while (rows.length < total && rows.length < exportLimit);
+    } while (receivedRows > 0 && rows.length < total && rows.length < exportLimit);
 
     const csvRows = [
       [
         "rank",
         "technicianProfileId",
         "displayName",
-        "email",
         "shopName",
         "city",
         "completedServiceAmountJpy",
         "completedOrderCount",
-        "workingDayCount"
+        "workingDayCount",
+        "averageOrderValueJpy"
       ],
       ...rows.slice(0, exportLimit).map((row) => [
         row.rank,
         row.technicianProfileId,
         row.displayName,
-        row.email,
         row.shopName ?? "",
         row.city,
         row.completedServiceAmountJpy,
         row.completedOrderCount,
-        row.workingDayCount
+        row.workingDayCount,
+        row.completedOrderCount === 0
+          ? 0
+          : Math.round(row.completedServiceAmountJpy / row.completedOrderCount)
       ])
     ];
     const content = `\uFEFF${csvRows
@@ -1239,7 +1250,8 @@ export class BackofficeService {
   }
 
   private escapeCsvCell(value: number | string): string {
-    const text = String(value);
+    const rawText = String(value);
+    const text = /^[\t\r\n ]*[=+\-@]/.test(rawText) ? `'${rawText}` : rawText;
     return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
   }
 }
