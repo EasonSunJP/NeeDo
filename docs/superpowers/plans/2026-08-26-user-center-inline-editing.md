@@ -32,10 +32,12 @@
 - Create: `backend/tests/customer-profile-validator.test.ts`
 - Modify: `backend/.env.dev.example`
 - Modify: `backend/src/config/env.ts`
+- Modify: `backend/tests/setup-env.ts`
+- Modify: `backend/tests/production-safety.test.ts`
 
 **Interfaces:**
 - Consumes: existing `CustomerProfile`, `MediaAsset`, permission seed, and `AppConfig` patterns.
-- Produces: `CustomerProfileVisibility`, `customerProfileUpdateBodySchema`, `CustomerProfileUpdateBody`, `CUSTOMER_PROFILE_ROUTE_PERMISSIONS`, `CUSTOMER_AVATAR_STORAGE_DIR`, and `CUSTOMER_AVATAR_PUBLIC_BASE_URL`.
+- Produces: `CustomerProfileVisibility`, `customerProfileUpdateBodySchema`, `CustomerProfileUpdateBody`, `CUSTOMER_AVATAR_STORAGE_DIR`, and `CUSTOMER_AVATAR_PUBLIC_BASE_URL`.
 
 - [ ] **Step 1: Write the failing validator and schema-contract tests**
 
@@ -84,6 +86,8 @@ Add to `CustomerProfile`:
   heightCm        Decimal?  @map("height_cm") @db.Decimal(5, 2)
   languages       Json?
   visibility      String    @default("public") @db.VarChar(20)
+
+  @@index([visibility])
 ```
 
 Create migration SQL:
@@ -154,6 +158,8 @@ CUSTOMER_AVATAR_STORAGE_DIR=runtime/customer-avatars
 CUSTOMER_AVATAR_PUBLIC_BASE_URL=http://localhost:3000/media/customer-avatars
 ```
 
+Set the same two variables in `backend/tests/setup-env.ts`, using a test-only directory under the OS temporary directory and `http://localhost:3101/media/customer-avatars`. Extend `production-safety.test.ts` so production configuration rejects a non-HTTPS `CUSTOMER_AVATAR_PUBLIC_BASE_URL`; this prevents a local default from silently becoming a production media origin.
+
 - [ ] **Step 6: Verify GREEN and validate Prisma**
 
 Run: `npm --prefix backend test -- --runInBand tests/customer-profile-validator.test.ts`
@@ -167,7 +173,7 @@ Expected: Prisma schema valid.
 - [ ] **Step 7: Commit Task 1 only**
 
 ```bash
-git add backend/prisma/schema.prisma backend/prisma/migrations/20260826090000_customer_profile_self_edit/migration.sql backend/src/constants/permissions.constants.ts backend/src/validators/customer-profile.validator.ts backend/tests/customer-profile-validator.test.ts backend/.env.dev.example backend/src/config/env.ts
+git add backend/prisma/schema.prisma backend/prisma/migrations/20260826090000_customer_profile_self_edit/migration.sql backend/src/constants/permissions.constants.ts backend/src/validators/customer-profile.validator.ts backend/tests/customer-profile-validator.test.ts backend/.env.dev.example backend/src/config/env.ts backend/tests/setup-env.ts backend/tests/production-safety.test.ts
 git commit -m "feat: define customer profile self-edit contract"
 ```
 
@@ -336,7 +342,7 @@ git commit -m "feat: persist current customer profile edits"
 
 **Interfaces:**
 - Consumes: Task 2 service/repository/storage and Task 1 permissions/config.
-- Produces: authenticated `GET /api/v1/customer-profile/me`, authenticated `PATCH /api/v1/customer-profile/me`, and public read-only avatar bytes under `/media/customer-avatars/:contentHash.ext`.
+- Produces: `CUSTOMER_PROFILE_ROUTE_PERMISSIONS`, authenticated `GET /api/v1/customer-profile/me`, authenticated `PATCH /api/v1/customer-profile/me`, and public read-only avatar bytes under `/media/customer-avatars/:contentHash.ext`.
 
 - [ ] **Step 1: Write failing API tests**
 
