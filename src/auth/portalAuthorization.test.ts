@@ -30,7 +30,7 @@ function createStorage() {
 
 function createSession(portal: AuthSession["portal"]): AuthSession {
   return {
-    authVersion: 4,
+    authVersion: 5,
     id: 9,
     username: `${portal}-user`,
     email: `${portal}@needo.local`,
@@ -57,6 +57,15 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
         type: portal === "user" ? "customer" : portal,
         scopeId: 9,
         scopeType: `${portal}_profile`
+      }
+    ],
+    identityAvailability: [
+      {
+        kind: portal === "business" ? "affiliate" : portal === "merchant" || portal === "technician" ? portal : "customer",
+        state: "active",
+        identityId: 90,
+        applicationId: null,
+        rejectionReason: null
       }
     ]
   };

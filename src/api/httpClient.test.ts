@@ -185,6 +185,29 @@ describe("httpClient auth tokens", () => {
     });
   });
 
+  it("sends protected application images as raw binary without a JSON content type", async () => {
+    setAuthTokens({ accessToken: "applicant-access-token" });
+    const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "portrait.jpg", { type: "image/jpeg" });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { id: 7 } }));
+
+    await httpClient.request("/identity-applications/3/media", {
+      body: file,
+      headers: { "Content-Type": file.type },
+      method: "POST"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/identity-applications/3/media",
+      expect.objectContaining({
+        body: file,
+        headers: expect.objectContaining({
+          Authorization: "Bearer applicant-access-token",
+          "Content-Type": "image/jpeg"
+        })
+      })
+    );
+  });
+
   it("reads formal CSV export responses as a download envelope", async () => {
     setAuthTokens({
       accessToken: "merchant-access-token",

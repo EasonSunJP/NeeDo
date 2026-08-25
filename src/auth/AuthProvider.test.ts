@@ -34,7 +34,13 @@ describe("AuthProvider legacy login bridge", () => {
   });
 
   it("ignores older stored sessions so a previous user-only legacy session cannot block portal switching", () => {
-    expect(authProviderSource).toContain("session.authVersion === 4");
+    expect(authProviderSource).toContain("session.authVersion === 5");
+  });
+
+  it("can refresh identity availability after an application or contract activation", () => {
+    expect(authProviderSource).toContain("refreshSession: () => Promise<AuthActionResult>");
+    expect(authProviderSource).toContain("const refreshSession = useCallback");
+    expect(authProviderSource).toContain("const me = await authApi.me()");
   });
 
   it("switches the backend identity when a portal has a matching formal identity", () => {

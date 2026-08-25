@@ -86,7 +86,7 @@ describe("frontend RBAC session helpers", () => {
     expect(session.linkedTechnicianId).toBe("tech-4");
   });
 
-  it("lets a signed-in user bootstrap non-admin client portals without granting admin access", () => {
+  it("keeps inactive client identities behind their application flows", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
@@ -101,13 +101,13 @@ describe("frontend RBAC session helpers", () => {
     );
 
     expect(session.allowedPortals).toEqual(["user"]);
-    expect(canUseUserSessionForClientPortal(session, "merchant")).toBe(true);
-    expect(canUseUserSessionForClientPortal(session, "technician")).toBe(true);
-    expect(canUseUserSessionForClientPortal(session, "business")).toBe(true);
+    expect(canUseUserSessionForClientPortal(session, "merchant")).toBe(false);
+    expect(canUseUserSessionForClientPortal(session, "technician")).toBe(false);
+    expect(canUseUserSessionForClientPortal(session, "business")).toBe(false);
     expect(canUseUserSessionForClientPortal(session, "admin")).toBe(false);
   });
 
-  it("keeps merchant client feature entries visible for a user-bootstrapped merchant portal", () => {
+  it("does not expose merchant features before the merchant identity is active", () => {
     const session = buildAuthSessionFromMe(
       {
         ...baseMe,
@@ -121,12 +121,45 @@ describe("frontend RBAC session helpers", () => {
       "password"
     );
 
-    expect(canAccessFeatureFromSession(session, "merchant", "shop.member.view", true)).toBe(true);
-    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.order.view", true)).toBe(true);
-    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.menu.view", true)).toBe(true);
-    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.floor.view", true)).toBe(true);
+    expect(canAccessFeatureFromSession(session, "merchant", "shop.member.view", true)).toBe(false);
+    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.order.view", true)).toBe(false);
+    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.menu.view", true)).toBe(false);
+    expect(canAccessFeatureFromSession(session, "merchant", "store.dine-in.floor.view", true)).toBe(false);
     expect(canAccessFeatureFromSession(session, "merchant", "admin:dangerous", false)).toBe(false);
     expect(canAccessFeatureFromSession(session, "admin", "page:user-management", true)).toBe(false);
+  });
+
+  it("keeps the backend identity availability state in the authenticated session", () => {
+    const identityAvailability = [
+      { kind: "customer", state: "active", identityId: 2, applicationId: null, rejectionReason: null },
+      { kind: "technician", state: "pending", identityId: null, applicationId: 19, rejectionReason: null },
+      { kind: "merchant", state: "rejected", identityId: null, applicationId: 20, rejectionReason: "资料不一致" },
+      { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
+    ] as const;
+    const session = buildAuthSessionFromMe({ ...baseMe, identityAvailability: [...identityAvailability] }, "admin", "password");
+
+    expect(session.authVersion).toBe(5);
+    expect(session.identityAvailability).toEqual(identityAvailability);
+  });
+
+  it("derives active availability for legacy payloads without inventing extra permissions", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        currentIdentity: { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 },
+        identities: [{ id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }],
+        roles: ["customer"]
+      },
+      "user",
+      "password"
+    );
+
+    expect(session.identityAvailability).toEqual([
+      { kind: "customer", state: "active", identityId: 2, applicationId: null, rejectionReason: null },
+      { kind: "technician", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null },
+      { kind: "merchant", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null },
+      { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
+    ]);
   });
 
   it("keeps the shared legacy test account on user by default while allowing merchant, technician, and Afirieito switches", () => {

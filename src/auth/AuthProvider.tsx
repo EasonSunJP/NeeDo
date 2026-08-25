@@ -51,6 +51,7 @@ type AuthContextValue = {
   enterFrontendWithoutAuthentication: (portal: PortalScope) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
   switchPortal: (portal: PortalScope) => Promise<AuthActionResult>;
+  refreshSession: () => Promise<AuthActionResult>;
   canAccess: (portal: PortalScope) => boolean;
   canEnterPortal: (portal: PortalScope) => boolean;
   hasRememberedPortalAuthorization: (portal: PortalScope) => boolean;
@@ -125,14 +126,15 @@ function isStoredAuthSession(value: unknown): value is AuthSession {
   const session = value as Partial<AuthSession>;
 
   return (
-    session.authVersion === 4 &&
+    session.authVersion === 5 &&
     typeof session.id === "number" &&
     typeof session.username === "string" &&
     allPortals.includes(session.portal as PortalScope) &&
     Array.isArray(session.allowedPortals) &&
     Array.isArray(session.roles) &&
     Array.isArray(session.permissions) &&
-    Array.isArray(session.menus)
+    Array.isArray(session.menus) &&
+    Array.isArray(session.identityAvailability)
   );
 }
 
@@ -458,6 +460,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [persistSession, restoreRememberedPortalSession, session]);
 
+  const refreshSession = useCallback(async (): Promise<AuthActionResult> => {
+    if (!session) {
+      return { ok: false, message: "error.auth.unauthorized" };
+    }
+
+    try {
+      const me = await authApi.me();
+      const nextSession = buildAuthSessionFromMe(me, session.portal, session.loginMethod);
+      persistSession(nextSession);
+      return { ok: true, session: nextSession };
+    } catch (error) {
+      return { ok: false, message: normalizeApiError(error) };
+    }
+  }, [persistSession, session]);
+
   const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);
   const hasAnyPermission = useCallback((permissions: string[]) => hasAnyPermissionInSession(session, permissions), [session]);
   const canAccess = useCallback((portal: PortalScope) => canAccessPortalFromSession(session, portal), [session]);
@@ -492,6 +509,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       enterFrontendWithoutAuthentication,
       logout,
       switchPortal,
+      refreshSession,
       canAccess,
       canEnterPortal,
       hasRememberedPortalAuthorization: hasRememberedPortal,
@@ -516,6 +534,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithQr,
       loginWithVerificationCode,
       logout,
+      refreshSession,
       sendVerificationCode,
       session,
       switchPortal,

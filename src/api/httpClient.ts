@@ -150,7 +150,7 @@ function createRequestBody(body: unknown) {
     return undefined;
   }
 
-  if (body instanceof FormData || body instanceof URLSearchParams) {
+  if (body instanceof FormData || body instanceof URLSearchParams || body instanceof Blob || body instanceof ArrayBuffer) {
     return body;
   }
 
@@ -165,7 +165,9 @@ async function createRequestHeaders(options: HttpClientRequestOptions, previewSh
   const hasJsonBody =
     options.body !== undefined &&
     !(options.body instanceof FormData) &&
-    !(options.body instanceof URLSearchParams);
+    !(options.body instanceof URLSearchParams) &&
+    !(options.body instanceof Blob) &&
+    !(options.body instanceof ArrayBuffer);
 
   if (hasJsonBody && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";

@@ -23,14 +23,15 @@ function isStoredPortalSession(value: unknown, portal: PortalScope): value is Au
   const session = value as Partial<AuthSession>;
 
   return (
-    session.authVersion === 4 &&
+    session.authVersion === 5 &&
     session.portal === portal &&
     typeof session.id === "number" &&
     typeof session.username === "string" &&
     Array.isArray(session.allowedPortals) &&
     Array.isArray(session.roles) &&
     Array.isArray(session.permissions) &&
-    Array.isArray(session.menus)
+    Array.isArray(session.menus) &&
+    Array.isArray(session.identityAvailability)
   );
 }
 
