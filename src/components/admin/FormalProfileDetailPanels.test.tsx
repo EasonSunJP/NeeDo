@@ -228,6 +228,34 @@ describe("formal profile tab accessibility", () => {
     expect(markup).toContain(`aria-labelledby="${selectedTab}"`);
     expect(markup).toMatch(new RegExp(`aria-labelledby="${selectedTab}"[^>]*role="tabpanel"[^>]*tabindex="0"`));
   });
+
+  it("keeps the selected tab legible in light and dark admin themes", () => {
+    const markup = renderToStaticMarkup(
+      <FormalTechnicianDetailPanel detail={technicianDetail} initialTab="时间线" />
+    );
+    const selectedButton = markup.match(/<button[^>]*aria-selected="true"[^>]*>/)?.[0] ?? "";
+
+    expect(selectedButton).toContain("bg-[color:var(--admin-text,#172033)]");
+    expect(selectedButton).toContain("text-[color:var(--admin-bg-soft,#fff)]");
+  });
+
+  it("removes inactive tab panels from the visual layout", () => {
+    const markup = renderToStaticMarkup(
+      <FormalTechnicianDetailPanel detail={technicianDetail} initialTab="状态与数据" />
+    );
+    const panels = [...markup.matchAll(/<div(?=[^>]*role="tabpanel")[^>]*>/g)].map((match) => match[0]);
+    const activePanel = panels.find((panel) => panel.includes('tabindex="0"')) ?? "";
+    const inactivePanels = panels.filter((panel) => panel.includes('tabindex="-1"'));
+    const classTokens = (panel: string) => panel.match(/class="([^"]+)"/)?.[1].split(" ") ?? [];
+
+    expect(classTokens(activePanel)).toContain("grid");
+    expect(classTokens(activePanel)).not.toContain("hidden");
+    expect(inactivePanels).toHaveLength(6);
+    for (const panel of inactivePanels) {
+      expect(classTokens(panel)).toContain("hidden");
+      expect(classTokens(panel)).not.toContain("grid");
+    }
+  });
 });
 
 describe("FormalTechnicianDetailPanel formal-data boundaries", () => {

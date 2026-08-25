@@ -279,7 +279,7 @@ function FormalTabs<TTab extends string>({
               className={cn(
                 "focus-ring h-9 shrink-0 rounded-lg border px-3 text-sm font-black transition",
                 selected
-                  ? "border-ink bg-ink text-white shadow-[inset_0_-3px_0_#6e9b79]"
+                  ? "border-[color:var(--admin-text,#172033)] bg-[color:var(--admin-text,#172033)] text-[color:var(--admin-bg-soft,#fff)] shadow-[inset_0_-3px_0_#6e9b79]"
                   : "border-line bg-paper text-ink/60 hover:border-moss hover:text-ink"
               )}
               id={`${idPrefix}-tab-${index}`}
@@ -321,7 +321,7 @@ function FormalTabPanels<TTab extends string>({
         return (
           <div
             aria-labelledby={`${idPrefix}-tab-${index}`}
-            className="grid min-w-0 gap-4 p-4 sm:p-5"
+            className={cn("min-w-0 gap-4 p-4 sm:p-5", selected ? "grid" : "hidden")}
             hidden={!selected}
             id={`${idPrefix}-panel-${index}`}
             key={tab}
