@@ -460,6 +460,97 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           isActive: { type: "boolean" }
         }
       },
+      BackofficeTechnicianRankingRow: {
+        type: "object",
+        required: [
+          "rank",
+          "technicianProfileId",
+          "userId",
+          "displayName",
+          "email",
+          "avatarUrl",
+          "shopId",
+          "shopName",
+          "city",
+          "serviceArea",
+          "status",
+          "verifiedAt",
+          "completedServiceAmountJpy",
+          "completedOrderCount",
+          "workingDayCount"
+        ],
+        properties: {
+          rank: { type: "integer", minimum: 1 },
+          technicianProfileId: { type: "integer", minimum: 1 },
+          userId: { type: "integer", minimum: 1 },
+          displayName: { type: "string" },
+          email: { type: "string", format: "email" },
+          avatarUrl: { type: ["string", "null"] },
+          shopId: { type: ["integer", "null"] },
+          shopName: { type: ["string", "null"] },
+          city: { type: "string" },
+          serviceArea: { type: ["string", "null"] },
+          status: { type: "string" },
+          verifiedAt: { type: ["string", "null"], format: "date-time" },
+          completedServiceAmountJpy: {
+            type: "integer",
+            minimum: 0,
+            description:
+              "Final service amount for completed orders from OrderFinancial, including recorded extension amounts."
+          },
+          completedOrderCount: {
+            type: "integer",
+            minimum: 0,
+            description: "Distinct completed booking orders; extensions do not create extra orders."
+          },
+          workingDayCount: {
+            type: "integer",
+            minimum: 0,
+            description: "Distinct Asia/Tokyo calendar days with at least one completed order."
+          }
+        }
+      },
+      BackofficeTechnicianRanking: {
+        type: "object",
+        required: ["list", "summary", "period", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeTechnicianRankingRow" }
+          },
+          summary: {
+            type: "object",
+            required: [
+              "technicianCount",
+              "completedServiceAmountJpy",
+              "completedOrderCount",
+              "workingDayCount"
+            ],
+            properties: {
+              technicianCount: { type: "integer", minimum: 0 },
+              completedServiceAmountJpy: { type: "integer", minimum: 0 },
+              completedOrderCount: { type: "integer", minimum: 0 },
+              workingDayCount: { type: "integer", minimum: 0 }
+            }
+          },
+          period: {
+            type: "object",
+            required: ["key", "timeZone", "from", "to"],
+            properties: {
+              key: {
+                type: "string",
+                enum: ["today", "last7days", "last30days", "month", "custom", "all"]
+              },
+              timeZone: { type: "string", enum: ["Asia/Tokyo"] },
+              from: { type: ["string", "null"], format: "date" },
+              to: { type: ["string", "null"], format: "date" }
+            }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
       BackofficeCustomer: {
         type: "object",
         required: [
@@ -4666,6 +4757,114 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Paginated backoffice technicians" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/technician-rankings`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Rank technicians by completed-order performance",
+        description:
+          "Uses Asia/Tokyo calendar boundaries. Revenue is the final completed-order service amount, completed orders are distinct booking orders, and one or more completed orders on a calendar day count as one working day.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "period",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["today", "last7days", "last30days", "month", "custom", "all"],
+              default: "month"
+            }
+          },
+          {
+            name: "from",
+            in: "query",
+            description: "Required with to when period=custom; inclusive Tokyo calendar date.",
+            schema: { type: "string", format: "date" }
+          },
+          {
+            name: "to",
+            in: "query",
+            description: "Required with from when period=custom; inclusive Tokyo calendar date.",
+            schema: { type: "string", format: "date" }
+          },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "sortBy",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["revenue", "completedOrders", "workingDays"],
+              default: "revenue"
+            }
+          },
+          {
+            name: "sortOrder",
+            in: "query",
+            schema: { type: "string", enum: ["asc", "desc"], default: "desc" }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated technician ranking", {
+            $ref: "#/components/schemas/BackofficeTechnicianRanking"
+          })
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/technician-rankings/export`]: {
+      get: {
+        tags: ["Step 12 Backoffice"],
+        summary: "Export the filtered technician ranking as CSV content",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "period",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["today", "last7days", "last30days", "month", "custom", "all"],
+              default: "month"
+            }
+          },
+          { name: "from", in: "query", schema: { type: "string", format: "date" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date" } },
+          { name: "keyword", in: "query", schema: { type: "string", maxLength: 100 } },
+          { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "city", in: "query", schema: { type: "string", maxLength: 100 } },
+          {
+            name: "sortBy",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["revenue", "completedOrders", "workingDays"],
+              default: "revenue"
+            }
+          },
+          {
+            name: "sortOrder",
+            in: "query",
+            schema: { type: "string", enum: ["asc", "desc"], default: "desc" }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("CSV export payload", {
+            type: "object",
+            required: ["filename", "contentType", "content"],
+            properties: {
+              filename: { type: "string" },
+              contentType: { type: "string", enum: ["text/csv; charset=utf-8"] },
+              content: { type: "string" }
+            }
+          })
         }
       }
     },

@@ -17,6 +17,57 @@ export const backofficeListQuerySchema = z.object({
   categoryId: z.coerce.number().int().positive().optional()
 });
 
+const calendarDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return (
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+    );
+  }, "Invalid calendar date");
+
+export const technicianRankingQuerySchema = z
+  .object({
+    ...paginationQuerySchema,
+    keyword: z.string().trim().max(100).optional(),
+    shopId: z.coerce.number().int().positive().optional(),
+    city: z.string().trim().max(100).optional(),
+    period: z
+      .enum(["today", "last7days", "last30days", "month", "custom", "all"])
+      .default("month"),
+    from: calendarDateSchema.optional(),
+    to: calendarDateSchema.optional(),
+    sortBy: z.enum(["revenue", "completedOrders", "workingDays"]).default("revenue"),
+    sortOrder: z.enum(["asc", "desc"]).default("desc")
+  })
+  .superRefine((value, context) => {
+    if (value.period === "custom") {
+      if (!value.from) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["from"], message: "from is required" });
+      }
+      if (!value.to) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "to is required" });
+      }
+      if (value.from && value.to && value.from > value.to) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["to"],
+          message: "to must not be before from"
+        });
+      }
+    } else if (value.from || value.to) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [value.from ? "from" : "to"],
+        message: "date boundaries are only supported for custom periods"
+      });
+    }
+  });
+
 const emailSchema = z.string().trim().email().max(255).transform((email) => email.toLowerCase());
 const passwordSchema = z.string().min(8).max(128)
   .regex(/[a-z]/, "password must include a lowercase letter")
@@ -111,6 +162,7 @@ export const backofficeServiceUpdateBodySchema = z.object({
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
 export type BackofficeListQuery = z.infer<typeof backofficeListQuerySchema>;
+export type TechnicianRankingQuery = z.infer<typeof technicianRankingQuerySchema>;
 export type BackofficeShopCreateBody = z.infer<typeof backofficeShopCreateBodySchema>;
 export type BackofficeShopUpdateBody = z.infer<typeof backofficeShopUpdateBodySchema>;
 export type MerchantShopUpdateBody = z.infer<typeof merchantShopUpdateBodySchema>;

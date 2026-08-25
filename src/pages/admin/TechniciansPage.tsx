@@ -11,6 +11,7 @@ import {
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { ModuleShell } from "../../components/admin/ModuleShell";
+import { TechnicianRankingModule } from "../../components/admin/TechnicianRankingModule";
 import { TechnicianListModule } from "../../components/admin/TechnicianListModule";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -31,6 +32,7 @@ export function TechniciansPage() {
   const { language } = useOptionalI18n();
   const [searchParams] = useSearchParams();
   const isReviewMode = searchParams.get("module") === "review";
+  const isRankingMode = searchParams.get("module") === "ranking";
   const languageRef = useRef(language);
   languageRef.current = language;
   const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
@@ -43,11 +45,21 @@ export function TechniciansPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [rankingRefreshKey, setRankingRefreshKey] = useState(0);
 
   const load = useCallback(async (rejectOnError = false) => {
     setLoading(true);
     setError("");
     try {
+      if (isRankingMode) {
+        const shopPage = await backofficeRealDataApi.shops("backoffice", {
+          page: 1,
+          pageSize: 100
+        });
+        setTechnicians([]);
+        setShops(shopPage.list);
+        return;
+      }
       const [technicianPage, shopPage] = await Promise.all([
         backofficeRealDataApi.technicians("backoffice", {
           page: 1,
@@ -64,7 +76,7 @@ export function TechniciansPage() {
     } finally {
       setLoading(false);
     }
-  }, [isReviewMode]);
+  }, [isRankingMode, isReviewMode]);
 
   const technicianDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeTechnicianDetailPayload>({
     onError: (detailError) => {
@@ -117,6 +129,12 @@ export function TechniciansPage() {
     void technicianDetailRequest.load(record.id);
   };
 
+  const openRankingTechnician = (technicianProfileId: number) => {
+    setSelectedTechnicianId(technicianProfileId);
+    setDraft({ displayName: "", city: "", serviceArea: "", shopId: "" });
+    void technicianDetailRequest.load(technicianProfileId);
+  };
+
   const mutate = async (technicianId: number, action: () => Promise<unknown>) => {
     setSaving(true);
     setError("");
@@ -125,7 +143,10 @@ export function TechniciansPage() {
         isDetailCurrent: () => technicianDetailRequest.getSelectedId() === technicianId,
         mutate: action,
         refreshDetail: () => technicianDetailRequest.loadOrThrow(technicianId),
-        refreshList: () => load(true)
+        refreshList: async () => {
+          await load(true);
+          if (isRankingMode) setRankingRefreshKey((value) => value + 1);
+        }
       });
       if (hasFormalDetailRefreshFailure(result)) {
         setError(translateText("资料已保存，但刷新失败，请重试", language));
@@ -146,6 +167,7 @@ export function TechniciansPage() {
         closeTechnician();
       }
       await load();
+      if (isRankingMode) setRankingRefreshKey((value) => value + 1);
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
     } finally {
@@ -156,15 +178,23 @@ export function TechniciansPage() {
   return (
     <AdminLayout>
       <ModuleShell
-        actions={isReviewMode ? <></> : undefined}
-        title={isReviewMode ? "技师资料审核" : "技师管理"}
-        description={isReviewMode
-          ? "审核用户端提交的技师申请；这里只显示正式数据库中待审核的技师资料。"
-          : "只展示数据库中的真实技师账号；待审核、店铺归属、资料更新和软删除均写入正式 API。"}
+        actions={isReviewMode || isRankingMode ? <></> : undefined}
+        title={isRankingMode ? "技师榜单" : isReviewMode ? "技师资料审核" : "技师管理"}
+        description={isRankingMode
+          ? "按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。"
+          : isReviewMode
+            ? "审核用户端提交的技师申请；这里只显示正式数据库中待审核的技师资料。"
+            : "只展示数据库中的真实技师账号；待审核、店铺归属、资料更新和软删除均写入正式 API。"}
       >
         {error ? <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
-        {loading ? <p className="text-sm font-bold text-ink/50">正在读取正式技师数据...</p> : null}
-        {isReviewMode ? (
+        {loading && !isRankingMode ? <p className="text-sm font-bold text-ink/50">正在读取正式技师数据...</p> : null}
+        {isRankingMode ? (
+          <TechnicianRankingModule
+            onSelectTechnician={openRankingTechnician}
+            refreshKey={rankingRefreshKey}
+            shops={shops}
+          />
+        ) : isReviewMode ? (
           !loading && !error && reviewTechnicians.length === 0 ? (
             <section className="rounded-lg border border-dashed border-line bg-white px-5 py-12 text-center shadow-panel">
               <p className="text-base font-black text-ink">暂无待审核的技师申请</p>

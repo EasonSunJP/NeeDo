@@ -389,6 +389,36 @@ const createFixture = async () => {
       page: 1,
       page_size: 20
     })),
+    listTechnicianRankings: jest.fn(async () => ({
+      list: [
+        {
+          rank: 1,
+          technicianProfileId: 7,
+          userId: 17,
+          displayName: "Mika Tanaka",
+          email: "mika@example.com",
+          avatarUrl: null,
+          shopId: 11,
+          shopName: "Aoyama Care Studio",
+          city: "Tokyo",
+          serviceArea: "Minato",
+          status: "published",
+          verifiedAt: now.toISOString(),
+          completedServiceAmountJpy: 15_000,
+          completedOrderCount: 2,
+          workingDayCount: 1
+        }
+      ],
+      summary: {
+        technicianCount: 1,
+        completedServiceAmountJpy: 15_000,
+        completedOrderCount: 2,
+        workingDayCount: 1
+      },
+      total: 1,
+      page: 1,
+      page_size: 20
+    })),
     listShops: jest.fn(async () => ({
       list: [{ id: 11, name: "Aoyama Care Studio", status: "published" }],
       total: 1,
@@ -422,6 +452,101 @@ const createFixture = async () => {
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
+  it("serves the completed-order technician leaderboard in a Tokyo custom period", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    const response = await request(fixture.app)
+      .get(
+        "/api/v1/backoffice/technician-rankings?period=custom&from=2026-08-01&to=2026-08-31&sortBy=revenue&sortOrder=desc"
+      )
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      list: [
+        {
+          rank: 1,
+          displayName: "Mika Tanaka",
+          completedServiceAmountJpy: 15_000,
+          completedOrderCount: 2,
+          workingDayCount: 1
+        }
+      ],
+      summary: {
+        completedServiceAmountJpy: 15_000,
+        completedOrderCount: 2,
+        workingDayCount: 1
+      },
+      period: {
+        key: "custom",
+        timeZone: "Asia/Tokyo",
+        from: "2026-08-01",
+        to: "2026-08-31"
+      }
+    });
+    expect(fixture.backofficeRepository.listTechnicianRankings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "platform",
+        period: "custom",
+        from: "2026-08-01",
+        to: "2026-08-31",
+        window: expect.objectContaining({
+          fromInclusive: new Date("2026-07-31T15:00:00.000Z"),
+          toExclusive: new Date("2026-08-31T15:00:00.000Z")
+        })
+      })
+    );
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorId: 1,
+          action: "backoffice.technician_rankings.list",
+          targetType: "technician_ranking"
+        })
+      ])
+    );
+  });
+
+  it("validates, protects, and exports technician rankings with the same read permission", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const viewerToken = await fixture.login("viewer@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings?period=custom&from=2026-08-01")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.VALIDATION));
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .expect(403)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
+
+    const exportResponse = await request(fixture.app)
+      .get("/api/v1/backoffice/technician-rankings/export?period=month")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200);
+
+    expect(exportResponse.body.data).toMatchObject({
+      contentType: "text/csv; charset=utf-8"
+    });
+    expect(exportResponse.body.data.filename).toContain("technician-rankings-month");
+    expect(exportResponse.body.data.content).toContain("Mika Tanaka");
+    expect(exportResponse.body.data.content).toContain("15000");
+    expect(fixture.auditLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorId: 1,
+          action: "backoffice.technician_rankings.export",
+          targetType: "technician_ranking_export"
+        })
+      ])
+    );
+  });
+
   it("serves the operations dashboard from the repository and records an audit log", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");

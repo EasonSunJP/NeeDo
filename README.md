@@ -138,6 +138,18 @@ capacity tier.
 
 Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the public client login page immediately enter the frontend portals (`/`, `/merchant`, `/technician`, `/afirieito`) without calling an auth API. This is only for short-term preview access while API routing is unstable; backend routes such as `/admin` and `/merchant-admin` still reject the temporary frontend session.
 
+## Operations Technician Ranking
+
+The operations technician ranking is available at
+`/pf-admin.html#/admin/technicians?module=ranking`. It reads the formal
+`/api/v1/backoffice/technician-rankings` aggregate instead of calculating totals
+in the browser. The default period is the current Tokyo calendar month, with
+today, last 7 days, last 30 days, custom inclusive dates, and all-history
+switches. Revenue is completed-order service value (including extension value),
+completed orders count each booking once, and a Tokyo date with at least one
+completed order counts as one working day. CSV export uses the same filters and
+metric definitions as the visible ranking.
+
 ## Formal Schedule Inventory
 
 Merchant and technician schedule portals now maintain customer-bookable inventory through identity-scoped `/api/v1/*/schedule/slots` APIs. The backend derives the shop or technician profile from the active authenticated identity, validates explicit-offset ISO timestamps, prevents overlapping technician slots, and updates matching availability records transactionally. Personal calendar notes remain a separate, non-bookable compatibility lane.

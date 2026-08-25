@@ -20,7 +20,8 @@ import {
   backofficeShopUpdateBodySchema,
   backofficeTechnicianApproveBodySchema,
   backofficeTechnicianUpdateBodySchema,
-  merchantShopUpdateBodySchema
+  merchantShopUpdateBodySchema,
+  technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -109,6 +110,20 @@ export const createBackofficeRoutes = (
     authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians),
     validateRequest({ query: backofficeListQuerySchema }),
     controller.platformTechnicians
+  );
+  router.get(
+    "/backoffice/technician-rankings",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians),
+    validateRequest({ query: technicianRankingQuerySchema }),
+    controller.platformTechnicianRankings
+  );
+  router.get(
+    "/backoffice/technician-rankings/export",
+    authenticate(),
+    authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians),
+    validateRequest({ query: technicianRankingQuerySchema }),
+    controller.platformTechnicianRankingsExport
   );
   router.get(
     "/backoffice/shops",

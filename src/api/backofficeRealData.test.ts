@@ -57,6 +57,42 @@ describe("backofficeRealDataApi master data writes", () => {
     expect(httpClient.request).toHaveBeenNthCalledWith(4, "/merchant-admin/customers/41");
   });
 
+  it("loads and exports the operations technician ranking with the same formal filters", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    const query = {
+      period: "custom" as const,
+      from: "2026-08-01",
+      to: "2026-08-31",
+      sortBy: "completedOrders" as const,
+      sortOrder: "desc" as const,
+      keyword: "Mika",
+      shopId: 11,
+      city: "Tokyo",
+      page: 2,
+      pageSize: 20
+    };
+    const api = backofficeRealDataApi as typeof backofficeRealDataApi &
+      Record<string, (...args: never[]) => Promise<unknown>>;
+
+    expect(api.technicianRankings).toBeTypeOf("function");
+    expect(api.exportTechnicianRankings).toBeTypeOf("function");
+    if (!api.technicianRankings || !api.exportTechnicianRankings) return;
+
+    await api.technicianRankings(query as never);
+    await api.exportTechnicianRankings(query as never);
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      1,
+      "/backoffice/technician-rankings",
+      { query }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      2,
+      "/backoffice/technician-rankings/export",
+      { query }
+    );
+  });
+
   it("updates the authenticated merchant shop without accepting a shop id", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
 

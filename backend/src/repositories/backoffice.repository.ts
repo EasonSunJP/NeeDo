@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
@@ -19,13 +19,15 @@ import {
   type BackofficeShopCreateData,
   type BackofficeShopPayload,
   type BackofficeTechnicianPayload,
+  type BackofficeTechnicianRankingPayload,
   type BackofficeTechnicianDetailPayload,
   type BackofficeTechnicianServiceDetailPayload,
   type ScopedEntityInput,
   type ScopedServiceCreateInput,
   type ScopedServiceUpdateInput,
   type ScopedTechnicianApprovalInput,
-  type ScopedTechnicianUpdateInput
+  type ScopedTechnicianUpdateInput,
+  type TechnicianRankingRepositoryInput
 } from "../services/backoffice.service";
 import type {
   BackofficeCustomerUpdateBody,
@@ -38,6 +40,28 @@ import type { PaginatedResponse } from "../utils/pagination";
 type DecimalLike = {
   toString: () => string;
 };
+
+interface TechnicianRankingDatabaseRow {
+  technician_profile_id: number;
+  user_id: number;
+  display_name: string;
+  email: string;
+  avatar_url: string | null;
+  shop_id: number | null;
+  shop_name: string | null;
+  city: string;
+  service_area: string | null;
+  status: string;
+  verified_at: Date | string | null;
+  revenue_jpy: bigint | number | string | DecimalLike;
+  completed_orders: bigint | number | string | DecimalLike;
+  working_days: bigint | number | string | DecimalLike;
+  ranking_position: bigint | number | string | DecimalLike;
+  total_technicians: bigint | number | string | DecimalLike;
+  total_revenue_jpy: bigint | number | string | DecimalLike;
+  total_completed_orders: bigint | number | string | DecimalLike;
+  total_working_days: bigint | number | string | DecimalLike;
+}
 
 const PROFILE_DETAIL_SERVICE_LIMIT = 50;
 
@@ -448,6 +472,135 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       total,
       input
     );
+  }
+
+  public async listTechnicianRankings(
+    input: TechnicianRankingRepositoryInput
+  ): Promise<BackofficeTechnicianRankingPayload> {
+    const pagination = toPrismaPagination(input);
+    const filters: Prisma.Sql[] = [
+      Prisma.sql`profile.deleted_at IS NULL`,
+      Prisma.sql`account.deleted_at IS NULL`,
+      Prisma.sql`booking.deleted_at IS NULL`,
+      Prisma.sql`booking.status = ${"completed"}`,
+      Prisma.sql`booking.payment_status <> ${"refunded"}`
+    ];
+    if (input.window.fromInclusive) {
+      filters.push(Prisma.sql`booking.ends_at >= ${input.window.fromInclusive}`);
+    }
+    if (input.window.toExclusive) {
+      filters.push(Prisma.sql`booking.ends_at < ${input.window.toExclusive}`);
+    }
+    if (input.keyword) {
+      const keyword = `%${input.keyword}%`;
+      filters.push(
+        Prisma.sql`(
+          profile.display_name LIKE ${keyword}
+          OR account.email LIKE ${keyword}
+          OR shop.name LIKE ${keyword}
+        )`
+      );
+    }
+    const scopedShopId = input.shopId;
+    if (scopedShopId) {
+      filters.push(Prisma.sql`profile.shop_id = ${scopedShopId}`);
+    }
+    if (input.city) {
+      filters.push(Prisma.sql`profile.city = ${input.city}`);
+    }
+
+    const orderColumn = {
+      revenue: Prisma.sql`revenue_jpy`,
+      completedOrders: Prisma.sql`completed_orders`,
+      workingDays: Prisma.sql`working_days`
+    }[input.sortBy];
+    const orderDirection = input.sortOrder === "asc" ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+    const rows = await this.client.$queryRaw<TechnicianRankingDatabaseRow[]>(Prisma.sql`
+      WITH technician_totals AS (
+        SELECT
+          profile.id AS technician_profile_id,
+          profile.user_id AS user_id,
+          profile.display_name AS display_name,
+          account.email AS email,
+          account.avatar_url AS avatar_url,
+          profile.shop_id AS shop_id,
+          shop.name AS shop_name,
+          profile.city AS city,
+          profile.service_area AS service_area,
+          profile.status AS status,
+          profile.verified_at AS verified_at,
+          COALESCE(SUM(financial.service_amount_jpy), 0) AS revenue_jpy,
+          COUNT(DISTINCT booking.id) AS completed_orders,
+          COUNT(DISTINCT DATE(DATE_ADD(booking.ends_at, INTERVAL 9 HOUR))) AS working_days
+        FROM technician_profiles AS profile
+        INNER JOIN users AS account ON account.id = profile.user_id
+        LEFT JOIN shops AS shop ON shop.id = profile.shop_id AND shop.deleted_at IS NULL
+        INNER JOIN booking_orders AS booking ON booking.technician_profile_id = profile.id
+        LEFT JOIN order_financials AS financial
+          ON financial.booking_order_id = booking.id
+          AND financial.deleted_at IS NULL
+        WHERE ${Prisma.join(filters, " AND ")}
+        GROUP BY
+          profile.id,
+          profile.user_id,
+          profile.display_name,
+          account.email,
+          account.avatar_url,
+          profile.shop_id,
+          shop.name,
+          profile.city,
+          profile.service_area,
+          profile.status,
+          profile.verified_at
+      )
+      SELECT
+        technician_totals.*,
+        ROW_NUMBER() OVER (
+          ORDER BY ${orderColumn} ${orderDirection}, completed_orders DESC, technician_profile_id ASC
+        ) AS ranking_position,
+        COUNT(*) OVER () AS total_technicians,
+        COALESCE(SUM(revenue_jpy) OVER (), 0) AS total_revenue_jpy,
+        COALESCE(SUM(completed_orders) OVER (), 0) AS total_completed_orders,
+        COALESCE(SUM(working_days) OVER (), 0) AS total_working_days
+      FROM technician_totals
+      ORDER BY ${orderColumn} ${orderDirection}, completed_orders DESC, technician_profile_id ASC
+      LIMIT ${pagination.take} OFFSET ${pagination.skip}
+    `);
+
+    const first = rows[0];
+    return {
+      list: rows.map((row) => ({
+        rank: this.toNumber(row.ranking_position),
+        technicianProfileId: row.technician_profile_id,
+        userId: row.user_id,
+        displayName: row.display_name,
+        email: row.email,
+        avatarUrl: row.avatar_url,
+        shopId: row.shop_id,
+        shopName: row.shop_name,
+        city: row.city,
+        serviceArea: row.service_area,
+        status: row.status,
+        verifiedAt:
+          row.verified_at instanceof Date
+            ? row.verified_at.toISOString()
+            : row.verified_at
+              ? new Date(row.verified_at).toISOString()
+              : null,
+        completedServiceAmountJpy: this.toNumber(row.revenue_jpy),
+        completedOrderCount: this.toNumber(row.completed_orders),
+        workingDayCount: this.toNumber(row.working_days)
+      })),
+      summary: {
+        technicianCount: this.toNumber(first?.total_technicians),
+        completedServiceAmountJpy: this.toNumber(first?.total_revenue_jpy),
+        completedOrderCount: this.toNumber(first?.total_completed_orders),
+        workingDayCount: this.toNumber(first?.total_working_days)
+      },
+      total: this.toNumber(first?.total_technicians),
+      page: pagination.page,
+      page_size: pagination.pageSize
+    };
   }
 
   public async getTechnicianDetail(
@@ -1933,7 +2086,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return "needs_income_report";
   }
 
-  private toNumber(value: DecimalLike | number | string | null | undefined): number {
+  private toNumber(value: DecimalLike | bigint | number | string | null | undefined): number {
     if (value === null || value === undefined) {
       return 0;
     }

@@ -9,12 +9,133 @@ import type {
   BackofficeShopUpdateBody,
   MerchantShopUpdateBody,
   BackofficeTechnicianApproveBody,
-  BackofficeTechnicianUpdateBody
+  BackofficeTechnicianUpdateBody,
+  TechnicianRankingQuery
 } from "../validators/backoffice.validator";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
 import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+
+const TOKYO_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export type TechnicianRankingPeriod =
+  | "today"
+  | "last7days"
+  | "last30days"
+  | "month"
+  | "custom"
+  | "all";
+
+export interface TechnicianRankingWindow {
+  period: TechnicianRankingPeriod;
+  timeZone: "Asia/Tokyo";
+  fromDate: string | null;
+  toDate: string | null;
+  fromInclusive: Date | null;
+  toExclusive: Date | null;
+}
+
+const formatCalendarDate = (year: number, month: number, day: number): string =>
+  `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day
+    .toString()
+    .padStart(2, "0")}`;
+
+const parseCalendarDate = (value: string): { year: number; month: number; day: number } => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    throw new Error("Invalid calendar date");
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== month - 1 ||
+    candidate.getUTCDate() !== day
+  ) {
+    throw new Error("Invalid calendar date");
+  }
+  return { year, month, day };
+};
+
+const shiftCalendarDate = (value: string, days: number): string => {
+  const { year, month, day } = parseCalendarDate(value);
+  const shifted = new Date(Date.UTC(year, month - 1, day) + days * DAY_MS);
+  return formatCalendarDate(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth() + 1,
+    shifted.getUTCDate()
+  );
+};
+
+const toTokyoCalendarDate = (value: Date): string => {
+  const tokyo = new Date(value.getTime() + TOKYO_OFFSET_MS);
+  return formatCalendarDate(
+    tokyo.getUTCFullYear(),
+    tokyo.getUTCMonth() + 1,
+    tokyo.getUTCDate()
+  );
+};
+
+const startOfTokyoCalendarDate = (value: string): Date => {
+  const { year, month, day } = parseCalendarDate(value);
+  return new Date(Date.UTC(year, month - 1, day) - TOKYO_OFFSET_MS);
+};
+
+export const resolveTechnicianRankingWindow = (
+  input: { period?: TechnicianRankingPeriod; from?: string; to?: string },
+  now = new Date()
+): TechnicianRankingWindow => {
+  const period = input.period ?? "month";
+  if (period === "all") {
+    return {
+      period,
+      timeZone: "Asia/Tokyo",
+      fromDate: null,
+      toDate: null,
+      fromInclusive: null,
+      toExclusive: null
+    };
+  }
+
+  const today = toTokyoCalendarDate(now);
+  let fromDate: string;
+  let toDate: string;
+  if (period === "custom") {
+    if (!input.from || !input.to) {
+      throw new Error("Custom period requires both from and to dates");
+    }
+    parseCalendarDate(input.from);
+    parseCalendarDate(input.to);
+    if (input.from > input.to) {
+      throw new Error("Custom period start must not be after its end");
+    }
+    fromDate = input.from;
+    toDate = input.to;
+  } else if (period === "month") {
+    fromDate = `${today.slice(0, 7)}-01`;
+    toDate = shiftCalendarDate(
+      `${shiftCalendarDate(fromDate, 32).slice(0, 7)}-01`,
+      -1
+    );
+  } else {
+    const trailingDays = period === "today" ? 1 : period === "last7days" ? 7 : 30;
+    fromDate = shiftCalendarDate(today, -(trailingDays - 1));
+    toDate = today;
+  }
+
+  return {
+    period,
+    timeZone: "Asia/Tokyo",
+    fromDate,
+    toDate,
+    fromInclusive: startOfTokyoCalendarDate(fromDate),
+    toExclusive: startOfTokyoCalendarDate(shiftCalendarDate(toDate, 1))
+  };
+};
 
 export type BackofficeScope =
   | {
@@ -122,6 +243,51 @@ export interface BackofficeTechnicianPayload {
   verifiedAt: string | null;
   createdAt: string;
 }
+
+export interface BackofficeTechnicianRankingRowPayload {
+  rank: number;
+  technicianProfileId: number;
+  userId: number;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+  shopId: number | null;
+  shopName: string | null;
+  city: string;
+  serviceArea: string | null;
+  status: string;
+  verifiedAt: string | null;
+  completedServiceAmountJpy: number;
+  completedOrderCount: number;
+  workingDayCount: number;
+}
+
+export interface BackofficeTechnicianRankingSummaryPayload {
+  technicianCount: number;
+  completedServiceAmountJpy: number;
+  completedOrderCount: number;
+  workingDayCount: number;
+}
+
+export interface BackofficeTechnicianRankingPayload
+  extends PaginatedResponse<BackofficeTechnicianRankingRowPayload> {
+  summary: BackofficeTechnicianRankingSummaryPayload;
+}
+
+export interface BackofficeTechnicianRankingResponsePayload
+  extends BackofficeTechnicianRankingPayload {
+  period: {
+    key: TechnicianRankingPeriod;
+    timeZone: "Asia/Tokyo";
+    from: string | null;
+    to: string | null;
+  };
+}
+
+export type TechnicianRankingRepositoryInput = BackofficeScope &
+  TechnicianRankingQuery & {
+    window: TechnicianRankingWindow;
+  };
 
 export interface BackofficeShopPayload {
   id: number;
@@ -338,6 +504,9 @@ export interface BackofficeRepositoryPort {
   listTechnicians: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeTechnicianPayload>>;
+  listTechnicianRankings: (
+    input: TechnicianRankingRepositoryInput
+  ) => Promise<BackofficeTechnicianRankingPayload>;
   listShops: (
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeShopPayload>>;
@@ -498,6 +667,110 @@ export class BackofficeService {
     await this.record(actor, context, "backoffice.technicians.list", "technician_profile");
 
     return this.repository.listTechnicians({ scope: "platform", ...input });
+  }
+
+  public async listPlatformTechnicianRankings(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: TechnicianRankingQuery
+  ): Promise<BackofficeTechnicianRankingResponsePayload> {
+    const window = resolveTechnicianRankingWindow(input);
+    await this.record(actor, context, "backoffice.technician_rankings.list", "technician_ranking", {
+      period: window.period,
+      from: window.fromDate,
+      to: window.toDate,
+      sortBy: input.sortBy,
+      sortOrder: input.sortOrder
+    });
+    const ranking = await this.repository.listTechnicianRankings({
+      scope: "platform",
+      ...input,
+      window
+    });
+
+    return {
+      ...ranking,
+      period: {
+        key: window.period,
+        timeZone: window.timeZone,
+        from: window.fromDate,
+        to: window.toDate
+      }
+    };
+  }
+
+  public async exportPlatformTechnicianRankings(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    input: TechnicianRankingQuery
+  ): Promise<BackofficeCsvExportPayload> {
+    const window = resolveTechnicianRankingWindow(input);
+    await this.record(
+      actor,
+      context,
+      "backoffice.technician_rankings.export",
+      "technician_ranking_export",
+      {
+        period: window.period,
+        from: window.fromDate,
+        to: window.toDate,
+        sortBy: input.sortBy,
+        sortOrder: input.sortOrder
+      }
+    );
+
+    const rows: BackofficeTechnicianRankingRowPayload[] = [];
+    const pageSize = 100;
+    const exportLimit = 5000;
+    let page = 1;
+    let total = 0;
+    do {
+      const result = await this.repository.listTechnicianRankings({
+        scope: "platform",
+        ...input,
+        page,
+        pageSize,
+        window
+      });
+      rows.push(...result.list);
+      total = result.total;
+      page += 1;
+    } while (rows.length < total && rows.length < exportLimit);
+
+    const csvRows = [
+      [
+        "rank",
+        "technicianProfileId",
+        "displayName",
+        "email",
+        "shopName",
+        "city",
+        "completedServiceAmountJpy",
+        "completedOrderCount",
+        "workingDayCount"
+      ],
+      ...rows.slice(0, exportLimit).map((row) => [
+        row.rank,
+        row.technicianProfileId,
+        row.displayName,
+        row.email,
+        row.shopName ?? "",
+        row.city,
+        row.completedServiceAmountJpy,
+        row.completedOrderCount,
+        row.workingDayCount
+      ])
+    ];
+    const content = `\uFEFF${csvRows
+      .map((row) => row.map((value) => this.escapeCsvCell(value)).join(","))
+      .join("\n")}`;
+    const range = window.fromDate && window.toDate ? `${window.fromDate}_${window.toDate}` : "all";
+
+    return {
+      filename: `technician-rankings-${window.period}-${range}.csv`,
+      contentType: "text/csv; charset=utf-8",
+      content
+    };
   }
 
   public async listMerchantTechnicians(
@@ -965,5 +1238,10 @@ export class BackofficeService {
       context,
       metadata
     });
+  }
+
+  private escapeCsvCell(value: number | string): string {
+    const text = String(value);
+    return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
   }
 }

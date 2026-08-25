@@ -97,3 +97,39 @@ Codex 完成本步后，必须输出：
 
 - 前端：141 个测试文件、697 项测试通过；TypeScript lint 与 Vite production build 通过。
 - 后端：50 个测试文件、198 项测试通过；ESLint 与 TypeScript build 通过。
+
+## 10. 2026-08-26 技师榜单正式数据
+
+运营后台入口：`/pf-admin.html#/admin/technicians?module=ranking`。
+
+正式接口：
+
+- `GET /api/v1/backoffice/technician-rankings`：分页读取聚合榜单。
+- `GET /api/v1/backoffice/technician-rankings/export`：按相同条件导出 CSV，最多 5,000 行。
+
+两个接口均要求 `backoffice:technicians:list` 权限，分别写入
+`backoffice.technician_rankings.list` 与
+`backoffice.technician_rankings.export` 审计记录。列表支持技师关键字、店铺、城市、
+统计期间、指标、升降序和分页筛选；CSV 与当前筛选、排序、统计口径完全一致。
+
+统计期间按 `Asia/Tokyo` 日历解释：
+
+- 默认本月。
+- 今日、近 7 天、近 30 天。
+- 自定义起止日，起止日均包含在统计范围内。
+- 历史累计。
+
+指标口径：
+
+- 已完成订单服务金额：仅统计状态为 `completed` 且未退款的订单，汇总正式
+  `service_amount_jpy`；加钟后的最终服务金额计入原订单。
+- 已完成订单数：按 Booking 主订单去重，同一订单内加钟仍只计 1 单。
+- 工作天数：按订单完成时间转换为东京日期去重，当天至少完成 1 单计 1 天。
+- 已软删除的账号、技师资料、订单和财务记录均不进入统计。
+
+前端提供期间切换、自定义日期、技师/店铺/城市筛选、三指标排序、服务金额比例条、
+服务端分页、CSV 导出和正式技师详情抽屉。本轮复用现有 Booking、OrderFinancial、
+TechnicianProfile 与 Shop 数据，没有新增 schema 或 migration，也没有新增 mock 数据。
+
+专项测试覆盖：期间边界与输入校验、东京日历换算、SQL 聚合口径、分页与汇总、RBAC、
+审计、CSV、OpenAPI、前端 API adapter 和榜单页面接线。

@@ -49,6 +49,32 @@ describe("master data pages", () => {
     expect(source).toMatch(/const deleteTechnician[\s\S]*?closeTechnician\(\);[\s\S]*?await load\(\);/);
   });
 
+  it("renders a complete formal technician ranking for module=ranking", () => {
+    const pageSource = read("./TechniciansPage.tsx");
+    const rankingSource = read("../../components/admin/TechnicianRankingModule.tsx");
+
+    expect(pageSource).toContain('searchParams.get("module") === "ranking"');
+    expect(pageSource).toContain("TechnicianRankingModule");
+    expect(pageSource).toContain("openRankingTechnician");
+    expect(rankingSource).toMatch(/backofficeRealDataApi\s*\.\s*technicianRankings/);
+    expect(rankingSource).toContain("backofficeRealDataApi.exportTechnicianRankings");
+    expect(rankingSource).toContain("downloadCsvExport");
+    expect(rankingSource).toContain('key: "month"');
+    expect(rankingSource).toContain('key: "today"');
+    expect(rankingSource).toContain('key: "last7days"');
+    expect(rankingSource).toContain('key: "last30days"');
+    expect(rankingSource).toContain('key: "custom"');
+    expect(rankingSource).toContain('key: "all"');
+    expect(rankingSource).toContain("已完成订单服务金额");
+    expect(rankingSource).toContain("已完成订单数");
+    expect(rankingSource).toContain("工作天数");
+    expect(rankingSource).toContain("加钟金额计入原订单服务金额");
+    expect(rankingSource).toContain("同一订单加钟仍计为 1 单");
+    expect(rankingSource).toContain("至少完成 1 单计为 1 天");
+    expect(rankingSource).toContain("page_size");
+    expect(rankingSource).not.toContain("../../data/mock");
+  });
+
   it("keeps operations customer profiles on formal paginated APIs", () => {
     const source = read("./UsersPage.tsx");
     expect(source).toContain('backofficeRealDataApi.customers("backoffice"');

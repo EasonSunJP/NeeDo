@@ -13,7 +13,8 @@ import {
   backofficeShopUpdateBodySchema,
   backofficeTechnicianApproveBodySchema,
   backofficeTechnicianUpdateBodySchema,
-  merchantShopUpdateBodySchema
+  merchantShopUpdateBodySchema,
+  technicianRankingQuerySchema
 } from "../validators/backoffice.validator";
 
 export class BackofficeController {
@@ -131,6 +132,23 @@ export class BackofficeController {
       getRequestContext(request),
       backofficeListQuerySchema.parse(request.query)
     )
+  );
+
+  public platformTechnicianRankings = this.createListHandler((service, request, response) =>
+    service.listPlatformTechnicianRankings(
+      getAuthenticatedAccess(response),
+      getRequestContext(request),
+      technicianRankingQuerySchema.parse(request.query)
+    )
+  );
+
+  public platformTechnicianRankingsExport = this.createListHandler(
+    (service, request, response) =>
+      service.exportPlatformTechnicianRankings(
+        getAuthenticatedAccess(response),
+        getRequestContext(request),
+        technicianRankingQuerySchema.parse(request.query)
+      )
   );
 
   public merchantTechnicians = this.createListHandler((service, request, response) =>

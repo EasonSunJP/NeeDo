@@ -59,6 +59,23 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians");
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technician-rankings");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/backoffice/technician-rankings/export"
+    );
+    expect(
+      response.body.paths["/api/v1/backoffice/technician-rankings"].get.parameters
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "period",
+          schema: expect.objectContaining({ default: "month" })
+        }),
+        expect.objectContaining({ name: "from", schema: expect.objectContaining({ format: "date" }) }),
+        expect.objectContaining({ name: "to", schema: expect.objectContaining({ format: "date" }) }),
+        expect.objectContaining({ name: "sortBy" })
+      ])
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/merchant-accounts");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/merchant-accounts/{id}");
@@ -241,6 +258,14 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("ShopFinanceRulePreviewResult");
     expect(response.body.components.schemas).toHaveProperty("OrderFinanceDetail");
     expect(response.body.components.schemas).toHaveProperty("TechnicianCompensationProfile");
+    expect(response.body.components.schemas).toHaveProperty("BackofficeTechnicianRankingRow");
+    expect(response.body.components.schemas.BackofficeTechnicianRankingRow.required).toEqual(
+      expect.arrayContaining([
+        "completedServiceAmountJpy",
+        "completedOrderCount",
+        "workingDayCount"
+      ])
+    );
     expect(response.body.components.schemas).toHaveProperty("CompensationProfilePreviewResult");
     expect(response.body.components.schemas).toHaveProperty("PayrollCsvExport");
     expect(response.body.components.schemas).toHaveProperty("PayrollAdjustmentRequest");

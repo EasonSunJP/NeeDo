@@ -93,6 +93,63 @@ export interface BackofficeTechnicianPayload {
   createdAt: string;
 }
 
+export type TechnicianRankingPeriod =
+  | "today"
+  | "last7days"
+  | "last30days"
+  | "month"
+  | "custom"
+  | "all";
+export type TechnicianRankingSortBy = "revenue" | "completedOrders" | "workingDays";
+
+export interface TechnicianRankingQuery
+  extends Record<string, string | number | boolean | null | undefined> {
+  period?: TechnicianRankingPeriod;
+  from?: string;
+  to?: string;
+  sortBy?: TechnicianRankingSortBy;
+  sortOrder?: "asc" | "desc";
+  keyword?: string;
+  shopId?: number;
+  city?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface BackofficeTechnicianRankingRowPayload {
+  rank: number;
+  technicianProfileId: number;
+  userId: number;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+  shopId: number | null;
+  shopName: string | null;
+  city: string;
+  serviceArea: string | null;
+  status: string;
+  verifiedAt: string | null;
+  completedServiceAmountJpy: number;
+  completedOrderCount: number;
+  workingDayCount: number;
+}
+
+export interface BackofficeTechnicianRankingPayload
+  extends PaginatedApiPayload<BackofficeTechnicianRankingRowPayload> {
+  summary: {
+    technicianCount: number;
+    completedServiceAmountJpy: number;
+    completedOrderCount: number;
+    workingDayCount: number;
+  };
+  period: {
+    key: TechnicianRankingPeriod;
+    timeZone: "Asia/Tokyo";
+    from: string | null;
+    to: string | null;
+  };
+}
+
 export interface BackofficeShopPayload {
   id: number;
   ownerUserId: number | null;
@@ -343,6 +400,17 @@ export const backofficeRealDataApi = {
   },
   technicians(scope: BackofficeScope, query?: ListQuery) {
     return httpClient.request<PaginatedApiPayload<BackofficeTechnicianPayload>>(`${scopePrefix(scope)}/technicians`, {
+      query
+    });
+  },
+  technicianRankings(query?: TechnicianRankingQuery) {
+    return httpClient.request<BackofficeTechnicianRankingPayload>(
+      "/backoffice/technician-rankings",
+      { query }
+    );
+  },
+  exportTechnicianRankings(query?: TechnicianRankingQuery) {
+    return httpClient.request<CsvExportPayload>("/backoffice/technician-rankings/export", {
       query
     });
   },

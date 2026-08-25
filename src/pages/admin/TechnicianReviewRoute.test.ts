@@ -14,8 +14,8 @@ describe("operations technician application review route", () => {
     expect(pageSource).toContain('searchParams.get("module") === "review"');
     expect(pageSource).toContain('status: isReviewMode ? "pending_review" : undefined');
     expect(pageSource).toContain('const reviewTechnicians = useMemo(() => technicians.filter((item) => item.status === "pending_review"), [technicians]);');
-    expect(pageSource).toContain('title={isReviewMode ? "技师资料审核" : "技师管理"}');
-    expect(pageSource).toContain("actions={isReviewMode ? <></> : undefined}");
+    expect(pageSource).toContain('title={isRankingMode ? "技师榜单" : isReviewMode ? "技师资料审核" : "技师管理"}');
+    expect(pageSource).toContain("actions={isReviewMode || isRankingMode ? <></> : undefined}");
     expect(pageSource).toContain("DataTable<BackofficeTechnicianPayload>");
     expect(pageSource).toContain('title: "申请人"');
     expect(pageSource).toContain('title: "创建时间"');
