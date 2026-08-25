@@ -122,6 +122,31 @@ const affiliateTaskErrorResponses = {
   "409": { description: "Task state, optimistic lock, or NDP balance conflict" }
 };
 
+const affiliateMarketplaceListParameters = [
+  { name: "keyword", in: "query", schema: { type: "string", minLength: 1, maxLength: 160 } },
+  { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } },
+  { name: "serviceId", in: "query", schema: { type: "integer", minimum: 1 } },
+  {
+    name: "customerDiscountType",
+    in: "query",
+    schema: { type: "string", enum: ["none", "fixed_jpy", "percent"] }
+  },
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100 }
+  }
+];
+
+const affiliateMarketplaceErrorResponses = {
+  "400": { description: "Invalid affiliate marketplace contract" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing affiliate marketplace permission" },
+  "404": { description: "Affiliate task, claim, or signed link not found" },
+  "409": { description: "Task eligibility or claim uniqueness conflict" }
+};
+
 const merchantPreviewShopHeaderParameter = {
   name: "X-NeeDo-Merchant-Preview-Shop-Id",
   in: "header",
@@ -2655,6 +2680,144 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page: { type: "integer", minimum: 1 },
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
+      },
+      AffiliateMarketplaceTask: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "taskCode",
+          "name",
+          "description",
+          "coverMediaAssetId",
+          "rewardNdpPerCompletedOrder",
+          "customerDiscountType",
+          "fixedDiscountJpy",
+          "discountRateBps",
+          "discountCapJpy",
+          "minimumOrderAmountJpy",
+          "claimStartsAt",
+          "claimEndsAt",
+          "taskStartsAt",
+          "taskEndsAt",
+          "attributionWindowDays",
+          "maxCompletedOrdersPerClaim",
+          "maxCompletedOrdersPerCustomer",
+          "status",
+          "claimable",
+          "shops",
+          "services",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          taskCode: { type: "string", maxLength: 80 },
+          name: affiliateEditableTaskProperties.name,
+          description: affiliateEditableTaskProperties.description,
+          coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
+          rewardNdpPerCompletedOrder:
+            affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
+          customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
+          fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
+          discountRateBps: affiliateEditableTaskProperties.discountRateBps,
+          discountCapJpy: affiliateEditableTaskProperties.discountCapJpy,
+          minimumOrderAmountJpy: affiliateEditableTaskProperties.minimumOrderAmountJpy,
+          claimStartsAt: affiliateEditableTaskProperties.claimStartsAt,
+          claimEndsAt: affiliateEditableTaskProperties.claimEndsAt,
+          taskStartsAt: affiliateEditableTaskProperties.taskStartsAt,
+          taskEndsAt: affiliateEditableTaskProperties.taskEndsAt,
+          attributionWindowDays: affiliateEditableTaskProperties.attributionWindowDays,
+          maxCompletedOrdersPerClaim:
+            affiliateEditableTaskProperties.maxCompletedOrdersPerClaim,
+          maxCompletedOrdersPerCustomer:
+            affiliateEditableTaskProperties.maxCompletedOrdersPerCustomer,
+          status: { type: "string", enum: affiliateTaskStatuses },
+          claimable: { type: "boolean" },
+          shops: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/AffiliateTaskShopSnapshot" }
+          },
+          services: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/AffiliateTaskServiceSnapshot" }
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateClaim: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "taskId",
+          "publicCode",
+          "promotionUrl",
+          "status",
+          "claimedAt",
+          "expiresAt",
+          "clickCount",
+          "codeUseCount",
+          "attributedOrderCount",
+          "completedOrderCount",
+          "settledRewardNdp",
+          "task"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          taskId: { type: "integer", minimum: 1 },
+          publicCode: { type: "string", minLength: 1, maxLength: 80 },
+          promotionUrl: { type: "string", format: "uri" },
+          status: { type: "string", enum: ["active", "expired", "revoked"] },
+          claimedAt: { type: "string", format: "date-time" },
+          expiresAt: { type: "string", format: "date-time" },
+          clickCount: { type: "integer", minimum: 0 },
+          codeUseCount: { type: "integer", minimum: 0 },
+          attributedOrderCount: { type: "integer", minimum: 0 },
+          completedOrderCount: { type: "integer", minimum: 0 },
+          settledRewardNdp: { type: "integer", minimum: 0 },
+          task: { $ref: "#/components/schemas/AffiliateMarketplaceTask" }
+        }
+      },
+      AffiliateResolvedLink: {
+        type: "object",
+        additionalProperties: false,
+        required: ["claimId", "publicCode", "expiresAt", "task"],
+        properties: {
+          claimId: { type: "integer", minimum: 1 },
+          publicCode: { type: "string", minLength: 1, maxLength: 80 },
+          expiresAt: { type: "string", format: "date-time" },
+          task: { $ref: "#/components/schemas/AffiliateMarketplaceTask" }
+        }
+      },
+      AffiliateMarketplaceTaskPage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateMarketplaceTask" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      AffiliateClaimPage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateClaim" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
       }
     }
   },
@@ -2737,6 +2900,127 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/AffiliateTask"
           }),
           ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/tasks`]: {
+      get: {
+        tags: ["Affiliate Marketplace"],
+        summary: "List currently claimable affiliate tasks",
+        security: [{ bearerAuth: [] }],
+        parameters: affiliateMarketplaceListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated claimable affiliate tasks", {
+            $ref: "#/components/schemas/AffiliateMarketplaceTaskPage"
+          }),
+          ...affiliateMarketplaceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/tasks/{taskId}`]: {
+      get: {
+        tags: ["Affiliate Marketplace"],
+        summary: "Get one currently claimable affiliate task",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        responses: {
+          "200": jsonDataResponse("Claimable affiliate task", {
+            $ref: "#/components/schemas/AffiliateMarketplaceTask"
+          }),
+          ...affiliateMarketplaceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/tasks/{taskId}/claims`]: {
+      post: {
+        tags: ["Affiliate Marketplace"],
+        summary: "Idempotently claim an affiliate task and issue a promotion code and URL",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                maxProperties: 0
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Existing idempotent affiliate claim", {
+            $ref: "#/components/schemas/AffiliateClaim"
+          }),
+          "201": jsonDataResponse("Created affiliate claim", {
+            $ref: "#/components/schemas/AffiliateClaim"
+          }),
+          ...affiliateMarketplaceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/claims`]: {
+      get: {
+        tags: ["Affiliate Marketplace"],
+        summary: "List the current user's affiliate claims",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "expired", "revoked"] }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-user affiliate claims", {
+            $ref: "#/components/schemas/AffiliateClaimPage"
+          }),
+          ...affiliateMarketplaceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/claims/{claimId}`]: {
+      get: {
+        tags: ["Affiliate Marketplace"],
+        summary: "Get one affiliate claim owned by the current user",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("claimId")],
+        responses: {
+          "200": jsonDataResponse("Current-user affiliate claim", {
+            $ref: "#/components/schemas/AffiliateClaim"
+          }),
+          ...affiliateMarketplaceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/resolve/{publicToken}`]: {
+      get: {
+        tags: ["Affiliate Marketplace"],
+        summary: "Validate a signed affiliate promotion link without recording attribution",
+        parameters: [
+          {
+            name: "publicToken",
+            in: "path",
+            required: true,
+            schema: {
+              type: "string",
+              pattern: "^[A-Za-z0-9_-]{24}\\.[A-Za-z0-9_-]{43}$"
+            }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Resolved public affiliate link", {
+            $ref: "#/components/schemas/AffiliateResolvedLink"
+          }),
+          "400": { description: "Malformed public affiliate token" },
+          "404": { description: "Invalid, expired, revoked, or unusable affiliate link" }
         }
       }
     },

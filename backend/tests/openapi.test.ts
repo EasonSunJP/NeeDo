@@ -235,6 +235,16 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/realtime/events");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/reconciliation");
     expect(response.body.paths).toHaveProperty("/api/v1/finance/reconciliation/export");
+    expect(response.body.paths).toHaveProperty("/api/v1/affiliate/tasks");
+    expect(response.body.paths).toHaveProperty("/api/v1/affiliate/tasks/{taskId}");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/affiliate/tasks/{taskId}/claims"
+    );
+    expect(response.body.paths).toHaveProperty("/api/v1/affiliate/claims");
+    expect(response.body.paths).toHaveProperty("/api/v1/affiliate/claims/{claimId}");
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/affiliate/resolve/{publicToken}"
+    );
     [
       "/api/v1/merchant-admin/pay-runs/export",
       "/api/v1/technician/payslips/export",
@@ -254,6 +264,9 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("Wallet");
     expect(response.body.components.schemas).toHaveProperty("LedgerTransaction");
     expect(response.body.components.schemas).toHaveProperty("FinanceReconciliation");
+    expect(response.body.components.schemas).toHaveProperty("AffiliateMarketplaceTask");
+    expect(response.body.components.schemas).toHaveProperty("AffiliateClaim");
+    expect(response.body.components.schemas).toHaveProperty("AffiliateResolvedLink");
     expect(response.body.components.schemas).toHaveProperty("ShopFinanceRuleSet");
     expect(response.body.components.schemas).toHaveProperty("ShopFinanceRulePreviewResult");
     expect(response.body.components.schemas).toHaveProperty("OrderFinanceDetail");
