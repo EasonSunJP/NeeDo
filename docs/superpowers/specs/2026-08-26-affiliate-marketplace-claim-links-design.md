@@ -107,6 +107,8 @@ Claim 的 `expiresAt` 使用 `taskEndsAt`。`claimEndsAt` 只限制新用户何�
 
 Claim 响应包含 `publicCode`、`promotionUrl`、领取时间、失效时间、有效状态、现有聚合计数和公开任务摘要；不返回 `activeKey`、`tokenHash` 或其他用户信息。
 
+任务暂停、结束或预算耗尽后，已有 Claim 仍保留在“我的任务”历史中，但任务摘要返回 `claimable=false`；这不会让已失效的推广链接重新可用。
+
 ### 6.3 链接解析
 
 - `GET /api/v1/affiliate/resolve/:publicToken`
@@ -126,6 +128,8 @@ Claim 响应包含 `publicCode`、`promotionUrl`、领取时间、失效时间�
 5. 写入 `affiliate.claim.created` AuditLog，目标为新 Claim，metadata 只记录任务 ID和公开码，不记录 token。
 
 数据库唯一索引继续作为并发最终防线。同一用户并发领取时，一个事务创建成功，另一个事务读取并返回同一 Claim；不能向客户端暴露 Prisma 原生异常。
+
+实现验收确认：MySQL 唯一冲突会先终止失败事务，再由根仓储在新快照中回读已提交的赢家 Claim。Prisma 7 MariaDB adapter 的 `P2002` 索引位于 `meta.driverAdapterError.cause.constraint.index`，分类器同时兼容该正式结构与 `meta.target`，避免错误泄漏或事务内旧快照误判。
 
 本步不锁钱包、不分配返点额度、不修改 `allocatedBudgetNdp`，因为 Claim 只是取得推广资格，真正的单笔预算占用发生在后续订单归因事务。
 
