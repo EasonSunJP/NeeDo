@@ -147,6 +147,14 @@ const affiliateMarketplaceErrorResponses = {
   "409": { description: "Task eligibility or claim uniqueness conflict" }
 };
 
+const customerProfileErrorResponses = {
+  "400": { description: "Invalid customer self-profile update payload" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing customer-profile permission or customer identity scope" },
+  "404": { description: "Customer profile not found in authenticated scope" },
+  "500": { description: "Unexpected customer profile persistence error" }
+};
+
 const merchantPreviewShopHeaderParameter = {
   name: "X-NeeDo-Merchant-Preview-Shop-Id",
   in: "header",
@@ -1566,6 +1574,72 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reviewSummary: { $ref: "#/components/schemas/ReviewSummary" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      CustomerSelfProfile: {
+        type: "object",
+        required: [
+          "id",
+          "userId",
+          "displayName",
+          "city",
+          "membershipLevel",
+          "avatarUrl",
+          "gender",
+          "age",
+          "heightCm",
+          "languages",
+          "bio",
+          "visibility",
+          "isPublic",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          userId: { type: "integer", minimum: 1 },
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          city: { type: ["string", "null"] },
+          membershipLevel: { type: "string" },
+          avatarUrl: { type: ["string", "null"], format: "uri" },
+          gender: { type: "string", enum: ["female", "male", "private"] },
+          age: { type: ["integer", "null"], minimum: 0, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: {
+            type: "array",
+            minItems: 1,
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] },
+          isPublic: { type: "boolean" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      CustomerSelfProfileUpdate: {
+        type: "object",
+        minProperties: 1,
+        additionalProperties: false,
+        properties: {
+          displayName: { type: "string", minLength: 1, maxLength: 120 },
+          avatarDataUrl: {
+            type: "string",
+            maxLength: 900000,
+            pattern: "^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+          },
+          gender: { type: "string", enum: ["female", "male", "private"] },
+          age: { type: ["integer", "null"], minimum: 0, maximum: 150 },
+          heightCm: { type: ["number", "null"], minimum: 30, maximum: 250 },
+          languages: {
+            type: "array",
+            minItems: 1,
+            maxItems: 10,
+            items: { type: "string", minLength: 1, maxLength: 40 }
+          },
+          bio: { type: ["string", "null"], maxLength: 2000 },
+          visibility: { type: "string", enum: ["public", "privateAll", "limited", "network"] }
         }
       },
       HomeRecommendations: {
@@ -4881,6 +4955,69 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         responses: {
           "200": { description: "Customer profile without account credentials" },
           "404": { description: "Customer profile not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/customer-profile/me`]: {
+      get: {
+        tags: ["Customer Profile"],
+        summary: "Get the profile belonging to the authenticated customer identity",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current customer self-profile", {
+            $ref: "#/components/schemas/CustomerSelfProfile"
+          }),
+          ...customerProfileErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Customer Profile"],
+        summary: "Update editable fields on the authenticated customer profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CustomerSelfProfileUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated current customer self-profile", {
+            $ref: "#/components/schemas/CustomerSelfProfile"
+          }),
+          ...customerProfileErrorResponses
+        }
+      }
+    },
+    "/media/customer-avatars/{filename}": {
+      get: {
+        tags: ["Customer Profile"],
+        summary: "Read a content-addressed customer avatar image",
+        servers: [{ url: "/" }],
+        parameters: [
+          {
+            name: "filename",
+            in: "path",
+            required: true,
+            schema: { type: "string", pattern: "^[a-f0-9]{64}\\.(?:jpg|png|webp)$" }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Immutable JPEG, PNG, or WebP avatar bytes",
+            headers: {
+              "Cache-Control": {
+                schema: { type: "string", example: "public, max-age=31536000, immutable" }
+              }
+            },
+            content: {
+              "image/jpeg": { schema: { type: "string", format: "binary" } },
+              "image/png": { schema: { type: "string", format: "binary" } },
+              "image/webp": { schema: { type: "string", format: "binary" } }
+            }
+          },
+          "404": { description: "Avatar filename is not a hash or no matching file exists" }
         }
       }
     },

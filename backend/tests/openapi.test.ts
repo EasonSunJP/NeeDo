@@ -473,5 +473,33 @@ describe("GET /api/v1/openapi.json", () => {
       type: ["string", "null"],
       format: "date-time"
     });
+
+    const currentCustomerProfilePath = response.body.paths["/api/v1/customer-profile/me"];
+    expect(currentCustomerProfilePath).toMatchObject({
+      get: expect.any(Object),
+      patch: expect.any(Object)
+    });
+    expect(currentCustomerProfilePath.get.security).toEqual([{ bearerAuth: [] }]);
+    expect(currentCustomerProfilePath.patch.security).toEqual([{ bearerAuth: [] }]);
+    expect(currentCustomerProfilePath.patch.requestBody.content["application/json"].schema).toEqual(
+      {
+        $ref: "#/components/schemas/CustomerSelfProfileUpdate"
+      }
+    );
+    expect(response.body.components.schemas.CustomerSelfProfile.required).toEqual(
+      expect.arrayContaining([
+        "id",
+        "displayName",
+        "avatarUrl",
+        "gender",
+        "age",
+        "heightCm",
+        "languages",
+        "bio",
+        "visibility",
+        "membershipLevel"
+      ])
+    );
+    expect(response.body.paths).toHaveProperty("/media/customer-avatars/{filename}");
   });
 });

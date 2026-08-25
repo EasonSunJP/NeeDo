@@ -13,7 +13,8 @@ import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { reviews, stores } from "../../data/mock";
 import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
-import { coreReadApi, mapCoreCustomerToCustomer, type CoreCustomerProfile } from "../../features/core-read/api";
+import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
+import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
 import { walletApi, type Wallet } from "../../features/wallet/api";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
@@ -35,7 +36,7 @@ const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
 type FormalUserCenterData = {
   orderCounts: FormalOrderCounts;
-  profile: CoreCustomerProfile;
+  profile: CustomerSelfProfile;
   wallet: Wallet;
 };
 
@@ -503,7 +504,7 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
     setLoadError("");
 
     Promise.all([
-      coreReadApi.getCustomerProfile(customerProfileId),
+      customerProfileApi.getMine(),
       walletApi.getMyWallet(),
       Promise.all(
         formalOrderStatuses.map(async (status) => {
@@ -514,6 +515,9 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
     ])
       .then(([profile, wallet, counts]) => {
         if (!active) return;
+        if (profile.id !== customerProfileId) {
+          throw new ApiClientError("error.forbidden", 403, 403);
+        }
         setFormalData({
           profile,
           wallet,

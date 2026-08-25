@@ -114,6 +114,8 @@ const envSchema = z
   AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
   AFFILIATE_LINK_SECRET: z.string().min(32),
   AFFILIATE_PUBLIC_BASE_URL: z.string().url(),
+  CUSTOMER_AVATAR_STORAGE_DIR: z.string().min(1).default("runtime/customer-avatars"),
+  CUSTOMER_AVATAR_PUBLIC_BASE_URL: z.string().url(),
   AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
   AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),
   AUTH_LOGIN_FAILURE_LIMIT: z.coerce.number().int().positive(),
@@ -224,6 +226,15 @@ const envSchema = z
         context,
         "AFFILIATE_PUBLIC_BASE_URL",
         "AFFILIATE_PUBLIC_BASE_URL must use a production HTTPS origin"
+      );
+    }
+
+    const customerAvatarPublicBaseUrl = new URL(value.CUSTOMER_AVATAR_PUBLIC_BASE_URL);
+    if (customerAvatarPublicBaseUrl.protocol !== "https:") {
+      addProductionIssue(
+        context,
+        "CUSTOMER_AVATAR_PUBLIC_BASE_URL",
+        "CUSTOMER_AVATAR_PUBLIC_BASE_URL must use a production HTTPS origin"
       );
     }
 

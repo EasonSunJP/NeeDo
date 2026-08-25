@@ -30,6 +30,7 @@ import type { AffiliateCheckoutService } from "./services/affiliate-checkout.ser
 import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
+import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { LedgerRepositoryPort } from "./services/ledger.service";
 import type { MerchantFinanceRulesRepositoryPort } from "./services/merchant-finance-rules.service";
@@ -54,6 +55,7 @@ import { createBackofficeRoutes } from "./routes/backoffice.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
 import { createCoreReadRoutes } from "./routes/core-read.routes";
+import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
@@ -69,6 +71,7 @@ import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
+import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import {
   SseRealtimeEventGateway,
   type RealtimeEventGatewayPort
@@ -92,6 +95,8 @@ export interface AppDependencies {
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
+  customerProfileRepository?: CustomerProfileRepositoryPort;
+  customerAvatarStorage?: CustomerAvatarStoragePort;
   feeRuleRepository?: FeeRuleRepositoryPort;
   merchantFinanceRulesRepository?: MerchantFinanceRulesRepositoryPort;
   merchantSaasBillingRepository?: MerchantSaasBillingRepositoryPort;
@@ -160,6 +165,7 @@ export const createApp = (
   apiRouter.use(createRoleRoutes(config, resolvedDependencies));
   apiRouter.use(createUserRoutes(config, resolvedDependencies));
   apiRouter.use(createCoreReadRoutes(resolvedDependencies));
+  apiRouter.use(createCustomerProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createPricingModeRoutes(config, resolvedDependencies));
   apiRouter.use(createFeeRuleRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
@@ -178,8 +184,37 @@ export const createApp = (
   }
 
   app.use(config.API_PREFIX, apiRouter);
+  app.use(
+    "/media/customer-avatars",
+    createCustomerAvatarStaticMiddleware(config.CUSTOMER_AVATAR_STORAGE_DIR)
+  );
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);
 
   return app;
+};
+
+const customerAvatarFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+
+const createCustomerAvatarStaticMiddleware = (directory: string) => {
+  const staticMiddleware = express.static(directory, {
+    index: false,
+    redirect: false,
+    setHeaders: (response) => {
+      response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    }
+  });
+
+  return (
+    request: express.Request,
+    response: express.Response,
+    next: express.NextFunction
+  ): void => {
+    if (!customerAvatarFilenamePattern.test(request.path)) {
+      next();
+      return;
+    }
+
+    staticMiddleware(request, response, next);
+  };
 };

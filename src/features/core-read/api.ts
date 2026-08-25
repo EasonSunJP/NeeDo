@@ -111,10 +111,19 @@ export type CoreCustomerProfile = {
   city: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  gender?: "female" | "male" | "private";
+  age?: number | null;
+  heightCm?: number | null;
+  languages?: string[];
+  visibility?: "public" | "privateAll" | "limited" | "network";
   membershipLevel: string;
   reviewSummary: CoreReviewSummary;
   createdAt: string;
   updatedAt: string;
+};
+
+type CustomerProfileViewSource = Omit<CoreCustomerProfile, "reviewSummary"> & {
+  reviewSummary?: CoreReviewSummary;
 };
 
 export type CoreHomeRecommendations = {
@@ -343,8 +352,15 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
   };
 }
 
-export function mapCoreCustomerToCustomer(customer: CoreCustomerProfile): Customer {
-  const activeScore = Math.max(0, Math.min(100, Math.round(parseRating(customer.reviewSummary) * 20)));
+export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): Customer {
+  const reviewCount = customer.reviewSummary?.reviewCount ?? 0;
+  const reviewSummary = customer.reviewSummary ?? {
+    ratingAverage: "0",
+    reviewCount: 0,
+    latestReviewAt: null,
+    highlights: []
+  };
+  const activeScore = Math.max(0, Math.min(100, Math.round(parseRating(reviewSummary) * 20)));
 
   return {
     id: String(customer.id),
@@ -353,15 +369,18 @@ export function mapCoreCustomerToCustomer(customer: CoreCustomerProfile): Custom
     avatar: customer.avatarUrl ?? fallbackCustomerAvatar,
     phone: "",
     nickname: customer.displayName,
-    languages: ["日本語"],
+    gender: customer.gender,
+    age: customer.age === null || customer.age === undefined ? undefined : String(customer.age),
+    height: customer.heightCm === null || customer.heightCm === undefined ? undefined : `${customer.heightCm}cm`,
+    languages: customer.languages?.length ? customer.languages : ["日本語"],
     bio: customer.bio ?? undefined,
-    creditRating: customer.reviewSummary.reviewCount > 0 ? "A" : undefined,
+    creditRating: reviewCount > 0 ? "A" : undefined,
     points: 0,
     couponCount: 0,
     memberLevel: customer.membershipLevel,
-    tags: uniqueStrings([customer.city, ...customer.reviewSummary.highlights]).slice(0, 6),
+    tags: uniqueStrings([customer.city, ...(customer.reviewSummary?.highlights ?? [])]).slice(0, 6),
     ltv: 0,
-    orderCount: customer.reviewSummary.reviewCount,
+    orderCount: reviewCount,
     lastOrderAt: "",
     activeScore,
     churnRisk: "low"

@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 process.env.NODE_ENV = "test";
 process.env.DEPLOY_ENV = "test";
 process.env.ALLOW_TEST_LOGIN = "true";
@@ -33,6 +36,8 @@ process.env.AUTH_ACCESS_TOKEN_SECRET = "test-access-token-secret-with-at-least-3
 process.env.AUTH_REFRESH_TOKEN_SECRET = "test-refresh-token-secret-with-at-least-32-chars";
 process.env.AFFILIATE_LINK_SECRET = "test-affiliate-link-secret-with-at-least-32-chars";
 process.env.AFFILIATE_PUBLIC_BASE_URL = "http://localhost:5180/afirieito";
+process.env.CUSTOMER_AVATAR_STORAGE_DIR = join(tmpdir(), "needo-customer-avatars-test");
+process.env.CUSTOMER_AVATAR_PUBLIC_BASE_URL = "http://localhost:3101/media/customer-avatars";
 process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS = "900";
 process.env.AUTH_REFRESH_TOKEN_TTL_SECONDS = "604800";
 process.env.AUTH_LOGIN_FAILURE_LIMIT = "5";
