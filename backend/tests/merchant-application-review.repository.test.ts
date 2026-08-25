@@ -79,7 +79,13 @@ describe("MerchantApplicationReviewRepository", () => {
         accountHolderMasked: "カ•••ド",
         holderMatched: true
       },
-      media: [{ id: 101, purpose: "corporate_registration" }]
+      media: [
+        {
+          id: 101,
+          purpose: "corporate_registration",
+          url: "/api/v1/identity-applications/41/media/101"
+        }
+      ]
     });
     expect(identityApplication.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 41, type: "merchant", deletedAt: null } })

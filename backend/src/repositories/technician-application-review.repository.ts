@@ -311,7 +311,7 @@ export class TechnicianApplicationReviewRepository
       media: row.media.map((item) => ({
         id: item.mediaAsset.id,
         purpose: item.purpose,
-        url: item.mediaAsset.url,
+        url: `/api/v1/identity-applications/${row.id}/media/${item.mediaAsset.id}`,
         mimeType: item.mediaAsset.mimeType
       }))
     };
