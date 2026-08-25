@@ -518,3 +518,22 @@ describe("StoreDetailPage routed booking defaults", () => {
     expect(pageSource).not.toContain("px-4 pb-3");
   });
 });
+
+describe("StoreDetailPage formal route isolation", () => {
+  it("routes numeric IDs to the API-only page", () => {
+    expect(pageSource).toContain('import { FormalStoreDetailPage } from "./FormalStoreDetailPage";');
+    expect(pageSource).toContain("if (apiId) {");
+    expect(pageSource).toContain("return <FormalStoreDetailPage scope={scope} shopId={apiId} />;");
+  });
+
+  it("keeps nonnumeric legacy records inside static-demo mode", () => {
+    expect(pageSource).toContain("const allowLegacyStore = isStaticDemoMode();");
+    expect(pageSource).toContain("allowLegacyStore ? stores.find((item) => item.id === id) ?? null : null");
+    expect(pageSource).not.toContain("stores.find((item) => item.id === id) ?? stores[0]");
+  });
+
+  it("localizes the formal invalid-link state", () => {
+    expect(pageSource).toContain("const formalStoreLinkCopy: Record<Language");
+    expect(pageSource).toContain("formalStoreLinkCopy[language]");
+  });
+});

@@ -29,14 +29,14 @@ import { ImageAdjustmentEditor } from "../../components/ui/ImageAdjustmentEditor
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
 import { customers, orders, reviews, services } from "../../data/mock";
-import { coreReadApi, coreReadIdFromRoute, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
-import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { coreReadIdFromRoute } from "../../features/core-read/api";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
+import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { appendNeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
@@ -57,6 +57,7 @@ import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
+import { FormalStoreDetailPage } from "./FormalStoreDetailPage";
 
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
@@ -4161,42 +4162,31 @@ function StoreDetailStatus({
   );
 }
 
+const formalStoreLinkCopy: Record<Language, { description: string; title: string }> = {
+  zh: { description: "请从正式店铺列表重新选择店铺。", title: "店铺链接不可用" },
+  "zh-Hant": { description: "請從正式店鋪列表重新選擇店鋪。", title: "店鋪連結不可用" },
+  ja: { description: "正式な店舗一覧から店舗を選び直してください。", title: "店舗リンクを利用できません" },
+  en: { description: "Select the store again from the formal store list.", title: "Store link unavailable" },
+  ko: { description: "정식 매장 목록에서 매장을 다시 선택해 주세요.", title: "매장 링크를 사용할 수 없습니다" }
+};
+
 export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" } = {}) {
   const { id } = useParams();
   const { stores } = useEntityStore();
+  const { language } = useI18n();
   const apiId = coreReadIdFromRoute(id);
-  const shopQuery = useCoreReadQuery(
-    () => (apiId ? coreReadApi.getShopDetail(apiId) : null),
-    [apiId]
-  );
-  const apiStore = useMemo(() => (shopQuery.data ? mapCoreShopToStore(shopQuery.data) : null), [shopQuery.data]);
-  const apiTechnicians = useMemo(
-    () => shopQuery.data?.technicians.map((technician) => mapCoreTechnicianToTechnician({
-      ...technician,
-      bio: null,
-      serviceArea: shopQuery.data?.city ?? technician.city,
-      yearsExperience: 0,
-      mediaAssets: [],
-      services: shopQuery.data?.services ?? [],
-      createdAt: shopQuery.data?.createdAt ?? "",
-      updatedAt: shopQuery.data?.updatedAt ?? ""
-    })) ?? [],
-    [shopQuery.data]
-  );
-  const legacyStore = stores.find((item) => item.id === id) ?? stores[0];
-  const store = apiId ? apiStore : legacyStore;
 
-  if (apiId && shopQuery.loading) {
-    return <StoreDetailStatus description="正在从 /api/v1/shops 读取店铺资料。" scope={scope} title="正在载入店铺" />;
+  if (apiId) {
+    return <FormalStoreDetailPage scope={scope} shopId={apiId} />;
   }
 
-  if (apiId && shopQuery.error) {
-    return <StoreDetailStatus description={shopQuery.error} scope={scope} title="店铺读取失败" />;
+  const allowLegacyStore = isStaticDemoMode();
+  const legacyStore = allowLegacyStore ? stores.find((item) => item.id === id) ?? null : null;
+
+  if (!legacyStore) {
+    const unavailableCopy = formalStoreLinkCopy[language];
+    return <StoreDetailStatus description={unavailableCopy.description} scope={scope} title={unavailableCopy.title} />;
   }
 
-  if (!store) {
-    return <StoreDetailStatus description="当前店铺暂时没有公开资料。" scope={scope} title="暂无店铺资料" />;
-  }
-
-  return <StoreDetailExperience scope={scope} store={store} techniciansOverride={apiId ? apiTechnicians : undefined} />;
+  return <StoreDetailExperience scope={scope} store={legacyStore} />;
 }
