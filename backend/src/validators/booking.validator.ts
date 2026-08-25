@@ -38,8 +38,11 @@ export const bookingCreateBodySchema = z
     orderType: z.enum(["booking", "request"]).optional(),
     fulfillmentMode: z.enum(["home", "store"]),
     paymentMethod: z.enum(["onsite", "bank_transfer"]).default("onsite"),
-    note: z.string().trim().max(500).optional()
+    note: z.string().trim().max(500).optional(),
+    affiliateCode: z.string().trim().min(1).max(40).optional(),
+    affiliatePublicToken: z.string().trim().min(1).max(512).optional()
   })
+  .strict()
   .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
     message: "Exactly one of serviceId or technicianServiceId is required",
     path: ["serviceId"]

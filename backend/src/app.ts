@@ -26,6 +26,7 @@ import type {
   AffiliateMarketplaceRepositoryPort,
   AffiliateMarketplaceService
 } from "./services/affiliate-marketplace.service";
+import type { AffiliateCheckoutService } from "./services/affiliate-checkout.service";
 import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
@@ -105,6 +106,7 @@ export interface AppDependencies {
   affiliateTaskService?: AffiliateTaskService;
   affiliateMarketplaceRepository?: AffiliateMarketplaceRepositoryPort;
   affiliateMarketplaceService?: AffiliateMarketplaceService;
+  affiliateCheckoutService?: AffiliateCheckoutService;
   realtimeRepository?: RealtimeRepositoryPort;
   realtimeEventGateway?: RealtimeEventGatewayPort;
   realtimeService?: RealtimeService;

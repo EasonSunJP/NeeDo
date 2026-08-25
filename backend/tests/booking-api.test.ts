@@ -405,6 +405,25 @@ const createFixture = async () => {
 };
 
 describe("Step 10 Booking / Schedule / Order state machine API", () => {
+  it("rejects client-selected customer scope and unknown checkout fields", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login();
+
+    await request(fixture.app)
+      .post("/api/v1/bookings")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store",
+        customerUserId: 999
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body.code).toBe(ERROR_CODES.VALIDATION);
+      });
+  });
+
   it("lists available slots, creates a free booking, rejects oversell, and records status history", async () => {
     const fixture = await createFixture();
     const token = await fixture.login();

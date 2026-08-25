@@ -159,7 +159,7 @@ export interface AffiliateCheckoutPrepareInput {
   selector: AffiliatePromotionSelector;
   customerUserId: number;
   shopId: number;
-  serviceId: number;
+  serviceId: number | null;
   originalPriceJpy: number;
   scheduledStartAt: Date;
   transactionClient: AffiliateCheckoutTransactionClient;
@@ -222,6 +222,7 @@ export class AffiliateCheckoutService {
       throw this.selfAttributionError();
     }
     if (
+      !input.serviceId ||
       !(await repository.serviceIsInTaskScope(
         task.id,
         input.shopId,
