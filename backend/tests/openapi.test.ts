@@ -84,6 +84,11 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/shops/{id}/approve");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians/{id}");
+    expect(response.body.paths["/api/v1/backoffice/technicians/{id}"]).toMatchObject({
+      get: expect.any(Object),
+      patch: expect.any(Object),
+      delete: expect.any(Object)
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians/{id}/approve");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/customers");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/customers/{id}");
@@ -151,6 +156,11 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/shop");
     expect(response.body.paths["/api/v1/merchant-admin/shop"]).toHaveProperty("patch");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}");
+    expect(response.body.paths["/api/v1/merchant-admin/technicians/{id}"]).toMatchObject({
+      get: expect.any(Object),
+      patch: expect.any(Object),
+      delete: expect.any(Object)
+    });
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/technicians/{id}/approve");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers");
     expect(response.body.paths).toHaveProperty("/api/v1/merchant-admin/customers/{id}");
@@ -220,6 +230,28 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("SaasInvoice");
     expect(response.body.components.schemas).toHaveProperty("EntitySuspensionResult");
     expect(response.body.components.schemas).toHaveProperty("BackofficeCustomer");
+    [
+      "BackofficeRole",
+      "BackofficeIdentity",
+      "BackofficeAccount",
+      "BackofficeAuditEvent",
+      "BackofficeTechnicianServiceDetail",
+      "BackofficeScheduleSummary",
+      "BackofficeCompensation",
+      "BackofficeBookingSummary",
+      "BackofficeTechnicianDetail",
+      "BackofficeCustomerDetail"
+    ].forEach((schema) => expect(response.body.components.schemas).toHaveProperty(schema));
+    expect(
+      response.body.paths["/api/v1/backoffice/technicians/{id}"].get.responses["200"].content[
+        "application/json"
+      ].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/BackofficeTechnicianDetail" });
+    expect(
+      response.body.paths["/api/v1/merchant-admin/customers/{id}"].get.responses["200"].content[
+        "application/json"
+      ].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/BackofficeCustomerDetail" });
     expect(response.body.components.schemas).toHaveProperty("BackofficeService");
     expect(response.body.components.schemas).toHaveProperty("BackofficeServiceCreateInput");
     expect(response.body.components.schemas).toHaveProperty("BackofficeServiceUpdateInput");

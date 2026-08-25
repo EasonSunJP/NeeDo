@@ -119,8 +119,40 @@ const createFixture = async () => {
     verifiedAt: null,
     createdAt: now.toISOString()
   };
+  const technicianDetail = {
+    ...technician,
+    bio: "Experienced therapist",
+    yearsExperience: 6,
+    isRecommended: true,
+    updatedAt: now.toISOString(),
+    account: {
+      username: "Technician",
+      email: "technician@example.com",
+      phone: null,
+      avatarUrl: null,
+      isActive: true,
+      lastLoginAt: null,
+      roles: [],
+      identities: []
+    },
+    statistics: {
+      bookingCount: 0,
+      completedCount: 0,
+      cancelledCount: 0,
+      completedRevenueJpy: 0,
+      todayScheduleMinutes: 0,
+      weekScheduleMinutes: 0,
+      monthScheduleMinutes: 0
+    },
+    reviewSummary: null,
+    services: [],
+    upcomingSchedule: [],
+    compensationProfile: null,
+    timeline: [],
+    unavailableMetrics: ["acceptanceRate", "lateness", "shiftPreferences"]
+  };
   const customer = {
-    id: 51,
+    id: 41,
     userId: 61,
     displayName: "Customer One",
     email: "customer@example.com",
@@ -129,6 +161,27 @@ const createFixture = async () => {
     isPublic: true,
     bookingCount: 2,
     createdAt: now.toISOString()
+  };
+  const customerDetail = {
+    ...customer,
+    bio: "Customer profile",
+    updatedAt: now.toISOString(),
+    account: {
+      username: "Customer One",
+      email: "customer@example.com",
+      phone: null,
+      avatarUrl: null,
+      isActive: true,
+      lastLoginAt: null,
+      roles: [],
+      identities: []
+    },
+    bookingStatusTotals: { completed: 2 },
+    completedSpendJpy: 24000,
+    nextBooking: null,
+    recentBookings: [],
+    reviewSummary: null,
+    timeline: []
   };
   const service = {
     id: 71,
@@ -156,7 +209,8 @@ const createFixture = async () => {
     findUserByEmail: jest.fn(async (email: string) => email === "existing@example.com" ? { id: 99 } : null),
     createShop: jest.fn(async () => shop), updateShop: jest.fn(async () => ({ ...shop, name: "Updated Studio" })), approveShop: jest.fn(async () => ({ ...shop, status: "published" })), softDeleteShop: jest.fn(async () => ({ ...shop, status: "archived" })),
     updateTechnician: jest.fn(async (input: { technicianId: number }) => input.technicianId === 32 ? null : technician), approveTechnician: jest.fn(async () => ({ ...technician, status: "published", verifiedAt: now.toISOString() })), softDeleteTechnician: jest.fn(async () => ({ ...technician, status: "archived" })),
-    listCustomers: jest.fn(async () => page(customer)), getCustomer: jest.fn(async () => customer), updateCustomer: jest.fn(async () => ({ ...customer, city: "Osaka" })), softDeleteCustomer: jest.fn(async () => customer),
+    getTechnicianDetail: jest.fn(async (input: { id: number }) => input.id === 999 ? null : technicianDetail),
+    listCustomers: jest.fn(async () => page(customer)), getCustomer: jest.fn(async () => customer), getCustomerDetail: jest.fn(async (input: { id: number }) => input.id === 999 ? null : customerDetail), updateCustomer: jest.fn(async () => ({ ...customer, city: "Osaka" })), softDeleteCustomer: jest.fn(async () => customer),
     listServices: jest.fn(async () => page(service)), createService: jest.fn(async () => service), updateService: jest.fn(async (input: { serviceId: number }) => input.serviceId === 72 ? null : { ...service, priceAmount: 13000 }), softDeleteService: jest.fn(async () => ({ ...service, status: "archived" }))
   };
   const auditLogRepository = {
@@ -182,6 +236,115 @@ const createFixture = async () => {
 };
 
 describe("master data write APIs", () => {
+  it("reads platform and authenticated-shop profile details", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/technicians/31")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((response) => expect(response.body.data.account.email).toBe("technician@example.com"));
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/technicians/31")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/customers/41")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(200)
+      .expect((response) => expect(response.body.data.completedSpendJpy).toBe(24000));
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/customers/41")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(200);
+
+    expect(fixture.backofficeRepository.getTechnicianDetail).toHaveBeenCalledWith({
+      scope: "platform",
+      id: 31
+    });
+    expect(fixture.backofficeRepository.getTechnicianDetail).toHaveBeenCalledWith({
+      scope: "merchant",
+      shopId: 11,
+      id: 31
+    });
+    expect(fixture.backofficeRepository.getCustomerDetail).toHaveBeenCalledWith({
+      scope: "platform",
+      id: 41
+    });
+    expect(fixture.backofficeRepository.getCustomerDetail).toHaveBeenCalledWith({
+      scope: "merchant",
+      shopId: 11,
+      id: 41
+    });
+    expect(fixture.auditLogs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "backoffice.technician.read",
+        targetType: "TechnicianProfile",
+        metadata: { technicianProfileId: 31 }
+      }),
+      expect.objectContaining({
+        action: "merchant_admin.technician.read",
+        targetType: "TechnicianProfile",
+        metadata: { technicianProfileId: 31, shopId: 11 }
+      }),
+      expect.objectContaining({
+        action: "backoffice.customer.read",
+        targetType: "CustomerProfile",
+        metadata: { customerProfileId: 41 }
+      }),
+      expect.objectContaining({
+        action: "merchant_admin.customer.read",
+        targetType: "CustomerProfile",
+        metadata: { customerProfileId: 41, shopId: 11 }
+      })
+    ]));
+  });
+
+  it("returns uniform not-found responses for missing profile details", async () => {
+    const fixture = await createFixture();
+    const adminToken = await fixture.login("admin@example.com");
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/backoffice/technicians/999")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(404)
+      .expect((response) => expect(response.body).toEqual({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.technician.not_found",
+        data: null
+      }));
+
+    await request(fixture.app)
+      .get("/api/v1/merchant-admin/customers/999")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(404)
+      .expect((response) => expect(response.body).toEqual({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.customer.not_found",
+        data: null
+      }));
+  });
+
+  it("rejects detail reads without permission before repository access", async () => {
+    const fixture = await createFixture();
+    const merchantToken = await fixture.login("merchant@example.com");
+
+    fixture.backofficeRepository.getTechnicianDetail.mockClear();
+    await request(fixture.app)
+      .get("/api/v1/backoffice/technicians/31")
+      .set("Authorization", `Bearer ${merchantToken}`)
+      .expect(403)
+      .expect((response) => expect(response.body.code).toBe(ERROR_CODES.FORBIDDEN));
+
+    expect(fixture.backofficeRepository.getTechnicianDetail).not.toHaveBeenCalled();
+  });
+
   it("updates only the authenticated merchant shop with validation and audit", async () => {
     const fixture = await createFixture();
     const merchantToken = await fixture.login("merchant@example.com");

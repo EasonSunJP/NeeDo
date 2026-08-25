@@ -121,6 +121,7 @@ export const createBackofficeRoutes = (
   router.patch("/backoffice/shops/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeShopUpdateBodySchema }), controller.updatePlatformShop);
   router.post("/backoffice/shops/:id/approve", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.approvePlatformShop);
   router.delete("/backoffice/shops/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.shopsWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deletePlatformShop);
+  router.get("/backoffice/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.technicians), validateRequest({ params: backofficeEntityIdParamSchema }), controller.platformTechnician);
   router.patch("/backoffice/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeTechnicianUpdateBodySchema }), controller.updatePlatformTechnician);
   router.post("/backoffice/technicians/:id/approve", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeTechnicianApproveBodySchema }), controller.approvePlatformTechnician);
   router.delete("/backoffice/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.techniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deletePlatformTechnician);
@@ -187,6 +188,7 @@ export const createBackofficeRoutes = (
     validateRequest({ body: merchantShopUpdateBodySchema }),
     controller.updateMerchantShop
   );
+  router.get("/merchant-admin/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechnicians), validateRequest({ params: backofficeEntityIdParamSchema }), controller.merchantTechnician);
   router.patch("/merchant-admin/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema, body: backofficeTechnicianUpdateBodySchema }), controller.updateMerchantTechnician);
   router.post("/merchant-admin/technicians/:id/approve", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.approveMerchantTechnician);
   router.delete("/merchant-admin/technicians/:id", authenticate(), authorize(BACKOFFICE_ROUTE_PERMISSIONS.merchantTechniciansWrite), validateRequest({ params: backofficeEntityIdParamSchema }), controller.deleteMerchantTechnician);

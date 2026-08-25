@@ -141,6 +141,22 @@ export class BackofficeController {
     )
   );
 
+  public platformTechnician = this.createListHandler((service, request, response) =>
+    service.getPlatformTechnician(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
+  );
+
+  public merchantTechnician = this.createListHandler((service, request, response) =>
+    service.getMerchantTechnician(
+      this.getId(request),
+      getAuthenticatedAccess(response),
+      getRequestContext(request)
+    )
+  );
+
   public platformShops = this.createListHandler((service, request, response) =>
     service.listPlatformShops(
       getAuthenticatedAccess(response),

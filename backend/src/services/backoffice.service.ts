@@ -511,6 +511,36 @@ export class BackofficeService {
     return this.repository.listTechnicians({ ...scope, ...input });
   }
 
+  public async getPlatformTechnician(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianDetailPayload> {
+    await this.record(actor, context, "backoffice.technician.read", "TechnicianProfile", {
+      technicianProfileId: id
+    });
+    return this.requireResult(
+      await this.repository.getTechnicianDetail({ scope: "platform", id }),
+      "error.technician.not_found"
+    );
+  }
+
+  public async getMerchantTechnician(
+    id: number,
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<BackofficeTechnicianDetailPayload> {
+    const scope = this.getMerchantScope(actor);
+    await this.record(actor, context, "merchant_admin.technician.read", "TechnicianProfile", {
+      technicianProfileId: id,
+      shopId: scope.shopId
+    });
+    return this.requireResult(
+      await this.repository.getTechnicianDetail({ ...scope, id }),
+      "error.technician.not_found"
+    );
+  }
+
   public async listPlatformShops(
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext,
@@ -733,19 +763,19 @@ export class BackofficeService {
     id: number,
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
-  ): Promise<BackofficeCustomerPayload> {
+  ): Promise<BackofficeCustomerDetailPayload> {
     await this.record(actor, context, "backoffice.customer.read", "CustomerProfile", { customerProfileId: id });
-    return this.requireResult(await this.repository.getCustomer({ scope: "platform", id }), "error.customer.not_found");
+    return this.requireResult(await this.repository.getCustomerDetail({ scope: "platform", id }), "error.customer.not_found");
   }
 
   public async getMerchantCustomer(
     id: number,
     actor: AuthenticatedAccessContext,
     context: AuthRequestContext
-  ): Promise<BackofficeCustomerPayload> {
+  ): Promise<BackofficeCustomerDetailPayload> {
     const scope = this.getMerchantScope(actor);
     await this.record(actor, context, "merchant_admin.customer.read", "CustomerProfile", { customerProfileId: id, shopId: scope.shopId });
-    return this.requireResult(await this.repository.getCustomer({ ...scope, id }), "error.customer.not_found");
+    return this.requireResult(await this.repository.getCustomerDetail({ ...scope, id }), "error.customer.not_found");
   }
 
   public async updatePlatformCustomer(

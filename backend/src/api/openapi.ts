@@ -463,6 +463,377 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           createdAt: { type: "string", format: "date-time" }
         }
       },
+      BackofficeRole: {
+        type: "object",
+        required: ["name", "code", "scopeType", "scopeId"],
+        properties: {
+          name: { type: "string" },
+          code: { type: "string" },
+          scopeType: { type: ["string", "null"] },
+          scopeId: { type: ["integer", "null"] }
+        }
+      },
+      BackofficeIdentity: {
+        type: "object",
+        required: ["type", "scopeType", "scopeId", "displayName"],
+        properties: {
+          type: { type: "string" },
+          scopeType: { type: ["string", "null"] },
+          scopeId: { type: ["integer", "null"] },
+          displayName: { type: ["string", "null"] }
+        }
+      },
+      BackofficeAccount: {
+        type: "object",
+        required: [
+          "username",
+          "email",
+          "phone",
+          "avatarUrl",
+          "isActive",
+          "lastLoginAt",
+          "roles",
+          "identities"
+        ],
+        properties: {
+          username: { type: "string" },
+          email: { type: "string", format: "email" },
+          phone: { type: ["string", "null"] },
+          avatarUrl: { type: ["string", "null"] },
+          isActive: { type: "boolean" },
+          lastLoginAt: { type: ["string", "null"], format: "date-time" },
+          roles: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeRole" }
+          },
+          identities: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeIdentity" }
+          }
+        }
+      },
+      BackofficeAuditEvent: {
+        type: "object",
+        required: ["id", "action", "actorName", "actorAvatarUrl", "createdAt", "metadata"],
+        properties: {
+          id: { type: "string" },
+          action: { type: "string" },
+          actorName: { type: "string" },
+          actorAvatarUrl: { type: ["string", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          metadata: { type: ["object", "null"], additionalProperties: true }
+        }
+      },
+      BackofficeReviewSummary: {
+        type: "object",
+        required: ["ratingAverage", "reviewCount", "latestReviewAt", "highlights"],
+        properties: {
+          ratingAverage: { type: "number" },
+          reviewCount: { type: "integer" },
+          latestReviewAt: { type: ["string", "null"], format: "date-time" },
+          highlights: { type: "array", items: { type: "string" } }
+        }
+      },
+      BackofficeTechnicianServiceDetail: {
+        type: "object",
+        required: [
+          "id",
+          "source",
+          "sourceShopServiceId",
+          "name",
+          "description",
+          "categoryId",
+          "priceAmount",
+          "currency",
+          "durationMinutes",
+          "isRecommended"
+        ],
+        properties: {
+          id: { type: "integer" },
+          source: { type: "string", enum: ["technician_service", "service"] },
+          sourceShopServiceId: { type: ["integer", "null"] },
+          name: { type: "string" },
+          description: { type: ["string", "null"] },
+          categoryId: { type: "integer" },
+          priceAmount: { type: "number" },
+          currency: { type: "string" },
+          durationMinutes: { type: "integer" },
+          isRecommended: { type: "boolean" }
+        }
+      },
+      BackofficeScheduleSummary: {
+        type: "object",
+        required: [
+          "id",
+          "serviceId",
+          "serviceName",
+          "shopId",
+          "shopName",
+          "technicianProfileId",
+          "technicianName",
+          "startsAt",
+          "endsAt",
+          "capacity",
+          "bookedCount",
+          "status"
+        ],
+        properties: {
+          id: { type: "integer" },
+          serviceId: { type: ["integer", "null"] },
+          serviceName: { type: "string" },
+          shopId: { type: "integer" },
+          shopName: { type: "string" },
+          technicianProfileId: { type: ["integer", "null"] },
+          technicianName: { type: ["string", "null"] },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          capacity: { type: "integer" },
+          bookedCount: { type: "integer" },
+          status: { type: "string" }
+        }
+      },
+      BackofficeCompensation: {
+        type: "object",
+        required: [
+          "id",
+          "shopId",
+          "technicianProfileId",
+          "name",
+          "status",
+          "version",
+          "wageMode",
+          "baseSalaryJpy",
+          "hourlyRateJpy",
+          "dailyRateJpy",
+          "fixedOrderPayJpy",
+          "commissionRatePercent",
+          "guaranteedMinimumJpy",
+          "ndpFeeBearer",
+          "technicianNdpSharePercent",
+          "effectiveFrom",
+          "effectiveTo",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          shopId: { type: "integer" },
+          technicianProfileId: { type: "integer" },
+          name: { type: "string" },
+          status: { type: "string" },
+          version: { type: "integer" },
+          wageMode: { type: "string" },
+          baseSalaryJpy: { type: "integer" },
+          hourlyRateJpy: { type: "integer" },
+          dailyRateJpy: { type: "integer" },
+          fixedOrderPayJpy: { type: "integer" },
+          commissionRatePercent: { type: "number" },
+          guaranteedMinimumJpy: { type: "integer" },
+          ndpFeeBearer: { type: "string" },
+          technicianNdpSharePercent: { type: "number" },
+          effectiveFrom: { type: ["string", "null"], format: "date-time" },
+          effectiveTo: { type: ["string", "null"], format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      BackofficeBookingSummary: {
+        type: "object",
+        required: [
+          "id",
+          "orderNo",
+          "status",
+          "paymentStatus",
+          "customerUserId",
+          "customerName",
+          "serviceId",
+          "serviceName",
+          "shopId",
+          "shopName",
+          "technicianProfileId",
+          "technicianName",
+          "fulfillmentMode",
+          "priceAmount",
+          "currency",
+          "startsAt",
+          "endsAt",
+          "note",
+          "cancelReason",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          orderNo: { type: "string" },
+          status: { type: "string" },
+          paymentStatus: {
+            type: "string",
+            enum: ["pending", "confirmed", "refundPending", "refunded"]
+          },
+          customerUserId: { type: "integer" },
+          customerName: { type: "string" },
+          serviceId: { type: ["integer", "null"] },
+          serviceName: { type: "string" },
+          shopId: { type: "integer" },
+          shopName: { type: "string" },
+          technicianProfileId: { type: ["integer", "null"] },
+          technicianName: { type: ["string", "null"] },
+          fulfillmentMode: { type: "string" },
+          priceAmount: { type: "number" },
+          currency: { type: "string" },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          note: { type: ["string", "null"] },
+          cancelReason: { type: ["string", "null"] },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      BackofficeTechnicianDetail: {
+        type: "object",
+        required: [
+          "id",
+          "userId",
+          "displayName",
+          "email",
+          "shopId",
+          "shopName",
+          "city",
+          "serviceArea",
+          "status",
+          "verifiedAt",
+          "createdAt",
+          "bio",
+          "yearsExperience",
+          "isRecommended",
+          "updatedAt",
+          "account",
+          "statistics",
+          "reviewSummary",
+          "services",
+          "upcomingSchedule",
+          "compensationProfile",
+          "timeline",
+          "unavailableMetrics"
+        ],
+        properties: {
+          id: { type: "integer" },
+          userId: { type: "integer" },
+          displayName: { type: "string" },
+          email: { type: "string", format: "email" },
+          shopId: { type: ["integer", "null"] },
+          shopName: { type: ["string", "null"] },
+          city: { type: "string" },
+          serviceArea: { type: ["string", "null"] },
+          status: { type: "string" },
+          verifiedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          bio: { type: ["string", "null"] },
+          yearsExperience: { type: "integer" },
+          isRecommended: { type: "boolean" },
+          updatedAt: { type: "string", format: "date-time" },
+          account: { $ref: "#/components/schemas/BackofficeAccount" },
+          statistics: {
+            type: "object",
+            required: [
+              "bookingCount",
+              "completedCount",
+              "cancelledCount",
+              "completedRevenueJpy",
+              "todayScheduleMinutes",
+              "weekScheduleMinutes",
+              "monthScheduleMinutes"
+            ],
+            properties: {
+              bookingCount: { type: "integer" },
+              completedCount: { type: "integer" },
+              cancelledCount: { type: "integer" },
+              completedRevenueJpy: { type: "number" },
+              todayScheduleMinutes: { type: "integer" },
+              weekScheduleMinutes: { type: "integer" },
+              monthScheduleMinutes: { type: "integer" }
+            }
+          },
+          reviewSummary: {
+            anyOf: [
+              { $ref: "#/components/schemas/BackofficeReviewSummary" },
+              { type: "null" }
+            ]
+          },
+          services: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeTechnicianServiceDetail" }
+          },
+          upcomingSchedule: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeScheduleSummary" }
+          },
+          compensationProfile: {
+            anyOf: [
+              { $ref: "#/components/schemas/BackofficeCompensation" },
+              { type: "null" }
+            ]
+          },
+          timeline: {
+            type: "array",
+            items: { $ref: "#/components/schemas/BackofficeAuditEvent" }
+          },
+          unavailableMetrics: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["acceptanceRate", "lateness", "shiftPreferences"]
+            }
+          }
+        }
+      },
+      BackofficeCustomerDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/BackofficeCustomer" },
+          {
+            type: "object",
+            required: [
+              "bio",
+              "updatedAt",
+              "account",
+              "bookingStatusTotals",
+              "completedSpendJpy",
+              "nextBooking",
+              "recentBookings",
+              "reviewSummary",
+              "timeline"
+            ],
+            properties: {
+              bio: { type: ["string", "null"] },
+              updatedAt: { type: "string", format: "date-time" },
+              account: { $ref: "#/components/schemas/BackofficeAccount" },
+              bookingStatusTotals: {
+                type: "object",
+                additionalProperties: { type: "integer" }
+              },
+              completedSpendJpy: { type: "number" },
+              nextBooking: {
+                anyOf: [
+                  { $ref: "#/components/schemas/BackofficeBookingSummary" },
+                  { type: "null" }
+                ]
+              },
+              recentBookings: {
+                type: "array",
+                items: { $ref: "#/components/schemas/BackofficeBookingSummary" }
+              },
+              reviewSummary: {
+                anyOf: [
+                  { $ref: "#/components/schemas/BackofficeReviewSummary" },
+                  { type: "null" }
+                ]
+              },
+              timeline: {
+                type: "array",
+                items: { $ref: "#/components/schemas/BackofficeAuditEvent" }
+              }
+            }
+          }
+        ]
+      },
       BackofficeService: {
         type: "object",
         required: ["id", "categoryId", "categoryName", "shopId", "name", "city", "serviceMode", "priceAmount", "currency", "durationMinutes", "status", "isRecommended", "sortOrder", "createdAt", "updatedAt"],
@@ -4274,6 +4645,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: { tags: ["Master Data"], summary: "Approve a shop and activate its owner identity", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Shop approved" }, "404": { description: "Shop not found" } } }
     },
     [`${config.API_PREFIX}/backoffice/technicians/{id}`]: {
+      get: {
+        tags: ["Master Data"],
+        summary: "Technician profile detail",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        responses: {
+          "200": jsonDataResponse("Technician detail", {
+            $ref: "#/components/schemas/BackofficeTechnicianDetail"
+          }),
+          "404": { description: "Technician not found" }
+        }
+      },
       patch: { tags: ["Master Data"], summary: "Update or assign a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not found" } } },
       delete: { tags: ["Master Data"], summary: "Soft-delete a technician", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not found" } } }
     },
@@ -4284,7 +4667,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: { tags: ["Master Data"], summary: "Paginated customer profiles", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated customers" } } }
     },
     [`${config.API_PREFIX}/backoffice/customers/{id}`]: {
-      get: { tags: ["Master Data"], summary: "Customer profile detail", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Customer detail" }, "404": { description: "Customer not found" } } },
+      get: { tags: ["Master Data"], summary: "Customer profile detail", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": jsonDataResponse("Customer detail", { $ref: "#/components/schemas/BackofficeCustomerDetail" }), "404": { description: "Customer not found" } } },
       patch: { tags: ["Master Data"], summary: "Update a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeCustomerUpdateInput" } } } }, responses: { "200": { description: "Customer updated" } } },
       delete: { tags: ["Master Data"], summary: "Soft-delete a customer profile", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Customer soft-deleted" } } }
     },
@@ -5300,6 +5683,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     [`${config.API_PREFIX}/merchant-admin/technicians/{id}`]: {
+      get: {
+        tags: ["Master Data"],
+        summary: "Technician profile detail scoped to the authenticated shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        responses: {
+          "200": jsonDataResponse("Scoped technician detail", {
+            $ref: "#/components/schemas/BackofficeTechnicianDetail"
+          }),
+          "404": { description: "Technician not in current shop" }
+        }
+      },
       patch: { tags: ["Master Data"], summary: "Update a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/BackofficeTechnicianUpdateInput" } } } }, responses: { "200": { description: "Technician updated" }, "404": { description: "Technician not in current shop" } } },
       delete: { tags: ["Master Data"], summary: "Soft-delete a technician scoped to the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Technician soft-deleted" }, "404": { description: "Technician not in current shop" } } }
     },
@@ -5310,7 +5705,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: { tags: ["Master Data"], summary: "Paginated customers with bookings in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped customers" } } }
     },
     [`${config.API_PREFIX}/merchant-admin/customers/{id}`]: {
-      get: { tags: ["Master Data"], summary: "Customer detail scoped by bookings in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": { description: "Scoped customer detail" }, "404": { description: "Customer not visible to current shop" } } }
+      get: { tags: ["Master Data"], summary: "Customer detail scoped by bookings in the authenticated shop", security: [{ bearerAuth: [] }], parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }], responses: { "200": jsonDataResponse("Scoped customer detail", { $ref: "#/components/schemas/BackofficeCustomerDetail" }), "404": { description: "Customer not visible to current shop" } } }
     },
     [`${config.API_PREFIX}/merchant-admin/services`]: {
       get: { tags: ["Master Data"], summary: "Paginated services in the authenticated shop", security: [{ bearerAuth: [] }], responses: { "200": { description: "Paginated scoped services" } } },
