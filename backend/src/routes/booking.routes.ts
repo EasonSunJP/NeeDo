@@ -6,6 +6,7 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { BookingRepository } from "../repositories/booking.repository";
+import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.repository";
 import { AuditLogRepository } from "../repositories/audit-log.repository";
 import { FeeRuleRepository } from "../repositories/fee-rule.repository";
 import { LedgerRepository } from "../repositories/ledger.repository";
@@ -13,6 +14,8 @@ import { BookingService } from "../services/booking.service";
 import { AuditLogService } from "../services/audit-log.service";
 import { FeeCalculationService } from "../services/fee-calculation.service";
 import { LedgerService } from "../services/ledger.service";
+import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
+import { AffiliateLinkTokenService } from "../services/affiliate-link-token.service";
 import {
   availabilityListQuerySchema,
   bookingCreateBodySchema,
@@ -60,7 +63,15 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     dependencies.bookingRepository ?? new BookingRepository(),
     ledgerService,
     dependencies.realtimeService,
-    new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository())
+    new AuditLogService(dependencies.auditLogRepository ?? new AuditLogRepository()),
+    dependencies.affiliateCheckoutService ??
+      new AffiliateCheckoutService(
+        new AffiliateCheckoutRepository(),
+        new AffiliateLinkTokenService({
+          secret: config.AFFILIATE_LINK_SECRET,
+          publicBaseUrl: config.AFFILIATE_PUBLIC_BASE_URL
+        })
+      )
   );
   const controller = new BookingController(bookingService);
 

@@ -65,6 +65,7 @@ const makeOrder = (overrides: Partial<BookingOrderPayload> = {}): BookingOrderPa
   createdAt: now,
   updatedAt: now,
   statusHistory: [],
+  affiliate: null,
   ...overrides
 });
 

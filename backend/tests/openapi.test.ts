@@ -287,6 +287,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/affiliate/resolve/{publicToken}"
     );
+    expect(response.body.paths).toHaveProperty("/api/v1/affiliate/codes/validate");
     [
       "/api/v1/merchant-admin/pay-runs/export",
       "/api/v1/technician/payslips/export",
@@ -309,6 +310,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("AffiliateMarketplaceTask");
     expect(response.body.components.schemas).toHaveProperty("AffiliateClaim");
     expect(response.body.components.schemas).toHaveProperty("AffiliateResolvedLink");
+    expect(response.body.components.schemas).toHaveProperty("AffiliateCodeValidation");
     expect(response.body.components.schemas).toHaveProperty("ShopFinanceRuleSet");
     expect(response.body.components.schemas).toHaveProperty("ShopFinanceRulePreviewResult");
     expect(response.body.components.schemas).toHaveProperty("OrderFinanceDetail");
@@ -416,6 +418,32 @@ describe("GET /api/v1/openapi.json", () => {
       response.body.paths["/api/v1/bookings"].post.requestBody.content["application/json"].schema
         .properties.orderType
     ).toEqual({ type: "string", enum: ["booking", "request"] });
+    expect(
+      response.body.paths["/api/v1/bookings"].post.requestBody.content["application/json"].schema
+        .properties
+    ).toMatchObject({
+      affiliateCode: { type: "string", maxLength: 40 },
+      affiliatePublicToken: { type: "string", maxLength: 512 }
+    });
+    expect(response.body.components.schemas.BookingOrder.required).toContain("affiliate");
+    expect(response.body.components.schemas.BookingOrder.properties.affiliate).toEqual({
+      anyOf: [
+        { $ref: "#/components/schemas/AffiliateCheckoutSummary" },
+        { type: "null" }
+      ]
+    });
+    const codeValidationPath =
+      response.body.paths["/api/v1/affiliate/codes/validate"].post;
+    expect(codeValidationPath.security).toEqual([{ bearerAuth: [] }]);
+    expect(
+      codeValidationPath.requestBody.content["application/json"].schema
+    ).toMatchObject({
+      additionalProperties: false,
+      required: ["publicCode", "scheduleSlotId"]
+    });
+    expect(
+      codeValidationPath.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/AffiliateCodeValidation" });
 
     const resolveDisputePath =
       response.body.paths["/api/v1/merchant-admin/payslips/{id}/resolve-dispute"].post;

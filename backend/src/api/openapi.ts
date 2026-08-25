@@ -1772,6 +1772,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "endsAt",
           "note",
           "cancelReason",
+          "affiliate",
           "createdAt",
           "updatedAt",
           "statusHistory"
@@ -1813,6 +1814,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           endsAt: { type: "string", format: "date-time" },
           note: { type: ["string", "null"] },
           cancelReason: { type: ["string", "null"] },
+          affiliate: {
+            anyOf: [
+              { $ref: "#/components/schemas/AffiliateCheckoutSummary" },
+              { type: "null" }
+            ]
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
           statusHistory: {
@@ -2867,6 +2874,59 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           task: { $ref: "#/components/schemas/AffiliateMarketplaceTask" }
         }
       },
+      AffiliateCheckoutSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "taskId",
+          "publicCode",
+          "source",
+          "originalPriceJpy",
+          "customerDiscountJpy",
+          "finalPriceJpy",
+          "rewardAllocatedNdp",
+          "attributionStatus"
+        ],
+        properties: {
+          taskId: { type: "integer", minimum: 1 },
+          publicCode: { type: "string", minLength: 1, maxLength: 40 },
+          source: { type: "string", enum: ["code", "url"] },
+          originalPriceJpy: { type: "integer", minimum: 0 },
+          customerDiscountJpy: { type: "integer", minimum: 0 },
+          finalPriceJpy: { type: "integer", minimum: 0 },
+          rewardAllocatedNdp: { type: "integer", minimum: 1 },
+          attributionStatus: {
+            type: "string",
+            enum: ["attributed", "invalidated"]
+          }
+        }
+      },
+      AffiliateCodeValidation: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "taskId",
+          "publicCode",
+          "source",
+          "originalPriceJpy",
+          "customerDiscountJpy",
+          "finalPriceJpy",
+          "rewardAllocatedNdp",
+          "taskStartsAt",
+          "taskEndsAt"
+        ],
+        properties: {
+          taskId: { type: "integer", minimum: 1 },
+          publicCode: { type: "string", minLength: 1, maxLength: 40 },
+          source: { type: "string", enum: ["code"] },
+          originalPriceJpy: { type: "integer", minimum: 0 },
+          customerDiscountJpy: { type: "integer", minimum: 0 },
+          finalPriceJpy: { type: "integer", minimum: 0 },
+          rewardAllocatedNdp: { type: "integer", minimum: 1 },
+          taskStartsAt: { type: "string", format: "date-time" },
+          taskEndsAt: { type: "string", format: "date-time" }
+        }
+      },
       AffiliateMarketplaceTaskPage: {
         type: "object",
         required: ["list", "total", "page", "page_size"],
@@ -3095,6 +3155,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }),
           "400": { description: "Malformed public affiliate token" },
           "404": { description: "Invalid, expired, revoked, or unusable affiliate link" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/codes/validate`]: {
+      post: {
+        tags: ["Affiliate Marketplace"],
+        summary: "Advisory validation of an affiliate code for a schedule slot",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["publicCode", "scheduleSlotId"],
+                properties: {
+                  publicCode: { type: "string", minLength: 1, maxLength: 40 },
+                  scheduleSlotId: { type: "integer", minimum: 1 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Validated affiliate code and price preview", {
+            $ref: "#/components/schemas/AffiliateCodeValidation"
+          }),
+          "400": { description: "Invalid request contract" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Missing booking permission" },
+          "404": { description: "Invalid, expired, or revoked affiliate code" },
+          "409": {
+            description:
+              "Slot, task, scope, self-attribution, minimum amount, or budget conflict"
+          }
         }
       }
     },
@@ -4996,6 +5092,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             "application/json": {
               schema: {
                 type: "object",
+                additionalProperties: false,
                 required: ["scheduleSlotId", "fulfillmentMode"],
                 properties: {
                   serviceId: { type: "integer", minimum: 1 },
@@ -5008,7 +5105,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
                     enum: ["onsite", "bank_transfer"],
                     default: "onsite"
                   },
-                  note: { type: "string", maxLength: 500 }
+                  note: { type: "string", maxLength: 500 },
+                  affiliateCode: { type: "string", minLength: 1, maxLength: 40 },
+                  affiliatePublicToken: {
+                    type: "string",
+                    minLength: 1,
+                    maxLength: 512
+                  }
                 }
               }
             }

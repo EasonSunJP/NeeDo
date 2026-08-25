@@ -1,6 +1,10 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type { LedgerTransactionClient } from "../services/ledger.service";
+import type {
+  AffiliateCheckoutPrepared,
+  AffiliateCheckoutSummary
+} from "../services/affiliate-checkout.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 
@@ -38,6 +42,31 @@ export interface BookingCreateRepositoryInput {
   fulfillmentMode: BookingFulfillmentMode;
   paymentMethod?: ServicePaymentMethodPayload;
   note?: string | null;
+}
+
+export interface BookingCreateAffiliatePreparationContext {
+  transactionClient: LedgerTransactionClient;
+  customerUserId: number;
+  shopId: number;
+  serviceId: number | null;
+  originalPriceJpy: number;
+  scheduledStartAt: Date;
+}
+
+export interface BookingCreateAffiliatePersistenceContext
+  extends Omit<BookingCreateAffiliatePreparationContext, "serviceId"> {
+  serviceId: number;
+  bookingOrderId: number;
+  prepared: AffiliateCheckoutPrepared;
+}
+
+export interface BookingCreateRepositoryOptions {
+  prepareAffiliate?: (
+    context: BookingCreateAffiliatePreparationContext
+  ) => Promise<AffiliateCheckoutPrepared>;
+  persistAffiliate?: (
+    context: BookingCreateAffiliatePersistenceContext
+  ) => Promise<void>;
 }
 
 export type ManualPaymentScope =
@@ -188,6 +217,7 @@ export interface BookingOrderPayload {
   endsAt: Date;
   note: string | null;
   cancelReason: string | null;
+  affiliate: AffiliateCheckoutSummary | null;
   createdAt: Date;
   updatedAt: Date;
   statusHistory: OrderStatusHistoryPayload[];
@@ -201,7 +231,10 @@ export interface BookingRepositoryPort {
   listAvailableSlots: (
     input: AvailabilityListInput
   ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
-  createBooking: (input: BookingCreateRepositoryInput) => Promise<BookingOrderPayload | null>;
+  createBooking: (
+    input: BookingCreateRepositoryInput,
+    options?: BookingCreateRepositoryOptions
+  ) => Promise<BookingOrderPayload | null>;
   findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
   findTechnicianShopId?: (technicianProfileId: number) => Promise<number | null>;
   isShopSuspended?: (shopId: number) => Promise<boolean>;
@@ -246,6 +279,15 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
     statusHistory: {
       orderBy: {
         createdAt: "asc";
+      };
+    };
+    affiliateAttributions: {
+      include: {
+        claim: {
+          select: {
+            publicCode: true;
+          };
+        };
       };
     };
   };
@@ -469,8 +511,12 @@ export class BookingRepository implements BookingRepositoryPort {
   }
 
   public async createBooking(
-    input: BookingCreateRepositoryInput
+    input: BookingCreateRepositoryInput,
+    options: BookingCreateRepositoryOptions = {}
   ): Promise<BookingOrderPayload | null> {
+    if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
+      throw new Error("error.affiliate.checkout_hook_invalid");
+    }
     return this.client.$transaction(async (tx) => {
       const slot = await tx.scheduleSlot.findFirst({
         where: {
@@ -552,6 +598,22 @@ export class BookingRepository implements BookingRepositoryPort {
         return null;
       }
 
+      const originalPriceJpy = Math.round(
+        Number(serviceSource.priceAmount.toString())
+      );
+      const affiliateContext: BookingCreateAffiliatePreparationContext = {
+        transactionClient: tx,
+        customerUserId: input.customerUserId,
+        shopId: slot.shopId,
+        serviceId: serviceSource.affiliateServiceId,
+        originalPriceJpy,
+        scheduledStartAt: slot.startsAt
+      };
+      const preparedAffiliate = options.prepareAffiliate
+        ? await options.prepareAffiliate(affiliateContext)
+        : null;
+      const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
+
       const nextBookedCount = slot.bookedCount + 1;
       const slotUpdate = await tx.scheduleSlot.updateMany({
         where: {
@@ -582,7 +644,7 @@ export class BookingRepository implements BookingRepositoryPort {
           scheduleSlotId: slot.id,
           status: "PENDING",
           fulfillmentMode: input.fulfillmentMode,
-          priceAmount: serviceSource.priceAmount,
+          priceAmount: finalPriceJpy,
           currency: serviceSource.currency,
           pricingModeSnapshot: pricingMode === "technician" ? "TECHNICIAN" : "MERCHANT",
           serviceOwnerType: serviceSource.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
@@ -594,7 +656,7 @@ export class BookingRepository implements BookingRepositoryPort {
           startsAt: slot.startsAt,
           endsAt: slot.endsAt,
           paymentMethod: this.paymentMethodToDb(input.paymentMethod ?? "onsite"),
-          paymentAmountJpy: Math.round(Number(serviceSource.priceAmount.toString())),
+          paymentAmountJpy: finalPriceJpy,
           note: input.note?.trim() || null,
           statusHistory: {
             create: {
@@ -606,6 +668,26 @@ export class BookingRepository implements BookingRepositoryPort {
         },
         include: this.orderInclude()
       });
+
+      if (preparedAffiliate && options.persistAffiliate) {
+        if (!serviceSource.affiliateServiceId) {
+          throw new Error("error.affiliate.promotion_scope_mismatch");
+        }
+        await options.persistAffiliate({
+          ...affiliateContext,
+          serviceId: serviceSource.affiliateServiceId,
+          bookingOrderId: order.id,
+          prepared: preparedAffiliate
+        });
+        const attributedOrder = await tx.bookingOrder.findFirst({
+          where: { id: order.id, deletedAt: null },
+          include: this.orderInclude()
+        });
+        if (!attributedOrder) {
+          throw new Error("error.order.not_found");
+        }
+        return this.mapOrder(attributedOrder);
+      }
 
       return this.mapOrder(order);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
@@ -1076,6 +1158,16 @@ export class BookingRepository implements BookingRepositoryPort {
       statusHistory: {
         where: { deletedAt: null },
         orderBy: { createdAt: "asc" as const }
+      },
+      affiliateAttributions: {
+        where: { deletedAt: null },
+        orderBy: { id: "desc" as const },
+        take: 1,
+        include: {
+          claim: {
+            select: { publicCode: true }
+          }
+        }
       }
     };
   }
@@ -1155,6 +1247,24 @@ export class BookingRepository implements BookingRepositoryPort {
       endsAt: order.endsAt,
       note: order.note,
       cancelReason: order.cancelReason,
+      affiliate: order.affiliateAttributions[0]
+        ? {
+            taskId: order.affiliateAttributions[0].taskId,
+            publicCode: order.affiliateAttributions[0].claim.publicCode,
+            source:
+              order.affiliateAttributions[0].source === "CODE" ? "code" : "url",
+            originalPriceJpy: order.affiliateAttributions[0].originalPriceJpy,
+            customerDiscountJpy:
+              order.affiliateAttributions[0].customerDiscountJpy,
+            finalPriceJpy: order.affiliateAttributions[0].finalPriceJpy,
+            rewardAllocatedNdp:
+              order.affiliateAttributions[0].rewardAllocatedNdp,
+            attributionStatus:
+              order.affiliateAttributions[0].status === "INVALIDATED"
+                ? "invalidated"
+                : "attributed"
+          }
+        : null,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       statusHistory: order.statusHistory.map((history) => ({
@@ -1176,6 +1286,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
     return {
       serviceId: slot.serviceId,
+      affiliateServiceId: slot.serviceId,
       technicianServiceId: null,
       ownerType: "shop" as const,
       ownerId: slot.serviceId,
@@ -1205,6 +1316,7 @@ export class BookingRepository implements BookingRepositoryPort {
 
     return {
       serviceId: null,
+      affiliateServiceId: slot.technicianService.sourceShopServiceId,
       technicianServiceId: slot.technicianServiceId,
       ownerType: "technician" as const,
       ownerId: slot.technicianService.technicianId,

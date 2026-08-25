@@ -206,7 +206,7 @@ The operations travel-settings route is an explicit external-provider capability
 
 The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
 
-The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks, and the formal affiliate marketplace can now issue one stable promotion code and signed URL per task/user. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires the later Checkout attribution, completion-reward, reversal, fraud, aggregate, and export microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
+The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks; the formal affiliate marketplace can issue one stable promotion code and signed URL per task/user; and Booking Checkout now persists validated attribution, allocation, and customer-discount price snapshots. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires the later completion-reward, reversal, fraud, aggregate, export, and UI microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
 ### Formal Affiliate Task Publishing and Review
 
@@ -264,7 +264,30 @@ ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-marketplace-claim-flow
 ```
 
-The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. This microstep deliberately does not create link touches, increment clicks, attribute Checkout, apply customer discounts, allocate task budget, settle service-completion rewards, or activate the affiliate browser UI; those remain separate transactional microsteps.
+The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. Claim creation itself does not allocate or settle reward budget; those changes occur only in the later Booking Checkout and service-completion transactions.
+
+### Formal Affiliate Checkout Attribution And Customer Discounts
+
+Booking creation accepts an optional explicit promotion code or signed affiliate public token. When both are supplied, the explicit code wins. The Booking transaction locks the Claim, Task, budget reservation, and schedule slot; revalidates task time/state, claimant separation, shop/service scope, minimum order amount, and remaining reward allocation; then persists one Touch, one active Attribution, Claim/Task counters, the allocated reward amount, and the order's original price, discount, and final-price snapshots atomically.
+
+Customer discounts support no discount, fixed integer JPY, or basis-point percentage with an optional JPY cap. The discount changes the customer's Booking price only; it never reduces the frozen NDP reward budget. A valid Checkout allocates exactly one future fixed-NDP reward but does not move wallet balances and does not create an `AffiliateReward`. A pre-completion cancellation invalidates the Attribution and releases that allocation in the same order-state transaction.
+
+Formal endpoints:
+
+- `POST /api/v1/affiliate/codes/validate`
+- `POST /api/v1/bookings` with optional `affiliateCode` / `affiliatePublicToken`
+- `POST /api/v1/bookings/:bookingId/actions` with `cancel` releasing active attribution
+
+Verify the transaction contract against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-checkout-attribution-flow
+```
+
+The guarded check verifies fixed, capped-percent, and no-discount snapshots; explicit-code priority; self-attribution, scope, minimum, task-state, and budget rejection; concurrent last-budget and last-slot safety; cancellation invalidation and exact allocation release; unchanged wallet balances; zero pre-completion Rewards; token-free audits; and marker-owned cleanup.
+
+This Checkout microstep does not settle service-completion rewards, end tasks and unfreeze unused budget, reverse completed-order rewards, compute dashboard aggregates, or activate the merchant, shop, marketplace, or Afirieito UI. Those remain subsequent microsteps.
 
 The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 

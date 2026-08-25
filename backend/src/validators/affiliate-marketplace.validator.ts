@@ -32,6 +32,13 @@ export const affiliateClaimListQuerySchema = z
 
 export const createAffiliateClaimBodySchema = z.object({}).strict();
 
+export const affiliateCodeValidateBodySchema = z
+  .object({
+    publicCode: z.string().trim().min(1).max(40),
+    scheduleSlotId: z.coerce.number().int().positive()
+  })
+  .strict();
+
 export const affiliatePublicTokenParamSchema = z
   .object({
     publicToken: z
@@ -44,3 +51,6 @@ export type AffiliateMarketplaceListQuery = z.infer<
   typeof affiliateMarketplaceListQuerySchema
 >;
 export type AffiliateClaimListQuery = z.infer<typeof affiliateClaimListQuerySchema>;
+export type AffiliateCodeValidateBody = z.infer<
+  typeof affiliateCodeValidateBodySchema
+>;

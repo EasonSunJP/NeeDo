@@ -6,6 +6,10 @@ import type {
 import type { BookingLedgerSettlementPort } from "../src/services/ledger.service";
 import type { OrderStatusNotificationPort } from "../src/services/realtime.service";
 import { BookingService } from "../src/services/booking.service";
+import type {
+  AffiliateCheckoutPrepared,
+  AffiliateCheckoutService
+} from "../src/services/affiliate-checkout.service";
 
 const now = new Date("2026-05-25T00:00:00.000Z");
 const actor = { userId: 1, roles: ["customer"] };
@@ -52,6 +56,7 @@ const makeOrder = (
   endsAt: new Date("2026-05-26T02:00:00.000Z"),
   note: null,
   cancelReason: null,
+  affiliate: null,
   createdAt: now,
   updatedAt: now,
   statusHistory: [
@@ -186,6 +191,112 @@ describe("BookingService state machine", () => {
     );
   });
 
+  it("binds an explicit affiliate code to the repository transaction hooks", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const prepared: AffiliateCheckoutPrepared = {
+      claimId: 41,
+      taskId: 31,
+      claimantUserId: 701,
+      publicCode: "NDO-VALID",
+      source: "code",
+      originalPriceJpy: 8_800,
+      customerDiscountJpy: 800,
+      finalPriceJpy: 8_000,
+      rewardAllocatedNdp: 1_000,
+      attributionStatus: "attributed",
+      attributedAt: now,
+      expiresAt: new Date("2026-06-08T00:00:00.000Z")
+    };
+    const affiliateCheckout: jest.Mocked<
+      Pick<
+        AffiliateCheckoutService,
+        "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+      >
+    > = {
+      prepareCheckout: jest.fn().mockResolvedValue(prepared),
+      persistAttribution: jest.fn().mockResolvedValue(undefined),
+      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined)
+    };
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      affiliateCheckout
+    );
+
+    await service.createBooking(actor, {
+      serviceId: 1,
+      scheduleSlotId: 11,
+      fulfillmentMode: "store",
+      affiliateCode: " NDO-VALID ",
+      affiliatePublicToken: "ignored.signature"
+    });
+
+    const [, options] = repository.createBooking.mock.calls[0];
+    expect(options).toEqual({
+      prepareAffiliate: expect.any(Function),
+      persistAffiliate: expect.any(Function)
+    });
+    const transactionClient = { booking: "transaction" };
+    const context = {
+      transactionClient,
+      customerUserId: actor.userId,
+      shopId: 1,
+      serviceId: 1,
+      originalPriceJpy: 8_800,
+      scheduledStartAt: new Date("2026-05-26T01:00:00.000Z")
+    };
+    await expect(options!.prepareAffiliate!(context)).resolves.toBe(prepared);
+    expect(affiliateCheckout.prepareCheckout).toHaveBeenCalledWith({
+      ...context,
+      selector: { source: "code", value: "NDO-VALID" }
+    });
+    await options!.persistAffiliate!({
+      ...context,
+      bookingOrderId: 1,
+      prepared
+    });
+    expect(affiliateCheckout.persistAttribution).toHaveBeenCalledWith({
+      bookingOrderId: 1,
+      customerUserId: actor.userId,
+      shopId: 1,
+      serviceId: 1,
+      prepared,
+      transactionClient
+    });
+  });
+
+  it("does not install affiliate transaction hooks for an ordinary booking", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const affiliateCheckout = {
+      prepareCheckout: jest.fn(),
+      persistAttribution: jest.fn(),
+      invalidateCancelledBooking: jest.fn()
+    } as unknown as Pick<
+      AffiliateCheckoutService,
+      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+    >;
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      affiliateCheckout
+    );
+
+    await service.createBooking(actor, {
+      serviceId: 1,
+      scheduleSlotId: 11,
+      fulfillmentMode: "store"
+    });
+
+    expect(repository.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ customerUserId: actor.userId })
+    );
+    expect(affiliateCheckout.prepareCheckout).not.toHaveBeenCalled();
+  });
+
   it("forces customer order lists to the authenticated user scope", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);
@@ -289,6 +400,62 @@ describe("BookingService state machine", () => {
       code: ERROR_CODES.ORDER_INVALID_TRANSITION,
       message: "error.order.invalid_transition"
     });
+  });
+
+  it("runs affiliate cancellation inside the transition transaction without a ledger service", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    const affiliateCheckout = {
+      prepareCheckout: jest.fn(),
+      persistAttribution: jest.fn(),
+      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined)
+    } as unknown as Pick<
+      AffiliateCheckoutService,
+      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+    >;
+    const service = new BookingService(
+      repository,
+      undefined,
+      undefined,
+      undefined,
+      affiliateCheckout
+    );
+
+    await service.transitionOrder(actor, 1, "cancel", "changed plan");
+
+    expect(affiliateCheckout.invalidateCancelledBooking).toHaveBeenCalledWith({
+      bookingOrderId: 1,
+      actorUserId: actor.userId,
+      transactionClient: expect.anything()
+    });
+  });
+
+  it("composes confirmed-order ledger release with affiliate cancellation", async () => {
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn().mockResolvedValue(undefined),
+      settleBookingCompletion: jest.fn(),
+      compensateCustomerForMerchantCancellation: jest.fn()
+    };
+    const affiliateCheckout = {
+      prepareCheckout: jest.fn(),
+      persistAttribution: jest.fn(),
+      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined)
+    } as unknown as Pick<
+      AffiliateCheckoutService,
+      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+    >;
+    const service = new BookingService(
+      createRepository(makeOrder("confirmed")),
+      ledgerService,
+      undefined,
+      undefined,
+      affiliateCheckout
+    );
+
+    await service.transitionOrder(actor, 1, "cancel", "changed plan");
+
+    expect(ledgerService.releaseBookingHold).toHaveBeenCalledTimes(1);
+    expect(affiliateCheckout.invalidateCancelledBooking).toHaveBeenCalledTimes(1);
   });
 
   it("settles ledger side effects when confirming, cancelling, and completing booking orders", async () => {
