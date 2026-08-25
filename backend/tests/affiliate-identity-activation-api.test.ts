@@ -93,20 +93,39 @@ const createFixture = (
       };
     })
   };
+  const merchantContractAcceptanceService = {
+    accept: jest.fn(async (input: Record<string, unknown>) => ({
+      id: 92,
+      applicationId: input.applicationId,
+      applicationVersion: 4,
+      contractType: "merchant",
+      contractVersion: "merchant-2026-08-26-v1",
+      contentHash: "b".repeat(64),
+      acceptedAt: new Date("2026-08-26T05:00:00.000Z"),
+      receiptId: "receipt-92"
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: { findUserById: jest.fn(async () => user) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     affiliateIdentityActivationService,
-    affiliateBankAccountService
+    affiliateBankAccountService,
+    merchantContractAcceptanceService
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,
     email: user.email,
     currentIdentityId: 70
   }).token;
-  return { app, token, affiliateIdentityActivationService, affiliateBankAccountService };
+  return {
+    app,
+    token,
+    affiliateIdentityActivationService,
+    affiliateBankAccountService,
+    merchantContractAcceptanceService
+  };
 };
 
 describe("affiliate identity activation HTTP API", () => {
@@ -229,6 +248,37 @@ describe("affiliate identity activation HTTP API", () => {
         userId: 7,
         accountNumber: "1234567",
         accountHolderName: "ヤマモトタロウ"
+      })
+    );
+  });
+
+  it("accepts and binds the merchant contract before final application submission", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .post("/api/v1/identity-applications/41/merchant-contract-acceptance")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .send({
+        expectedVersion: 3,
+        contractVersion: "merchant-2026-08-26-v1",
+        contentHash: "b".repeat(64),
+        language: "zh-CN",
+        hasRead: true,
+        hasAgreed: true
+      })
+      .expect(200)
+      .expect((response) =>
+        expect(response.body.data).toMatchObject({
+          applicationId: 41,
+          applicationVersion: 4,
+          contractType: "merchant"
+        })
+      );
+    expect(fixture.merchantContractAcceptanceService.accept).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 7,
+        applicationId: 41,
+        expectedVersion: 3,
+        sessionId: expect.any(String)
       })
     );
   });

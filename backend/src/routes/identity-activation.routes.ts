@@ -7,14 +7,17 @@ import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import {
   activateAffiliateIdentityBodySchema,
+  acceptMerchantContractBodySchema,
   bindAffiliateWithdrawalBankAccountBodySchema,
-  contractLanguageQuerySchema
+  contractLanguageQuerySchema,
+  merchantContractApplicationIdParamSchema
 } from "../validators/identity-activation.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 import {
   createAffiliateIdentityActivationServiceForRoutes,
   createAffiliateBankAccountServiceForRoutes,
-  createContractCatalogForRoutes
+  createContractCatalogForRoutes,
+  createMerchantContractAcceptanceServiceForRoutes
 } from "./identity-activation-service.factory";
 
 export const IDENTITY_ACTIVATION_ROUTE_PERMISSIONS = {
@@ -33,7 +36,8 @@ export const createIdentityActivationRoutes = (
   const controller = new IdentityActivationController(
     createAffiliateIdentityActivationServiceForRoutes(dependencies, catalog),
     catalog,
-    createAffiliateBankAccountServiceForRoutes(config, dependencies)
+    createAffiliateBankAccountServiceForRoutes(config, dependencies),
+    createMerchantContractAcceptanceServiceForRoutes(dependencies, catalog)
   );
 
   router.get(
@@ -63,6 +67,16 @@ export const createIdentityActivationRoutes = (
     createAuthorizeMiddleware(IDENTITY_ACTIVATION_ROUTE_PERMISSIONS.bankAccountOwn),
     validateRequest({ body: bindAffiliateWithdrawalBankAccountBodySchema }),
     controller.bindAffiliateWithdrawalBankAccount
+  );
+  router.post(
+    "/identity-applications/:id/merchant-contract-acceptance",
+    authenticate(),
+    createAuthorizeMiddleware(IDENTITY_ACTIVATION_ROUTE_PERMISSIONS.contractAccept),
+    validateRequest({
+      params: merchantContractApplicationIdParamSchema,
+      body: acceptMerchantContractBodySchema
+    }),
+    controller.acceptMerchantContract
   );
 
   return router;
