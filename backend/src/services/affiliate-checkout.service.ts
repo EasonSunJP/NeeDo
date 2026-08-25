@@ -131,6 +131,37 @@ export interface AffiliateCheckoutAuditInput extends AffiliatePriceSnapshot {
   rewardAllocatedNdp: number;
 }
 
+export interface AffiliateCancellationRecord {
+  attributionId: number;
+  taskId: number;
+  claimId: number;
+  rewardAllocatedNdp: number;
+  taskStatus: AffiliateCheckoutTaskStatus;
+  taskStartsAt: Date;
+  taskEndsAt: Date;
+}
+
+export type AffiliateCancellationRestoreStatus = "scheduled" | "active" | null;
+
+export interface AffiliateCancellationReleaseInput {
+  attributionId: number;
+  taskId: number;
+  rewardNdp: number;
+  invalidatedAt: Date;
+  reason: "booking_cancelled";
+  restoreTaskStatus: AffiliateCancellationRestoreStatus;
+}
+
+export interface AffiliateCancellationAuditInput {
+  actorUserId: number;
+  bookingOrderId: number;
+  attributionId: number;
+  taskId: number;
+  claimId: number;
+  rewardReleasedNdp: number;
+  reason: "booking_cancelled";
+}
+
 export interface AffiliateCheckoutRepositoryPort {
   forTransaction(
     transactionClient: AffiliateCheckoutTransactionClient
@@ -153,6 +184,13 @@ export interface AffiliateCheckoutRepositoryPort {
     source: AffiliateCheckoutSource;
   }): Promise<void>;
   createAttributionAudit(input: AffiliateCheckoutAuditInput): Promise<void>;
+  lockActiveAttributionForCancellation(
+    bookingOrderId: number
+  ): Promise<AffiliateCancellationRecord | null>;
+  invalidateAttributionAndRelease(
+    input: AffiliateCancellationReleaseInput
+  ): Promise<void>;
+  createInvalidationAudit(input: AffiliateCancellationAuditInput): Promise<void>;
 }
 
 export interface AffiliateCheckoutPrepareInput {
@@ -171,6 +209,12 @@ export interface AffiliateCheckoutPersistInput {
   shopId: number;
   serviceId: number;
   prepared: AffiliateCheckoutPrepared;
+  transactionClient: AffiliateCheckoutTransactionClient;
+}
+
+export interface AffiliateCancellationInput {
+  bookingOrderId: number;
+  actorUserId: number;
   transactionClient: AffiliateCheckoutTransactionClient;
 }
 
@@ -343,6 +387,56 @@ export class AffiliateCheckoutService {
       finalPriceJpy: input.prepared.finalPriceJpy,
       rewardAllocatedNdp: input.prepared.rewardAllocatedNdp
     });
+  }
+
+  public async invalidateCancelledBooking(
+    input: AffiliateCancellationInput
+  ): Promise<void> {
+    const repository = this.repository.forTransaction(input.transactionClient);
+    const attribution = await repository.lockActiveAttributionForCancellation(
+      input.bookingOrderId
+    );
+    if (!attribution) {
+      return;
+    }
+    const invalidatedAt = this.now();
+    const restoreTaskStatus = this.resolveCancellationRestoreStatus(
+      attribution,
+      invalidatedAt
+    );
+    await repository.invalidateAttributionAndRelease({
+      attributionId: attribution.attributionId,
+      taskId: attribution.taskId,
+      rewardNdp: attribution.rewardAllocatedNdp,
+      invalidatedAt,
+      reason: "booking_cancelled",
+      restoreTaskStatus
+    });
+    await repository.createInvalidationAudit({
+      actorUserId: input.actorUserId,
+      bookingOrderId: input.bookingOrderId,
+      attributionId: attribution.attributionId,
+      taskId: attribution.taskId,
+      claimId: attribution.claimId,
+      rewardReleasedNdp: attribution.rewardAllocatedNdp,
+      reason: "booking_cancelled"
+    });
+  }
+
+  private resolveCancellationRestoreStatus(
+    attribution: AffiliateCancellationRecord,
+    currentTime: Date
+  ): AffiliateCancellationRestoreStatus {
+    if (attribution.taskStatus !== "budget_exhausted") {
+      return null;
+    }
+    if (currentTime < attribution.taskStartsAt) {
+      return "scheduled";
+    }
+    if (currentTime < attribution.taskEndsAt) {
+      return "active";
+    }
+    return null;
   }
 
   private resolveLookupValue(selector: AffiliatePromotionSelector): string {

@@ -3,6 +3,7 @@ import {
   calculateAffiliatePrice,
   selectAffiliatePromotion,
   type AffiliateCheckoutClaimRecord,
+  type AffiliateCancellationRecord,
   type AffiliateCheckoutRepositoryPort
 } from "../src/services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../src/services/affiliate-link-token.service";
@@ -56,7 +57,10 @@ const createRepository = (
     createTouch: jest.fn().mockResolvedValue(111),
     createAttribution: jest.fn().mockResolvedValue(undefined),
     allocateAttribution: jest.fn().mockResolvedValue(undefined),
-    createAttributionAudit: jest.fn().mockResolvedValue(undefined)
+    createAttributionAudit: jest.fn().mockResolvedValue(undefined),
+    lockActiveAttributionForCancellation: jest.fn().mockResolvedValue(null),
+    invalidateAttributionAndRelease: jest.fn().mockResolvedValue(undefined),
+    createInvalidationAudit: jest.fn().mockResolvedValue(undefined)
   };
   repository.forTransaction.mockReturnValue(repository);
   return repository;
@@ -460,5 +464,114 @@ describe("AffiliateCheckoutService", () => {
       statusCode: 409,
       message: "error.affiliate.budget_unavailable"
     });
+  });
+
+  it("invalidates an active attribution and restores exhausted budget during the task", async () => {
+    const repository = createRepository();
+    const cancellation: AffiliateCancellationRecord = {
+      attributionId: 301,
+      taskId: 31,
+      claimId: 41,
+      rewardAllocatedNdp: 1_000,
+      taskStatus: "budget_exhausted",
+      taskStartsAt: new Date("2026-08-01T00:00:00.000Z"),
+      taskEndsAt: new Date("2026-10-01T00:00:00.000Z")
+    };
+    repository.lockActiveAttributionForCancellation.mockResolvedValue(cancellation);
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW
+    });
+
+    await service.invalidateCancelledBooking({
+      bookingOrderId: 9001,
+      actorUserId: 501,
+      transactionClient: TRANSACTION_CLIENT
+    });
+
+    expect(repository.invalidateAttributionAndRelease).toHaveBeenCalledWith({
+      attributionId: 301,
+      taskId: 31,
+      rewardNdp: 1_000,
+      invalidatedAt: NOW,
+      reason: "booking_cancelled",
+      restoreTaskStatus: "active"
+    });
+    expect(repository.createInvalidationAudit).toHaveBeenCalledWith({
+      actorUserId: 501,
+      bookingOrderId: 9001,
+      attributionId: 301,
+      taskId: 31,
+      claimId: 41,
+      rewardReleasedNdp: 1_000,
+      reason: "booking_cancelled"
+    });
+  });
+
+  it("restores an exhausted task to scheduled before its start", async () => {
+    const repository = createRepository();
+    repository.lockActiveAttributionForCancellation.mockResolvedValue({
+      attributionId: 301,
+      taskId: 31,
+      claimId: 41,
+      rewardAllocatedNdp: 1_000,
+      taskStatus: "budget_exhausted",
+      taskStartsAt: new Date("2026-09-01T00:00:00.000Z"),
+      taskEndsAt: new Date("2026-10-01T00:00:00.000Z")
+    });
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW
+    });
+
+    await service.invalidateCancelledBooking({
+      bookingOrderId: 9001,
+      actorUserId: 501,
+      transactionClient: TRANSACTION_CLIENT
+    });
+
+    expect(repository.invalidateAttributionAndRelease).toHaveBeenCalledWith(
+      expect.objectContaining({ restoreTaskStatus: "scheduled" })
+    );
+  });
+
+  it("keeps an exhausted task terminal after its execution window", async () => {
+    const repository = createRepository();
+    repository.lockActiveAttributionForCancellation.mockResolvedValue({
+      attributionId: 301,
+      taskId: 31,
+      claimId: 41,
+      rewardAllocatedNdp: 1_000,
+      taskStatus: "budget_exhausted",
+      taskStartsAt: new Date("2026-07-01T00:00:00.000Z"),
+      taskEndsAt: new Date("2026-08-01T00:00:00.000Z")
+    });
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW
+    });
+
+    await service.invalidateCancelledBooking({
+      bookingOrderId: 9001,
+      actorUserId: 501,
+      transactionClient: TRANSACTION_CLIENT
+    });
+
+    expect(repository.invalidateAttributionAndRelease).toHaveBeenCalledWith(
+      expect.objectContaining({ restoreTaskStatus: null })
+    );
+  });
+
+  it("is a no-op when cancellation has no active attribution", async () => {
+    const repository = createRepository();
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW
+    });
+
+    await service.invalidateCancelledBooking({
+      bookingOrderId: 9001,
+      actorUserId: 501,
+      transactionClient: TRANSACTION_CLIENT
+    });
+
+    expect(repository.invalidateAttributionAndRelease).not.toHaveBeenCalled();
+    expect(repository.createInvalidationAudit).not.toHaveBeenCalled();
   });
 });

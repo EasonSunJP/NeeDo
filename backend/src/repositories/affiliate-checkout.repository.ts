@@ -1,6 +1,9 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import type {
+  AffiliateCancellationAuditInput,
+  AffiliateCancellationRecord,
+  AffiliateCancellationReleaseInput,
   AffiliateCheckoutAttributionInput,
   AffiliateCheckoutAuditInput,
   AffiliateCheckoutBudgetStatus,
@@ -230,6 +233,134 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
           customerDiscountJpy: input.customerDiscountJpy,
           finalPriceJpy: input.finalPriceJpy,
           rewardAllocatedNdp: input.rewardAllocatedNdp
+        }
+      }
+    });
+  }
+
+  public async lockActiveAttributionForCancellation(
+    bookingOrderId: number
+  ): Promise<AffiliateCancellationRecord | null> {
+    const rows = await this.client.$queryRaw<
+      Array<{
+        attributionId: number;
+        taskId: number;
+        claimId: number;
+        rewardAllocatedNdp: number;
+        taskStatus: string;
+        taskStartsAt: Date;
+        taskEndsAt: Date;
+      }>
+    >(
+      Prisma.sql`
+        SELECT attribution.id AS attributionId,
+               attribution.task_id AS taskId,
+               attribution.claim_id AS claimId,
+               attribution.reward_allocated_ndp AS rewardAllocatedNdp,
+               task.status AS taskStatus,
+               task.task_starts_at AS taskStartsAt,
+               task.task_ends_at AS taskEndsAt
+        FROM affiliate_attributions AS attribution
+        INNER JOIN affiliate_tasks AS task ON task.id = attribution.task_id
+        INNER JOIN affiliate_budget_reservations AS reservation
+          ON reservation.task_id = task.id
+        WHERE attribution.booking_order_id = ${bookingOrderId}
+          AND attribution.status = 'attributed'
+          AND attribution.active_key IS NOT NULL
+          AND attribution.deleted_at IS NULL
+          AND task.deleted_at IS NULL
+          AND reservation.deleted_at IS NULL
+        FOR UPDATE
+      `
+    );
+    const row = rows[0];
+    return row
+      ? {
+          attributionId: Number(row.attributionId),
+          taskId: Number(row.taskId),
+          claimId: Number(row.claimId),
+          rewardAllocatedNdp: Number(row.rewardAllocatedNdp),
+          taskStatus: row.taskStatus.toLowerCase() as AffiliateCheckoutTaskStatus,
+          taskStartsAt: row.taskStartsAt,
+          taskEndsAt: row.taskEndsAt
+        }
+      : null;
+  }
+
+  public async invalidateAttributionAndRelease(
+    input: AffiliateCancellationReleaseInput
+  ): Promise<void> {
+    const attribution = await this.client.affiliateAttribution.updateMany({
+      where: {
+        id: input.attributionId,
+        taskId: input.taskId,
+        status: "ATTRIBUTED",
+        activeKey: { not: null },
+        deletedAt: null
+      },
+      data: {
+        status: "INVALIDATED",
+        activeKey: null,
+        invalidatedAt: input.invalidatedAt,
+        invalidationReason: input.reason
+      }
+    });
+    if (attribution.count !== 1) {
+      throw new Error("error.affiliate.attribution_release_conflict");
+    }
+
+    const reservation = await this.client.affiliateBudgetReservation.updateMany({
+      where: {
+        taskId: input.taskId,
+        deletedAt: null,
+        allocatedNdp: { gte: input.rewardNdp }
+      },
+      data: {
+        allocatedNdp: { decrement: input.rewardNdp },
+        ...(input.restoreTaskStatus ? { status: "ACTIVE" as const } : {})
+      }
+    });
+    if (reservation.count !== 1) {
+      throw new Error("error.affiliate.attribution_release_conflict");
+    }
+
+    const task = await this.client.affiliateTask.updateMany({
+      where: {
+        id: input.taskId,
+        deletedAt: null,
+        allocatedBudgetNdp: { gte: input.rewardNdp },
+        ...(input.restoreTaskStatus ? { status: "BUDGET_EXHAUSTED" as const } : {})
+      },
+      data: {
+        allocatedBudgetNdp: { decrement: input.rewardNdp },
+        ...(input.restoreTaskStatus
+          ? {
+              status:
+                input.restoreTaskStatus === "scheduled" ? "SCHEDULED" : "ACTIVE"
+            }
+          : {})
+      }
+    });
+    if (task.count !== 1) {
+      throw new Error("error.affiliate.attribution_release_conflict");
+    }
+  }
+
+  public async createInvalidationAudit(
+    input: AffiliateCancellationAuditInput
+  ): Promise<void> {
+    await this.client.auditLog.create({
+      data: {
+        actorId: input.actorUserId,
+        action: "affiliate.attribution.invalidated",
+        targetType: "booking_order",
+        targetId: input.bookingOrderId,
+        metadata: {
+          attributionId: input.attributionId,
+          taskId: input.taskId,
+          claimId: input.claimId,
+          rewardReleasedNdp: input.rewardReleasedNdp,
+          reason: input.reason
         }
       }
     });

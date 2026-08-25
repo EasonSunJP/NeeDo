@@ -86,7 +86,7 @@ export class BookingService {
     private readonly auditLogService?: Pick<AuditLogService, "record">,
     private readonly affiliateCheckoutService?: Pick<
       AffiliateCheckoutService,
-      "prepareCheckout" | "persistAttribution"
+      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
     >
   ) {}
 
@@ -471,6 +471,38 @@ export class BookingService {
   }
 
   private createSettlementOptions(
+    actor: AuthenticatedBookingActor,
+    order: BookingOrderPayload,
+    action: OrderAction
+  ): OrderTransitionRepositoryOptions {
+    const actions: Array<
+      NonNullable<OrderTransitionRepositoryOptions["settle"]>
+    > = [];
+    const ledgerOptions = this.createLedgerSettlementOptions(actor, order, action);
+    if (ledgerOptions.settle) {
+      actions.push(ledgerOptions.settle);
+    }
+    if (action === "cancel" && this.affiliateCheckoutService) {
+      actions.push((context) =>
+        this.affiliateCheckoutService!.invalidateCancelledBooking({
+          bookingOrderId: order.id,
+          actorUserId: actor.userId,
+          transactionClient: context.transactionClient
+        })
+      );
+    }
+    return actions.length === 0
+      ? {}
+      : {
+          settle: async (context) => {
+            for (const actionHandler of actions) {
+              await actionHandler(context);
+            }
+          }
+        };
+  }
+
+  private createLedgerSettlementOptions(
     actor: AuthenticatedBookingActor,
     order: BookingOrderPayload,
     action: OrderAction

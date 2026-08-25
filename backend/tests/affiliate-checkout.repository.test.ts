@@ -27,7 +27,10 @@ describe("AffiliateCheckoutRepository contract", () => {
         createTouch: expect.any(Function),
         createAttribution: expect.any(Function),
         allocateAttribution: expect.any(Function),
-        createAttributionAudit: expect.any(Function)
+        createAttributionAudit: expect.any(Function),
+        lockActiveAttributionForCancellation: expect.any(Function),
+        invalidateAttributionAndRelease: expect.any(Function),
+        createInvalidationAudit: expect.any(Function)
       })
     );
   });
