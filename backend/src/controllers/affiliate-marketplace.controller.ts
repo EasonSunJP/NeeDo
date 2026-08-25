@@ -1,9 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import type { AffiliateMarketplaceService } from "../services/affiliate-marketplace.service";
+import type { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
 import type { AuthenticatedAccessContext } from "../services/auth.service";
 import { successResponse } from "../utils/api-response";
 import {
   affiliateClaimListQuerySchema,
+  affiliateCodeValidateBodySchema,
   affiliateMarketplaceClaimIdParamSchema,
   affiliateMarketplaceListQuerySchema,
   affiliateMarketplaceTaskIdParamSchema,
@@ -11,7 +13,10 @@ import {
 } from "../validators/affiliate-marketplace.validator";
 
 export class AffiliateMarketplaceController {
-  public constructor(private readonly service: AffiliateMarketplaceService) {}
+  public constructor(
+    private readonly service: AffiliateMarketplaceService,
+    private readonly checkoutService: Pick<AffiliateCheckoutService, "validateCode">
+  ) {}
 
   public listTasks = this.handle(async (request, response) => {
     response.status(200).json(
@@ -71,6 +76,19 @@ export class AffiliateMarketplaceController {
         await this.service.resolveLink(
           affiliatePublicTokenParamSchema.parse(request.params).publicToken
         )
+      )
+    );
+  });
+
+  public validateCode = this.handle(async (request, response) => {
+    const body = affiliateCodeValidateBodySchema.parse(request.body);
+    response.status(200).json(
+      successResponse(
+        await this.checkoutService.validateCode({
+          customerUserId: this.actor(response).userId,
+          publicCode: body.publicCode,
+          scheduleSlotId: body.scheduleSlotId
+        })
       )
     );
   });

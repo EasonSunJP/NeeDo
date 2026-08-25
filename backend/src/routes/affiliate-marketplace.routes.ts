@@ -6,10 +6,13 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { AffiliateMarketplaceRepository } from "../repositories/affiliate-marketplace.repository";
+import { AffiliateCheckoutRepository } from "../repositories/affiliate-checkout.repository";
+import { AffiliateCheckoutService } from "../services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../services/affiliate-link-token.service";
 import { AffiliateMarketplaceService } from "../services/affiliate-marketplace.service";
 import {
   affiliateClaimListQuerySchema,
+  affiliateCodeValidateBodySchema,
   affiliateMarketplaceClaimIdParamSchema,
   affiliateMarketplaceListQuerySchema,
   affiliateMarketplaceTaskIdParamSchema,
@@ -17,6 +20,7 @@ import {
   createAffiliateClaimBodySchema
 } from "../validators/affiliate-marketplace.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
+import { BOOKING_ROUTE_PERMISSIONS } from "./booking.routes";
 
 export const AFFILIATE_MARKETPLACE_ROUTE_PERMISSIONS = {
   read: "page:affiliate-marketplace",
@@ -40,7 +44,10 @@ export const createAffiliateMarketplaceRoutes = (
   const service =
     dependencies.affiliateMarketplaceService ??
     new AffiliateMarketplaceService(repository, linkTokens);
-  const controller = new AffiliateMarketplaceController(service);
+  const checkoutService =
+    dependencies.affiliateCheckoutService ??
+    new AffiliateCheckoutService(new AffiliateCheckoutRepository(), linkTokens);
+  const controller = new AffiliateMarketplaceController(service, checkoutService);
 
   router.get(
     "/affiliate/tasks",
@@ -84,6 +91,13 @@ export const createAffiliateMarketplaceRoutes = (
     "/affiliate/resolve/:publicToken",
     validateRequest({ params: affiliatePublicTokenParamSchema }),
     controller.resolveLink
+  );
+  router.post(
+    "/affiliate/codes/validate",
+    authenticate(),
+    createAuthorizeMiddleware(BOOKING_ROUTE_PERMISSIONS.create),
+    validateRequest({ body: affiliateCodeValidateBodySchema }),
+    controller.validateCode
   );
 
   return router;

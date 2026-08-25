@@ -22,7 +22,9 @@ describe("AffiliateCheckoutRepository contract", () => {
     expect(repository).toEqual(
       expect.objectContaining({
         forTransaction: expect.any(Function),
+        resolvePromotion: expect.any(Function),
         resolveAndLockPromotion: expect.any(Function),
+        findValidationSlot: expect.any(Function),
         serviceIsInTaskScope: expect.any(Function),
         createTouch: expect.any(Function),
         createAttribution: expect.any(Function),

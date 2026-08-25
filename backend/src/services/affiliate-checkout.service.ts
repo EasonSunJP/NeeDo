@@ -162,14 +162,43 @@ export interface AffiliateCancellationAuditInput {
   reason: "booking_cancelled";
 }
 
+export interface AffiliateValidationSlotRecord {
+  shopId: number;
+  serviceId: number | null;
+  originalPriceJpy: number;
+  scheduledStartAt: Date;
+}
+
+export interface AffiliateCodeValidationInput {
+  customerUserId: number;
+  publicCode: string;
+  scheduleSlotId: number;
+}
+
+export interface AffiliateCodeValidationView extends AffiliatePriceSnapshot {
+  taskId: number;
+  publicCode: string;
+  source: "code";
+  rewardAllocatedNdp: number;
+  taskStartsAt: Date;
+  taskEndsAt: Date;
+}
+
 export interface AffiliateCheckoutRepositoryPort {
   forTransaction(
     transactionClient: AffiliateCheckoutTransactionClient
   ): AffiliateCheckoutRepositoryPort;
+  resolvePromotion(input: {
+    source: AffiliateCheckoutSource;
+    lookupValue: string;
+  }): Promise<AffiliateCheckoutClaimRecord | null>;
   resolveAndLockPromotion(input: {
     source: AffiliateCheckoutSource;
     lookupValue: string;
   }): Promise<AffiliateCheckoutClaimRecord | null>;
+  findValidationSlot(
+    scheduleSlotId: number
+  ): Promise<AffiliateValidationSlotRecord | null>;
   serviceIsInTaskScope(
     taskId: number,
     shopId: number,
@@ -242,81 +271,51 @@ export class AffiliateCheckoutService {
       source: input.selector.source,
       lookupValue
     });
-    const currentTime = this.now();
+    return this.prepareResolvedPromotion(repository, claim, input, this.now());
+  }
 
-    if (
-      !claim ||
-      claim.status !== "active" ||
-      claim.expiresAt <= currentTime ||
-      !this.hasValidSignature(claim, input.selector)
-    ) {
+  public async validateCode(
+    input: AffiliateCodeValidationInput
+  ): Promise<AffiliateCodeValidationView> {
+    const slot = await this.repository.findValidationSlot(input.scheduleSlotId);
+    if (!slot) {
+      throw this.slotUnavailableError();
+    }
+    const selector = selectAffiliatePromotion({ affiliateCode: input.publicCode });
+    if (!selector) {
       throw this.promotionInvalidError();
     }
-
-    const task = claim.task;
-    if (
-      (task.status !== "scheduled" && task.status !== "active") ||
-      task.taskEndsAt <= currentTime ||
-      input.scheduledStartAt < task.taskStartsAt ||
-      input.scheduledStartAt >= task.taskEndsAt
-    ) {
-      throw this.taskNotAttributableError();
-    }
-    if (claim.claimantUserId === input.customerUserId) {
-      throw this.selfAttributionError();
-    }
-    if (
-      !input.serviceId ||
-      !(await repository.serviceIsInTaskScope(
-        task.id,
-        input.shopId,
-        input.serviceId
-      ))
-    ) {
-      throw this.scopeMismatchError();
-    }
-    if (input.originalPriceJpy < task.minimumOrderAmountJpy) {
-      throw this.minimumAmountError();
-    }
-
-    const reservation = task.budgetReservation;
-    const remainingBudget = reservation
-      ? reservation.totalFrozenNdp -
-        reservation.allocatedNdp -
-        reservation.capturedNdp -
-        reservation.releasedNdp
-      : 0;
-    if (
-      !reservation ||
-      reservation.status !== "active" ||
-      remainingBudget < task.rewardNdpPerCompletedOrder
-    ) {
-      throw this.budgetUnavailableError();
-    }
-
-    const price = calculateAffiliatePrice({
-      originalPriceJpy: input.originalPriceJpy,
-      discountType: task.customerDiscountType,
-      fixedDiscountJpy: task.fixedDiscountJpy,
-      discountRateBps: task.discountRateBps,
-      discountCapJpy: task.discountCapJpy
+    const claim = await this.repository.resolvePromotion({
+      source: "code",
+      lookupValue: selector.value.toUpperCase()
     });
-    const windowExpiresAt = new Date(
-      currentTime.getTime() + task.attributionWindowDays * 24 * 60 * 60 * 1_000
+    const prepared = await this.prepareResolvedPromotion(
+      this.repository,
+      claim,
+      {
+        selector,
+        customerUserId: input.customerUserId,
+        shopId: slot.shopId,
+        serviceId: slot.serviceId,
+        originalPriceJpy: slot.originalPriceJpy,
+        scheduledStartAt: slot.scheduledStartAt,
+        transactionClient: undefined
+      },
+      this.now()
     );
-
+    if (!claim) {
+      throw this.promotionInvalidError();
+    }
     return {
-      claimId: claim.id,
-      taskId: task.id,
-      claimantUserId: claim.claimantUserId,
-      publicCode: claim.publicCode,
-      source: input.selector.source,
-      ...price,
-      rewardAllocatedNdp: task.rewardNdpPerCompletedOrder,
-      attributionStatus: "attributed",
-      attributedAt: currentTime,
-      expiresAt:
-        claim.expiresAt < windowExpiresAt ? claim.expiresAt : windowExpiresAt
+      taskId: prepared.taskId,
+      publicCode: prepared.publicCode,
+      source: "code",
+      originalPriceJpy: prepared.originalPriceJpy,
+      customerDiscountJpy: prepared.customerDiscountJpy,
+      finalPriceJpy: prepared.finalPriceJpy,
+      rewardAllocatedNdp: prepared.rewardAllocatedNdp,
+      taskStartsAt: claim.task.taskStartsAt,
+      taskEndsAt: claim.task.taskEndsAt
     };
   }
 
@@ -423,6 +422,87 @@ export class AffiliateCheckoutService {
     });
   }
 
+  private async prepareResolvedPromotion(
+    repository: AffiliateCheckoutRepositoryPort,
+    claim: AffiliateCheckoutClaimRecord | null,
+    input: AffiliateCheckoutPrepareInput,
+    currentTime: Date
+  ): Promise<AffiliateCheckoutPrepared> {
+    if (
+      !claim ||
+      claim.status !== "active" ||
+      claim.expiresAt <= currentTime ||
+      !this.hasValidSignature(claim, input.selector)
+    ) {
+      throw this.promotionInvalidError();
+    }
+
+    const task = claim.task;
+    if (
+      (task.status !== "scheduled" && task.status !== "active") ||
+      task.taskEndsAt <= currentTime ||
+      input.scheduledStartAt < task.taskStartsAt ||
+      input.scheduledStartAt >= task.taskEndsAt
+    ) {
+      throw this.taskNotAttributableError();
+    }
+    if (claim.claimantUserId === input.customerUserId) {
+      throw this.selfAttributionError();
+    }
+    if (
+      !input.serviceId ||
+      !(await repository.serviceIsInTaskScope(
+        task.id,
+        input.shopId,
+        input.serviceId
+      ))
+    ) {
+      throw this.scopeMismatchError();
+    }
+    if (input.originalPriceJpy < task.minimumOrderAmountJpy) {
+      throw this.minimumAmountError();
+    }
+
+    const reservation = task.budgetReservation;
+    const remainingBudget = reservation
+      ? reservation.totalFrozenNdp -
+        reservation.allocatedNdp -
+        reservation.capturedNdp -
+        reservation.releasedNdp
+      : 0;
+    if (
+      !reservation ||
+      reservation.status !== "active" ||
+      remainingBudget < task.rewardNdpPerCompletedOrder
+    ) {
+      throw this.budgetUnavailableError();
+    }
+
+    const price = calculateAffiliatePrice({
+      originalPriceJpy: input.originalPriceJpy,
+      discountType: task.customerDiscountType,
+      fixedDiscountJpy: task.fixedDiscountJpy,
+      discountRateBps: task.discountRateBps,
+      discountCapJpy: task.discountCapJpy
+    });
+    const windowExpiresAt = new Date(
+      currentTime.getTime() + task.attributionWindowDays * 24 * 60 * 60 * 1_000
+    );
+    return {
+      claimId: claim.id,
+      taskId: task.id,
+      claimantUserId: claim.claimantUserId,
+      publicCode: claim.publicCode,
+      source: input.selector.source,
+      ...price,
+      rewardAllocatedNdp: task.rewardNdpPerCompletedOrder,
+      attributionStatus: "attributed",
+      attributedAt: currentTime,
+      expiresAt:
+        claim.expiresAt < windowExpiresAt ? claim.expiresAt : windowExpiresAt
+    };
+  }
+
   private resolveCancellationRestoreStatus(
     attribution: AffiliateCancellationRecord,
     currentTime: Date
@@ -464,6 +544,14 @@ export class AffiliateCheckoutService {
       publicTokenId: claim.publicTokenId,
       publicToken: selector.value,
       tokenHash: claim.tokenHash
+    });
+  }
+
+  private slotUnavailableError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
+      message: "error.booking.slot_unavailable",
+      statusCode: 409
     });
   }
 

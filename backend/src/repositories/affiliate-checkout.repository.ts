@@ -13,7 +13,8 @@ import type {
   AffiliateCheckoutSource,
   AffiliateCheckoutTaskStatus,
   AffiliateCheckoutTouchInput,
-  AffiliateCheckoutTransactionClient
+  AffiliateCheckoutTransactionClient,
+  AffiliateValidationSlotRecord
 } from "../services/affiliate-checkout.service";
 
 type AffiliateCheckoutPrismaClient = PrismaClient | Prisma.TransactionClient;
@@ -41,6 +42,22 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     return new AffiliateCheckoutRepository(
       transactionClient as AffiliateCheckoutPrismaClient
     );
+  }
+
+  public async resolvePromotion(input: {
+    source: AffiliateCheckoutSource;
+    lookupValue: string;
+  }): Promise<AffiliateCheckoutClaimRecord | null> {
+    const claim = await this.client.affiliateClaim.findFirst({
+      where: {
+        deletedAt: null,
+        ...(input.source === "code"
+          ? { publicCode: input.lookupValue }
+          : { publicTokenId: input.lookupValue })
+      },
+      include: claimInclude
+    });
+    return claim ? this.mapClaim(claim) : null;
   }
 
   public async resolveAndLockPromotion(input: {
@@ -73,6 +90,66 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       include: claimInclude
     });
     return claim ? this.mapClaim(claim) : null;
+  }
+
+  public async findValidationSlot(
+    scheduleSlotId: number
+  ): Promise<AffiliateValidationSlotRecord | null> {
+    const slot = await this.client.scheduleSlot.findFirst({
+      where: {
+        id: scheduleSlotId,
+        deletedAt: null,
+        status: "AVAILABLE",
+        shop: {
+          deletedAt: null,
+          status: "published",
+          entitySuspensions: {
+            none: {
+              activeKey: { not: null },
+              status: "active",
+              deletedAt: null
+            }
+          }
+        }
+      },
+      include: {
+        service: true,
+        technicianService: true,
+        shop: true
+      }
+    });
+    if (!slot || slot.bookedCount >= slot.capacity) {
+      return null;
+    }
+    const technicianPricing = slot.shop.pricingMode === "TECHNICIAN";
+    if (technicianPricing) {
+      const service = slot.technicianService;
+      if (
+        !service ||
+        !service.sourceShopServiceId ||
+        service.deletedAt ||
+        !service.isActive ||
+        !service.isBookable
+      ) {
+        return null;
+      }
+      return {
+        shopId: slot.shopId,
+        serviceId: service.sourceShopServiceId,
+        originalPriceJpy: service.priceAmount,
+        scheduledStartAt: slot.startsAt
+      };
+    }
+    const service = slot.service;
+    if (!service || service.deletedAt || service.status !== "published") {
+      return null;
+    }
+    return {
+      shopId: slot.shopId,
+      serviceId: service.id,
+      originalPriceJpy: Math.round(Number(service.priceAmount.toString())),
+      scheduledStartAt: slot.startsAt
+    };
   }
 
   public async serviceIsInTaskScope(

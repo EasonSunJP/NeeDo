@@ -8,6 +8,7 @@ import {
 } from "../src/services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../src/services/affiliate-link-token.service";
 import type { AppError } from "../src/utils/app-error";
+import { ERROR_CODES } from "../src/constants/error-codes";
 
 const NOW = new Date("2026-08-26T04:00:00.000Z");
 const TRANSACTION_CLIENT = { transaction: "checkout" };
@@ -52,7 +53,14 @@ const createRepository = (
 ): jest.Mocked<AffiliateCheckoutRepositoryPort> => {
   const repository: jest.Mocked<AffiliateCheckoutRepositoryPort> = {
     forTransaction: jest.fn(),
+    resolvePromotion: jest.fn().mockResolvedValue(claim),
     resolveAndLockPromotion: jest.fn().mockResolvedValue(claim),
+    findValidationSlot: jest.fn().mockResolvedValue({
+      shopId: 8,
+      serviceId: 88,
+      originalPriceJpy: 12_000,
+      scheduledStartAt: new Date("2026-09-15T03:00:00.000Z")
+    }),
     serviceIsInTaskScope: jest.fn().mockResolvedValue(true),
     createTouch: jest.fn().mockResolvedValue(111),
     createAttribution: jest.fn().mockResolvedValue(undefined),
@@ -573,5 +581,58 @@ describe("AffiliateCheckoutService", () => {
 
     expect(repository.invalidateAttributionAndRelease).not.toHaveBeenCalled();
     expect(repository.createInvalidationAudit).not.toHaveBeenCalled();
+  });
+
+  it("prevalidates a code from a server-resolved schedule slot without persistence", async () => {
+    const repository = createRepository();
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW
+    });
+
+    await expect(
+      service.validateCode({
+        customerUserId: 501,
+        publicCode: " ndo-valid ",
+        scheduleSlotId: 1201
+      })
+    ).resolves.toEqual({
+      taskId: 31,
+      publicCode: "NDO-VALID",
+      source: "code",
+      originalPriceJpy: 12_000,
+      customerDiscountJpy: 1_000,
+      finalPriceJpy: 11_000,
+      rewardAllocatedNdp: 1_000,
+      taskStartsAt: new Date("2026-08-01T00:00:00.000Z"),
+      taskEndsAt: new Date("2026-10-01T00:00:00.000Z")
+    });
+    expect(repository.findValidationSlot).toHaveBeenCalledWith(1201);
+    expect(repository.resolvePromotion).toHaveBeenCalledWith({
+      source: "code",
+      lookupValue: "NDO-VALID"
+    });
+    expect(repository.createTouch).not.toHaveBeenCalled();
+    expect(repository.createAttribution).not.toHaveBeenCalled();
+    expect(repository.allocateAttribution).not.toHaveBeenCalled();
+  });
+
+  it("rejects validation when the schedule slot cannot be priced server-side", async () => {
+    const repository = createRepository();
+    repository.findValidationSlot.mockResolvedValue(null);
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW
+    });
+
+    await expect(
+      service.validateCode({
+        customerUserId: 501,
+        publicCode: "NDO-VALID",
+        scheduleSlotId: 9999
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.BOOKING_SLOT_UNAVAILABLE,
+      message: "error.booking.slot_unavailable",
+      statusCode: 409
+    });
   });
 });

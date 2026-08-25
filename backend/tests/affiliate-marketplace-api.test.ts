@@ -128,7 +128,11 @@ const createUser = (id: number, permissionCodes: string[]) => {
 
 const createFixture = () => {
   const users = [
-    createUser(7, ["page:affiliate-marketplace", "button:affiliate-claim"]),
+    createUser(7, [
+      "page:affiliate-marketplace",
+      "button:affiliate-claim",
+      "booking:create"
+    ]),
     createUser(8, ["page:affiliate-marketplace"]),
     createUser(9, ["button:affiliate-claim"])
   ];
@@ -158,6 +162,19 @@ const createFixture = () => {
       task: publicTask
     }))
   };
+  const affiliateCheckoutService = {
+    validateCode: jest.fn(async () => ({
+      taskId: publicTask.id,
+      publicCode: claim.publicCode,
+      source: "code",
+      originalPriceJpy: 8_000,
+      customerDiscountJpy: 500,
+      finalPriceJpy: 7_500,
+      rewardAllocatedNdp: 1_000,
+      taskStartsAt: publicTask.taskStartsAt,
+      taskEndsAt: publicTask.taskEndsAt
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: {
@@ -165,7 +182,8 @@ const createFixture = () => {
     },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
-    affiliateMarketplaceService
+    affiliateMarketplaceService,
+    affiliateCheckoutService
   } as never);
   const tokens = Object.fromEntries(
     users.map((user) => [
@@ -177,7 +195,7 @@ const createFixture = () => {
       }).token
     ])
   ) as Record<number, string>;
-  return { app, affiliateMarketplaceService, tokens };
+  return { app, affiliateMarketplaceService, affiliateCheckoutService, tokens };
 };
 
 describe("affiliate marketplace HTTP API", () => {
@@ -239,6 +257,50 @@ describe("affiliate marketplace HTTP API", () => {
       expect.objectContaining({ userId: 7 }),
       publicTask.id
     );
+  });
+
+  it("prevalidates a code for the authenticated customer without allocating it", async () => {
+    const fixture = createFixture();
+
+    const response = await request(fixture.app)
+      .post("/api/v1/affiliate/codes/validate")
+      .set("Authorization", `Bearer ${fixture.tokens[7]}`)
+      .send({ publicCode: claim.publicCode, scheduleSlotId: 1201 })
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      taskId: publicTask.id,
+      publicCode: claim.publicCode,
+      originalPriceJpy: 8_000,
+      customerDiscountJpy: 500,
+      finalPriceJpy: 7_500,
+      rewardAllocatedNdp: 1_000
+    });
+    expect(fixture.affiliateCheckoutService.validateCode).toHaveBeenCalledWith({
+      customerUserId: 7,
+      publicCode: claim.publicCode,
+      scheduleSlotId: 1201
+    });
+  });
+
+  it("protects code validation with booking permission and strict input", async () => {
+    const fixture = createFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/affiliate/codes/validate")
+      .send({ publicCode: claim.publicCode, scheduleSlotId: 1201 })
+      .expect(401);
+    await request(fixture.app)
+      .post("/api/v1/affiliate/codes/validate")
+      .set("Authorization", `Bearer ${fixture.tokens[8]}`)
+      .send({ publicCode: claim.publicCode, scheduleSlotId: 1201 })
+      .expect(403);
+    await request(fixture.app)
+      .post("/api/v1/affiliate/codes/validate")
+      .set("Authorization", `Bearer ${fixture.tokens[7]}`)
+      .send({ publicCode: claim.publicCode, scheduleSlotId: 1201, customerUserId: 999 })
+      .expect(400);
+    expect(fixture.affiliateCheckoutService.validateCode).not.toHaveBeenCalled();
   });
 
   it("enforces authentication, distinct read/claim permissions, and strict validation", async () => {
