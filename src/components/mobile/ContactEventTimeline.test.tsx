@@ -46,10 +46,22 @@ describe("ContactEventTimeline comment composer visibility", () => {
     expect(markup).not.toContain('aria-label="评论"');
   });
 
-  it("renders unspecified audit tones as neutral instead of green", () => {
+  it("keeps the previous primary visual when tone is omitted", () => {
     const markup = renderToStaticMarkup(
       <ContactEventTimeline
-        events={[{ ...events[0], id: "unknown-audit", tone: undefined }]}
+        events={[{ ...events[0], id: "omitted-tone", tone: undefined }]}
+        showCommentComposer={false}
+      />
+    );
+
+    expect(markup).toContain('data-tone="default"');
+    expect(markup).toContain("bg-[color:var(--client-primary)]");
+  });
+
+  it("renders an explicitly neutral tone with the neutral gray visual", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimeline
+        events={[{ ...events[0], id: "explicit-neutral", tone: "neutral" }]}
         showCommentComposer={false}
       />
     );

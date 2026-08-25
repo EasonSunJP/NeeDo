@@ -388,8 +388,8 @@ function FormalIdentityHeader({
             <h2 className="mt-3 break-words text-2xl font-black tracking-[-0.025em] sm:text-3xl">{displayName}</h2>
             <p className="mt-2 break-words text-sm font-bold text-white/65">{shopLabel} · {city}</p>
             <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em] text-white/70">
-              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{entityLabel} #{formatInteger(profileId, localization)}</span>
-              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{localization.t("账号")} #{formatInteger(accountId, localization)}</span>
+              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{entityLabel} #{String(profileId)}</span>
+              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{localization.t("账号")} #{String(accountId)}</span>
               <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{localization.t(accountActive ? "账号启用" : "账号停用")}</span>
             </div>
           </div>
@@ -845,17 +845,20 @@ function AuditMetadata({ metadata, localization }: { metadata: Record<string, un
 }
 
 function renderAuditMetadataValue(value: unknown, localization: FormalLocalization): ReactNode {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return value.trim() ? value : localization.t("尚未接入正式数据");
   if (typeof value === "number") return new Intl.NumberFormat(localization.locale).format(value);
   if (typeof value === "boolean") return localization.t(value ? "是" : "否");
   if (value === null || value === undefined) return localization.t("尚未接入正式数据");
   if (Array.isArray(value)) {
+    if (value.length === 0) return localization.t("尚未接入正式数据");
     return <span>{value.map((item, index) => <span key={index}>{index > 0 ? " · " : null}{renderAuditMetadataValue(item, localization)}</span>)}</span>;
   }
   if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return localization.t("尚未接入正式数据");
     return (
       <span className="grid gap-1">
-        {Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => (
+        {entries.map(([key, nestedValue]) => (
           <span key={key}><strong>{key}:</strong> {renderAuditMetadataValue(nestedValue, localization)}</span>
         ))}
       </span>
@@ -952,7 +955,7 @@ function compensationStatusLabel(status: string, localization: FormalLocalizatio
 
 function scopeLabel(scopeType: string | null, scopeId: number | null, localization: FormalLocalization) {
   if (!scopeType || scopeType === "global") return localization.t("全局作用域");
-  return scopeId === null ? scopeType : `${scopeType} #${formatInteger(scopeId, localization)}`;
+  return scopeId === null ? scopeType : `${scopeType} #${String(scopeId)}`;
 }
 
 function identityTypeLabel(type: string, localization: FormalLocalization) {

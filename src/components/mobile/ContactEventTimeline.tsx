@@ -117,7 +117,7 @@ export function ContactEventTimeline({
         return (
           <div
             className="grid grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
-            data-tone={event.tone ?? "neutral"}
+            data-tone={event.tone ?? "default"}
             key={event.id}
           >
             <div className="break-words whitespace-pre-line pt-1 text-right text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums">
@@ -356,7 +356,7 @@ export function ContactEventTimelinePanel({
   );
 }
 
-function getContactEventTimelineDotClassName(tone: ContactEventTimelineTone = "neutral") {
+function getContactEventTimelineDotClassName(tone: ContactEventTimelineTone = "green") {
   if (tone === "red") {
     return "bg-[#ef4444]";
   }
@@ -368,7 +368,7 @@ function getContactEventTimelineDotClassName(tone: ContactEventTimelineTone = "n
   return "bg-[color:var(--client-primary)]";
 }
 
-function getContactEventTimelineLineClassName(tone: ContactEventTimelineTone = "neutral") {
+function getContactEventTimelineLineClassName(tone: ContactEventTimelineTone = "green") {
   if (tone === "red") {
     return "bg-[#ef4444]";
   }

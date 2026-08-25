@@ -6,7 +6,7 @@ import type {
   BackofficeScheduleSlotPayload,
   BackofficeTechnicianDetailPayload
 } from "../../api/backofficeRealData";
-import { translateText } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
 import {
   FormalCustomerDetailPanel,
   FormalTechnicianDetailPanel,
@@ -231,6 +231,27 @@ describe("formal profile tab accessibility", () => {
 });
 
 describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
+  it("renders profile, account, and scoped identifiers exactly without locale grouping", () => {
+    const markup = renderToStaticMarkup(
+      <FormalTechnicianDetailPanel detail={{
+        ...technicianDetail,
+        id: 2031,
+        account: {
+          ...technicianDetail.account,
+          roles: [{ ...technicianDetail.account.roles[0], scopeId: 3008 }],
+          identities: [{ ...technicianDetail.account.identities[0], scopeId: 4008 }]
+        }
+      }} />
+    );
+
+    for (const exactId of ["#2031", "#1031", "shop #3008", "shop #4008"]) {
+      expect(markup).toContain(exactId);
+    }
+    for (const groupedId of ["#2,031", "#1,031", "shop #3,008", "shop #4,008"]) {
+      expect(markup).not.toContain(groupedId);
+    }
+  });
+
   it("renders every formal technician section and page-owned slots", () => {
     const markup = renderToStaticMarkup(
       <FormalTechnicianDetailPanel
@@ -294,6 +315,26 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     expect(markup).toContain('data-tone="neutral"');
     expect(markup).toMatch(/custom\.empty\.action[\s\S]*?尚未接入正式数据/);
     expect(markup).not.toContain("记录了 custom.empty.action");
+  });
+
+  it("normalizes recursively empty structured metadata to the localized unavailable state", () => {
+    const markup = renderToStaticMarkup(
+      <FormalTechnicianDetailPanel detail={{
+        ...technicianDetail,
+        timeline: [{
+          id: "audit-empty-values",
+          action: "custom.empty.values",
+          actorName: "审计服务",
+          actorAvatarUrl: null,
+          createdAt: "2026-08-24T10:00:00.000Z",
+          metadata: { reason: "  ", changedFields: [], source: {} }
+        }]
+      }} />
+    );
+
+    for (const label of ["原因", "变更字段", "来源"]) {
+      expect(markup).toMatch(new RegExp(`${label}[\\s\\S]*?尚未接入正式数据`));
+    }
   });
 
   it("uses a neutral missing-avatar placeholder instead of deriving a fake identity", () => {
@@ -401,6 +442,29 @@ describe("FormalCustomerDetailPanel formal-data boundaries", () => {
       expect(markup).toContain(value);
     }
   });
+
+  it("uses exact account, visibility, missing-bio, avatar-alt, and approval translation keys", () => {
+    const activePublicMarkup = renderToStaticMarkup(
+      <FormalCustomerDetailPanel detail={{ ...customerDetail, bio: null, isPublic: true }} />
+    );
+    const inactivePrivateMarkup = renderToStaticMarkup(
+      <FormalCustomerDetailPanel detail={{
+        ...customerDetail,
+        account: { ...customerDetail.account, isActive: false },
+        isPublic: false
+      }} />
+    );
+    const technicianMarkup = renderToStaticMarkup(<FormalTechnicianDetailPanel detail={technicianDetail} />);
+
+    for (const value of ["账号启用", "资料公开", "未填写"]) {
+      expect(activePublicMarkup).toContain(value);
+    }
+    for (const value of ["账号停用", "资料非公开"]) {
+      expect(inactivePrivateMarkup).toContain(value);
+    }
+    expect(technicianMarkup).toContain('alt="佐藤 美香 头像"');
+    expect(technicianMarkup).toContain("已批准");
+  });
 });
 
 describe("formal profile localization and dependency boundary", () => {
@@ -411,6 +475,37 @@ describe("formal profile localization and dependency boundary", () => {
     expect(translateText("迟到情况", "zh-Hant")).toBe("遲到情況");
     expect(formatFormalScheduleMinutes(60, "ja")).toBe("1時間");
     expect(formatFormalScheduleMinutes(59, "en")).toBe("59 min");
+  });
+
+  it("provides semantically exact Task 4 state and fallback copy in every supported language", () => {
+    const expected: Record<Language, Record<string, string>> = {
+      zh: {
+        账号启用: "账号启用", 账号停用: "账号停用", 资料公开: "资料公开", 资料非公开: "资料非公开",
+        未填写: "未填写", 头像: "头像", 已批准: "已批准"
+      },
+      "zh-Hant": {
+        账号启用: "帳號啟用", 账号停用: "帳號停用", 资料公开: "資料公開", 资料非公开: "資料非公開",
+        未填写: "未填寫", 头像: "頭像", 已批准: "已批准"
+      },
+      ja: {
+        账号启用: "アカウント有効", 账号停用: "アカウント停止", 资料公开: "プロフィール公開", 资料非公开: "プロフィール非公開",
+        未填写: "未入力", 头像: "プロフィール画像", 已批准: "承認済み"
+      },
+      en: {
+        账号启用: "Account active", 账号停用: "Account inactive", 资料公开: "Profile public", 资料非公开: "Profile private",
+        未填写: "Not provided", 头像: "Profile image", 已批准: "Approved"
+      },
+      ko: {
+        账号启用: "계정 활성", 账号停用: "계정 비활성", 资料公开: "프로필 공개", 资料非公开: "프로필 비공개",
+        未填写: "미입력", 头像: "프로필 이미지", 已批准: "승인됨"
+      }
+    };
+
+    for (const [language, entries] of Object.entries(expected) as Array<[Language, Record<string, string>]>) {
+      for (const [sourceText, translatedText] of Object.entries(entries)) {
+        expect(translateText(sourceText, language)).toBe(translatedText);
+      }
+    }
   });
 
   it("does not hard-code locales or depend on legacy/generated/write-capable sources", () => {
