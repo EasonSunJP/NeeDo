@@ -364,7 +364,6 @@ class InMemoryAffiliateTaskRepository implements AffiliateTaskRepositoryPort {
   }): Promise<void> {
     Object.assign(this.tasks.get(input.taskId)!, input, {
       status: "rejected",
-      reservedBudgetNdp: 0,
       lockVersion: 3
     });
   }
@@ -641,7 +640,7 @@ describe("AffiliateTaskService submission and review", () => {
     expect(repeated.id).toBe(rejected.id);
     expect(rejected).toMatchObject({
       status: "rejected",
-      reservedBudgetNdp: 0,
+      reservedBudgetNdp: 2_000_000,
       releasedBudgetNdp: 2_000_000,
       reviewedById: platformActor.userId,
       rejectionReason: "Campaign proof is incomplete",

@@ -4,6 +4,8 @@ import type {
   AffiliateTaskTransactionClient
 } from "../src/services/affiliate-task.service";
 
+const now = new Date("2026-08-26T00:00:00.000Z");
+
 describe("AffiliateTaskRepository transaction boundary", () => {
   it("reuses the caller transaction client instead of opening a nested transaction", async () => {
     const transactionClient = { affiliateTask: { findFirst: jest.fn() } };
@@ -96,5 +98,32 @@ describe("AffiliateTaskRepository transaction boundary", () => {
         })
       })
     );
+  });
+
+  it("preserves historical reserved budget when rejection records a full release", async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const repository = new AffiliateTaskRepository({
+      affiliateTask: { update }
+    } as never);
+
+    await repository.markTaskRejected({
+      taskId: 81,
+      reviewedById: 99,
+      reviewedAt: now,
+      rejectionReason: "Incomplete proof",
+      releasedBudgetNdp: 2_000_000
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 81 },
+      data: {
+        status: "REJECTED",
+        reviewedById: 99,
+        reviewedAt: now,
+        rejectionReason: "Incomplete proof",
+        releasedBudgetNdp: 2_000_000,
+        lockVersion: { increment: 1 }
+      }
+    });
   });
 });

@@ -399,7 +399,6 @@ export class AffiliateTaskRepository implements AffiliateTaskRepositoryPort {
         reviewedById: input.reviewedById,
         reviewedAt: input.reviewedAt,
         rejectionReason: input.rejectionReason,
-        reservedBudgetNdp: 0,
         releasedBudgetNdp: input.releasedBudgetNdp,
         lockVersion: { increment: 1 }
       }

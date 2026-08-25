@@ -370,7 +370,7 @@ npm --prefix backend run lint
 npm --prefix backend test -- --runInBand
 npm --prefix backend run build
 npm run lint
-npm test -- --runInBand
+npm test
 npm run build
 ```
 
