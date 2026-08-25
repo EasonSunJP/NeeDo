@@ -1,20 +1,30 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { config as loadDotenv } from "dotenv";
+import { requireCustomerProfileRepositoryIntegrationDatabaseUrl } from "./customer-profile-repository-integration-safety";
 
 const runCustomerProfileRepositoryIntegration =
   process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
 
-if (runCustomerProfileRepositoryIntegration && process.env.ENV_FILE) {
-  loadDotenv({ path: process.env.ENV_FILE, override: true });
-  const integrationDatabaseUrl = new URL(process.env.DATABASE_URL ?? "");
+if (runCustomerProfileRepositoryIntegration) {
+  const envFile = process.env.ENV_FILE?.trim();
 
-  if (
-    !["localhost", "127.0.0.1", "::1"].includes(integrationDatabaseUrl.hostname) ||
-    /prod/i.test(integrationDatabaseUrl.pathname)
-  ) {
-    throw new Error("Customer profile repository integration tests require a local non-production database");
+  if (!envFile) {
+    throw new Error(
+      "Customer profile repository integration tests require ENV_FILE; inherited DATABASE_URL values are forbidden"
+    );
   }
+
+  const loadedEnvironment = loadDotenv({ path: envFile, override: true });
+
+  if (loadedEnvironment.error) {
+    throw new Error(`Unable to load customer profile repository integration ENV_FILE: ${envFile}`);
+  }
+
+  process.env.DATABASE_URL = requireCustomerProfileRepositoryIntegrationDatabaseUrl({
+    databaseUrl: loadedEnvironment.parsed?.DATABASE_URL,
+    envFile
+  });
 }
 
 process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
