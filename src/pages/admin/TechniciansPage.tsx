@@ -14,11 +14,20 @@ import { TechnicianListModule } from "../../components/admin/TechnicianListModul
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Drawer } from "../../components/ui/Drawer";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
 import type { Technician } from "../../types/domain";
+import {
+  createFormalDetailRequestCoordinator,
+  runFormalDetailMutationSequence
+} from "./formalDetailRequest";
 
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 export function TechniciansPage() {
+  const { language } = useOptionalI18n();
+  const languageRef = useRef(language);
+  languageRef.current = language;
   const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
   const [shops, setShops] = useState<BackofficeShopPayload[]>([]);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<number | null>(null);
@@ -29,17 +38,6 @@ export function TechniciansPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const mountedRef = useRef(false);
-  const selectedTechnicianIdRef = useRef<number | null>(null);
-  const technicianDetailRequestRef = useRef(0);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      technicianDetailRequestRef.current += 1;
-    };
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,14 +56,18 @@ export function TechniciansPage() {
     }
   }, []);
 
-  const loadTechnicianDetail = useCallback(async (technicianId: number) => {
-    const requestId = ++technicianDetailRequestRef.current;
-    setTechnicianDetail(null);
-    setTechnicianDetailLoading(true);
-    setTechnicianDetailError("");
-    try {
-      const detail = await backofficeRealDataApi.technician("backoffice", technicianId);
-      if (!mountedRef.current || requestId !== technicianDetailRequestRef.current || selectedTechnicianIdRef.current !== technicianId) return;
+  const technicianDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeTechnicianDetailPayload>({
+    onError: (detailError) => {
+      const message = detailError instanceof Error ? detailError.message : typeof detailError === "string" ? detailError : "";
+      setTechnicianDetailError(message.trim() || translateText("技师正式详情读取失败", languageRef.current));
+    },
+    onFinally: () => setTechnicianDetailLoading(false),
+    onStart: () => {
+      setTechnicianDetail(null);
+      setTechnicianDetailLoading(true);
+      setTechnicianDetailError("");
+    },
+    onSuccess: (detail) => {
       setTechnicianDetail(detail);
       setDraft({
         displayName: detail.displayName,
@@ -73,24 +75,22 @@ export function TechniciansPage() {
         serviceArea: detail.serviceArea ?? "",
         shopId: detail.shopId ? String(detail.shopId) : ""
       });
-    } catch (detailError) {
-      if (!mountedRef.current || requestId !== technicianDetailRequestRef.current || selectedTechnicianIdRef.current !== technicianId) return;
-      setTechnicianDetailError(detailError instanceof Error ? detailError.message : String(detailError));
-    } finally {
-      if (mountedRef.current && requestId === technicianDetailRequestRef.current && selectedTechnicianIdRef.current === technicianId) {
-        setTechnicianDetailLoading(false);
-      }
-    }
-  }, []);
+    },
+    request: (technicianId) => backofficeRealDataApi.technician("backoffice", technicianId)
+  }), []);
+
+  useEffect(() => {
+    technicianDetailRequest.activate();
+    return () => technicianDetailRequest.dispose();
+  }, [technicianDetailRequest]);
 
   const closeTechnician = useCallback(() => {
-    selectedTechnicianIdRef.current = null;
-    technicianDetailRequestRef.current += 1;
+    technicianDetailRequest.invalidate();
     setSelectedTechnicianId(null);
     setTechnicianDetail(null);
     setTechnicianDetailLoading(false);
     setTechnicianDetailError("");
-  }, []);
+  }, [technicianDetailRequest]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -101,21 +101,21 @@ export function TechniciansPage() {
     const id = Number(technician.id.replace("tech-", ""));
     const record = technicians.find((item) => item.id === id);
     if (!record) return;
-    selectedTechnicianIdRef.current = record.id;
     setSelectedTechnicianId(record.id);
     setDraft({ displayName: "", city: "", serviceArea: "", shopId: "" });
-    void loadTechnicianDetail(record.id);
+    void technicianDetailRequest.load(record.id);
   };
 
   const mutate = async (technicianId: number, action: () => Promise<unknown>) => {
     setSaving(true);
     setError("");
     try {
-      await action();
-      await load();
-      if (mountedRef.current && selectedTechnicianIdRef.current === technicianId) {
-        await loadTechnicianDetail(technicianId);
-      }
+      await runFormalDetailMutationSequence({
+        isDetailCurrent: () => technicianDetailRequest.getSelectedId() === technicianId,
+        mutate: action,
+        refreshDetail: () => technicianDetailRequest.load(technicianId),
+        refreshList: load
+      });
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
     } finally {
@@ -128,7 +128,7 @@ export function TechniciansPage() {
     setError("");
     try {
       await backofficeRealDataApi.deleteTechnician("backoffice", technicianId);
-      if (selectedTechnicianIdRef.current === technicianId) {
+      if (technicianDetailRequest.getSelectedId() === technicianId) {
         closeTechnician();
       }
       await load();
@@ -151,11 +151,11 @@ export function TechniciansPage() {
       </ModuleShell>
 
       <Drawer open={selectedTechnicianId !== null} title="技师集中详情" onClose={closeTechnician}>
-        {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取技师正式详情...</p> : null}
+        {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取技师正式详情...", language)}</p> : null}
         {!technicianDetailLoading && technicianDetailError ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
             <span>{technicianDetailError}</span>
-            <Button onClick={() => { if (selectedTechnicianId !== null) void loadTechnicianDetail(selectedTechnicianId); }} size="sm" variant="secondary">重试</Button>
+            <Button onClick={() => void technicianDetailRequest.retry()} size="sm" variant="secondary">{translateText("重试", language)}</Button>
           </div>
         ) : null}
         {!technicianDetailLoading && !technicianDetailError && technicianDetail ? (

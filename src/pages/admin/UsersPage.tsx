@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
@@ -12,11 +12,20 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
+import {
+  createFormalDetailRequestCoordinator,
+  runFormalDetailMutationSequence
+} from "./formalDetailRequest";
 import { UserManagementWorkspace } from "./UserManagementWorkspace";
 
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 function CustomerProfilesWorkspace() {
+  const { language } = useOptionalI18n();
+  const languageRef = useRef(language);
+  languageRef.current = language;
   const [customers, setCustomers] = useState<BackofficeCustomerPayload[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [customerDetail, setCustomerDetail] = useState<BackofficeCustomerDetailPayload | null>(null);
@@ -27,17 +36,6 @@ function CustomerProfilesWorkspace() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const mountedRef = useRef(false);
-  const selectedCustomerIdRef = useRef<number | null>(null);
-  const customerDetailRequestRef = useRef(0);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      customerDetailRequestRef.current += 1;
-    };
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,14 +50,18 @@ function CustomerProfilesWorkspace() {
     }
   }, [keyword]);
 
-  const loadCustomerDetail = useCallback(async (customerId: number) => {
-    const requestId = ++customerDetailRequestRef.current;
-    setCustomerDetail(null);
-    setCustomerDetailLoading(true);
-    setCustomerDetailError("");
-    try {
-      const detail = await backofficeRealDataApi.customer("backoffice", customerId);
-      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
+  const customerDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeCustomerDetailPayload>({
+    onError: (detailError) => {
+      const message = detailError instanceof Error ? detailError.message : typeof detailError === "string" ? detailError : "";
+      setCustomerDetailError(message.trim() || translateText("客户正式详情读取失败", languageRef.current));
+    },
+    onFinally: () => setCustomerDetailLoading(false),
+    onStart: () => {
+      setCustomerDetail(null);
+      setCustomerDetailLoading(true);
+      setCustomerDetailError("");
+    },
+    onSuccess: (detail) => {
       setCustomerDetail(detail);
       setDraft({
         displayName: detail.displayName,
@@ -67,43 +69,41 @@ function CustomerProfilesWorkspace() {
         membershipLevel: detail.membershipLevel,
         isPublic: detail.isPublic
       });
-    } catch (detailError) {
-      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
-      setCustomerDetailError(detailError instanceof Error ? detailError.message : String(detailError));
-    } finally {
-      if (mountedRef.current && requestId === customerDetailRequestRef.current && selectedCustomerIdRef.current === customerId) {
-        setCustomerDetailLoading(false);
-      }
-    }
-  }, []);
+    },
+    request: (customerId) => backofficeRealDataApi.customer("backoffice", customerId)
+  }), []);
+
+  useEffect(() => {
+    customerDetailRequest.activate();
+    return () => customerDetailRequest.dispose();
+  }, [customerDetailRequest]);
 
   const closeCustomer = useCallback(() => {
-    selectedCustomerIdRef.current = null;
-    customerDetailRequestRef.current += 1;
+    customerDetailRequest.invalidate();
     setSelectedCustomerId(null);
     setCustomerDetail(null);
     setCustomerDetailLoading(false);
     setCustomerDetailError("");
-  }, []);
+  }, [customerDetailRequest]);
 
   useEffect(() => { void load(); }, [load]);
 
   const openCustomer = (customer: BackofficeCustomerPayload) => {
-    selectedCustomerIdRef.current = customer.id;
     setSelectedCustomerId(customer.id);
     setDraft({ displayName: "", city: "", membershipLevel: "standard", isPublic: true });
-    void loadCustomerDetail(customer.id);
+    void customerDetailRequest.load(customer.id);
   };
 
   const mutate = async (customerId: number, action: () => Promise<unknown>) => {
     setSaving(true);
     setError("");
     try {
-      await action();
-      await load();
-      if (mountedRef.current && selectedCustomerIdRef.current === customerId) {
-        await loadCustomerDetail(customerId);
-      }
+      await runFormalDetailMutationSequence({
+        isDetailCurrent: () => customerDetailRequest.getSelectedId() === customerId,
+        mutate: action,
+        refreshDetail: () => customerDetailRequest.load(customerId),
+        refreshList: load
+      });
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
     } finally {
@@ -116,7 +116,7 @@ function CustomerProfilesWorkspace() {
     setError("");
     try {
       await backofficeRealDataApi.deleteCustomer(customerId);
-      if (selectedCustomerIdRef.current === customerId) {
+      if (customerDetailRequest.getSelectedId() === customerId) {
         closeCustomer();
       }
       await load();
@@ -144,11 +144,11 @@ function CustomerProfilesWorkspace() {
       </ModuleShell>
 
       <Drawer onClose={closeCustomer} open={selectedCustomerId !== null} title="客户集中详情">
-        {customerDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取客户正式详情...</p> : null}
+        {customerDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取客户正式详情...", language)}</p> : null}
         {!customerDetailLoading && customerDetailError ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
             <span>{customerDetailError}</span>
-            <Button onClick={() => { if (selectedCustomerId !== null) void loadCustomerDetail(selectedCustomerId); }} size="sm" variant="secondary">重试</Button>
+            <Button onClick={() => void customerDetailRequest.retry()} size="sm" variant="secondary">{translateText("重试", language)}</Button>
           </div>
         ) : null}
         {!customerDetailLoading && !customerDetailError && customerDetail ? (

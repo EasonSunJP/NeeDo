@@ -33,6 +33,11 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 type TranslationMap = Record<string, TranslationEntry>;
 
 export const translations: TranslationMap = {
+  "正在读取技师正式详情...": { "zh-Hant": "正在讀取技師正式詳情...", ja: "技術者の正式詳細を読み込み中...", en: "Loading technician production details...", ko: "기술자 정식 상세 정보를 불러오는 중..." },
+  "正在读取客户正式详情...": { "zh-Hant": "正在讀取客戶正式詳情...", ja: "顧客の正式詳細を読み込み中...", en: "Loading customer production details...", ko: "고객 정식 상세 정보를 불러오는 중..." },
+  "技师正式详情读取失败": { "zh-Hant": "技師正式詳情讀取失敗", ja: "技術者の正式詳細を読み込めませんでした", en: "Technician production details failed to load", ko: "기술자 정식 상세 정보를 불러오지 못했습니다" },
+  "客户正式详情读取失败": { "zh-Hant": "客戶正式詳情讀取失敗", ja: "顧客の正式詳細を読み込めませんでした", en: "Customer production details failed to load", ko: "고객 정식 상세 정보를 불러오지 못했습니다" },
+  "重试": { "zh-Hant": "重試", ja: "再試行", en: "Retry", ko: "다시 시도" },
   "账号启用": { "zh-Hant": "帳號啟用", ja: "アカウント有効", en: "Account active", ko: "계정 활성" },
   "账号停用": { "zh-Hant": "帳號停用", ja: "アカウント停止", en: "Account inactive", ko: "계정 비활성" },
   "资料非公开": { "zh-Hant": "資料非公開", ja: "プロフィール非公開", en: "Profile private", ko: "프로필 비공개" },

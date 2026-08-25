@@ -37,9 +37,13 @@ describe("master data pages", () => {
     expect(source).toContain("backofficeRealDataApi.updateTechnician");
     expect(source).toContain('backofficeRealDataApi.technician("backoffice"');
     expect(source).toContain("FormalTechnicianDetailPanel");
-    expect(source).toContain("technicianDetailRequestRef");
-    expect(source).toContain("mountedRef.current");
-    expect(source).toContain("重试");
+    expect(source).toContain("createFormalDetailRequestCoordinator");
+    expect(source).toContain("runFormalDetailMutationSequence");
+    expect(source).toContain("technicianDetailRequest.retry()");
+    expect(source).toContain("technicianDetailRequest.activate()");
+    expect(source).toContain("useOptionalI18n");
+    expect(source).not.toContain("DetailGrid");
+    expect(source).toMatch(/const deleteTechnician[\s\S]*?closeTechnician\(\);[\s\S]*?await load\(\);/);
   });
 
   it("keeps operations customer profiles on formal paginated APIs", () => {
@@ -49,9 +53,13 @@ describe("master data pages", () => {
     expect(source).toContain("backofficeRealDataApi.deleteCustomer(");
     expect(source).toContain('backofficeRealDataApi.customer("backoffice"');
     expect(source).toContain("FormalCustomerDetailPanel");
-    expect(source).toContain("customerDetailRequestRef");
-    expect(source).toContain("mountedRef.current");
-    expect(source).toContain("重试");
+    expect(source).toContain("createFormalDetailRequestCoordinator");
+    expect(source).toContain("runFormalDetailMutationSequence");
+    expect(source).toContain("customerDetailRequest.retry()");
+    expect(source).toContain("customerDetailRequest.activate()");
+    expect(source).toContain("useOptionalI18n");
+    expect(source).not.toContain("DetailGrid");
+    expect(source).toMatch(/const deleteCustomer[\s\S]*?closeCustomer\(\);[\s\S]*?await load\(\);/);
     expect(source).not.toContain("../../data/mock");
   });
 

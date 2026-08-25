@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
@@ -17,6 +17,12 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import { translateText } from "../../i18n/translations";
+import {
+  createFormalDetailRequestCoordinator,
+  runFormalDetailMutationSequence
+} from "../admin/formalDetailRequest";
 
 type PeopleModule = "staff" | "customers" | "reviews";
 type TechnicianDraft = { displayName: string; city: string; serviceArea: string };
@@ -46,6 +52,9 @@ function statusTone(status: string): "green" | "yellow" | "red" | "neutral" {
 
 export function MerchantAdminPeoplePage() {
   const [searchParams] = useSearchParams();
+  const { language } = useOptionalI18n();
+  const languageRef = useRef(language);
+  languageRef.current = language;
   const module = normalizeModule(searchParams.get("module"));
   const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
   const [customers, setCustomers] = useState<BackofficeCustomerPayload[]>([]);
@@ -66,20 +75,6 @@ export function MerchantAdminPeoplePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [confirmationAction, setConfirmationAction] = useState<ConfirmationAction>(null);
-  const mountedRef = useRef(false);
-  const selectedTechnicianIdRef = useRef<number | null>(null);
-  const selectedCustomerIdRef = useRef<number | null>(null);
-  const technicianDetailRequestRef = useRef(0);
-  const customerDetailRequestRef = useRef(0);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      technicianDetailRequestRef.current += 1;
-      customerDetailRequestRef.current += 1;
-    };
-  }, []);
 
   const load = useCallback(async () => {
     if (module === "reviews") {
@@ -113,63 +108,64 @@ export function MerchantAdminPeoplePage() {
     }
   }, [keyword, module, page]);
 
-  const loadTechnicianDetail = useCallback(async (technicianId: number) => {
-    const requestId = ++technicianDetailRequestRef.current;
-    setTechnicianDetail(null);
-    setTechnicianDetailLoading(true);
-    setTechnicianDetailError("");
-    try {
-      const detail = await backofficeRealDataApi.technician("merchant-admin", technicianId);
-      if (!mountedRef.current || requestId !== technicianDetailRequestRef.current || selectedTechnicianIdRef.current !== technicianId) return;
+  const technicianDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeTechnicianDetailPayload>({
+    onError: (detailError) => {
+      const message = detailError instanceof Error ? detailError.message : typeof detailError === "string" ? detailError : "";
+      setTechnicianDetailError(message.trim() || translateText("技师正式详情读取失败", languageRef.current));
+    },
+    onFinally: () => setTechnicianDetailLoading(false),
+    onStart: () => {
+      setTechnicianDetail(null);
+      setTechnicianDetailLoading(true);
+      setTechnicianDetailError("");
+    },
+    onSuccess: (detail) => {
       setTechnicianDetail(detail);
       setDraft(technicianDraft(detail));
-    } catch (detailError) {
-      if (!mountedRef.current || requestId !== technicianDetailRequestRef.current || selectedTechnicianIdRef.current !== technicianId) return;
-      setTechnicianDetailError(detailError instanceof Error ? detailError.message : String(detailError));
-    } finally {
-      if (mountedRef.current && requestId === technicianDetailRequestRef.current && selectedTechnicianIdRef.current === technicianId) {
-        setTechnicianDetailLoading(false);
-      }
-    }
-  }, []);
+    },
+    request: (technicianId) => backofficeRealDataApi.technician("merchant-admin", technicianId)
+  }), []);
 
-  const loadCustomerDetail = useCallback(async (customerId: number) => {
-    const requestId = ++customerDetailRequestRef.current;
-    setCustomerDetail(null);
-    setCustomerDetailLoading(true);
-    setCustomerDetailError("");
-    try {
-      const detail = await backofficeRealDataApi.customer("merchant-admin", customerId);
-      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
-      setCustomerDetail(detail);
-    } catch (detailError) {
-      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
-      setCustomerDetailError(detailError instanceof Error ? detailError.message : String(detailError));
-    } finally {
-      if (mountedRef.current && requestId === customerDetailRequestRef.current && selectedCustomerIdRef.current === customerId) {
-        setCustomerDetailLoading(false);
-      }
-    }
-  }, []);
+  const customerDetailRequest = useMemo(() => createFormalDetailRequestCoordinator<BackofficeCustomerDetailPayload>({
+    onError: (detailError) => {
+      const message = detailError instanceof Error ? detailError.message : typeof detailError === "string" ? detailError : "";
+      setCustomerDetailError(message.trim() || translateText("客户正式详情读取失败", languageRef.current));
+    },
+    onFinally: () => setCustomerDetailLoading(false),
+    onStart: () => {
+      setCustomerDetail(null);
+      setCustomerDetailLoading(true);
+      setCustomerDetailError("");
+    },
+    onSuccess: setCustomerDetail,
+    request: (customerId) => backofficeRealDataApi.customer("merchant-admin", customerId)
+  }), []);
+
+  useEffect(() => {
+    technicianDetailRequest.activate();
+    customerDetailRequest.activate();
+    return () => {
+      technicianDetailRequest.dispose();
+      customerDetailRequest.dispose();
+    };
+  }, [customerDetailRequest, technicianDetailRequest]);
 
   const closeTechnician = useCallback(() => {
-    selectedTechnicianIdRef.current = null;
-    technicianDetailRequestRef.current += 1;
+    technicianDetailRequest.invalidate();
     setSelectedTechnicianId(null);
     setTechnicianDetail(null);
     setTechnicianDetailLoading(false);
     setTechnicianDetailError("");
     setConfirmationAction(null);
-  }, []);
+  }, [technicianDetailRequest]);
 
   const closeCustomer = useCallback(() => {
-    selectedCustomerIdRef.current = null;
-    customerDetailRequestRef.current += 1;
+    customerDetailRequest.invalidate();
     setSelectedCustomerId(null);
     setCustomerDetail(null);
     setCustomerDetailLoading(false);
     setCustomerDetailError("");
-  }, []);
+  }, [customerDetailRequest]);
 
   useEffect(() => {
     setPage(1);
@@ -189,30 +185,29 @@ export function MerchantAdminPeoplePage() {
 
   const openTechnician = (technician: BackofficeTechnicianPayload) => {
     closeCustomer();
-    selectedTechnicianIdRef.current = technician.id;
     setSelectedTechnicianId(technician.id);
     setDraft({ displayName: "", city: "", serviceArea: "" });
     setConfirmationAction(null);
-    void loadTechnicianDetail(technician.id);
+    void technicianDetailRequest.load(technician.id);
   };
 
   const openCustomer = (customer: BackofficeCustomerPayload) => {
     closeTechnician();
-    selectedCustomerIdRef.current = customer.id;
     setSelectedCustomerId(customer.id);
-    void loadCustomerDetail(customer.id);
+    void customerDetailRequest.load(customer.id);
   };
 
   const runMutation = async (technicianId: number, mutation: () => Promise<BackofficeTechnicianPayload>) => {
     setSaving(true);
     setError("");
     try {
-      await mutation();
+      await runFormalDetailMutationSequence({
+        isDetailCurrent: () => technicianDetailRequest.getSelectedId() === technicianId,
+        mutate: mutation,
+        refreshDetail: () => technicianDetailRequest.load(technicianId),
+        refreshList: load
+      });
       setConfirmationAction(null);
-      await load();
-      if (mountedRef.current && selectedTechnicianIdRef.current === technicianId) {
-        await loadTechnicianDetail(technicianId);
-      }
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
     } finally {
@@ -240,7 +235,7 @@ export function MerchantAdminPeoplePage() {
     setError("");
     try {
       await backofficeRealDataApi.deleteTechnician("merchant-admin", technicianId);
-      if (selectedTechnicianIdRef.current === technicianId) {
+      if (technicianDetailRequest.getSelectedId() === technicianId) {
         closeTechnician();
       }
       await load();
@@ -339,11 +334,11 @@ export function MerchantAdminPeoplePage() {
         ) : null}
 
         <Drawer onClose={closeTechnician} open={selectedTechnicianId !== null} title="技师正式档案">
-          {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取技师正式详情...</p> : null}
+          {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取技师正式详情...", language)}</p> : null}
           {!technicianDetailLoading && technicianDetailError ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
               <span>{technicianDetailError}</span>
-              <Button onClick={() => { if (selectedTechnicianId !== null) void loadTechnicianDetail(selectedTechnicianId); }} size="sm" variant="secondary">重试</Button>
+              <Button onClick={() => void technicianDetailRequest.retry()} size="sm" variant="secondary">{translateText("重试", language)}</Button>
             </div>
           ) : null}
           {!technicianDetailLoading && !technicianDetailError && technicianDetail ? (
@@ -364,11 +359,11 @@ export function MerchantAdminPeoplePage() {
         </Drawer>
 
         <Drawer onClose={closeCustomer} open={selectedCustomerId !== null} title="客户正式档案">
-          {customerDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取客户正式详情...</p> : null}
+          {customerDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取客户正式详情...", language)}</p> : null}
           {!customerDetailLoading && customerDetailError ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
               <span>{customerDetailError}</span>
-              <Button onClick={() => { if (selectedCustomerId !== null) void loadCustomerDetail(selectedCustomerId); }} size="sm" variant="secondary">重试</Button>
+              <Button onClick={() => void customerDetailRequest.retry()} size="sm" variant="secondary">{translateText("重试", language)}</Button>
             </div>
           ) : null}
           {!customerDetailLoading && !customerDetailError && customerDetail ? <FormalCustomerDetailPanel detail={customerDetail} /> : null}
