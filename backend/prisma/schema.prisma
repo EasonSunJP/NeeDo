@@ -71,9 +71,10 @@ enum TechnicianServiceReviewStatus {
 }
 
 enum WalletOwnerType {
-  USER     @map("user")
-  SHOP     @map("shop")
-  PLATFORM @map("platform")
+  USER             @map("user")
+  SHOP             @map("shop")
+  PLATFORM         @map("platform")
+  MERCHANT_ACCOUNT @map("merchant_account")
 
   @@map("wallet_owner_type")
 }
@@ -101,6 +102,11 @@ enum LedgerTransactionType {
   MANUAL_TOPUP_APPROVED                @map("manual_topup_approved")
   MANUAL_WITHDRAWAL_APPROVED           @map("manual_withdrawal_approved")
   SEED_CREDIT                          @map("seed_credit")
+  AFFILIATE_TASK_BUDGET_FREEZE         @map("affiliate_task_budget_freeze")
+  AFFILIATE_TASK_BUDGET_RELEASE        @map("affiliate_task_budget_release")
+  AFFILIATE_REWARD_SETTLEMENT          @map("affiliate_reward_settlement")
+  AFFILIATE_REWARD_REVERSAL            @map("affiliate_reward_reversal")
+  AFFILIATE_REWARD_RECOVERY            @map("affiliate_reward_recovery")
 
   @@map("ledger_transaction_type")
 }
@@ -117,8 +123,115 @@ enum WalletLedgerDirection {
   FREEZE           @map("freeze")
   UNFREEZE         @map("unfreeze")
   FROZEN_DEBIT     @map("frozen_debit")
+  FROZEN_CREDIT    @map("frozen_credit")
 
   @@map("wallet_ledger_direction")
+}
+
+enum AffiliatePublisherType {
+  MERCHANT_ACCOUNT @map("merchant_account")
+  SHOP             @map("shop")
+
+  @@map("affiliate_publisher_type")
+}
+
+enum AffiliateServiceScopeMode {
+  ALL_CURRENT_SERVICES @map("all_current_services")
+  SELECTED_SERVICES    @map("selected_services")
+
+  @@map("affiliate_service_scope_mode")
+}
+
+enum AffiliateDiscountType {
+  NONE      @map("none")
+  FIXED_JPY @map("fixed_jpy")
+  PERCENT   @map("percent")
+
+  @@map("affiliate_discount_type")
+}
+
+enum AffiliateTaskStatus {
+  DRAFT            @map("draft")
+  PENDING_REVIEW   @map("pending_review")
+  SCHEDULED        @map("scheduled")
+  ACTIVE           @map("active")
+  PAUSED           @map("paused")
+  BUDGET_EXHAUSTED @map("budget_exhausted")
+  ENDED            @map("ended")
+  CANCELLED        @map("cancelled")
+  REJECTED         @map("rejected")
+
+  @@map("affiliate_task_status")
+}
+
+enum AffiliateClaimStatus {
+  ACTIVE  @map("active")
+  EXPIRED @map("expired")
+  REVOKED @map("revoked")
+
+  @@map("affiliate_claim_status")
+}
+
+enum AffiliateTouchSource {
+  URL  @map("url")
+  CODE @map("code")
+
+  @@map("affiliate_touch_source")
+}
+
+enum AffiliateAttributionStatus {
+  ATTRIBUTED  @map("attributed")
+  QUALIFIED   @map("qualified")
+  SETTLED     @map("settled")
+  INVALIDATED @map("invalidated")
+  REVERSED    @map("reversed")
+
+  @@map("affiliate_attribution_status")
+}
+
+enum AffiliateRewardStatus {
+  PENDING          @map("pending")
+  SETTLED          @map("settled")
+  REVERSED         @map("reversed")
+  REVERSAL_PENDING @map("reversal_pending")
+
+  @@map("affiliate_reward_status")
+}
+
+enum AffiliateBudgetStatus {
+  ACTIVE    @map("active")
+  EXHAUSTED @map("exhausted")
+  RELEASED  @map("released")
+
+  @@map("affiliate_budget_status")
+}
+
+enum AffiliateTransactionKind {
+  FREEZE     @map("freeze")
+  RELEASE    @map("release")
+  SETTLEMENT @map("settlement")
+  REVERSAL   @map("reversal")
+  RECOVERY   @map("recovery")
+
+  @@map("affiliate_transaction_kind")
+}
+
+enum AffiliateRiskSeverity {
+  LOW      @map("low")
+  MEDIUM   @map("medium")
+  HIGH     @map("high")
+  CRITICAL @map("critical")
+
+  @@map("affiliate_risk_severity")
+}
+
+enum AffiliateRiskStatus {
+  OPEN      @map("open")
+  REVIEWING @map("reviewing")
+  RELEASED  @map("released")
+  REJECTED  @map("rejected")
+
+  @@map("affiliate_risk_status")
 }
 
 enum FinanceReconciliationStatus {
@@ -180,52 +293,59 @@ model User {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  identities                  UserIdentity[]
-  userRoles                   UserRole[]
-  loginLogs                   LoginLog[]                 @relation("LoginLogUser")
-  auditLogs                   AuditLog[]                 @relation("AuditLogActor")
-  ledgerTransactions          LedgerTransaction[]        @relation("LedgerTransactionActor")
-  requestedWalletAdjustments  WalletAdjustmentRequest[]  @relation("WalletAdjustmentRequestedBy")
-  reviewedWalletAdjustments   WalletAdjustmentRequest[]  @relation("WalletAdjustmentReviewedBy")
-  ownedShops                  Shop[]                     @relation("ShopOwner")
-  technicianProfile           TechnicianProfile?
-  customerProfile             CustomerProfile?
-  bookingOrders               BookingOrder[]             @relation("BookingOrderCustomer")
-  orderHistories              OrderStatusHistory[]       @relation("OrderStatusHistoryActor")
-  pricingModeUpdates          Shop[]                     @relation("ShopPricingModeUpdatedBy")
-  createdTechnicianServices   TechnicianService[]        @relation("TechnicianServiceCreatedBy")
-  updatedTechnicianServices   TechnicianService[]        @relation("TechnicianServiceUpdatedBy")
-  reportedOrderFinancials     OrderFinancial[]           @relation("OrderFinancialIncomeReporter")
-  confirmedOrderFinancials    OrderFinancial[]           @relation("OrderFinancialIncomeConfirmer")
-  confirmedBookingPayments    BookingOrder[]             @relation("BookingOrderPaymentConfirmer")
-  refundedBookingPayments     BookingOrder[]             @relation("BookingOrderPaymentRefunder")
-  generatedPayRuns            PayRun[]                   @relation("PayRunGeneratedBy")
-  approvedPayRuns             PayRun[]                   @relation("PayRunApprovedBy")
-  createdPayslipLines         PayslipLine[]              @relation("PayslipLineCreatedBy")
-  createdPayoutRecords        PayoutRecord[]             @relation("PayoutRecordCreatedBy")
-  requestedPayrollAdjustments PayrollAdjustmentRequest[] @relation("PayrollAdjustmentRequestedBy")
-  approvedPayrollAdjustments  PayrollAdjustmentRequest[] @relation("PayrollAdjustmentApprovedBy")
-  rejectedPayrollAdjustments  PayrollAdjustmentRequest[] @relation("PayrollAdjustmentRejectedBy")
-  createdConversations        Conversation[]             @relation("ConversationCreator")
-  conversationParticipants    ConversationParticipant[]
-  sentMessages                Message[]                  @relation("MessageSender")
-  messageReactions            MessageReaction[]
-  ownedContacts               Contact[]                  @relation("ContactOwner")
-  contactEntries              Contact[]                  @relation("ContactUser")
-  sentFriendRequests          FriendRequest[]            @relation("FriendRequestRequester")
-  receivedFriendRequests      FriendRequest[]            @relation("FriendRequestTarget")
-  socialPosts                 SocialPost[]               @relation("SocialPostAuthor")
-  following                   Follow[]                   @relation("FollowFollower")
-  followers                   Follow[]                   @relation("FollowFollowing")
-  receivedNotifications       Notification[]             @relation("NotificationRecipient")
-  actedNotifications          Notification[]             @relation("NotificationActor")
-  ownedMerchantAccounts       MerchantAccount[]          @relation("MerchantAccountOwner")
-  createdMerchantMemberships  MerchantShopMembership[]   @relation("MerchantMembershipCreatedBy")
-  removedMerchantMemberships  MerchantShopMembership[]   @relation("MerchantMembershipRemovedBy")
-  createdSaasFreePeriods      SaasFreePeriod[]           @relation("SaasFreePeriodCreatedBy")
-  reviewedSaasPayments        SaasPayment[]              @relation("SaasPaymentReviewedBy")
-  createdEntitySuspensions    EntitySuspension[]         @relation("EntitySuspensionCreatedBy")
-  releasedEntitySuspensions   EntitySuspension[]         @relation("EntitySuspensionReleasedBy")
+  identities                      UserIdentity[]
+  userRoles                       UserRole[]
+  loginLogs                       LoginLog[]                 @relation("LoginLogUser")
+  auditLogs                       AuditLog[]                 @relation("AuditLogActor")
+  ledgerTransactions              LedgerTransaction[]        @relation("LedgerTransactionActor")
+  requestedWalletAdjustments      WalletAdjustmentRequest[]  @relation("WalletAdjustmentRequestedBy")
+  reviewedWalletAdjustments       WalletAdjustmentRequest[]  @relation("WalletAdjustmentReviewedBy")
+  ownedShops                      Shop[]                     @relation("ShopOwner")
+  technicianProfile               TechnicianProfile?
+  customerProfile                 CustomerProfile?
+  bookingOrders                   BookingOrder[]             @relation("BookingOrderCustomer")
+  orderHistories                  OrderStatusHistory[]       @relation("OrderStatusHistoryActor")
+  pricingModeUpdates              Shop[]                     @relation("ShopPricingModeUpdatedBy")
+  createdTechnicianServices       TechnicianService[]        @relation("TechnicianServiceCreatedBy")
+  updatedTechnicianServices       TechnicianService[]        @relation("TechnicianServiceUpdatedBy")
+  reportedOrderFinancials         OrderFinancial[]           @relation("OrderFinancialIncomeReporter")
+  confirmedOrderFinancials        OrderFinancial[]           @relation("OrderFinancialIncomeConfirmer")
+  confirmedBookingPayments        BookingOrder[]             @relation("BookingOrderPaymentConfirmer")
+  refundedBookingPayments         BookingOrder[]             @relation("BookingOrderPaymentRefunder")
+  generatedPayRuns                PayRun[]                   @relation("PayRunGeneratedBy")
+  approvedPayRuns                 PayRun[]                   @relation("PayRunApprovedBy")
+  createdPayslipLines             PayslipLine[]              @relation("PayslipLineCreatedBy")
+  createdPayoutRecords            PayoutRecord[]             @relation("PayoutRecordCreatedBy")
+  requestedPayrollAdjustments     PayrollAdjustmentRequest[] @relation("PayrollAdjustmentRequestedBy")
+  approvedPayrollAdjustments      PayrollAdjustmentRequest[] @relation("PayrollAdjustmentApprovedBy")
+  rejectedPayrollAdjustments      PayrollAdjustmentRequest[] @relation("PayrollAdjustmentRejectedBy")
+  createdConversations            Conversation[]             @relation("ConversationCreator")
+  conversationParticipants        ConversationParticipant[]
+  sentMessages                    Message[]                  @relation("MessageSender")
+  messageReactions                MessageReaction[]
+  ownedContacts                   Contact[]                  @relation("ContactOwner")
+  contactEntries                  Contact[]                  @relation("ContactUser")
+  sentFriendRequests              FriendRequest[]            @relation("FriendRequestRequester")
+  receivedFriendRequests          FriendRequest[]            @relation("FriendRequestTarget")
+  socialPosts                     SocialPost[]               @relation("SocialPostAuthor")
+  following                       Follow[]                   @relation("FollowFollower")
+  followers                       Follow[]                   @relation("FollowFollowing")
+  receivedNotifications           Notification[]             @relation("NotificationRecipient")
+  actedNotifications              Notification[]             @relation("NotificationActor")
+  ownedMerchantAccounts           MerchantAccount[]          @relation("MerchantAccountOwner")
+  createdMerchantMemberships      MerchantShopMembership[]   @relation("MerchantMembershipCreatedBy")
+  removedMerchantMemberships      MerchantShopMembership[]   @relation("MerchantMembershipRemovedBy")
+  createdSaasFreePeriods          SaasFreePeriod[]           @relation("SaasFreePeriodCreatedBy")
+  reviewedSaasPayments            SaasPayment[]              @relation("SaasPaymentReviewedBy")
+  createdEntitySuspensions        EntitySuspension[]         @relation("EntitySuspensionCreatedBy")
+  releasedEntitySuspensions       EntitySuspension[]         @relation("EntitySuspensionReleasedBy")
+  reviewedAffiliateTasks          AffiliateTask[]            @relation("AffiliateTaskReviewer")
+  affiliateClaims                 AffiliateClaim[]           @relation("AffiliateClaimUser")
+  affiliateTouchesAsClaimant      AffiliateTouch[]           @relation("AffiliateTouchClaimant")
+  affiliateTouchesAsCustomer      AffiliateTouch[]           @relation("AffiliateTouchCustomer")
+  affiliateAttributionsClaimed    AffiliateAttribution[]     @relation("AffiliateAttributionClaimant")
+  affiliateAttributionsAsCustomer AffiliateAttribution[]     @relation("AffiliateAttributionCustomer")
+  reviewedAffiliateRisks          AffiliateRiskEvent[]       @relation("AffiliateRiskReviewer")
 
   @@index([email])
   @@index([phone])
@@ -281,27 +401,32 @@ model Shop {
   updatedAt                    DateTime        @updatedAt @map("updated_at")
   deletedAt                    DateTime?       @map("deleted_at")
 
-  owner                User?                           @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  pricingModeUpdater   User?                           @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
-  services             Service[]
-  technicianServices   TechnicianService[]
-  technicians          TechnicianProfile[]
-  mediaAssets          MediaAsset[]
-  reviewSummary        ReviewSummary?
-  availabilities       Availability[]
-  scheduleSlots        ScheduleSlot[]
-  bookingOrders        BookingOrder[]
-  financeRuleSets      ShopFinanceRuleSet[]
-  compensationProfiles TechnicianCompensationProfile[]
-  payRuns              PayRun[]
-  payslips             Payslip[]
-  payoutRecords        PayoutRecord[]
-  payrollAdjustments   PayrollAdjustmentRequest[]
-  merchantMemberships  MerchantShopMembership[]
-  saasBillingProfiles  SaasBillingProfile[]
-  payerSaasInvoices    SaasInvoice[]
-  saasInvoiceLines     SaasInvoiceLine[]
-  entitySuspensions    EntitySuspension[]
+  owner                   User?                           @relation("ShopOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  pricingModeUpdater      User?                           @relation("ShopPricingModeUpdatedBy", fields: [pricingModeUpdatedBy], references: [id], onDelete: SetNull)
+  services                Service[]
+  technicianServices      TechnicianService[]
+  technicians             TechnicianProfile[]
+  mediaAssets             MediaAsset[]
+  reviewSummary           ReviewSummary?
+  availabilities          Availability[]
+  scheduleSlots           ScheduleSlot[]
+  bookingOrders           BookingOrder[]
+  financeRuleSets         ShopFinanceRuleSet[]
+  compensationProfiles    TechnicianCompensationProfile[]
+  payRuns                 PayRun[]
+  payslips                Payslip[]
+  payoutRecords           PayoutRecord[]
+  payrollAdjustments      PayrollAdjustmentRequest[]
+  merchantMemberships     MerchantShopMembership[]
+  saasBillingProfiles     SaasBillingProfile[]
+  payerSaasInvoices       SaasInvoice[]
+  saasInvoiceLines        SaasInvoiceLine[]
+  entitySuspensions       EntitySuspension[]
+  publishedAffiliateTasks AffiliateTask[]                 @relation("AffiliateShopPublisher")
+  affiliateTaskScopes     AffiliateTaskShop[]
+  affiliateServiceScopes  AffiliateTaskService[]
+  affiliateTouches        AffiliateTouch[]
+  affiliateAttributions   AffiliateAttribution[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -472,14 +597,17 @@ model Service {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  category           Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  shop               Shop                @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile  TechnicianProfile?  @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  mediaAssets        MediaAsset[]
-  reviewSummary      ReviewSummary?
-  scheduleSlots      ScheduleSlot[]
-  bookingOrders      BookingOrder[]
-  technicianServices TechnicianService[] @relation("TechnicianServiceSourceShopService")
+  category              Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  shop                  Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile     TechnicianProfile?     @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  mediaAssets           MediaAsset[]
+  reviewSummary         ReviewSummary?
+  scheduleSlots         ScheduleSlot[]
+  bookingOrders         BookingOrder[]
+  technicianServices    TechnicianService[]    @relation("TechnicianServiceSourceShopService")
+  affiliateTaskScopes   AffiliateTaskService[]
+  affiliateTouches      AffiliateTouch[]
+  affiliateAttributions AffiliateAttribution[]
 
   @@index([categoryId])
   @@index([shopId])
@@ -561,11 +689,12 @@ model MediaAsset {
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  category          Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  service           Service?           @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  shop              Shop?              @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  customerProfile   CustomerProfile?   @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
+  category            Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  service             Service?           @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  shop                Shop?              @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  technicianProfile   TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  customerProfile     CustomerProfile?   @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
+  affiliateTaskCovers AffiliateTask[]    @relation("AffiliateTaskCover")
 
   @@index([entityType, entityId])
   @@index([categoryId])
@@ -707,18 +836,20 @@ model BookingOrder {
   updatedAt               DateTime             @updatedAt @map("updated_at")
   deletedAt               DateTime?            @map("deleted_at")
 
-  customer           User                 @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
-  service            Service?             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
-  technicianService  TechnicianService?   @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
-  shop               Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
-  technicianProfile  TechnicianProfile?   @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  scheduleSlot       ScheduleSlot         @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
-  statusHistory      OrderStatusHistory[]
-  feeCalculationLogs FeeCalculationLog[]
-  walletHolds        WalletHold[]
-  financial          OrderFinancial?
-  paymentConfirmer   User?                @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
-  paymentRefunder    User?                @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
+  customer              User                   @relation("BookingOrderCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  service               Service?               @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  technicianService     TechnicianService?     @relation(fields: [technicianServiceId], references: [id], onDelete: Restrict)
+  shop                  Shop                   @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile     TechnicianProfile?     @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  scheduleSlot          ScheduleSlot           @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
+  statusHistory         OrderStatusHistory[]
+  feeCalculationLogs    FeeCalculationLog[]
+  walletHolds           WalletHold[]
+  financial             OrderFinancial?
+  paymentConfirmer      User?                  @relation("BookingOrderPaymentConfirmer", fields: [paymentConfirmedById], references: [id], onDelete: SetNull)
+  paymentRefunder       User?                  @relation("BookingOrderPaymentRefunder", fields: [paymentRefundedById], references: [id], onDelete: SetNull)
+  affiliateAttributions AffiliateAttribution[]
+  affiliateRewards      AffiliateReward[]
 
   @@index([customerUserId])
   @@index([serviceId])
@@ -1116,8 +1247,11 @@ model Wallet {
   updatedAt        DateTime        @updatedAt @map("updated_at")
   deletedAt        DateTime?       @map("deleted_at")
 
-  ledgerEntries      WalletLedger[]
-  adjustmentRequests WalletAdjustmentRequest[]
+  ledgerEntries               WalletLedger[]
+  adjustmentRequests          WalletAdjustmentRequest[]
+  affiliateBudgetReservations AffiliateBudgetReservation[]
+  affiliateRewardsAsPublisher AffiliateReward[]            @relation("AffiliateRewardPublisherWallet")
+  affiliateRewardsAsClaimant  AffiliateReward[]            @relation("AffiliateRewardClaimantWallet")
 
   @@unique([ownerType, ownerId, currency])
   @@index([ownerType, ownerId])
@@ -1142,10 +1276,12 @@ model LedgerTransaction {
   updatedAt      DateTime                @updatedAt @map("updated_at")
   deletedAt      DateTime?               @map("deleted_at")
 
-  actor                   User?                    @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
-  entries                 WalletLedger[]
-  reconciliation          FinanceReconciliation?
-  walletAdjustmentRequest WalletAdjustmentRequest?
+  actor                       User?                        @relation("LedgerTransactionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  entries                     WalletLedger[]
+  reconciliation              FinanceReconciliation?
+  walletAdjustmentRequest     WalletAdjustmentRequest?
+  affiliateRewardTransactions AffiliateRewardTransaction[] @relation("AffiliateRewardLedgerTransaction")
+  affiliateBudgetTransactions AffiliateBudgetTransaction[] @relation("AffiliateBudgetLedgerTransaction")
 
   @@index([type])
   @@index([status])
@@ -1723,12 +1859,13 @@ model MerchantAccount {
   updatedAt             DateTime  @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at")
 
-  owner             User?                    @relation("MerchantAccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  memberships       MerchantShopMembership[]
-  billingProfiles   SaasBillingProfile[]
-  payerInvoices     SaasInvoice[]
-  invoiceLines      SaasInvoiceLine[]
-  entitySuspensions EntitySuspension[]
+  owner                   User?                    @relation("MerchantAccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  memberships             MerchantShopMembership[]
+  billingProfiles         SaasBillingProfile[]
+  payerInvoices           SaasInvoice[]
+  invoiceLines            SaasInvoiceLine[]
+  entitySuspensions       EntitySuspension[]
+  publishedAffiliateTasks AffiliateTask[]          @relation("AffiliateMerchantPublisher")
 
   @@index([ownerUserId])
   @@index([status])
@@ -1953,4 +2090,371 @@ model EntitySuspension {
   @@index([startsAt])
   @@index([deletedAt])
   @@map("entity_suspensions")
+}
+
+model AffiliateTask {
+  id                            Int                       @id @default(autoincrement())
+  taskCode                      String                    @unique @map("task_code") @db.VarChar(80)
+  lineageKey                    String                    @map("lineage_key") @db.VarChar(80)
+  parentTaskId                  Int?                      @map("parent_task_id")
+  version                       Int                       @default(1)
+  lockVersion                   Int                       @default(1) @map("lock_version")
+  publisherType                 AffiliatePublisherType    @map("publisher_type")
+  publisherMerchantAccountId    Int?                      @map("publisher_merchant_account_id")
+  publisherShopId               Int?                      @map("publisher_shop_id")
+  name                          String                    @db.VarChar(160)
+  description                   String?                   @db.Text
+  coverMediaAssetId             Int?                      @map("cover_media_asset_id")
+  rewardNdpPerCompletedOrder    Int                       @map("reward_ndp_per_completed_order")
+  totalBudgetNdp                Int                       @map("total_budget_ndp")
+  reservedBudgetNdp             Int                       @default(0) @map("reserved_budget_ndp")
+  allocatedBudgetNdp            Int                       @default(0) @map("allocated_budget_ndp")
+  settledBudgetNdp              Int                       @default(0) @map("settled_budget_ndp")
+  releasedBudgetNdp             Int                       @default(0) @map("released_budget_ndp")
+  customerDiscountType          AffiliateDiscountType     @default(NONE) @map("customer_discount_type")
+  fixedDiscountJpy              Int                       @default(0) @map("fixed_discount_jpy")
+  discountRateBps               Int                       @default(0) @map("discount_rate_bps")
+  discountCapJpy                Int                       @default(0) @map("discount_cap_jpy")
+  minimumOrderAmountJpy         Int                       @default(0) @map("minimum_order_amount_jpy")
+  claimStartsAt                 DateTime                  @map("claim_starts_at")
+  claimEndsAt                   DateTime                  @map("claim_ends_at")
+  taskStartsAt                  DateTime                  @map("task_starts_at")
+  taskEndsAt                    DateTime                  @map("task_ends_at")
+  attributionWindowDays         Int                       @map("attribution_window_days")
+  maxCompletedOrdersPerClaim    Int?                      @map("max_completed_orders_per_claim")
+  maxCompletedOrdersPerCustomer Int?                      @map("max_completed_orders_per_customer")
+  serviceScopeMode              AffiliateServiceScopeMode @map("service_scope_mode")
+  status                        AffiliateTaskStatus       @default(DRAFT)
+  reviewedById                  Int?                      @map("reviewed_by_id")
+  reviewedAt                    DateTime?                 @map("reviewed_at")
+  rejectionReason               String?                   @map("rejection_reason") @db.VarChar(500)
+  submittedAt                   DateTime?                 @map("submitted_at")
+  activatedAt                   DateTime?                 @map("activated_at")
+  pausedAt                      DateTime?                 @map("paused_at")
+  endedAt                       DateTime?                 @map("ended_at")
+  createdAt                     DateTime                  @default(now()) @map("created_at")
+  updatedAt                     DateTime                  @updatedAt @map("updated_at")
+  deletedAt                     DateTime?                 @map("deleted_at")
+
+  parentTask               AffiliateTask?              @relation("AffiliateTaskVersions", fields: [parentTaskId], references: [id], onDelete: Restrict)
+  childVersions            AffiliateTask[]             @relation("AffiliateTaskVersions")
+  publisherMerchantAccount MerchantAccount?            @relation("AffiliateMerchantPublisher", fields: [publisherMerchantAccountId], references: [id], onDelete: Restrict)
+  publisherShop            Shop?                       @relation("AffiliateShopPublisher", fields: [publisherShopId], references: [id], onDelete: Restrict)
+  coverMediaAsset          MediaAsset?                 @relation("AffiliateTaskCover", fields: [coverMediaAssetId], references: [id], onDelete: SetNull)
+  reviewedBy               User?                       @relation("AffiliateTaskReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  shops                    AffiliateTaskShop[]
+  services                 AffiliateTaskService[]
+  claims                   AffiliateClaim[]
+  touches                  AffiliateTouch[]
+  attributions             AffiliateAttribution[]
+  rewards                  AffiliateReward[]
+  budgetReservation        AffiliateBudgetReservation?
+  riskEvents               AffiliateRiskEvent[]
+
+  @@unique([lineageKey, version])
+  @@index([parentTaskId])
+  @@index([publisherType, publisherMerchantAccountId, publisherShopId])
+  @@index([coverMediaAssetId])
+  @@index([status, taskStartsAt, taskEndsAt])
+  @@index([reviewedById])
+  @@index([deletedAt])
+  @@map("affiliate_tasks")
+}
+
+model AffiliateTaskShop {
+  id               Int       @id @default(autoincrement())
+  taskId           Int       @map("task_id")
+  shopId           Int       @map("shop_id")
+  shopNameSnapshot String    @map("shop_name_snapshot") @db.VarChar(160)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  task AffiliateTask @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  shop Shop          @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, shopId])
+  @@index([shopId])
+  @@index([deletedAt])
+  @@map("affiliate_task_shops")
+}
+
+model AffiliateTaskService {
+  id                      Int       @id @default(autoincrement())
+  taskId                  Int       @map("task_id")
+  shopId                  Int       @map("shop_id")
+  serviceId               Int       @map("service_id")
+  serviceNameSnapshot     String    @map("service_name_snapshot") @db.VarChar(160)
+  servicePriceJpySnapshot Int       @map("service_price_jpy_snapshot")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  deletedAt               DateTime? @map("deleted_at")
+
+  task    AffiliateTask @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  shop    Shop          @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  service Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, serviceId])
+  @@index([shopId])
+  @@index([serviceId])
+  @@index([deletedAt])
+  @@map("affiliate_task_services")
+}
+
+model AffiliateClaim {
+  id                   Int                  @id @default(autoincrement())
+  taskId               Int                  @map("task_id")
+  userId               Int                  @map("user_id")
+  activeKey            String?              @unique @map("active_key") @db.VarChar(160)
+  publicCode           String               @unique @map("public_code") @db.VarChar(40)
+  publicTokenId        String               @unique @map("public_token_id") @db.VarChar(80)
+  tokenHash            String               @map("token_hash") @db.VarChar(128)
+  status               AffiliateClaimStatus @default(ACTIVE)
+  claimedAt            DateTime             @default(now()) @map("claimed_at")
+  expiresAt            DateTime             @map("expires_at")
+  clickCount           Int                  @default(0) @map("click_count")
+  codeUseCount         Int                  @default(0) @map("code_use_count")
+  attributedOrderCount Int                  @default(0) @map("attributed_order_count")
+  completedOrderCount  Int                  @default(0) @map("completed_order_count")
+  settledRewardNdp     Int                  @default(0) @map("settled_reward_ndp")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
+  deletedAt            DateTime?            @map("deleted_at")
+
+  task         AffiliateTask          @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  user         User                   @relation("AffiliateClaimUser", fields: [userId], references: [id], onDelete: Restrict)
+  touches      AffiliateTouch[]
+  attributions AffiliateAttribution[]
+  rewards      AffiliateReward[]
+  riskEvents   AffiliateRiskEvent[]
+
+  @@index([taskId, status])
+  @@index([userId, status])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@map("affiliate_claims")
+}
+
+model AffiliateTouch {
+  id                     Int                  @id @default(autoincrement())
+  taskId                 Int                  @map("task_id")
+  claimId                Int                  @map("claim_id")
+  claimantUserId         Int                  @map("claimant_user_id")
+  customerUserId         Int?                 @map("customer_user_id")
+  anonymousVisitorHash   String?              @map("anonymous_visitor_hash") @db.VarChar(128)
+  source                 AffiliateTouchSource
+  shopId                 Int?                 @map("shop_id")
+  serviceId              Int?                 @map("service_id")
+  requestFingerprintHash String?              @map("request_fingerprint_hash") @db.VarChar(128)
+  occurredAt             DateTime             @default(now()) @map("occurred_at")
+  expiresAt              DateTime             @map("expires_at")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+  deletedAt              DateTime?            @map("deleted_at")
+
+  task         AffiliateTask          @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  claim        AffiliateClaim         @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  claimant     User                   @relation("AffiliateTouchClaimant", fields: [claimantUserId], references: [id], onDelete: Restrict)
+  customer     User?                  @relation("AffiliateTouchCustomer", fields: [customerUserId], references: [id], onDelete: SetNull)
+  shop         Shop?                  @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  service      Service?               @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  attributions AffiliateAttribution[]
+
+  @@index([taskId, occurredAt])
+  @@index([claimId, occurredAt])
+  @@index([claimantUserId])
+  @@index([customerUserId])
+  @@index([shopId])
+  @@index([serviceId])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@map("affiliate_touches")
+}
+
+model AffiliateAttribution {
+  id                  Int                        @id @default(autoincrement())
+  taskId              Int                        @map("task_id")
+  claimId             Int                        @map("claim_id")
+  touchId             Int?                       @map("touch_id")
+  bookingOrderId      Int                        @map("booking_order_id")
+  activeKey           String?                    @unique @map("active_key") @db.VarChar(120)
+  claimantUserId      Int                        @map("claimant_user_id")
+  customerUserId      Int                        @map("customer_user_id")
+  shopId              Int                        @map("shop_id")
+  serviceId           Int                        @map("service_id")
+  source              AffiliateTouchSource
+  originalPriceJpy    Int                        @map("original_price_jpy")
+  customerDiscountJpy Int                        @default(0) @map("customer_discount_jpy")
+  finalPriceJpy       Int                        @map("final_price_jpy")
+  rewardAllocatedNdp  Int                        @map("reward_allocated_ndp")
+  status              AffiliateAttributionStatus @default(ATTRIBUTED)
+  attributedAt        DateTime                   @default(now()) @map("attributed_at")
+  expiresAt           DateTime                   @map("expires_at")
+  qualifiedAt         DateTime?                  @map("qualified_at")
+  settledAt           DateTime?                  @map("settled_at")
+  invalidatedAt       DateTime?                  @map("invalidated_at")
+  invalidationReason  String?                    @map("invalidation_reason") @db.VarChar(500)
+  reversedAt          DateTime?                  @map("reversed_at")
+  createdAt           DateTime                   @default(now()) @map("created_at")
+  updatedAt           DateTime                   @updatedAt @map("updated_at")
+  deletedAt           DateTime?                  @map("deleted_at")
+
+  task         AffiliateTask        @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  claim        AffiliateClaim       @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  touch        AffiliateTouch?      @relation(fields: [touchId], references: [id], onDelete: SetNull)
+  bookingOrder BookingOrder         @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  claimant     User                 @relation("AffiliateAttributionClaimant", fields: [claimantUserId], references: [id], onDelete: Restrict)
+  customer     User                 @relation("AffiliateAttributionCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  shop         Shop                 @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  service      Service              @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  reward       AffiliateReward?
+  riskEvents   AffiliateRiskEvent[]
+
+  @@index([taskId, status])
+  @@index([claimId, status])
+  @@index([bookingOrderId, status])
+  @@index([touchId])
+  @@index([claimantUserId])
+  @@index([customerUserId])
+  @@index([shopId, serviceId])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@map("affiliate_attributions")
+}
+
+model AffiliateReward {
+  id                     Int                   @id @default(autoincrement())
+  attributionId          Int                   @unique @map("attribution_id")
+  taskId                 Int                   @map("task_id")
+  claimId                Int                   @map("claim_id")
+  bookingOrderId         Int                   @map("booking_order_id")
+  publisherWalletId      Int                   @map("publisher_wallet_id")
+  claimantWalletId       Int                   @map("claimant_wallet_id")
+  rewardNdp              Int                   @map("reward_ndp")
+  reversalRequiredNdp    Int                   @default(0) @map("reversal_required_ndp")
+  reversedNdp            Int                   @default(0) @map("reversed_ndp")
+  outstandingRecoveryNdp Int                   @default(0) @map("outstanding_recovery_ndp")
+  status                 AffiliateRewardStatus @default(PENDING)
+  settledAt              DateTime?             @map("settled_at")
+  reversedAt             DateTime?             @map("reversed_at")
+  reversalReason         String?               @map("reversal_reason") @db.VarChar(500)
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+  deletedAt              DateTime?             @map("deleted_at")
+
+  attribution     AffiliateAttribution         @relation(fields: [attributionId], references: [id], onDelete: Restrict)
+  task            AffiliateTask                @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  claim           AffiliateClaim               @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  bookingOrder    BookingOrder                 @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  publisherWallet Wallet                       @relation("AffiliateRewardPublisherWallet", fields: [publisherWalletId], references: [id], onDelete: Restrict)
+  claimantWallet  Wallet                       @relation("AffiliateRewardClaimantWallet", fields: [claimantWalletId], references: [id], onDelete: Restrict)
+  transactions    AffiliateRewardTransaction[]
+  riskEvents      AffiliateRiskEvent[]
+
+  @@index([taskId, status])
+  @@index([claimId, status])
+  @@index([bookingOrderId])
+  @@index([publisherWalletId])
+  @@index([claimantWalletId])
+  @@index([deletedAt])
+  @@map("affiliate_rewards")
+}
+
+model AffiliateRewardTransaction {
+  id                  Int                      @id @default(autoincrement())
+  rewardId            Int                      @map("reward_id")
+  ledgerTransactionId Int                      @unique @map("ledger_transaction_id")
+  kind                AffiliateTransactionKind
+  amountNdp           Int                      @map("amount_ndp")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  deletedAt           DateTime?                @map("deleted_at")
+
+  reward      AffiliateReward   @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  transaction LedgerTransaction @relation("AffiliateRewardLedgerTransaction", fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([rewardId, kind])
+  @@index([deletedAt])
+  @@map("affiliate_reward_transactions")
+}
+
+model AffiliateBudgetReservation {
+  id             Int                   @id @default(autoincrement())
+  taskId         Int                   @unique @map("task_id")
+  walletId       Int                   @map("wallet_id")
+  totalFrozenNdp Int                   @map("total_frozen_ndp")
+  allocatedNdp   Int                   @default(0) @map("allocated_ndp")
+  capturedNdp    Int                   @default(0) @map("captured_ndp")
+  releasedNdp    Int                   @default(0) @map("released_ndp")
+  status         AffiliateBudgetStatus @default(ACTIVE)
+  idempotencyKey String                @unique @map("idempotency_key") @db.VarChar(180)
+  frozenAt       DateTime              @default(now()) @map("frozen_at")
+  releasedAt     DateTime?             @map("released_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  deletedAt      DateTime?             @map("deleted_at")
+
+  task         AffiliateTask                @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  wallet       Wallet                       @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  transactions AffiliateBudgetTransaction[]
+
+  @@index([walletId, status])
+  @@index([deletedAt])
+  @@map("affiliate_budget_reservations")
+}
+
+model AffiliateBudgetTransaction {
+  id                  Int                      @id @default(autoincrement())
+  budgetReservationId Int                      @map("budget_reservation_id")
+  ledgerTransactionId Int                      @unique @map("ledger_transaction_id")
+  kind                AffiliateTransactionKind
+  amountNdp           Int                      @map("amount_ndp")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  deletedAt           DateTime?                @map("deleted_at")
+
+  budgetReservation AffiliateBudgetReservation @relation(fields: [budgetReservationId], references: [id], onDelete: Restrict)
+  transaction       LedgerTransaction          @relation("AffiliateBudgetLedgerTransaction", fields: [ledgerTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([budgetReservationId, kind])
+  @@index([deletedAt])
+  @@map("affiliate_budget_transactions")
+}
+
+model AffiliateRiskEvent {
+  id               Int                   @id @default(autoincrement())
+  taskId           Int?                  @map("task_id")
+  claimId          Int?                  @map("claim_id")
+  attributionId    Int?                  @map("attribution_id")
+  rewardId         Int?                  @map("reward_id")
+  ruleCode         String                @map("rule_code") @db.VarChar(100)
+  subjectType      String                @map("subject_type") @db.VarChar(60)
+  subjectId        Int                   @map("subject_id")
+  severity         AffiliateRiskSeverity
+  status           AffiliateRiskStatus   @default(OPEN)
+  evidence         Json?
+  frozenNdp        Int                   @default(0) @map("frozen_ndp")
+  reviewedById     Int?                  @map("reviewed_by_id")
+  reviewedAt       DateTime?             @map("reviewed_at")
+  resolutionReason String?               @map("resolution_reason") @db.VarChar(500)
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  deletedAt        DateTime?             @map("deleted_at")
+
+  task        AffiliateTask?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  claim       AffiliateClaim?       @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  attribution AffiliateAttribution? @relation(fields: [attributionId], references: [id], onDelete: SetNull)
+  reward      AffiliateReward?      @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+  reviewedBy  User?                 @relation("AffiliateRiskReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([claimId])
+  @@index([attributionId])
+  @@index([rewardId])
+  @@index([ruleCode, status])
+  @@index([subjectType, subjectId])
+  @@index([severity, status])
+  @@index([reviewedById])
+  @@index([deletedAt])
+  @@map("affiliate_risk_events")
 }

@@ -772,7 +772,99 @@ export const SYSTEM_PERMISSIONS = [
     "显示权限管理菜单"
   ),
   createPermission("menu:admin-settings", "后台设置菜单", "menu", "menu", "显示后台设置菜单"),
-  createPermission("page:admin-settings", "后台设置页面", "page", "dashboard", "访问后台设置页面")
+  createPermission("page:admin-settings", "后台设置页面", "page", "dashboard", "访问后台设置页面"),
+  createPermission("menu:affiliate", "联盟营销", "menu", "affiliate", "显示用户联盟营销入口"),
+  createPermission(
+    "page:affiliate-marketplace",
+    "联盟任务大厅",
+    "page",
+    "affiliate",
+    "访问联盟任务大厅和本人推广数据"
+  ),
+  createPermission(
+    "button:affiliate-claim",
+    "领取联盟任务",
+    "button",
+    "affiliate",
+    "显示领取有效联盟任务的操作"
+  ),
+  createPermission(
+    "menu:merchant-affiliate",
+    "商户联盟营销",
+    "menu",
+    "merchant-affiliate",
+    "显示商户或店铺联盟营销入口"
+  ),
+  createPermission(
+    "page:merchant-affiliate-task",
+    "商户联盟任务",
+    "page",
+    "merchant-affiliate",
+    "访问当前商户或店铺范围的联盟任务"
+  ),
+  createPermission(
+    "button:merchant-affiliate-task-create",
+    "创建联盟任务",
+    "button",
+    "merchant-affiliate",
+    "显示创建联盟任务操作"
+  ),
+  createPermission(
+    "button:merchant-affiliate-task-submit",
+    "提交联盟任务",
+    "button",
+    "merchant-affiliate",
+    "显示提交发布并冻结预算操作"
+  ),
+  createPermission(
+    "button:merchant-affiliate-task-pause",
+    "暂停联盟任务",
+    "button",
+    "merchant-affiliate",
+    "显示暂停或恢复联盟任务操作"
+  ),
+  createPermission(
+    "menu:backoffice-affiliate",
+    "运营联盟营销",
+    "menu",
+    "backoffice-affiliate",
+    "显示运营后台联盟营销入口"
+  ),
+  createPermission(
+    "page:backoffice-affiliate",
+    "运营联盟营销页面",
+    "page",
+    "backoffice-affiliate",
+    "访问全平台联盟营销数据"
+  ),
+  createPermission(
+    "button:backoffice-affiliate-review",
+    "审核联盟任务",
+    "button",
+    "backoffice-affiliate",
+    "显示联盟任务审核操作"
+  ),
+  createPermission(
+    "button:backoffice-affiliate-suspend",
+    "暂停联盟任务",
+    "button",
+    "backoffice-affiliate",
+    "显示运营暂停联盟任务操作"
+  ),
+  createPermission(
+    "button:backoffice-affiliate-reversal",
+    "冲正联盟返点",
+    "button",
+    "backoffice-affiliate",
+    "显示受审计的联盟返点冲正操作"
+  ),
+  createPermission(
+    "button:backoffice-affiliate-export",
+    "导出联盟数据",
+    "button",
+    "backoffice-affiliate",
+    "显示联盟营销服务端导出操作"
+  )
 ] as const satisfies readonly SystemPermissionDefinition[];
 
 export type SystemPermissionCode = (typeof SYSTEM_PERMISSIONS)[number]["code"];
@@ -948,6 +1040,38 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
 
+const AFFILIATE_MARKETPLACE_PERMISSION_CODES = [
+  "menu:affiliate",
+  "page:affiliate-marketplace",
+  "button:affiliate-claim"
+] as const satisfies readonly SystemPermissionCode[];
+
+const MERCHANT_AFFILIATE_PERMISSION_CODES = [
+  "menu:merchant-affiliate",
+  "page:merchant-affiliate-task",
+  "button:merchant-affiliate-task-create",
+  "button:merchant-affiliate-task-submit",
+  "button:merchant-affiliate-task-pause"
+] as const satisfies readonly SystemPermissionCode[];
+
+const BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES = [
+  "menu:backoffice-affiliate",
+  "page:backoffice-affiliate"
+] as const satisfies readonly SystemPermissionCode[];
+
+const BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES = [
+  ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES,
+  "button:backoffice-affiliate-review",
+  "button:backoffice-affiliate-suspend",
+  "button:backoffice-affiliate-export"
+] as const satisfies readonly SystemPermissionCode[];
+
+const BACKOFFICE_AFFILIATE_FINANCE_PERMISSION_CODES = [
+  ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES,
+  "button:backoffice-affiliate-reversal",
+  "button:backoffice-affiliate-export"
+] as const satisfies readonly SystemPermissionCode[];
+
 export const buildRolePermissionAssignments = (): Record<
   SystemRoleCode,
   SystemPermissionCode[]
@@ -956,6 +1080,8 @@ export const buildRolePermissionAssignments = (): Record<
   operator: [
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES,
     "finance:fee-rule:list",
     "finance:fee-rule:preview",
     "finance:calculation-log:list",
@@ -972,6 +1098,8 @@ export const buildRolePermissionAssignments = (): Record<
   ],
   finance: [
     ...FINANCE_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...BACKOFFICE_AFFILIATE_FINANCE_PERMISSION_CODES,
     "backoffice:finance:list",
     "backoffice:finance:export",
     "backoffice:finance-order:read",
@@ -982,6 +1110,7 @@ export const buildRolePermissionAssignments = (): Record<
   ],
   support: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
     "menu:user-management",
     "page:user-management",
     "user:list",
@@ -992,18 +1121,23 @@ export const buildRolePermissionAssignments = (): Record<
   merchant_owner: [
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
-    ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES
+    ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...MERCHANT_AFFILIATE_PERMISSION_CODES
   ],
   merchant_staff: [
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
-    ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES
+    ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...MERCHANT_AFFILIATE_PERMISSION_CODES
   ],
   technician: [
     "menu:technician-app",
     "menu:technician-schedule",
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
     "technician:services:list",
     "technician:services:write",
     "technician:payslip:read",
@@ -1011,8 +1145,16 @@ export const buildRolePermissionAssignments = (): Record<
     "technician:payslip:dispute",
     "technician:payout-record:confirm"
   ],
-  customer: [...CUSTOMER_BOOKING_PERMISSION_CODES, ...REALTIME_USER_PERMISSION_CODES],
-  broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
-  scout: [...AUTH_AND_DASHBOARD_PERMISSION_CODES],
-  viewer: [...READ_ONLY_BACKOFFICE_PERMISSION_CODES]
+  customer: [
+    ...CUSTOMER_BOOKING_PERMISSION_CODES,
+    ...REALTIME_USER_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES
+  ],
+  broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES, ...AFFILIATE_MARKETPLACE_PERMISSION_CODES],
+  scout: [...AUTH_AND_DASHBOARD_PERMISSION_CODES, ...AFFILIATE_MARKETPLACE_PERMISSION_CODES],
+  viewer: [
+    ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...BACKOFFICE_AFFILIATE_READ_PERMISSION_CODES
+  ]
 });

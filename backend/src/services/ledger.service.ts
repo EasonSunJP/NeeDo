@@ -9,14 +9,15 @@ import type {
   FinanceOrderType
 } from "./fee-calculation.service";
 
-export type WalletOwnerType = "user" | "shop" | "platform";
+export type WalletOwnerType = "user" | "shop" | "platform" | "merchant_account";
 export type LedgerCurrency = "NDP";
 export type WalletLedgerDirection =
   | "available_credit"
   | "available_debit"
   | "freeze"
   | "unfreeze"
-  | "frozen_debit";
+  | "frozen_debit"
+  | "frozen_credit";
 export type LedgerTransactionType =
   | "booking_accept_freeze"
   | "booking_cancel_unfreeze"
@@ -24,7 +25,12 @@ export type LedgerTransactionType =
   | "booking_merchant_cancel_compensation"
   | "manual_topup_approved"
   | "manual_withdrawal_approved"
-  | "seed_credit";
+  | "seed_credit"
+  | "affiliate_task_budget_freeze"
+  | "affiliate_task_budget_release"
+  | "affiliate_reward_settlement"
+  | "affiliate_reward_reversal"
+  | "affiliate_reward_recovery";
 export type LedgerTransactionStatus = "applied";
 export type FinanceReconciliationStatus = "pending" | "exported";
 export type LedgerTransactionClient = unknown;

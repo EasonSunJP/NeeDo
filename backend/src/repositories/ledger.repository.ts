@@ -851,6 +851,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private ownerTypeToDb(ownerType: WalletOwnerType) {
+    if (ownerType === "merchant_account") {
+      return "MERCHANT_ACCOUNT" as const;
+    }
     if (ownerType === "shop") {
       return "SHOP" as const;
     }
@@ -862,6 +865,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private ownerTypeFromDb(ownerType: string): WalletOwnerType {
+    if (ownerType === "MERCHANT_ACCOUNT") {
+      return "merchant_account";
+    }
     if (ownerType === "SHOP") {
       return "shop";
     }
@@ -873,6 +879,21 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeToDb(type: LedgerTransactionType) {
+    if (type === "affiliate_task_budget_freeze") {
+      return "AFFILIATE_TASK_BUDGET_FREEZE" as const;
+    }
+    if (type === "affiliate_task_budget_release") {
+      return "AFFILIATE_TASK_BUDGET_RELEASE" as const;
+    }
+    if (type === "affiliate_reward_settlement") {
+      return "AFFILIATE_REWARD_SETTLEMENT" as const;
+    }
+    if (type === "affiliate_reward_reversal") {
+      return "AFFILIATE_REWARD_REVERSAL" as const;
+    }
+    if (type === "affiliate_reward_recovery") {
+      return "AFFILIATE_REWARD_RECOVERY" as const;
+    }
     if (type === "booking_cancel_unfreeze") {
       return "BOOKING_CANCEL_UNFREEZE" as const;
     }
@@ -896,6 +917,21 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private transactionTypeFromDb(type: string): LedgerTransactionType {
+    if (type === "AFFILIATE_TASK_BUDGET_FREEZE") {
+      return "affiliate_task_budget_freeze";
+    }
+    if (type === "AFFILIATE_TASK_BUDGET_RELEASE") {
+      return "affiliate_task_budget_release";
+    }
+    if (type === "AFFILIATE_REWARD_SETTLEMENT") {
+      return "affiliate_reward_settlement";
+    }
+    if (type === "AFFILIATE_REWARD_REVERSAL") {
+      return "affiliate_reward_reversal";
+    }
+    if (type === "AFFILIATE_REWARD_RECOVERY") {
+      return "affiliate_reward_recovery";
+    }
     if (type === "BOOKING_CANCEL_UNFREEZE") {
       return "booking_cancel_unfreeze";
     }
@@ -923,6 +959,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private directionToDb(direction: WalletLedgerDirection) {
+    if (direction === "frozen_credit") {
+      return "FROZEN_CREDIT" as const;
+    }
     if (direction === "available_credit") {
       return "AVAILABLE_CREDIT" as const;
     }
@@ -940,6 +979,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private directionFromDb(direction: string): WalletLedgerDirection {
+    if (direction === "FROZEN_CREDIT") {
+      return "frozen_credit";
+    }
     if (direction === "AVAILABLE_CREDIT") {
       return "available_credit";
     }

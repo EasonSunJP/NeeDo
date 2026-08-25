@@ -199,3 +199,9 @@ caps page size at 100, and returns the shared API shape:
 
 Business logic, validation, state machines, Auth, RBAC, and audit behavior belong
 in later steps and must not be mixed into the base repository.
+
+## Affiliate Domain Foundation
+
+Migration `20260826090000_affiliate_domain_foundation` adds `affiliate_tasks`, explicit task shop/service snapshots, claims, privacy-minimized touches, order attributions, rewards and their ledger links, task budget reservations and their ledger links, and risk events. Claim and attribution exclusivity use nullable `active_key` uniqueness so soft deletion remains compatible with MySQL. Publisher identity is constrained to exactly one MerchantAccount or Shop.
+
+No affiliate rows are part of the formal seed. `prisma/seed.ts` only upserts the approved RBAC catalog in this slice.

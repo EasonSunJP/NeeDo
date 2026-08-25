@@ -32,7 +32,11 @@ describe("three-month simulation IM persistence", () => {
     expect(seedSource).toContain('email: "customer@example.com"');
     expect(seedSource).toContain("previewCustomerProfile");
     expect(seedSource).toContain("previewCustomerWallet");
-    expect(seedSource).toContain('displayName: "NeeDo Customer"');
+    expect(seedSource).toContain("const previewCustomerAccount = socialPlan.accounts.find(");
+    expect(seedSource).toContain('account.email === "customer@example.com"');
+    expect(seedSource).toContain(
+      "const previewCustomerDisplayName = previewCustomerAccount.displayName;"
+    );
   });
 
   it("keeps the focused customer-100 account linked to an expanded real IM dataset", () => {

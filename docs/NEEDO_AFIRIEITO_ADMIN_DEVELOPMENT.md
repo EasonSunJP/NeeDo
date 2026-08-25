@@ -1,5 +1,7 @@
 # NeeDo Afirieito 后台开发文档
 
+> **Legacy reference only (superseded 2026-08-26).** The independent NDA/localStorage architecture in this document must not be expanded or used as the formal implementation contract. The authoritative direction is `docs/superpowers/specs/2026-08-26-needo-affiliate-service-completion-rewards-design.md`: one NeeDo affiliate domain, merchant/shop publishing, all active users eligible to claim, and fixed NDP settlement only after service completion.
+
 版本：v0.1  
 日期：2026-05-18  
 范围：NeeDo 独立 Afirieito PC 后台、产运后台 Afirieito 同步页、Afirieito H5 推广者端的共享数据与逻辑

@@ -491,7 +491,11 @@ const main = async (): Promise<void> => {
         }
 
         const previewCustomerKey = "formal-preview-customer";
-        const previewCustomerDisplayName = "田中 彩";
+        const previewCustomerAccount = socialPlan.accounts.find(
+          (account) => account.email === "customer@example.com"
+        );
+        assert(previewCustomerAccount, "Formal preview customer account definition is missing.");
+        const previewCustomerDisplayName = previewCustomerAccount.displayName;
         const previewCustomer = await tx.user.findUnique({
           where: { email: "customer@example.com" },
           select: { id: true, isActive: true, deletedAt: true }
@@ -653,22 +657,11 @@ const main = async (): Promise<void> => {
             where: { conversationId: { in: existingSimulationConversationIds } },
             data: { lastReadMessageId: null, lastReadAt: null }
           });
-          const optionalMessageReaction = (
-            tx as typeof tx & {
-              messageReaction?: {
-                deleteMany: (input: {
-                  where: { message: { conversationId: { in: number[] } } };
-                }) => Promise<unknown>;
-              };
+          await tx.messageReaction.deleteMany({
+            where: {
+              message: { conversationId: { in: existingSimulationConversationIds } }
             }
-          ).messageReaction;
-          if (optionalMessageReaction) {
-            await optionalMessageReaction.deleteMany({
-              where: {
-                message: { conversationId: { in: existingSimulationConversationIds } }
-              }
-            });
-          }
+          });
           await tx.message.deleteMany({
             where: { conversationId: { in: existingSimulationConversationIds } }
           });
