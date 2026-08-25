@@ -351,6 +351,7 @@ model User {
   protectedBankAccounts           ProtectedBankAccount[]
   contractAcceptances             ContractAcceptance[]
   applicationMediaAssets          MediaAsset[]                @relation("ApplicationMediaOwner")
+  ekycVerifications               EkycVerification[]
 
   @@index([email])
   @@index([phone])
@@ -1112,6 +1113,7 @@ model UserIdentity {
   id          Int       @id @default(autoincrement())
   userId      Int       @map("user_id")
   type        String    @db.VarChar(50)
+  activeKey   String?   @unique @map("active_key") @db.VarChar(191)
   scopeType   String?   @map("scope_type") @db.VarChar(50)
   scopeId     Int?      @map("scope_id")
   displayName String?   @map("display_name") @db.VarChar(100)
@@ -1249,6 +1251,31 @@ model ProtectedBankAccount {
   @@index([holderMatchHash])
   @@index([deletedAt])
   @@map("protected_bank_accounts")
+}
+
+model EkycVerification {
+  id                        Int       @id @default(autoincrement())
+  userId                    Int       @map("user_id")
+  provider                  String    @db.VarChar(80)
+  providerReference         String    @unique @map("provider_reference") @db.VarChar(191)
+  status                    String    @db.VarChar(40)
+  verifiedNameEncrypted     String    @map("verified_name_encrypted") @db.Text
+  verifiedNameKanaEncrypted String    @map("verified_name_kana_encrypted") @db.Text
+  nameMatchHash             String    @map("name_match_hash") @db.Char(64)
+  resultHash                String    @map("result_hash") @db.Char(64)
+  verifiedAt                DateTime? @map("verified_at")
+  expiresAt                 DateTime? @map("expires_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  deletedAt                 DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([nameMatchHash])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@map("ekyc_verifications")
 }
 
 model ContractAcceptance {

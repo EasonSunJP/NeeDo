@@ -113,6 +113,7 @@ const envSchema = z
   AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
   AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
   AFFILIATE_LINK_SECRET: z.string().min(32),
+  SENSITIVE_DATA_ENCRYPTION_KEY: z.string().min(32),
   AFFILIATE_PUBLIC_BASE_URL: z.string().url(),
   CUSTOMER_AVATAR_STORAGE_DIR: z.string().min(1).default("runtime/customer-avatars"),
   CUSTOMER_AVATAR_PUBLIC_BASE_URL: z.string().url(),
@@ -213,6 +214,27 @@ const envSchema = z
         context,
         "AFFILIATE_LINK_SECRET",
         "AFFILIATE_LINK_SECRET must differ from Auth token secrets"
+      );
+    }
+
+    if (productionPlaceholderPattern.test(value.SENSITIVE_DATA_ENCRYPTION_KEY)) {
+      addProductionIssue(
+        context,
+        "SENSITIVE_DATA_ENCRYPTION_KEY",
+        "SENSITIVE_DATA_ENCRYPTION_KEY must not use a placeholder value in production"
+      );
+    }
+    if (
+      [
+        value.AUTH_ACCESS_TOKEN_SECRET,
+        value.AUTH_REFRESH_TOKEN_SECRET,
+        value.AFFILIATE_LINK_SECRET
+      ].includes(value.SENSITIVE_DATA_ENCRYPTION_KEY)
+    ) {
+      addProductionIssue(
+        context,
+        "SENSITIVE_DATA_ENCRYPTION_KEY",
+        "SENSITIVE_DATA_ENCRYPTION_KEY must differ from Auth and affiliate secrets"
       );
     }
 

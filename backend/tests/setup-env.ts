@@ -35,6 +35,7 @@ process.env.REDIS_RECONNECT_MAX_DELAY_MS = "3000";
 process.env.AUTH_ACCESS_TOKEN_SECRET = "test-access-token-secret-with-at-least-32-chars";
 process.env.AUTH_REFRESH_TOKEN_SECRET = "test-refresh-token-secret-with-at-least-32-chars";
 process.env.AFFILIATE_LINK_SECRET = "test-affiliate-link-secret-with-at-least-32-chars";
+process.env.SENSITIVE_DATA_ENCRYPTION_KEY = "test-sensitive-data-key-with-at-least-32-chars";
 process.env.AFFILIATE_PUBLIC_BASE_URL = "http://localhost:5180/afirieito";
 process.env.CUSTOMER_AVATAR_STORAGE_DIR = join(tmpdir(), "needo-customer-avatars-test");
 process.env.CUSTOMER_AVATAR_PUBLIC_BASE_URL = "http://localhost:3101/media/customer-avatars";
