@@ -29,7 +29,8 @@ export function ContactEventTimeline({
   commentPlaceholder = "写下留言...",
   emptyLabel = "暂无时间轴记录。",
   events,
-  onCommentSubmit
+  onCommentSubmit,
+  showCommentComposer = true
 }: {
   className?: string;
   commentAuthorAvatarSrc?: string;
@@ -40,6 +41,7 @@ export function ContactEventTimeline({
   emptyLabel?: ReactNode;
   events: ContactEventTimelineEntry[];
   onCommentSubmit?: (comment: string) => void;
+  showCommentComposer?: boolean;
 }) {
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
@@ -81,21 +83,23 @@ export function ContactEventTimeline({
         <div className="rounded-[18px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] px-4 py-6 text-center text-xs font-bold text-[color:var(--client-muted)]">
           {emptyLabel}
         </div>
-        <ContactEventTimelineCommentRow
-          buttonLabel={commentButtonLabel}
-          commentAuthorAvatarSrc={commentAuthorAvatarSrc}
-          commentAuthorName={commentAuthorName}
-          commentDraft={commentDraft}
-          commentOpen={commentOpen}
-          onChange={setCommentDraft}
-          onClose={() => {
-            setCommentDraft("");
-            setCommentOpen(false);
-          }}
-          onOpen={() => setCommentOpen(true)}
-          onSubmit={handleCommentSubmit}
-          placeholder={commentPlaceholder}
-        />
+        {showCommentComposer ? (
+          <ContactEventTimelineCommentRow
+            buttonLabel={commentButtonLabel}
+            commentAuthorAvatarSrc={commentAuthorAvatarSrc}
+            commentAuthorName={commentAuthorName}
+            commentDraft={commentDraft}
+            commentOpen={commentOpen}
+            onChange={setCommentDraft}
+            onClose={() => {
+              setCommentDraft("");
+              setCommentOpen(false);
+            }}
+            onOpen={() => setCommentOpen(true)}
+            onSubmit={handleCommentSubmit}
+            placeholder={commentPlaceholder}
+          />
+        ) : null}
       </div>
     );
   }
@@ -119,7 +123,9 @@ export function ContactEventTimeline({
               {index > 0 ? (
                 <span className={cn("absolute left-1/2 top-0 h-2 w-px -translate-x-1/2", getContactEventTimelineLineClassName(renderedEvents[index - 1]?.tone))} />
               ) : null}
-              <span className={cn("absolute left-1/2 top-[18px] w-px -translate-x-1/2", isLastEvent ? "bottom-[-18px]" : "bottom-0", getContactEventTimelineLineClassName(event.tone))} />
+              {!isLastEvent || showCommentComposer ? (
+                <span className={cn("absolute left-1/2 top-[18px] w-px -translate-x-1/2", isLastEvent ? "bottom-[-18px]" : "bottom-0", getContactEventTimelineLineClassName(event.tone))} />
+              ) : null}
               <span className={cn("relative z-[1] h-[14px] w-[14px] rounded-full shadow-[0_0_0_4px_color-mix(in_srgb,var(--client-bg)_86%,transparent)]", getContactEventTimelineDotClassName(event.tone))} />
             </div>
             <div className={cn("min-w-0 pb-5", index === renderedEvents.length - 1 && "pb-0")}>
@@ -177,21 +183,23 @@ export function ContactEventTimeline({
           </div>
         );
       })}
-      <ContactEventTimelineCommentRow
-        buttonLabel={commentButtonLabel}
-        commentAuthorAvatarSrc={commentAuthorAvatarSrc}
-        commentAuthorName={commentAuthorName}
-        commentDraft={commentDraft}
-        commentOpen={commentOpen}
-        onChange={setCommentDraft}
-        onClose={() => {
-          setCommentDraft("");
-          setCommentOpen(false);
-        }}
-        onOpen={() => setCommentOpen(true)}
-        onSubmit={handleCommentSubmit}
-        placeholder={commentPlaceholder}
-      />
+      {showCommentComposer ? (
+        <ContactEventTimelineCommentRow
+          buttonLabel={commentButtonLabel}
+          commentAuthorAvatarSrc={commentAuthorAvatarSrc}
+          commentAuthorName={commentAuthorName}
+          commentDraft={commentDraft}
+          commentOpen={commentOpen}
+          onChange={setCommentDraft}
+          onClose={() => {
+            setCommentDraft("");
+            setCommentOpen(false);
+          }}
+          onOpen={() => setCommentOpen(true)}
+          onSubmit={handleCommentSubmit}
+          placeholder={commentPlaceholder}
+        />
+      ) : null}
     </div>
   );
 }
@@ -297,6 +305,7 @@ export function ContactEventTimelinePanel({
   events,
   headerVariant = "bar",
   onCommentSubmit,
+  showCommentComposer = true,
   timelineClassName,
   title
 }: {
@@ -310,6 +319,7 @@ export function ContactEventTimelinePanel({
   events: ContactEventTimelineEntry[];
   headerVariant?: "bar" | "plain";
   onCommentSubmit?: (comment: string) => void;
+  showCommentComposer?: boolean;
   timelineClassName?: string;
   title: ReactNode;
 }) {
@@ -336,6 +346,7 @@ export function ContactEventTimelinePanel({
         emptyLabel={emptyLabel}
         events={events}
         onCommentSubmit={onCommentSubmit}
+        showCommentComposer={showCommentComposer}
       />
     </section>
   );
