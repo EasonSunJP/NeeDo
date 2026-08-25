@@ -133,4 +133,80 @@ describe("IdentityApplicationRepository", () => {
       })
     );
   });
+
+  it("paginates only the current user's non-deleted applications", async () => {
+    const identityApplication = {
+      findMany: jest.fn().mockResolvedValue([applicationRow]),
+      count: jest.fn().mockResolvedValue(1)
+    };
+    const client = {
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
+      identityApplication
+    } as unknown as PrismaClient;
+    const repository = new IdentityApplicationRepository(client);
+
+    await expect(
+      repository.listMine(3, { page: 2, pageSize: 10, type: "technician", status: "draft" })
+    ).resolves.toMatchObject({ total: 1, page: 2, page_size: 10 });
+    expect(identityApplication.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 3, type: "technician", status: "draft", deletedAt: null },
+        skip: 10,
+        take: 10,
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+      })
+    );
+  });
+
+  it("searches published shops by numeric merchant id, name, city, or address", async () => {
+    const shop = {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 21,
+          name: "GINZA Calm Body Lab",
+          city: "东京",
+          address: "东京都中央区银座3-4-12"
+        }
+      ]),
+      count: jest.fn().mockResolvedValue(1)
+    };
+    const client = {
+      $transaction: jest.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
+      shop
+    } as unknown as PrismaClient;
+    const repository = new IdentityApplicationRepository(client);
+
+    await expect(
+      repository.searchEligibleShops({ page: 1, pageSize: 20, query: "21" })
+    ).resolves.toEqual({
+      list: [
+        {
+          id: 21,
+          merchantId: "21",
+          name: "GINZA Calm Body Lab",
+          city: "东京",
+          address: "东京都中央区银座3-4-12"
+        }
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+    expect(shop.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: "published",
+          deletedAt: null,
+          OR: [
+            { id: 21 },
+            { name: { contains: "21" } },
+            { city: { contains: "21" } },
+            { address: { contains: "21" } }
+          ]
+        },
+        skip: 0,
+        take: 20
+      })
+    );
+  });
 });

@@ -5,8 +5,12 @@ import {
   type CreateMerchantDraftRepositoryInput,
   type CreateTechnicianDraftRepositoryInput,
   type IdentityApplicationRecord,
+  type IdentityApplicationListQuery,
   type IdentityApplicationRepositoryPort,
   type MerchantApplicationDetailRecord,
+  type EligibleShopSearchQuery,
+  type EligibleShopSearchResult,
+  type PaginatedResult,
   type SubmitIdentityApplicationRepositoryInput,
   type TechnicianApplicationDetailRecord,
   type UpdateMerchantDraftRepositoryInput,
@@ -57,6 +61,74 @@ const asObject = (value: Prisma.JsonValue | null): Record<string, unknown> | nul
 
 export class IdentityApplicationRepository implements IdentityApplicationRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
+
+  public async listMine(
+    userId: number,
+    query: IdentityApplicationListQuery
+  ): Promise<PaginatedResult<IdentityApplicationRecord>> {
+    const where: Prisma.IdentityApplicationWhereInput = {
+      userId,
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      deletedAt: null
+    };
+    const [rows, total] = await this.client.$transaction([
+      this.client.identityApplication.findMany({
+        where,
+        include: identityApplicationInclude,
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize
+      }),
+      this.client.identityApplication.count({ where })
+    ]);
+
+    return {
+      list: rows.map((row) => this.mapApplication(row)),
+      total,
+      page: query.page,
+      page_size: query.pageSize
+    };
+  }
+
+  public async searchEligibleShops(
+    query: EligibleShopSearchQuery
+  ): Promise<PaginatedResult<EligibleShopSearchResult>> {
+    const numericId = /^\d+$/u.test(query.query) ? Number.parseInt(query.query, 10) : null;
+    const where: Prisma.ShopWhereInput = {
+      status: "published",
+      deletedAt: null,
+      OR: [
+        ...(numericId && numericId > 0 ? [{ id: numericId }] : []),
+        { name: { contains: query.query } },
+        { city: { contains: query.query } },
+        { address: { contains: query.query } }
+      ]
+    };
+    const [rows, total] = await this.client.$transaction([
+      this.client.shop.findMany({
+        where,
+        select: { id: true, name: true, city: true, address: true },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize
+      }),
+      this.client.shop.count({ where })
+    ]);
+
+    return {
+      list: rows.map((row) => ({
+        id: row.id,
+        merchantId: String(row.id),
+        name: row.name,
+        city: row.city,
+        address: row.address
+      })),
+      total,
+      page: query.page,
+      page_size: query.pageSize
+    };
+  }
 
   public async findActiveByUserAndType(
     userId: number,
@@ -314,6 +386,9 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
       submittedAt: row.submittedAt,
       closedAt: row.closedAt,
       purgeAt: row.purgeAt,
+      rejectionReason: row.rejectionReason,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       technicianDetail,
       merchantDetail
     };

@@ -48,8 +48,39 @@ export interface IdentityApplicationRecord {
   submittedAt: Date | null;
   closedAt: Date | null;
   purgeAt: Date | null;
+  rejectionReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
   technicianDetail: TechnicianApplicationDetailRecord | null;
   merchantDetail: MerchantApplicationDetailRecord | null;
+}
+
+export interface IdentityApplicationListQuery {
+  page: number;
+  pageSize: number;
+  type?: IdentityApplicationType;
+  status?: IdentityApplicationStatus;
+}
+
+export interface EligibleShopSearchQuery {
+  page: number;
+  pageSize: number;
+  query: string;
+}
+
+export interface EligibleShopSearchResult {
+  id: number;
+  merchantId: string;
+  name: string;
+  city: string;
+  address: string;
+}
+
+export interface PaginatedResult<T> {
+  list: T[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface CreateTechnicianDraftRepositoryInput {
@@ -97,6 +128,13 @@ export interface CloseIdentityApplicationRepositoryInput {
 }
 
 export interface IdentityApplicationRepositoryPort {
+  listMine: (
+    userId: number,
+    query: IdentityApplicationListQuery
+  ) => Promise<PaginatedResult<IdentityApplicationRecord>>;
+  searchEligibleShops: (
+    query: EligibleShopSearchQuery
+  ) => Promise<PaginatedResult<EligibleShopSearchResult>>;
   findActiveByUserAndType: (
     userId: number,
     type: IdentityApplicationType
@@ -147,6 +185,22 @@ export interface UpdateMerchantDraftInput {
   detail: MerchantApplicationDetailRecord;
 }
 
+export type MerchantShowcaseDetailInput = Omit<
+  MerchantApplicationDetailRecord,
+  | "bankAccountId"
+  | "contractAcceptanceId"
+  | "mediaPurposes"
+  | "bankVerificationStatus"
+  | "eKycVerified"
+>;
+
+export interface UpdateMerchantShowcaseInput {
+  userId: number;
+  applicationId: number;
+  expectedVersion: number;
+  detail: MerchantShowcaseDetailInput;
+}
+
 export interface SubmitIdentityApplicationInput {
   userId: number;
   applicationId: number;
@@ -177,6 +231,19 @@ export class IdentityApplicationService {
     private readonly repository: IdentityApplicationRepositoryPort,
     private readonly policy = new IdentityApplicationPolicyService()
   ) {}
+
+  public listMine(
+    userId: number,
+    query: IdentityApplicationListQuery
+  ): Promise<PaginatedResult<IdentityApplicationRecord>> {
+    return this.repository.listMine(userId, query);
+  }
+
+  public searchEligibleShops(
+    query: EligibleShopSearchQuery
+  ): Promise<PaginatedResult<EligibleShopSearchResult>> {
+    return this.repository.searchEligibleShops(query);
+  }
 
   public async createTechnicianDraft(
     input: CreateTechnicianDraftInput
@@ -238,6 +305,33 @@ export class IdentityApplicationService {
       nextStatus: "draft",
       activeKey: this.policy.buildActiveKey(input.userId, "merchant", "draft")!,
       detail: this.normalizeMerchantDetail(input.detail)
+    });
+  }
+
+  public async updateMerchantShowcase(
+    input: UpdateMerchantShowcaseInput
+  ): Promise<IdentityApplicationRecord> {
+    const application = await this.loadOwned(input.userId, input.applicationId);
+    this.assertType(application, "merchant");
+    this.assertVersion(application.version, input.expectedVersion);
+    this.assertEditable(application.status);
+    if (!application.merchantDetail) {
+      throw new AppError({
+        code: ERROR_CODES.NOT_FOUND,
+        message: "error.identity_application.not_found",
+        statusCode: 404
+      });
+    }
+
+    return this.repository.updateMerchantDraft({
+      applicationId: application.id,
+      expectedVersion: input.expectedVersion,
+      nextStatus: "draft",
+      activeKey: this.policy.buildActiveKey(input.userId, "merchant", "draft")!,
+      detail: this.normalizeMerchantDetail({
+        ...application.merchantDetail,
+        ...input.detail
+      })
     });
   }
 

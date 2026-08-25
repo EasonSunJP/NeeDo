@@ -32,6 +32,10 @@ import type { CoreReadRepositoryPort } from "./repositories/core-read.repository
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { LedgerRepositoryPort } from "./services/ledger.service";
+import type { IdentityApplicationRepositoryPort } from "./services/identity-application.service";
+import type { IdentityApplicationService } from "./services/identity-application.service";
+import type { ProtectedBankAccountRepositoryPort } from "./services/protected-bank-account.service";
+import type { ProtectedBankAccountService } from "./services/protected-bank-account.service";
 import type { MerchantFinanceRulesRepositoryPort } from "./services/merchant-finance-rules.service";
 import type {
   MerchantSaasBillingRepositoryPort,
@@ -58,6 +62,7 @@ import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
+import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createMerchantFinanceRulesRoutes } from "./routes/merchant-finance-rules.routes";
 import { createMerchantSaasBillingRoutes } from "./routes/merchant-saas-billing.routes";
 import { createObservabilityRoutes } from "./routes/observability.routes";
@@ -105,6 +110,10 @@ export interface AppDependencies {
   compensationProfileRepository?: CompensationProfileRepositoryPort;
   bookingRepository?: BookingRepositoryPort;
   ledgerRepository?: LedgerRepositoryPort;
+  identityApplicationRepository?: IdentityApplicationRepositoryPort;
+  identityApplicationService?: IdentityApplicationService;
+  protectedBankAccountRepository?: ProtectedBankAccountRepositoryPort;
+  protectedBankAccountService?: ProtectedBankAccountService;
   backofficeRepository?: BackofficeRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
@@ -171,6 +180,7 @@ export const createApp = (
   apiRouter.use(createPayrollRoutes(config, resolvedDependencies));
   apiRouter.use(createCompensationProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
+  apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateMarketplaceRoutes(config, resolvedDependencies));
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));

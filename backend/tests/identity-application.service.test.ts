@@ -57,12 +57,17 @@ const application = (
   submittedAt: null,
   closedAt: null,
   purgeAt: null,
+  rejectionReason: null,
+  createdAt: new Date("2026-08-26T00:00:00.000Z"),
+  updatedAt: new Date("2026-08-26T00:00:00.000Z"),
   technicianDetail: technicianDetail(),
   merchantDetail: null,
   ...overrides
 });
 
 const createRepository = (): jest.Mocked<IdentityApplicationRepositoryPort> => ({
+  listMine: jest.fn().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 }),
+  searchEligibleShops: jest.fn().mockResolvedValue({ list: [], total: 0, page: 1, page_size: 20 }),
   findActiveByUserAndType: jest.fn().mockResolvedValue(null),
   hasActiveIdentity: jest.fn().mockResolvedValue(false),
   isShopEligibleForTechnicianApplications: jest.fn().mockResolvedValue(true),
