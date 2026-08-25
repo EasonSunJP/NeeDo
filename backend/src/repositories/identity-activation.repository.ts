@@ -43,7 +43,24 @@ export class IdentityActivationRepository implements IdentityActivationRepositor
     input: ActivateIdentityTransactionInput
   ): Promise<ActivatedIdentityRecord> {
     try {
-      return await this.client.$transaction(async (transaction) => {
+      return await this.client.$transaction((transaction) =>
+        this.activateWithTransaction(transaction, input)
+      );
+    } catch (error: unknown) {
+      if (this.isUniqueConstraintError(error)) {
+        const existing = await this.findActiveIdentity(input.userId, input.identityType);
+        if (existing) {
+          return existing;
+        }
+      }
+      throw error;
+    }
+  }
+
+  public async activateWithTransaction(
+    transaction: Prisma.TransactionClient,
+    input: ActivateIdentityTransactionInput
+  ): Promise<ActivatedIdentityRecord> {
         const role = await transaction.role.findFirst({
           where: { code: input.roleCode, deletedAt: null },
           select: { id: true, code: true }
@@ -128,16 +145,6 @@ export class IdentityActivationRepository implements IdentityActivationRepositor
           scopeType: identity.scopeType ?? input.scopeType,
           scopeId: identity.scopeId
         };
-      });
-    } catch (error: unknown) {
-      if (this.isUniqueConstraintError(error)) {
-        const existing = await this.findActiveIdentity(input.userId, input.identityType);
-        if (existing) {
-          return existing;
-        }
-      }
-      throw error;
-    }
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

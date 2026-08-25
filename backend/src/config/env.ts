@@ -116,6 +116,10 @@ const envSchema = z
   SENSITIVE_DATA_ENCRYPTION_KEY: z.string().min(32),
   AFFILIATE_PUBLIC_BASE_URL: z.string().url(),
   CUSTOMER_AVATAR_STORAGE_DIR: z.string().min(1).default("runtime/customer-avatars"),
+  IDENTITY_APPLICATION_MEDIA_STORAGE_DIR: z
+    .string()
+    .min(1)
+    .default("runtime/identity-applications"),
   CUSTOMER_AVATAR_PUBLIC_BASE_URL: z.string().url(),
   AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
   AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),
