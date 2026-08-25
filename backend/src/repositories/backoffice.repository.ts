@@ -460,6 +460,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const now = new Date();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const daysFromMonday = (dayStart.getUTCDay() + 6) % 7;
+    const weekStart = new Date(dayStart.getTime() - daysFromMonday * 24 * 60 * 60 * 1000);
+    const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const scheduleWindowStart = weekStart < monthStart ? weekStart : monthStart;
+    const scheduleWindowEnd = weekEnd > monthEnd ? weekEnd : monthEnd;
     const bookingWhere = {
       deletedAt: null,
       technicianProfileId: profile.id,
@@ -468,8 +474,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     const scheduleWhere = {
       deletedAt: null,
       technicianProfileId: profile.id,
-      startsAt: { lt: monthEnd },
-      endsAt: { gt: monthStart },
+      startsAt: { lt: scheduleWindowEnd },
+      endsAt: { gt: scheduleWindowStart },
       ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
     } satisfies Prisma.ScheduleSlotWhereInput;
     const [statusGroups, completedRevenue, monthSlots, upcomingSlots, technicianServices, legacyServices, compensationProfile, auditRows] =
@@ -601,7 +607,11 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         orderBy: [{ startsAt: "desc" }, { id: "desc" }]
       }),
       this.client.bookingOrder.findMany({
-        where: { ...bookingWhere, startsAt: { gte: now } },
+        where: {
+          ...bookingWhere,
+          status: { in: ["PENDING", "CONFIRMED", "IN_SERVICE"] },
+          startsAt: { gte: now }
+        },
         include: this.orderInclude(),
         take: 1,
         orderBy: [{ startsAt: "asc" }, { id: "asc" }]
@@ -1206,14 +1216,27 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     input: ScopedEntityInput,
     profileIdentityType: "technician" | "customer"
   ) {
-    const merchantRoleScope =
-      input.scope === "merchant" ? { scopeType: "shop", scopeId: input.shopId } : {};
+    const profileScopeType =
+      profileIdentityType === "technician" ? "technician_profile" : "customer_profile";
+    const merchantRoleScope = input.scope === "merchant"
+      ? {
+          OR: [
+            { scopeType: "shop", scopeId: input.shopId },
+            { scopeType: profileScopeType, scopeId: input.id }
+          ]
+        }
+      : {};
     const merchantIdentityScope =
       input.scope === "merchant"
         ? {
             OR: [
               { scopeType: "shop", scopeId: input.shopId },
-              { type: profileIdentityType, scopeType: "global" }
+              { type: profileIdentityType, scopeType: "global" },
+              {
+                type: profileIdentityType,
+                scopeType: profileScopeType,
+                scopeId: input.id
+              }
             ]
           }
         : {};
@@ -1247,8 +1270,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     profileType: "technician" | "customer"
   ) {
     const targetType = profileType === "technician" ? "TechnicianProfile" : "CustomerProfile";
-    const metadataProfileIdPath =
-      profileType === "technician" ? "$.technicianProfileId" : "$.customerProfileId";
+    const metadataProfileIdPaths = profileType === "technician"
+      ? ["$.technicianProfileId", "$.technicianId"]
+      : ["$.customerProfileId"];
 
     return this.client.auditLog.findMany({
       where: {
@@ -1258,7 +1282,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             OR: [
               { targetType, targetId: profileId },
               { targetType: "User", targetId: userId },
-              { metadata: { path: metadataProfileIdPath, equals: profileId } },
+              ...metadataProfileIdPaths.map((path) => ({
+                metadata: { path, equals: profileId }
+              })),
               { metadata: { path: "$.userId", equals: userId } }
             ]
           },
@@ -1497,13 +1523,21 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       displayName: string | null;
     }>;
   }, input: ScopedEntityInput, profileIdentityType: "technician" | "customer"): BackofficeAccountPayload {
+    const profileScopeType =
+      profileIdentityType === "technician" ? "technician_profile" : "customer_profile";
     const roles = input.scope === "merchant"
-      ? account.userRoles.filter((userRole) => userRole.scopeType === "shop" && userRole.scopeId === input.shopId)
+      ? account.userRoles.filter((userRole) =>
+          (userRole.scopeType === "shop" && userRole.scopeId === input.shopId) ||
+          (userRole.scopeType === profileScopeType && userRole.scopeId === input.id)
+        )
       : account.userRoles;
     const identities = input.scope === "merchant"
       ? account.identities.filter((identity) =>
               (identity.scopeType === "shop" && identity.scopeId === input.shopId) ||
-              (identity.type === profileIdentityType && identity.scopeType === "global")
+              (identity.type === profileIdentityType && identity.scopeType === "global") ||
+              (identity.type === profileIdentityType &&
+                identity.scopeType === profileScopeType &&
+                identity.scopeId === input.id)
         )
       : account.identities;
 
