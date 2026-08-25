@@ -123,11 +123,19 @@ describe("SaasBillingPolicyService", () => {
     ]);
   });
 
-  it("treats exactly fifteen remaining days as the first trial month", () => {
-    expect(policy.calculateInitialTrial(new Date("2026-08-17T12:30:00+09:00")).paidFrom).toEqual(
-      new Date("2026-10-31T15:00:00.000Z")
-    );
-  });
+  it.each([
+    ["fourteen", "2026-08-18T12:30:00+09:00", "2026-11-30T15:00:00.000Z", 15],
+    ["exactly fifteen", "2026-08-17T12:30:00+09:00", "2026-10-31T15:00:00.000Z", 0],
+    ["sixteen", "2026-08-16T12:30:00+09:00", "2026-10-31T15:00:00.000Z", 0]
+  ] as const)(
+    "applies the late-month rule when %s calendar days remain",
+    (_label, startsAt, expectedPaidFrom, expectedBonusDays) => {
+      expect(policy.calculateInitialTrial(new Date(startsAt))).toMatchObject({
+        paidFrom: new Date(expectedPaidFrom),
+        automaticBonusDays: expectedBonusDays
+      });
+    }
+  );
 
   it("never restarts an interrupted trial", () => {
     expect(
