@@ -152,13 +152,18 @@ describe("formal detail mutation sequence", () => {
   });
 
   it("does not refresh or clear page-owned draft and selection after a failed write", async () => {
-    const state = { draft: "edited-name", selectedId: 91 };
+    const state: { draft: string; selectedId: number | null } = { draft: "edited-name", selectedId: 91 };
     const order: string[] = [];
+    const clearPageState = (step: "detail" | "list") => {
+      order.push(step);
+      state.draft = "";
+      state.selectedId = null;
+    };
     await expect(runFormalDetailMutationSequence({
       isDetailCurrent: () => true,
       mutate: async () => { order.push("mutation"); throw new Error("write-failed"); },
-      refreshDetail: async () => { order.push("detail"); },
-      refreshList: async () => { order.push("list"); }
+      refreshDetail: async () => clearPageState("detail"),
+      refreshList: async () => clearPageState("list")
     })).rejects.toThrow("write-failed");
     expect(order).toEqual(["mutation"]);
     expect(state).toEqual({ draft: "edited-name", selectedId: 91 });
