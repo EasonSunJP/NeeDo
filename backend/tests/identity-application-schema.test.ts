@@ -75,6 +75,7 @@ describe("identity application schema contract", () => {
   it("stores protected bank values and immutable contract evidence without IP", () => {
     const bank = modelBlock("ProtectedBankAccount");
     const contract = modelBlock("ContractAcceptance");
+    const merchant = modelBlock("MerchantAccount");
 
     expect(bank).toContain("accountNumberEncrypted");
     expect(bank).toContain("accountHolderEncrypted");
@@ -83,6 +84,8 @@ describe("identity application schema contract", () => {
     expect(bank).toContain("verificationSource");
     expect(bank).toContain("verificationStatus");
     expect(bank).not.toMatch(/\baccountNumber\s+String/);
+    expect(bank).toContain("settlementMerchantAccounts");
+    expect(merchant).toContain("settlementBankAccountId");
 
     expect(contract).toContain("contractVersion");
     expect(contract).toContain("acceptedTextSnapshot");
@@ -90,6 +93,16 @@ describe("identity application schema contract", () => {
     expect(contract).toContain("acceptedAt");
     expect(contract).toContain("sessionId");
     expect(contract).not.toMatch(/\bip(?:Address)?\b/i);
+  });
+
+  it("ships a migration that transfers approved merchant bank data to operations", () => {
+    const migrationPath = join(
+      process.cwd(),
+      "prisma/migrations/20260826130000_merchant_settlement_bank_link/migration.sql"
+    );
+
+    expect(existsSync(migrationPath)).toBe(true);
+    expect(readFileSync(migrationPath, "utf8")).toContain("settlement_bank_account_id");
   });
 
   it("links application media and adds integrity plus purge metadata to MediaAsset", () => {

@@ -184,7 +184,8 @@ describe("MerchantApplicationReviewRepository", () => {
         code: "NEEDO-APP-41",
         ownerUserId: 7,
         name: "株式会社ニード",
-        status: "active"
+        status: "active",
+        settlementBankAccountId: 81
       })
     });
     expect(tx.shop.create).toHaveBeenCalledWith({

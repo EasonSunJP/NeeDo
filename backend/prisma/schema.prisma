@@ -1245,6 +1245,7 @@ model ProtectedBankAccount {
 
   owner                User                        @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   merchantApplications MerchantApplicationDetail[]
+  settlementMerchantAccounts MerchantAccount[]      @relation("MerchantSettlementBank")
 
   @@index([ownerUserId, purpose])
   @@index([verificationStatus])
@@ -2069,6 +2070,7 @@ model MerchantAccount {
   id                    Int       @id @default(autoincrement())
   code                  String    @unique @db.VarChar(100)
   ownerUserId           Int?      @map("owner_user_id")
+  settlementBankAccountId Int?    @map("settlement_bank_account_id")
   name                  String    @db.VarChar(160)
   status                String    @default("active") @db.VarChar(40)
   paymentResponsibility String    @default("group_consolidated") @map("payment_responsibility") @db.VarChar(40)
@@ -2077,6 +2079,7 @@ model MerchantAccount {
   deletedAt             DateTime? @map("deleted_at")
 
   owner                   User?                    @relation("MerchantAccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  settlementBankAccount   ProtectedBankAccount?    @relation("MerchantSettlementBank", fields: [settlementBankAccountId], references: [id], onDelete: SetNull)
   memberships             MerchantShopMembership[]
   billingProfiles         SaasBillingProfile[]
   payerInvoices           SaasInvoice[]
@@ -2085,6 +2088,7 @@ model MerchantAccount {
   publishedAffiliateTasks AffiliateTask[]          @relation("AffiliateMerchantPublisher")
 
   @@index([ownerUserId])
+  @@index([settlementBankAccountId])
   @@index([status])
   @@index([paymentResponsibility])
   @@index([deletedAt])

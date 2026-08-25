@@ -185,6 +185,7 @@ export class MerchantApplicationReviewRepository
         data: {
           code: `NEEDO-APP-${input.applicationId}`,
           ownerUserId: input.applicantUserId,
+          settlementBankAccountId: input.bankAccountId,
           name: input.merchantAccountName,
           status: "active",
           paymentResponsibility: "group_consolidated"
