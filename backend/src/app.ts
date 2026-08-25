@@ -40,6 +40,8 @@ import type { TechnicianApplicationReviewRepositoryPort } from "./services/techn
 import type { TechnicianApplicationReviewService } from "./services/technician-application-review.service";
 import type { TechnicianResumeExportService } from "./services/technician-resume-export.service";
 import type { TechnicianResumeRepository } from "./repositories/technician-resume.repository";
+import type { MerchantApplicationReviewRepositoryPort } from "./services/merchant-application-review.service";
+import type { MerchantApplicationReviewService } from "./services/merchant-application-review.service";
 import type { MerchantFinanceRulesRepositoryPort } from "./services/merchant-finance-rules.service";
 import type {
   MerchantSaasBillingRepositoryPort,
@@ -68,6 +70,7 @@ import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
+import { createOperationsMerchantApplicationRoutes } from "./routes/operations-merchant-application.routes";
 import { createMerchantFinanceRulesRoutes } from "./routes/merchant-finance-rules.routes";
 import { createMerchantSaasBillingRoutes } from "./routes/merchant-saas-billing.routes";
 import { createObservabilityRoutes } from "./routes/observability.routes";
@@ -123,6 +126,8 @@ export interface AppDependencies {
   technicianApplicationReviewService?: TechnicianApplicationReviewService;
   technicianResumeRepository?: TechnicianResumeRepository;
   technicianResumeExportService?: TechnicianResumeExportService;
+  merchantApplicationReviewRepository?: MerchantApplicationReviewRepositoryPort;
+  merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
@@ -191,6 +196,7 @@ export const createApp = (
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
+  apiRouter.use(createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateMarketplaceRoutes(config, resolvedDependencies));
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));

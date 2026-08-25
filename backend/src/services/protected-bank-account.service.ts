@@ -120,6 +120,10 @@ export class ProtectedBankAccountService {
     }
 
     const normalizedHolder = this.holder.normalizeKatakana(input.accountHolderName);
+    const normalizedMatchValue = this.holder.normalizeForMatch(
+      context.applicantKind,
+      input.accountHolderName
+    );
     const verificationSource =
       context.applicantKind === "corporate" ? "corporate_registration" : "ekyc";
     const result = await this.repository.bindVerifiedMerchantAccount({
@@ -135,7 +139,7 @@ export class ProtectedBankAccountService {
       accountNumberEncrypted: this.cipher.seal(input.accountNumber.trim()),
       accountHolderEncrypted: this.cipher.seal(input.accountHolderName.trim()),
       accountHolderNormalizedEncrypted: this.cipher.seal(normalizedHolder),
-      holderMatchHash: this.cipher.matchHash(normalizedHolder),
+      holderMatchHash: this.cipher.matchHash(normalizedMatchValue),
       verificationSource,
       verificationStatus: "verified",
       verifiedAt: input.now,

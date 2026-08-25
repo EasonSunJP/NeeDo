@@ -56,7 +56,7 @@ export class BankAccountHolderService {
   }
 
   public matches(input: BankAccountHolderMatchInput): boolean {
-    const bankHolder = this.normalizeKatakana(input.bankHolderName);
+    const bankHolder = this.normalizeForMatch(input.applicantKind, input.bankHolderName);
     if (!bankHolder) {
       return false;
     }
@@ -67,8 +67,7 @@ export class BankAccountHolderService {
       }
 
       return (
-        this.normalizeCorporateName(bankHolder) ===
-        this.normalizeCorporateName(input.corporateLegalNameKana)
+        bankHolder === this.normalizeForMatch("corporate", input.corporateLegalNameKana)
       );
     }
 
@@ -77,6 +76,11 @@ export class BankAccountHolderService {
     }
 
     return bankHolder === this.normalizeKatakana(input.eKycNameKana);
+  }
+
+  public normalizeForMatch(kind: BankAccountApplicantKind, value: string): string {
+    const normalized = this.normalizeKatakana(value);
+    return kind === "corporate" ? this.normalizeCorporateName(normalized) : normalized;
   }
 
   public assertMatches(input: BankAccountHolderMatchInput): void {

@@ -65,6 +65,7 @@ describe("ProtectedBankAccountService", () => {
     });
     expect(stored?.accountNumberEncrypted).not.toContain("1234567");
     expect(stored?.accountHolderEncrypted).not.toContain("カ）ニード");
+    expect(stored?.holderMatchHash).toBe(cipher.matchHash("カ)ニード"));
     expect(JSON.stringify(stored?.auditMetadata)).not.toContain("1234567");
     expect(JSON.stringify(stored?.auditMetadata)).not.toContain("ニード");
   });
