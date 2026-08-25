@@ -69,4 +69,39 @@ describe("ContactEventTimeline comment composer visibility", () => {
     expect(markup).toContain('data-tone="neutral"');
     expect(markup).toContain("bg-[color:var(--client-line)]");
   });
+
+  it("stacks the timestamp above a compact rail on narrow screens while retaining desktop geometry", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimeline events={events} showCommentComposer={false} />
+    );
+
+    expect(markup).toContain("grid-cols-[18px,minmax(0,1fr)]");
+    expect(markup).toContain("sm:grid-cols-[96px,22px,minmax(0,1fr)]");
+    expect(markup).toContain("col-span-2");
+    expect(markup).toContain("sm:col-span-1");
+    expect(markup).toContain("grid-cols-[32px,minmax(0,1fr)]");
+    expect(markup).toContain("sm:grid-cols-[40px,minmax(0,1fr)]");
+  });
+
+  it("wraps long audit metadata safely instead of clipping the timeline", () => {
+    const markup = renderToStaticMarkup(
+      <ContactEventTimeline
+        events={[{
+          ...events[0],
+          message: "merchant_account_scope_identifier_without_safe_breaks_1234567890"
+        }]}
+        showCommentComposer={false}
+      />
+    );
+
+    expect(markup).toContain("[overflow-wrap:anywhere]");
+  });
+
+  it("keeps the default composer on the same responsive timeline grid", () => {
+    const markup = renderToStaticMarkup(<ContactEventTimeline events={events} />);
+    const responsiveGrid = "grid-cols-[18px,minmax(0,1fr)]";
+
+    expect(markup.split(responsiveGrid)).toHaveLength(3);
+    expect(markup).toContain('class="hidden sm:block"');
+  });
 });

@@ -116,11 +116,11 @@ export function ContactEventTimeline({
 
         return (
           <div
-            className="grid grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
+            className="grid grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3"
             data-tone={event.tone ?? "default"}
             key={event.id}
           >
-            <div className="break-words whitespace-pre-line pt-1 text-right text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums">
+            <div className="col-span-2 break-words whitespace-pre-line pt-1 text-left text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums sm:col-span-1 sm:text-right">
               {formatContactTimelineAtLabel(event.atLabel, message)}
             </div>
             <div className="relative flex justify-center pb-7 pt-1">
@@ -133,7 +133,7 @@ export function ContactEventTimeline({
               <span className={cn("relative z-[1] h-[14px] w-[14px] rounded-full shadow-[0_0_0_4px_color-mix(in_srgb,var(--client-bg)_86%,transparent)]", getContactEventTimelineDotClassName(event.tone))} />
             </div>
             <div className={cn("min-w-0 pb-5", index === renderedEvents.length - 1 && "pb-0")}>
-              <div className="grid grid-cols-[40px,minmax(0,1fr)] items-start gap-2.5">
+              <div className="grid grid-cols-[32px,minmax(0,1fr)] items-start gap-2 sm:grid-cols-[40px,minmax(0,1fr)] sm:gap-2.5">
                 <ContactEventTimelineAvatar
                   icon={systemIcon ?? event.icon}
                   name={actorName}
@@ -149,7 +149,7 @@ export function ContactEventTimeline({
                         : "bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,var(--client-primary)_8%)]"
                     )}
                   >
-                    <p className={cn("text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
+                    <p className={cn("[overflow-wrap:anywhere] text-[13px] font-black leading-5", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-text)]")}>
                       <span>{actorName}（{actorRole}）：</span>
                       {message ? <span>{message}</span> : null}
                     </p>
@@ -157,23 +157,23 @@ export function ContactEventTimeline({
                 </div>
               </div>
               {event.conflicts && event.conflicts.length > 0 ? (
-                <div className="mt-2 grid gap-2 pl-[50px]">
+                <div className="mt-2 grid gap-2 pl-10 sm:pl-[50px]">
                   {event.conflicts.map((conflict, conflictIndex) => (
                     <div className="grid grid-cols-[auto,minmax(0,1fr)] items-start gap-2 rounded-[14px] border border-[#ef4444]/45 bg-[#ef4444]/10 px-3 py-2" key={`${event.id}-conflict-${conflictIndex}`}>
                       <RedAlertIcon />
-                      <p className="text-[12px] font-black leading-5 text-[#ef4444]">{conflict}</p>
+                      <p className="[overflow-wrap:anywhere] text-[12px] font-black leading-5 text-[#ef4444]">{conflict}</p>
                     </div>
                   ))}
                 </div>
               ) : null}
               {event.reason ? (
-                <div className="mt-2 grid grid-cols-[34px,minmax(0,1fr)] gap-2 pl-[50px]">
+                <div className="mt-2 grid grid-cols-[34px,minmax(0,1fr)] gap-2 pl-10 sm:pl-[50px]">
                   <span className={cn("pt-2 text-[11px] font-black", event.tone === "red" ? "text-[#ef4444]" : "text-[color:var(--client-muted)]")}>
                     {event.reasonLabel ?? "理由"}
                   </span>
                   <p
                     className={cn(
-                      "rounded-[14px] border px-3 py-2 text-[12px] font-bold leading-5",
+                      "[overflow-wrap:anywhere] rounded-[14px] border px-3 py-2 text-[12px] font-bold leading-5",
                       event.tone === "red"
                         ? "border-[#ef4444]/45 bg-[#ef4444]/10 text-[#ef4444]"
                         : "border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] text-[color:var(--client-muted)]"
@@ -242,8 +242,8 @@ function ContactEventTimelineCommentRow({
   }, [commentOpen]);
 
   return (
-    <div className="grid grid-cols-[96px,22px,minmax(0,1fr)] gap-3">
-      <div />
+    <div className="grid grid-cols-[18px,minmax(0,1fr)] gap-x-2 sm:grid-cols-[96px,22px,minmax(0,1fr)] sm:gap-3">
+      <div className="hidden sm:block" />
       <div className="relative flex justify-center py-1">
         <button
           aria-label={buttonLabel}
@@ -396,13 +396,13 @@ function ContactEventTimelineAvatar({
   return (
     <span
       className={cn(
-        "grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-[14px] border text-sm font-black",
+        "grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[11px] border text-xs font-black sm:h-10 sm:w-10 sm:rounded-[14px] sm:text-sm",
         tone === "red"
           ? "border-[#ef5b55]/30 bg-[#ef5b55]/12 text-[#ef5b55]"
           : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-muted)]"
       )}
     >
-      {src ? <img alt={typeof name === "string" ? name : "时间轴头像"} className="h-full w-full rounded-[14px] object-cover" src={src} /> : icon ?? <span>{fallback || "管"}</span>}
+      {src ? <img alt={typeof name === "string" ? name : "时间轴头像"} className="h-full w-full rounded-[11px] object-cover sm:rounded-[14px]" src={src} /> : icon ?? <span>{fallback || "管"}</span>}
     </span>
   );
 }
