@@ -37,7 +37,7 @@ describe("SaasBillingPolicyService", () => {
         startsAt: new Date("2026-08-19T15:00:00.000Z"),
         endsAt: new Date("2026-11-30T15:00:00.000Z"),
         paidFrom: new Date("2026-11-30T15:00:00.000Z"),
-        automaticBonusDays: 15
+        automaticBonusDays: 12
       }
     });
   });
@@ -95,14 +95,14 @@ describe("SaasBillingPolicyService", () => {
     });
   });
 
-  it("adds a non-counting fifteen-day bonus when fewer than fifteen days remain", () => {
+  it("adds the exact remaining-day allowance when fewer than fifteen days remain", () => {
     const result = policy.calculateInitialTrial(new Date("2026-08-20T00:00:00+09:00"));
 
     expect(result).toEqual({
       startsAt: new Date("2026-08-19T15:00:00.000Z"),
       endsAt: new Date("2026-11-30T15:00:00.000Z"),
       paidFrom: new Date("2026-11-30T15:00:00.000Z"),
-      automaticBonusDays: 15
+      automaticBonusDays: 12
     });
   });
 
@@ -111,20 +111,20 @@ describe("SaasBillingPolicyService", () => {
 
     expect(policy.buildInitialTrialFreePeriods(trial)).toEqual([
       {
-        periodType: "initial_trial",
+        periodType: "late_month_bonus",
         startsAt: new Date("2026-08-19T15:00:00.000Z"),
-        endsAt: new Date("2026-10-31T15:00:00.000Z")
+        endsAt: new Date("2026-08-31T15:00:00.000Z")
       },
       {
-        periodType: "late_month_bonus",
-        startsAt: new Date("2026-10-31T15:00:00.000Z"),
+        periodType: "initial_trial",
+        startsAt: new Date("2026-08-31T15:00:00.000Z"),
         endsAt: new Date("2026-11-30T15:00:00.000Z")
       }
     ]);
   });
 
   it.each([
-    ["fourteen", "2026-08-18T12:30:00+09:00", "2026-11-30T15:00:00.000Z", 15],
+    ["fourteen", "2026-08-18T12:30:00+09:00", "2026-11-30T15:00:00.000Z", 14],
     ["exactly fifteen", "2026-08-17T12:30:00+09:00", "2026-10-31T15:00:00.000Z", 0],
     ["sixteen", "2026-08-16T12:30:00+09:00", "2026-10-31T15:00:00.000Z", 0]
   ] as const)(

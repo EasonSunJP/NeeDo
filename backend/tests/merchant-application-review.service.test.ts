@@ -169,7 +169,7 @@ describe("MerchantApplicationReviewService", () => {
   it.each([
     ["16 remaining days", new Date("2026-08-15T15:00:00.000Z"), 0, "2026-10-31T15:00:00.000Z"],
     ["exactly 15 remaining days", exactFifteenDays, 0, "2026-10-31T15:00:00.000Z"],
-    ["14 remaining days", new Date("2026-08-17T15:00:00.000Z"), 15, "2026-11-30T15:00:00.000Z"]
+    ["14 remaining days", new Date("2026-08-17T15:00:00.000Z"), 14, "2026-11-30T15:00:00.000Z"]
   ])("approves atomically with the %s trial boundary", async (_label, now, bonus, endsAt) => {
     const repository = createRepository();
     const service = new MerchantApplicationReviewService(repository);

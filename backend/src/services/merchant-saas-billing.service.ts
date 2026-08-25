@@ -23,6 +23,7 @@ import {
   type BillingCadence,
   type BillingState,
   type FreeDuration,
+  type InitialTrialFreePeriod,
   type TrialStatus
 } from "./saas-billing-policy.service";
 
@@ -199,8 +200,8 @@ export interface CreateMerchantAccountRepositoryInput extends CreateMerchantAcco
   actorUserId: number;
   trialStartsAt: Date;
   trialEndsAt: Date;
-  automaticBonusDays: 0 | 15;
-  baseTrialEndsAt: Date;
+  automaticBonusDays: number;
+  freePeriods: InitialTrialFreePeriod[];
 }
 
 export interface UpdateBillingProfileRepositoryInput extends UpdateBillingProfileBody {
@@ -455,14 +456,14 @@ export class MerchantSaasBillingService {
     input: CreateMerchantAccountBody
   ): Promise<MerchantAccountCardPayload> {
     const trial = this.policy.calculateInitialTrial(this.now());
-    const [initialPeriod] = this.policy.buildInitialTrialFreePeriods(trial);
+    const freePeriods = this.policy.buildInitialTrialFreePeriods(trial);
     const record = await this.repository.createMerchantAccount({
       ...input,
       actorUserId: actor.userId,
       trialStartsAt: trial.startsAt,
       trialEndsAt: trial.endsAt,
       automaticBonusDays: trial.automaticBonusDays,
-      baseTrialEndsAt: initialPeriod!.endsAt
+      freePeriods
     });
     await this.record(
       actor,

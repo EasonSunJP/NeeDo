@@ -92,7 +92,7 @@ export interface ApproveMerchantApplicationRepositoryInput {
   purgeAt: Date;
   trialStartsAt: Date;
   trialEndsAt: Date;
-  automaticBonusDays: 0 | 15;
+  automaticBonusDays: number;
   freePeriods: InitialTrialFreePeriod[];
 }
 
