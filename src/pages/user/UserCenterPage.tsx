@@ -76,6 +76,10 @@ const userProfileGenderOptions: Array<{ label: string; value: NonNullable<Custom
   { label: "男", value: "male" }
 ];
 type UserProfileVisibility = "privateAll" | "limited" | "network";
+type UserProfilePrivacyState = {
+  enabled: boolean;
+  visibility: UserProfileVisibility;
+};
 type UserProfileDraft = {
   avatar: string;
   nickname: string;
@@ -295,6 +299,12 @@ function getUserProfilePrivacyLabel(visibility: UserProfileVisibility) {
 
 function getUserProfilePrivacySummary(enabled: boolean, visibility: UserProfileVisibility) {
   return enabled ? getUserProfilePrivacyLabel(visibility) : "公开可见";
+}
+
+function getPersistedUserProfilePrivacy(visibility?: CustomerSelfProfile["visibility"]): UserProfilePrivacyState {
+  return visibility && visibility !== "public"
+    ? { enabled: true, visibility }
+    : { enabled: false, visibility: "privateAll" };
 }
 
 function UserProfilePrivacyInfoButton({ content }: { content: string }) {
@@ -578,8 +588,11 @@ function CompleteUserCenterPage({
   const [profileDraft, setProfileDraft] = useState<UserProfileDraft | null>(null);
   const [savedProfilePreview, setSavedProfilePreview] = useState<UserProfileDraft | null>(null);
   const [profileNameOverride, setProfileNameOverride] = useState("");
-  const [profilePrivacyEnabled, setProfilePrivacyEnabled] = useState(false);
-  const [profilePrivacyVisibility, setProfilePrivacyVisibility] = useState<UserProfileVisibility>("privateAll");
+  const [savedProfilePrivacyPreview, setSavedProfilePrivacyPreview] = useState<UserProfilePrivacyState>({
+    enabled: false,
+    visibility: "privateAll"
+  });
+  const [profilePrivacyDraft, setProfilePrivacyDraft] = useState<UserProfilePrivacyState | null>(null);
   const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
   const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] = useState(false);
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
@@ -616,7 +629,11 @@ function CompleteUserCenterPage({
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
   const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
   const membershipSurface = getThemeProfileSurfaceClassNames();
-  const profilePrivacySummary = getUserProfilePrivacySummary(profilePrivacyEnabled, profilePrivacyVisibility);
+  const savedProfilePrivacy = formalData
+    ? getPersistedUserProfilePrivacy(formalData.profile.visibility)
+    : savedProfilePrivacyPreview;
+  const activeProfilePrivacy = isEditingProfile && profilePrivacyDraft ? profilePrivacyDraft : savedProfilePrivacy;
+  const profilePrivacySummary = getUserProfilePrivacySummary(activeProfilePrivacy.enabled, activeProfilePrivacy.visibility);
   const nicknameInputRef = useRef<HTMLTextAreaElement>(null);
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
@@ -647,12 +664,7 @@ function CompleteUserCenterPage({
 
     setProfileDraft(limitedDraft);
     setProfileNameOverride(limitedDraft.nickname);
-    setProfilePrivacyEnabled(formalData?.profile.visibility !== undefined && formalData.profile.visibility !== "public");
-    setProfilePrivacyVisibility(
-      formalData?.profile.visibility && formalData.profile.visibility !== "public"
-        ? formalData.profile.visibility
-        : "privateAll"
-    );
+    setProfilePrivacyDraft(savedProfilePrivacy);
     setProfilePrivacyMenuOpen(false);
     setProfilePrivacyConfirmOpen(false);
     setAvatarCrop(null);
@@ -663,6 +675,7 @@ function CompleteUserCenterPage({
     setIsEditingProfile(false);
     setProfileDraft(null);
     setProfileNameOverride(savedProfilePreview?.nickname ?? "");
+    setProfilePrivacyDraft(null);
     setAvatarCrop(null);
     setProfilePrivacyMenuOpen(false);
     setProfilePrivacyConfirmOpen(false);
@@ -696,18 +709,17 @@ function CompleteUserCenterPage({
       return;
     }
 
-    setProfilePrivacyEnabled(enabled);
+    setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled }));
     setProfilePrivacyMenuOpen(false);
     setProfilePrivacyConfirmOpen(false);
   };
   const confirmProfilePrivacyEnabled = () => {
     setProfilePrivacyConfirmOpen(false);
-    setProfilePrivacyEnabled(true);
+    setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled: true }));
     setProfilePrivacyMenuOpen(true);
   };
   const updateProfilePrivacyVisibility = (visibility: UserProfileVisibility) => {
-    setProfilePrivacyEnabled(true);
-    setProfilePrivacyVisibility(visibility);
+    setProfilePrivacyDraft({ enabled: true, visibility });
     setProfilePrivacyMenuOpen(false);
   };
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -776,11 +788,12 @@ function CompleteUserCenterPage({
           heightCm: nextProfile.height ? Number(formatUserHeightInput(nextProfile.height)) : null,
           languages: nextProfile.languages,
           bio: nextProfile.bio || null,
-          visibility: profilePrivacyEnabled ? profilePrivacyVisibility : "public"
+          visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
         });
 
         onFormalProfileUpdated?.(updated);
         setSavedProfilePreview(null);
+        setProfileNameOverride("");
       } else {
         const nextPreview: UserProfileDraft = {
           avatar: nextProfile.avatar,
@@ -810,11 +823,13 @@ function CompleteUserCenterPage({
         }
 
         setSavedProfilePreview(nextPreview);
+        setSavedProfilePrivacyPreview(activeProfilePrivacy);
+        setProfileNameOverride(nextProfile.nickname);
       }
 
-      setProfileNameOverride(nextProfile.nickname);
       setIsEditingProfile(false);
       setProfileDraft(null);
+      setProfilePrivacyDraft(null);
       setAvatarCrop(null);
       setProfileToastMessage("资料已保存，已退出编辑模式");
     } catch {
@@ -929,9 +944,9 @@ function CompleteUserCenterPage({
                     <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", membershipSurface.panel)} data-testid="user-profile-privacy-control">
                       <div className="flex items-center justify-between gap-3">
                         <button
-                          aria-expanded={profilePrivacyEnabled ? profilePrivacyMenuOpen : undefined}
+                          aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined}
                           className="min-w-0 flex-1 text-left disabled:cursor-default"
-                          disabled={!profilePrivacyEnabled}
+                          disabled={!isEditingProfile || !activeProfilePrivacy.enabled || isSavingProfile}
                           onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
                           type="button"
                         >
@@ -940,7 +955,8 @@ function CompleteUserCenterPage({
                         </button>
                         <ToggleSwitch
                           ariaLabel="开启隐私模式"
-                          checked={profilePrivacyEnabled}
+                          checked={activeProfilePrivacy.enabled}
+                          disabled={!isEditingProfile || isSavingProfile}
                           onChange={updateProfilePrivacyEnabled}
                           size="md"
                         />
@@ -950,7 +966,7 @@ function CompleteUserCenterPage({
                         onConfirm={confirmProfilePrivacyEnabled}
                         open={profilePrivacyConfirmOpen}
                       />
-                      {profilePrivacyEnabled && profilePrivacyMenuOpen ? (
+                      {activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? (
                         <div
                           className={cn(
                             "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl",
@@ -959,7 +975,7 @@ function CompleteUserCenterPage({
                           data-testid="user-profile-privacy-options"
                         >
                           {userProfilePrivacyOptions.map((option) => {
-                            const checked = profilePrivacyVisibility === option.value;
+                            const checked = activeProfilePrivacy.visibility === option.value;
 
                             return (
                               <div
