@@ -355,6 +355,12 @@ describe("customer profile current-user API", () => {
         .expect(200);
       await request(fixture.app).get("/media/customer-avatars/not-an-avatar.png").expect(404);
       await request(fixture.app).get("/media/customer-avatars/").expect(404);
+      await request(fixture.app)
+        .get(`/media/customer-avatars/${avatarHash}.png/not-an-avatar`)
+        .expect(404);
+      await request(fixture.app)
+        .get(`/media/customer-avatars/${avatarHash}.png.json`)
+        .expect(404);
     } finally {
       await rm(fixture.avatarDirectory, { recursive: true, force: true });
     }

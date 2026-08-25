@@ -139,3 +139,11 @@
 - 不新增第二套资料页或简化版页面。
 - 不修改 NDP、订单统计、信用值和会员等级的计算逻辑。
 - 不重构 Auth、RBAC、Booking、IM 或 Social。
+
+## 最终正式契约
+
+- 正式 customer 会话使用 `GET /api/v1/customer-profile/me` 和 `PATCH /api/v1/customer-profile/me`；profile scope 只由当前身份解析，客户端不能指定其他资料 ID。
+- 读写分别需要 `customer-profile:read` 和 `customer-profile:write`。更新请求必须是非空、严格的 Zod partial body；成功更新写入 `customer_profile.self_update` 审计事件，审计元数据只记录变化字段。
+- 可编辑字段为昵称、头像、性别、年龄、身高、语言、自我介绍和可见性；系统计算字段保持只读。头像解码后写入 `CUSTOMER_AVATAR_STORAGE_DIR`，以 SHA-256 文件名公开到 `CUSTOMER_AVATAR_PUBLIC_BASE_URL`，MySQL 只保存最终媒体 URL。
+- `/me` 正常、加载、错误、编辑和保存状态均明确关闭普通底部导航。编辑时只有红色 X 取消控制和安全区感知的 fixed 保存动作；成功后以服务端响应更新当前卡片，失败则保留草稿。
+- `frontend-bypass` 只保留现有浏览器预览兼容写入，不得进入或模拟正式 API 保存；其他用户端页面的底部导航不在本任务修改范围内。
