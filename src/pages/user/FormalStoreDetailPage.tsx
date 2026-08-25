@@ -13,7 +13,7 @@ import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
-import { getScopedProfileDetailPath } from "../../s\u0068ared/profile-detail";
+import { getScopedProfileDetailPath } from "../../shared/profile-detail";
 
 type FormalStoreDetailCopy = {
   title: string;
@@ -76,8 +76,8 @@ function InitialPlaceholder({ label, className = "" }: { label: string; classNam
   return <div aria-label={label} className={`grid place-items-center bg-[color:var(--client-primary-soft)] font-black text-[color:var(--client-primary)] ${className}`}>{label.trim().slice(0, 2).toUpperCase()}</div>;
 }
 
-function ratingValue(shop: CoreShopDetail) {
-  const value = Number(shop.reviewSummary.ratingAverage);
+function ratingValue(reviewSummary: CoreShopDetail["reviewSummary"]) {
+  const value = Number(reviewSummary.ratingAverage);
   return Number.isFinite(value) ? value.toFixed(1) : "0.0";
 }
 
@@ -92,12 +92,12 @@ function formatMoney(amount: string, currency: string, language: Language) {
   }
 }
 
-function FormalStoreContent({ copy, language, scope, shop }: {
-  copy: FormalStoreDetailCopy;
+export function FormalStoreContent({ language, scope, shop }: {
   language: Language;
   scope: "user" | "merchant";
   shop: CoreShopDetail;
 }) {
+  const copy = copyByLanguage[language];
   const firstService = shop.services[0] ?? null;
 
   return (
@@ -115,7 +115,7 @@ function FormalStoreContent({ copy, language, scope, shop }: {
               <p className="mt-1 text-sm font-bold text-[color:var(--client-muted)]">{shop.city} · {shop.address}</p>
             </div>
             <div className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-2 text-sm font-black text-[color:var(--client-primary)]">
-              ★ {ratingValue(shop)} · {copy.reviewCount(shop.reviewSummary.reviewCount)}
+              ★ {ratingValue(shop.reviewSummary)} · {copy.reviewCount(shop.reviewSummary.reviewCount)}
             </div>
           </div>
           {shop.description ? <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">{shop.description}</p> : null}
@@ -172,7 +172,7 @@ function FormalStoreContent({ copy, language, scope, shop }: {
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate font-black text-[color:var(--client-text)]">{technician.displayName}</h3>
                     <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{technician.city}</p>
-                    <p className="mt-1 text-xs font-black text-[color:var(--client-primary)]">★ {Number(technician.reviewSummary.ratingAverage).toFixed(1)} · {copy.reviewCount(technician.reviewSummary.reviewCount)}</p>
+                    <p className="mt-1 text-xs font-black text-[color:var(--client-primary)]">★ {ratingValue(technician.reviewSummary)} · {copy.reviewCount(technician.reviewSummary.reviewCount)}</p>
                   </div>
                 </div>
                 <SecondaryButton className="mt-3 w-full" to={getScopedProfileDetailPath(scope, "technician", String(technician.id))}>{copy.details}</SecondaryButton>
@@ -184,7 +184,7 @@ function FormalStoreContent({ copy, language, scope, shop }: {
 
       <SurfacePanel className="p-5">
         <h2 className="text-lg font-black text-[color:var(--client-text)]">{copy.reviews}</h2>
-        <p className="mt-3 text-2xl font-black text-[color:var(--client-text)]">★ {ratingValue(shop)}</p>
+        <p className="mt-3 text-2xl font-black text-[color:var(--client-text)]">★ {ratingValue(shop.reviewSummary)}</p>
         <p className="mt-1 text-sm font-bold text-[color:var(--client-muted)]">{copy.reviewCount(shop.reviewSummary.reviewCount)}</p>
         <p className="mt-4 rounded-[18px] border border-dashed border-[color:var(--client-line)] p-4 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{copy.noPublicReviewDetails}</p>
       </SurfacePanel>
@@ -207,7 +207,7 @@ export function FormalStoreDetailPage({ shopId, scope }: { shopId: number; scope
       {query.loading ? <SurfacePanel className="p-6 text-center" aria-live="polite">{copy.loading}</SurfacePanel> : null}
       {query.error ? <EmptyStatePanel title={copy.loadFailed} caption={query.error} action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{copy.retry}</PrimaryButton>} /> : null}
       {!query.loading && !query.error && !query.data ? <EmptyStatePanel title={copy.unavailable} caption={copy.apiSource} /> : null}
-      {query.data ? <FormalStoreContent copy={copy} language={language} scope={scope} shop={query.data} /> : null}
+      {query.data ? <FormalStoreContent language={language} scope={scope} shop={query.data} /> : null}
     </PageScaffold>
   );
 }
