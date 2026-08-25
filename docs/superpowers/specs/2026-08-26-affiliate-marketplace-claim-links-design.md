@@ -67,7 +67,7 @@ Affiliate marketplace Route
 ```
 
 - `publicTokenId` 是随机公开查找标识，不包含业务 ID。
-- `signature` 使用独立 `AFFILIATE_LINK_SECRET` 做 HMAC-SHA256，签名内容固定包含版本、Claim ID、任务 ID、领取用户 ID、公开标识和失效时间。
+- `signature` 使用独立 `AFFILIATE_LINK_SECRET` 做 HMAC-SHA256，签名内容固定包含版本、任务 ID、领取用户 ID、公开标识和失效时间。Claim 采用数据库自增 ID，因此签名输入不依赖尚未生成的 Claim ID。
 - 数据库存储 `publicTokenId` 和完整 token 的 SHA-256 `tokenHash`，不存储签名密钥。
 - 返回 Claim 时可根据持久化字段和服务端密钥确定性重建同一个 token，因此刷新页面仍能复制同一条 URL。
 - 解析时先按 `publicTokenId` 查询，再用常量时间比较校验签名和 `tokenHash`；无效、篡改、过期或已撤销链接统一返回稳定的无效链接错误，避免枚举内部记录。
@@ -119,7 +119,7 @@ Claim 响应包含 `publicCode`、`promotionUrl`、领取时间、失效时间�
 
 首次领取在一个数据库事务内完成：
 
-1. 锁定目标任务行。
+1. 以数据库共享锁读取目标任务和预算冻结记录，使不同用户可以并发领取，同时阻止任务审核或生命周期写操作在资格校验中途改变关键状态。
 2. 查询并返回当前用户已有 Claim。
 3. 重新校验任务时间、状态、范围快照和预算冻结记录。
 4. 创建 Claim，写入 `activeKey = taskId:userId`、唯一优惠码、公开 token ID、token hash 和 `expiresAt`。
