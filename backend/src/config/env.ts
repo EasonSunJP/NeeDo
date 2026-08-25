@@ -112,6 +112,8 @@ const envSchema = z
   REDIS_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
   AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
   AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
+  AFFILIATE_LINK_SECRET: z.string().min(32),
+  AFFILIATE_PUBLIC_BASE_URL: z.string().url(),
   AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
   AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),
   AUTH_LOGIN_FAILURE_LIMIT: z.coerce.number().int().positive(),
@@ -191,6 +193,37 @@ const envSchema = z
         context,
         "AUTH_REFRESH_TOKEN_SECRET",
         "AUTH_REFRESH_TOKEN_SECRET must differ from AUTH_ACCESS_TOKEN_SECRET"
+      );
+    }
+
+    if (productionPlaceholderPattern.test(value.AFFILIATE_LINK_SECRET)) {
+      addProductionIssue(
+        context,
+        "AFFILIATE_LINK_SECRET",
+        "AFFILIATE_LINK_SECRET must not use a placeholder value in production"
+      );
+    }
+    if (
+      value.AFFILIATE_LINK_SECRET === value.AUTH_ACCESS_TOKEN_SECRET ||
+      value.AFFILIATE_LINK_SECRET === value.AUTH_REFRESH_TOKEN_SECRET
+    ) {
+      addProductionIssue(
+        context,
+        "AFFILIATE_LINK_SECRET",
+        "AFFILIATE_LINK_SECRET must differ from Auth token secrets"
+      );
+    }
+
+    const affiliatePublicBaseUrl = new URL(value.AFFILIATE_PUBLIC_BASE_URL);
+    if (
+      affiliatePublicBaseUrl.protocol !== "https:" ||
+      affiliatePublicBaseUrl.hostname.endsWith(".example") ||
+      affiliatePublicBaseUrl.hostname === "example"
+    ) {
+      addProductionIssue(
+        context,
+        "AFFILIATE_PUBLIC_BASE_URL",
+        "AFFILIATE_PUBLIC_BASE_URL must use a production HTTPS origin"
       );
     }
 
