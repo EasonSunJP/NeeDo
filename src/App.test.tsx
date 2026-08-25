@@ -44,3 +44,11 @@ describe("portal identity switching boundaries", () => {
     expect(settingsPortalPageSource).toContain("settingsPortalTarget: nextPortal");
   });
 });
+
+describe("production route chunk boundaries", () => {
+  it("loads the large technician portal only after entering a technician route", () => {
+    expect(appSource).not.toContain('import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";');
+    expect(appSource).toContain('lazy(() => import("./pages/mobile/TechnicianPortalPage")');
+    expect(appSource.match(/<Suspense fallback=\{null\}><TechnicianPortalPage \/><\/Suspense>/g)).toHaveLength(2);
+  });
+});

@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
@@ -55,7 +55,6 @@ import {
   NeedoPostCustomerRoutePage,
   NeedoPostDetailRoutePage
 } from "./pages/mobile/NeedoRoutePages";
-import { TechnicianPortalPage } from "./pages/mobile/TechnicianPortalPage";
 import { TechnicianPayrollPage } from "./pages/mobile/TechnicianPayrollPage";
 import { MerchantAdminDashboardPage } from "./pages/merchant-admin/MerchantAdminDashboardPage";
 import { MerchantAdminAnalyticsPage } from "./pages/merchant-admin/MerchantAdminAnalyticsPage";
@@ -198,6 +197,8 @@ import {
   loginBgUrl,
   managementBgUrl
 } from "./assets/runtime/images";
+
+const TechnicianPortalPage = lazy(() => import("./pages/mobile/TechnicianPortalPage").then((module) => ({ default: module.TechnicianPortalPage })));
 
 type SplashPortal = "user" | "business" | "businessAdmin" | "merchant" | "technician" | "admin" | "merchantAdmin";
 
@@ -1242,7 +1243,7 @@ export default function App() {
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
 
-              <Route path="/technician" element={protect("technician", <TechnicianPortalPage />)} />
+              <Route path="/technician" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
               <Route path="/technician/schedule/new" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
               <Route path="/technician/schedule/events/:eventId/edit" element={protect("technician", <TechnicianScheduleEditorRoutePage />)} />
               <Route path="/technician/schedule/events/:eventId" element={protect("technician", <TechnicianScheduleDetailRoutePage />)} />
@@ -1294,7 +1295,7 @@ export default function App() {
               <Route path="/technician/settings/terms" element={protect("technician", <UnifiedSettingsTermsPage portal="technician" />)} />
               <Route path="/technician/settings/privacy" element={protect("technician", <UnifiedSettingsPrivacyPage portal="technician" />)} />
               <Route path="/technician/settings/delete-account" element={protect("technician", <UnifiedSettingsDeleteAccountPage portal="technician" />)} />
-              <Route path="/technician/:view" element={protect("technician", <TechnicianPortalPage />)} />
+              <Route path="/technician/:view" element={protect("technician", <Suspense fallback={null}><TechnicianPortalPage /></Suspense>)} />
 
               <Route path="/admin" element={protectPermission("admin", "page:dashboard", <DashboardPage />)} />
               <Route path="/admin/operation-timeline" element={protect("admin", <OperationTimelinePage />)} />
