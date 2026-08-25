@@ -75,7 +75,9 @@ export const ledgerTransactionListQuerySchema = withValidDateRange(
         "booking_merchant_cancel_compensation",
         "manual_topup_approved",
         "manual_withdrawal_approved",
-        "seed_credit"
+        "seed_credit",
+        "affiliate_task_budget_freeze",
+        "affiliate_task_budget_release"
       ])
       .optional()
   })
