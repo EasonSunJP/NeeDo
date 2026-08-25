@@ -1147,6 +1147,7 @@ model IdentityApplication {
   rejectionReason       String?   @map("rejection_reason") @db.VarChar(1000)
   closedAt              DateTime? @map("closed_at")
   purgeAt               DateTime? @map("purge_at")
+  purgeStartedAt        DateTime? @map("purge_started_at")
   purgedAt              DateTime? @map("purged_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
@@ -1163,6 +1164,7 @@ model IdentityApplication {
   @@index([reviewerUserId])
   @@index([status, submittedAt])
   @@index([purgeAt, purgedAt])
+  @@index([purgeStartedAt])
   @@index([deletedAt])
   @@map("identity_applications")
 }

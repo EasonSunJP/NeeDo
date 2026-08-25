@@ -46,6 +46,7 @@ describe("identity application schema contract", () => {
     expect(block).toContain("submittedSnapshotHash");
     expect(block).toContain("rejectionReason");
     expect(block).toContain("purgeAt");
+    expect(block).toContain("purgeStartedAt");
     expect(block).toContain("purgedAt");
     expect(block).toContain("technicianDetail");
     expect(block).toContain("merchantDetail");

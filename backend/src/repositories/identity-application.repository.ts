@@ -319,6 +319,7 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
         id: input.applicationId,
         version: input.expectedVersion,
         status: { in: ["draft", "rejected"] },
+        purgeStartedAt: null,
         deletedAt: null
       },
       data: {
@@ -332,6 +333,7 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
         rejectionReason: null,
         closedAt: null,
         purgeAt: null,
+        purgeStartedAt: null,
         purgedAt: null
       }
     });

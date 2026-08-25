@@ -120,6 +120,7 @@ const envSchema = z
     .string()
     .min(1)
     .default("runtime/identity-applications"),
+  IDENTITY_APPLICATION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
   CUSTOMER_AVATAR_PUBLIC_BASE_URL: z.string().url(),
   AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
   AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),
