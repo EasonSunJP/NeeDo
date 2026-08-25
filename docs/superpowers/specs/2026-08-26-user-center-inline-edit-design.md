@@ -69,7 +69,7 @@
 - `CompleteUserCenterPage` 管理 `view`、`editing`、`saving` 三种状态。
 - 正式资料加载成功后，以服务端数据初始化编辑草稿。
 - 信息卡右上按钮在普通状态调用 `startProfileEdit`，在编辑状态调用 `cancelProfileEdit`。
-- `/me` 的 `MobileShell` 不再传入 `userNavItems`；加载态、错误态和完整内容态保持一致。
+- `/me` 的 `MobileShell` 明确设置 `showBottomNav={false}`；不能只移除 `userNavItems`，因为 `MobileShell` 会按路由恢复默认导航。加载态、错误态和完整内容态保持一致。
 - 固定悬浮保存动作只在编辑状态渲染，调用统一的 `saveProfileEdit`。
 - 成功保存后用 API 响应替换当前资料；不依赖刷新页面或 browser storage 合并。
 - 明确的 frontend-preview 会话仍可保留现有兼容数据，但不得影响正式账号的 API 写入路径。
