@@ -19,7 +19,8 @@ describe("production safety", () => {
       AUTH_ACCESS_TOKEN_SECRET: "production-access-secret-with-32-characters",
       AUTH_REFRESH_TOKEN_SECRET: "production-refresh-secret-with-32-characters",
       AFFILIATE_LINK_SECRET: "production-affiliate-link-secret-with-32-characters",
-      AFFILIATE_PUBLIC_BASE_URL: "https://needo.dackou.com/afirieito"
+      AFFILIATE_PUBLIC_BASE_URL: "https://needo.dackou.com/afirieito",
+      CUSTOMER_AVATAR_PUBLIC_BASE_URL: "https://needo.dackou.com/media/customer-avatars"
     };
   };
 
@@ -100,6 +101,7 @@ describe("production safety", () => {
     ["placeholder access secret", { AUTH_ACCESS_TOKEN_SECRET: "replace-with-prod-access-token-secret-32chars-min" }, "AUTH_ACCESS_TOKEN_SECRET"],
     ["reused token secrets", { AUTH_REFRESH_TOKEN_SECRET: "production-access-secret-with-32-characters" }, "AUTH_REFRESH_TOKEN_SECRET"],
     ["insecure affiliate URL", { AFFILIATE_PUBLIC_BASE_URL: "http://needo.dackou.com/afirieito" }, "AFFILIATE_PUBLIC_BASE_URL"],
+    ["insecure customer avatar URL", { CUSTOMER_AVATAR_PUBLIC_BASE_URL: "http://needo.dackou.com/media/customer-avatars" }, "CUSTOMER_AVATAR_PUBLIC_BASE_URL"],
     ["placeholder affiliate secret", { AFFILIATE_LINK_SECRET: "replace-with-prod-affiliate-link-secret-32chars-min" }, "AFFILIATE_LINK_SECRET"],
     ["affiliate/access secret reuse", { AFFILIATE_LINK_SECRET: "production-access-secret-with-32-characters" }, "AFFILIATE_LINK_SECRET"],
     ["affiliate/refresh secret reuse", { AFFILIATE_LINK_SECRET: "production-refresh-secret-with-32-characters" }, "AFFILIATE_LINK_SECRET"],

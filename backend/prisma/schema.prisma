@@ -564,6 +564,11 @@ model CustomerProfile {
   city            String?   @db.VarChar(100)
   membershipLevel String    @default("standard") @map("membership_level") @db.VarChar(50)
   isPublic        Boolean   @default(true) @map("is_public")
+  gender          String    @default("private") @db.VarChar(20)
+  age             Int?
+  heightCm        Decimal?  @map("height_cm") @db.Decimal(5, 2)
+  languages       Json?
+  visibility      String    @default("public") @db.VarChar(20)
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
@@ -574,6 +579,7 @@ model CustomerProfile {
 
   @@index([city])
   @@index([isPublic])
+  @@index([visibility])
   @@index([deletedAt])
   @@map("customer_profiles")
 }

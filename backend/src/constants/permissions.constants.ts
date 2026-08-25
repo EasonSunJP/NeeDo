@@ -109,6 +109,21 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("auth:refresh", "刷新访问令牌", "api", "auth", "使用刷新令牌续期访问令牌"),
   createPermission("auth:logout", "退出登录", "api", "auth", "退出登录并吊销会话"),
 
+  createPermission(
+    "customer-profile:read",
+    "查看个人资料",
+    "api",
+    "customer-profile",
+    "读取当前客户个人资料"
+  ),
+  createPermission(
+    "customer-profile:write",
+    "编辑个人资料",
+    "api",
+    "customer-profile",
+    "更新当前客户个人资料"
+  ),
+
   createPermission("user:list", "用户列表", "api", "user", "分页查看用户列表"),
   createPermission("user:create", "创建用户", "api", "user", "创建后台或业务用户"),
   createPermission("user:update", "更新用户", "api", "user", "编辑用户基础资料"),
@@ -904,6 +919,8 @@ const CUSTOMER_BOOKING_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:client-app",
   ...COMMON_PORTAL_MENU_PERMISSION_CODES,
+  "customer-profile:read",
+  "customer-profile:write",
   "booking:create",
   "order:list",
   "order:read",
