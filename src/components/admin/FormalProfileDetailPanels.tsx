@@ -6,6 +6,7 @@ import {
   type ReactNode
 } from "react";
 import type {
+  BackofficeAccountPayload,
   BackofficeAuditEventPayload,
   BackofficeCompensationProfilePayload,
   BackofficeCustomerDetailPayload,
@@ -17,6 +18,12 @@ import type {
   BackofficeTechnicianDetailPayload,
   BackofficeTechnicianServiceDetailPayload
 } from "../../api/backofficeRealData";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
+import {
+  languageLocales,
+  translateText,
+  type Language
+} from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import {
   ContactEventTimelinePanel,
@@ -36,6 +43,18 @@ type TechnicianDetailTab =
 
 type CustomerDetailTab = "基础资料" | "预约与消费" | "权限与账号" | "时间线";
 
+type FormalLocalization = {
+  language: Language;
+  locale: string;
+  t: (source: string) => string;
+};
+
+type MetricItem = {
+  id: string;
+  label: string;
+  value: ReactNode;
+};
+
 const technicianTabs: TechnicianDetailTab[] = [
   "基础资料",
   "状态与数据",
@@ -48,11 +67,55 @@ const technicianTabs: TechnicianDetailTab[] = [
 
 const customerTabs: CustomerDetailTab[] = ["基础资料", "预约与消费", "权限与账号", "时间线"];
 
-const unavailableMetricLabels: Record<BackofficeTechnicianDetailPayload["unavailableMetrics"][number], string> = {
-  acceptanceRate: "接单率",
-  lateness: "迟到情况",
-  shiftPreferences: "排班偏好"
-};
+export function resolveFormalTabKeyboardIndex(
+  key: string,
+  currentIndex: number,
+  itemCount: number
+) {
+  if (itemCount <= 0) {
+    return null;
+  }
+
+  if (key === "ArrowRight") {
+    return (currentIndex + 1) % itemCount;
+  }
+
+  if (key === "ArrowLeft") {
+    return (currentIndex - 1 + itemCount) % itemCount;
+  }
+
+  if (key === "Home") {
+    return 0;
+  }
+
+  if (key === "End") {
+    return itemCount - 1;
+  }
+
+  return null;
+}
+
+export function formatFormalScheduleMinutes(minutes: number, language: Language) {
+  const locale = languageLocales[language];
+  const wholeMinutes = Math.max(0, Math.trunc(minutes));
+  const hours = Math.floor(wholeMinutes / 60);
+  const remainingMinutes = wholeMinutes % 60;
+  const number = (value: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
+  const joinUnit = (value: number, unitKey: "小时" | "分钟") => {
+    const unit = translateText(unitKey, language);
+    return `${number(value)}${language === "en" ? " " : ""}${unit}`;
+  };
+
+  if (hours === 0) {
+    return joinUnit(remainingMinutes, "分钟");
+  }
+
+  if (remainingMinutes === 0) {
+    return joinUnit(hours, "小时");
+  }
+
+  return `${joinUnit(hours, "小时")} ${joinUnit(remainingMinutes, "分钟")}`;
+}
 
 export function FormalTechnicianDetailPanel({
   actionContent,
@@ -65,6 +128,7 @@ export function FormalTechnicianDetailPanel({
   editContent?: ReactNode;
   initialTab?: TechnicianDetailTab;
 }) {
+  const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<TechnicianDetailTab>(initialTab);
   const panelId = useId();
 
@@ -76,36 +140,30 @@ export function FormalTechnicianDetailPanel({
         actionContent={actionContent}
         avatarUrl={detail.account.avatarUrl}
         badges={[
-          { label: technicianStatusLabel(detail.status), tone: technicianStatusTone(detail.status) },
-          ...(detail.verifiedAt ? [{ label: "已验证", tone: "green" as const }] : []),
-          ...(detail.isRecommended ? [{ label: "推荐技师", tone: "yellow" as const }] : [])
+          { label: technicianStatusLabel(detail.status, localization), tone: technicianStatusTone(detail.status) },
+          ...(detail.verifiedAt ? [{ label: localization.t("已验证"), tone: "green" as const }] : []),
+          ...(detail.isRecommended ? [{ label: localization.t("推荐技师"), tone: "yellow" as const }] : [])
         ]}
         city={detail.city}
         displayName={detail.displayName}
-        entityLabel="技师档案"
+        entityLabel={localization.t("技师档案")}
+        localization={localization}
         profileId={detail.id}
         rating={detail.reviewSummary}
-        shopLabel={detail.shopName ?? "未绑定店铺"}
+        shopLabel={detail.shopName ?? localization.t("未绑定店铺")}
       />
 
-      <div className="border-b border-line bg-white px-4 py-3 sm:px-5">
-        <FormalTabs
-          active={activeTab}
-          idPrefix={panelId}
-          items={technicianTabs}
-          onChange={setActiveTab}
-        />
-      </div>
+      <FormalTabs
+        active={activeTab}
+        idPrefix={panelId}
+        items={technicianTabs}
+        localization={localization}
+        onChange={setActiveTab}
+      />
 
-      <div
-        aria-labelledby={`${panelId}-tab-${technicianTabs.indexOf(activeTab)}`}
-        className="grid min-w-0 gap-4 p-4 sm:p-5"
-        id={`${panelId}-panel-${technicianTabs.indexOf(activeTab)}`}
-        role="tabpanel"
-        tabIndex={0}
-      >
-        {renderTechnicianTab(activeTab, detail, editContent)}
-      </div>
+      <FormalTabPanels active={activeTab} idPrefix={panelId} items={technicianTabs}>
+        {(tab) => renderTechnicianTab(tab, detail, editContent, localization)}
+      </FormalTabPanels>
     </article>
   );
 }
@@ -121,6 +179,7 @@ export function FormalCustomerDetailPanel({
   editContent?: ReactNode;
   initialTab?: CustomerDetailTab;
 }) {
+  const localization = useFormalLocalization();
   const [activeTab, setActiveTab] = useState<CustomerDetailTab>(initialTab);
   const panelId = useId();
 
@@ -132,65 +191,67 @@ export function FormalCustomerDetailPanel({
         actionContent={actionContent}
         avatarUrl={detail.account.avatarUrl}
         badges={[
-          { label: detail.account.isActive ? "账号启用" : "账号停用", tone: detail.account.isActive ? "green" : "red" },
-          { label: membershipLabel(detail.membershipLevel), tone: "yellow" },
-          { label: detail.isPublic ? "资料公开" : "资料非公开", tone: detail.isPublic ? "blue" : "neutral" }
+          {
+            label: localization.t(detail.account.isActive ? "账号启用" : "账号停用"),
+            tone: detail.account.isActive ? "green" : "red"
+          },
+          { label: membershipLabel(detail.membershipLevel, localization), tone: "yellow" },
+          {
+            label: localization.t(detail.isPublic ? "资料公开" : "资料非公开"),
+            tone: detail.isPublic ? "blue" : "neutral"
+          }
         ]}
-        city={detail.city ?? "城市未设置"}
+        city={detail.city ?? localization.t("城市未设置")}
         displayName={detail.displayName}
-        entityLabel="客户档案"
+        entityLabel={localization.t("客户档案")}
+        localization={localization}
         profileId={detail.id}
         rating={detail.reviewSummary}
-        shopLabel="平台客户"
+        shopLabel={localization.t("平台客户")}
       />
 
-      <div className="border-b border-line bg-white px-4 py-3 sm:px-5">
-        <FormalTabs
-          active={activeTab}
-          idPrefix={panelId}
-          items={customerTabs}
-          onChange={setActiveTab}
-        />
-      </div>
+      <FormalTabs
+        active={activeTab}
+        idPrefix={panelId}
+        items={customerTabs}
+        localization={localization}
+        onChange={setActiveTab}
+      />
 
-      <div
-        aria-labelledby={`${panelId}-tab-${customerTabs.indexOf(activeTab)}`}
-        className="grid min-w-0 gap-4 p-4 sm:p-5"
-        id={`${panelId}-panel-${customerTabs.indexOf(activeTab)}`}
-        role="tabpanel"
-        tabIndex={0}
-      >
-        {renderCustomerTab(activeTab, detail, editContent)}
-      </div>
+      <FormalTabPanels active={activeTab} idPrefix={panelId} items={customerTabs}>
+        {(tab) => renderCustomerTab(tab, detail, editContent, localization)}
+      </FormalTabPanels>
     </article>
   );
+}
+
+function useFormalLocalization(): FormalLocalization {
+  const { language } = useOptionalI18n();
+
+  return {
+    language,
+    locale: languageLocales[language],
+    t: (source) => translateText(source, language)
+  };
 }
 
 function FormalTabs<TTab extends string>({
   active,
   idPrefix,
   items,
+  localization,
   onChange
 }: {
   active: TTab;
   idPrefix: string;
   items: TTab[];
+  localization: FormalLocalization;
   onChange: (tab: TTab) => void;
 }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  const changeByKeyboard = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
-    let nextIndex: number | null = null;
-
-    if (event.key === "ArrowRight") {
-      nextIndex = (currentIndex + 1) % items.length;
-    } else if (event.key === "ArrowLeft") {
-      nextIndex = (currentIndex - 1 + items.length) % items.length;
-    } else if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = items.length - 1;
-    }
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    const nextIndex = resolveFormalTabKeyboardIndex(event.key, currentIndex, items.length);
 
     if (nextIndex === null) {
       return;
@@ -202,40 +263,76 @@ function FormalTabs<TTab extends string>({
   };
 
   return (
-    <div
-      aria-label="详情分类"
-      className="scrollbar-none flex max-w-full gap-2 overflow-x-auto pb-0.5"
-      role="tablist"
-    >
-      {items.map((item, index) => {
-        const selected = item === active;
+    <div className="border-b border-line bg-white px-4 py-3 sm:px-5">
+      <div
+        aria-label={localization.t("详情分类")}
+        className="scrollbar-none flex max-w-full gap-2 overflow-x-auto pb-0.5"
+        role="tablist"
+      >
+        {items.map((item, index) => {
+          const selected = item === active;
+
+          return (
+            <button
+              aria-controls={`${idPrefix}-panel-${index}`}
+              aria-selected={selected}
+              className={cn(
+                "focus-ring h-9 shrink-0 rounded-lg border px-3 text-sm font-black transition",
+                selected
+                  ? "border-ink bg-ink text-white shadow-[inset_0_-3px_0_#6e9b79]"
+                  : "border-line bg-paper text-ink/60 hover:border-moss hover:text-ink"
+              )}
+              id={`${idPrefix}-tab-${index}`}
+              key={item}
+              onClick={() => onChange(item)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
+              ref={(node) => {
+                tabRefs.current[index] = node;
+              }}
+              role="tab"
+              tabIndex={selected ? 0 : -1}
+              type="button"
+            >
+              {localization.t(item)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FormalTabPanels<TTab extends string>({
+  active,
+  children,
+  idPrefix,
+  items
+}: {
+  active: TTab;
+  children: (tab: TTab) => ReactNode;
+  idPrefix: string;
+  items: TTab[];
+}) {
+  return (
+    <>
+      {items.map((tab, index) => {
+        const selected = tab === active;
 
         return (
-          <button
-            aria-controls={`${idPrefix}-panel-${index}`}
-            aria-selected={selected}
-            className={cn(
-              "focus-ring h-9 shrink-0 rounded-lg border px-3 text-sm font-black transition",
-              selected
-                ? "border-ink bg-ink text-white shadow-[inset_0_-3px_0_#6e9b79]"
-                : "border-line bg-paper text-ink/60 hover:border-moss hover:text-ink"
-            )}
-            id={`${idPrefix}-tab-${index}`}
-            key={item}
-            onClick={() => onChange(item)}
-            onKeyDown={(event) => changeByKeyboard(event, index)}
-            ref={(node) => {
-              tabRefs.current[index] = node;
-            }}
-            role="tab"
+          <div
+            aria-labelledby={`${idPrefix}-tab-${index}`}
+            className="grid min-w-0 gap-4 p-4 sm:p-5"
+            hidden={!selected}
+            id={`${idPrefix}-panel-${index}`}
+            key={tab}
+            role="tabpanel"
             tabIndex={selected ? 0 : -1}
-            type="button"
           >
-            {item}
-          </button>
+            {children(tab)}
+          </div>
         );
       })}
-    </div>
+    </>
   );
 }
 
@@ -248,6 +345,7 @@ function FormalIdentityHeader({
   city,
   displayName,
   entityLabel,
+  localization,
   profileId,
   rating,
   shopLabel
@@ -260,6 +358,7 @@ function FormalIdentityHeader({
   city: string;
   displayName: string;
   entityLabel: string;
+  localization: FormalLocalization;
   profileId: number;
   rating: BackofficeReviewSummaryPayload | null;
   shopLabel: string;
@@ -271,15 +370,17 @@ function FormalIdentityHeader({
         <div className="flex min-w-0 items-start gap-4">
           <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-[18px] border border-white/20 bg-white/10 text-xl font-black shadow-[0_12px_32px_rgba(0,0,0,0.2)] sm:h-20 sm:w-20">
             {avatarUrl ? (
-              <img alt={`${displayName}头像`} className="h-full w-full object-cover" src={avatarUrl} />
+              <img alt={`${displayName} ${localization.t("头像")}`} className="h-full w-full object-cover" src={avatarUrl} />
             ) : (
-              <span aria-hidden="true">{displayName.slice(0, 1) || "N"}</span>
+              <span aria-label={localization.t("未提供头像")} role="img">
+                <NeutralProfileIcon />
+              </span>
             )}
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap gap-1.5">
-              {badges.map((badge) => (
-                <Badge className="border border-white/10" key={`${badge.label}-${badge.tone}`} tone={badge.tone}>
+              {badges.map((badge, index) => (
+                <Badge className="border border-white/10" key={`${badge.label}-${badge.tone}-${index}`} tone={badge.tone}>
                   {badge.label}
                 </Badge>
               ))}
@@ -287,19 +388,19 @@ function FormalIdentityHeader({
             <h2 className="mt-3 break-words text-2xl font-black tracking-[-0.025em] sm:text-3xl">{displayName}</h2>
             <p className="mt-2 break-words text-sm font-bold text-white/65">{shopLabel} · {city}</p>
             <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em] text-white/70">
-              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{entityLabel} #{profileId}</span>
-              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">账号 #{accountId}</span>
-              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{accountActive ? "Active" : "Inactive"}</span>
+              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{entityLabel} #{formatInteger(profileId, localization)}</span>
+              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{localization.t("账号")} #{formatInteger(accountId, localization)}</span>
+              <span className="rounded-md border border-white/15 bg-black/15 px-2 py-1">{localization.t(accountActive ? "账号启用" : "账号停用")}</span>
             </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-3 lg:justify-end">
           <div className="min-w-[150px] rounded-[16px] border border-white/15 bg-black/15 px-4 py-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/55">正式评价摘要</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-white/55">{localization.t("正式评价摘要")}</p>
             {rating ? (
-              <p className="mt-1 text-lg font-black tabular-nums">★ {rating.ratingAverage.toFixed(1)} <span className="text-xs text-white/60">/ {rating.reviewCount} 条</span></p>
+              <p className="mt-1 text-lg font-black tabular-nums">★ {formatDecimal(rating.ratingAverage, localization)} <span className="text-xs text-white/60">/ {formatInteger(rating.reviewCount, localization)} {localization.t("条")}</span></p>
             ) : (
-              <p className="mt-1 text-sm font-black text-white/75">尚未接入正式数据</p>
+              <p className="mt-1 text-sm font-black text-white/75">{localization.t("尚未接入正式数据")}</p>
             )}
           </div>
           {actionContent ? <div className="flex flex-wrap gap-2">{actionContent}</div> : null}
@@ -309,31 +410,41 @@ function FormalIdentityHeader({
   );
 }
 
+function NeutralProfileIcon() {
+  return (
+    <svg aria-hidden="true" className="h-8 w-8 text-white/65" fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M5.5 19c.7-3.3 3-5 6.5-5s5.8 1.7 6.5 5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+    </svg>
+  );
+}
+
 function renderTechnicianTab(
   tab: TechnicianDetailTab,
   detail: BackofficeTechnicianDetailPayload,
-  editContent?: ReactNode
+  editContent: ReactNode | undefined,
+  localization: FormalLocalization
 ) {
   if (tab === "基础资料") {
     return (
       <>
-        <FormalSectionCard caption="只展示正式技师档案与账号合同中已有的字段。" title="身份与基础资料">
-          <DetailGrid items={[
-            { label: "档案状态", value: technicianStatusLabel(detail.status) },
+        <FormalSectionCard caption="只展示正式技师档案与账号合同中已有的字段。" localization={localization} title="身份与基础资料">
+          <DetailGrid items={localizeDetailItems([
+            { label: "档案状态", value: technicianStatusLabel(detail.status, localization) },
             { label: "联系邮箱", value: detail.email },
             { label: "服务城市", value: detail.city },
-            { label: "服务范围", value: detail.serviceArea ?? "未设置" },
-            { label: "从业年限", value: `${detail.yearsExperience} 年` },
-            { label: "所属店铺", value: detail.shopName ?? "未绑定店铺" },
-            { label: "验证时间", value: formatDateTime(detail.verifiedAt) },
-            { label: "档案更新时间", value: formatDateTime(detail.updatedAt) }
-          ]} />
+            { label: "服务范围", value: detail.serviceArea ?? localization.t("未设置") },
+            { label: "从业年限", value: formatCountWithUnit(detail.yearsExperience, "年", localization) },
+            { label: "所属店铺", value: detail.shopName ?? localization.t("未绑定店铺") },
+            { label: "验证时间", value: formatDateTime(detail.verifiedAt, localization) },
+            { label: "档案更新时间", value: formatDateTime(detail.updatedAt, localization) }
+          ], localization)} />
           <div className="mt-4 rounded-lg border border-line bg-paper p-4">
-            <p className="text-xs font-black text-ink/45">个人简介</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm font-bold leading-6 text-ink">{detail.bio ?? "未填写"}</p>
+            <p className="text-xs font-black text-ink/45">{localization.t("个人简介")}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm font-bold leading-6 text-ink">{detail.bio ?? localization.t("未填写")}</p>
           </div>
         </FormalSectionCard>
-        {editContent ? <FormalSectionCard title="资料编辑">{editContent}</FormalSectionCard> : null}
+        {editContent ? <FormalSectionCard localization={localization} title="资料编辑">{editContent}</FormalSectionCard> : null}
       </>
     );
   }
@@ -341,29 +452,30 @@ function renderTechnicianTab(
   if (tab === "状态与数据") {
     return (
       <>
-        <FormalSectionCard caption="预约、营收与排班分钟数均来自正式详情合同。" title="业务状态与正式指标">
+        <FormalSectionCard caption="预约、营收与排班分钟数均来自正式详情合同。" localization={localization} title="业务状态与正式指标">
           <MetricGrid items={[
-            { label: "预约总数", value: formatInteger(detail.statistics.bookingCount) },
-            { label: "已完成", value: formatInteger(detail.statistics.completedCount) },
-            { label: "已取消", value: formatInteger(detail.statistics.cancelledCount) },
-            { label: "已完成服务收入", value: formatMoney(detail.statistics.completedRevenueJpy, "JPY") },
-            { label: "今日排班", value: formatMinutes(detail.statistics.todayScheduleMinutes) },
-            { label: "本周排班", value: formatMinutes(detail.statistics.weekScheduleMinutes) },
-            { label: "本月排班", value: formatMinutes(detail.statistics.monthScheduleMinutes) }
+            { id: "booking-count", label: localization.t("预约总数"), value: formatInteger(detail.statistics.bookingCount, localization) },
+            { id: "completed-count", label: localization.t("已完成"), value: formatInteger(detail.statistics.completedCount, localization) },
+            { id: "cancelled-count", label: localization.t("已取消"), value: formatInteger(detail.statistics.cancelledCount, localization) },
+            { id: "completed-revenue", label: localization.t("已完成服务收入"), value: formatMoney(detail.statistics.completedRevenueJpy, "JPY", localization) },
+            { id: "today-schedule", label: localization.t("今日排班"), value: formatFormalScheduleMinutes(detail.statistics.todayScheduleMinutes, localization.language) },
+            { id: "week-schedule", label: localization.t("本周排班"), value: formatFormalScheduleMinutes(detail.statistics.weekScheduleMinutes, localization.language) },
+            { id: "month-schedule", label: localization.t("本月排班"), value: formatFormalScheduleMinutes(detail.statistics.monthScheduleMinutes, localization.language) }
           ]} />
         </FormalSectionCard>
-        <ReviewSummaryCard review={detail.reviewSummary} />
-        {detail.unavailableMetrics.filter((metric) => metric !== "shiftPreferences").map((metric) => (
-          <UnavailableCard key={metric} title={unavailableMetricLabels[metric]} />
-        ))}
+        <ReviewSummaryCard localization={localization} review={detail.reviewSummary} />
+        <UnavailableCard localization={localization} title="接单率" />
+        <UnavailableCard localization={localization} title="迟到情况" />
       </>
     );
   }
 
   if (tab === "技能与服务") {
     return (
-      <FormalSectionCard caption={`正式合同返回 ${detail.services.length} 项服务。`} title="正式启用服务">
-        {detail.services.length > 0 ? <TechnicianServiceList services={detail.services} /> : <UnavailableState />}
+      <FormalSectionCard caption={localization.t("以下项目来自正式服务合同。") } localization={localization} title="正式启用服务">
+        {detail.services.length > 0
+          ? <TechnicianServiceList localization={localization} services={detail.services} />
+          : <UnavailableState localization={localization} />}
       </FormalSectionCard>
     );
   }
@@ -371,113 +483,125 @@ function renderTechnicianTab(
   if (tab === "排班偏好") {
     return (
       <>
-        {detail.unavailableMetrics.includes("shiftPreferences") ? <UnavailableCard title="排班偏好" /> : null}
-        <FormalSectionCard caption="以下时段直接来自正式排班库存。" title="近期正式排班">
-          {detail.upcomingSchedule.length > 0 ? <ScheduleList slots={detail.upcomingSchedule} /> : <EmptyRecord label="当前没有近期正式排班" />}
+        <UnavailableCard localization={localization} title="排班偏好" />
+        <FormalSectionCard caption="以下时段直接来自正式排班库存。" localization={localization} title="近期正式排班">
+          {detail.upcomingSchedule.length > 0
+            ? <ScheduleList localization={localization} slots={detail.upcomingSchedule} />
+            : <EmptyRecord label="当前没有近期正式排班" localization={localization} />}
         </FormalSectionCard>
       </>
     );
   }
 
   if (tab === "薪酬设置") {
-    return detail.compensationProfile ? <CompensationCard profile={detail.compensationProfile} /> : <UnavailableCard title="薪酬设置" />;
+    return detail.compensationProfile
+      ? <CompensationCard localization={localization} profile={detail.compensationProfile} />
+      : <UnavailableCard localization={localization} title="薪酬设置" />;
   }
 
   if (tab === "权限与账号") {
-    return <AccountAccessCards account={detail.account} />;
+    return <AccountAccessCards account={detail.account} localization={localization} />;
   }
 
-  return <AuditTimeline events={detail.timeline} />;
+  return <AuditTimeline events={detail.timeline} localization={localization} />;
 }
 
 function renderCustomerTab(
   tab: CustomerDetailTab,
   detail: BackofficeCustomerDetailPayload,
-  editContent?: ReactNode
+  editContent: ReactNode | undefined,
+  localization: FormalLocalization
 ) {
   if (tab === "基础资料") {
     return (
       <>
-        <FormalSectionCard caption="只展示正式客户档案合同中已有的字段。" title="身份与基础资料">
-          <DetailGrid items={[
+        <FormalSectionCard caption="只展示正式客户档案合同中已有的字段。" localization={localization} title="身份与基础资料">
+          <DetailGrid items={localizeDetailItems([
             { label: "联系邮箱", value: detail.email },
-            { label: "所在城市", value: detail.city ?? "未设置" },
-            { label: "会员等级", value: membershipLabel(detail.membershipLevel) },
-            { label: "资料可见性", value: detail.isPublic ? "公开" : "非公开" },
-            { label: "正式预约总数", value: formatInteger(detail.bookingCount) },
-            { label: "档案创建时间", value: formatDateTime(detail.createdAt) },
-            { label: "档案更新时间", value: formatDateTime(detail.updatedAt) }
-          ]} />
+            { label: "所在城市", value: detail.city ?? localization.t("未设置") },
+            { label: "会员等级", value: membershipLabel(detail.membershipLevel, localization) },
+            { label: "资料可见性", value: localization.t(detail.isPublic ? "公开" : "非公开") },
+            { label: "正式预约总数", value: formatInteger(detail.bookingCount, localization) },
+            { label: "档案创建时间", value: formatDateTime(detail.createdAt, localization) },
+            { label: "档案更新时间", value: formatDateTime(detail.updatedAt, localization) }
+          ], localization)} />
           <div className="mt-4 rounded-lg border border-line bg-paper p-4">
-            <p className="text-xs font-black text-ink/45">客户简介</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm font-bold leading-6 text-ink">{detail.bio ?? "未填写"}</p>
+            <p className="text-xs font-black text-ink/45">{localization.t("客户简介")}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm font-bold leading-6 text-ink">{detail.bio ?? localization.t("未填写")}</p>
           </div>
         </FormalSectionCard>
-        {editContent ? <FormalSectionCard title="资料编辑">{editContent}</FormalSectionCard> : null}
+        {editContent ? <FormalSectionCard localization={localization} title="资料编辑">{editContent}</FormalSectionCard> : null}
       </>
     );
   }
 
   if (tab === "预约与消费") {
-    const statusMetrics = Object.entries(detail.bookingStatusTotals).map(([status, total]) => ({
-      label: bookingStatusLabel(status),
-      value: formatInteger(total)
+    const statusMetrics: MetricItem[] = Object.entries(detail.bookingStatusTotals).map(([status, total]) => ({
+      id: `booking-status-${status}`,
+      label: bookingStatusLabel(status, localization),
+      value: formatInteger(total, localization)
     }));
 
     return (
       <>
-        <FormalSectionCard caption="消费额仅统计正式合同返回的已完成预约。" title="预约与消费汇总">
+        <FormalSectionCard caption="消费额仅统计正式合同返回的已完成预约。" localization={localization} title="预约与消费汇总">
           <MetricGrid items={[
-            { label: "累计预约", value: formatInteger(detail.bookingCount) },
-            { label: "已完成消费", value: formatMoney(detail.completedSpendJpy, "JPY") },
+            { id: "booking-total", label: localization.t("累计预约"), value: formatInteger(detail.bookingCount, localization) },
+            { id: "completed-spend", label: localization.t("已完成消费"), value: formatMoney(detail.completedSpendJpy, "JPY", localization) },
             ...statusMetrics
           ]} />
         </FormalSectionCard>
-        <FormalSectionCard title="下次预约">
-          {detail.nextBooking ? <BookingRow booking={detail.nextBooking} /> : <UnavailableState />}
+        <FormalSectionCard localization={localization} title="下次预约">
+          {detail.nextBooking
+            ? <BookingRow booking={detail.nextBooking} localization={localization} />
+            : <UnavailableState localization={localization} />}
         </FormalSectionCard>
-        <FormalSectionCard title="近期预约">
+        <FormalSectionCard localization={localization} title="近期预约">
           {detail.recentBookings.length > 0 ? (
-            <div className="grid gap-2">{detail.recentBookings.map((booking) => <BookingRow booking={booking} key={booking.id} />)}</div>
-          ) : <UnavailableState />}
+            <div className="grid gap-2">
+              {detail.recentBookings.map((booking) => <BookingRow booking={booking} key={booking.id} localization={localization} />)}
+            </div>
+          ) : <UnavailableState localization={localization} />}
         </FormalSectionCard>
-        <ReviewSummaryCard review={detail.reviewSummary} />
+        <ReviewSummaryCard localization={localization} review={detail.reviewSummary} />
       </>
     );
   }
 
   if (tab === "权限与账号") {
-    return <AccountAccessCards account={detail.account} />;
+    return <AccountAccessCards account={detail.account} localization={localization} />;
   }
 
-  return <AuditTimeline events={detail.timeline} />;
+  return <AuditTimeline events={detail.timeline} localization={localization} />;
 }
 
 function FormalSectionCard({
   caption,
   children,
+  localization,
   title
 }: {
   caption?: string;
   children: ReactNode;
+  localization: FormalLocalization;
   title: string;
 }) {
   return (
     <section className="min-w-0 rounded-[18px] border border-line bg-white p-4 shadow-[0_8px_24px_rgba(22,23,26,0.05)] sm:p-5">
       <div className="mb-4 border-l-[3px] border-moss pl-3">
-        <h3 className="text-base font-black tracking-tight text-ink">{title}</h3>
-        {caption ? <p className="mt-1 text-xs font-bold leading-5 text-ink/50">{caption}</p> : null}
+        <h3 className="text-base font-black tracking-tight text-ink">{localization.t(title)}</h3>
+        {caption ? <p className="mt-1 text-xs font-bold leading-5 text-ink/50">{localization.t(caption)}</p> : null}
       </div>
       {children}
     </section>
   );
 }
 
-function MetricGrid({ items }: { items: Array<{ label: string; value: ReactNode }> }) {
+function MetricGrid({ items }: { items: MetricItem[] }) {
   return (
     <dl className="grid grid-cols-2 gap-2 lg:grid-cols-4">
       {items.map((item) => (
-        <div className="min-w-0 rounded-lg border border-line bg-paper px-3 py-3" key={item.label}>
+        <div className="min-w-0 rounded-lg border border-line bg-paper px-3 py-3" key={item.id}>
           <dt className="text-[11px] font-black text-ink/45">{item.label}</dt>
           <dd className="mt-1 break-words text-lg font-black tracking-tight text-ink tabular-nums">{item.value}</dd>
         </div>
@@ -486,56 +610,56 @@ function MetricGrid({ items }: { items: Array<{ label: string; value: ReactNode 
   );
 }
 
-function UnavailableCard({ title }: { title: string }) {
+function UnavailableCard({ localization, title }: { localization: FormalLocalization; title: string }) {
   return (
-    <FormalSectionCard title={title}>
-      <UnavailableState />
+    <FormalSectionCard localization={localization} title={title}>
+      <UnavailableState localization={localization} />
     </FormalSectionCard>
   );
 }
 
-function UnavailableState() {
+function UnavailableState({ localization }: { localization: FormalLocalization }) {
   return (
     <div className="rounded-lg border border-dashed border-line bg-paper px-4 py-6 text-center">
-      <p className="text-sm font-black text-ink/55">尚未接入正式数据</p>
+      <p className="text-sm font-black text-ink/55">{localization.t("尚未接入正式数据")}</p>
     </div>
   );
 }
 
-function EmptyRecord({ label }: { label: string }) {
+function EmptyRecord({ label, localization }: { label: string; localization: FormalLocalization }) {
   return (
     <div className="rounded-lg border border-dashed border-line bg-paper px-4 py-6 text-center text-sm font-black text-ink/55">
-      {label}
+      {localization.t(label)}
     </div>
   );
 }
 
-function ReviewSummaryCard({ review }: { review: BackofficeReviewSummaryPayload | null }) {
+function ReviewSummaryCard({ localization, review }: { localization: FormalLocalization; review: BackofficeReviewSummaryPayload | null }) {
   return (
-    <FormalSectionCard title="正式评价摘要">
+    <FormalSectionCard localization={localization} title="正式评价摘要">
       {review ? (
         <div className="grid gap-4 lg:grid-cols-[180px,minmax(0,1fr)]">
           <div className="rounded-lg bg-ink p-4 text-white">
-            <p className="text-xs font-black text-white/55">综合评分</p>
-            <strong className="mt-2 block text-3xl font-black tabular-nums">{review.ratingAverage.toFixed(1)}</strong>
-            <p className="mt-1 text-xs font-bold text-white/65">{formatInteger(review.reviewCount)} 条正式评价</p>
+            <p className="text-xs font-black text-white/55">{localization.t("综合评分")}</p>
+            <strong className="mt-2 block text-3xl font-black tabular-nums">{formatDecimal(review.ratingAverage, localization)}</strong>
+            <p className="mt-1 text-xs font-bold text-white/65">{formatInteger(review.reviewCount, localization)} {localization.t("条正式评价")}</p>
           </div>
           <div className="min-w-0 rounded-lg border border-line bg-paper p-4">
-            <p className="text-xs font-black text-ink/45">评价亮点</p>
+            <p className="text-xs font-black text-ink/45">{localization.t("评价亮点")}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               {review.highlights.length > 0
-                ? review.highlights.map((highlight) => <Badge key={highlight} tone="green">{highlight}</Badge>)
-                : <span className="text-sm font-bold text-ink/55">暂无正式亮点记录</span>}
+                ? review.highlights.map((highlight, index) => <Badge key={`${highlight}-${index}`} tone="green">{highlight}</Badge>)
+                : <span className="text-sm font-bold text-ink/55">{localization.t("暂无正式亮点记录")}</span>}
             </div>
-            <p className="mt-3 text-xs font-bold text-ink/45">最近评价：{formatDateTime(review.latestReviewAt)}</p>
+            <p className="mt-3 text-xs font-bold text-ink/45">{localization.t("最近评价")}：{formatDateTime(review.latestReviewAt, localization)}</p>
           </div>
         </div>
-      ) : <UnavailableState />}
+      ) : <UnavailableState localization={localization} />}
     </FormalSectionCard>
   );
 }
 
-function TechnicianServiceList({ services }: { services: BackofficeTechnicianServiceDetailPayload[] }) {
+function TechnicianServiceList({ localization, services }: { localization: FormalLocalization; services: BackofficeTechnicianServiceDetailPayload[] }) {
   return (
     <div className="grid gap-2">
       {services.map((service) => (
@@ -543,14 +667,14 @@ function TechnicianServiceList({ services }: { services: BackofficeTechnicianSer
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h4 className="break-words text-sm font-black text-ink">{service.name}</h4>
-              {service.isRecommended ? <Badge tone="yellow">推荐</Badge> : null}
-              <Badge tone="neutral">{service.source === "technician_service" ? "技师服务" : "店铺服务"}</Badge>
+              {service.isRecommended ? <Badge tone="yellow">{localization.t("推荐")}</Badge> : null}
+              <Badge tone="neutral">{localization.t(service.source === "technician_service" ? "技师服务" : "店铺服务")}</Badge>
             </div>
-            <p className="mt-1 text-xs font-bold leading-5 text-ink/50">{service.description ?? "未填写服务说明"}</p>
+            <p className="mt-1 text-xs font-bold leading-5 text-ink/50">{service.description ?? localization.t("未填写服务说明")}</p>
           </div>
           <div className="shrink-0 text-left md:text-right">
-            <strong className="block text-base font-black text-ink tabular-nums">{formatMoney(service.priceAmount, service.currency)}</strong>
-            <span className="mt-1 block text-xs font-bold text-ink/45">{service.durationMinutes} 分钟</span>
+            <strong className="block text-base font-black text-ink tabular-nums">{formatMoney(service.priceAmount, service.currency, localization)}</strong>
+            <span className="mt-1 block text-xs font-bold text-ink/45">{formatCountWithUnit(service.durationMinutes, "分钟", localization)}</span>
           </div>
         </article>
       ))}
@@ -558,204 +682,220 @@ function TechnicianServiceList({ services }: { services: BackofficeTechnicianSer
   );
 }
 
-function ScheduleList({ slots }: { slots: BackofficeScheduleSlotPayload[] }) {
+function ScheduleList({ localization, slots }: { localization: FormalLocalization; slots: BackofficeScheduleSlotPayload[] }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-line">
       <table className="w-full min-w-[680px] border-collapse text-left text-sm">
         <thead className="bg-paper text-xs font-black text-ink/50">
-          <tr>
-            <th className="px-4 py-3">开始</th>
-            <th className="px-4 py-3">服务</th>
-            <th className="px-4 py-3">店铺</th>
-            <th className="px-4 py-3">容量</th>
-            <th className="px-4 py-3">状态</th>
-          </tr>
+          <tr>{["开始", "服务", "店铺", "容量", "状态"].map((label) => <th className="px-4 py-3" key={label}>{localization.t(label)}</th>)}</tr>
         </thead>
         <tbody>
-          {slots.map((slot) => (
-            <tr className="border-t border-line bg-white" key={slot.id}>
-              <td className="px-4 py-3 font-bold text-ink"><span className="block">{formatDateTime(slot.startsAt)}</span><span className="mt-1 block text-xs text-ink/45">至 {formatDateTime(slot.endsAt)}</span></td>
-              <td className="px-4 py-3 font-black text-ink">{slot.serviceName}</td>
-              <td className="px-4 py-3 font-bold text-ink/65">{slot.shopName}</td>
-              <td className="px-4 py-3 font-black text-ink tabular-nums">{slot.bookedCount}/{slot.capacity}</td>
-              <td className="px-4 py-3"><Badge tone={slot.status === "booked" ? "blue" : "green"}>{scheduleStatusLabel(slot.status)}</Badge></td>
-            </tr>
-          ))}
+          {slots.map((slot) => {
+            const status = scheduleStatus(slot.status, localization);
+            return (
+              <tr className="border-t border-line bg-white" key={slot.id}>
+                <td className="px-4 py-3 font-bold text-ink"><span className="block">{formatDateTime(slot.startsAt, localization)}</span><span className="mt-1 block text-xs text-ink/45">{localization.t("至")} {formatDateTime(slot.endsAt, localization)}</span></td>
+                <td className="px-4 py-3 font-black text-ink">{slot.serviceName}</td>
+                <td className="px-4 py-3 font-bold text-ink/65">{slot.shopName}</td>
+                <td className="px-4 py-3 font-black text-ink tabular-nums">{formatInteger(slot.bookedCount, localization)}/{formatInteger(slot.capacity, localization)}</td>
+                <td className="px-4 py-3"><Badge tone={status.tone}>{status.label}</Badge></td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function CompensationCard({ profile }: { profile: BackofficeCompensationProfilePayload }) {
+function CompensationCard({ localization, profile }: { localization: FormalLocalization; profile: BackofficeCompensationProfilePayload }) {
+  const caption = `${localization.t("版本")} ${formatInteger(profile.version, localization)} · ${compensationStatusLabel(profile.status, localization)}`;
   return (
-    <FormalSectionCard caption={`版本 ${profile.version} · ${compensationStatusLabel(profile.status)}`} title="薪酬设置">
-      <DetailGrid items={[
+    <FormalSectionCard caption={caption} localization={{ ...localization, t: (value) => value }} title={localization.t("薪酬设置")}>
+      <DetailGrid items={localizeDetailItems([
         { label: "方案名称", value: profile.name },
-        { label: "计薪模式", value: compensationModeLabel(profile.wageMode) },
-        { label: "基础月薪", value: formatMoney(profile.baseSalaryJpy, "JPY") },
-        { label: "时薪", value: formatMoney(profile.hourlyRateJpy, "JPY") },
-        { label: "日薪", value: formatMoney(profile.dailyRateJpy, "JPY") },
-        { label: "固定单次报酬", value: formatMoney(profile.fixedOrderPayJpy, "JPY") },
-        { label: "提成比例", value: `${profile.commissionRatePercent}%` },
-        { label: "保障最低额", value: formatMoney(profile.guaranteedMinimumJpy, "JPY") },
+        { label: "计薪模式", value: compensationModeLabel(profile.wageMode, localization) },
+        { label: "基础月薪", value: formatMoney(profile.baseSalaryJpy, "JPY", localization) },
+        { label: "时薪", value: formatMoney(profile.hourlyRateJpy, "JPY", localization) },
+        { label: "日薪", value: formatMoney(profile.dailyRateJpy, "JPY", localization) },
+        { label: "固定单次报酬", value: formatMoney(profile.fixedOrderPayJpy, "JPY", localization) },
+        { label: "提成比例", value: `${formatDecimal(profile.commissionRatePercent, localization)}%` },
+        { label: "保障最低额", value: formatMoney(profile.guaranteedMinimumJpy, "JPY", localization) },
         { label: "NDP 费用承担方", value: profile.ndpFeeBearer },
-        { label: "技师 NDP 分成", value: `${profile.technicianNdpSharePercent}%` },
-        { label: "生效时间", value: `${formatDateTime(profile.effectiveFrom)} — ${formatDateTime(profile.effectiveTo)}` },
-        { label: "更新时间", value: formatDateTime(profile.updatedAt) }
-      ]} />
+        { label: "技师 NDP 分成", value: `${formatDecimal(profile.technicianNdpSharePercent, localization)}%` },
+        { label: "生效时间", value: `${formatDateTime(profile.effectiveFrom, localization)} — ${formatDateTime(profile.effectiveTo, localization)}` },
+        { label: "更新时间", value: formatDateTime(profile.updatedAt, localization) }
+      ], localization)} />
     </FormalSectionCard>
   );
 }
 
-function AccountAccessCards({ account }: { account: BackofficeTechnicianDetailPayload["account"] }) {
+function AccountAccessCards({ account, localization }: { account: BackofficeAccountPayload; localization: FormalLocalization }) {
   return (
     <>
-      <FormalSectionCard title="账号状态">
-        <DetailGrid items={[
+      <FormalSectionCard localization={localization} title="账号状态">
+        <DetailGrid items={localizeDetailItems([
           { label: "用户名", value: account.username },
           { label: "邮箱", value: account.email },
-          { label: "手机号", value: account.phone ?? "未设置" },
-          { label: "账号状态", value: account.isActive ? "启用" : "停用" },
-          { label: "最近登录", value: formatDateTime(account.lastLoginAt) }
-        ]} />
+          { label: "手机号", value: account.phone ?? localization.t("未设置") },
+          { label: "账号状态", value: localization.t(account.isActive ? "启用" : "停用") },
+          { label: "最近登录", value: formatDateTime(account.lastLoginAt, localization) }
+        ], localization)} />
       </FormalSectionCard>
-      <FormalSectionCard caption="角色作用域来自正式 RBAC 合同。" title="角色">
-        <RoleList roles={account.roles} />
+      <FormalSectionCard caption="角色作用域来自正式 RBAC 合同。" localization={localization} title="角色">
+        <RoleList localization={localization} roles={account.roles} />
       </FormalSectionCard>
-      <FormalSectionCard caption="身份及作用域来自正式 User Identity 合同。" title="身份">
-        <IdentityList identities={account.identities} />
+      <FormalSectionCard caption="身份及作用域来自正式 User Identity 合同。" localization={localization} title="身份">
+        <IdentityList identities={account.identities} localization={localization} />
       </FormalSectionCard>
     </>
   );
 }
 
-function RoleList({ roles }: { roles: BackofficeRolePayload[] }) {
-  if (roles.length === 0) {
-    return <EmptyRecord label="当前没有正式角色记录" />;
-  }
-
+function RoleList({ localization, roles }: { localization: FormalLocalization; roles: BackofficeRolePayload[] }) {
+  if (roles.length === 0) return <EmptyRecord label="当前没有正式角色记录" localization={localization} />;
   return (
     <div className="grid gap-2 md:grid-cols-2">
       {roles.map((role, index) => (
         <article className="rounded-lg border border-line bg-paper p-4" key={`${role.code}-${role.scopeType}-${role.scopeId}-${index}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-sm font-black text-ink">{role.name}</h4>
-            <Badge tone="dark">{role.code}</Badge>
-          </div>
-          <p className="mt-2 text-xs font-bold text-ink/50">{scopeLabel(role.scopeType, role.scopeId)}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-black text-ink">{role.name}</h4><Badge tone="dark">{role.code}</Badge></div>
+          <p className="mt-2 text-xs font-bold text-ink/50">{scopeLabel(role.scopeType, role.scopeId, localization)}</p>
         </article>
       ))}
     </div>
   );
 }
 
-function IdentityList({ identities }: { identities: BackofficeIdentityPayload[] }) {
-  if (identities.length === 0) {
-    return <EmptyRecord label="当前没有正式身份记录" />;
-  }
-
+function IdentityList({ identities, localization }: { identities: BackofficeIdentityPayload[]; localization: FormalLocalization }) {
+  if (identities.length === 0) return <EmptyRecord label="当前没有正式身份记录" localization={localization} />;
   return (
     <div className="grid gap-2 md:grid-cols-2">
       {identities.map((identity, index) => (
         <article className="rounded-lg border border-line bg-paper p-4" key={`${identity.type}-${identity.scopeType}-${identity.scopeId}-${index}`}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-sm font-black text-ink">{identity.displayName ?? identityTypeLabel(identity.type)}</h4>
-            <Badge tone="blue">{identityTypeLabel(identity.type)}</Badge>
-          </div>
-          <p className="mt-2 text-xs font-bold text-ink/50">{scopeLabel(identity.scopeType, identity.scopeId)}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-black text-ink">{identity.displayName ?? identityTypeLabel(identity.type, localization)}</h4><Badge tone="blue">{identityTypeLabel(identity.type, localization)}</Badge></div>
+          <p className="mt-2 text-xs font-bold text-ink/50">{scopeLabel(identity.scopeType, identity.scopeId, localization)}</p>
         </article>
       ))}
     </div>
   );
 }
 
-function BookingRow({ booking }: { booking: BackofficeOrderPayload }) {
+function BookingRow({ booking, localization }: { booking: BackofficeOrderPayload; localization: FormalLocalization }) {
   return (
     <article className="grid min-w-0 gap-3 rounded-lg border border-line bg-paper p-4 lg:grid-cols-[minmax(0,1fr),auto] lg:items-center">
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h4 className="break-words text-sm font-black text-ink">{booking.serviceName}</h4>
-          <Badge tone={bookingStatusTone(booking.status)}>{bookingStatusLabel(booking.status)}</Badge>
-          <Badge tone={paymentStatusTone(booking.paymentStatus)}>{paymentStatusLabel(booking.paymentStatus)}</Badge>
-        </div>
-        <p className="mt-2 text-xs font-bold leading-5 text-ink/50">{booking.orderNo} · {booking.shopName} · {formatDateTime(booking.startsAt)}</p>
+        <div className="flex flex-wrap items-center gap-2"><h4 className="break-words text-sm font-black text-ink">{booking.serviceName}</h4><Badge tone={bookingStatusTone(booking.status)}>{bookingStatusLabel(booking.status, localization)}</Badge><Badge tone={paymentStatusTone(booking.paymentStatus)}>{paymentStatusLabel(booking.paymentStatus, localization)}</Badge></div>
+        <p className="mt-2 text-xs font-bold leading-5 text-ink/50">{booking.orderNo} · {booking.shopName} · {formatDateTime(booking.startsAt, localization)}</p>
       </div>
-      <strong className="shrink-0 text-base font-black text-ink tabular-nums">{formatMoney(booking.priceAmount, booking.currency)}</strong>
+      <strong className="shrink-0 text-base font-black text-ink tabular-nums">{formatMoney(booking.priceAmount, booking.currency, localization)}</strong>
     </article>
   );
 }
 
-function AuditTimeline({ events }: { events: BackofficeAuditEventPayload[] }) {
+function AuditTimeline({ events, localization }: { events: BackofficeAuditEventPayload[]; localization: FormalLocalization }) {
   return (
     <ContactEventTimelinePanel
       className="rounded-[18px] border-line bg-white text-ink shadow-[0_8px_24px_rgba(22,23,26,0.05)]"
-      emptyLabel="暂无正式审计记录"
-      events={events.map(mapAuditEvent)}
+      emptyLabel={localization.t("暂无正式审计记录")}
+      events={events.map((event) => mapAuditEvent(event, localization))}
       showCommentComposer={false}
-      title="正式审计时间线"
+      title={localization.t("正式审计时间线")}
     />
   );
 }
 
-function mapAuditEvent(event: BackofficeAuditEventPayload): ContactEventTimelineEntry {
-  const actionLabel = auditActionLabel(event.action);
-  const metadataMessage = typeof event.metadata?.message === "string" ? event.metadata.message : null;
-
+function mapAuditEvent(event: BackofficeAuditEventPayload, localization: FormalLocalization): ContactEventTimelineEntry {
+  const action = auditAction(event.action, localization);
   return {
     actorAvatarSrc: event.actorAvatarUrl ?? undefined,
     actorName: event.actorName,
-    actorRole: actionLabel,
-    atLabel: formatDateTime(event.createdAt),
+    actorRole: action.label,
+    atLabel: formatDateTime(event.createdAt, localization),
+    icon: event.actorAvatarUrl ? undefined : <NeutralProfileIcon />,
     id: event.id,
-    message: metadataMessage ?? `记录了 ${actionLabel}`,
-    title: actionLabel,
-    tone: auditTone(event.action)
+    message: <AuditMetadata metadata={event.metadata} localization={localization} />,
+    title: action.label,
+    tone: action.tone
   };
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return "未记录";
+function AuditMetadata({ metadata, localization }: { metadata: Record<string, unknown> | null; localization: FormalLocalization }) {
+  if (!metadata || Object.keys(metadata).length === 0) {
+    return <span>{localization.t("尚未接入正式数据")}</span>;
   }
 
+  const message = typeof metadata.message === "string" && metadata.message.trim() ? metadata.message : null;
+  const entries = Object.entries(metadata).filter(([key]) => key !== "message");
+  return (
+    <span className="grid gap-2">
+      {message ? <span>{message}</span> : null}
+      {entries.length > 0 ? (
+        <span className="grid gap-1.5 rounded-lg border border-current/15 px-2.5 py-2 text-[11px] leading-4">
+          {entries.map(([key, value]) => (
+            <span className="grid grid-cols-[minmax(72px,auto),minmax(0,1fr)] gap-2" key={key}>
+              <strong>{auditMetadataLabel(key, localization)}</strong>
+              <span className="min-w-0 break-words">{renderAuditMetadataValue(value, localization)}</span>
+            </span>
+          ))}
+        </span>
+      ) : null}
+      {!message && entries.length === 0 ? <span>{localization.t("尚未接入正式数据")}</span> : null}
+    </span>
+  );
+}
+
+function renderAuditMetadataValue(value: unknown, localization: FormalLocalization): ReactNode {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return new Intl.NumberFormat(localization.locale).format(value);
+  if (typeof value === "boolean") return localization.t(value ? "是" : "否");
+  if (value === null || value === undefined) return localization.t("尚未接入正式数据");
+  if (Array.isArray(value)) {
+    return <span>{value.map((item, index) => <span key={index}>{index > 0 ? " · " : null}{renderAuditMetadataValue(item, localization)}</span>)}</span>;
+  }
+  if (typeof value === "object") {
+    return (
+      <span className="grid gap-1">
+        {Object.entries(value as Record<string, unknown>).map(([key, nestedValue]) => (
+          <span key={key}><strong>{key}:</strong> {renderAuditMetadataValue(nestedValue, localization)}</span>
+        ))}
+      </span>
+    );
+  }
+  return localization.t("尚未接入正式数据");
+}
+
+function localizeDetailItems(items: Array<{ label: string; value: ReactNode }>, localization: FormalLocalization) {
+  return items.map((item) => ({ ...item, label: localization.t(item.label) }));
+}
+
+function formatDateTime(value: string | null, localization: FormalLocalization) {
+  if (!value) return localization.t("未记录");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(date);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(localization.locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function formatInteger(value: number) {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value);
+function formatInteger(value: number, localization: FormalLocalization) {
+  return new Intl.NumberFormat(localization.locale, { maximumFractionDigits: 0 }).format(value);
 }
 
-function formatMoney(value: number, currency: string) {
-  if (currency === "JPY") {
-    return `¥${new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 }).format(value)}`;
-  }
-
-  return `${currency} ${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value)}`;
+function formatDecimal(value: number, localization: FormalLocalization) {
+  return new Intl.NumberFormat(localization.locale, { maximumFractionDigits: 2 }).format(value);
 }
 
-function formatMinutes(minutes: number) {
-  const hours = minutes / 60;
-  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(hours)}小时`;
+function formatMoney(value: number, currency: string, localization: FormalLocalization) {
+  const amount = new Intl.NumberFormat(localization.locale, { maximumFractionDigits: currency === "JPY" ? 0 : 2 }).format(value);
+  return currency === "JPY" ? `¥${amount}` : `${currency} ${amount}`;
 }
 
-function technicianStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    draft: "草稿",
-    pending_review: "待审核",
-    published: "已发布",
-    paused: "已暂停",
-    rejected: "未通过"
-  };
-  return labels[status] ?? status;
+function formatCountWithUnit(value: number, unit: string, localization: FormalLocalization) {
+  const separator = localization.language === "en" ? " " : "";
+  return `${formatInteger(value, localization)}${separator}${localization.t(unit)}`;
+}
+
+function technicianStatusLabel(status: string, localization: FormalLocalization) {
+  const labels: Record<string, string> = { draft: "草稿", pending_review: "待审核", published: "已发布", paused: "已暂停", rejected: "未通过" };
+  return labels[status] ? localization.t(labels[status]) : status;
 }
 
 function technicianStatusTone(status: string): BadgeTone {
@@ -765,26 +905,14 @@ function technicianStatusTone(status: string): BadgeTone {
   return "neutral";
 }
 
-function membershipLabel(level: string) {
-  const labels: Record<string, string> = {
-    standard: "标准会员",
-    premium: "Premium",
-    vip: "VIP",
-    black: "Black"
-  };
-  return labels[level.toLowerCase()] ?? level;
+function membershipLabel(level: string, localization: FormalLocalization) {
+  const labels: Record<string, string> = { standard: "标准会员", premium: "Premium", vip: "VIP", black: "Black" };
+  return labels[level.toLowerCase()] ? localization.t(labels[level.toLowerCase()]) : level;
 }
 
-function bookingStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    pending: "待确认",
-    confirmed: "已确认",
-    in_service: "服务中",
-    inService: "服务中",
-    completed: "已完成",
-    cancelled: "已取消"
-  };
-  return labels[status] ?? status;
+function bookingStatusLabel(status: string, localization: FormalLocalization) {
+  const labels: Record<string, string> = { pending: "待确认", confirmed: "已确认", in_service: "服务中", inService: "服务中", completed: "已完成", cancelled: "已取消" };
+  return labels[status] ? localization.t(labels[status]) : status;
 }
 
 function bookingStatusTone(status: string): BadgeTone {
@@ -794,13 +922,8 @@ function bookingStatusTone(status: string): BadgeTone {
   return "yellow";
 }
 
-function paymentStatusLabel(status: BackofficeOrderPayload["paymentStatus"]) {
-  return {
-    pending: "待确认收款",
-    confirmed: "已确认收款",
-    refundPending: "待退款",
-    refunded: "已退款"
-  }[status];
+function paymentStatusLabel(status: BackofficeOrderPayload["paymentStatus"], localization: FormalLocalization) {
+  return localization.t({ pending: "待确认收款", confirmed: "已确认收款", refundPending: "待退款", refunded: "已退款" }[status]);
 }
 
 function paymentStatusTone(status: BackofficeOrderPayload["paymentStatus"]): BadgeTone {
@@ -810,58 +933,34 @@ function paymentStatusTone(status: BackofficeOrderPayload["paymentStatus"]): Bad
   return "red";
 }
 
-function scheduleStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    available: "可预约",
-    booked: "已预约",
-    blocked: "已阻塞"
-  };
-  return labels[status] ?? status;
+function scheduleStatus(status: string, localization: FormalLocalization): { label: string; tone: BadgeTone } {
+  if (status === "available") return { label: localization.t("可预约"), tone: "green" };
+  if (status === "booked") return { label: localization.t("已预约"), tone: "blue" };
+  if (status === "blocked") return { label: localization.t("已阻塞"), tone: "red" };
+  return { label: status, tone: "neutral" };
 }
 
-function compensationModeLabel(mode: string) {
-  const labels: Record<string, string> = {
-    monthly: "月薪",
-    hourly: "时薪",
-    daily: "日薪",
-    fixed_order: "按单固定",
-    commission: "提成",
-    hybrid: "混合"
-  };
-  return labels[mode] ?? mode;
+function compensationModeLabel(mode: string, localization: FormalLocalization) {
+  const labels: Record<string, string> = { monthly: "月薪", hourly: "时薪", daily: "日薪", fixed_order: "按单固定", commission: "提成", hybrid: "混合" };
+  return labels[mode] ? localization.t(labels[mode]) : mode;
 }
 
-function compensationStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    draft: "草稿",
-    active: "生效中",
-    archived: "已归档"
-  };
-  return labels[status] ?? status;
+function compensationStatusLabel(status: string, localization: FormalLocalization) {
+  const labels: Record<string, string> = { draft: "草稿", active: "生效中", archived: "已归档" };
+  return labels[status] ? localization.t(labels[status]) : status;
 }
 
-function scopeLabel(scopeType: string | null, scopeId: number | null) {
-  if (!scopeType || scopeType === "global") {
-    return "全局作用域";
-  }
-  return `${scopeType} 作用域${scopeId === null ? "" : ` #${scopeId}`}`;
+function scopeLabel(scopeType: string | null, scopeId: number | null, localization: FormalLocalization) {
+  if (!scopeType || scopeType === "global") return localization.t("全局作用域");
+  return scopeId === null ? scopeType : `${scopeType} #${formatInteger(scopeId, localization)}`;
 }
 
-function identityTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    platform: "平台身份",
-    customer: "客户身份",
-    technician: "技师身份",
-    merchant: "商户身份",
-    merchant_owner: "店铺负责人",
-    merchant_staff: "店铺员工",
-    broker: "经纪人",
-    scout: "介绍人"
-  };
-  return labels[type] ?? type;
+function identityTypeLabel(type: string, localization: FormalLocalization) {
+  const labels: Record<string, string> = { platform: "平台身份", customer: "客户身份", technician: "技师身份", merchant: "商户身份", merchant_owner: "店铺负责人", merchant_staff: "店铺员工", broker: "经纪人", scout: "介绍人" };
+  return labels[type] ? localization.t(labels[type]) : type;
 }
 
-function auditActionLabel(action: string) {
+function auditAction(action: string, localization: FormalLocalization): { label: string; tone: ContactEventTimelineEntry["tone"] } {
   const labels: Record<string, string> = {
     "technician.created": "技师档案创建",
     "technician.approved": "技师审核通过",
@@ -871,9 +970,14 @@ function auditActionLabel(action: string) {
     "customer.profile.updated": "客户资料更新",
     "customer.deleted": "客户软删除"
   };
-  return labels[action] ?? action;
+  const danger = /deleted|disabled|rejected|cancelled|failed/i.test(action);
+  return {
+    label: labels[action] ? localization.t(labels[action]) : action,
+    tone: danger ? "red" : labels[action] ? "green" : "neutral"
+  };
 }
 
-function auditTone(action: string): ContactEventTimelineEntry["tone"] {
-  return /deleted|disabled|rejected|cancelled|failed/i.test(action) ? "red" : "green";
+function auditMetadataLabel(key: string, localization: FormalLocalization) {
+  const labels: Record<string, string> = { reason: "原因", changedFields: "变更字段", approved: "已批准", source: "来源" };
+  return labels[key] ? localization.t(labels[key]) : key;
 }

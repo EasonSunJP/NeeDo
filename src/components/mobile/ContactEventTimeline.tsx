@@ -115,7 +115,11 @@ export function ContactEventTimeline({
         const systemIcon = isSystemEvent ? <ContactEventTimelineComputerIcon warning={isBlockingSystemTimelineEvent(event, actorName, actorRole)} /> : undefined;
 
         return (
-          <div className="grid grid-cols-[96px,22px,minmax(0,1fr)] gap-3" key={event.id}>
+          <div
+            className="grid grid-cols-[96px,22px,minmax(0,1fr)] gap-3"
+            data-tone={event.tone ?? "neutral"}
+            key={event.id}
+          >
             <div className="break-words whitespace-pre-line pt-1 text-right text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums">
               {formatContactTimelineAtLabel(event.atLabel, message)}
             </div>
@@ -357,12 +361,20 @@ function getContactEventTimelineDotClassName(tone: ContactEventTimelineTone = "n
     return "bg-[#ef4444]";
   }
 
+  if (tone === "neutral") {
+    return "bg-[color:var(--client-line)]";
+  }
+
   return "bg-[color:var(--client-primary)]";
 }
 
-function getContactEventTimelineLineClassName(tone: ContactEventTimelineTone = "green") {
+function getContactEventTimelineLineClassName(tone: ContactEventTimelineTone = "neutral") {
   if (tone === "red") {
     return "bg-[#ef4444]";
+  }
+
+  if (tone === "neutral") {
+    return "bg-[color:var(--client-line)]";
   }
 
   return "bg-[color:color-mix(in_srgb,var(--client-primary)_72%,var(--client-line)_28%)]";
