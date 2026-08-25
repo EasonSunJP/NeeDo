@@ -62,6 +62,20 @@ describe("AffiliateMarketplaceRepository contract", () => {
         meta: { target: ["public_code"] }
       })
     ).toMatchObject({ field: "public_code" });
+    expect(
+      repository.classifyClaimUniqueConflict({
+        code: "P2002",
+        meta: {
+          modelName: "AffiliateClaim",
+          driverAdapterError: {
+            cause: {
+              kind: "UniqueConstraintViolation",
+              constraint: { index: "affiliate_claims_active_key_key" }
+            }
+          }
+        }
+      })
+    ).toMatchObject({ field: "active_key" });
     expect(repository.classifyClaimUniqueConflict(new Error("other"))).toBeNull();
   });
 });

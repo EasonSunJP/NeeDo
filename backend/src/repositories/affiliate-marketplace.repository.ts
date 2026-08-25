@@ -184,13 +184,25 @@ export class AffiliateMarketplaceRepository
     if (!error || typeof error !== "object" || !("code" in error)) {
       return null;
     }
-    const record = error as { code?: unknown; meta?: { target?: unknown } };
+    const record = error as {
+      code?: unknown;
+      meta?: {
+        target?: unknown;
+        driverAdapterError?: {
+          cause?: {
+            constraint?: { index?: unknown; fields?: unknown };
+          };
+        };
+      };
+    };
     if (record.code !== "P2002") {
       return null;
     }
-    const target = Array.isArray(record.meta?.target)
-      ? record.meta.target.join(" ")
-      : String(record.meta?.target ?? "");
+    const constraint = record.meta?.driverAdapterError?.cause?.constraint;
+    const target = [record.meta?.target, constraint?.index, constraint?.fields]
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value ?? ""))
+      .join(" ");
     const fields: AffiliateClaimUniqueField[] = [
       "active_key",
       "public_code",

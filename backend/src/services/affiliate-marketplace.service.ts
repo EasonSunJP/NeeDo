@@ -212,79 +212,81 @@ export class AffiliateMarketplaceService {
     return this.publicTask(task, true);
   }
 
-  public claimTask(
+  public async claimTask(
     actor: AuthenticatedAccessContext,
     taskId: number
   ): Promise<{ created: boolean; claim: AffiliateClaimView }> {
-    return this.repository.runInTransaction(async (repository) => {
-      const existing = await repository.findClaimByTaskAndUser(taskId, actor.userId);
-      if (existing) {
-        return { created: false, claim: this.claimView(existing) };
-      }
+    try {
+      return await this.repository.runInTransaction(async (repository) => {
+        const existing = await repository.findClaimByTaskAndUser(taskId, actor.userId);
+        if (existing) {
+          return { created: false, claim: this.claimView(existing) };
+        }
 
-      const taskExists = await repository.findTaskById(taskId);
-      if (!taskExists) {
-        throw this.taskNotFoundError();
-      }
+        const taskExists = await repository.findTaskById(taskId);
+        if (!taskExists) {
+          throw this.taskNotFoundError();
+        }
 
-      const task = await repository.lockClaimableTaskForShare(
-        taskId,
-        this.now()
-      );
-      if (!task) {
-        throw new AppError({
-          code: ERROR_CODES.AFFILIATE_TASK_INVALID_STATE,
-          message: "error.affiliate.task_not_claimable",
-          statusCode: 409
-        });
-      }
+        const task = await repository.lockClaimableTaskForShare(
+          taskId,
+          this.now()
+        );
+        if (!task) {
+          throw new AppError({
+            code: ERROR_CODES.AFFILIATE_TASK_INVALID_STATE,
+            message: "error.affiliate.task_not_claimable",
+            statusCode: 409
+          });
+        }
 
-      for (let attempt = 0; attempt < this.maxCredentialAttempts; attempt += 1) {
-        const issued = this.linkTokens.issue({
-          taskId: task.id,
-          userId: actor.userId,
-          expiresAt: task.taskEndsAt
-        });
-        try {
-          const created = await repository.createClaim({
+        for (let attempt = 0; attempt < this.maxCredentialAttempts; attempt += 1) {
+          const issued = this.linkTokens.issue({
             taskId: task.id,
             userId: actor.userId,
-            activeKey: `${task.id}:${actor.userId}`,
-            publicCode: this.createPublicCode(),
-            publicTokenId: issued.publicTokenId,
-            tokenHash: issued.tokenHash,
             expiresAt: task.taskEndsAt
           });
-          await repository.createClaimAuditLog({
-            actorUserId: actor.userId,
-            claimId: created.id,
-            taskId: created.taskId,
-            publicCode: created.publicCode
-          });
-          return { created: true, claim: this.claimView(created) };
-        } catch (error) {
-          const conflict = repository.classifyClaimUniqueConflict(error);
-          if (!conflict) {
-            throw error;
-          }
-          if (conflict.field === "active_key") {
-            const concurrent = await repository.findClaimByTaskAndUser(
-              taskId,
-              actor.userId
-            );
-            if (concurrent) {
-              return { created: false, claim: this.claimView(concurrent) };
+          try {
+            const created = await repository.createClaim({
+              taskId: task.id,
+              userId: actor.userId,
+              activeKey: `${task.id}:${actor.userId}`,
+              publicCode: this.createPublicCode(),
+              publicTokenId: issued.publicTokenId,
+              tokenHash: issued.tokenHash,
+              expiresAt: task.taskEndsAt
+            });
+            await repository.createClaimAuditLog({
+              actorUserId: actor.userId,
+              claimId: created.id,
+              taskId: created.taskId,
+              publicCode: created.publicCode
+            });
+            return { created: true, claim: this.claimView(created) };
+          } catch (error) {
+            const conflict = repository.classifyClaimUniqueConflict(error);
+            if (!conflict || conflict.field === "active_key") {
+              throw error;
             }
           }
         }
-      }
 
-      throw new AppError({
-        code: ERROR_CODES.AFFILIATE_CLAIM_CONFLICT,
-        message: "error.affiliate.claim_conflict",
-        statusCode: 409
+        throw this.claimConflictError();
       });
-    });
+    } catch (error) {
+      const conflict = this.repository.classifyClaimUniqueConflict(error);
+      if (conflict?.field !== "active_key") {
+        throw error;
+      }
+      const concurrent = await this.repository.findClaimByTaskAndUser(
+        taskId,
+        actor.userId
+      );
+      if (!concurrent) {
+        throw this.claimConflictError();
+      }
+      return { created: false, claim: this.claimView(concurrent) };
+    }
   }
 
   public async listMyClaims(
@@ -451,6 +453,14 @@ export class AffiliateMarketplaceService {
       code: ERROR_CODES.AFFILIATE_CLAIM_NOT_FOUND,
       message: "error.affiliate.claim_not_found",
       statusCode: 404
+    });
+  }
+
+  private claimConflictError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.AFFILIATE_CLAIM_CONFLICT,
+      message: "error.affiliate.claim_conflict",
+      statusCode: 409
     });
   }
 

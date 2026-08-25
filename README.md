@@ -206,7 +206,7 @@ The operations travel-settings route is an explicit external-provider capability
 
 The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
 
-The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can now list, inspect, approve, and reject persisted affiliate tasks, including their budget reservations and shop/service snapshots, but the route still does not mount the browser-local CPS workspace or expose fake GMV, ROI, link, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires the later claim, attribution, completion-reward, reversal, fraud, aggregate, and export microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
+The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks, and the formal affiliate marketplace can now issue one stable promotion code and signed URL per task/user. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires the later Checkout attribution, completion-reward, reversal, fraud, aggregate, and export microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
 ### Formal Affiliate Task Publishing and Review
 
@@ -235,7 +235,36 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
 
 The check refuses production flags and remote database hosts, verifies draft/no-freeze, shop and merchant-account freezes, refreshed snapshots, insufficient-funds rollback, membership isolation, review state, full rejection release, idempotency, ledger/reconciliation/audit evidence, and removes only its uniquely identified rows.
 
-This microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Task claiming, codes/signed URLs, Checkout attribution/discount application, service-completion reward settlement, pause/resume/end, reversal, dashboards, metrics, and exports remain capability-gated. No formal affiliate task or metric is seeded into production data.
+This task-publishing microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Checkout attribution/discount application, service-completion reward settlement, pause/resume/end, reversal, dashboards, metrics, and exports remain capability-gated. No formal affiliate task or metric is seeded into production data.
+
+### Formal Affiliate Marketplace Claims And Signed Links
+
+Any active identity with the affiliate marketplace permissions can browse currently eligible, fully funded tasks and claim one. Claiming is idempotent per task/user: the first request creates a Claim and returns `201`; later or concurrent requests return the same persisted Claim with `200`. Each Claim receives one non-guessable `NDO-...` promotion code and an HMAC-signed URL. Only the token hash is persisted, sensitive claimant and budget fields are excluded from public views, and Claim creation writes one token-free audit record without allocating or settling any reward budget.
+
+Formal endpoints:
+
+- `GET /api/v1/affiliate/tasks`
+- `GET /api/v1/affiliate/tasks/:taskId`
+- `POST /api/v1/affiliate/tasks/:taskId/claims`
+- `GET /api/v1/affiliate/claims`
+- `GET /api/v1/affiliate/claims/:claimId`
+- `GET /api/v1/affiliate/resolve/:publicToken`
+
+Runtime configuration requires a dedicated secret and the public affiliate landing-page base URL. Production rejects placeholder/shared secrets, non-HTTPS public URLs, and example hosts:
+
+```bash
+AFFILIATE_LINK_SECRET=<dedicated-random-secret-at-least-32-characters>
+AFFILIATE_PUBLIC_BASE_URL=https://app.needo.jp/afirieito
+```
+
+Verify the formal contract against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-marketplace-claim-flow
+```
+
+The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. This microstep deliberately does not create link touches, increment clicks, attribute Checkout, apply customer discounts, allocate task budget, settle service-completion rewards, or activate the affiliate browser UI; those remain separate transactional microsteps.
 
 The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 

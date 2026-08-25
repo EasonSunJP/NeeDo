@@ -18,6 +18,7 @@
     "check:manual-payment-flow": "tsx scripts/check-manual-payment-flow.ts",
     "check:wallet-adjustment-flow": "tsx scripts/check-wallet-adjustment-flow.ts",
     "check:affiliate-task-publishing-flow": "tsx scripts/check-affiliate-task-publishing-flow.ts",
+    "check:affiliate-marketplace-claim-flow": "tsx scripts/check-affiliate-marketplace-claim-flow.ts",
     "check:registration-flow": "tsx scripts/check-registration-flow.ts",
     "check:test-login": "tsx scripts/check-test-login.ts",
     "check:simulation-data": "tsx scripts/check-three-month-simulation.ts",

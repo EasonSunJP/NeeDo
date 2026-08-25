@@ -103,6 +103,8 @@ class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepo
   public uniqueConflicts: AffiliateClaimUniqueConflict[] = [];
   public listInputs: unknown[] = [];
   public claimable = true;
+  public hideClaimsInsideTransaction = false;
+  private insideTransaction = false;
   private nextClaimId = 1;
 
   public async runInTransaction<T>(
@@ -111,7 +113,12 @@ class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepo
       transactionClient?: AffiliateMarketplaceTransactionClient
     ) => Promise<T>
   ): Promise<T> {
-    return handler(this, { marketplaceTransaction: true });
+    this.insideTransaction = true;
+    try {
+      return await handler(this, { marketplaceTransaction: true });
+    } finally {
+      this.insideTransaction = false;
+    }
   }
 
   public async listClaimableTasks(input: {
@@ -139,6 +146,9 @@ class InMemoryAffiliateMarketplaceRepository implements AffiliateMarketplaceRepo
     taskId: number,
     userId: number
   ): Promise<AffiliateClaimRecord | null> {
+    if (this.insideTransaction && this.hideClaimsInsideTransaction) {
+      return null;
+    }
     return (
       [...this.claims.values()].find(
         (claim) => claim.taskId === taskId && claim.userId === userId
@@ -337,8 +347,13 @@ describe("AffiliateMarketplaceService", () => {
       expiresAt: task().taskEndsAt
     });
     repository.claims.clear();
+    repository.hideClaimsInsideTransaction = true;
     repository.uniqueConflicts.push(
-      Object.assign(new Error("active key conflict"), { field: "active_key" as const })
+      ...Array.from({ length: 5 }, () =>
+        Object.assign(new Error("active key conflict"), {
+          field: "active_key" as const
+        })
+      )
     );
     const originalCreateClaim = repository.createClaim.bind(repository);
     repository.createClaim = async (input) => {
