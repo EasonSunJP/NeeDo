@@ -149,6 +149,116 @@ export interface BackofficeCustomerPayload {
   createdAt: string;
 }
 
+export interface BackofficeRolePayload {
+  name: string;
+  code: string;
+  scopeType: string | null;
+  scopeId: number | null;
+}
+
+export interface BackofficeIdentityPayload {
+  type: string;
+  scopeType: string | null;
+  scopeId: number | null;
+  displayName: string | null;
+}
+
+export interface BackofficeAccountPayload {
+  username: string;
+  email: string;
+  phone: string | null;
+  avatarUrl: string | null;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  roles: BackofficeRolePayload[];
+  identities: BackofficeIdentityPayload[];
+}
+
+export interface BackofficeReviewSummaryPayload {
+  ratingAverage: number;
+  reviewCount: number;
+  latestReviewAt: string | null;
+  highlights: string[];
+}
+
+export interface BackofficeTechnicianServiceDetailPayload {
+  id: number;
+  source: "technician_service" | "service";
+  sourceShopServiceId: number | null;
+  name: string;
+  description: string | null;
+  categoryId: number;
+  priceAmount: number;
+  currency: string;
+  durationMinutes: number;
+  isRecommended: boolean;
+}
+
+export interface BackofficeCompensationProfilePayload {
+  id: number;
+  shopId: number;
+  technicianProfileId: number;
+  name: string;
+  status: string;
+  version: number;
+  wageMode: string;
+  baseSalaryJpy: number;
+  hourlyRateJpy: number;
+  dailyRateJpy: number;
+  fixedOrderPayJpy: number;
+  commissionRatePercent: number;
+  guaranteedMinimumJpy: number;
+  ndpFeeBearer: string;
+  technicianNdpSharePercent: number;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  updatedAt: string;
+}
+
+export interface BackofficeAuditEventPayload {
+  id: string;
+  action: string;
+  actorName: string;
+  actorAvatarUrl: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface BackofficeTechnicianDetailPayload extends BackofficeTechnicianPayload {
+  bio: string | null;
+  yearsExperience: number;
+  isRecommended: boolean;
+  updatedAt: string;
+  account: BackofficeAccountPayload;
+  statistics: {
+    bookingCount: number;
+    completedCount: number;
+    cancelledCount: number;
+    completedRevenueJpy: number;
+    todayScheduleMinutes: number;
+    weekScheduleMinutes: number;
+    monthScheduleMinutes: number;
+  };
+  reviewSummary: BackofficeReviewSummaryPayload | null;
+  services: BackofficeTechnicianServiceDetailPayload[];
+  upcomingSchedule: BackofficeScheduleSlotPayload[];
+  compensationProfile: BackofficeCompensationProfilePayload | null;
+  timeline: BackofficeAuditEventPayload[];
+  unavailableMetrics: Array<"acceptanceRate" | "lateness" | "shiftPreferences">;
+}
+
+export interface BackofficeCustomerDetailPayload extends BackofficeCustomerPayload {
+  bio: string | null;
+  updatedAt: string;
+  account: BackofficeAccountPayload;
+  bookingStatusTotals: Record<string, number>;
+  completedSpendJpy: number;
+  nextBooking: BackofficeOrderPayload | null;
+  recentBookings: BackofficeOrderPayload[];
+  reviewSummary: BackofficeReviewSummaryPayload | null;
+  timeline: BackofficeAuditEventPayload[];
+}
+
 export interface BackofficeServicePayload {
   id: number;
   categoryId: number;
@@ -241,6 +351,8 @@ export interface BackofficeRepositoryPort {
     input: BackofficeScope & BackofficeListQuery
   ) => Promise<PaginatedResponse<BackofficeCustomerPayload>>;
   getCustomer: (input: ScopedEntityInput) => Promise<BackofficeCustomerPayload | null>;
+  getTechnicianDetail: (input: ScopedEntityInput) => Promise<BackofficeTechnicianDetailPayload | null>;
+  getCustomerDetail: (input: ScopedEntityInput) => Promise<BackofficeCustomerDetailPayload | null>;
   updateCustomer: (id: number, input: BackofficeCustomerUpdateBody) => Promise<BackofficeCustomerPayload | null>;
   softDeleteCustomer: (id: number) => Promise<BackofficeCustomerPayload | null>;
   listServices: (

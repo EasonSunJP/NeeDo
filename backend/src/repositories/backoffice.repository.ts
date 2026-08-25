@@ -4,7 +4,11 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import {
   type BackofficeCsvExportPayload,
+  type BackofficeAccountPayload,
+  type BackofficeAuditEventPayload,
+  type BackofficeCompensationProfilePayload,
   type BackofficeCustomerPayload,
+  type BackofficeCustomerDetailPayload,
   type BackofficeDashboardPayload,
   type BackofficeFinanceSettlementPayload,
   type BackofficeOrderPayload,
@@ -15,6 +19,8 @@ import {
   type BackofficeShopCreateData,
   type BackofficeShopPayload,
   type BackofficeTechnicianPayload,
+  type BackofficeTechnicianDetailPayload,
+  type BackofficeTechnicianServiceDetailPayload,
   type ScopedEntityInput,
   type ScopedServiceCreateInput,
   type ScopedServiceUpdateInput,
@@ -440,6 +446,190 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       total,
       input
     );
+  }
+
+  public async getTechnicianDetail(
+    input: ScopedEntityInput
+  ): Promise<BackofficeTechnicianDetailPayload | null> {
+    const profile = await this.client.technicianProfile.findFirst({
+      where: this.technicianMutationWhere(input, input.id),
+      include: this.technicianDetailInclude(input)
+    });
+    if (!profile) return null;
+
+    const now = new Date();
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const bookingWhere = {
+      deletedAt: null,
+      technicianProfileId: profile.id,
+      ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+    } satisfies Prisma.BookingOrderWhereInput;
+    const scheduleWhere = {
+      deletedAt: null,
+      technicianProfileId: profile.id,
+      startsAt: { lt: monthEnd },
+      endsAt: { gt: monthStart },
+      ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+    } satisfies Prisma.ScheduleSlotWhereInput;
+    const [statusGroups, completedRevenue, monthSlots, upcomingSlots, technicianServices, legacyServices, compensationProfile, auditRows] =
+      await Promise.all([
+        this.client.bookingOrder.groupBy({ by: ["status"], where: bookingWhere, _count: { _all: true } }),
+        this.client.bookingOrder.aggregate({
+          where: { ...bookingWhere, status: "COMPLETED" },
+          _sum: { priceAmount: true }
+        }),
+        this.client.scheduleSlot.findMany({
+          where: scheduleWhere,
+          select: { startsAt: true, endsAt: true }
+        }),
+        this.client.scheduleSlot.findMany({
+          where: {
+            deletedAt: null,
+            technicianProfileId: profile.id,
+            startsAt: { gte: now },
+            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+          },
+          include: this.scheduleInclude(),
+          take: 12,
+          orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+        }),
+        this.client.technicianService.findMany({
+          where: {
+            technicianId: profile.id,
+            isActive: true,
+            deletedAt: null,
+            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+          },
+          select: {
+            id: true,
+            sourceShopServiceId: true,
+            name: true,
+            description: true,
+            categoryId: true,
+            priceAmount: true,
+            currency: true,
+            durationMinutes: true,
+            isRecommended: true
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        }),
+        this.client.service.findMany({
+          where: {
+            technicianProfileId: profile.id,
+            status: "published",
+            deletedAt: null,
+            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+          },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            categoryId: true,
+            priceAmount: true,
+            currency: true,
+            durationMinutes: true,
+            isRecommended: true
+          },
+          orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
+        }),
+        this.client.technicianCompensationProfile.findFirst({
+          where: {
+            technicianProfileId: profile.id,
+            status: "active",
+            deletedAt: null,
+            ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+          },
+          orderBy: [{ version: "desc" }, { id: "desc" }]
+        }),
+        this.findScopedAuditEvents(input, profile.id, profile.userId, "technician")
+      ]);
+
+    const statusTotals = this.statusTotals(statusGroups);
+    const services = this.mergeTechnicianServices(technicianServices, legacyServices);
+
+    return {
+      ...this.mapTechnician(profile),
+      bio: profile.bio,
+      yearsExperience: profile.yearsExperience,
+      isRecommended: profile.isRecommended,
+      updatedAt: profile.updatedAt.toISOString(),
+      account: this.mapAccount(profile.user, input, "technician"),
+      statistics: {
+        bookingCount: Object.values(statusTotals).reduce((total, count) => total + count, 0),
+        completedCount: statusTotals.completed ?? 0,
+        cancelledCount: statusTotals.cancelled ?? 0,
+        completedRevenueJpy: this.toNumber(completedRevenue._sum.priceAmount),
+        ...this.scheduleMinutes(monthSlots, now, monthStart, monthEnd)
+      },
+      reviewSummary: this.mapDetailReviewSummary(profile.reviewSummary),
+      services,
+      upcomingSchedule: upcomingSlots.map((slot) => this.mapScheduleSlot(slot)),
+      compensationProfile: compensationProfile
+        ? this.mapCompensationProfile(compensationProfile)
+        : null,
+      timeline: this.mergeProfileTimeline(auditRows, profile.createdAt, profile.verifiedAt),
+      unavailableMetrics: ["acceptanceRate", "lateness", "shiftPreferences"]
+    };
+  }
+
+  public async getCustomerDetail(
+    input: ScopedEntityInput
+  ): Promise<BackofficeCustomerDetailPayload | null> {
+    const profile = await this.client.customerProfile.findFirst({
+      where: { ...this.customerWhere(input, {}), id: input.id },
+      include: this.customerDetailInclude(input)
+    });
+    if (!profile) return null;
+
+    const now = new Date();
+    const bookingWhere = {
+      deletedAt: null,
+      customerUserId: profile.userId,
+      ...(input.scope === "merchant" ? { shopId: input.shopId } : {})
+    } satisfies Prisma.BookingOrderWhereInput;
+    const [statusGroups, completedSpend, recentBookings, nextBookings, auditRows] = await Promise.all([
+      this.client.bookingOrder.groupBy({ by: ["status"], where: bookingWhere, _count: { _all: true } }),
+      this.client.bookingOrder.aggregate({
+        where: { ...bookingWhere, status: "COMPLETED" },
+        _sum: { priceAmount: true }
+      }),
+      this.client.bookingOrder.findMany({
+        where: bookingWhere,
+        include: this.orderInclude(),
+        take: 10,
+        orderBy: [{ startsAt: "desc" }, { id: "desc" }]
+      }),
+      this.client.bookingOrder.findMany({
+        where: { ...bookingWhere, startsAt: { gte: now } },
+        include: this.orderInclude(),
+        take: 1,
+        orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+      }),
+      this.findScopedAuditEvents(input, profile.id, profile.userId, "customer")
+    ]);
+    const bookingStatusTotals = this.statusTotals(statusGroups);
+
+    return {
+      id: profile.id,
+      userId: profile.userId,
+      displayName: profile.displayName,
+      email: profile.user.email,
+      city: profile.city,
+      membershipLevel: profile.membershipLevel,
+      isPublic: profile.isPublic,
+      bookingCount: Object.values(bookingStatusTotals).reduce((total, count) => total + count, 0),
+      createdAt: profile.createdAt.toISOString(),
+      bio: profile.bio,
+      updatedAt: profile.updatedAt.toISOString(),
+      account: this.mapAccount(profile.user, input, "customer"),
+      bookingStatusTotals,
+      completedSpendJpy: this.toNumber(completedSpend._sum.priceAmount),
+      nextBooking: nextBookings[0] ? this.mapOrder(nextBookings[0]) : null,
+      recentBookings: recentBookings.map((booking) => this.mapOrder(booking)),
+      reviewSummary: this.mapDetailReviewSummary(profile.reviewSummary),
+      timeline: this.mergeProfileTimeline(auditRows, profile.createdAt)
+    };
   }
 
   public async listShops(
@@ -993,6 +1183,96 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     };
   }
 
+  private technicianDetailInclude(input: ScopedEntityInput) {
+    return {
+      user: {
+        select: this.accountSelect(input, "technician")
+      },
+      shop: { select: { name: true } },
+      reviewSummary: { where: { deletedAt: null } }
+    } satisfies Prisma.TechnicianProfileInclude;
+  }
+
+  private customerDetailInclude(input: ScopedEntityInput) {
+    return {
+      user: {
+        select: this.accountSelect(input, "customer")
+      },
+      reviewSummary: { where: { deletedAt: null } }
+    } satisfies Prisma.CustomerProfileInclude;
+  }
+
+  private accountSelect(
+    input: ScopedEntityInput,
+    profileIdentityType: "technician" | "customer"
+  ) {
+    const merchantRoleScope =
+      input.scope === "merchant" ? { scopeType: "shop", scopeId: input.shopId } : {};
+    const merchantIdentityScope =
+      input.scope === "merchant"
+        ? {
+            OR: [
+              { scopeType: "shop", scopeId: input.shopId },
+              { type: profileIdentityType, scopeType: "global" }
+            ]
+          }
+        : {};
+
+    return {
+      username: true,
+      email: true,
+      phone: true,
+      avatarUrl: true,
+      isActive: true,
+      lastLoginAt: true,
+      userRoles: {
+        where: { deletedAt: null, role: { deletedAt: null }, ...merchantRoleScope },
+        select: {
+          scopeType: true,
+          scopeId: true,
+          role: { select: { name: true, code: true } }
+        }
+      },
+      identities: {
+        where: { isActive: true, deletedAt: null, ...merchantIdentityScope },
+        select: { type: true, scopeType: true, scopeId: true, displayName: true }
+      }
+    } satisfies Prisma.UserSelect;
+  }
+
+  private async findScopedAuditEvents(
+    input: ScopedEntityInput,
+    profileId: number,
+    userId: number,
+    profileType: "technician" | "customer"
+  ) {
+    const targetType = profileType === "technician" ? "TechnicianProfile" : "CustomerProfile";
+    const metadataProfileIdPath =
+      profileType === "technician" ? "$.technicianProfileId" : "$.customerProfileId";
+
+    return this.client.auditLog.findMany({
+      where: {
+        deletedAt: null,
+        AND: [
+          {
+            OR: [
+              { targetType, targetId: profileId },
+              { targetType: "User", targetId: userId },
+              { metadata: { path: metadataProfileIdPath, equals: profileId } },
+              { metadata: { path: "$.userId", equals: userId } }
+            ]
+          },
+          ...(input.scope === "merchant"
+            ? [{ metadata: { path: "$.shopId", equals: input.shopId } }]
+            : [])
+        ]
+      },
+      include: { actor: { select: { username: true, avatarUrl: true } } },
+      take: 30,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+  }
+
   private orderInclude() {
     return {
       customer: {
@@ -1196,6 +1476,279 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       bookingCount: customer.user._count.bookingOrders,
       createdAt: customer.createdAt.toISOString()
     };
+  }
+
+  private mapAccount(account: {
+    username: string;
+    email: string;
+    phone: string | null;
+    avatarUrl: string | null;
+    isActive: boolean;
+    lastLoginAt: Date | null;
+    userRoles: Array<{
+      scopeType: string | null;
+      scopeId: number | null;
+      role: { name: string; code: string };
+    }>;
+    identities: Array<{
+      type: string;
+      scopeType: string | null;
+      scopeId: number | null;
+      displayName: string | null;
+    }>;
+  }, input: ScopedEntityInput, profileIdentityType: "technician" | "customer"): BackofficeAccountPayload {
+    const roles = input.scope === "merchant"
+      ? account.userRoles.filter((userRole) => userRole.scopeType === "shop" && userRole.scopeId === input.shopId)
+      : account.userRoles;
+    const identities = input.scope === "merchant"
+      ? account.identities.filter((identity) =>
+              (identity.scopeType === "shop" && identity.scopeId === input.shopId) ||
+              (identity.type === profileIdentityType && identity.scopeType === "global")
+        )
+      : account.identities;
+
+    return {
+      username: account.username,
+      email: account.email,
+      phone: account.phone,
+      avatarUrl: account.avatarUrl,
+      isActive: account.isActive,
+      lastLoginAt: account.lastLoginAt?.toISOString() ?? null,
+      roles: roles.map((userRole) => ({
+        name: userRole.role.name,
+        code: userRole.role.code,
+        scopeType: userRole.scopeType,
+        scopeId: userRole.scopeId
+      })),
+      identities: identities.map((identity) => ({
+        type: identity.type,
+        scopeType: identity.scopeType,
+        scopeId: identity.scopeId,
+        displayName: identity.displayName
+      }))
+    };
+  }
+
+  private mapDetailReviewSummary(summary: {
+    ratingAverage: DecimalLike;
+    reviewCount: number;
+    latestReviewAt: Date | null;
+    highlights: unknown;
+  } | null) {
+    if (!summary) return null;
+
+    return {
+      ratingAverage: this.toNumber(summary.ratingAverage),
+      reviewCount: summary.reviewCount,
+      latestReviewAt: summary.latestReviewAt?.toISOString() ?? null,
+      highlights: this.stringArray(summary.highlights)
+    };
+  }
+
+  private statusTotals(groups: Array<{ status: string; _count: { _all: number } }>): Record<string, number> {
+    return groups.reduce<Record<string, number>>((totals, group) => {
+      totals[this.statusFromDb(group.status)] = group._count._all;
+      return totals;
+    }, {});
+  }
+
+  private scheduleMinutes(
+    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    now: Date,
+    monthStart: Date,
+    monthEnd: Date
+  ): Pick<
+    BackofficeTechnicianDetailPayload["statistics"],
+    "todayScheduleMinutes" | "weekScheduleMinutes" | "monthScheduleMinutes"
+  > {
+    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const dayEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    const daysFromMonday = (dayStart.getUTCDay() + 6) % 7;
+    const weekStart = new Date(dayStart.getTime() - daysFromMonday * 24 * 60 * 60 * 1000);
+    const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    return {
+      todayScheduleMinutes: this.intersectionMinutes(slots, dayStart, dayEnd),
+      weekScheduleMinutes: this.intersectionMinutes(slots, weekStart, weekEnd),
+      monthScheduleMinutes: this.intersectionMinutes(slots, monthStart, monthEnd)
+    };
+  }
+
+  private intersectionMinutes(
+    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    rangeStart: Date,
+    rangeEnd: Date
+  ): number {
+    return slots.reduce((total, slot) => {
+      const startsAt = Math.max(slot.startsAt.getTime(), rangeStart.getTime());
+      const endsAt = Math.min(slot.endsAt.getTime(), rangeEnd.getTime());
+      return total + Math.max(0, Math.round((endsAt - startsAt) / 60000));
+    }, 0);
+  }
+
+  private mergeTechnicianServices(
+    technicianServices: Array<{
+      id: number;
+      sourceShopServiceId: number | null;
+      name: string;
+      description: string | null;
+      categoryId: number;
+      priceAmount: number;
+      currency: string;
+      durationMinutes: number;
+      isRecommended: boolean;
+    }>,
+    legacyServices: Array<{
+      id: number;
+      name: string;
+      description: string | null;
+      categoryId: number;
+      priceAmount: DecimalLike;
+      currency: string;
+      durationMinutes: number;
+      isRecommended: boolean;
+    }>
+  ): BackofficeTechnicianServiceDetailPayload[] {
+    const result: BackofficeTechnicianServiceDetailPayload[] = [];
+    const seen = new Set<string>();
+    for (const service of technicianServices) {
+      const key = service.sourceShopServiceId
+        ? `service:${service.sourceShopServiceId}`
+        : `technician_service:${service.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({
+        id: service.id,
+        source: "technician_service",
+        sourceShopServiceId: service.sourceShopServiceId,
+        name: service.name,
+        description: service.description,
+        categoryId: service.categoryId,
+        priceAmount: service.priceAmount,
+        currency: service.currency,
+        durationMinutes: service.durationMinutes,
+        isRecommended: service.isRecommended
+      });
+    }
+    for (const service of legacyServices) {
+      const key = `service:${service.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push({
+        id: service.id,
+        source: "service",
+        sourceShopServiceId: service.id,
+        name: service.name,
+        description: service.description,
+        categoryId: service.categoryId,
+        priceAmount: this.toNumber(service.priceAmount),
+        currency: service.currency,
+        durationMinutes: service.durationMinutes,
+        isRecommended: service.isRecommended
+      });
+    }
+    return result;
+  }
+
+  private mapCompensationProfile(profile: {
+    id: number;
+    shopId: number;
+    technicianProfileId: number;
+    name: string;
+    status: string;
+    version: number;
+    wageMode: string;
+    baseSalaryJpy: number;
+    hourlyRateJpy: number;
+    dailyRateJpy: number;
+    fixedOrderPayJpy: number;
+    commissionRateBps: number;
+    guaranteedMinimumJpy: number;
+    ndpFeeBearer: string;
+    technicianNdpShareBps: number;
+    effectiveFrom: Date | null;
+    effectiveTo: Date | null;
+    updatedAt: Date;
+  }): BackofficeCompensationProfilePayload {
+    return {
+      id: profile.id,
+      shopId: profile.shopId,
+      technicianProfileId: profile.technicianProfileId,
+      name: profile.name,
+      status: profile.status,
+      version: profile.version,
+      wageMode: profile.wageMode,
+      baseSalaryJpy: profile.baseSalaryJpy,
+      hourlyRateJpy: profile.hourlyRateJpy,
+      dailyRateJpy: profile.dailyRateJpy,
+      fixedOrderPayJpy: profile.fixedOrderPayJpy,
+      commissionRatePercent: profile.commissionRateBps / 100,
+      guaranteedMinimumJpy: profile.guaranteedMinimumJpy,
+      ndpFeeBearer: profile.ndpFeeBearer,
+      technicianNdpSharePercent: profile.technicianNdpShareBps / 100,
+      effectiveFrom: profile.effectiveFrom?.toISOString() ?? null,
+      effectiveTo: profile.effectiveTo?.toISOString() ?? null,
+      updatedAt: profile.updatedAt.toISOString()
+    };
+  }
+
+  private mergeProfileTimeline(
+    rows: Array<{
+      id: number;
+      action: string;
+      metadata: unknown;
+      createdAt: Date;
+      actor: { username: string; avatarUrl: string | null } | null;
+    }>,
+    createdAt: Date,
+    verifiedAt?: Date | null
+  ): BackofficeAuditEventPayload[] {
+    const events = rows.map((row) => this.mapAuditEvent(row));
+    this.appendLifecycleEvent(events, "profile.created", createdAt);
+    if (verifiedAt) this.appendLifecycleEvent(events, "profile.verified", verifiedAt);
+    return events
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, 30);
+  }
+
+  private appendLifecycleEvent(
+    events: BackofficeAuditEventPayload[],
+    action: "profile.created" | "profile.verified",
+    occurredAt: Date
+  ): void {
+    const createdAt = occurredAt.toISOString();
+    if (events.some((event) => event.createdAt === createdAt && event.action === action)) return;
+    events.push({
+      id: `${action}:${createdAt}`,
+      action,
+      actorName: "System",
+      actorAvatarUrl: null,
+      createdAt,
+      metadata: null
+    });
+  }
+
+  private mapAuditEvent(row: {
+    id: number;
+    action: string;
+    metadata: unknown;
+    createdAt: Date;
+    actor: { username: string; avatarUrl: string | null } | null;
+  }): BackofficeAuditEventPayload {
+    return {
+      id: String(row.id),
+      action: row.action,
+      actorName: row.actor?.username ?? "System",
+      actorAvatarUrl: row.actor?.avatarUrl ?? null,
+      createdAt: row.createdAt.toISOString(),
+      metadata: this.metadataObject(row.metadata)
+    };
+  }
+
+  private metadataObject(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
   }
 
   private mapService(service: ServiceRecord): BackofficeServicePayload {
