@@ -7,6 +7,13 @@ describe("AuthProvider legacy login bridge", () => {
     expect(authProviderSource).toContain('completeAuthenticatedSession(portal, "password", loginPayload.me)');
   });
 
+  it("switches to the requested formal identity before completing login", () => {
+    expect(authProviderSource).toContain("let me = providedMe ?? (await authApi.me())");
+    expect(authProviderSource).toContain("findIdentityForPortal(me.identities, requestedPortal)");
+    expect(authProviderSource).toContain("authApi.switchIdentity(portalIdentity.id)");
+    expect(authProviderSource).toContain("buildAuthSessionFromMe(me, requestedPortal, loginMethod)");
+  });
+
   it("persists the completed session before handing off to a portal entry page", () => {
     expect(authProviderSource).toContain("readStoredAuthSession");
     expect(authProviderSource).toContain("JSON.stringify(nextSession)");

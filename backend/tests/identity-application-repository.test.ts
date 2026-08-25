@@ -158,7 +158,7 @@ describe("IdentityApplicationRepository", () => {
     );
   });
 
-  it("searches published shops by numeric merchant id, name, city, or address", async () => {
+  it("searches published shops by formal merchant id, name, city, or address", async () => {
     const shop = {
       findMany: jest.fn().mockResolvedValue([
         {
@@ -177,12 +177,12 @@ describe("IdentityApplicationRepository", () => {
     const repository = new IdentityApplicationRepository(client);
 
     await expect(
-      repository.searchEligibleShops({ page: 1, pageSize: 20, query: "21" })
+      repository.searchEligibleShops({ page: 1, pageSize: 20, query: "s0000000021" })
     ).resolves.toEqual({
       list: [
         {
           id: 21,
-          merchantId: "21",
+          merchantId: "s0000000021",
           name: "GINZA Calm Body Lab",
           city: "东京",
           address: "东京都中央区银座3-4-12"
@@ -199,9 +199,9 @@ describe("IdentityApplicationRepository", () => {
           deletedAt: null,
           OR: [
             { id: 21 },
-            { name: { contains: "21" } },
-            { city: { contains: "21" } },
-            { address: { contains: "21" } }
+            { name: { contains: "s0000000021" } },
+            { city: { contains: "s0000000021" } },
+            { address: { contains: "s0000000021" } }
           ]
         },
         skip: 0,

@@ -7,6 +7,7 @@ import {
   getAccessToken,
   getStoredRefreshToken,
   httpClient,
+  refreshStoredAccessToken,
   setAuthTokens
 } from "./httpClient";
 import type { AuthMePayload } from "../auth/rbac";
@@ -137,6 +138,41 @@ describe("httpClient auth tokens", () => {
         headers: expect.objectContaining({ Authorization: "Bearer fresh-access-token" })
       })
     );
+    expect(getAccessToken()).toBe("fresh-access-token");
+  });
+
+  it("coalesces explicit session restoration and unauthorized retries into one refresh request", async () => {
+    setAuthTokens({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token"
+    });
+    let resolveRefresh: ((response: Response) => void) | undefined;
+    const fetchMock = vi.mocked(fetch).mockImplementationOnce(
+      () => new Promise<Response>((resolve) => {
+        resolveRefresh = resolve;
+      })
+    );
+
+    const firstRefresh = refreshStoredAccessToken();
+    const secondRefresh = refreshStoredAccessToken();
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveRefresh?.(jsonResponse({
+      code: 0,
+      message: "success",
+      data: {
+        accessToken: "fresh-access-token",
+        expiresIn: 900
+      }
+    }));
+
+    await expect(Promise.all([firstRefresh, secondRefresh])).resolves.toEqual([
+      { accessToken: "fresh-access-token", expiresIn: 900 },
+      { accessToken: "fresh-access-token", expiresIn: 900 }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getAccessToken()).toBe("fresh-access-token");
   });
 

@@ -94,7 +94,8 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
   public async searchEligibleShops(
     query: EligibleShopSearchQuery
   ): Promise<PaginatedResult<EligibleShopSearchResult>> {
-    const numericId = /^\d+$/u.test(query.query) ? Number.parseInt(query.query, 10) : null;
+    const merchantIdMatch = /^(?:s)?(\d+)$/iu.exec(query.query);
+    const numericId = merchantIdMatch ? Number.parseInt(merchantIdMatch[1], 10) : null;
     const where: Prisma.ShopWhereInput = {
       status: "published",
       deletedAt: null,
@@ -119,7 +120,7 @@ export class IdentityApplicationRepository implements IdentityApplicationReposit
     return {
       list: rows.map((row) => ({
         id: row.id,
-        merchantId: String(row.id),
+        merchantId: `s${String(row.id).padStart(10, "0")}`,
         name: row.name,
         city: row.city,
         address: row.address

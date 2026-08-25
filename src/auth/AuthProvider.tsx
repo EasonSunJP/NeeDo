@@ -266,7 +266,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const completeAuthenticatedSession = useCallback(
     async (requestedPortal: PortalScope, loginMethod: LoginMethod, providedMe?: AuthMePayload): Promise<AuthActionResult> => {
       try {
-        const me = providedMe ?? (await authApi.me());
+        let me = providedMe ?? (await authApi.me());
+        const portalIdentity = findIdentityForPortal(me.identities, requestedPortal);
+        if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
+          me = (await authApi.switchIdentity(portalIdentity.id)).me;
+        }
         const nextSession = buildAuthSessionFromMe(me, requestedPortal, loginMethod);
         persistSession(nextSession);
 

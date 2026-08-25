@@ -2013,12 +2013,12 @@ function mapFormalNotification(
 }
 
 function FormalSocialProvider({ children }: { children: ReactNode }) {
-  const { session } = useAuth();
+  const { isRestoring, session } = useAuth();
   const [state, setState] = useState<SocialState>(emptyFormalSocialState);
   const [profiles, setProfiles] = useState<Record<string, SocialProfile>>({});
 
   const loadFormalSocial = useCallback(async () => {
-    if (!session) return;
+    if (!session || isRestoring) return;
     const [timelinePage, minePage, notificationPage] = await Promise.all([
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100 }),
       realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: session.id }),
@@ -2066,11 +2066,11 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       notifications,
       refreshedAt: new Date().toISOString()
     }));
-  }, [session]);
+  }, [isRestoring, session]);
 
   useEffect(() => { void loadFormalSocial(); }, [loadFormalSocial]);
   useEffect(() => {
-    if (!session) return undefined;
+    if (!session || isRestoring) return undefined;
 
     return subscribeRealtimeEvents({
       onEvent: (event) => {
@@ -2079,7 +2079,7 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
         }
       }
     });
-  }, [loadFormalSocial, session]);
+  }, [isRestoring, loadFormalSocial, session]);
 
   const value = useMemo<SocialContextValue>(() => {
     const profileList = Object.values(profiles);

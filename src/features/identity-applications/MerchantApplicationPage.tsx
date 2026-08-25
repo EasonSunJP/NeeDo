@@ -256,7 +256,7 @@ export function MerchantApplicationPage() {
   };
 
   return (
-    <ApplicationShell info="按店铺前端的服务展示结构填写，完成银行名义校验与有法律效力的合同确认后才可提交。" title="申请店铺身份">
+    <ApplicationShell hideNavigation info="按店铺前端的服务展示结构填写，完成银行名义校验与有法律效力的合同确认后才可提交。" title="申请店铺身份">
       <ApplicationSteps current={Math.min(step, 2)} labels={["服务展示", "银行与身份", "收费规则与合同"]} />
       {error ? <ApplicationNotice tone="error">{t(error)}</ApplicationNotice> : null}
       {application?.status === "rejected" && application.rejectionReason ? <ApplicationNotice tone="error">{t("上次驳回原因")}：{application.rejectionReason}</ApplicationNotice> : null}

@@ -13,13 +13,15 @@ export function ApplicationShell({
   info,
   children,
   backTo = "/me/settings/portal",
-  onBack
+  onBack,
+  hideNavigation = false
 }: {
   title: string;
   info: string;
   children: ReactNode;
   backTo?: string;
   onBack?: () => void;
+  hideNavigation?: boolean;
 }) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
@@ -31,7 +33,7 @@ export function ApplicationShell({
       closeTo="/me/settings/portal"
       contentClassName="pb-[calc(env(safe-area-inset-bottom)+2rem)]"
       info={t(info)}
-      navItems={undefined}
+      navItems={hideNavigation ? [] : undefined}
       onBack={onBack}
       title={t(title)}
     >

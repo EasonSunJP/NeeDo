@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authApi, authEndpointPaths } from "./auth";
-import { getStoredRefreshToken, httpClient, setAuthTokens } from "./httpClient";
+import { getStoredRefreshToken, httpClient, refreshStoredAccessToken, setAuthTokens } from "./httpClient";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 
 vi.mock("./httpClient", () => ({
@@ -10,6 +10,7 @@ vi.mock("./httpClient", () => ({
     request: vi.fn(),
     requestDataUrl: vi.fn()
   },
+  refreshStoredAccessToken: vi.fn(),
   setAccessToken: vi.fn(),
   setAuthTokens: vi.fn()
 }));
@@ -190,6 +191,20 @@ describe("authApi endpoint paths", () => {
       accessToken: "next-access-token",
       refreshToken: "next-refresh-token"
     });
+  });
+
+  it("uses the shared refresh request when restoring a session", async () => {
+    vi.mocked(refreshStoredAccessToken).mockResolvedValueOnce({
+      accessToken: "restored-access-token",
+      expiresIn: 900
+    });
+
+    await expect(authApi.refresh()).resolves.toEqual({
+      accessToken: "restored-access-token",
+      expiresIn: 900
+    });
+    expect(refreshStoredAccessToken).toHaveBeenCalledTimes(1);
+    expect(httpClient.request).not.toHaveBeenCalled();
   });
 
   it("sends the legacy captcha code with email login when provided", async () => {
