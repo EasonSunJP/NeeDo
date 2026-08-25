@@ -29,4 +29,11 @@ describe("DataCenterPage production data boundary", () => {
     expect(source).toContain("重新加载当前数据");
     expect(source).toContain("当前数据集没有真实记录");
   });
+
+  it("shows order creation time separately from the appointment time", () => {
+    expect(source).toContain('title: "下单时间"');
+    expect(source).toContain('title: "预约时间"');
+    expect(source).toContain("createdAt");
+    expect(source).toContain("startsAt");
+  });
 });

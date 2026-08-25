@@ -283,7 +283,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         include: this.orderInclude(),
         skip: pagination.skip,
         take: pagination.take,
-        orderBy: [{ startsAt: "desc" }, { id: "desc" }]
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       }),
       this.client.bookingOrder.count({ where })
     ]);

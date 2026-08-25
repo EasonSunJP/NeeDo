@@ -31,4 +31,11 @@ describe("OrdersAdminPage formal operations workflow", () => {
     expect(source).toContain("再次点击确认取消订单");
     expect(source).toContain("再次点击确认退款");
   });
+
+  it("shows order creation time separately from the appointment time", () => {
+    expect(source).toContain('title: "下单时间"');
+    expect(source).toContain('title: "预约时间"');
+    expect(source).toContain("createdAt");
+    expect(source).toContain("startsAt");
+  });
 });

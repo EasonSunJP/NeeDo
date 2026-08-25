@@ -64,6 +64,13 @@ function statusBadge(status: string) {
   return <Badge tone={positive ? "green" : "yellow"}>{status}</Badge>;
 }
 
+function formatOrderDateTime(value: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "medium",
+    timeStyle: "medium"
+  }).format(new Date(value));
+}
+
 function columnsFor(tab: SupportedDataTab, onSelect: (row: DataCenterRow) => void): Column<DataCenterRow>[] {
   const detailColumn: Column<DataCenterRow> = {
     key: "detail",
@@ -77,6 +84,8 @@ function columnsFor(tab: SupportedDataTab, onSelect: (row: DataCenterRow) => voi
       { key: "customer", title: "客户", render: (row) => (row as BackofficeOrderPayload).customerName },
       { key: "service", title: "服务 / 店铺", render: (row) => `${(row as BackofficeOrderPayload).serviceName} / ${(row as BackofficeOrderPayload).shopName}` },
       { key: "amount", title: "金额", render: (row) => yen((row as BackofficeOrderPayload).priceAmount) },
+      { key: "created", title: "下单时间", render: (row) => formatOrderDateTime((row as BackofficeOrderPayload).createdAt) },
+      { key: "appointment", title: "预约时间", render: (row) => formatOrderDateTime((row as BackofficeOrderPayload).startsAt) },
       { key: "status", title: "状态", render: (row) => statusBadge((row as BackofficeOrderPayload).status) },
       detailColumn
     ];

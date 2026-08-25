@@ -28,6 +28,9 @@ describe("BackofficeRepository keyword filters", () => {
     expect(client.bookingOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ OR: expect.arrayContaining([{ orderNo: { contains: "Aoyama" } }]) })
     }));
+    expect(client.bookingOrder.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    }));
     expect(client.scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ OR: expect.arrayContaining([{ shop: { name: { contains: "Aoyama" } } }]) })
     }));

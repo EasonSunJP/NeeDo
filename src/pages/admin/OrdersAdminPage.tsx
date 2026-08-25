@@ -49,6 +49,13 @@ function paymentTone(status: BackofficeOrderPayload["paymentStatus"]) {
   return "yellow" as const;
 }
 
+function formatOrderDateTime(value: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    dateStyle: "medium",
+    timeStyle: "medium"
+  }).format(new Date(value));
+}
+
 export function OrdersAdminPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedOrder, setSelectedOrder] = useState<BackofficeOrderPayload | null>(null);
@@ -223,7 +230,8 @@ export function OrdersAdminPage() {
                 { key: "customer", title: "用户", render: (row) => row.customerName },
                 { key: "service", title: "服务", render: (row) => row.serviceName },
                 { key: "provider", title: "门店 / 技师", render: (row) => `${row.shopName} / ${row.technicianName ?? "待安排"}` },
-                { key: "time", title: "预约时间", render: (row) => new Date(row.startsAt).toLocaleString("ja-JP") },
+                { key: "created", title: "下单时间", render: (row) => formatOrderDateTime(row.createdAt) },
+                { key: "appointment", title: "预约时间", render: (row) => formatOrderDateTime(row.startsAt) },
                 { key: "payment", title: "支付", render: (row) => <Badge tone={paymentTone(row.paymentStatus)}>{paymentLabel(row.paymentStatus)}</Badge> },
                 { key: "status", title: "状态", render: (row) => <Badge tone="yellow">{statusLabel(row.status)}</Badge> },
                 { key: "detail", title: "详情", render: (row) => <Button size="sm" variant="secondary" onClick={() => openOrder(row)}>查看</Button> }
