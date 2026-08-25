@@ -39,6 +39,8 @@ type DecimalLike = {
   toString: () => string;
 };
 
+const PROFILE_DETAIL_SERVICE_LIMIT = 50;
+
 type OrderRecord = Prisma.BookingOrderGetPayload<{
   include: {
     customer: {
@@ -518,6 +520,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             durationMinutes: true,
             isRecommended: true
           },
+          take: PROFILE_DETAIL_SERVICE_LIMIT + 1,
           orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
         }),
         this.client.service.findMany({
@@ -537,6 +540,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
             durationMinutes: true,
             isRecommended: true
           },
+          take: PROFILE_DETAIL_SERVICE_LIMIT + 1,
           orderBy: [{ sortOrder: "asc" }, { id: "asc" }]
         }),
         this.client.technicianCompensationProfile.findFirst({
@@ -552,7 +556,12 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ]);
 
     const statusTotals = this.statusTotals(statusGroups);
-    const services = this.mergeTechnicianServices(technicianServices, legacyServices);
+    const mergedServices = this.mergeTechnicianServices(technicianServices, legacyServices);
+    const servicesTruncated =
+      technicianServices.length > PROFILE_DETAIL_SERVICE_LIMIT ||
+      legacyServices.length > PROFILE_DETAIL_SERVICE_LIMIT ||
+      mergedServices.length > PROFILE_DETAIL_SERVICE_LIMIT;
+    const services = mergedServices.slice(0, PROFILE_DETAIL_SERVICE_LIMIT);
 
     return {
       ...this.mapTechnician(profile),
@@ -570,6 +579,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       },
       reviewSummary: this.mapDetailReviewSummary(profile.reviewSummary),
       services,
+      servicesLimit: PROFILE_DETAIL_SERVICE_LIMIT,
+      servicesTruncated,
       upcomingSchedule: upcomingSlots.map((slot) => this.mapScheduleSlot(slot)),
       compensationProfile: compensationProfile
         ? this.mapCompensationProfile(compensationProfile)
@@ -1269,7 +1280,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     userId: number,
     profileType: "technician" | "customer"
   ) {
-    const targetType = profileType === "technician" ? "TechnicianProfile" : "CustomerProfile";
+    const targetTypes = profileType === "technician"
+      ? ["TechnicianProfile", "technician_profile"]
+      : ["CustomerProfile", "customer_profile"];
     const metadataProfileIdPaths = profileType === "technician"
       ? ["$.technicianProfileId", "$.technicianId"]
       : ["$.customerProfileId"];
@@ -1280,7 +1293,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         AND: [
           {
             OR: [
-              { targetType, targetId: profileId },
+              ...targetTypes.map((targetType) => ({ targetType, targetId: profileId })),
               { targetType: "User", targetId: userId },
               ...metadataProfileIdPaths.map((path) => ({
                 metadata: { path, equals: profileId }

@@ -16,6 +16,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import {
   createFormalDetailRequestCoordinator,
+  hasFormalDetailRefreshFailure,
   runFormalDetailMutationSequence
 } from "./formalDetailRequest";
 import { UserManagementWorkspace } from "./UserManagementWorkspace";
@@ -37,7 +38,7 @@ function CustomerProfilesWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (rejectOnError = false) => {
     setLoading(true);
     setError("");
     try {
@@ -45,6 +46,7 @@ function CustomerProfilesWorkspace() {
       setCustomers(page.list);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
+      if (rejectOnError) throw loadError;
     } finally {
       setLoading(false);
     }
@@ -98,12 +100,15 @@ function CustomerProfilesWorkspace() {
     setSaving(true);
     setError("");
     try {
-      await runFormalDetailMutationSequence({
+      const result = await runFormalDetailMutationSequence({
         isDetailCurrent: () => customerDetailRequest.getSelectedId() === customerId,
         mutate: action,
-        refreshDetail: () => customerDetailRequest.load(customerId),
-        refreshList: load
+        refreshDetail: () => customerDetailRequest.loadOrThrow(customerId),
+        refreshList: () => load(true)
       });
+      if (hasFormalDetailRefreshFailure(result)) {
+        setError(translateText("资料已保存，但刷新失败，请重试", language));
+      }
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
     } finally {

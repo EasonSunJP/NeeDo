@@ -709,6 +709,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "statistics",
           "reviewSummary",
           "services",
+          "servicesLimit",
+          "servicesTruncated",
           "upcomingSchedule",
           "compensationProfile",
           "timeline",
@@ -762,6 +764,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             type: "array",
             items: { $ref: "#/components/schemas/BackofficeTechnicianServiceDetail" }
           },
+          servicesLimit: { type: "integer", minimum: 1 },
+          servicesTruncated: { type: "boolean" },
           upcomingSchedule: {
             type: "array",
             items: { $ref: "#/components/schemas/BackofficeScheduleSummary" }

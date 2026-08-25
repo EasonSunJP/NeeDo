@@ -140,15 +140,47 @@ describe("formal detail request coordinator", () => {
 });
 
 describe("formal detail mutation sequence", () => {
-  it("refreshes the list before the still-current detail after a successful write", async () => {
+  it("starts list and still-current detail refreshes independently after a successful write", async () => {
     const order: string[] = [];
-    await runFormalDetailMutationSequence({
+    const result = await runFormalDetailMutationSequence({
       isDetailCurrent: () => true,
       mutate: async () => { order.push("mutation"); },
       refreshDetail: async () => { order.push("detail"); },
       refreshList: async () => { order.push("list"); }
     });
     expect(order).toEqual(["mutation", "list", "detail"]);
+    expect(result).toEqual({
+      refreshDetail: { status: "fulfilled" },
+      refreshList: { status: "fulfilled" }
+    });
+  });
+
+  it("still refreshes the detail when list refresh rejects", async () => {
+    const order: string[] = [];
+    const result = await runFormalDetailMutationSequence({
+      isDetailCurrent: () => true,
+      mutate: async () => { order.push("mutation"); },
+      refreshDetail: async () => { order.push("detail"); },
+      refreshList: async () => { order.push("list"); throw new Error("list-refresh-failed"); }
+    });
+
+    expect(order).toEqual(["mutation", "list", "detail"]);
+    expect(result.refreshList).toMatchObject({ status: "rejected" });
+    expect(result.refreshDetail).toEqual({ status: "fulfilled" });
+  });
+
+  it("still completes the list refresh when detail refresh rejects", async () => {
+    const order: string[] = [];
+    const result = await runFormalDetailMutationSequence({
+      isDetailCurrent: () => true,
+      mutate: async () => { order.push("mutation"); },
+      refreshDetail: async () => { order.push("detail"); throw new Error("detail-refresh-failed"); },
+      refreshList: async () => { order.push("list"); }
+    });
+
+    expect(order).toEqual(["mutation", "list", "detail"]);
+    expect(result.refreshList).toEqual({ status: "fulfilled" });
+    expect(result.refreshDetail).toMatchObject({ status: "rejected" });
   });
 
   it("does not refresh or clear page-owned draft and selection after a failed write", async () => {
@@ -167,5 +199,18 @@ describe("formal detail mutation sequence", () => {
     })).rejects.toThrow("write-failed");
     expect(order).toEqual(["mutation"]);
     expect(state).toEqual({ draft: "edited-name", selectedId: 91 });
+  });
+
+  it("skips detail refresh when the successful write no longer owns the current drawer", async () => {
+    let detailRefreshCount = 0;
+    const result = await runFormalDetailMutationSequence({
+      isDetailCurrent: () => false,
+      mutate: async () => undefined,
+      refreshDetail: async () => { detailRefreshCount += 1; },
+      refreshList: async () => undefined
+    });
+
+    expect(detailRefreshCount).toBe(0);
+    expect(result.refreshDetail).toEqual({ status: "skipped" });
   });
 });

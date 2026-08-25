@@ -97,6 +97,32 @@ describe("ContactEventTimeline comment composer visibility", () => {
     expect(markup).toContain("[overflow-wrap:anywhere]");
   });
 
+  it.each([
+    ["en-US", "America/New_York"],
+    ["ja-JP", "Asia/Tokyo"],
+    ["ko-KR", "Asia/Seoul"]
+  ])("preserves an already-localized %s audit timestamp without Chinese reparsing", (locale, timeZone) => {
+    const atLabel = new Intl.DateTimeFormat(locale, {
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      month: "numeric",
+      second: "2-digit",
+      timeZone,
+      year: "numeric"
+    }).format(new Date("2026-08-24T20:30:00.000Z"));
+    const markup = renderToStaticMarkup(
+      <ContactEventTimeline
+        events={[{ ...events[0], atLabel, id: `localized-${locale}`, preserveAtLabel: true }]}
+        showCommentComposer={false}
+      />
+    );
+
+    expect(markup).toContain(atLabel);
+    expect(markup).not.toContain("2026年8月24日");
+    if (locale === "en-US") expect(markup).toContain("PM");
+  });
+
   it("keeps the default composer on the same responsive timeline grid", () => {
     const markup = renderToStaticMarkup(<ContactEventTimeline events={events} />);
     const responsiveGrid = "grid-cols-[18px,minmax(0,1fr)]";

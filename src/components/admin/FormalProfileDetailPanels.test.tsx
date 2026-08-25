@@ -107,6 +107,8 @@ const technicianDetail: BackofficeTechnicianDetailPayload = {
     durationMinutes: 60,
     isRecommended: true
   }],
+  servicesLimit: 50,
+  servicesTruncated: false,
   upcomingSchedule: [baseScheduleSlot],
   compensationProfile: null,
   timeline: [{
@@ -299,6 +301,25 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     expect(markup).toContain('aria-label="正式技师编辑表单"');
   });
 
+  it("shows a localized non-silent service limit notice when the API reports truncation", () => {
+    const markup = renderToStaticMarkup(
+      <FormalTechnicianDetailPanel
+        detail={{ ...technicianDetail, servicesLimit: 50, servicesTruncated: true }}
+        initialTab="技能与服务"
+      />
+    );
+
+    expect(markup).toContain("仅显示前 50 项，请到服务管理查看全部");
+    for (const [language, expected] of [
+      ["zh-Hant", "僅顯示前 50 項，請前往服務管理查看全部"],
+      ["ja", "先頭の50件のみ表示しています。すべての項目はサービス管理で確認してください"],
+      ["en", "Only the first 50 items are shown. View all items in Service Management"],
+      ["ko", "처음 50개 항목만 표시됩니다. 전체 항목은 서비스 관리에서 확인하세요"]
+    ] as const) {
+      expect(translateText("仅显示前 {count} 项，请到服务管理查看全部", language).replace("{count}", "50")).toBe(expected);
+    }
+  });
+
   it("always shows all three unavailable metrics even when the API hint array is empty", () => {
     const markup = renderToStaticMarkup(
       <FormalTechnicianDetailPanel detail={{ ...technicianDetail, unavailableMetrics: [] }} />
@@ -343,6 +364,7 @@ describe("FormalTechnicianDetailPanel formal-data boundaries", () => {
     expect(markup).toContain('data-tone="neutral"');
     expect(markup).toMatch(/custom\.empty\.action[\s\S]*?尚未接入正式数据/);
     expect(markup).not.toContain("记录了 custom.empty.action");
+    expect(source).toContain("preserveAtLabel: true");
   });
 
   it("normalizes recursively empty structured metadata to the localized unavailable state", () => {

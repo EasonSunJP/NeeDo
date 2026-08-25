@@ -11,7 +11,7 @@ export function createFormalDetailRequestCoordinator<TDetail>(options: FormalDet
   let generation = 0;
   let selectedId: number | null = null;
 
-  const load = async (id: number) => {
+  const loadRequest = async (id: number, rejectCurrentError: boolean) => {
     if (disposed) return;
     selectedId = id;
     const requestGeneration = ++generation;
@@ -21,7 +21,9 @@ export function createFormalDetailRequestCoordinator<TDetail>(options: FormalDet
       const detail = await options.request(id);
       if (isCurrent()) options.onSuccess(detail, id);
     } catch (error) {
-      if (isCurrent()) options.onError(error, id);
+      const current = isCurrent();
+      if (current) options.onError(error, id);
+      if (current && rejectCurrentError) throw error;
     } finally {
       if (isCurrent()) options.onFinally(id);
     }
@@ -32,9 +34,33 @@ export function createFormalDetailRequestCoordinator<TDetail>(options: FormalDet
     dispose() { disposed = true; selectedId = null; generation += 1; },
     getSelectedId() { return selectedId; },
     invalidate() { selectedId = null; generation += 1; },
-    load,
-    retry() { return disposed || selectedId === null ? Promise.resolve() : load(selectedId); }
+    load(id: number) { return loadRequest(id, false); },
+    loadOrThrow(id: number) { return loadRequest(id, true); },
+    retry() { return disposed || selectedId === null ? Promise.resolve() : loadRequest(selectedId, false); }
   };
+}
+
+export type FormalDetailRefreshStatus =
+  | { status: "fulfilled" }
+  | { status: "rejected"; reason: unknown }
+  | { status: "skipped" };
+
+export type FormalDetailMutationResult = {
+  refreshDetail: FormalDetailRefreshStatus;
+  refreshList: FormalDetailRefreshStatus;
+};
+
+async function settleFormalDetailRefresh(refresh: () => Promise<unknown>): Promise<FormalDetailRefreshStatus> {
+  try {
+    await refresh();
+    return { status: "fulfilled" };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
+}
+
+export function hasFormalDetailRefreshFailure(result: FormalDetailMutationResult) {
+  return result.refreshList.status === "rejected" || result.refreshDetail.status === "rejected";
 }
 
 export async function runFormalDetailMutationSequence(options: {
@@ -42,8 +68,16 @@ export async function runFormalDetailMutationSequence(options: {
   mutate: () => Promise<unknown>;
   refreshDetail: () => Promise<unknown>;
   refreshList: () => Promise<unknown>;
-}) {
+}): Promise<FormalDetailMutationResult> {
   await options.mutate();
-  await options.refreshList();
-  if (options.isDetailCurrent()) await options.refreshDetail();
+  const refreshList = settleFormalDetailRefresh(options.refreshList);
+  const refreshDetail = options.isDetailCurrent()
+    ? settleFormalDetailRefresh(options.refreshDetail)
+    : Promise.resolve<FormalDetailRefreshStatus>({ status: "skipped" });
+  const [refreshListStatus, refreshDetailStatus] = await Promise.all([refreshList, refreshDetail]);
+
+  return {
+    refreshDetail: refreshDetailStatus,
+    refreshList: refreshListStatus
+  };
 }

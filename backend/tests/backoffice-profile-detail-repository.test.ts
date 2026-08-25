@@ -272,6 +272,42 @@ describe("BackofficeRepository profile details", () => {
     }));
   });
 
+  it("includes compensation-profile audit rows for both formal technician target type spellings", async () => {
+    const compensationAuditRow = {
+      id: 92,
+      action: "merchant_admin.compensation_profile.update",
+      targetType: "technician_profile",
+      targetId: 31,
+      metadata: { shopId: 11, profileId: 501, wageMode: "hybrid" },
+      createdAt: date("2026-08-25T03:00:00.000Z"),
+      actor: { username: "Aoyama Owner", avatarUrl: null }
+    };
+    const { client } = createClient(true, { auditRows: [compensationAuditRow] });
+    const repository = new BackofficeRepository(client as PrismaClient);
+
+    const detail = await repository.getTechnicianDetail({ scope: "merchant", shopId: 11, id: 31 });
+
+    expect(detail?.timeline).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "merchant_admin.compensation_profile.update",
+        metadata: compensationAuditRow.metadata
+      })
+    ]));
+    expect(client.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: expect.arrayContaining([
+              { targetType: "TechnicianProfile", targetId: 31 },
+              { targetType: "technician_profile", targetId: 31 }
+            ])
+          }),
+          { metadata: { path: "$.shopId", equals: 11 } }
+        ])
+      })
+    }));
+  });
+
   it("uses the union of the current UTC week and month for schedule intersections", async () => {
     jest.useFakeTimers().setSystemTime(date("2026-09-01T12:00:00.000Z"));
     const crossingWeekSlot = {
@@ -349,9 +385,45 @@ describe("BackofficeRepository profile details", () => {
     }));
     expect(profileQuery.include.user.select).not.toHaveProperty("passwordHash");
     expect(detail?.services).toHaveLength(1);
+    expect(detail).toMatchObject({ servicesLimit: 50, servicesTruncated: false });
     expect(detail?.upcomingSchedule).toHaveLength(0);
+    expect(client.technicianService.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
+    expect(client.service.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
     expect(client.scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 12 }));
     expect(client.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 30 }));
+  });
+
+  it("caps merged services at fifty and reports truncation instead of silently returning an unbounded set", async () => {
+    const technicianServices = Array.from({ length: 51 }, (_, index) => ({
+      id: 1000 + index,
+      sourceShopServiceId: null,
+      name: `Technician service ${index}`,
+      description: null,
+      categoryId: 7,
+      priceAmount: 9000,
+      currency: "JPY",
+      durationMinutes: 60,
+      isRecommended: false
+    }));
+    const legacyServices = Array.from({ length: 51 }, (_, index) => ({
+      id: 2000 + index,
+      name: `Legacy service ${index}`,
+      description: null,
+      categoryId: 7,
+      priceAmount: money(9000),
+      currency: "JPY",
+      durationMinutes: 60,
+      isRecommended: false
+    }));
+    const { client } = createClient(true, { legacyServices, technicianServices });
+    const repository = new BackofficeRepository(client as PrismaClient);
+
+    const detail = await repository.getTechnicianDetail({ scope: "platform", id: 31 });
+
+    expect(client.technicianService.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
+    expect(client.service.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 51 }));
+    expect(detail?.services).toHaveLength(50);
+    expect(detail).toMatchObject({ servicesLimit: 50, servicesTruncated: true });
   });
 
   it("returns null formal sections without inventing compensation, reviews, or schedule", async () => {

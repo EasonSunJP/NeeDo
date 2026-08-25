@@ -21,6 +21,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import {
   createFormalDetailRequestCoordinator,
+  hasFormalDetailRefreshFailure,
   runFormalDetailMutationSequence
 } from "../admin/formalDetailRequest";
 
@@ -76,7 +77,7 @@ export function MerchantAdminPeoplePage() {
   const [error, setError] = useState("");
   const [confirmationAction, setConfirmationAction] = useState<ConfirmationAction>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (rejectOnError = false) => {
     if (module === "reviews") {
       setTechnicians([]);
       setCustomers([]);
@@ -103,6 +104,7 @@ export function MerchantAdminPeoplePage() {
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
+      if (rejectOnError) throw loadError;
     } finally {
       setLoading(false);
     }
@@ -201,12 +203,15 @@ export function MerchantAdminPeoplePage() {
     setSaving(true);
     setError("");
     try {
-      await runFormalDetailMutationSequence({
+      const result = await runFormalDetailMutationSequence({
         isDetailCurrent: () => technicianDetailRequest.getSelectedId() === technicianId,
         mutate: mutation,
-        refreshDetail: () => technicianDetailRequest.load(technicianId),
-        refreshList: load
+        refreshDetail: () => technicianDetailRequest.loadOrThrow(technicianId),
+        refreshList: () => load(true)
       });
+      if (hasFormalDetailRefreshFailure(result)) {
+        setError(translateText("资料已保存，但刷新失败，请重试", language));
+      }
       setConfirmationAction(null);
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));

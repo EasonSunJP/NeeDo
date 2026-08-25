@@ -471,11 +471,20 @@ function renderTechnicianTab(
   }
 
   if (tab === "技能与服务") {
+    const truncatedMessage = localization
+      .t("仅显示前 {count} 项，请到服务管理查看全部")
+      .replace("{count}", formatInteger(detail.servicesLimit, localization));
+
     return (
       <FormalSectionCard caption={localization.t("以下项目来自正式服务合同。") } localization={localization} title="正式启用服务">
         {detail.services.length > 0
           ? <TechnicianServiceList localization={localization} services={detail.services} />
           : <UnavailableState localization={localization} />}
+        {detail.servicesTruncated ? (
+          <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-black leading-5 text-amber-800">
+            {truncatedMessage}
+          </p>
+        ) : null}
       </FormalSectionCard>
     );
   }
@@ -814,6 +823,7 @@ function mapAuditEvent(event: BackofficeAuditEventPayload, localization: FormalL
     icon: event.actorAvatarUrl ? undefined : <NeutralProfileIcon />,
     id: event.id,
     message: <AuditMetadata metadata={event.metadata} localization={localization} />,
+    preserveAtLabel: true,
     title: action.label,
     tone: action.tone
   };

@@ -241,6 +241,8 @@ export interface BackofficeTechnicianDetailPayload extends BackofficeTechnicianP
   };
   reviewSummary: BackofficeReviewSummaryPayload | null;
   services: BackofficeTechnicianServiceDetailPayload[];
+  servicesLimit: number;
+  servicesTruncated: boolean;
   upcomingSchedule: BackofficeScheduleSlotPayload[];
   compensationProfile: BackofficeCompensationProfilePayload | null;
   timeline: BackofficeAuditEventPayload[];

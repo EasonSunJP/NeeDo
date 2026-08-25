@@ -38,6 +38,8 @@ export const translations: TranslationMap = {
   "技师正式详情读取失败": { "zh-Hant": "技師正式詳情讀取失敗", ja: "技術者の正式詳細を読み込めませんでした", en: "Technician production details failed to load", ko: "기술자 정식 상세 정보를 불러오지 못했습니다" },
   "客户正式详情读取失败": { "zh-Hant": "客戶正式詳情讀取失敗", ja: "顧客の正式詳細を読み込めませんでした", en: "Customer production details failed to load", ko: "고객 정식 상세 정보를 불러오지 못했습니다" },
   "重试": { "zh-Hant": "重試", ja: "再試行", en: "Retry", ko: "다시 시도" },
+  "资料已保存，但刷新失败，请重试": { "zh-Hant": "資料已儲存，但重新整理失敗，請重試", ja: "情報は保存されましたが、更新に失敗しました。再試行してください", en: "The profile was saved, but refresh failed. Please retry", ko: "프로필이 저장되었지만 새로고침에 실패했습니다. 다시 시도하세요" },
+  "仅显示前 {count} 项，请到服务管理查看全部": { "zh-Hant": "僅顯示前 {count} 項，請前往服務管理查看全部", ja: "先頭の{count}件のみ表示しています。すべての項目はサービス管理で確認してください", en: "Only the first {count} items are shown. View all items in Service Management", ko: "처음 {count}개 항목만 표시됩니다. 전체 항목은 서비스 관리에서 확인하세요" },
   "账号启用": { "zh-Hant": "帳號啟用", ja: "アカウント有効", en: "Account active", ko: "계정 활성" },
   "账号停用": { "zh-Hant": "帳號停用", ja: "アカウント停止", en: "Account inactive", ko: "계정 비활성" },
   "资料非公开": { "zh-Hant": "資料非公開", ja: "プロフィール非公開", en: "Profile private", ko: "프로필 비공개" },

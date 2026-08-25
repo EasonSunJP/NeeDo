@@ -14,6 +14,7 @@ export type ContactEventTimelineEntry = {
   id: string;
   message?: ReactNode;
   operator?: ReactNode;
+  preserveAtLabel?: boolean;
   reason?: ReactNode;
   reasonLabel?: ReactNode;
   title: ReactNode;
@@ -121,7 +122,7 @@ export function ContactEventTimeline({
             key={event.id}
           >
             <div className="col-span-2 break-words whitespace-pre-line pt-1 text-left text-[11px] font-medium leading-5 text-[color:var(--client-muted)] tabular-nums sm:col-span-1 sm:text-right">
-              {formatContactTimelineAtLabel(event.atLabel, message)}
+              {event.preserveAtLabel ? event.atLabel : formatContactTimelineAtLabel(event.atLabel, message)}
             </div>
             <div className="relative flex justify-center pb-7 pt-1">
               {index > 0 ? (
