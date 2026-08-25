@@ -110,3 +110,7 @@ Customer and service-provider roles receive wallet read/ledger and adjustment-re
 - No Request frontend or Request marketplace surface.
 - No direct wallet balance writes outside ledger transaction code and seed ledger initialization.
 - No automatic bank, card, or payout provider integration; manual approvals are the formal interim operating workflow.
+
+## Affiliate Foundation Vocabulary
+
+`WalletOwnerType` now includes `merchant_account`; the ledger enum reserves task-budget freeze/release and reward settlement/reversal/recovery transaction types. `frozen_credit` supports an audited reversal returning recovered NDP to an active task's frozen budget. This migration only establishes vocabulary and relations—no affiliate Service may mutate a wallet until the later transaction microstep adds focused unit/integration tests and reuses `LedgerService`.

@@ -196,6 +196,12 @@ The operations demand and information routes are explicit production exchange ca
 
 The operations Afirieito route is an explicit attribution-and-settlement capability gate. It no longer mounts the browser-local CPS workspace or exposes separate fake GMV, ROI, budget, link, promoter, wallet, risk and settlement modules in the admin navigation. Activation requires persisted affiliate programs, promoters, links, attribution touches and commission claims; audited attribution/commission/reversal/settlement lifecycles; wallet and payout reconciliation; scope RBAC, fraud controls, pagination, aggregates and exports. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
+### Formal Affiliate Domain Foundation
+
+The formal alliance-marketing foundation persists tasks, explicit shop/service scope snapshots, claims, hashed signed-link tokens, touches, one-attribution-per-order records, fixed-NDP rewards, task budget reservations, ledger links, and risk events. It extends wallets to support merchant-account ownership and seeds role-specific affiliate menu/page/button permissions.
+
+This foundation does not activate `/admin/afirieito`, merchant publishing, task claiming, Checkout attribution, or reward settlement by itself. Those surfaces remain capability-gated until their own repository, Service, Zod/OpenAPI API, transaction, integration-test, and UI acceptance microsteps are complete. No formal affiliate task or metric is seeded into production data.
+
 The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 
 The official-notice list and compose routes are explicit delivery capability gates. They do not show bundled update history or browser-stored drafts, attachments, target accounts, and schedules as sent notices. The existing Notification table remains available for recipient-side event notifications; administrator broadcasts additionally require persisted notices, audience snapshots, per-recipient delivery attempts, idempotent workers, retry and failure receipts, attachment storage, RBAC, and audit evidence.
