@@ -34,8 +34,13 @@
 Create `src/pages/user/FormalStoreDetailPage.test.ts` with assertions that establish the formal-data boundary:
 
 ```ts
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
+import { FormalStoreContent } from "./FormalStoreDetailPage";
 import source from "./FormalStoreDetailPage.tsx?raw";
+import type { CoreShopDetail } from "../../features/core-read/api";
 
 describe("FormalStoreDetailPage real-data boundary", () => {
   it("loads the numeric shop through the core-read API", () => {
@@ -55,10 +60,53 @@ describe("FormalStoreDetailPage real-data boundary", () => {
   });
 
   it("does not render unsupported virtual store metrics or review rows", () => {
-    ["acceptRate", "cancelRate", "favorite", "share", "Best", "newcomer", "review.author", "review.body"].forEach((token) => {
+    ["acceptRate", "cancelRate", "favoriteCount", "shareCount", "shareContent", "Best", "newcomer", "review.author", "review.body"].forEach((token) => {
       expect(source).not.toContain(token);
     });
     expect(source).toContain("noPublicReviewDetails");
+  });
+
+  it("renders API records and only the first real service as the booking action", () => {
+    const shop = {
+      id: 1,
+      name: "API Store",
+      city: "Tokyo",
+      address: "1-1",
+      coverUrl: null,
+      description: "Persisted description",
+      phone: null,
+      latitude: null,
+      longitude: null,
+      mediaAssets: [],
+      createdAt: "2026-08-25T00:00:00.000Z",
+      updatedAt: "2026-08-25T00:00:00.000Z",
+      reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: ["Clean"] },
+      services: [
+        {
+          id: 11, name: "Real Service One", description: null, city: "Tokyo", priceAmount: "6800", currency: "JPY", durationMinutes: 120, coverUrl: null,
+          category: { id: 1, code: "care", name: "Care", nameJa: null, nameEn: null, parentId: null, iconUrl: null, sortOrder: 1, isActive: true, createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z" },
+          shop: { id: 1, name: "API Store", city: "Tokyo", address: "1-1", coverUrl: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] } },
+          technician: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] }
+        },
+        {
+          id: 12, name: "Real Service Two", description: null, city: "Tokyo", priceAmount: "7800", currency: "JPY", durationMinutes: 90, coverUrl: null,
+          category: { id: 1, code: "care", name: "Care", nameJa: null, nameEn: null, parentId: null, iconUrl: null, sortOrder: 1, isActive: true, createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z" },
+          shop: { id: 1, name: "API Store", city: "Tokyo", address: "1-1", coverUrl: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] } },
+          technician: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] }
+        }
+      ],
+      technicians: [{ id: 21, displayName: "Real Technician", city: "Tokyo", avatarUrl: null, reviewSummary: { ratingAverage: "invalid", reviewCount: 1, latestReviewAt: null, highlights: [] } }]
+    } satisfies CoreShopDetail;
+    const html = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(FormalStoreContent, { language: "en", scope: "user", shop }))
+    );
+
+    expect(html).toContain("API Store");
+    expect(html).toContain("Real Service One");
+    expect(html).toContain("Real Technician");
+    expect(html).toContain('href="/checkout/11"');
+    expect(html).not.toContain('href="/checkout/12"');
+    expect(html).not.toContain("NaN");
   });
 
   it("uses multilingual fixed copy and neutral missing-image states", () => {
@@ -166,8 +214,8 @@ function InitialPlaceholder({ label, className = "" }: { label: string; classNam
   return <div aria-label={label} className={`grid place-items-center bg-[color:var(--client-primary-soft)] font-black text-[color:var(--client-primary)] ${className}`}>{label.trim().slice(0, 2).toUpperCase()}</div>;
 }
 
-function ratingValue(shop: CoreShopDetail) {
-  const value = Number(shop.reviewSummary.ratingAverage);
+function ratingValue(reviewSummary: CoreShopDetail["reviewSummary"]) {
+  const value = Number(reviewSummary.ratingAverage);
   return Number.isFinite(value) ? value.toFixed(1) : "0.0";
 }
 
@@ -182,12 +230,12 @@ function formatMoney(amount: string, currency: string, language: Language) {
   }
 }
 
-function FormalStoreContent({ copy, language, scope, shop }: {
-  copy: FormalStoreDetailCopy;
+export function FormalStoreContent({ language, scope, shop }: {
   language: Language;
   scope: "user" | "merchant";
   shop: CoreShopDetail;
 }) {
+  const copy = copyByLanguage[language];
   const firstService = shop.services[0] ?? null;
 
   return (
@@ -205,7 +253,7 @@ function FormalStoreContent({ copy, language, scope, shop }: {
               <p className="mt-1 text-sm font-bold text-[color:var(--client-muted)]">{shop.city} · {shop.address}</p>
             </div>
             <div className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-2 text-sm font-black text-[color:var(--client-primary)]">
-              ★ {ratingValue(shop)} · {copy.reviewCount(shop.reviewSummary.reviewCount)}
+              ★ {ratingValue(shop.reviewSummary)} · {copy.reviewCount(shop.reviewSummary.reviewCount)}
             </div>
           </div>
           {shop.description ? <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">{shop.description}</p> : null}
@@ -262,7 +310,7 @@ function FormalStoreContent({ copy, language, scope, shop }: {
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate font-black text-[color:var(--client-text)]">{technician.displayName}</h3>
                     <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{technician.city}</p>
-                    <p className="mt-1 text-xs font-black text-[color:var(--client-primary)]">★ {Number(technician.reviewSummary.ratingAverage).toFixed(1)} · {copy.reviewCount(technician.reviewSummary.reviewCount)}</p>
+                    <p className="mt-1 text-xs font-black text-[color:var(--client-primary)]">★ {ratingValue(technician.reviewSummary)} · {copy.reviewCount(technician.reviewSummary.reviewCount)}</p>
                   </div>
                 </div>
                 <SecondaryButton className="mt-3 w-full" to={getScopedProfileDetailPath(scope, "technician", String(technician.id))}>{copy.details}</SecondaryButton>
@@ -274,7 +322,7 @@ function FormalStoreContent({ copy, language, scope, shop }: {
 
       <SurfacePanel className="p-5">
         <h2 className="text-lg font-black text-[color:var(--client-text)]">{copy.reviews}</h2>
-        <p className="mt-3 text-2xl font-black text-[color:var(--client-text)]">★ {ratingValue(shop)}</p>
+        <p className="mt-3 text-2xl font-black text-[color:var(--client-text)]">★ {ratingValue(shop.reviewSummary)}</p>
         <p className="mt-1 text-sm font-bold text-[color:var(--client-muted)]">{copy.reviewCount(shop.reviewSummary.reviewCount)}</p>
         <p className="mt-4 rounded-[18px] border border-dashed border-[color:var(--client-line)] p-4 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{copy.noPublicReviewDetails}</p>
       </SurfacePanel>
@@ -297,7 +345,7 @@ export function FormalStoreDetailPage({ shopId, scope }: { shopId: number; scope
       {query.loading ? <SurfacePanel className="p-6 text-center" aria-live="polite">{copy.loading}</SurfacePanel> : null}
       {query.error ? <EmptyStatePanel title={copy.loadFailed} caption={query.error} action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>{copy.retry}</PrimaryButton>} /> : null}
       {!query.loading && !query.error && !query.data ? <EmptyStatePanel title={copy.unavailable} caption={copy.apiSource} /> : null}
-      {query.data ? <FormalStoreContent copy={copy} language={language} scope={scope} shop={query.data} /> : null}
+      {query.data ? <FormalStoreContent language={language} scope={scope} shop={query.data} /> : null}
     </PageScaffold>
   );
 }
