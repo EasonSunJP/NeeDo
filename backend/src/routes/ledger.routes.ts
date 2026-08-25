@@ -6,6 +6,8 @@ import { createAuthenticateMiddleware } from "../middlewares/authenticate.middle
 import { createAuthorizeMiddleware } from "../middlewares/authorize.middleware";
 import { validateRequest } from "../middlewares/validate-request.middleware";
 import { LedgerRepository } from "../repositories/ledger.repository";
+import { AffiliateWithdrawalEligibilityRepository } from "../repositories/affiliate-withdrawal-eligibility.repository";
+import { AffiliateWithdrawalEligibilityService } from "../services/affiliate-withdrawal-eligibility.service";
 import { LedgerService } from "../services/ledger.service";
 import {
   createWalletAdjustmentRequestBodySchema,
@@ -37,7 +39,17 @@ export const createLedgerRoutes = (config: AppConfig, dependencies: AppDependenc
   const authService = createAuthServiceForRoutes(config, dependencies);
   const authenticate = createAuthenticateMiddleware(authService);
   const authorize = createAuthorizeMiddleware;
-  const ledgerService = new LedgerService(dependencies.ledgerRepository ?? new LedgerRepository());
+  const affiliateWithdrawalEligibility =
+    dependencies.affiliateWithdrawalEligibilityService ??
+    new AffiliateWithdrawalEligibilityService(
+      dependencies.affiliateWithdrawalEligibilityRepository ??
+        new AffiliateWithdrawalEligibilityRepository()
+    );
+  const ledgerService = new LedgerService(
+    dependencies.ledgerRepository ?? new LedgerRepository(),
+    undefined,
+    affiliateWithdrawalEligibility
+  );
   const controller = new LedgerController(ledgerService);
 
   router.get(

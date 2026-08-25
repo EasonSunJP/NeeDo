@@ -85,6 +85,13 @@ export interface CreateWalletAdjustmentRequestInput {
   note?: string | null;
 }
 
+export interface AffiliateWithdrawalEligibilityPort {
+  assertEligible: (
+    userId: number,
+    now: Date
+  ) => Promise<{ eKycVerificationId: number; bankAccountId: number }>;
+}
+
 export interface WalletAdjustmentRequestListInput extends PaginationInput {
   ownerType?: WalletOwnerType;
   ownerId?: number;
@@ -409,7 +416,9 @@ const CURRENCY: LedgerCurrency = "NDP";
 export class LedgerService implements BookingLedgerSettlementPort {
   public constructor(
     private readonly repository: LedgerRepositoryPort,
-    private readonly feeCalculationService?: Pick<FeeCalculationService, "calculateFee">
+    private readonly feeCalculationService?: Pick<FeeCalculationService, "calculateFee">,
+    private readonly affiliateWithdrawalEligibility?: AffiliateWithdrawalEligibilityPort,
+    private readonly now: () => Date = () => new Date()
   ) {}
 
   public freezeAffiliateTaskBudget(
@@ -1387,6 +1396,17 @@ export class LedgerService implements BookingLedgerSettlementPort {
         return existing;
       }
 
+      if (input.type === "withdrawal" && actor.roles.includes("scout")) {
+        if (!this.affiliateWithdrawalEligibility) {
+          throw new AppError({
+            code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+            message: "error.affiliate_withdrawal.verification_unavailable",
+            statusCode: 503
+          });
+        }
+        await this.affiliateWithdrawalEligibility.assertEligible(actor.userId, this.now());
+      }
+
       const wallet = await repository.getOrCreateWallet({
         ...owner,
         currency: CURRENCY
@@ -1715,8 +1735,9 @@ export class LedgerService implements BookingLedgerSettlementPort {
       return { ownerType: "shop", ownerId: actor.currentIdentityScopeId };
     }
     if (
-      actor.currentIdentityScopeType === "global" ||
-      actor.currentIdentityScopeType === "platform"
+      actor.currentIdentityScopeType === "platform" ||
+      actor.currentIdentityType === "platform" ||
+      actor.currentIdentityType === "admin"
     ) {
       throw new AppError({
         code: ERROR_CODES.IDENTITY_FORBIDDEN,
