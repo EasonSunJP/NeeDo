@@ -17,6 +17,8 @@ describe("customer profile self-edit validation", () => {
   });
 
   it.each([
+    {},
+    { unexpected: "field" },
     { age: 151 },
     { heightCm: 299 },
     { languages: [] },

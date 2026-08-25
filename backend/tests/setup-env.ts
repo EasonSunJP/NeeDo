@@ -1,8 +1,34 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { config as loadDotenv } from "dotenv";
+import { requireCustomerProfileRepositoryIntegrationDatabaseUrl } from "./customer-profile-repository-integration-safety";
 
-process.env.NODE_ENV = "test";
-process.env.DEPLOY_ENV = "test";
+const runCustomerProfileRepositoryIntegration =
+  process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
+
+if (runCustomerProfileRepositoryIntegration) {
+  const envFile = process.env.ENV_FILE?.trim();
+
+  if (!envFile) {
+    throw new Error(
+      "Customer profile repository integration tests require ENV_FILE; inherited DATABASE_URL values are forbidden"
+    );
+  }
+
+  const loadedEnvironment = loadDotenv({ path: envFile, override: true });
+
+  if (loadedEnvironment.error) {
+    throw new Error(`Unable to load customer profile repository integration ENV_FILE: ${envFile}`);
+  }
+
+  process.env.DATABASE_URL = requireCustomerProfileRepositoryIntegrationDatabaseUrl({
+    databaseUrl: loadedEnvironment.parsed?.DATABASE_URL,
+    envFile
+  });
+}
+
+process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
+process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
 process.env.ALLOW_TEST_LOGIN = "true";
 process.env.ALLOW_DEMO_SEED = "true";
 process.env.ALLOW_SIMULATION_SEED = "true";
@@ -21,7 +47,11 @@ process.env.METRICS_BEARER_TOKEN = "";
 process.env.TRACING_ENABLED = "true";
 process.env.CACHE_PUBLIC_MAX_AGE_SECONDS = "30";
 process.env.CACHE_STALE_WHILE_REVALIDATE_SECONDS = "120";
-process.env.DATABASE_URL = "mysql://needo_test:needo_test_password@localhost:3307/needo_test";
+if (!runCustomerProfileRepositoryIntegration) {
+  process.env.DATABASE_URL =
+    process.env.CUSTOMER_PROFILE_REPOSITORY_TEST_DATABASE_URL ??
+    "mysql://needo_test:needo_test_password@localhost:3307/needo_test";
+}
 process.env.DATABASE_POOL_CONNECTION_LIMIT = "10";
 process.env.DATABASE_POOL_ACQUIRE_TIMEOUT_MS = "10000";
 process.env.DATABASE_POOL_IDLE_TIMEOUT_MS = "30000";

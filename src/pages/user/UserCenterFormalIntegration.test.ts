@@ -6,7 +6,8 @@ describe("formal customer center integration", () => {
     expect(centerSource).not.toContain("FormalUserCenterPage");
     expect(centerSource).not.toContain("LegacyUserCenterPage");
     expect(centerSource).toContain("CompleteUserCenterPage");
-    expect(centerSource).toContain("coreReadApi.getCustomerProfile(customerProfileId)");
+    expect(centerSource).toContain("customerProfileApi.getMine()");
+    expect(centerSource).toContain("profile.id !== customerProfileId");
     expect(centerSource).toContain("walletApi.getMyWallet()");
     expect(centerSource).toContain('data-testid="user-profile-privacy-control"');
     expect(centerSource).toContain("我的订单");
@@ -27,5 +28,12 @@ describe("formal customer center integration", () => {
     expect(centerSource).toContain("正在加载我的正式数据");
     expect(centerSource).toContain("重新加载我的数据");
     expect(centerSource).toContain("formalData");
+  });
+
+  it("writes formal edits through the protected current-profile API and preserves drafts on failure", () => {
+    expect(centerSource).toContain("customerProfileApi.updateMine({");
+    expect(centerSource).toContain("onFormalProfileUpdated?.(updated)");
+    expect(centerSource).toContain("资料保存失败，请保留当前内容后重试");
+    expect(centerSource).toContain("setIsEditingProfile(true)");
   });
 });

@@ -22,6 +22,11 @@ import type { BookingLedgerSettlementPort } from "./ledger.service";
 import type { OrderStatusNotificationPort } from "./realtime.service";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse } from "../utils/pagination";
+import {
+  selectAffiliatePromotion,
+  type AffiliateCheckoutService,
+  type AffiliatePromotionInput
+} from "./affiliate-checkout.service";
 
 export interface AuthenticatedBookingActor {
   userId: number;
@@ -31,7 +36,9 @@ export interface AuthenticatedBookingActor {
   currentIdentityScopeId?: number | null;
 }
 
-export interface BookingCreateInput extends Omit<BookingCreateRepositoryInput, "customerUserId"> {
+export interface BookingCreateInput
+  extends Omit<BookingCreateRepositoryInput, "customerUserId">,
+    AffiliatePromotionInput {
   orderType?: "booking" | "request";
 }
 
@@ -76,7 +83,11 @@ export class BookingService {
     private readonly repository: BookingRepositoryPort,
     private readonly ledgerService?: BookingLedgerSettlementPort,
     private readonly notificationService?: OrderStatusNotificationPort,
-    private readonly auditLogService?: Pick<AuditLogService, "record">
+    private readonly auditLogService?: Pick<AuditLogService, "record">,
+    private readonly affiliateCheckoutService?: Pick<
+      AffiliateCheckoutService,
+      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+    >
   ) {}
 
   public listAvailableSlots(input: AvailabilityListInput) {
@@ -147,7 +158,7 @@ export class BookingService {
     await this.assertShopNotSuspended(
       await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId) ?? null
     );
-    const order = await this.repository.createBooking({
+    const repositoryInput: BookingCreateRepositoryInput = {
       customerUserId: actor.userId,
       orderType: input.orderType ?? "booking",
       serviceId: input.serviceId,
@@ -156,7 +167,33 @@ export class BookingService {
       fulfillmentMode: input.fulfillmentMode,
       paymentMethod: input.paymentMethod,
       note: input.note
-    });
+    };
+    const selector = selectAffiliatePromotion(input);
+    if (selector && !this.affiliateCheckoutService) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency_unavailable",
+        statusCode: 503
+      });
+    }
+    const order = selector
+      ? await this.repository.createBooking(repositoryInput, {
+          prepareAffiliate: (context) =>
+            this.affiliateCheckoutService!.prepareCheckout({
+              ...context,
+              selector
+            }),
+          persistAffiliate: (context) =>
+            this.affiliateCheckoutService!.persistAttribution({
+              bookingOrderId: context.bookingOrderId,
+              customerUserId: context.customerUserId,
+              shopId: context.shopId,
+              serviceId: context.serviceId,
+              prepared: context.prepared,
+              transactionClient: context.transactionClient
+            })
+        })
+      : await this.repository.createBooking(repositoryInput);
 
     if (!order) {
       throw this.slotUnavailableError();
@@ -434,6 +471,38 @@ export class BookingService {
   }
 
   private createSettlementOptions(
+    actor: AuthenticatedBookingActor,
+    order: BookingOrderPayload,
+    action: OrderAction
+  ): OrderTransitionRepositoryOptions {
+    const actions: Array<
+      NonNullable<OrderTransitionRepositoryOptions["settle"]>
+    > = [];
+    const ledgerOptions = this.createLedgerSettlementOptions(actor, order, action);
+    if (ledgerOptions.settle) {
+      actions.push(ledgerOptions.settle);
+    }
+    if (action === "cancel" && this.affiliateCheckoutService) {
+      actions.push((context) =>
+        this.affiliateCheckoutService!.invalidateCancelledBooking({
+          bookingOrderId: order.id,
+          actorUserId: actor.userId,
+          transactionClient: context.transactionClient
+        })
+      );
+    }
+    return actions.length === 0
+      ? {}
+      : {
+          settle: async (context) => {
+            for (const actionHandler of actions) {
+              await actionHandler(context);
+            }
+          }
+        };
+  }
+
+  private createLedgerSettlementOptions(
     actor: AuthenticatedBookingActor,
     order: BookingOrderPayload,
     action: OrderAction

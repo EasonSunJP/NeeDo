@@ -31,8 +31,10 @@ describe("AffiliateLinkTokenService", () => {
     expect(issued.promotionUrl).toBe(
       `https://app.needo.test/afirieito/r/${encodeURIComponent(issued.publicToken)}`
     );
-    expect(issued.publicToken).not.toContain(String(subject.taskId));
-    expect(issued.publicToken).not.toContain(String(subject.userId));
+    expect(issued.publicToken.split(".")).toEqual([
+      issued.publicTokenId,
+      expect.stringMatching(/^[A-Za-z0-9_-]{43}$/)
+    ]);
   });
 
   it("verifies the canonical token and rejects token or hash tampering", () => {

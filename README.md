@@ -196,7 +196,11 @@ Numeric checkout routes load the formal service detail and current bookable sche
 
 The technician portal's visible order tab is also identity-scoped to the formal order API. Technicians accept pending orders, start confirmed service, complete active service, or cancel eligible orders through the protected state-machine endpoints. Every returned status history is rendered from the database; the formal panel does not use the legacy service-session store or browser-local order mutations.
 
-Authenticated customer identities now receive an API-backed “My” page. The profile comes from the real customer profile record, each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`. The editable local profile is retained only for explicit frontend-preview sessions until a protected customer self-profile update contract is introduced.
+Authenticated customer identities now receive an API-backed “My” page. `GET /api/v1/customer-profile/me` resolves the profile solely from the active customer identity, and `PATCH /api/v1/customer-profile/me` persists a non-empty, Zod-validated partial edit with `customer-profile:read` / `customer-profile:write` permissions. Clients cannot select a profile ID. Successful writes use the `customer_profile.self_update` audit action and return the current persisted profile so the card updates without a browser-storage merge. Each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`.
+
+On `/me`, the information card switches in place between normal and editable state. The top-right control is an edit action normally and a red X while editing; cancelling discards only the current draft. The ordinary user bottom navigation is disabled for the view, loading, error, editing, and saving states. Editing shows the single viewport-fixed “保存并退出编辑模式” action with safe-area spacing, while NDP, usage count, credit score, NeeDo ID, and membership level remain read-only. Explicit `frontend-bypass` sessions retain the isolated preview compatibility persistence path; they do not replace the formal API path.
+
+Customer avatars are accepted only as bounded JPEG, PNG, or WebP data URLs, stored under a SHA-256 content hash, and exposed as immutable files under `/media/customer-avatars/:contentHash.ext`; original browser data URLs are never stored in MySQL. Configure `CUSTOMER_AVATAR_STORAGE_DIR` (local default: `runtime/customer-avatars`) and `CUSTOMER_AVATAR_PUBLIC_BASE_URL` (local default: `http://localhost:3000/media/customer-avatars`). Production requires an HTTPS avatar public base URL.
 
 The operations dashboard now renders the protected backoffice aggregate for metrics, orders, schedule inventory, financial totals, shops, and technicians. Headline technician volume uses an exact scoped database count rather than the six-row preview list length. City trends, field jobs, risk scores, and merchant-health scoring stay visibly disabled until formal aggregate contracts exist; the production dashboard no longer substitutes demo metrics for these modules.
 
@@ -208,7 +212,7 @@ The operations travel-settings route is an explicit external-provider capability
 
 The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
 
-The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks, and the formal affiliate marketplace can now issue one stable promotion code and signed URL per task/user. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires the later Checkout attribution, completion-reward, reversal, fraud, aggregate, and export microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
+The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks; the formal affiliate marketplace can issue one stable promotion code and signed URL per task/user; and Booking Checkout now persists validated attribution, allocation, and customer-discount price snapshots. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires the later completion-reward, reversal, fraud, aggregate, export, and UI microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
 ### Formal Affiliate Task Publishing and Review
 
@@ -266,7 +270,30 @@ ENV_FILE=.env.dev npm --prefix backend run prisma:status
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-marketplace-claim-flow
 ```
 
-The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. This microstep deliberately does not create link touches, increment clicks, attribute Checkout, apply customer discounts, allocate task budget, settle service-completion rewards, or activate the affiliate browser UI; those remain separate transactional microsteps.
+The guarded check rejects remote and production-looking databases, verifies marketplace filtering, first/concurrent/duplicate claiming, stable code and URL reconstruction, tamper rejection, current-user Claim isolation, unchanged wallet balances, audit evidence, and exact marker cleanup. Claim creation itself does not allocate or settle reward budget; those changes occur only in the later Booking Checkout and service-completion transactions.
+
+### Formal Affiliate Checkout Attribution And Customer Discounts
+
+Booking creation accepts an optional explicit promotion code or signed affiliate public token. When both are supplied, the explicit code wins. The Booking transaction locks the Claim, Task, budget reservation, and schedule slot; revalidates task time/state, claimant separation, shop/service scope, minimum order amount, and remaining reward allocation; then persists one Touch, one active Attribution, Claim/Task counters, the allocated reward amount, and the order's original price, discount, and final-price snapshots atomically.
+
+Customer discounts support no discount, fixed integer JPY, or basis-point percentage with an optional JPY cap. The discount changes the customer's Booking price only; it never reduces the frozen NDP reward budget. A valid Checkout allocates exactly one future fixed-NDP reward but does not move wallet balances and does not create an `AffiliateReward`. A pre-completion cancellation invalidates the Attribution and releases that allocation in the same order-state transaction.
+
+Formal endpoints:
+
+- `POST /api/v1/affiliate/codes/validate`
+- `POST /api/v1/bookings` with optional `affiliateCode` / `affiliatePublicToken`
+- `POST /api/v1/bookings/:bookingId/actions` with `cancel` releasing active attribution
+
+Verify the transaction contract against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-checkout-attribution-flow
+```
+
+The guarded check verifies fixed, capped-percent, and no-discount snapshots; explicit-code priority; self-attribution, scope, minimum, task-state, and budget rejection; concurrent last-budget and last-slot safety; cancellation invalidation and exact allocation release; unchanged wallet balances; zero pre-completion Rewards; token-free audits; and marker-owned cleanup.
+
+This Checkout microstep does not settle service-completion rewards, end tasks and unfreeze unused budget, reverse completed-order rewards, compute dashboard aggregates, or activate the merchant, shop, marketplace, or Afirieito UI. Those remain subsequent microsteps.
 
 The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 

@@ -19,6 +19,7 @@
     "check:wallet-adjustment-flow": "tsx scripts/check-wallet-adjustment-flow.ts",
     "check:affiliate-task-publishing-flow": "tsx scripts/check-affiliate-task-publishing-flow.ts",
     "check:affiliate-marketplace-claim-flow": "tsx scripts/check-affiliate-marketplace-claim-flow.ts",
+    "check:affiliate-checkout-attribution-flow": "tsx scripts/check-affiliate-checkout-attribution-flow.ts",
     "check:registration-flow": "tsx scripts/check-registration-flow.ts",
     "check:technician-ranking-flow": "tsx scripts/check-technician-ranking-flow.ts",
     "check:test-login": "tsx scripts/check-test-login.ts",

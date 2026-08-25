@@ -10,7 +10,7 @@ import type { AuditLogService } from "./audit-log.service";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 import type { CustomerAvatarStoragePort } from "./customer-avatar.storage";
 
-type AuditRecorder = Pick<AuditLogService, "record">;
+type AuditRecorder = Pick<AuditLogService, "createInput">;
 
 export { type CustomerProfilePayload } from "../repositories/customer-profile.repository";
 
@@ -45,8 +45,7 @@ export class CustomerProfileService {
       mutation.avatar = { url: avatar.url, mimeType: avatar.mimeType };
     }
 
-    const profile = await this.repository.updateMine(userId, profileId, mutation);
-    await this.auditLogService.record({
+    const auditLog = this.auditLogService.createInput({
       actor,
       context,
       action: "customer_profile.self_update",
@@ -54,6 +53,7 @@ export class CustomerProfileService {
       targetId: profileId,
       metadata: { changedFields: this.changedFields(input) }
     });
+    const profile = await this.repository.updateMine(userId, profileId, mutation, auditLog);
 
     return profile;
   }

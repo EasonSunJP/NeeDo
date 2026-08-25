@@ -300,12 +300,11 @@ describe("customer profile current-user API", () => {
           displayName: "松尾 雄大",
           visibility: "network",
           isPublic: false
+        }),
+        expect.objectContaining({
+          action: "customer_profile.self_update",
+          metadata: { changedFields: ["displayName", "visibility"] }
         })
-      );
-      expect(fixture.auditLogs).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ action: "customer_profile.self_update", targetId: 41 })
-        ])
       );
     } finally {
       await rm(fixture.avatarDirectory, { recursive: true, force: true });
@@ -351,10 +350,17 @@ describe("customer profile current-user API", () => {
       await request(fixture.app)
         .get(`/media/customer-avatars/${avatarHash}.png`)
         .expect("Cache-Control", /public, max-age=31536000, immutable/)
+        .expect("Cross-Origin-Resource-Policy", "cross-origin")
         .expect("Content-Type", /image\/png/)
         .expect(200);
       await request(fixture.app).get("/media/customer-avatars/not-an-avatar.png").expect(404);
       await request(fixture.app).get("/media/customer-avatars/").expect(404);
+      await request(fixture.app)
+        .get(`/media/customer-avatars/${avatarHash}.png/not-an-avatar`)
+        .expect(404);
+      await request(fixture.app)
+        .get(`/media/customer-avatars/${avatarHash}.png.json`)
+        .expect(404);
     } finally {
       await rm(fixture.avatarDirectory, { recursive: true, force: true });
     }

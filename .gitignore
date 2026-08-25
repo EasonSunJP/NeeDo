@@ -4,6 +4,7 @@ dist/
 .codex-spreadsheet/
 .worktrees/
 .data/
+backend/runtime/
 exports/
 outputs/
 .env

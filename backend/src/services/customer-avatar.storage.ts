@@ -58,7 +58,7 @@ export class CustomerAvatarFileStorage implements CustomerAvatarStoragePort {
     try {
       await writeFile(absolutePath, bytes, { flag: "wx" });
     } catch (error) {
-      if (!(error instanceof Error) || (error as NodeJS.ErrnoException).code !== "EEXIST") {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
         throw error;
       }
     }

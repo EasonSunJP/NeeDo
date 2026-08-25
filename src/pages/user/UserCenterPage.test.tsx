@@ -32,10 +32,26 @@ describe("UserCenterPage", () => {
     expect(source).toContain("<InfoTooltipTrigger");
   });
 
-  it("keeps the user center on the main bottom navigation", () => {
-    expect(source).toContain("navItems={userNavItems}");
+  it("removes the bottom navigation from every user-center state", () => {
+    expect(source.match(/showBottomNav=\{false\}/g)).toHaveLength(2);
+    expect(source).not.toContain("navItems={userNavItems}");
     expect(source).not.toContain("<MobileFullscreenPage");
-    expect(source).toContain("pb-[calc(132px+env(safe-area-inset-bottom))]");
+  });
+
+  it("turns the card action into edit and a red cancel X", () => {
+    expect(source).not.toContain('to="/me/settings/account"');
+    expect(source).toContain('icon={isEditingProfile ? "x" : "edit"}');
+    expect(source).toContain('label={isEditingProfile ? "取消编辑" : "编辑资料"}');
+    expect(source).toContain("isEditingProfile ? cancelProfileEdit : startProfileEdit");
+    expect(source).toContain("bg-red-500");
+  });
+
+  it("shows a viewport-fixed save action only during editing", () => {
+    expect(source).toContain('data-testid="user-profile-save-action"');
+    expect(source).toContain("fixed inset-x-0 bottom-0");
+    expect(source).toContain("env(safe-area-inset-bottom)");
+    expect(source).toContain("scroll-pb-[calc(132px+env(safe-area-inset-bottom))]");
+    expect(source).toContain("保存并退出编辑模式");
   });
 
   it("shows the personal privacy switch with floating options", () => {

@@ -1,4 +1,7 @@
-import type { AuditLogRepositoryPort } from "../repositories/audit-log.repository";
+import type {
+  AuditLogCreateInput,
+  AuditLogRepositoryPort
+} from "../repositories/audit-log.repository";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
 
 export interface AuditLogRecordInput {
@@ -14,6 +17,10 @@ export class AuditLogService {
   public constructor(private readonly repository: AuditLogRepositoryPort) {}
 
   public async record(input: AuditLogRecordInput): Promise<void> {
+    await this.repository.create(this.createInput(input));
+  }
+
+  public createInput(input: AuditLogRecordInput): AuditLogCreateInput {
     const metadata = input.actor.isReadOnlyMerchantPreview
       ? {
           ...(input.metadata && typeof input.metadata === "object" ? input.metadata : {}),
@@ -22,7 +29,7 @@ export class AuditLogService {
         }
       : input.metadata;
 
-    await this.repository.create({
+    return {
       actorId: input.actor.userId,
       action: input.action,
       targetType: input.targetType,
@@ -30,6 +37,6 @@ export class AuditLogService {
       ip: input.context.ip,
       userAgent: input.context.userAgent,
       metadata
-    });
+    };
   }
 }

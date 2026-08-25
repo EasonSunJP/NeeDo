@@ -5,7 +5,6 @@ import { useAuth } from "../../auth/AuthProvider";
 import { IconButton, PrimaryButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { userNavItems } from "../../components/mobile/navItems";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
@@ -13,7 +12,8 @@ import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { reviews, stores } from "../../data/mock";
 import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
-import { coreReadApi, mapCoreCustomerToCustomer, type CoreCustomerProfile } from "../../features/core-read/api";
+import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
+import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
 import { walletApi, type Wallet } from "../../features/wallet/api";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import { cn } from "../../lib/utils";
@@ -35,7 +35,7 @@ const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
 type FormalUserCenterData = {
   orderCounts: FormalOrderCounts;
-  profile: CoreCustomerProfile;
+  profile: CustomerSelfProfile;
   wallet: Wallet;
 };
 
@@ -73,9 +73,14 @@ const avatarCropFrameClassName =
 const userProfileLanguageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
 const userProfileGenderOptions: Array<{ label: string; value: NonNullable<Customer["gender"]> }> = [
   { label: "女", value: "female" },
-  { label: "男", value: "male" }
+  { label: "男", value: "male" },
+  { label: "不公开", value: "private" }
 ];
 type UserProfileVisibility = "privateAll" | "limited" | "network";
+type UserProfilePrivacyState = {
+  enabled: boolean;
+  visibility: UserProfileVisibility;
+};
 type UserProfileDraft = {
   avatar: string;
   nickname: string;
@@ -281,6 +286,23 @@ function normalizeUserHeightForStorage(value: string) {
   return /^\d+(?:\.\d+)?$/.test(height) ? `${height}cm` : height;
 }
 
+function parseOptionalProfileNumber(value: string, options: { field: string; integer?: boolean; max: number; min: number }): number | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  const valid = Number.isFinite(parsed) && parsed >= options.min && parsed <= options.max && (!options.integer || Number.isInteger(parsed));
+
+  if (!valid) {
+    throw new Error(options.field);
+  }
+
+  return parsed;
+}
+
 function getUserProfilePrivacyLabel(visibility: UserProfileVisibility) {
   switch (visibility) {
     case "limited":
@@ -295,6 +317,12 @@ function getUserProfilePrivacyLabel(visibility: UserProfileVisibility) {
 
 function getUserProfilePrivacySummary(enabled: boolean, visibility: UserProfileVisibility) {
   return enabled ? getUserProfilePrivacyLabel(visibility) : "公开可见";
+}
+
+function getPersistedUserProfilePrivacy(visibility?: CustomerSelfProfile["visibility"]): UserProfilePrivacyState {
+  return visibility && visibility !== "public"
+    ? { enabled: true, visibility }
+    : { enabled: false, visibility: "privateAll" };
 }
 
 function UserProfilePrivacyInfoButton({ content }: { content: string }) {
@@ -464,7 +492,7 @@ function UserCenterDataStatus({
   const navigate = useNavigate();
 
   return (
-    <MobileShell navItems={userNavItems} navPanelStyle="plain" showTopEdgeMask={false}>
+    <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
           action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
@@ -473,7 +501,7 @@ function UserCenterDataStatus({
           showSpacer={false}
           title="个人中心"
         />
-        <main className="px-4 pb-[calc(132px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
+        <main className="px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
           <section className={cn(pagePanelClassName, "py-8 text-center")} aria-live="polite" role={error ? "alert" : undefined}>
             <h1 className="text-lg font-black text-[color:var(--client-text)]">
               {loading ? "正在加载我的正式数据" : "我的数据加载失败"}
@@ -503,7 +531,7 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
     setLoadError("");
 
     Promise.all([
-      coreReadApi.getCustomerProfile(customerProfileId),
+      customerProfileApi.getMine(),
       walletApi.getMyWallet(),
       Promise.all(
         formalOrderStatuses.map(async (status) => {
@@ -514,6 +542,9 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
     ])
       .then(([profile, wallet, counts]) => {
         if (!active) return;
+        if (profile.id !== customerProfileId) {
+          throw new ApiClientError("error.forbidden", 403, 403);
+        }
         setFormalData({
           profile,
           wallet,
@@ -541,10 +572,23 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
     return <UserCenterDataStatus error={loadError} onRetry={() => setRevision((current) => current + 1)} />;
   }
 
-  return <CompleteUserCenterPage formalData={formalData} />;
+  return (
+    <CompleteUserCenterPage
+      formalData={formalData}
+      onFormalProfileUpdated={(profile) => {
+        setFormalData((current) => (current ? { ...current, profile } : current));
+      }}
+    />
+  );
 }
 
-function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterData }) {
+function CompleteUserCenterPage({
+  formalData,
+  onFormalProfileUpdated
+}: {
+  formalData?: FormalUserCenterData;
+  onFormalProfileUpdated?: (profile: CustomerSelfProfile) => void;
+}) {
   const navigate = useNavigate();
   const { session } = useAuth();
   const { customers, technicians } = useEntityStore();
@@ -562,12 +606,16 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
   const [profileDraft, setProfileDraft] = useState<UserProfileDraft | null>(null);
   const [savedProfilePreview, setSavedProfilePreview] = useState<UserProfileDraft | null>(null);
   const [profileNameOverride, setProfileNameOverride] = useState("");
-  const [profilePrivacyEnabled, setProfilePrivacyEnabled] = useState(false);
-  const [profilePrivacyVisibility, setProfilePrivacyVisibility] = useState<UserProfileVisibility>("privateAll");
+  const [savedProfilePrivacyPreview, setSavedProfilePrivacyPreview] = useState<UserProfilePrivacyState>({
+    enabled: false,
+    visibility: "privateAll"
+  });
+  const [profilePrivacyDraft, setProfilePrivacyDraft] = useState<UserProfilePrivacyState | null>(null);
   const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
   const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] = useState(false);
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [profileToastMessage, setProfileToastMessage] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const visibleProfile = profileDraft
     ? {
         avatar: profileDraft.avatar,
@@ -599,7 +647,11 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
   const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
   const membershipSurface = getThemeProfileSurfaceClassNames();
-  const profilePrivacySummary = getUserProfilePrivacySummary(profilePrivacyEnabled, profilePrivacyVisibility);
+  const savedProfilePrivacy = formalData
+    ? getPersistedUserProfilePrivacy(formalData.profile.visibility)
+    : savedProfilePrivacyPreview;
+  const activeProfilePrivacy = isEditingProfile && profilePrivacyDraft ? profilePrivacyDraft : savedProfilePrivacy;
+  const profilePrivacySummary = getUserProfilePrivacySummary(activeProfilePrivacy.enabled, activeProfilePrivacy.visibility);
   const nicknameInputRef = useRef<HTMLTextAreaElement>(null);
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
@@ -630,6 +682,9 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
 
     setProfileDraft(limitedDraft);
     setProfileNameOverride(limitedDraft.nickname);
+    setProfilePrivacyDraft(savedProfilePrivacy);
+    setProfilePrivacyMenuOpen(false);
+    setProfilePrivacyConfirmOpen(false);
     setAvatarCrop(null);
     setProfileToastMessage("");
     setIsEditingProfile(true);
@@ -638,10 +693,17 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     setIsEditingProfile(false);
     setProfileDraft(null);
     setProfileNameOverride(savedProfilePreview?.nickname ?? "");
+    setProfilePrivacyDraft(null);
     setAvatarCrop(null);
+    setProfilePrivacyMenuOpen(false);
+    setProfilePrivacyConfirmOpen(false);
     setProfileToastMessage("");
   };
   const updateProfileDraft = (patch: Partial<UserProfileDraft>) => {
+    if (isSavingProfile) {
+      return;
+    }
+
     const nextPatch = typeof patch.nickname === "string" ? { ...patch, nickname: limitUserProfileName(patch.nickname) } : patch;
 
     if (typeof nextPatch.nickname === "string") {
@@ -651,6 +713,10 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     setProfileDraft((current) => (current ? { ...current, ...nextPatch } : current));
   };
   const toggleProfileLanguage = (language: string) => {
+    if (isSavingProfile) {
+      return;
+    }
+
     setProfileDraft((current) => {
       if (!current) {
         return current;
@@ -664,26 +730,42 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     });
   };
   const updateProfilePrivacyEnabled = (enabled: boolean) => {
+    if (isSavingProfile) {
+      return;
+    }
+
     if (enabled) {
       setProfilePrivacyConfirmOpen(true);
       return;
     }
 
-    setProfilePrivacyEnabled(enabled);
+    setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled }));
     setProfilePrivacyMenuOpen(false);
     setProfilePrivacyConfirmOpen(false);
   };
   const confirmProfilePrivacyEnabled = () => {
+    if (isSavingProfile) {
+      return;
+    }
+
     setProfilePrivacyConfirmOpen(false);
-    setProfilePrivacyEnabled(true);
+    setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled: true }));
     setProfilePrivacyMenuOpen(true);
   };
   const updateProfilePrivacyVisibility = (visibility: UserProfileVisibility) => {
-    setProfilePrivacyEnabled(true);
-    setProfilePrivacyVisibility(visibility);
+    if (isSavingProfile) {
+      return;
+    }
+
+    setProfilePrivacyDraft({ enabled: true, visibility });
     setProfilePrivacyMenuOpen(false);
   };
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (isSavingProfile) {
+      event.target.value = "";
+      return;
+    }
+
     const file = event.target.files?.[0];
     event.target.value = "";
 
@@ -702,7 +784,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     setProfileToastMessage("");
   };
   const applyAvatarCrop = async () => {
-    if (!avatarCrop) {
+    if (!avatarCrop || isSavingProfile) {
       return;
     }
 
@@ -718,8 +800,8 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     const timer = window.setTimeout(() => setProfileToastMessage(""), 2400);
     return () => window.clearTimeout(timer);
   }, [profileToastMessage]);
-  const saveProfileEdit = () => {
-    if (!profileDraft) {
+  const saveProfileEdit = async () => {
+    if (!profileDraft || isSavingProfile) {
       return;
     }
 
@@ -727,6 +809,16 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     const ageValue = readProfileFieldValue<HTMLInputElement>("age", ageInputRef.current?.value ?? profileDraft.age);
     const heightValue = readProfileFieldValue<HTMLInputElement>("height", heightInputRef.current?.value ?? profileDraft.height);
     const bioValue = readProfileFieldValue<HTMLTextAreaElement>("bio", bioInputRef.current?.value ?? profileDraft.bio);
+    let ageNumber: number | null;
+    let heightNumber: number | null;
+
+    try {
+      ageNumber = parseOptionalProfileNumber(ageValue, { field: "年龄必须是 0 到 150 之间的整数", integer: true, min: 0, max: 150 });
+      heightNumber = parseOptionalProfileNumber(formatUserHeightInput(heightValue), { field: "身高必须是 30 到 250 之间的数字", min: 30, max: 250 });
+    } catch (error) {
+      setProfileToastMessage(error instanceof Error ? error.message : "资料格式不正确，请检查后重试");
+      return;
+    }
     const nextProfile = {
       avatar: profileDraft.avatar.trim() || currentCustomer.avatar,
       nickname: nicknameValue.trim() || currentCustomer.name,
@@ -736,44 +828,73 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
       languages: profileDraft.languages,
       bio: bioValue.trim()
     };
-    const nextPreview: UserProfileDraft = {
-      avatar: nextProfile.avatar,
-      nickname: nextProfile.nickname,
-      gender: nextProfile.gender,
-      age: nextProfile.age,
-      height: nextProfile.height,
-      languages: [...nextProfile.languages],
-      bio: nextProfile.bio
-    };
+    setIsSavingProfile(true);
+    setProfileToastMessage("");
 
-    const customerPersisted = updateCustomerEntity(currentCustomer.id, nextProfile);
-    let technicianPersisted = true;
+    try {
+      if (formalData) {
+        const updated = await customerProfileApi.updateMine({
+          displayName: nextProfile.nickname,
+          avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
+          gender: nextProfile.gender,
+          age: ageNumber,
+          heightCm: heightNumber,
+          languages: nextProfile.languages,
+          bio: nextProfile.bio || null,
+          visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
+        });
 
-    if (linkedTechnician) {
-      technicianPersisted = updateTechnicianEntity(linkedTechnician.id, {
-        avatar: nextProfile.avatar,
-        nickname: nextProfile.nickname,
-        age: nextProfile.age,
-        height: nextProfile.height,
-        languages: [...nextProfile.languages],
-        bio: nextProfile.bio
-      });
+        onFormalProfileUpdated?.(updated);
+        setSavedProfilePreview(null);
+        setProfileNameOverride("");
+      } else {
+        const nextPreview: UserProfileDraft = {
+          avatar: nextProfile.avatar,
+          nickname: nextProfile.nickname,
+          gender: nextProfile.gender,
+          age: nextProfile.age,
+          height: nextProfile.height,
+          languages: [...nextProfile.languages],
+          bio: nextProfile.bio
+        };
+        const customerPersisted = updateCustomerEntity(currentCustomer.id, nextProfile);
+        let technicianPersisted = true;
+
+        if (linkedTechnician) {
+          technicianPersisted = updateTechnicianEntity(linkedTechnician.id, {
+            avatar: nextProfile.avatar,
+            nickname: nextProfile.nickname,
+            age: nextProfile.age,
+            height: nextProfile.height,
+            languages: [...nextProfile.languages],
+            bio: nextProfile.bio
+          });
+        }
+
+        if (!customerPersisted || !technicianPersisted) {
+          throw new Error("Unable to persist the frontend-preview profile.");
+        }
+
+        setSavedProfilePreview(nextPreview);
+        setSavedProfilePrivacyPreview(activeProfilePrivacy);
+        setProfileNameOverride(nextProfile.nickname);
+      }
+
+      setIsEditingProfile(false);
+      setProfileDraft(null);
+      setProfilePrivacyDraft(null);
+      setAvatarCrop(null);
+      setProfileToastMessage("资料已保存，已退出编辑模式");
+    } catch {
+      setProfileToastMessage("资料保存失败，请保留当前内容后重试");
+      setIsEditingProfile(true);
+    } finally {
+      setIsSavingProfile(false);
     }
-
-    setSavedProfilePreview(nextPreview);
-    setProfileNameOverride(nextProfile.nickname);
-    setIsEditingProfile(false);
-    setProfileDraft(null);
-    setAvatarCrop(null);
-    setProfileToastMessage(
-      customerPersisted && technicianPersisted
-        ? "基础信息已保存。"
-        : "已在当前页面更新，但浏览器本地保存失败，请缩小头像后重试。"
-    );
   };
 
   return (
-    <MobileShell navItems={userNavItems} navPanelStyle="plain" showTopEdgeMask={false}>
+    <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
           action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
@@ -783,7 +904,14 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
           title="个人中心"
         />
 
-        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(132px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
+        <main
+          className={cn(
+            "scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pt-[calc(env(safe-area-inset-top)+86px)]",
+            isEditingProfile
+              ? "scroll-pb-[calc(132px+env(safe-area-inset-bottom))] pb-[calc(132px+env(safe-area-inset-bottom))]"
+              : "pb-[calc(24px+env(safe-area-inset-bottom))]"
+          )}
+        >
           {profileToastMessage ? (
             <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+76px)] z-[90] flex justify-center px-6">
               <div className={profileToastClassName}>
@@ -794,21 +922,16 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
           <div className="space-y-4">
             <section className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
               <div className="relative">
-                {formalData ? (
-                  <IconButton
-                    className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
-                    icon="settings"
-                    label="打开账号设置"
-                    to="/me/settings/account"
-                  />
-                ) : (
-                  <IconButton
-                    className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
-                    icon="edit"
-                    label={isEditingProfile ? "收起编辑" : "编辑资料"}
-                    onClick={isEditingProfile ? cancelProfileEdit : startProfileEdit}
-                  />
-                )}
+                <IconButton
+                  className={cn(
+                    "absolute right-0 top-0 z-10 shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
+                    isEditingProfile ? "border-red-400 bg-red-500 text-white hover:bg-red-600" : cn(membershipSurface.metric, "text-ink"),
+                    isSavingProfile ? "cursor-not-allowed opacity-60" : undefined
+                  )}
+                  icon={isEditingProfile ? "x" : "edit"}
+                  label={isEditingProfile ? "取消编辑" : "编辑资料"}
+                  onClick={isSavingProfile ? undefined : isEditingProfile ? cancelProfileEdit : startProfileEdit}
+                />
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="shrink-0">
                     <div className="relative h-36 w-36">
@@ -819,7 +942,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                       />
                       {isEditingProfile ? (
                         <>
-                          <input accept="image/*" className="hidden" onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
+                          <input accept="image/*" className="hidden" disabled={isSavingProfile} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
                           <IconButton
                             className={cn(
                               "absolute bottom-2 right-2 h-10 w-10 border-[2px] text-white shadow-[0_12px_26px_rgba(0,0,0,0.34)]",
@@ -827,7 +950,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                             )}
                             icon="edit"
                             label="更换头像"
-                            onClick={() => avatarInputRef.current?.click()}
+                            onClick={isSavingProfile ? undefined : () => avatarInputRef.current?.click()}
                           />
                         </>
                       ) : null}
@@ -842,6 +965,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                             autoFocus
                             className="-ml-0.5 -mt-1 max-h-[84px] min-h-[38px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-1 text-[21px] font-black leading-tight shadow-none outline-none [appearance:none] [overflow-wrap:anywhere]"
                             data-profile-field="nickname"
+                            readOnly={isSavingProfile}
                             onChange={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
                             onInput={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
                             ref={nicknameInputRef}
@@ -876,9 +1000,9 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                     <div className={cn("relative z-30 mt-auto rounded-[18px] border p-3", membershipSurface.panel)} data-testid="user-profile-privacy-control">
                       <div className="flex items-center justify-between gap-3">
                         <button
-                          aria-expanded={profilePrivacyEnabled ? profilePrivacyMenuOpen : undefined}
+                          aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined}
                           className="min-w-0 flex-1 text-left disabled:cursor-default"
-                          disabled={!profilePrivacyEnabled}
+                          disabled={!isEditingProfile || !activeProfilePrivacy.enabled || isSavingProfile}
                           onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
                           type="button"
                         >
@@ -887,7 +1011,8 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                         </button>
                         <ToggleSwitch
                           ariaLabel="开启隐私模式"
-                          checked={profilePrivacyEnabled}
+                          checked={activeProfilePrivacy.enabled}
+                          disabled={!isEditingProfile || isSavingProfile}
                           onChange={updateProfilePrivacyEnabled}
                           size="md"
                         />
@@ -897,7 +1022,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                         onConfirm={confirmProfilePrivacyEnabled}
                         open={profilePrivacyConfirmOpen}
                       />
-                      {profilePrivacyEnabled && profilePrivacyMenuOpen ? (
+                      {activeProfilePrivacy.enabled && profilePrivacyMenuOpen ? (
                         <div
                           className={cn(
                             "absolute right-0 top-[calc(100%+8px)] z-[90] grid w-[min(320px,calc(100vw-48px))] gap-2 rounded-[20px] border p-2 shadow-[0_22px_48px_rgba(0,0,0,0.34)] backdrop-blur-xl",
@@ -906,7 +1031,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                           data-testid="user-profile-privacy-options"
                         >
                           {userProfilePrivacyOptions.map((option) => {
-                            const checked = profilePrivacyVisibility === option.value;
+                            const checked = activeProfilePrivacy.visibility === option.value;
 
                             return (
                               <div
@@ -923,6 +1048,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                                       "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
                                       checked ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]" : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent"
                                     )}
+                                    disabled={isSavingProfile}
                                     onClick={() => updateProfilePrivacyVisibility(option.value)}
                                     type="button"
                                   >
@@ -931,6 +1057,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                                   <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                     <button
                                       className="min-w-0 truncate text-left text-sm font-black"
+                                      disabled={isSavingProfile}
                                       onClick={() => updateProfilePrivacyVisibility(option.value)}
                                       type="button"
                                     >
@@ -991,6 +1118,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                                   profileDraft.gender === option.value ? membershipSurface.chip : membershipSurface.metric
                                 )}
                                 key={option.value}
+                                disabled={isSavingProfile}
                                 onClick={() => updateProfileDraft({ gender: option.value })}
                                 type="button"
                               >
@@ -1005,6 +1133,8 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                             className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
                             data-profile-field="age"
                             defaultValue={profileDraft.age}
+                            disabled={isSavingProfile}
+                            inputMode="numeric"
                             onChange={(event) => updateProfileDraft({ age: event.currentTarget.value })}
                             onInput={(event) => updateProfileDraft({ age: event.currentTarget.value })}
                             ref={ageInputRef}
@@ -1016,6 +1146,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                             className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
                             data-profile-field="height"
                             defaultValue={profileDraft.height}
+                            disabled={isSavingProfile}
                             inputMode="decimal"
                             onChange={(event) => updateProfileDraft({ height: formatUserHeightInput(event.currentTarget.value) })}
                             onInput={(event) => updateProfileDraft({ height: formatUserHeightInput(event.currentTarget.value) })}
@@ -1033,6 +1164,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                                 profileDraft.languages.includes(language) ? membershipSurface.chip : membershipSurface.metric
                               )}
                               key={language}
+                              disabled={isSavingProfile}
                               onClick={() => toggleProfileLanguage(language)}
                               type="button"
                             >
@@ -1047,19 +1179,12 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                           className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none"
                           data-profile-field="bio"
                           defaultValue={profileDraft.bio}
+                          readOnly={isSavingProfile}
                           onChange={(event) => updateProfileDraft({ bio: event.currentTarget.value })}
                           onInput={(event) => updateProfileDraft({ bio: event.currentTarget.value })}
                           ref={bioInputRef}
                         />
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", membershipSurface.metric)} onClick={cancelProfileEdit} type="button">
-                          取消
-                        </button>
-                        <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", membershipSurface.chip)} onClick={saveProfileEdit} type="button">
-                          保存
-                        </button>
-                      </div>
                     </div>
                   ) : (
                     <>
@@ -1157,6 +1282,21 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
             </section>
           </div>
         </main>
+        {isEditingProfile ? (
+          <div
+            className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"
+            data-testid="user-profile-save-action"
+          >
+            <button
+              className="pointer-events-auto mx-auto block w-full max-w-[620px] rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-needo-text)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60"
+              disabled={isSavingProfile}
+              onClick={() => void saveProfileEdit()}
+              type="button"
+            >
+              {isSavingProfile ? "正在保存资料" : "保存并退出编辑模式"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </MobileShell>
   );
