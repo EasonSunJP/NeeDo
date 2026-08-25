@@ -43,6 +43,38 @@ const idPathParameter = (name = "id") => ({
   schema: { type: "integer", minimum: 1 }
 });
 
+const identityWorkflowOperation = (
+  summary: string,
+  extras: Record<string, unknown> = {}
+) => ({
+  tags: ["Identity Applications"],
+  summary,
+  security: [{ bearerAuth: [] }],
+  ...extras,
+  responses: {
+    "200": { description: "Success" },
+    "400": { description: "Invalid request" },
+    "401": { description: "Missing or invalid access token" },
+    "403": { description: "Missing permission or scope" },
+    "404": { description: "Application or evidence not found" },
+    "409": { description: "State or optimistic-lock conflict" }
+  }
+});
+
+const identityJsonBody = (properties: Record<string, unknown>, required: string[] = []) => ({
+  required: true,
+  content: {
+    "application/json": {
+      schema: { type: "object", additionalProperties: false, required, properties }
+    }
+  }
+});
+
+const applicationVersionBody = identityJsonBody(
+  { expectedVersion: { type: "integer", minimum: 1 } },
+  ["expectedVersion"]
+);
+
 const affiliateTaskStatuses = [
   "draft",
   "pending_review",
@@ -4626,7 +4658,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
-          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ],
         responses: {
           "200": {
@@ -7153,6 +7185,341 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "404": { description: "Service not in current shop" }
         }
       }
+    },
+    [`${config.API_PREFIX}/identity-applications/mine`]: {
+      get: identityWorkflowOperation("List the authenticated user's identity applications", {
+        parameters: [
+          { name: "type", in: "query", schema: { type: "string", enum: ["technician", "merchant"] } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["draft", "submitted", "under_review", "approved", "rejected", "withdrawn"]
+            }
+          },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ]
+      })
+    },
+    [`${config.API_PREFIX}/merchants/search`]: {
+      get: identityWorkflowOperation("Search eligible shops by address, merchant ID, or name", {
+        parameters: [
+          { name: "query", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 160 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ]
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/technician`]: {
+      post: identityWorkflowOperation("Create a technician application draft", {
+        requestBody: identityJsonBody(
+          {
+            targetShopId: { type: "integer", minimum: 1 },
+            applicantName: { type: "string", minLength: 1, maxLength: 120 }
+          },
+          ["targetShopId", "applicantName"]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/technician-profile`]: {
+      patch: identityWorkflowOperation("Update technician application profile", {
+        parameters: [idPathParameter()],
+        requestBody: identityJsonBody(
+          {
+            expectedVersion: { type: "integer", minimum: 1 },
+            targetShopId: { type: "integer", minimum: 1 },
+            applicantName: { type: "string", minLength: 1, maxLength: 120 },
+            phone: { type: ["string", "null"], maxLength: 32 },
+            city: { type: ["string", "null"], maxLength: 100 },
+            serviceAreas: { type: "array", maxItems: 30, items: { type: "string", maxLength: 100 } },
+            skills: { type: "array", maxItems: 50, items: { type: "string", maxLength: 100 } },
+            yearsExperience: { type: ["integer", "null"], minimum: 0, maximum: 80 },
+            bio: { type: ["string", "null"], maxLength: 2000 },
+            gender: { type: ["string", "null"], maxLength: 32 },
+            birthDate: { type: ["string", "null"], format: "date" }
+          },
+          [
+            "expectedVersion",
+            "targetShopId",
+            "applicantName",
+            "phone",
+            "city",
+            "serviceAreas",
+            "skills",
+            "yearsExperience",
+            "bio",
+            "gender",
+            "birthDate"
+          ]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/merchant`]: {
+      post: identityWorkflowOperation("Create a merchant application draft", {
+        requestBody: identityJsonBody(
+          {
+            applicantKind: { type: "string", enum: ["corporate", "individual"] },
+            corporateLegalName: { type: ["string", "null"], maxLength: 191 },
+            corporateLegalNameKana: { type: ["string", "null"], maxLength: 191 },
+            representativeName: { type: "string", minLength: 1, maxLength: 120 },
+            representativeNameKana: { type: "string", minLength: 1, maxLength: 191 },
+            shopName: { type: "string", minLength: 1, maxLength: 160 },
+            businessAddress: { type: "string", minLength: 1, maxLength: 255 },
+            contactPhone: { type: "string", minLength: 1, maxLength: 32 },
+            responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
+            showcaseDraft: { type: "object", additionalProperties: true }
+          },
+          [
+            "applicantKind",
+            "corporateLegalName",
+            "corporateLegalNameKana",
+            "representativeName",
+            "representativeNameKana",
+            "shopName",
+            "businessAddress",
+            "contactPhone",
+            "responsiblePersonName",
+            "showcaseDraft"
+          ]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/merchant-showcase`]: {
+      patch: identityWorkflowOperation("Update the merchant service-showcase draft", {
+        parameters: [idPathParameter()],
+        requestBody: identityJsonBody(
+          {
+            expectedVersion: { type: "integer", minimum: 1 },
+            applicantKind: { type: "string", enum: ["corporate", "individual"] },
+            corporateLegalName: { type: ["string", "null"], maxLength: 191 },
+            corporateLegalNameKana: { type: ["string", "null"], maxLength: 191 },
+            representativeName: { type: "string", minLength: 1, maxLength: 120 },
+            representativeNameKana: { type: "string", minLength: 1, maxLength: 191 },
+            shopName: { type: "string", minLength: 1, maxLength: 160 },
+            businessAddress: { type: "string", minLength: 1, maxLength: 255 },
+            contactPhone: { type: "string", minLength: 1, maxLength: 32 },
+            responsiblePersonName: { type: "string", minLength: 1, maxLength: 120 },
+            showcaseDraft: { type: "object", additionalProperties: true }
+          },
+          [
+            "expectedVersion",
+            "applicantKind",
+            "corporateLegalName",
+            "corporateLegalNameKana",
+            "representativeName",
+            "representativeNameKana",
+            "shopName",
+            "businessAddress",
+            "contactPhone",
+            "responsiblePersonName",
+            "showcaseDraft"
+          ]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/merchant-bank-account`]: {
+      patch: identityWorkflowOperation("Bind a verified settlement account to a merchant draft", {
+        parameters: [idPathParameter()],
+        requestBody: identityJsonBody(
+          {
+            expectedVersion: { type: "integer", minimum: 1 },
+            bankCode: { type: "string", pattern: "^\\d{4}$" },
+            bankName: { type: "string", minLength: 1, maxLength: 120 },
+            branchCode: { type: "string", pattern: "^\\d{3}$" },
+            branchName: { type: "string", minLength: 1, maxLength: 120 },
+            accountType: { type: "string", enum: ["ordinary", "current"] },
+            accountNumber: { type: "string", pattern: "^\\d{4,12}$" },
+            accountHolderName: { type: "string", minLength: 1, maxLength: 191 }
+          },
+          [
+            "expectedVersion",
+            "bankCode",
+            "bankName",
+            "branchCode",
+            "branchName",
+            "accountType",
+            "accountNumber",
+            "accountHolderName"
+          ]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/merchant-contract-acceptance`]: {
+      post: identityWorkflowOperation("Accept and bind the current merchant contract", {
+        parameters: [idPathParameter()],
+        requestBody: identityJsonBody(
+          {
+            expectedVersion: { type: "integer", minimum: 1 },
+            contractVersion: { type: "string", minLength: 1, maxLength: 80 },
+            contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+            language: { type: "string", enum: ["zh-CN", "ja", "en"] },
+            hasRead: { type: "boolean", enum: [true] },
+            hasAgreed: { type: "boolean", enum: [true] }
+          },
+          ["expectedVersion", "contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/media`]: {
+      post: identityWorkflowOperation("Upload protected application JPEG or PNG media", {
+        parameters: [
+          idPathParameter(),
+          { name: "purpose", in: "query", required: true, schema: { type: "string", maxLength: 50 } },
+          { name: "expected_version", in: "query", required: true, schema: { type: "integer", minimum: 1 } }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "image/jpeg": { schema: { type: "string", format: "binary", maxLength: 8388608 } },
+            "image/png": { schema: { type: "string", format: "binary", maxLength: 8388608 } }
+          }
+        }
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/media/{mediaId}`]: {
+      get: identityWorkflowOperation("Read protected application media in authorized scope", {
+        parameters: [idPathParameter(), idPathParameter("mediaId")]
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/submit`]: {
+      post: identityWorkflowOperation("Submit and lock an identity application snapshot", {
+        parameters: [idPathParameter()],
+        requestBody: applicationVersionBody
+      })
+    },
+    [`${config.API_PREFIX}/identity-applications/{id}/withdraw`]: {
+      post: identityWorkflowOperation("Withdraw an identity application and start 30-day retention", {
+        parameters: [idPathParameter()],
+        requestBody: applicationVersionBody
+      })
+    },
+    [`${config.API_PREFIX}/contracts/affiliate/current`]: {
+      get: identityWorkflowOperation("Get the current affiliate rules and binding NeeDo contract", {
+        parameters: [
+          { name: "language", in: "query", schema: { type: "string", enum: ["zh-CN", "ja", "en"], default: "zh-CN" } }
+        ]
+      })
+    },
+    [`${config.API_PREFIX}/contracts/merchant/current`]: {
+      get: identityWorkflowOperation("Get the current merchant rules and binding NeeDo contract", {
+        parameters: [
+          { name: "language", in: "query", schema: { type: "string", enum: ["zh-CN", "ja", "en"], default: "zh-CN" } }
+        ]
+      })
+    },
+    [`${config.API_PREFIX}/contracts/acceptances/{receiptId}/receipt`]: {
+      get: identityWorkflowOperation("Get the authenticated user's immutable contract receipt", {
+        parameters: [
+          { name: "receiptId", in: "path", required: true, schema: { type: "string", minLength: 1, maxLength: 191 } }
+        ]
+      })
+    },
+    [`${config.API_PREFIX}/identity-activations/affiliate`]: {
+      post: identityWorkflowOperation("Accept the affiliate contract and activate the affiliate identity", {
+        requestBody: identityJsonBody(
+          {
+            contractVersion: { type: "string", minLength: 1, maxLength: 80 },
+            contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+            language: { type: "string", enum: ["zh-CN", "ja", "en"] },
+            hasRead: { type: "boolean", enum: [true] },
+            hasAgreed: { type: "boolean", enum: [true] }
+          },
+          ["contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/bank-accounts/affiliate-withdrawal`]: {
+      put: identityWorkflowOperation("Bind an eKYC-matched affiliate withdrawal bank account", {
+        requestBody: identityJsonBody(
+          {
+            bankCode: { type: "string", pattern: "^\\d{4}$" },
+            bankName: { type: "string", minLength: 1, maxLength: 120 },
+            branchCode: { type: "string", pattern: "^\\d{3}$" },
+            branchName: { type: "string", minLength: 1, maxLength: 120 },
+            accountType: { type: "string", enum: ["ordinary", "current"] },
+            accountNumber: { type: "string", pattern: "^\\d{4,12}$" },
+            accountHolderName: { type: "string", minLength: 1, maxLength: 191 }
+          },
+          ["bankCode", "bankName", "branchCode", "branchName", "accountType", "accountNumber", "accountHolderName"]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/merchant/technician-applications`]: {
+      get: identityWorkflowOperation("List technician applications for the authenticated shop", {
+        parameters: [
+          { name: "status", in: "query", schema: { type: "string", enum: ["submitted", "under_review", "approved", "rejected", "withdrawn"] } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ]
+      })
+    },
+    [`${config.API_PREFIX}/merchant/technician-applications/{id}`]: {
+      get: identityWorkflowOperation("Get a technician application in the authenticated shop", {
+        parameters: [idPathParameter()]
+      })
+    },
+    [`${config.API_PREFIX}/merchant/technician-applications/{id}/approve`]: {
+      post: identityWorkflowOperation("Approve technician onboarding", {
+        parameters: [idPathParameter()],
+        requestBody: applicationVersionBody
+      })
+    },
+    [`${config.API_PREFIX}/merchant/technician-applications/{id}/reject`]: {
+      post: identityWorkflowOperation("Reject technician onboarding with a reason", {
+        parameters: [idPathParameter()],
+        requestBody: identityJsonBody(
+          {
+            expectedVersion: { type: "integer", minimum: 1 },
+            rejectionReason: { type: "string", minLength: 1, maxLength: 1000 }
+          },
+          ["expectedVersion", "rejectionReason"]
+        )
+      })
+    },
+    [`${config.API_PREFIX}/merchant/technician-applications/{id}/contact`]: {
+      post: identityWorkflowOperation("Create mutual contacts and open technician applicant chat", {
+        parameters: [idPathParameter()],
+        requestBody: identityJsonBody({}, [])
+      })
+    },
+    [`${config.API_PREFIX}/merchant/technician-applications/{id}/resume.xlsx`]: {
+      get: identityWorkflowOperation("Download the application as an XLSX resume with embedded photos", {
+        parameters: [idPathParameter()]
+      })
+    },
+    [`${config.API_PREFIX}/ops/merchant-applications`]: {
+      get: identityWorkflowOperation("List merchant applications for operations review", {
+        parameters: [
+          { name: "status", in: "query", schema: { type: "string", enum: ["submitted", "under_review", "approved", "rejected", "withdrawn"] } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ]
+      })
+    },
+    [`${config.API_PREFIX}/ops/merchant-applications/{id}`]: {
+      get: identityWorkflowOperation("Get merchant application, masked bank data, and authorized documents", {
+        parameters: [idPathParameter()]
+      })
+    },
+    [`${config.API_PREFIX}/ops/merchant-applications/{id}/approve`]: {
+      post: identityWorkflowOperation("Approve merchant identity, shop, billing, and trial atomically", {
+        parameters: [idPathParameter()],
+        requestBody: applicationVersionBody
+      })
+    },
+    [`${config.API_PREFIX}/ops/merchant-applications/{id}/reject`]: {
+      post: identityWorkflowOperation("Reject merchant application with a reason", {
+        parameters: [idPathParameter()],
+        requestBody: identityJsonBody(
+          {
+            expectedVersion: { type: "integer", minimum: 1 },
+            rejectionReason: { type: "string", minLength: 1, maxLength: 1000 }
+          },
+          ["expectedVersion", "rejectionReason"]
+        )
+      })
     },
     [`${config.API_PREFIX}/merchant-admin/schedule/slots`]: {
       get: {

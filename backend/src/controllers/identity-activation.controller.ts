@@ -4,12 +4,14 @@ import type { AffiliateIdentityActivationService } from "../services/affiliate-i
 import type { AffiliateBankAccountService } from "../services/affiliate-bank-account.service";
 import type { ContractCatalogPort } from "../services/contract-acceptance.service";
 import type { MerchantContractAcceptanceService } from "../services/merchant-contract-acceptance.service";
+import type { ContractReceiptService } from "../services/contract-receipt.service";
 import { successResponse } from "../utils/api-response";
 import {
   activateAffiliateIdentityBodySchema,
   acceptMerchantContractBodySchema,
   bindAffiliateWithdrawalBankAccountBodySchema,
   contractLanguageQuerySchema,
+  contractReceiptIdParamSchema,
   merchantContractApplicationIdParamSchema
 } from "../validators/identity-activation.validator";
 
@@ -18,7 +20,8 @@ export class IdentityActivationController {
     private readonly affiliate: AffiliateIdentityActivationService,
     private readonly contracts: ContractCatalogPort,
     private readonly affiliateBankAccounts: AffiliateBankAccountService,
-    private readonly merchantContractAcceptances: MerchantContractAcceptanceService
+    private readonly merchantContractAcceptances: MerchantContractAcceptanceService,
+    private readonly contractReceipts: ContractReceiptService
   ) {}
 
   public getCurrentAffiliateContract = this.handle(async (request, response) => {
@@ -74,6 +77,14 @@ export class IdentityActivationController {
           ...body
         })
       )
+    );
+  });
+
+  public getContractReceipt = this.handle(async (request, response) => {
+    const { receiptId } = contractReceiptIdParamSchema.parse(request.params);
+    const auth = response.locals.auth as AuthenticatedAccessContext;
+    response.status(200).json(
+      successResponse(await this.contractReceipts.getOwned({ userId: auth.userId, receiptId }))
     );
   });
 

@@ -10,6 +10,7 @@ import {
   acceptMerchantContractBodySchema,
   bindAffiliateWithdrawalBankAccountBodySchema,
   contractLanguageQuerySchema,
+  contractReceiptIdParamSchema,
   merchantContractApplicationIdParamSchema
 } from "../validators/identity-activation.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -17,6 +18,7 @@ import {
   createAffiliateIdentityActivationServiceForRoutes,
   createAffiliateBankAccountServiceForRoutes,
   createContractCatalogForRoutes,
+  createContractReceiptServiceForRoutes,
   createMerchantContractAcceptanceServiceForRoutes
 } from "./identity-activation-service.factory";
 
@@ -37,9 +39,17 @@ export const createIdentityActivationRoutes = (
     createAffiliateIdentityActivationServiceForRoutes(dependencies, catalog),
     catalog,
     createAffiliateBankAccountServiceForRoutes(config, dependencies),
-    createMerchantContractAcceptanceServiceForRoutes(dependencies, catalog)
+    createMerchantContractAcceptanceServiceForRoutes(dependencies, catalog),
+    createContractReceiptServiceForRoutes(dependencies)
   );
 
+  router.get(
+    "/contracts/acceptances/:receiptId/receipt",
+    authenticate(),
+    createAuthorizeMiddleware(IDENTITY_ACTIVATION_ROUTE_PERMISSIONS.contractRead),
+    validateRequest({ params: contractReceiptIdParamSchema }),
+    controller.getContractReceipt
+  );
   router.get(
     "/contracts/affiliate/current",
     authenticate(),

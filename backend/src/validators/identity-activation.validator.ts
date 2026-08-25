@@ -30,6 +30,10 @@ export const merchantContractApplicationIdParamSchema = z
   .object({ id: z.coerce.number().int().positive() })
   .strict();
 
+export const contractReceiptIdParamSchema = z
+  .object({ receiptId: z.string().trim().min(1).max(191) })
+  .strict();
+
 export const acceptMerchantContractBodySchema = z
   .object({
     expectedVersion: z.number().int().positive(),

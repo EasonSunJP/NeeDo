@@ -45,6 +45,10 @@ import type { AffiliateBankAccountRepositoryPort } from "./services/affiliate-ba
 import type { AffiliateBankAccountService } from "./services/affiliate-bank-account.service";
 import type { MerchantContractAcceptanceRepositoryPort } from "./services/merchant-contract-acceptance.service";
 import type { MerchantContractAcceptanceService } from "./services/merchant-contract-acceptance.service";
+import type {
+  ContractReceiptRepositoryPort,
+  ContractReceiptService
+} from "./services/contract-receipt.service";
 import type { ProtectedBankAccountRepositoryPort } from "./services/protected-bank-account.service";
 import type { ProtectedBankAccountService } from "./services/protected-bank-account.service";
 import type { TechnicianApplicationReviewRepositoryPort } from "./services/technician-application-review.service";
@@ -144,6 +148,8 @@ export interface AppDependencies {
   affiliateBankAccountService?: AffiliateBankAccountService;
   merchantContractAcceptanceRepository?: MerchantContractAcceptanceRepositoryPort;
   merchantContractAcceptanceService?: MerchantContractAcceptanceService;
+  contractReceiptRepository?: ContractReceiptRepositoryPort;
+  contractReceiptService?: ContractReceiptService;
   protectedBankAccountRepository?: ProtectedBankAccountRepositoryPort;
   protectedBankAccountService?: ProtectedBankAccountService;
   technicianApplicationReviewRepository?: TechnicianApplicationReviewRepositoryPort;

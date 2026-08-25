@@ -105,6 +105,19 @@ const createFixture = (
       receiptId: "receipt-92"
     }))
   };
+  const contractReceiptService = {
+    getOwned: jest.fn(async (input: Record<string, unknown>) => ({
+      receiptId: input.receiptId,
+      identityApplicationId: null,
+      contractType: "affiliate",
+      contractVersion: contract.version,
+      effectiveAt: contract.effectiveAt,
+      acceptedTextSnapshot: contract.text,
+      contentHash: contract.contentHash,
+      acceptedAt: new Date("2026-08-26T05:00:00.000Z"),
+      language: "zh-CN"
+    }))
+  };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: { findUserById: jest.fn(async () => user) },
@@ -112,7 +125,8 @@ const createFixture = (
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     affiliateIdentityActivationService,
     affiliateBankAccountService,
-    merchantContractAcceptanceService
+    merchantContractAcceptanceService,
+    contractReceiptService
   } as never);
   const token = new AuthTokenService(env).issueAccessToken({
     id: user.id,
@@ -124,7 +138,8 @@ const createFixture = (
     token,
     affiliateIdentityActivationService,
     affiliateBankAccountService,
-    merchantContractAcceptanceService
+    merchantContractAcceptanceService,
+    contractReceiptService
   };
 };
 
@@ -281,5 +296,27 @@ describe("affiliate identity activation HTTP API", () => {
         sessionId: expect.any(String)
       })
     );
+  });
+
+  it("returns the authenticated user's immutable contract receipt", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .get("/api/v1/contracts/acceptances/receipt-91/receipt")
+      .set("Authorization", `Bearer ${fixture.token}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          receiptId: "receipt-91",
+          contractType: "affiliate",
+          acceptedTextSnapshot: contract.text,
+          contentHash: contract.contentHash
+        });
+        expect(response.body.data).not.toHaveProperty("sessionId");
+        expect(response.body.data).not.toHaveProperty("ip");
+      });
+    expect(fixture.contractReceiptService.getOwned).toHaveBeenCalledWith({
+      userId: 7,
+      receiptId: "receipt-91"
+    });
   });
 });
