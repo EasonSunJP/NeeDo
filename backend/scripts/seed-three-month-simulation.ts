@@ -1143,6 +1143,38 @@ const main = async (): Promise<void> => {
         });
         const existingOrderIds = existingOrders.map((order) => order.id);
         if (existingOrderIds.length > 0) {
+          const orderReviews = await tx.orderReview.findMany({
+            where: { bookingOrderId: { in: existingOrderIds } },
+            select: { id: true }
+          });
+          const orderReviewIds = orderReviews.map((review) => review.id);
+          if (orderReviewIds.length > 0) {
+            await tx.orderReviewTag.deleteMany({
+              where: { orderReviewId: { in: orderReviewIds } }
+            });
+            await tx.orderReview.deleteMany({
+              where: { id: { in: orderReviewIds } }
+            });
+          }
+          await tx.orderTimelineComment.deleteMany({
+            where: { bookingOrderId: { in: existingOrderIds } }
+          });
+          const affiliateRewards = await tx.affiliateReward.findMany({
+            where: { bookingOrderId: { in: existingOrderIds } },
+            select: { id: true }
+          });
+          const affiliateRewardIds = affiliateRewards.map((reward) => reward.id);
+          if (affiliateRewardIds.length > 0) {
+            await tx.affiliateRewardTransaction.deleteMany({
+              where: { rewardId: { in: affiliateRewardIds } }
+            });
+            await tx.affiliateReward.deleteMany({
+              where: { id: { in: affiliateRewardIds } }
+            });
+          }
+          await tx.affiliateAttribution.deleteMany({
+            where: { bookingOrderId: { in: existingOrderIds } }
+          });
           await tx.orderFinancial.deleteMany({
             where: { bookingOrderId: { in: existingOrderIds } }
           });
@@ -1157,20 +1189,31 @@ const main = async (): Promise<void> => {
         }
 
         const technicianIds = [...technicianProfileIds.values()];
-        await tx.scheduleSlot.deleteMany({
+        const retiredAt = new Date(SIMULATION_AS_OF_AT);
+        await tx.scheduleSlot.updateMany({
           where: {
             technicianProfileId: { in: technicianIds },
-            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) }
-          }
+            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
+            deletedAt: null
+          },
+          data: { deletedAt: retiredAt }
         });
-        await tx.availability.deleteMany({
+        await tx.availability.updateMany({
           where: {
             technicianProfileId: { in: technicianIds },
-            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) }
-          }
+            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
+            deletedAt: null
+          },
+          data: { deletedAt: retiredAt }
         });
-        await tx.technicianService.deleteMany({ where: { technicianId: { in: technicianIds } } });
-        await tx.service.deleteMany({ where: { shopId: { in: [...shopIds.values()] } } });
+        await tx.technicianService.updateMany({
+          where: { technicianId: { in: technicianIds }, deletedAt: null },
+          data: { deletedAt: retiredAt }
+        });
+        await tx.service.updateMany({
+          where: { shopId: { in: [...shopIds.values()] }, deletedAt: null },
+          data: { deletedAt: retiredAt }
+        });
 
         const serviceIds = new Map<string, number>();
         for (const service of plan.services) {

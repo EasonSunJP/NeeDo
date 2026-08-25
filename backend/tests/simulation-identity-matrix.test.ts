@@ -66,4 +66,36 @@ describe("simulation identity matrix", () => {
     expect(check).toContain('["customer", "technician", "merchant_owner", "scout"]');
     expect(check).toContain("must keep the customer identity only");
   });
+
+  it("removes every restrictive child before reseeding simulation booking orders", () => {
+    const seed = readFileSync(resolve(__dirname, "../scripts/seed-three-month-simulation.ts"), "utf8");
+    const reviewTagDelete = seed.indexOf("tx.orderReviewTag.deleteMany");
+    const reviewDelete = seed.indexOf("tx.orderReview.deleteMany");
+    const timelineDelete = seed.indexOf("tx.orderTimelineComment.deleteMany");
+    const rewardTransactionDelete = seed.indexOf("tx.affiliateRewardTransaction.deleteMany");
+    const rewardDelete = seed.indexOf("tx.affiliateReward.deleteMany");
+    const attributionDelete = seed.indexOf("tx.affiliateAttribution.deleteMany");
+    const orderDelete = seed.indexOf("tx.bookingOrder.deleteMany");
+
+    expect(reviewTagDelete).toBeGreaterThan(0);
+    expect(reviewTagDelete).toBeLessThan(reviewDelete);
+    expect(reviewDelete).toBeLessThan(timelineDelete);
+    expect(timelineDelete).toBeLessThan(rewardTransactionDelete);
+    expect(rewardTransactionDelete).toBeLessThan(rewardDelete);
+    expect(rewardDelete).toBeLessThan(attributionDelete);
+    expect(attributionDelete).toBeLessThan(orderDelete);
+  });
+
+  it("soft-deletes reusable scheduling and service records so historical orders stay intact", () => {
+    const seed = readFileSync(resolve(__dirname, "../scripts/seed-three-month-simulation.ts"), "utf8");
+
+    expect(seed).toContain("tx.scheduleSlot.updateMany");
+    expect(seed).toContain("tx.availability.updateMany");
+    expect(seed).toContain("tx.technicianService.updateMany");
+    expect(seed).toContain("tx.service.updateMany");
+    expect(seed).not.toContain("tx.scheduleSlot.deleteMany");
+    expect(seed).not.toContain("tx.availability.deleteMany");
+    expect(seed).not.toContain("tx.technicianService.deleteMany");
+    expect(seed).not.toContain("tx.service.deleteMany");
+  });
 });
