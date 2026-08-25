@@ -907,7 +907,9 @@ function CompleteUserCenterPage({
         <main
           className={cn(
             "scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pt-[calc(env(safe-area-inset-top)+86px)]",
-            isEditingProfile ? "pb-[calc(132px+env(safe-area-inset-bottom))]" : "pb-[calc(24px+env(safe-area-inset-bottom))]"
+            isEditingProfile
+              ? "scroll-pb-[calc(132px+env(safe-area-inset-bottom))] pb-[calc(132px+env(safe-area-inset-bottom))]"
+              : "pb-[calc(24px+env(safe-area-inset-bottom))]"
           )}
         >
           {profileToastMessage ? (

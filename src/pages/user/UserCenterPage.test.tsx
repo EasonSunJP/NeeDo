@@ -50,6 +50,7 @@ describe("UserCenterPage", () => {
     expect(source).toContain('data-testid="user-profile-save-action"');
     expect(source).toContain("fixed inset-x-0 bottom-0");
     expect(source).toContain("env(safe-area-inset-bottom)");
+    expect(source).toContain("scroll-pb-[calc(132px+env(safe-area-inset-bottom))]");
     expect(source).toContain("保存并退出编辑模式");
   });
 
