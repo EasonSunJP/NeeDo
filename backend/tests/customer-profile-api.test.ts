@@ -351,6 +351,7 @@ describe("customer profile current-user API", () => {
       await request(fixture.app)
         .get(`/media/customer-avatars/${avatarHash}.png`)
         .expect("Cache-Control", /public, max-age=31536000, immutable/)
+        .expect("Cross-Origin-Resource-Policy", "cross-origin")
         .expect("Content-Type", /image\/png/)
         .expect(200);
       await request(fixture.app).get("/media/customer-avatars/not-an-avatar.png").expect(404);

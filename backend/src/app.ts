@@ -202,6 +202,7 @@ const createCustomerAvatarStaticMiddleware = (directory: string) => {
     redirect: false,
     setHeaders: (response) => {
       response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      response.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     }
   });
 

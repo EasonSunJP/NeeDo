@@ -869,8 +869,8 @@ function CompleteUserCenterPage({
               <div className="relative">
                 <IconButton
                   className={cn(
-                    "absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
-                    isEditingProfile ? "border-red-400 bg-red-500 hover:bg-red-600" : membershipSurface.metric,
+                    "absolute right-0 top-0 z-10 shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
+                    isEditingProfile ? "border-red-400 bg-red-500 text-white hover:bg-red-600" : cn(membershipSurface.metric, "text-ink"),
                     isSavingProfile ? "cursor-not-allowed opacity-60" : undefined
                   )}
                   icon={isEditingProfile ? "x" : "edit"}

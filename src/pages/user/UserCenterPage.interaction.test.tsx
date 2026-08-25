@@ -182,9 +182,13 @@ describe("UserCenterPage inline profile editing", () => {
     expect(container.querySelector("nav")).toBeNull();
     expect(container.textContent).toContain("对好友以及关联人可见");
 
-    await click(findIconButton("编辑资料"));
+    const editButton = findIconButton("编辑资料");
+    expect(editButton.className).toContain("text-ink");
+    await click(editButton);
     expect(container.querySelector('[data-testid="user-profile-save-action"]')).not.toBeNull();
     expect(container.textContent).toContain("取消编辑");
+    expect(findIconButton("取消编辑").className).toContain("bg-red-500");
+    expect(findIconButton("取消编辑").className).toContain("text-white");
 
     await click(findButton("对好友以及关联人可见"));
     await click(findButton("对好友可见"));
