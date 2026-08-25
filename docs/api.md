@@ -96,4 +96,16 @@ These APIs are read-only and database-backed. They do not create bookings, sched
 - `id`, `displayName`, `city`, `bio`, `avatarUrl`, `membershipLevel`, `reviewSummary`, `createdAt`, `updatedAt`
 - Account credentials and private fields such as `email`, `phone`, `passwordHash`, tokens, and OTP values are never returned.
 
+## Current Customer Self-Profile API
+
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| `GET` | `/api/v1/customer-profile/me` | Read the profile resolved from the authenticated customer identity | `customer-profile:read` |
+| `PATCH` | `/api/v1/customer-profile/me` | Update only editable fields on that resolved profile | `customer-profile:write` |
+| `GET` | `/media/customer-avatars/:contentHash.ext` | Read one immutable customer avatar image | Public, hash filename only |
+
+The self-profile response includes `id`, `displayName`, `avatarUrl`, `gender`, `age`, `heightCm`, `languages`, `bio`, `visibility`, and `membershipLevel`, plus its scoped metadata. Updates accept only non-empty partial payloads of the editable display, demographic, language, bio, visibility, and validated image-data fields. The API derives the customer-profile ID from the access token; clients cannot select another profile. Each successful update writes an audit event.
+
+Avatar bytes are served only when the requested filename is a SHA-256 content hash with a supported `.jpg`, `.png`, or `.webp` extension. Successful avatar responses are immutable-cacheable for one year; directory requests and arbitrary filenames return `404`.
+
 Full machine-readable OpenAPI is served at `/api/v1/openapi.json` when `OPENAPI_ENABLED=true`.
