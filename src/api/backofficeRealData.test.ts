@@ -43,6 +43,20 @@ describe("backofficeRealDataApi master data writes", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/services", expect.objectContaining({ method: "POST" }));
   });
 
+  it("loads selected technician and customer detail by API scope", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await backofficeRealDataApi.technician("backoffice", 31);
+    await backofficeRealDataApi.technician("merchant-admin", 31);
+    await backofficeRealDataApi.customer("backoffice", 41);
+    await backofficeRealDataApi.customer("merchant-admin", 41);
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/technicians/31");
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/merchant-admin/technicians/31");
+    expect(httpClient.request).toHaveBeenNthCalledWith(3, "/backoffice/customers/41");
+    expect(httpClient.request).toHaveBeenNthCalledWith(4, "/merchant-admin/customers/41");
+  });
+
   it("updates the authenticated merchant shop without accepting a shop id", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
 
