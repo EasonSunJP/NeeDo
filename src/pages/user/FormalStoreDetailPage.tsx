@@ -148,7 +148,7 @@ export function FormalStoreContent({ language, scope, shop }: {
                     <p className="mt-2 text-sm font-black text-[color:var(--client-primary)]">{formatMoney(service.priceAmount, service.currency, language)} · {copy.duration(service.durationMinutes)}</p>
                   </div>
                 </div>
-                <SecondaryButton className="mt-3 w-full" to={`/services/${service.id}`}>{copy.details}</SecondaryButton>
+                {scope === "user" ? <SecondaryButton className="mt-3 w-full" to={`/services/${service.id}`}>{copy.details}</SecondaryButton> : null}
               </article>
             ))}
           </div>
@@ -189,7 +189,7 @@ export function FormalStoreContent({ language, scope, shop }: {
         <p className="mt-4 rounded-[18px] border border-dashed border-[color:var(--client-line)] p-4 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{copy.noPublicReviewDetails}</p>
       </SurfacePanel>
 
-      {firstService ? <PrimaryButton className="sticky bottom-4 z-30 w-full" to={`/checkout/${firstService.id}`}>{copy.book}</PrimaryButton> : null}
+      {scope === "user" && firstService ? <PrimaryButton className="sticky bottom-4 z-30 w-full" to={`/checkout/${firstService.id}`}>{copy.book}</PrimaryButton> : null}
     </>
   );
 }

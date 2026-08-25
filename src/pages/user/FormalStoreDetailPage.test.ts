@@ -71,6 +71,14 @@ describe("FormalStoreDetailPage real-data boundary", () => {
     expect(html).toContain('href="/checkout/11"');
     expect(html).not.toContain('href="/checkout/12"');
     expect(html).not.toContain("NaN");
+
+    const merchantHtml = renderToStaticMarkup(
+      createElement(MemoryRouter, null, createElement(FormalStoreContent, { language: "en", scope: "merchant", shop }))
+    );
+
+    expect(merchantHtml).not.toContain('href="/services/11"');
+    expect(merchantHtml).not.toContain('href="/checkout/11"');
+    expect(merchantHtml).toContain('href="/merchant/profiles/technician/21"');
   });
 
   it("uses multilingual fixed copy and neutral missing-image states", () => {
