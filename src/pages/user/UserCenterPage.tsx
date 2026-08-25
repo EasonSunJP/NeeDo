@@ -5,7 +5,6 @@ import { useAuth } from "../../auth/AuthProvider";
 import { IconButton, PrimaryButton } from "../../components/client-ui/AppScaffold";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { userNavItems } from "../../components/mobile/navItems";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
@@ -465,7 +464,7 @@ function UserCenterDataStatus({
   const navigate = useNavigate();
 
   return (
-    <MobileShell navItems={userNavItems} navPanelStyle="plain" showTopEdgeMask={false}>
+    <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
           action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
@@ -474,7 +473,7 @@ function UserCenterDataStatus({
           showSpacer={false}
           title="个人中心"
         />
-        <main className="px-4 pb-[calc(132px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
+        <main className="px-4 pb-[calc(24px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
           <section className={cn(pagePanelClassName, "py-8 text-center")} aria-live="polite" role={error ? "alert" : undefined}>
             <h1 className="text-lg font-black text-[color:var(--client-text)]">
               {loading ? "正在加载我的正式数据" : "我的数据加载失败"}
@@ -545,10 +544,23 @@ function FormalUserCenterDataGate({ customerProfileId }: { customerProfileId: nu
     return <UserCenterDataStatus error={loadError} onRetry={() => setRevision((current) => current + 1)} />;
   }
 
-  return <CompleteUserCenterPage formalData={formalData} />;
+  return (
+    <CompleteUserCenterPage
+      formalData={formalData}
+      onFormalProfileUpdated={(profile) => {
+        setFormalData((current) => (current ? { ...current, profile } : current));
+      }}
+    />
+  );
 }
 
-function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterData }) {
+function CompleteUserCenterPage({
+  formalData,
+  onFormalProfileUpdated
+}: {
+  formalData?: FormalUserCenterData;
+  onFormalProfileUpdated?: (profile: CustomerSelfProfile) => void;
+}) {
   const navigate = useNavigate();
   const { session } = useAuth();
   const { customers, technicians } = useEntityStore();
@@ -572,6 +584,7 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
   const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] = useState(false);
   const [avatarCrop, setAvatarCrop] = useState<AvatarCropState | null>(null);
   const [profileToastMessage, setProfileToastMessage] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const visibleProfile = profileDraft
     ? {
         avatar: profileDraft.avatar,
@@ -634,6 +647,14 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
 
     setProfileDraft(limitedDraft);
     setProfileNameOverride(limitedDraft.nickname);
+    setProfilePrivacyEnabled(formalData?.profile.visibility !== undefined && formalData.profile.visibility !== "public");
+    setProfilePrivacyVisibility(
+      formalData?.profile.visibility && formalData.profile.visibility !== "public"
+        ? formalData.profile.visibility
+        : "privateAll"
+    );
+    setProfilePrivacyMenuOpen(false);
+    setProfilePrivacyConfirmOpen(false);
     setAvatarCrop(null);
     setProfileToastMessage("");
     setIsEditingProfile(true);
@@ -643,6 +664,8 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     setProfileDraft(null);
     setProfileNameOverride(savedProfilePreview?.nickname ?? "");
     setAvatarCrop(null);
+    setProfilePrivacyMenuOpen(false);
+    setProfilePrivacyConfirmOpen(false);
     setProfileToastMessage("");
   };
   const updateProfileDraft = (patch: Partial<UserProfileDraft>) => {
@@ -722,8 +745,8 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
     const timer = window.setTimeout(() => setProfileToastMessage(""), 2400);
     return () => window.clearTimeout(timer);
   }, [profileToastMessage]);
-  const saveProfileEdit = () => {
-    if (!profileDraft) {
+  const saveProfileEdit = async () => {
+    if (!profileDraft || isSavingProfile) {
       return;
     }
 
@@ -740,44 +763,70 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
       languages: profileDraft.languages,
       bio: bioValue.trim()
     };
-    const nextPreview: UserProfileDraft = {
-      avatar: nextProfile.avatar,
-      nickname: nextProfile.nickname,
-      gender: nextProfile.gender,
-      age: nextProfile.age,
-      height: nextProfile.height,
-      languages: [...nextProfile.languages],
-      bio: nextProfile.bio
-    };
+    setIsSavingProfile(true);
+    setProfileToastMessage("");
 
-    const customerPersisted = updateCustomerEntity(currentCustomer.id, nextProfile);
-    let technicianPersisted = true;
+    try {
+      if (formalData) {
+        const updated = await customerProfileApi.updateMine({
+          displayName: nextProfile.nickname,
+          avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
+          gender: nextProfile.gender,
+          age: nextProfile.age ? Number(nextProfile.age) : null,
+          heightCm: nextProfile.height ? Number(formatUserHeightInput(nextProfile.height)) : null,
+          languages: nextProfile.languages,
+          bio: nextProfile.bio || null,
+          visibility: profilePrivacyEnabled ? profilePrivacyVisibility : "public"
+        });
 
-    if (linkedTechnician) {
-      technicianPersisted = updateTechnicianEntity(linkedTechnician.id, {
-        avatar: nextProfile.avatar,
-        nickname: nextProfile.nickname,
-        age: nextProfile.age,
-        height: nextProfile.height,
-        languages: [...nextProfile.languages],
-        bio: nextProfile.bio
-      });
+        onFormalProfileUpdated?.(updated);
+        setSavedProfilePreview(null);
+      } else {
+        const nextPreview: UserProfileDraft = {
+          avatar: nextProfile.avatar,
+          nickname: nextProfile.nickname,
+          gender: nextProfile.gender,
+          age: nextProfile.age,
+          height: nextProfile.height,
+          languages: [...nextProfile.languages],
+          bio: nextProfile.bio
+        };
+        const customerPersisted = updateCustomerEntity(currentCustomer.id, nextProfile);
+        let technicianPersisted = true;
+
+        if (linkedTechnician) {
+          technicianPersisted = updateTechnicianEntity(linkedTechnician.id, {
+            avatar: nextProfile.avatar,
+            nickname: nextProfile.nickname,
+            age: nextProfile.age,
+            height: nextProfile.height,
+            languages: [...nextProfile.languages],
+            bio: nextProfile.bio
+          });
+        }
+
+        if (!customerPersisted || !technicianPersisted) {
+          throw new Error("Unable to persist the frontend-preview profile.");
+        }
+
+        setSavedProfilePreview(nextPreview);
+      }
+
+      setProfileNameOverride(nextProfile.nickname);
+      setIsEditingProfile(false);
+      setProfileDraft(null);
+      setAvatarCrop(null);
+      setProfileToastMessage("资料已保存，已退出编辑模式");
+    } catch {
+      setProfileToastMessage("资料保存失败，请保留当前内容后重试");
+      setIsEditingProfile(true);
+    } finally {
+      setIsSavingProfile(false);
     }
-
-    setSavedProfilePreview(nextPreview);
-    setProfileNameOverride(nextProfile.nickname);
-    setIsEditingProfile(false);
-    setProfileDraft(null);
-    setAvatarCrop(null);
-    setProfileToastMessage(
-      customerPersisted && technicianPersisted
-        ? "基础信息已保存。"
-        : "已在当前页面更新，但浏览器本地保存失败，请缩小头像后重试。"
-    );
   };
 
   return (
-    <MobileShell navItems={userNavItems} navPanelStyle="plain" showTopEdgeMask={false}>
+    <MobileShell showBottomNav={false} navPanelStyle="plain" showTopEdgeMask={false}>
       <div className="relative flex min-h-[100dvh] flex-col bg-[radial-gradient(circle_at_top,rgba(60,136,126,0.14),transparent_34%),linear-gradient(180deg,color-mix(in_srgb,var(--client-bg)_94%,transparent),var(--client-bg))]">
         <MobileFullscreenHeader
           action={<IconButton icon="settings" label="打开设置中心" to="/me/settings" />}
@@ -787,7 +836,12 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
           title="个人中心"
         />
 
-        <main className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pb-[calc(132px+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+86px)]">
+        <main
+          className={cn(
+            "scrollbar-none min-h-0 flex-1 overflow-y-auto px-4 pt-[calc(env(safe-area-inset-top)+86px)]",
+            isEditingProfile ? "pb-[calc(132px+env(safe-area-inset-bottom))]" : "pb-[calc(24px+env(safe-area-inset-bottom))]"
+          )}
+        >
           {profileToastMessage ? (
             <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+76px)] z-[90] flex justify-center px-6">
               <div className={profileToastClassName}>
@@ -798,21 +852,16 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
           <div className="space-y-4">
             <section className={cn("relative z-30 overflow-visible rounded-[28px] border p-4 shadow-soft", membershipSurface.shell)}>
               <div className="relative">
-                {formalData ? (
-                  <IconButton
-                    className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
-                    icon="settings"
-                    label="打开账号设置"
-                    to="/me/settings/account"
-                  />
-                ) : (
-                  <IconButton
-                    className={cn("absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]", membershipSurface.metric)}
-                    icon="edit"
-                    label={isEditingProfile ? "收起编辑" : "编辑资料"}
-                    onClick={isEditingProfile ? cancelProfileEdit : startProfileEdit}
-                  />
-                )}
+                <IconButton
+                  className={cn(
+                    "absolute right-0 top-0 z-10 text-white shadow-[0_14px_30px_rgba(0,0,0,0.22)]",
+                    isEditingProfile ? "border-red-400 bg-red-500 hover:bg-red-600" : membershipSurface.metric,
+                    isSavingProfile ? "cursor-not-allowed opacity-60" : undefined
+                  )}
+                  icon={isEditingProfile ? "x" : "edit"}
+                  label={isEditingProfile ? "取消编辑" : "编辑资料"}
+                  onClick={isSavingProfile ? undefined : isEditingProfile ? cancelProfileEdit : startProfileEdit}
+                />
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="shrink-0">
                     <div className="relative h-36 w-36">
@@ -1056,14 +1105,6 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
                           ref={bioInputRef}
                         />
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", membershipSurface.metric)} onClick={cancelProfileEdit} type="button">
-                          取消
-                        </button>
-                        <button className={cn("rounded-[18px] border px-4 py-3 text-sm font-black", membershipSurface.chip)} onClick={saveProfileEdit} type="button">
-                          保存
-                        </button>
-                      </div>
                     </div>
                   ) : (
                     <>
@@ -1161,6 +1202,21 @@ function CompleteUserCenterPage({ formalData }: { formalData?: FormalUserCenterD
             </section>
           </div>
         </main>
+        {isEditingProfile ? (
+          <div
+            className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-4 pb-[calc(max(env(safe-area-inset-bottom),12px)+12px)] pt-8"
+            data-testid="user-profile-save-action"
+          >
+            <button
+              className="pointer-events-auto mx-auto block w-full max-w-[620px] rounded-[22px] bg-[color:var(--client-primary)] px-5 py-4 text-sm font-black text-[color:var(--client-needo-text)] shadow-[0_18px_46px_rgba(0,0,0,0.36)] disabled:opacity-60"
+              disabled={isSavingProfile}
+              onClick={() => void saveProfileEdit()}
+              type="button"
+            >
+              {isSavingProfile ? "正在保存资料" : "保存并退出编辑模式"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </MobileShell>
   );
