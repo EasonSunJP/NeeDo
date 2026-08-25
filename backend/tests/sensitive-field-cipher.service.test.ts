@@ -22,8 +22,10 @@ describe("SensitiveFieldCipherService", () => {
   it("rejects tampered ciphertext and unsupported envelope versions", () => {
     const service = createService();
     const sealed = service.seal("1234567");
-    const last = sealed.at(-1);
-    const tampered = `${sealed.slice(0, -1)}${last === "0" ? "1" : "0"}`;
+    const segments = sealed.split(".");
+    const encodedCiphertext = segments[3];
+    segments[3] = `${encodedCiphertext.startsWith("A") ? "B" : "A"}${encodedCiphertext.slice(1)}`;
+    const tampered = segments.join(".");
 
     expect(() => service.open(tampered)).toThrow("error.sensitive_data.invalid_ciphertext");
     expect(() => service.open(sealed.replace(/^v1/, "v2"))).toThrow(
