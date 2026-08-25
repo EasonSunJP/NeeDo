@@ -206,13 +206,36 @@ The operations travel-settings route is an explicit external-provider capability
 
 The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
 
-The operations Afirieito route is an explicit attribution-and-settlement capability gate. It no longer mounts the browser-local CPS workspace or exposes separate fake GMV, ROI, budget, link, promoter, wallet, risk and settlement modules in the admin navigation. Activation requires persisted affiliate programs, promoters, links, attribution touches and commission claims; audited attribution/commission/reversal/settlement lifecycles; wallet and payout reconciliation; scope RBAC, fraud controls, pagination, aggregates and exports. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
+The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can now list, inspect, approve, and reject persisted affiliate tasks, including their budget reservations and shop/service snapshots, but the route still does not mount the browser-local CPS workspace or expose fake GMV, ROI, link, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires the later claim, attribution, completion-reward, reversal, fraud, aggregate, and export microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
-### Formal Affiliate Domain Foundation
+### Formal Affiliate Task Publishing and Review
 
 The formal alliance-marketing foundation persists tasks, explicit shop/service scope snapshots, claims, hashed signed-link tokens, touches, one-attribution-per-order records, fixed-NDP rewards, task budget reservations, ledger links, and risk events. It extends wallets to support merchant-account ownership and seeds role-specific affiliate menu/page/button permissions.
 
-This foundation does not activate `/admin/afirieito`, merchant publishing, task claiming, Checkout attribution, or reward settlement by itself. Those surfaces remain capability-gated until their own repository, Service, Zod/OpenAPI API, transaction, integration-test, and UI acceptance microsteps are complete. No formal affiliate task or metric is seeded into production data.
+Merchant accounts and current-shop identities now have formal paginated APIs to create and edit unfunded drafts, inspect their tasks, and submit a task for review. Drafts never mutate a wallet. Submit revalidates the publisher's active shop/service scope, refreshes immutable display snapshots, then atomically freezes the full integer-NDP budget, creates a budget reservation and ledger link, writes reconciliation/audit evidence, and moves the task to `pending_review`. A concurrent or repeated submit cannot duplicate the freeze.
+
+Operations users can list/detail tasks and approve or reject a pending task. Approval produces `scheduled` or `active` from the task window. Rejection atomically returns the complete unused frozen budget to available NDP, retains the historical reserved amount for budget conservation, marks the reservation released, and writes one release ledger/reconciliation/audit trail. Insufficient funds, stale optimistic locks, invalid merchant membership, invalid service scope, and transaction failures roll back without partial writes.
+
+Formal endpoints:
+
+- `GET|POST /api/v1/merchant-admin/affiliate/tasks`
+- `GET|PATCH /api/v1/merchant-admin/affiliate/tasks/:taskId`
+- `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit`
+- `GET /api/v1/backoffice/affiliate/tasks`
+- `GET /api/v1/backoffice/affiliate/tasks/:taskId`
+- `POST /api/v1/backoffice/affiliate/tasks/:taskId/approve`
+- `POST /api/v1/backoffice/affiliate/tasks/:taskId/reject`
+
+Verify the complete transaction flow against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
+```
+
+The check refuses production flags and remote database hosts, verifies draft/no-freeze, shop and merchant-account freezes, refreshed snapshots, insufficient-funds rollback, membership isolation, review state, full rejection release, idempotency, ledger/reconciliation/audit evidence, and removes only its uniquely identified rows.
+
+This microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Task claiming, codes/signed URLs, Checkout attribution/discount application, service-completion reward settlement, pause/resume/end, reversal, dashboards, metrics, and exports remain capability-gated. No formal affiliate task or metric is seeded into production data.
 
 The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 

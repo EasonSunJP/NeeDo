@@ -367,6 +367,24 @@ export interface LedgerMutationContext {
   transactionClient?: LedgerTransactionClient;
 }
 
+export interface FreezeAffiliateTaskBudgetInput {
+  taskId: number;
+  ownerType: Extract<WalletOwnerType, "merchant_account" | "shop">;
+  ownerId: number;
+  amountNdp: number;
+  idempotencyKey: string;
+  actorUserId: number;
+}
+
+export interface ReleaseAffiliateTaskBudgetInput extends FreezeAffiliateTaskBudgetInput {
+  walletId: number;
+}
+
+export interface AffiliateBudgetLedgerResult {
+  transaction: LedgerTransactionPayload;
+  walletId: number;
+}
+
 export interface BookingLedgerSettlementPort {
   freezeBookingAcceptance: (
     input: BookingLedgerSettlementInput,
@@ -393,6 +411,163 @@ export class LedgerService implements BookingLedgerSettlementPort {
     private readonly repository: LedgerRepositoryPort,
     private readonly feeCalculationService?: Pick<FeeCalculationService, "calculateFee">
   ) {}
+
+  public freezeAffiliateTaskBudget(
+    input: FreezeAffiliateTaskBudgetInput,
+    context: LedgerMutationContext = {}
+  ): Promise<AffiliateBudgetLedgerResult> {
+    return this.repository.runInTransaction(async (repository) => {
+      const existing = await repository.findTransactionByIdempotencyKey(
+        input.idempotencyKey
+      );
+
+      if (existing) {
+        return {
+          transaction: existing,
+          walletId: await this.resolveAffiliateWalletId(repository, existing, input)
+        };
+      }
+
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: input.ownerType,
+        ownerId: input.ownerId,
+        currency: CURRENCY
+      });
+
+      if (wallet.availableBalance < input.amountNdp) {
+        throw this.insufficientAvailableError();
+      }
+
+      const updatedWallet = await repository.applyWalletDelta({
+        walletId: wallet.id,
+        availableDelta: -input.amountNdp,
+        frozenDelta: input.amountNdp,
+        requireAvailableAtLeast: input.amountNdp
+      });
+
+      if (!updatedWallet) {
+        throw this.insufficientAvailableError();
+      }
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey: input.idempotencyKey,
+        type: "affiliate_task_budget_freeze",
+        referenceType: "affiliate_task",
+        referenceId: input.taskId,
+        actorUserId: input.actorUserId,
+        amount: input.amountNdp,
+        metadata: {
+          taskId: input.taskId,
+          ownerType: input.ownerType,
+          ownerId: input.ownerId,
+          walletId: wallet.id
+        }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: wallet.id,
+        direction: "freeze",
+        amount: input.amountNdp,
+        availableDelta: -input.amountNdp,
+        frozenDelta: input.amountNdp,
+        availableBalanceAfter: updatedWallet.availableBalance,
+        frozenBalanceAfter: updatedWallet.frozenBalance,
+        reason: "affiliate_task_budget_freeze"
+      });
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.affiliate_task_budget.freeze",
+        expectedAmount: input.amountNdp,
+        actualAmount: input.amountNdp
+      });
+
+      return {
+        transaction:
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ??
+          transaction,
+        walletId: wallet.id
+      };
+    }, context.transactionClient);
+  }
+
+  public releaseAffiliateTaskBudget(
+    input: ReleaseAffiliateTaskBudgetInput,
+    context: LedgerMutationContext = {}
+  ): Promise<AffiliateBudgetLedgerResult> {
+    return this.repository.runInTransaction(async (repository) => {
+      const existing = await repository.findTransactionByIdempotencyKey(
+        input.idempotencyKey
+      );
+
+      if (existing) {
+        return {
+          transaction: existing,
+          walletId: await this.resolveAffiliateWalletId(repository, existing, input)
+        };
+      }
+
+      const wallet = await repository.getOrCreateWallet({
+        ownerType: input.ownerType,
+        ownerId: input.ownerId,
+        currency: CURRENCY
+      });
+
+      if (wallet.id !== input.walletId) {
+        throw this.walletMutationError();
+      }
+      if (wallet.frozenBalance < input.amountNdp) {
+        throw this.insufficientFrozenError();
+      }
+
+      const updatedWallet = await repository.applyWalletDelta({
+        walletId: wallet.id,
+        availableDelta: input.amountNdp,
+        frozenDelta: -input.amountNdp,
+        requireFrozenAtLeast: input.amountNdp
+      });
+
+      if (!updatedWallet) {
+        throw this.insufficientFrozenError();
+      }
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey: input.idempotencyKey,
+        type: "affiliate_task_budget_release",
+        referenceType: "affiliate_task",
+        referenceId: input.taskId,
+        actorUserId: input.actorUserId,
+        amount: input.amountNdp,
+        metadata: {
+          taskId: input.taskId,
+          ownerType: input.ownerType,
+          ownerId: input.ownerId,
+          walletId: wallet.id
+        }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: wallet.id,
+        direction: "unfreeze",
+        amount: input.amountNdp,
+        availableDelta: input.amountNdp,
+        frozenDelta: -input.amountNdp,
+        availableBalanceAfter: updatedWallet.availableBalance,
+        frozenBalanceAfter: updatedWallet.frozenBalance,
+        reason: "affiliate_task_budget_release"
+      });
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.affiliate_task_budget.release",
+        expectedAmount: input.amountNdp,
+        actualAmount: input.amountNdp
+      });
+
+      return {
+        transaction:
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ??
+          transaction,
+        walletId: wallet.id
+      };
+    }, context.transactionClient);
+  }
 
   public freezeBookingAcceptance(
     input: BookingLedgerSettlementInput,
@@ -1498,6 +1673,26 @@ export class LedgerService implements BookingLedgerSettlementPort {
         currency: transaction.currency
       }
     });
+  }
+
+  private async resolveAffiliateWalletId(
+    repository: LedgerRepositoryPort,
+    transaction: LedgerTransactionPayload,
+    input: Pick<FreezeAffiliateTaskBudgetInput, "ownerType" | "ownerId">
+  ): Promise<number> {
+    const entryWalletId = transaction.entries[0]?.walletId;
+
+    if (entryWalletId) {
+      return entryWalletId;
+    }
+
+    const wallet = await repository.getOrCreateWallet({
+      ownerType: input.ownerType,
+      ownerId: input.ownerId,
+      currency: CURRENCY
+    });
+
+    return wallet.id;
   }
 
   private assertWalletAdjustmentRepository(repository: LedgerRepositoryPort): void {

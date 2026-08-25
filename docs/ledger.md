@@ -111,6 +111,37 @@ Customer and service-provider roles receive wallet read/ledger and adjustment-re
 - No direct wallet balance writes outside ledger transaction code and seed ledger initialization.
 - No automatic bank, card, or payout provider integration; manual approvals are the formal interim operating workflow.
 
-## Affiliate Foundation Vocabulary
+## Affiliate Task Budget Freeze and Review
 
-`WalletOwnerType` now includes `merchant_account`; the ledger enum reserves task-budget freeze/release and reward settlement/reversal/recovery transaction types. `frozen_credit` supports an audited reversal returning recovered NDP to an active task's frozen budget. This migration only establishes vocabulary and relations—no affiliate Service may mutate a wallet until the later transaction microstep adds focused unit/integration tests and reuses `LedgerService`.
+`WalletOwnerType` includes `merchant_account`. Affiliate task submission uses the existing wallet, immutable ledger, reconciliation, and audit authorities rather than a second balance system:
+
+- An unfunded draft changes no wallet balance and has no budget reservation.
+- Shop-published tasks use the current Shop wallet. Merchant-account tasks use the MerchantAccount wallet and may target only active member shops.
+- Submit freezes the complete `totalBudgetNdp` from available to frozen NDP with `affiliate_task_budget_freeze`. Scope snapshots, reservation, ledger link, task state, reconciliation, and audit records share one Prisma transaction.
+- The task's `reservedBudgetNdp` records the historical amount frozen. It remains unchanged after release so the database invariant `allocated + settled + released <= reserved` remains auditable.
+- Reject is allowed only while the submitted reservation has no allocation/capture. It returns the complete frozen amount to available NDP with `affiliate_task_budget_release`, records `releasedBudgetNdp`, releases the reservation, and changes the task to `rejected` in one transaction.
+- Submit and reject idempotency keys are derived from task ID, version, and action. Retries do not create duplicate ledger entries or wallet deltas.
+- Conditional wallet updates reject concurrent overspend or insufficient frozen balances without partial writes.
+
+Publishing and review APIs:
+
+- `GET|POST /api/v1/merchant-admin/affiliate/tasks`
+- `GET|PATCH /api/v1/merchant-admin/affiliate/tasks/:taskId`
+- `POST /api/v1/merchant-admin/affiliate/tasks/:taskId/submit`
+- `GET /api/v1/backoffice/affiliate/tasks`
+- `GET /api/v1/backoffice/affiliate/tasks/:taskId`
+- `POST /api/v1/backoffice/affiliate/tasks/:taskId/approve`
+- `POST /api/v1/backoffice/affiliate/tasks/:taskId/reject`
+
+Permissions are `page:merchant-affiliate-task`, `button:merchant-affiliate-task-create`, `button:merchant-affiliate-task-submit`, `page:backoffice-affiliate`, and `button:backoffice-affiliate-review`.
+
+Local MySQL verification:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
+```
+
+The script refuses production flags and remote database hosts, creates uniquely identified formal rows, validates draft/no-freeze, shop and multi-shop merchant submission, insufficient-funds rollback, membership isolation, approve/reject, full release, idempotency, reconciliation, and audit evidence, then removes only those rows.
+
+Claiming, codes and signed URLs, Booking attribution, completion reward settlement, refund reversal, task-ending release, and affiliate UI are outside this microstep. The reserved reward settlement/reversal/recovery ledger vocabulary remains unused until those later transaction plans pass acceptance.
