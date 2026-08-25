@@ -3,7 +3,12 @@ import type {
   CustomerProfileRepositoryPort,
   CustomerProfilePayload
 } from "../src/repositories/customer-profile.repository";
-import type { AuthRequestContext, AuthenticatedAccessContext } from "../src/services/auth.service";
+import type { AuditLogCreateInput } from "../src/repositories/audit-log.repository";
+import type {
+  AuthRequestContext,
+  AuthenticatedAccessContext
+} from "../src/services/auth.service";
+import type { AuditLogRecordInput } from "../src/services/audit-log.service";
 import type { CustomerAvatarStoragePort } from "../src/services/customer-avatar.storage";
 import { CustomerProfileService } from "../src/services/customer-profile.service";
 
@@ -32,7 +37,15 @@ const repository = (): jest.Mocked<CustomerProfileRepositoryPort> => ({
   updateMine: jest.fn()
 });
 
-const audit = { record: jest.fn<() => Promise<void>>() };
+const audit = {
+  createInput: jest.fn((input: AuditLogRecordInput): AuditLogCreateInput => ({
+    action: input.action,
+    actorId: input.actor.userId,
+    metadata: input.metadata,
+    targetId: input.targetId,
+    targetType: input.targetType
+  }))
+};
 
 const storage = (): jest.Mocked<CustomerAvatarStoragePort> => ({ save: jest.fn() });
 
@@ -61,15 +74,13 @@ describe("CustomerProfileService", () => {
         displayName: "松尾 雄大",
         isPublic: false,
         visibility: "network"
-      })
-    );
-    expect(audit.record).toHaveBeenCalledWith(
+      }),
       expect.objectContaining({
         action: "customer_profile.self_update",
-        targetId: 41,
         metadata: { changedFields: ["displayName", "languages", "visibility"] }
       })
     );
+    expect(audit.createInput).toHaveBeenCalledWith(expect.objectContaining({ targetId: 41 }));
   });
 
   it("saves an avatar before updating the current profile and excludes its data URL from audit", async () => {
@@ -96,13 +107,15 @@ describe("CustomerProfileService", () => {
     await service.updateMine(actor, requestContext, { avatarDataUrl });
 
     expect(customerStorage.save).toHaveBeenCalledWith(avatarDataUrl);
-    expect(customerRepository.updateMine).toHaveBeenCalledWith(11, 41, {
-      avatar: {
-        mimeType: "image/png",
-        url: "http://localhost:3000/media/customer-avatars/avatar.png"
-      }
-    });
-    expect(audit.record).toHaveBeenLastCalledWith(
+    expect(customerRepository.updateMine).toHaveBeenCalledWith(
+      11,
+      41,
+      {
+        avatar: {
+          mimeType: "image/png",
+          url: "http://localhost:3000/media/customer-avatars/avatar.png"
+        }
+      },
       expect.objectContaining({
         metadata: { changedFields: ["avatar"] }
       })

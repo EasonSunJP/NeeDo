@@ -73,7 +73,8 @@ const avatarCropFrameClassName =
 const userProfileLanguageOptions = ["日本語", "中文", "English", "한국어", "ไทย", "Tiếng Việt", "Español"];
 const userProfileGenderOptions: Array<{ label: string; value: NonNullable<Customer["gender"]> }> = [
   { label: "女", value: "female" },
-  { label: "男", value: "male" }
+  { label: "男", value: "male" },
+  { label: "不公开", value: "private" }
 ];
 type UserProfileVisibility = "privateAll" | "limited" | "network";
 type UserProfilePrivacyState = {
@@ -283,6 +284,23 @@ function normalizeUserHeightForStorage(value: string) {
   }
 
   return /^\d+(?:\.\d+)?$/.test(height) ? `${height}cm` : height;
+}
+
+function parseOptionalProfileNumber(value: string, options: { field: string; integer?: boolean; max: number; min: number }): number | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  const valid = Number.isFinite(parsed) && parsed >= options.min && parsed <= options.max && (!options.integer || Number.isInteger(parsed));
+
+  if (!valid) {
+    throw new Error(options.field);
+  }
+
+  return parsed;
 }
 
 function getUserProfilePrivacyLabel(visibility: UserProfileVisibility) {
@@ -682,6 +700,10 @@ function CompleteUserCenterPage({
     setProfileToastMessage("");
   };
   const updateProfileDraft = (patch: Partial<UserProfileDraft>) => {
+    if (isSavingProfile) {
+      return;
+    }
+
     const nextPatch = typeof patch.nickname === "string" ? { ...patch, nickname: limitUserProfileName(patch.nickname) } : patch;
 
     if (typeof nextPatch.nickname === "string") {
@@ -691,6 +713,10 @@ function CompleteUserCenterPage({
     setProfileDraft((current) => (current ? { ...current, ...nextPatch } : current));
   };
   const toggleProfileLanguage = (language: string) => {
+    if (isSavingProfile) {
+      return;
+    }
+
     setProfileDraft((current) => {
       if (!current) {
         return current;
@@ -704,6 +730,10 @@ function CompleteUserCenterPage({
     });
   };
   const updateProfilePrivacyEnabled = (enabled: boolean) => {
+    if (isSavingProfile) {
+      return;
+    }
+
     if (enabled) {
       setProfilePrivacyConfirmOpen(true);
       return;
@@ -714,15 +744,28 @@ function CompleteUserCenterPage({
     setProfilePrivacyConfirmOpen(false);
   };
   const confirmProfilePrivacyEnabled = () => {
+    if (isSavingProfile) {
+      return;
+    }
+
     setProfilePrivacyConfirmOpen(false);
     setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled: true }));
     setProfilePrivacyMenuOpen(true);
   };
   const updateProfilePrivacyVisibility = (visibility: UserProfileVisibility) => {
+    if (isSavingProfile) {
+      return;
+    }
+
     setProfilePrivacyDraft({ enabled: true, visibility });
     setProfilePrivacyMenuOpen(false);
   };
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (isSavingProfile) {
+      event.target.value = "";
+      return;
+    }
+
     const file = event.target.files?.[0];
     event.target.value = "";
 
@@ -741,7 +784,7 @@ function CompleteUserCenterPage({
     setProfileToastMessage("");
   };
   const applyAvatarCrop = async () => {
-    if (!avatarCrop) {
+    if (!avatarCrop || isSavingProfile) {
       return;
     }
 
@@ -766,6 +809,16 @@ function CompleteUserCenterPage({
     const ageValue = readProfileFieldValue<HTMLInputElement>("age", ageInputRef.current?.value ?? profileDraft.age);
     const heightValue = readProfileFieldValue<HTMLInputElement>("height", heightInputRef.current?.value ?? profileDraft.height);
     const bioValue = readProfileFieldValue<HTMLTextAreaElement>("bio", bioInputRef.current?.value ?? profileDraft.bio);
+    let ageNumber: number | null;
+    let heightNumber: number | null;
+
+    try {
+      ageNumber = parseOptionalProfileNumber(ageValue, { field: "年龄必须是 0 到 150 之间的整数", integer: true, min: 0, max: 150 });
+      heightNumber = parseOptionalProfileNumber(formatUserHeightInput(heightValue), { field: "身高必须是 30 到 250 之间的数字", min: 30, max: 250 });
+    } catch (error) {
+      setProfileToastMessage(error instanceof Error ? error.message : "资料格式不正确，请检查后重试");
+      return;
+    }
     const nextProfile = {
       avatar: profileDraft.avatar.trim() || currentCustomer.avatar,
       nickname: nicknameValue.trim() || currentCustomer.name,
@@ -784,8 +837,8 @@ function CompleteUserCenterPage({
           displayName: nextProfile.nickname,
           avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
           gender: nextProfile.gender,
-          age: nextProfile.age ? Number(nextProfile.age) : null,
-          heightCm: nextProfile.height ? Number(formatUserHeightInput(nextProfile.height)) : null,
+          age: ageNumber,
+          heightCm: heightNumber,
           languages: nextProfile.languages,
           bio: nextProfile.bio || null,
           visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
@@ -887,7 +940,7 @@ function CompleteUserCenterPage({
                       />
                       {isEditingProfile ? (
                         <>
-                          <input accept="image/*" className="hidden" onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
+                          <input accept="image/*" className="hidden" disabled={isSavingProfile} onChange={handleAvatarUpload} ref={avatarInputRef} type="file" />
                           <IconButton
                             className={cn(
                               "absolute bottom-2 right-2 h-10 w-10 border-[2px] text-white shadow-[0_12px_26px_rgba(0,0,0,0.34)]",
@@ -895,7 +948,7 @@ function CompleteUserCenterPage({
                             )}
                             icon="edit"
                             label="更换头像"
-                            onClick={() => avatarInputRef.current?.click()}
+                            onClick={isSavingProfile ? undefined : () => avatarInputRef.current?.click()}
                           />
                         </>
                       ) : null}
@@ -910,6 +963,7 @@ function CompleteUserCenterPage({
                             autoFocus
                             className="-ml-0.5 -mt-1 max-h-[84px] min-h-[38px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-1 text-[21px] font-black leading-tight shadow-none outline-none [appearance:none] [overflow-wrap:anywhere]"
                             data-profile-field="nickname"
+                            readOnly={isSavingProfile}
                             onChange={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
                             onInput={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
                             ref={nicknameInputRef}
@@ -992,6 +1046,7 @@ function CompleteUserCenterPage({
                                       "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-black",
                                       checked ? "border-[color:var(--client-primary)] bg-[color:var(--client-primary)] text-[color:var(--pin-badge-glyph)]" : "border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] text-transparent"
                                     )}
+                                    disabled={isSavingProfile}
                                     onClick={() => updateProfilePrivacyVisibility(option.value)}
                                     type="button"
                                   >
@@ -1000,6 +1055,7 @@ function CompleteUserCenterPage({
                                   <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                     <button
                                       className="min-w-0 truncate text-left text-sm font-black"
+                                      disabled={isSavingProfile}
                                       onClick={() => updateProfilePrivacyVisibility(option.value)}
                                       type="button"
                                     >
@@ -1060,6 +1116,7 @@ function CompleteUserCenterPage({
                                   profileDraft.gender === option.value ? membershipSurface.chip : membershipSurface.metric
                                 )}
                                 key={option.value}
+                                disabled={isSavingProfile}
                                 onClick={() => updateProfileDraft({ gender: option.value })}
                                 type="button"
                               >
@@ -1074,6 +1131,8 @@ function CompleteUserCenterPage({
                             className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
                             data-profile-field="age"
                             defaultValue={profileDraft.age}
+                            disabled={isSavingProfile}
+                            inputMode="numeric"
                             onChange={(event) => updateProfileDraft({ age: event.currentTarget.value })}
                             onInput={(event) => updateProfileDraft({ age: event.currentTarget.value })}
                             ref={ageInputRef}
@@ -1085,6 +1144,7 @@ function CompleteUserCenterPage({
                             className="mt-1 h-9 w-full bg-transparent text-sm font-black outline-none"
                             data-profile-field="height"
                             defaultValue={profileDraft.height}
+                            disabled={isSavingProfile}
                             inputMode="decimal"
                             onChange={(event) => updateProfileDraft({ height: formatUserHeightInput(event.currentTarget.value) })}
                             onInput={(event) => updateProfileDraft({ height: formatUserHeightInput(event.currentTarget.value) })}
@@ -1102,6 +1162,7 @@ function CompleteUserCenterPage({
                                 profileDraft.languages.includes(language) ? membershipSurface.chip : membershipSurface.metric
                               )}
                               key={language}
+                              disabled={isSavingProfile}
                               onClick={() => toggleProfileLanguage(language)}
                               type="button"
                             >
@@ -1116,6 +1177,7 @@ function CompleteUserCenterPage({
                           className="mt-2 min-h-[132px] w-full resize-none bg-transparent text-sm font-bold leading-6 outline-none"
                           data-profile-field="bio"
                           defaultValue={profileDraft.bio}
+                          readOnly={isSavingProfile}
                           onChange={(event) => updateProfileDraft({ bio: event.currentTarget.value })}
                           onInput={(event) => updateProfileDraft({ bio: event.currentTarget.value })}
                           ref={bioInputRef}

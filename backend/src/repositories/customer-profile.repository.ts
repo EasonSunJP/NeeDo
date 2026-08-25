@@ -1,5 +1,9 @@
 import type { CustomerProfile, MediaAsset, Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import {
+  toAuditLogCreateData,
+  type AuditLogCreateInput
+} from "./audit-log.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 
@@ -38,7 +42,8 @@ export interface CustomerProfileRepositoryPort {
   updateMine: (
     userId: number,
     profileId: number,
-    mutation: CustomerProfileMutation
+    mutation: CustomerProfileMutation,
+    auditLog: AuditLogCreateInput
   ) => Promise<CustomerProfilePayload>;
 }
 
@@ -59,7 +64,8 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
   public async updateMine(
     userId: number,
     profileId: number,
-    mutation: CustomerProfileMutation
+    mutation: CustomerProfileMutation,
+    auditLog: AuditLogCreateInput
   ): Promise<CustomerProfilePayload> {
     const profile = await this.client.$transaction(async (transaction) => {
       const current = await transaction.customerProfile.findFirst({
@@ -101,6 +107,8 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
           data: { avatarUrl: mutation.avatar.url }
         });
       }
+
+      await transaction.auditLog.create({ data: toAuditLogCreateData(auditLog) });
 
       return transaction.customerProfile.findUniqueOrThrow({
         where: { id: updated.id },

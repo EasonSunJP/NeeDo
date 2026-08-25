@@ -1,8 +1,24 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { config as loadDotenv } from "dotenv";
 
-process.env.NODE_ENV = "test";
-process.env.DEPLOY_ENV = "test";
+const runCustomerProfileRepositoryIntegration =
+  process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
+
+if (runCustomerProfileRepositoryIntegration && process.env.ENV_FILE) {
+  loadDotenv({ path: process.env.ENV_FILE, override: true });
+  const integrationDatabaseUrl = new URL(process.env.DATABASE_URL ?? "");
+
+  if (
+    !["localhost", "127.0.0.1", "::1"].includes(integrationDatabaseUrl.hostname) ||
+    /prod/i.test(integrationDatabaseUrl.pathname)
+  ) {
+    throw new Error("Customer profile repository integration tests require a local non-production database");
+  }
+}
+
+process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
+process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
 process.env.ALLOW_TEST_LOGIN = "true";
 process.env.ALLOW_DEMO_SEED = "true";
 process.env.ALLOW_SIMULATION_SEED = "true";
@@ -21,7 +37,11 @@ process.env.METRICS_BEARER_TOKEN = "";
 process.env.TRACING_ENABLED = "true";
 process.env.CACHE_PUBLIC_MAX_AGE_SECONDS = "30";
 process.env.CACHE_STALE_WHILE_REVALIDATE_SECONDS = "120";
-process.env.DATABASE_URL = "mysql://needo_test:needo_test_password@localhost:3307/needo_test";
+if (!runCustomerProfileRepositoryIntegration) {
+  process.env.DATABASE_URL =
+    process.env.CUSTOMER_PROFILE_REPOSITORY_TEST_DATABASE_URL ??
+    "mysql://needo_test:needo_test_password@localhost:3307/needo_test";
+}
 process.env.DATABASE_POOL_CONNECTION_LIMIT = "10";
 process.env.DATABASE_POOL_ACQUIRE_TIMEOUT_MS = "10000";
 process.env.DATABASE_POOL_IDLE_TIMEOUT_MS = "30000";

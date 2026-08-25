@@ -300,12 +300,11 @@ describe("customer profile current-user API", () => {
           displayName: "松尾 雄大",
           visibility: "network",
           isPublic: false
+        }),
+        expect.objectContaining({
+          action: "customer_profile.self_update",
+          metadata: { changedFields: ["displayName", "visibility"] }
         })
-      );
-      expect(fixture.auditLogs).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ action: "customer_profile.self_update", targetId: 41 })
-        ])
       );
     } finally {
       await rm(fixture.avatarDirectory, { recursive: true, force: true });

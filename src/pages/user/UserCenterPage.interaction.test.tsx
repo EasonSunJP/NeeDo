@@ -109,8 +109,9 @@ async function click(element: Element) {
   });
 }
 
-async function inputValue(element: HTMLTextAreaElement, value: string) {
-  const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+async function inputValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const prototype = element instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+  const setValue = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
 
   await act(async () => {
     setValue?.call(element, value);
@@ -241,6 +242,58 @@ describe("UserCenterPage inline profile editing", () => {
     await waitFor(() => expect(container.textContent).toContain("资料保存失败，请保留当前内容后重试"));
     expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]')?.value).toBe("保留的草稿");
     expect(container.querySelector('[data-testid="user-profile-save-action"]')).not.toBeNull();
+  });
+
+  it("rejects non-finite demographic input before a formal PATCH and keeps the draft", async () => {
+    await renderUserCenter();
+    await click(findIconButton("编辑资料"));
+
+    const age = container.querySelector<HTMLInputElement>('input[data-profile-field="age"]');
+    await inputValue(age!, "not-a-number");
+    await click(findButton("保存并退出编辑模式"));
+
+    expect(container.textContent).toContain("年龄必须是 0 到 150 之间的整数");
+    expect(age?.value).toBe("not-a-number");
+    expect(container.querySelector('[data-testid="user-profile-save-action"]')).not.toBeNull();
+    expect(testState.updateMine).not.toHaveBeenCalled();
+  });
+
+  it("locks every mounted edit control while a formal save is pending", async () => {
+    let resolveUpdate: (value: typeof savedProfile) => void = () => undefined;
+    testState.updateMine.mockImplementation(
+      () =>
+        new Promise<typeof savedProfile>((resolve) => {
+          resolveUpdate = resolve;
+        })
+    );
+    await renderUserCenter();
+    await click(findIconButton("编辑资料"));
+    await click(findButton("保存并退出编辑模式"));
+
+    expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]')?.readOnly).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[data-profile-field="age"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[data-profile-field="height"]')?.disabled).toBe(true);
+    expect(container.querySelector<HTMLTextAreaElement>('textarea[data-profile-field="bio"]')?.readOnly).toBe(true);
+    expect((findButton("女") as HTMLButtonElement).disabled).toBe(true);
+    expect((findButton("日本語") as HTMLButtonElement).disabled).toBe(true);
+    expect((findButton("对好友以及关联人可见") as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      resolveUpdate(savedProfile);
+    });
+  });
+
+  it("offers and persists the private gender option", async () => {
+    await renderUserCenter();
+    await click(findIconButton("编辑资料"));
+    expect(findButton("不公开")).not.toBeNull();
+    await click(findButton("女"));
+    await click(findButton("不公开"));
+    await click(findButton("保存并退出编辑模式"));
+
+    await waitFor(() => expect(testState.updateMine).toHaveBeenCalled());
+    expect(testState.updateMine).toHaveBeenCalledWith(expect.objectContaining({ gender: "private" }));
   });
 
   it("uses the mounted fixed save action in frontend-bypass preview without calling the formal API", async () => {
