@@ -7,8 +7,12 @@ import {
   type BackofficeShopCreateInput,
   type BackofficeShopPayload
 } from "../../api/backofficeRealData";
+import { merchantSaasBillingApi } from "../../api/merchantSaasBilling";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { DetailGrid } from "../../components/admin/DetailGrid";
+import { MerchantBillingCard } from "../../components/admin/MerchantBillingCard";
+import { MerchantBillingEditorDialog } from "../../components/admin/MerchantBillingEditorDialog";
+import { MerchantSuspensionDialog } from "../../components/admin/MerchantSuspensionDialog";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -16,6 +20,14 @@ import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { Tabs } from "../../components/ui/Tabs";
 import { coreReadApi, type CoreCategory } from "../../features/core-read/api";
+import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
+import {
+  formatFreeDuration,
+  formatJpy,
+  isMerchantGroup,
+  type MerchantAccountCard
+} from "../../features/merchant-saas-billing/model";
+import { useI18n } from "../../i18n/I18nProvider";
 import { yen } from "../../lib/utils";
 
 const tabs = ["店铺列表", "入驻审核", "服务项目", "店铺分类"];
@@ -39,11 +51,18 @@ const emptyServiceForm: BackofficeServiceCreateInput = {
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
 
 export function MerchantsPage() {
+  const { language } = useI18n();
+  const t = (source: string) => translateMerchantBillingText(source, language);
   const [searchParams] = useSearchParams();
   const [active, setActive] = useState(searchParams.get("module") === "categories" ? "店铺分类" : "店铺列表");
   const [shops, setShops] = useState<BackofficeShopPayload[]>([]);
   const [services, setServices] = useState<BackofficeServicePayload[]>([]);
   const [categories, setCategories] = useState<CoreCategory[]>([]);
+  const [billingAccounts, setBillingAccounts] = useState<MerchantAccountCard[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<number[]>([]);
+  const [billingEditorCard, setBillingEditorCard] = useState<MerchantAccountCard | null>(null);
+  const [businessSettingsCard, setBusinessSettingsCard] = useState<MerchantAccountCard | null>(null);
+  const [billingDetailCard, setBillingDetailCard] = useState<MerchantAccountCard | null>(null);
   const [selectedShop, setSelectedShop] = useState<BackofficeShopPayload | null>(null);
   const [selectedService, setSelectedService] = useState<BackofficeServicePayload | null>(null);
   const [shopForm, setShopForm] = useState(emptyShopForm);
@@ -61,14 +80,16 @@ export function MerchantsPage() {
     setLoading(true);
     setError("");
     try {
-      const [shopPage, servicePage, categoryPage] = await Promise.all([
+      const [shopPage, servicePage, categoryPage, billingPage] = await Promise.all([
         backofficeRealDataApi.shops("backoffice", { page: 1, pageSize: 100 }),
         backofficeRealDataApi.services("backoffice", { page: 1, pageSize: 100 }),
-        coreReadApi.listCategories({ page: 1, pageSize: 100 })
+        coreReadApi.listCategories({ page: 1, pageSize: 100 }),
+        merchantSaasBillingApi.listAccounts({ page: 1, pageSize: 100 })
       ]);
       setShops(shopPage.list);
       setServices(servicePage.list);
       setCategories(categoryPage.list);
+      setBillingAccounts(billingPage.list);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {
@@ -151,18 +172,60 @@ export function MerchantsPage() {
         {loading ? <p className="mt-6 text-sm font-bold text-ink/50">正在读取正式数据...</p> : null}
 
         {active === "店铺列表" ? (
-          <div className="mt-4 grid gap-4 xl:grid-cols-2">
-            {shops.map((shop) => (
-              <article className="rounded-lg border border-line bg-white p-5 shadow-panel" key={shop.id}>
-                <div className="flex items-start justify-between gap-4">
-                  <div><p className="text-xs font-bold text-ink/45">店铺 #{shop.id} · {shop.city}</p><h2 className="mt-1 text-xl font-black">{shop.name}</h2><p className="mt-2 text-sm text-ink/60">{shop.address}</p><p className="mt-1 text-xs font-bold text-moss">{shop.ownerEmail ?? "尚未绑定负责人"}</p></div>
-                  <Badge tone={shop.status === "published" ? "green" : "yellow"}>{shop.status}</Badge>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => openShop(shop)} size="sm">集中详情</Button>{shop.status !== "published" ? <Button onClick={() => void mutate(() => backofficeRealDataApi.approveShop(shop.id))} size="sm" variant="secondary">审核通过</Button> : null}</div>
-              </article>
-            ))}
-            {!loading && shops.length === 0 ? <p className="text-sm text-ink/50">暂无店铺数据。</p> : null}
-          </div>
+          <section className="mt-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white px-4 py-3 shadow-panel">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-moss">Merchant SaaS ledger</p>
+                <p className="mt-1 text-sm font-semibold text-ink/55">{t("集团以 1 张卡片显示；展开后可在同一边框内管理集团与旗下店铺。")}</p>
+              </div>
+              <Badge tone="blue">{billingAccounts.length} {t("个独立账单主体")}</Badge>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              {billingAccounts.map((card) => {
+                const expanded = isMerchantGroup(card) && expandedGroups.includes(card.id);
+                const commonProps = {
+                  onEditBilling: () => setBillingEditorCard(card),
+                  onOpenBusinessSettings: () => setBusinessSettingsCard(card),
+                  onViewDetails: () => setBillingDetailCard(card)
+                };
+
+                if (!isMerchantGroup(card)) {
+                  return <MerchantBillingCard card={card} key={`shop-${card.id}`} {...commonProps} />;
+                }
+
+                return (
+                  <section
+                    className={`rounded-2xl transition xl:col-span-2 ${expanded ? "border-2 border-coral/70 bg-coral/[0.035] p-3 shadow-[0_14px_45px_rgba(232,95,114,0.09)]" : ""}`}
+                    key={`merchant-${card.id}`}
+                  >
+                    {expanded ? <p className="mb-2 px-1 text-[11px] font-black uppercase tracking-[0.18em] text-coral">{t("集团账户边界")} · {card.name}</p> : null}
+                    <MerchantBillingCard
+                      card={card}
+                      expanded={expanded}
+                      onToggleExpanded={() => setExpandedGroups((current) => current.includes(card.id) ? current.filter((id) => id !== card.id) : [...current, card.id])}
+                      {...commonProps}
+                    />
+                    {expanded ? (
+                      <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                        {card.shops.map((shop) => (
+                          <MerchantBillingCard
+                            card={shop}
+                            key={`merchant-${card.id}-shop-${shop.id}`}
+                            nested
+                            onEditBilling={() => setBillingEditorCard(shop)}
+                            onOpenBusinessSettings={() => setBusinessSettingsCard(shop)}
+                            onViewDetails={() => setBillingDetailCard(shop)}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+              {!loading && billingAccounts.length === 0 ? <p className="text-sm text-ink/50">{t("暂无商家或店铺数据")}</p> : null}
+            </div>
+          </section>
         ) : null}
 
         {active === "入驻审核" ? <div className="mt-4"><DataTable columns={[
@@ -190,6 +253,43 @@ export function MerchantsPage() {
           { key: "status", title: "状态", render: (row: CoreCategory) => <Badge tone={row.isActive ? "green" : "neutral"}>{row.isActive ? "启用" : "停用"}</Badge> }
         ]} footerPlacement="inline" rows={categories} /></div> : null}
       </ModuleShell>
+
+      <MerchantBillingEditorDialog
+        card={billingEditorCard}
+        open={Boolean(billingEditorCard)}
+        onChanged={load}
+        onClose={() => setBillingEditorCard(null)}
+      />
+      <MerchantSuspensionDialog
+        card={businessSettingsCard}
+        open={Boolean(businessSettingsCard)}
+        onChanged={load}
+        onClose={() => setBusinessSettingsCard(null)}
+      />
+
+      <Drawer open={Boolean(billingDetailCard)} title={t("商家 / 门店 SaaS 详情")} onClose={() => setBillingDetailCard(null)}>
+        {billingDetailCard ? (
+          <DetailGrid
+            items={[
+              { label: "名称", value: billingDetailCard.name },
+              { label: "账号类型", value: isMerchantGroup(billingDetailCard) ? "商家" : billingDetailCard.type === "single_shop" ? "单人店铺" : "店铺" },
+              { label: "付费模式", value: billingDetailCard.billing.cadence },
+              { label: "月费", value: billingDetailCard.billing.cadence === "free" ? "免费" : formatJpy(billingDetailCard.billing.monthlyFeeJpy, language) },
+              { label: "年费", value: formatJpy(billingDetailCard.billing.annualFeeJpy, language) },
+              { label: "计费状态", value: billingDetailCard.billing.state },
+              { label: "累计免费时间", value: formatFreeDuration(billingDetailCard.billing.freeDuration, language) },
+              { label: "支付接口", value: billingDetailCard.billing.paymentProvider },
+              { label: "人工锁定", value: `模式 ${billingDetailCard.billing.cadenceLocked ? "是" : "否"} / 金额 ${billingDetailCard.billing.amountLocked ? "是" : "否"}` },
+              { label: "封号状态", value: billingDetailCard.suspension ? "已人工封号" : "未封号" },
+              ...(isMerchantGroup(billingDetailCard) ? [
+                { label: "付费责任", value: billingDetailCard.paymentResponsibility },
+                { label: "旗下店铺", value: billingDetailCard.shops.length },
+                { label: "合计月费", value: formatJpy(billingDetailCard.consolidatedMonthlyTotalJpy, language) }
+              ] : [{ label: "有效技师", value: billingDetailCard.technicianCount }])
+            ]}
+          />
+        ) : null}
+      </Drawer>
 
       <Drawer open={createShopOpen} title="创建店铺与负责人账号" onClose={() => setCreateShopOpen(false)}>
         <form className="space-y-4" onSubmit={createShop}>

@@ -15,6 +15,19 @@ describe("master data pages", () => {
     expect(source).toContain("coreReadApi.listCategories");
   });
 
+  it("shows formal merchant SaaS account type, payment mode, and monthly fee controls", () => {
+    const pageSource = read("./MerchantsPage.tsx");
+    const cardSource = read("../../components/admin/MerchantBillingCard.tsx");
+
+    expect(pageSource).toContain("merchantSaasBillingApi.listAccounts");
+    expect(pageSource).toContain("MerchantBillingCard");
+    expect(pageSource).toContain("expandedGroups");
+    expect(cardSource).toContain("账号类型");
+    expect(cardSource).toContain("付费模式");
+    expect(cardSource).toContain("月费");
+    expect(cardSource).toContain("onEditBilling");
+  });
+
   it("keeps the technician page on persisted technician and shop records only", () => {
     const source = read("./TechniciansPage.tsx");
     expect(source).not.toContain("../../data/mock");

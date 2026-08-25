@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import JSZip from "jszip";
+
 import { AI_ASSETS } from "./assets.mjs";
 import * as components from "./components.mjs";
 import { premiumSlides } from "./content.mjs";
@@ -20,6 +22,47 @@ function readIntegerFlag(name, fallback) {
   const value = Number(process.argv[index + 1]);
   if (!Number.isInteger(value)) throw new Error(`${name} requires an integer`);
   return value;
+}
+
+function readStringFlag(name) {
+  const indexes = process.argv.reduce((matches, value, index) => (
+    value === name ? [...matches, index] : matches
+  ), []);
+  if (indexes.length === 0) return null;
+  if (indexes.length > 1) throw new Error(`${name} may only be provided once`);
+
+  const value = process.argv[indexes[0] + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${name} requires a directory path`);
+  return value;
+}
+
+function validateOutputDirectory(value) {
+  const resolved = path.resolve(value);
+  const filesystemRoot = path.parse(resolved).root;
+  if (!path.isAbsolute(value) || resolved === filesystemRoot) {
+    throw new Error("--output-dir must be an absolute, non-root directory");
+  }
+  return resolved;
+}
+
+async function normalizePackedChartFonts(pptxPath, fontFace) {
+  const archive = await JSZip.loadAsync(fs.readFileSync(pptxPath));
+  const chartNames = Object.keys(archive.files)
+    .filter((name) => /^ppt\/charts\/chart\d+\.xml$/.test(name));
+
+  for (const chartName of chartNames) {
+    const chartPart = archive.file(chartName);
+    const xml = await chartPart.async("string");
+    const normalized = xml.replace(/typeface="Arial"/g, `typeface="${fontFace}"`);
+    if (normalized !== xml) archive.file(chartName, normalized);
+  }
+
+  const packed = await archive.generateAsync({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+  });
+  fs.writeFileSync(pptxPath, packed);
 }
 
 const from = readIntegerFlag("--from", 1);
@@ -61,15 +104,20 @@ for (const builder of selectedBuilders) {
 }
 
 const pageRange = `${String(from).padStart(2, "0")}-${String(through).padStart(2, "0")}`;
-const outputDirectory = path.join(
+const defaultOutputDirectory = path.join(
   projectRoot,
   `outputs/needo-roadshow-premium-2026-08-23/checkpoint-${pageRange}`,
 );
+const requestedOutputDirectory = readStringFlag("--output-dir")
+  ?? process.env.NEEDO_PREMIUM_OUTPUT_DIR
+  ?? defaultOutputDirectory;
+const outputDirectory = validateOutputDirectory(requestedOutputDirectory);
 fs.mkdirSync(outputDirectory, { recursive: true });
 const outputPath = path.join(
   outputDirectory,
   `NeeDo_海外投資人路演_BP_LINE節奏_AI精緻版_2026-08-23_第${pageRange}頁檢查點.pptx`,
 );
 await deck.writeFile({ fileName: outputPath });
+await normalizePackedChartFonts(outputPath, THEME.font);
 
 console.log(JSON.stringify({ outputPath, from, through, slides: expectedSlides }, null, 2));

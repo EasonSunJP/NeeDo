@@ -100,12 +100,26 @@ describe("premium business narrative", () => {
     }
   });
 
-  it("places page 25 after the doughnut to avoid LibreOffice chart-layer displacement", () => {
+  it("renders 21, 23, and 25 as protected top-right text after slide content", () => {
     const { textCalls } = buildWithChartCapture();
-    const pageNumber = textCalls.find(({ slideNumber, textArgs: [text] }) => slideNumber === 7 && text === "25");
+    const oddPages = [
+      { slideNumber: 3, page: 21 },
+      { slideNumber: 5, page: 23 },
+      { slideNumber: 7, page: 25 },
+    ];
 
-    assert.ok(pageNumber);
-    assert.equal(pageNumber.textArgs[1].objectName, "Funding page number");
-    assert.ok(pageNumber.textArgs[1].x >= 11.9);
+    for (const { slideNumber, page } of oddPages) {
+      const pageCall = textCalls.find(({ slideNumber: candidate, textArgs: [, options] }) => (
+        candidate === slideNumber && options.objectName === `Page ${page} protected number`
+      ));
+
+      assert.ok(pageCall);
+      assert.equal(pageCall.textArgs[0], page === 25 ? "２５" : `\u2060${page}`);
+      assert.ok(pageCall.textArgs[1].x >= 11.9 && pageCall.textArgs[1].y === 0.34);
+      assert.equal(
+        textCalls.some(({ slideNumber: candidate, textArgs: [text] }) => candidate === slideNumber && text === String(page)),
+        false,
+      );
+    }
   });
 });

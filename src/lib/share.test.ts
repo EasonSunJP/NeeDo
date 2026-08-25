@@ -197,6 +197,23 @@ describe("shareContent", () => {
 });
 
 describe("isNonFatalBrowserRuntimeError", () => {
+  it("ignores runtime rejections that originate from browser extension scripts", () => {
+    const error = new Error("Failed to connect to MetaMask");
+    error.stack = [
+      "Error: Failed to connect to MetaMask",
+      "    at Object.connect (chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn/scripts/inpage.js:7:84179)"
+    ].join("\n");
+
+    expect(isNonFatalBrowserRuntimeError(error)).toBe(true);
+  });
+
+  it("ignores MetaMask connection failures when the browser omits the extension stack", () => {
+    const error = new Error("Failed to connect to MetaMask");
+    error.stack = undefined;
+
+    expect(isNonFatalBrowserRuntimeError(error)).toBe(true);
+  });
+
   it("ignores browser extension async message channel noise", () => {
     expect(
       isNonFatalBrowserRuntimeError(

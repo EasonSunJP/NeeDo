@@ -1,0 +1,70 @@
+{
+  "as_of": "2026-08-14",
+  "source_pdf": "/Users/eason/Downloads/NeeDoBP/NeeDoBP_CN_后3页数字修正版.pdf",
+  "financial_model": "/Users/eason/Documents/New project/outputs/019fcda7-2369-7940-9583-4820c263797d/NeeDo_三年财务模型_V1.4_外国用户保守化及广告强化版_2026-08-14.xlsx",
+  "competitor_workbook": "/Users/eason/Documents/New project/outputs/019fcda7-2369-7940-9583-4820c263797d/NeeDo_日本核心功能_简化调整对比_V4.2_2026-08-13.xlsx",
+  "market_sources": [
+    {
+      "publisher": "经济产业省",
+      "report": "令和6年度电子商务市场调查",
+      "published": "2025-08-26",
+      "url": "https://www.meti.go.jp/press/2025/08/20250826005/20250826005-a.pdf",
+      "supported_claims": [
+        "2024年服务类B2C-EC市场规模82,256亿日元",
+        "2024年理美容服务B2C-EC市场规模7,302亿日元，同比增长6.54%"
+      ]
+    },
+    {
+      "publisher": "Hot Pepper Beauty Academy / Recruit",
+      "report": "美容センサス2025年上期 リラクゼーションサロン編",
+      "published": "2025",
+      "url": "https://hba.beauty.hotpepper.jp/search/column/c_rela/70640/2/",
+      "supported_claims": [
+        "2025年リラクゼーションサロン网络预约比率59.0%"
+      ]
+    }
+  ],
+  "rejected_or_relabelled_claims": [
+    {
+      "original": "2.5万亿日元市场规模",
+      "decision": "删除；原页没有能直接支持该口径的一手来源"
+    },
+    {
+      "original": "90%+电话预约占比",
+      "decision": "删除；与Recruit 2025的59.0%网络预约数据不一致，也没有找到同口径一手来源"
+    },
+    {
+      "original": "50-60%传统中介抽成",
+      "decision": "不再作为市场统计；保留为需要访谈验证的行业假设"
+    }
+  ],
+  "high_growth_y3": {
+    "average_technicians": 30000,
+    "annual_completed_orders": 4971569.815792,
+    "ending_stores": 4000,
+    "revenue_mjpy": 3029.44,
+    "operating_profit_mjpy": 1201.987
+  },
+  "financial_assumptions": {
+    "three_year_operating_roi_definition": "三年累计营业利润÷本轮融资额2亿日元；不是股权退出回报或投资人IRR",
+    "high_growth_three_year_operating_roi": "642.2%",
+    "platform_fee_jpy_per_eligible_booking": 500,
+    "free_months_for_new_store": 3,
+    "conservative_saas_jpy_per_store_month": 1000,
+    "high_growth_saas_jpy_per_store_month": 0,
+    "service_average_order_value": "待试点验证；不进入当前收入模型",
+    "cac": "待试点验证；作为广告释放门槛",
+    "repeat_rate": "待试点验证；作为广告释放门槛",
+    "foreign_high_growth": "访日外国人50%为男性；男性渗透率Y1/Y2/Y3=1%/2%/4%；2次/人/年",
+    "foreign_conservative": "高速版外国男性用户数的10%；1次/人/年"
+  },
+  "competitor_scope": [
+    "NeeDo",
+    "HOT PEPPER Beauty",
+    "minimo",
+    "EPARK",
+    "Airリザーブ",
+    "くらしのマーケット",
+    "LINEスキマニ"
+  ]
+}

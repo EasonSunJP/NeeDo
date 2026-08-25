@@ -91,12 +91,18 @@ export function isOpaqueBrowserScriptError(error: unknown) {
 
 export function isNonFatalBrowserRuntimeError(error: Error) {
   const text = `${error.name} ${error.message} ${error.stack ?? ""}`.toLowerCase();
+  const message = error.message.trim().toLowerCase();
+  const stack = (error.stack ?? "").toLowerCase();
 
   if (isShareAbortError(error)) {
     return true;
   }
 
   if (isOpaqueBrowserScriptError(error)) {
+    return true;
+  }
+
+  if (stack.includes("chrome-extension://") || message === "failed to connect to metamask") {
     return true;
   }
 

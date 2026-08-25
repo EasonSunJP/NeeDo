@@ -24,6 +24,10 @@ import type { CoreReadRepositoryPort } from "./repositories/core-read.repository
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { LedgerRepositoryPort } from "./services/ledger.service";
 import type { MerchantFinanceRulesRepositoryPort } from "./services/merchant-finance-rules.service";
+import type {
+  MerchantSaasBillingRepositoryPort,
+  PaymentProvider
+} from "./services/merchant-saas-billing.service";
 import type { OrderFinanceRepositoryPort } from "./services/order-finance.service";
 import type { PayrollRepositoryPort } from "./services/payroll.service";
 import type { PermissionRepositoryPort } from "./repositories/permission.repository";
@@ -43,6 +47,7 @@ import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createMerchantFinanceRulesRoutes } from "./routes/merchant-finance-rules.routes";
+import { createMerchantSaasBillingRoutes } from "./routes/merchant-saas-billing.routes";
 import { createObservabilityRoutes } from "./routes/observability.routes";
 import { createOrderFinanceRoutes } from "./routes/order-finance.routes";
 import { createPayrollRoutes } from "./routes/payroll.routes";
@@ -78,6 +83,8 @@ export interface AppDependencies {
   coreReadRepository?: CoreReadRepositoryPort;
   feeRuleRepository?: FeeRuleRepositoryPort;
   merchantFinanceRulesRepository?: MerchantFinanceRulesRepositoryPort;
+  merchantSaasBillingRepository?: MerchantSaasBillingRepositoryPort;
+  paymentProvider?: PaymentProvider;
   orderFinanceRepository?: OrderFinanceRepositoryPort;
   payrollRepository?: PayrollRepositoryPort;
   compensationProfileRepository?: CompensationProfileRepositoryPort;
@@ -146,6 +153,7 @@ export const createApp = (
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
+  apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));

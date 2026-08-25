@@ -96,6 +96,10 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<ScheduleSlotPayload> {
     const scope = this.getScheduleScope(actor);
+    const targetShopId = scope.scope === "merchant"
+      ? scope.shopId
+      : await this.repository.findTechnicianShopId?.(scope.technicianProfileId);
+    await this.assertShopNotSuspended(targetShopId ?? null);
     const repositoryInput: ScheduleSlotCreateInput = scope.scope === "technician"
       ? {
           scope: "technician",
@@ -119,6 +123,7 @@ export class BookingService {
     context: AuthRequestContext
   ): Promise<ScheduleSlotPayload> {
     const scope = this.getScheduleScope(actor);
+    await this.assertShopNotSuspended(await this.repository.findScheduleSlotShopId?.(id) ?? null);
     const slot = this.requireScheduleMutation(await this.repository.updateScheduleSlot({ ...scope, id, ...input }));
     await this.recordScheduleMutation(actor, context, scope, "update", slot);
     return slot;
@@ -139,6 +144,9 @@ export class BookingService {
     actor: AuthenticatedBookingActor,
     input: BookingCreateInput
   ): Promise<BookingOrderPayload> {
+    await this.assertShopNotSuspended(
+      await this.repository.findScheduleSlotShopId?.(input.scheduleSlotId) ?? null
+    );
     const order = await this.repository.createBooking({
       customerUserId: actor.userId,
       orderType: input.orderType ?? "booking",
@@ -363,6 +371,7 @@ export class BookingService {
 
   private requireScheduleMutation(result: ScheduleMutationResult): ScheduleSlotPayload {
     if (result.outcome === "ok") return result.slot;
+    if (result.outcome === "suspended") throw this.suspendedError();
     if (result.outcome === "not_found") {
       throw new AppError({ code: ERROR_CODES.NOT_FOUND, message: "error.schedule.slot_not_found", statusCode: 404 });
     }
@@ -372,6 +381,20 @@ export class BookingService {
     throw new AppError({
       code: ERROR_CODES.SCHEDULE_CONFLICT,
       message: result.outcome === "duration_mismatch" ? "error.schedule.duration_mismatch" : "error.schedule.conflict",
+      statusCode: 409
+    });
+  }
+
+  private async assertShopNotSuspended(shopId: number | null): Promise<void> {
+    if (shopId && await this.repository.isShopSuspended?.(shopId)) {
+      throw this.suspendedError();
+    }
+  }
+
+  private suspendedError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.ENTITY_SUSPENDED,
+      message: "error.entity.suspended",
       statusCode: 409
     });
   }

@@ -68,6 +68,20 @@ function addNotes(slide, slideMeta) {
   slide.addNotes(`page=${slideMeta.page}; mode=${slideMeta.mode}; source=${slideMeta.source}; title=${slideMeta.title}`);
 }
 
+function addProtectedOddPageNumber(slide, theme, page) {
+  const protectedText = page === 25 ? "２５" : `\u2060${page}`;
+  addText(slide, theme, protectedText, {
+    x: 11.94,
+    y: 0.34,
+    w: 0.72,
+    h: 0.18,
+    fontSize: 9,
+    color: theme.colors.dataGreen,
+    align: "right",
+    objectName: `Page ${page} protected number`,
+  });
+}
+
 function addPill(slide, deck, theme, text, {
   x,
   y,
@@ -418,7 +432,7 @@ function buildRevenueCore(ctx) {
   const { deck, theme, components, content, data } = ctx;
   const slideMeta = meta(content, 21);
   const slide = deck.addSlide(theme.masters.light);
-  addBase(slide, deck, theme, slideMeta, "交易核心與四條收入流");
+  addBase(slide, deck, theme, slideMeta, "交易核心與四條收入流", { page: null });
 
   const center = { x: 4.68, y: 2.35, w: 3.92, h: 2.65 };
   const centerPoint = { x: center.x + center.w / 2, y: center.y + center.h / 2 };
@@ -522,6 +536,7 @@ function buildRevenueCore(ctx) {
     tone: "risk",
   });
   addSourceLine(slide, components, "資料：S5、S7｜四條收入流均圍繞同一交易核心；CPS 尚無真實歸因收入。 ");
+  addProtectedOddPageNumber(slide, theme, 21);
   addNotes(slide, slideMeta);
 }
 
@@ -757,7 +772,7 @@ function buildGeneralScenario(ctx) {
   const { deck, theme, components, content, data } = ctx;
   const slideMeta = meta(content, 23);
   const slide = deck.addSlide(theme.masters.light);
-  addBase(slide, deck, theme, slideMeta, "一般模型情境｜非承諾");
+  addBase(slide, deck, theme, slideMeta, "一般模型情境｜非承諾", { page: null });
 
   const series = addScenarioChart(slide, deck, theme, data.scenarios.general, [theme.colors.dataGreen, theme.colors.sage], "General");
   addScenarioTable(slide, deck, theme, series, { accent: theme.colors.dataGreen });
@@ -780,6 +795,7 @@ function buildGeneralScenario(ctx) {
     tone: "risk",
   });
   addSourceLine(slide, components, "資料：S5 NeeDo 三年財務模型 V2.2｜圖表與明細均保留 Y1／Y2／Y3 原始模型值。 ");
+  addProtectedOddPageNumber(slide, theme, 23);
   addNotes(slide, slideMeta);
 }
 
@@ -962,16 +978,7 @@ function buildFunding(ctx) {
     text: "資金配置為管理層提案，可依試點證據與實際執行調整；里程碑不是收入或估值承諾。",
   });
   addSourceLine(slide, components, "資料：S5、S7｜配置合計 ¥200M；產品／工程 80M、導入 60M、客服／安全／合規 30M、營運資金 30M。 ");
-  addText(slide, theme, "25", {
-    x: 11.94,
-    y: 0.34,
-    w: 0.72,
-    h: 0.18,
-    fontSize: 9,
-    color: theme.colors.dataGreen,
-    align: "right",
-    objectName: "Funding page number",
-  });
+  addProtectedOddPageNumber(slide, theme, 25);
   addNotes(slide, slideMeta);
 }
 

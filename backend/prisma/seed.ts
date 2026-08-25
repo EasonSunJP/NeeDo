@@ -1341,6 +1341,270 @@ const seedRequiredTestAccounts = async (
   }
 };
 
+const seedMerchantSaasBillingData = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    ownerUserId: number;
+    shopBySlug: Map<string, { id: number }>;
+  }
+): Promise<void> => {
+  const startsAt = new Date("2026-07-31T15:00:00.000Z");
+  const trialEndsAt = new Date("2026-10-31T15:00:00.000Z");
+  const invoicePeriodEndsAt = new Date("2026-11-30T15:00:00.000Z");
+  const groupShopSeeds = CORE_READ_DEMO_SHOP_SEEDS.slice(0, 4);
+  const groupShops = groupShopSeeds.map((shopSeed) => {
+    const linkedShop = input.shopBySlug.get(shopSeed.slug);
+
+    if (!linkedShop) {
+      throw new Error(`Merchant SaaS billing seed failed: missing shop ${shopSeed.slug}.`);
+    }
+
+    return { ...linkedShop, name: shopSeed.name };
+  });
+  const merchantAccount = await tx.merchantAccount.upsert({
+    where: { code: "seed-tokyo-wellness-group" },
+    create: {
+      code: "seed-tokyo-wellness-group",
+      ownerUserId: input.ownerUserId,
+      name: "Tokyo Wellness Group",
+      status: "active",
+      paymentResponsibility: "group_consolidated"
+    },
+    update: {
+      ownerUserId: input.ownerUserId,
+      name: "Tokyo Wellness Group",
+      status: "active",
+      paymentResponsibility: "group_consolidated",
+      deletedAt: null
+    }
+  });
+
+  for (const linkedShop of groupShops) {
+    const activeKey = `merchant:${merchantAccount.id}:shop:${linkedShop.id}`;
+
+    await tx.merchantShopMembership.upsert({
+      where: { activeKey },
+      create: {
+        merchantAccountId: merchantAccount.id,
+        shopId: linkedShop.id,
+        activeKey,
+        startsAt,
+        createdById: input.ownerUserId
+      },
+      update: {
+        merchantAccountId: merchantAccount.id,
+        shopId: linkedShop.id,
+        startsAt,
+        endsAt: null,
+        removedReason: null,
+        createdById: input.ownerUserId,
+        removedById: null,
+        deletedAt: null
+      }
+    });
+  }
+
+  const groupProfile = await tx.saasBillingProfile.upsert({
+    where: { activeKey: `merchant:${merchantAccount.id}` },
+    create: {
+      subjectType: "merchant_account",
+      subjectId: merchantAccount.id,
+      merchantAccountId: merchantAccount.id,
+      activeKey: `merchant:${merchantAccount.id}`,
+      billingCadence: "monthly",
+      monthlyFeeJpy: 9800,
+      trialStatus: "active",
+      trialStartedAt: startsAt,
+      trialEndsAt,
+      trialUsedAt: startsAt,
+      paymentProvider: "manual"
+    },
+    update: {
+      merchantAccountId: merchantAccount.id,
+      billingCadence: "monthly",
+      monthlyFeeJpy: 9800,
+      trialStatus: "active",
+      trialStartedAt: startsAt,
+      trialEndsAt,
+      trialUsedAt: startsAt,
+      paymentProvider: "manual",
+      deletedAt: null
+    }
+  });
+
+  await tx.saasFreePeriod.upsert({
+    where: { idempotencyKey: `seed:free-period:merchant:${merchantAccount.id}:initial` },
+    create: {
+      billingProfileId: groupProfile.id,
+      periodType: "initial_trial",
+      startsAt,
+      endsAt: trialEndsAt,
+      reason: "First three natural-month free trial",
+      idempotencyKey: `seed:free-period:merchant:${merchantAccount.id}:initial`,
+      createdById: input.ownerUserId
+    },
+    update: {
+      billingProfileId: groupProfile.id,
+      startsAt,
+      endsAt: trialEndsAt,
+      reason: "First three natural-month free trial",
+      createdById: input.ownerUserId,
+      deletedAt: null
+    }
+  });
+
+  const billableShopProfiles: Array<{
+    shopId: number;
+    name: string;
+    billingProfileId: number;
+  }> = [];
+
+  for (const linkedShop of groupShops) {
+    const technicianCount = await tx.technicianProfile.count({
+      where: {
+        shopId: linkedShop.id,
+        status: "published",
+        deletedAt: null
+      }
+    });
+    const isBillable = technicianCount >= 2;
+    const profile = await tx.saasBillingProfile.upsert({
+      where: { activeKey: `shop:${linkedShop.id}` },
+      create: {
+        subjectType: "shop",
+        subjectId: linkedShop.id,
+        shopId: linkedShop.id,
+        activeKey: `shop:${linkedShop.id}`,
+        billingCadence: "monthly",
+        monthlyFeeJpy: 9800,
+        trialStatus: isBillable ? "active" : "not_started",
+        trialStartedAt: isBillable ? startsAt : null,
+        trialEndsAt: isBillable ? trialEndsAt : null,
+        trialUsedAt: isBillable ? startsAt : null,
+        paymentProvider: "manual"
+      },
+      update: {
+        shopId: linkedShop.id,
+        billingCadence: "monthly",
+        monthlyFeeJpy: 9800,
+        trialStatus: isBillable ? "active" : "not_started",
+        trialStartedAt: isBillable ? startsAt : null,
+        trialEndsAt: isBillable ? trialEndsAt : null,
+        trialUsedAt: isBillable ? startsAt : null,
+        paymentProvider: "manual",
+        deletedAt: null
+      }
+    });
+
+    if (!isBillable) {
+      continue;
+    }
+
+    await tx.saasFreePeriod.upsert({
+      where: { idempotencyKey: `seed:free-period:shop:${linkedShop.id}:initial` },
+      create: {
+        billingProfileId: profile.id,
+        periodType: "initial_trial",
+        startsAt,
+        endsAt: trialEndsAt,
+        reason: "First three natural-month free trial",
+        idempotencyKey: `seed:free-period:shop:${linkedShop.id}:initial`,
+        createdById: input.ownerUserId
+      },
+      update: {
+        billingProfileId: profile.id,
+        startsAt,
+        endsAt: trialEndsAt,
+        reason: "First three natural-month free trial",
+        createdById: input.ownerUserId,
+        deletedAt: null
+      }
+    });
+    billableShopProfiles.push({
+      shopId: linkedShop.id,
+      name: linkedShop.name,
+      billingProfileId: profile.id
+    });
+  }
+
+  const invoiceAmountJpy = 9800 * (1 + billableShopProfiles.length);
+  const invoice = await tx.saasInvoice.upsert({
+    where: { idempotencyKey: `seed:invoice:merchant:${merchantAccount.id}:2026-11` },
+    create: {
+      invoiceNo: `SEED-SAAS-${merchantAccount.id}-202611`,
+      payerType: "merchant_account",
+      merchantAccountId: merchantAccount.id,
+      billingCadence: "monthly",
+      periodStartsAt: trialEndsAt,
+      periodEndsAt: invoicePeriodEndsAt,
+      dueAt: trialEndsAt,
+      amountJpy: invoiceAmountJpy,
+      status: "pending",
+      paymentProvider: "manual",
+      idempotencyKey: `seed:invoice:merchant:${merchantAccount.id}:2026-11`
+    },
+    update: {
+      merchantAccountId: merchantAccount.id,
+      periodStartsAt: trialEndsAt,
+      periodEndsAt: invoicePeriodEndsAt,
+      dueAt: trialEndsAt,
+      amountJpy: invoiceAmountJpy,
+      status: "pending",
+      paymentProvider: "manual",
+      deletedAt: null
+    }
+  });
+
+  await tx.saasInvoiceLine.upsert({
+    where: { idempotencyKey: `seed:invoice-line:${invoice.id}:merchant:${merchantAccount.id}` },
+    create: {
+      invoiceId: invoice.id,
+      subjectType: "merchant_account",
+      merchantAccountId: merchantAccount.id,
+      description: merchantAccount.name,
+      monthlyFeeJpy: 9800,
+      amountJpy: 9800,
+      periodStartsAt: trialEndsAt,
+      periodEndsAt: invoicePeriodEndsAt,
+      idempotencyKey: `seed:invoice-line:${invoice.id}:merchant:${merchantAccount.id}`
+    },
+    update: {
+      description: merchantAccount.name,
+      monthlyFeeJpy: 9800,
+      amountJpy: 9800,
+      periodStartsAt: trialEndsAt,
+      periodEndsAt: invoicePeriodEndsAt,
+      deletedAt: null
+    }
+  });
+
+  for (const billableShop of billableShopProfiles) {
+    await tx.saasInvoiceLine.upsert({
+      where: { idempotencyKey: `seed:invoice-line:${invoice.id}:shop:${billableShop.shopId}` },
+      create: {
+        invoiceId: invoice.id,
+        subjectType: "shop",
+        shopId: billableShop.shopId,
+        description: billableShop.name,
+        monthlyFeeJpy: 9800,
+        amountJpy: 9800,
+        periodStartsAt: trialEndsAt,
+        periodEndsAt: invoicePeriodEndsAt,
+        idempotencyKey: `seed:invoice-line:${invoice.id}:shop:${billableShop.shopId}`
+      },
+      update: {
+        description: billableShop.name,
+        monthlyFeeJpy: 9800,
+        amountJpy: 9800,
+        periodStartsAt: trialEndsAt,
+        periodEndsAt: invoicePeriodEndsAt,
+        deletedAt: null
+      }
+    });
+  }
+};
+
+
 const seedCoreReadData = async (
   tx: Prisma.TransactionClient,
   passwordHash: string,
@@ -1752,6 +2016,11 @@ const seedCoreReadData = async (
       highlights: technicianSeed.service.review.highlights
     });
   }
+
+  await seedMerchantSaasBillingData(tx, {
+    ownerUserId: shopOwner.id,
+    shopBySlug
+  });
 
   if (options.seedRequiredTestAccounts) {
     if (!options.testUserPasswordHash) {

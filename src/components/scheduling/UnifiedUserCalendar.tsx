@@ -18,7 +18,7 @@ import { useImStore } from "../../features/im/store";
 import { useHorizontalDragScroll } from "../../lib/useHorizontalDragScroll";
 import { cn } from "../../lib/utils";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
-import { japaneseHolidaySeeds } from "../../lib/japaneseHolidays";
+import { getJapaneseHoliday } from "../../lib/japaneseHolidays";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import { getScheduleOrderDetailRoute, type ScheduleDetailTargetType } from "../../lib/scheduleDetailTarget";
 import { getScopedProfileDetailPath } from "../../shared/profile-detail";
@@ -305,7 +305,7 @@ const parallelLaneAccents = [
 ];
 
 const neeDoSourceIds: UnifiedCalendarSourceId[] = ["user", "technician", "merchant"];
-const personalSourceIds: UnifiedCalendarSourceId[] = ["todo", "birthday", "holiday"];
+const personalSourceIds: UnifiedCalendarSourceId[] = ["todo", "birthday"];
 
 const viewOptions: Array<{ value: Exclude<UnifiedCalendarView, "agenda">; label: string }> = [
   { value: "day", label: "1日" },
@@ -337,6 +337,34 @@ const scheduleInsetClass =
 const inputClass =
   "focus-ring h-11 min-w-0 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-3.5 text-sm font-black text-[color:var(--client-text)] outline-none placeholder:text-[color:var(--client-muted)]";
 const temporalInputClass = "calendar-event-editor__temporal-input mt-1 text-center";
+
+function CalendarHolidayNameStrip({ className, compact = false, date }: { className?: string; compact?: boolean; date: string }) {
+  const holidayTitle = getJapaneseHoliday(date)?.title.trim();
+
+  if (!holidayTitle) {
+    return null;
+  }
+
+  return (
+    <div
+      aria-label={`${formatLongDate(date)} · ${holidayTitle}`}
+      className={cn(
+        "min-w-0 rounded-[7px] border border-[color:color-mix(in_srgb,var(--calendar-accent)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--calendar-accent)_74%,var(--client-elevated)_26%)] text-left font-black leading-none text-[color:var(--calendar-contrast)] shadow-[0_8px_16px_color-mix(in_srgb,var(--calendar-accent)_10%,transparent)]",
+        compact ? "h-[20px] w-full px-0.5 py-1 text-[8px]" : "h-[24px] w-full px-2 py-1.5 text-[11px]",
+        className
+      )}
+      data-calendar-holiday-name="true"
+      role="note"
+      style={{
+        "--calendar-accent": sourceConfigs.holiday.accent,
+        "--calendar-contrast": sourceConfigs.holiday.contrast
+      } as CSSProperties}
+      title={`${formatLongDate(date)} · ${holidayTitle}`}
+    >
+      <span className="block truncate">{holidayTitle}</span>
+    </div>
+  );
+}
 
 export function UnifiedCalendarSurface({ className, children, ...props }: HTMLAttributes<HTMLElement>) {
   return (
@@ -1102,6 +1130,18 @@ function matchesMerchantAppointmentStatusFilter(event: UnifiedCalendarEvent, fil
   return true;
 }
 
+function getDefaultLocalCalendarTarget(scope: UnifiedCalendarScope) {
+  if (scope === "merchant") {
+    return { calendarId: "merchant:local", calendarLabel: sourceConfigs.merchant.label };
+  }
+
+  if (scope === "technician") {
+    return { calendarId: "technician:local", calendarLabel: sourceConfigs.technician.label };
+  }
+
+  return { calendarId: "user:me", calendarLabel: sourceConfigs.user.label };
+}
+
 function getMerchantEventsForStore(
   currentStore: Store,
   arrangements: DispatchArrangement[],
@@ -1538,20 +1578,6 @@ function getMerchantSyncContactOptions(currentStore: Store | undefined, technici
     id: getTechnicianCalendarLaneId(technician.id),
     label: technician.nickname?.trim() || technician.name,
     description: "技师端"
-  }));
-}
-
-function getReferenceCalendarEvents(): UnifiedCalendarEvent[] {
-  return japaneseHolidaySeeds.map((holiday) => ({
-    id: `holiday-${holiday.date}`,
-    sourceId: "holiday",
-    date: holiday.date,
-    startTime: "00:00",
-    endTime: "23:59",
-    title: holiday.title,
-    subtitle: "日本祝日",
-    badge: "祝日",
-    readOnly: true
   }));
 }
 
@@ -2959,6 +2985,7 @@ function DayTimeline({
       data-calendar-day-timeline="true"
       ref={timelineRootRef}
     >
+      <CalendarHolidayNameStrip date={date} />
       {floatingLaneFrame.visible && hasParallelCalendars && activeCalendarLanes ? (
         <div
           className="pointer-events-none fixed z-[30]"
@@ -3527,7 +3554,6 @@ export function UnifiedCalendarMultiDayTimeline({
                   onClick={() => onSelectDate?.(date)}
                   type="button"
                 >
-                  <HolidayCornerBadge date={date} />
                   <span className={cn("block text-[10px] font-black", isToday ? "text-[color:var(--client-primary)]" : "text-[color:var(--client-muted)]")}>
                     {getWeekdayLabel(date).replace("周", "")}
                   </span>
@@ -3541,6 +3567,7 @@ export function UnifiedCalendarMultiDayTimeline({
                   >
                     {Number(date.slice(-2))}
                   </strong>
+                  <CalendarHolidayNameStrip className="mt-1" compact={dates.length > 3} date={date} />
                 </button>
               );
             })}
@@ -3586,7 +3613,7 @@ export function UnifiedCalendarMultiDayTimeline({
               {dates.map((date, dateIndex) => {
                 const dateLayout = getLayoutEvents((groupedEvents[date] ?? []).sort(sortEvents));
                 const inset = hasThreeDayLayout ? 4 : 2;
-                const dense = !hasThreeDayLayout;
+                const dense = true;
 
                 return (
                   <div
@@ -4928,6 +4955,7 @@ export function UnifiedUserCalendar({
 
   const allEvents = useMemo(() => {
     const birthdayEvents = getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
+    const localCalendarEvents = getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
     const neeDoEvents = activeScope === "user" && currentCustomer
       ? getOrderEvents(currentCustomer, formalOrders)
       : activeScope === "merchant" || activeScope === "technician"
@@ -4935,14 +4963,16 @@ export function UnifiedUserCalendar({
         : [];
 
     if (isMerchantAppointmentStatusMode) {
-      return neeDoEvents.map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
+      return [
+        ...localCalendarEvents,
+        ...neeDoEvents
+      ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
     }
 
     return [
-      ...getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator),
+      ...localCalendarEvents,
       ...neeDoEvents,
-      ...birthdayEvents,
-      ...getReferenceCalendarEvents()
+      ...birthdayEvents
     ].map((event) => resolveCalendarCreator(event, imStore.users)).sort(sortEvents);
   }, [
     activeScope,
@@ -5000,7 +5030,7 @@ export function UnifiedUserCalendar({
   }), [birthdayFilters, periodEvents, sourceVisibility]);
   const filteredVisiblePeriodEvents = useMemo(
     () => isMerchantAppointmentStatusMode
-      ? visiblePeriodEvents.filter((event) => matchesMerchantAppointmentStatusFilter(event, appointmentStatusFilter))
+      ? visiblePeriodEvents.filter((event) => event.sourceId !== "merchant" || matchesMerchantAppointmentStatusFilter(event, appointmentStatusFilter))
       : visiblePeriodEvents,
     [appointmentStatusFilter, isMerchantAppointmentStatusMode, visiblePeriodEvents]
   );
@@ -5122,7 +5152,10 @@ export function UnifiedUserCalendar({
     }
   };
 
-  const openCreate = (date = selectedDate, startTime?: string, endTime?: string, calendarId = "user:me", calendarLabel = "我的行程") => {
+  const openCreate = (date = selectedDate, startTime?: string, endTime?: string, calendarId?: string, calendarLabel?: string) => {
+    const defaultCalendarTarget = getDefaultLocalCalendarTarget(activeScope);
+    const resolvedCalendarId = calendarId ?? defaultCalendarTarget.calendarId;
+    const resolvedCalendarLabel = calendarLabel ?? defaultCalendarTarget.calendarLabel;
     const defaultStartMinute =
       startTime === undefined && date === getTodayDateKey()
         ? clampDraftMinute(new Date().getHours() * 60 + new Date().getMinutes(), 0, 24 * 60 - 60)
@@ -5130,14 +5163,14 @@ export function UnifiedUserCalendar({
     const defaultRange = normalizeDraftRange(defaultStartMinute, endTime ? timeToMinutes(endTime) : defaultStartMinute + 60);
     setEditorDraft({
       id: "",
-      calendarId,
-      calendarLabel,
+      calendarId: resolvedCalendarId,
+      calendarLabel: resolvedCalendarLabel,
       date,
       endDate: date,
       startTime: minutesToTime(defaultRange.start),
       endTime: minutesToTime(defaultRange.end),
       title: "",
-      location: calendarId === "user:me" ? "" : calendarLabel,
+      location: resolvedCalendarId === "user:me" ? "" : resolvedCalendarLabel,
       note: "",
       url: "",
       images: [],
@@ -5430,7 +5463,7 @@ export function UnifiedUserCalendar({
             date={selectedDate}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={selectedDateEvents}
-            onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}
+            onCreate={openCreate}
             onOpen={openCalendarEvent}
           />
         </div>
@@ -5440,7 +5473,7 @@ export function UnifiedUserCalendar({
             dates={view === "threeDay" ? getThreeDayDates(anchorDate) : getWeekDates(anchorDate)}
             emptySearchQuery={normalizedSearchQuery ? searchQuery.trim() : undefined}
             events={searchedVisiblePeriodEvents}
-            onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}
+            onCreate={openCreate}
             onOpen={openCalendarEvent}
             onSelectDate={openDateInDayView}
             selectedDate={selectedDate}
@@ -5461,7 +5494,7 @@ export function UnifiedUserCalendar({
         <UnifiedCalendarAgendaView
           dates={period.dates}
           events={searchedVisiblePeriodEvents}
-          onCreate={isMerchantAppointmentStatusMode ? undefined : (date) => openCreate(date)}
+          onCreate={(date) => openCreate(date)}
           onExtendFuture={() => extendAgendaDateWindow(1)}
           onExtendPast={() => extendAgendaDateWindow(-1)}
           onOpen={openCalendarEvent}
@@ -5521,16 +5554,14 @@ export function UnifiedUserCalendar({
         sourceCounts={sourceCounts}
         sourceVisibility={sourceVisibility}
       />
-      {!isMerchantAppointmentStatusMode ? (
-        <FloatingActionButton
-          ariaLabel="新增行程"
-          onClick={() => openCreate(selectedDate)}
-          storageKey={`needo.fab.schedule-create.${activeScope}`}
-          title="新增行程"
-        >
-          <AppIcon name="plus" />
-        </FloatingActionButton>
-      ) : null}
+      <FloatingActionButton
+        ariaLabel="新增行程"
+        onClick={() => openCreate(selectedDate)}
+        storageKey={`needo.fab.schedule-create.${activeScope}`}
+        title="新增行程"
+      >
+        <AppIcon name="plus" />
+      </FloatingActionButton>
     </UnifiedCalendarSurface>
   );
 }

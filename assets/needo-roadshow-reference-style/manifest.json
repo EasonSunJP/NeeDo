@@ -1,0 +1,92 @@
+[
+  {
+    "id": "cover",
+    "file": "ecosystem-cover.png",
+    "sha256": "e6897232379d4268b53fdc28435c145255adda09a6e96480cdf8062af11f0cab",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [1, 34],
+    "prompt": "Warm ivory 16:9 NeeDo local-services ecosystem; white smartphone, neutral circular platform hub, miniature Japanese city, customer, shop, service professional and dashboard connected by mint paths; visual weight on the right and clean title space on the left; no cartoon brand character, text, logo, watermark, pseudo-text, dark background or neon."
+  },
+  {
+    "id": "market",
+    "file": "market-network.png",
+    "sha256": "91e6fc612088575059c920f7e49044aabf2c1eefa4dd5c58820388ad3fdb87f9",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [2, 3, 10],
+    "prompt": "Warm ivory 16:9 Japanese local-services market network; smartphone with four miniature service scenes linked by soft mint paths and location pins; neutral network hub; left-side title safe area; no cartoon brand character, text, letters, numbers, logos, watermarks, blue technology palette or dark background."
+  },
+  {
+    "id": "supply",
+    "file": "supply-awakening.png",
+    "sha256": "a39de3825ad24dcf3fa223812fc61f8cc04de36e4a8b52322f2a5ff883f88771",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [3, 8],
+    "prompt": "Warm ivory supply-side opportunity scene; neutral service-platform sculpture where roads open toward Tokyo; wordless 3D symbols for demand, flexible workers, broken intermediary chain and verified digital opportunity; left title safe area; no cartoon brand character, text or logos."
+  },
+  {
+    "id": "coordination",
+    "file": "five-party-coordination.png",
+    "sha256": "a3f786bf9dc76d42af8b1cb2803442f28df9293e2182833a2ae67612baf500c5",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [5, 6],
+    "prompt": "Warm ivory five-party coordination network; central neutral platform hub connected to local shop, intermediary, service professional, customer and hotel venue; one booking token and a transparent itemized-order panel; upper-left title safe area; no cartoon brand character, readable text, logo or watermark."
+  },
+  {
+    "id": "scheduling",
+    "file": "ai-scheduling.png",
+    "sha256": "31ec2f5c713372915dbaff89e469ce8a659d666080617a2ca01418e9c5820d38",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [12, 13],
+    "prompt": "Warm ivory 3D scheduling world; neutral AI scheduling console, translucent weekly grid, movable service-professional capsules, rerouted conflict and three resource pools; left title safe area; no cartoon brand character, text, logos, dark background or cyberpunk UI."
+  },
+  {
+    "id": "dualEngine",
+    "file": "dual-engine.png",
+    "sha256": "9dd64dc92a9b944aa00853b27d704468cc32dd3a5300085c1f8f27ebc333211c",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [11, 16],
+    "prompt": "Warm ivory dual-transaction engine; neutral data hub between a green planned-booking orbit and restrained orange urgent-request orbit, both entering a shared transparent ledger; no cartoon brand character, text, numbers, logos, dark background or neon."
+  },
+  {
+    "id": "ordering",
+    "file": "transparent-ordering.png",
+    "sha256": "38b19c27d57d292a66b09a46583418d81c39ff5545cce404685c502d1eb8d430",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [15],
+    "prompt": "Warm ivory hospitality ordering scene; customer, wordless selectable service tiles, transparent running-total stack, explicit confirmation terminal, itemized receipt with blank lines and checkmarks; no cartoon brand character, readable text, prices, logos, sexual content or nightclub styling."
+  },
+  {
+    "id": "cps",
+    "file": "cps-loop.png",
+    "sha256": "5eab3e5408241c0a7746e8e4939ee83dc840ba2454b0d0a3d05c6231112b83f1",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [16, 17],
+    "prompt": "Warm ivory CPS growth loop; creator, service, share link, booking, verified completion and commission settlement nodes around a neutral attribution hub, with one muted-orange risk gate; left title safe area; no cartoon brand character, text, logos or social-media marks."
+  },
+  {
+    "id": "roadmap",
+    "file": "tokyo-roadmap.png",
+    "sha256": "6099d72c6881a9c7784433c320334d531ce65ecf250f07fe36a9a6691ced5c05",
+    "createdAt": "2026-08-23",
+    "generator": "OpenAI built-in image generation",
+    "mascotRemoved": true,
+    "approvedSlides": [20, 25, 32],
+    "prompt": "Warm ivory miniature Tokyo city with a rising mint road and six blank milestone platforms, product launch, membership, inventory, venue and creator-network scenes, neutral upward-arrow milestone at the final platform; no cartoon brand character, text, letters, numbers, logos or dark background."
+  }
+]

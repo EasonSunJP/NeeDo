@@ -118,6 +118,29 @@ describe("BookingService state machine", () => {
     });
   });
 
+  it("rejects only new bookings for a suspended shop and keeps existing order transitions available", async () => {
+    const repository = createRepository(makeOrder("confirmed"));
+    repository.findScheduleSlotShopId = jest.fn(async () => 1);
+    repository.isShopSuspended = jest.fn(async () => true);
+    const service = new BookingService(repository);
+
+    await expect(
+      service.createBooking(actor, {
+        serviceId: 1,
+        scheduleSlotId: 11,
+        fulfillmentMode: "store"
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.ENTITY_SUSPENDED,
+      message: "error.entity.suspended"
+    });
+    expect(repository.createBooking).not.toHaveBeenCalled();
+
+    await expect(service.transitionOrder(actor, 1, "start")).resolves.toMatchObject({
+      status: "inService"
+    });
+  });
+
   it("passes technician service booking requests to the repository", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);

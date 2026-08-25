@@ -19,6 +19,57 @@ const payrollCsvResponse = (description: string) => ({
   }
 });
 
+const jsonDataResponse = (description: string, dataSchema: Record<string, unknown>) => ({
+  description,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: ["code", "message", "data"],
+        properties: {
+          code: { type: "integer", enum: [0] },
+          message: { type: "string", enum: ["success"] },
+          data: dataSchema
+        }
+      }
+    }
+  }
+});
+
+const idPathParameter = (name = "id") => ({
+  name,
+  in: "path",
+  required: true,
+  schema: { type: "integer", minimum: 1 }
+});
+
+const billingProfileRequestBody = {
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        required: [
+          "billingCadence",
+          "monthlyFeeJpy",
+          "cadenceLocked",
+          "amountLocked",
+          "version"
+        ],
+        properties: {
+          billingCadence: { type: "string", enum: ["monthly", "annual", "free"] },
+          monthlyFeeJpy: { type: "integer", minimum: 0, maximum: 10000000 },
+          cadenceLocked: { type: "boolean" },
+          amountLocked: { type: "boolean" },
+          paymentProvider: { type: "string", enum: ["manual", "stripe"] },
+          version: { type: "integer", minimum: 1 }
+        }
+      }
+    }
+  }
+};
+
+
 export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
   openapi: "3.1.0",
   info: {
@@ -39,6 +90,179 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       }
     },
     schemas: {
+      SaasFreeDuration: {
+        type: ["object", "null"],
+        required: ["years", "months", "days", "totalDays"],
+        properties: {
+          years: { type: "integer", minimum: 0 },
+          months: { type: "integer", minimum: 0, maximum: 11 },
+          days: { type: "integer", minimum: 0 },
+          totalDays: { type: "integer", minimum: 0 }
+        }
+      },
+      SaasBillingCard: {
+        type: "object",
+        required: [
+          "subjectType",
+          "subjectId",
+          "cadence",
+          "monthlyFeeJpy",
+          "annualFeeJpy",
+          "cadenceLocked",
+          "amountLocked",
+          "state",
+          "trialStatus",
+          "paymentProvider",
+          "extensionCount",
+          "version"
+        ],
+        properties: {
+          subjectType: { type: "string", enum: ["merchant_account", "shop"] },
+          subjectId: { type: "integer", minimum: 1 },
+          cadence: { type: "string", enum: ["monthly", "annual", "free"] },
+          monthlyFeeJpy: { type: "integer", minimum: 0 },
+          annualFeeJpy: { type: "integer", minimum: 0 },
+          cadenceLocked: { type: "boolean" },
+          amountLocked: { type: "boolean" },
+          state: { type: "string", enum: ["trial", "paid", "free", "overdue"] },
+          trialStatus: {
+            type: "string",
+            enum: ["not_started", "active", "completed", "interrupted", "not_applicable"]
+          },
+          trialStartedAt: { type: ["string", "null"], format: "date-time" },
+          trialEndsAt: { type: ["string", "null"], format: "date-time" },
+          paidThrough: { type: ["string", "null"], format: "date-time" },
+          paymentProvider: { type: "string", enum: ["manual", "stripe"] },
+          freeDuration: { $ref: "#/components/schemas/SaasFreeDuration" },
+          extensionCount: { type: "integer", minimum: 0, maximum: 3 },
+          version: { type: "integer", minimum: 0 }
+        }
+      },
+      ShopBillingCard: {
+        type: "object",
+        required: [
+          "id",
+          "type",
+          "name",
+          "city",
+          "address",
+          "status",
+          "technicianCount",
+          "billing",
+          "createdAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          type: { type: "string", enum: ["single_shop", "shop"] },
+          name: { type: "string" },
+          city: { type: "string" },
+          address: { type: "string" },
+          phone: { type: ["string", "null"] },
+          status: { type: "string" },
+          ownerEmail: { type: ["string", "null"], format: "email" },
+          coverUrl: { type: ["string", "null"] },
+          ratingAverage: { type: "number" },
+          reviewCount: { type: "integer" },
+          technicianCount: { type: "integer", minimum: 0 },
+          billing: { $ref: "#/components/schemas/SaasBillingCard" },
+          suspension: { type: ["object", "null"] },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      MerchantAccountCard: {
+        type: "object",
+        required: [
+          "id",
+          "type",
+          "code",
+          "name",
+          "status",
+          "paymentResponsibility",
+          "billing",
+          "consolidatedMonthlyTotalJpy",
+          "shops",
+          "createdAt"
+        ],
+        properties: {
+          id: { type: "integer" },
+          type: { type: "string", enum: ["merchant_group"] },
+          code: { type: "string" },
+          name: { type: "string" },
+          status: { type: "string" },
+          paymentResponsibility: {
+            type: "string",
+            enum: ["group_consolidated", "shops_individual"]
+          },
+          billing: { $ref: "#/components/schemas/SaasBillingCard" },
+          suspension: { type: ["object", "null"] },
+          consolidatedMonthlyTotalJpy: { type: "integer", minimum: 0 },
+          shops: { type: "array", items: { $ref: "#/components/schemas/ShopBillingCard" } },
+          createdAt: { type: "string", format: "date-time" }
+        }
+      },
+      SaasInvoice: {
+        type: "object",
+        required: [
+          "id",
+          "invoiceNo",
+          "payerType",
+          "payerId",
+          "billingCadence",
+          "periodStartsAt",
+          "periodEndsAt",
+          "dueAt",
+          "amountJpy",
+          "status",
+          "paymentProvider",
+          "lines",
+          "payments"
+        ],
+        properties: {
+          id: { type: "integer" },
+          invoiceNo: { type: "string" },
+          payerType: { type: "string", enum: ["merchant_account", "shop"] },
+          payerId: { type: "integer" },
+          billingCadence: { type: "string", enum: ["monthly", "annual", "free"] },
+          periodStartsAt: { type: "string", format: "date-time" },
+          periodEndsAt: { type: "string", format: "date-time" },
+          dueAt: { type: "string", format: "date-time" },
+          amountJpy: { type: "integer", minimum: 0 },
+          status: { type: "string" },
+          paymentProvider: { type: "string", enum: ["manual", "stripe"] },
+          lines: { type: "array", items: { type: "object" } },
+          payments: { type: "array", items: { type: "object" } }
+        }
+      },
+      EntitySuspensionResult: {
+        type: "object",
+        required: [
+          "id",
+          "subjectType",
+          "subjectId",
+          "scope",
+          "reasonCodes",
+          "note",
+          "startsAt",
+          "affectedShopIds",
+          "detachedShopIds",
+          "promotedAdminUserIds"
+        ],
+        properties: {
+          id: { type: "integer" },
+          subjectType: { type: "string", enum: ["merchant_account", "shop"] },
+          subjectId: { type: "integer" },
+          scope: {
+            type: "string",
+            enum: ["subject_only", "merchant_and_shops", "merchant_detach_shops"]
+          },
+          reasonCodes: { type: "array", items: { type: "string" } },
+          note: { type: "string" },
+          startsAt: { type: "string", format: "date-time" },
+          affectedShopIds: { type: "array", items: { type: "integer" } },
+          detachedShopIds: { type: "array", items: { type: "integer" } },
+          promotedAdminUserIds: { type: "array", items: { type: "integer" } }
+        }
+      },
       ApiError: {
         type: "object",
         required: ["code", "message", "data"],
@@ -1646,6 +1870,490 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    [`${config.API_PREFIX}/backoffice/merchant-accounts`]: {
+      get: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Paginated merchant groups and standalone shop billing cards",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "status", in: "query", schema: { type: "string", maxLength: 40 } },
+          { name: "query", in: "query", schema: { type: "string", maxLength: 160 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated account cards", {
+            type: "object",
+            required: ["list", "total", "page", "page_size"],
+            properties: {
+              list: {
+                type: "array",
+                items: {
+                  oneOf: [
+                    { $ref: "#/components/schemas/MerchantAccountCard" },
+                    { $ref: "#/components/schemas/ShopBillingCard" }
+                  ]
+                }
+              },
+              total: { type: "integer" },
+              page: { type: "integer" },
+              page_size: { type: "integer" }
+            }
+          }),
+          "403": { description: "Missing merchant account list permission" }
+        }
+      },
+      post: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Create an explicit merchant group account and its only initial trial",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["code", "name"],
+                properties: {
+                  code: { type: "string", pattern: "^[a-z0-9][a-z0-9-]*$", maxLength: 100 },
+                  name: { type: "string", minLength: 1, maxLength: 160 },
+                  ownerUserId: { type: ["integer", "null"], minimum: 1 },
+                  paymentResponsibility: {
+                    type: "string",
+                    enum: ["group_consolidated", "shops_individual"],
+                    default: "group_consolidated"
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created merchant account", {
+            $ref: "#/components/schemas/MerchantAccountCard"
+          }),
+          "403": { description: "Missing merchant account management permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/merchant-accounts/{id}`]: {
+      get: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Merchant group billing detail with nested shops",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        responses: {
+          "200": jsonDataResponse("Merchant account detail", {
+            $ref: "#/components/schemas/MerchantAccountCard"
+          }),
+          "404": { description: "Merchant account not found" }
+        }
+      },
+      delete: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Soft-delete a merchant group with an explicit child-shop strategy",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["strategy"],
+                properties: {
+                  strategy: {
+                    type: "string",
+                    enum: ["detach_shops", "delete_eligible_shops"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Merchant group soft-deleted", {
+            type: "object",
+            required: ["deleted"],
+            properties: { deleted: { type: "boolean", enum: [true] } }
+          }),
+          "409": { description: "A child shop has active orders or no promotable admin" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/merchant-accounts/{id}/billing-profile`]: {
+      patch: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Update and optionally lock merchant cadence and fee",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: billingProfileRequestBody,
+        responses: {
+          "200": jsonDataResponse("Updated billing profile", {
+            $ref: "#/components/schemas/SaasBillingCard"
+          }),
+          "409": { description: "Optimistic billing version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/merchant-accounts/{id}/payment-responsibility`]: {
+      patch: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Set consolidated or per-shop responsibility for the next unpaid cycle",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["paymentResponsibility"],
+                properties: {
+                  paymentResponsibility: {
+                    type: "string",
+                    enum: ["group_consolidated", "shops_individual"]
+                  },
+                  effectiveFrom: { type: "string", format: "date-time" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated merchant account", {
+            $ref: "#/components/schemas/MerchantAccountCard"
+          })
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/merchant-accounts/{id}/shops`]: {
+      post: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Link an existing standalone shop to a merchant group",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["shopId"],
+                properties: {
+                  shopId: { type: "integer", minimum: 1 },
+                  startsAt: { type: "string", format: "date-time" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Merchant account with linked shop", {
+            $ref: "#/components/schemas/MerchantAccountCard"
+          }),
+          "409": { description: "Shop is already linked or entity is missing" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/merchant-accounts/{id}/shops/{shopId}`]: {
+      delete: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "End a merchant-shop membership without deleting the shop",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter(), idPathParameter("shopId")],
+        responses: {
+          "200": jsonDataResponse("Merchant account after unlink", {
+            $ref: "#/components/schemas/MerchantAccountCard"
+          }),
+          "404": { description: "Active membership not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/shops/{id}/billing-profile`]: {
+      patch: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Update and optionally lock a shop cadence and fee",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: billingProfileRequestBody,
+        responses: {
+          "200": jsonDataResponse("Updated shop billing profile", {
+            $ref: "#/components/schemas/SaasBillingCard"
+          }),
+          "409": { description: "Optimistic billing version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/trial/extensions`]: {
+      post: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Add one of at most three administrator trial extensions",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "subjectType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["merchant_account", "shop"] }
+          },
+          idPathParameter("subjectId")
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason", "version"],
+                properties: {
+                  quickMonths: { type: "integer", enum: [1, 2, 3] },
+                  days: { type: "integer", minimum: 1, maximum: 1095 },
+                  paidFrom: { type: "string", format: "date-time" },
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  version: { type: "integer", minimum: 1 }
+                },
+                anyOf: [
+                  { required: ["quickMonths"] },
+                  { required: ["days"] },
+                  { required: ["paidFrom"] }
+                ]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Extended trial profile", {
+            $ref: "#/components/schemas/SaasBillingCard"
+          }),
+          "409": { description: "Trial inactive, extension limit, or version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/trial/interrupt`]: {
+      post: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Permanently interrupt the only trial",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "subjectType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["merchant_account", "shop"] }
+          },
+          idPathParameter("subjectId")
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason", "version"],
+                properties: {
+                  reason: { type: "string", minLength: 1, maxLength: 500 },
+                  version: { type: "integer", minimum: 1 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Interrupted trial profile", {
+            $ref: "#/components/schemas/SaasBillingCard"
+          }),
+          "409": { description: "Trial inactive or version conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/billing-subjects/{subjectType}/{subjectId}/free-periods`]: {
+      get: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Paginated authoritative free-period history",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "subjectType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["merchant_account", "shop"] }
+          },
+          idPathParameter("subjectId"),
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: { "200": { description: "Paginated free-period history" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/saas-invoices`]: {
+      get: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Paginated SaaS invoices and line items",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "status", in: "query", schema: { type: "string", maxLength: 40 } },
+          {
+            name: "payerType",
+            in: "query",
+            schema: { type: "string", enum: ["merchant_account", "shop"] }
+          },
+          { name: "from", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          }
+        ],
+        responses: { "200": { description: "Paginated SaaS invoices" } }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/saas-invoices/{id}`]: {
+      get: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "SaaS invoice with line items and payment history",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        responses: {
+          "200": jsonDataResponse("SaaS invoice detail", {
+            $ref: "#/components/schemas/SaasInvoice"
+          }),
+          "404": { description: "Invoice not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/saas-invoices/{id}/manual-payments`]: {
+      post: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Review an idempotent manual payment through the provider adapter",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter()],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["amountJpy", "receivedAt", "reference", "idempotencyKey"],
+                properties: {
+                  amountJpy: { type: "integer", minimum: 1, maximum: 100000000 },
+                  receivedAt: { type: "string", format: "date-time" },
+                  reference: { type: "string", minLength: 1, maxLength: 191 },
+                  idempotencyKey: { type: "string", minLength: 8, maxLength: 191 },
+                  coverageStartsAt: { type: "string", format: "date-time" },
+                  coverageEndsAt: { type: "string", format: "date-time" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Paid invoice", { $ref: "#/components/schemas/SaasInvoice" }),
+          "409": { description: "Payment amount, state, reference, or idempotency conflict" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/entities/{subjectType}/{subjectId}/suspensions`]: {
+      post: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Manually suspend a shop or merchant group without disabling login",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "subjectType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["merchant_account", "shop"] }
+          },
+          idPathParameter("subjectId")
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reasonCodes", "note", "scope"],
+                properties: {
+                  reasonCodes: {
+                    type: "array",
+                    minItems: 1,
+                    uniqueItems: true,
+                    items: {
+                      type: "string",
+                      enum: [
+                        "overdue_payment",
+                        "qualification_or_fraud",
+                        "serious_service_violation",
+                        "customer_complaints",
+                        "safety_risk",
+                        "account_abuse",
+                        "merchant_requested_closure",
+                        "other"
+                      ]
+                    }
+                  },
+                  note: { type: "string", minLength: 1, maxLength: 1000 },
+                  scope: {
+                    type: "string",
+                    enum: ["subject_only", "merchant_and_shops", "merchant_detach_shops"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Manual suspension result", {
+            $ref: "#/components/schemas/EntitySuspensionResult"
+          }),
+          "409": { description: "Entity already suspended or group detach cannot promote admin" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/entities/{subjectType}/{subjectId}/suspensions/{suspensionId}/release`]: {
+      post: {
+        tags: ["Merchant SaaS Billing"],
+        summary: "Release a manual suspension without restoring previously blocked slots",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "subjectType",
+            in: "path",
+            required: true,
+            schema: { type: "string", enum: ["merchant_account", "shop"] }
+          },
+          idPathParameter("subjectId"),
+          idPathParameter("suspensionId")
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["reason"],
+                properties: { reason: { type: "string", minLength: 1, maxLength: 500 } }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Suspension released; blocked availability stays blocked" },
+          "404": { description: "Active suspension not found" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/health`]: {
       get: {
         tags: ["System"],

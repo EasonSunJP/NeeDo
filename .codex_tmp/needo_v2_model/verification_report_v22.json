@@ -1,0 +1,164 @@
+{
+  "jp": {
+    "file": "/Users/eason/Documents/New project/outputs/01a01893-cba2-7063-ab00-e9f8e301040a/NeeDo_3カ年財務モデル_JP_V2.2_2026-08-22_日本語版.xlsx",
+    "bytes": 144379,
+    "sheets": 9,
+    "checks": 80,
+    "outcomes": {
+      "annualOrdersA": [
+        112761,
+        406768,
+        820378.0000000001
+      ],
+      "annualOrdersB": [
+        888354.0000000001,
+        2978250,
+        6386369.999999998
+      ],
+      "eKycActiveMonthsA": [
+        1,
+        12,
+        12
+      ],
+      "eKycActiveMonthsB": [
+        3,
+        12,
+        12
+      ],
+      "unmetForeignOrdersA": [
+        0,
+        0,
+        0
+      ],
+      "unmetForeignOrdersB": [
+        0,
+        0,
+        0
+      ],
+      "annualRevenueA": [
+        51.91624934700131,
+        274.941373610306,
+        643.2145965707502
+      ],
+      "annualRevenueB": [
+        267.70466010971296,
+        1541.4649677175505,
+        4162.506237246586
+      ],
+      "annualOperatingProfitA": [
+        -54.106359559871805,
+        78.03449334707734,
+        247.3178732952217
+      ],
+      "annualOperatingProfitB": [
+        -83.3601714230975,
+        646.2021605786001,
+        2351.720743857275
+      ],
+      "annualMarginA": [
+        -1.0421854475316983,
+        0.2838223011778547,
+        0.3845028931460482
+      ],
+      "annualMarginB": [
+        -0.3113885704826137,
+        0.41921300458448474,
+        0.5649771098992733
+      ],
+      "serverM01M12A": [
+        273334,
+        1202053
+      ],
+      "serverM01M12B": [
+        392642.8,
+        4574827.6
+      ],
+      "rndY1CostA": 16800000,
+      "rndY1CostB": 25200000,
+      "firstEkycMonthA": 12,
+      "firstEkycMonthB": 10
+    },
+    "formulaErrorMatches": 0
+  },
+  "cn": {
+    "file": "/Users/eason/Documents/New project/outputs/01a01893-cba2-7063-ab00-e9f8e301040a/NeeDo_三年财务模型_CN_V2.2_2026-08-22.xlsx",
+    "bytes": 142539,
+    "sheets": 9,
+    "checks": 80,
+    "outcomes": {
+      "annualOrdersA": [
+        112761,
+        406768,
+        820378.0000000001
+      ],
+      "annualOrdersB": [
+        888354.0000000001,
+        2978250,
+        6386369.999999998
+      ],
+      "eKycActiveMonthsA": [
+        1,
+        12,
+        12
+      ],
+      "eKycActiveMonthsB": [
+        3,
+        12,
+        12
+      ],
+      "unmetForeignOrdersA": [
+        0,
+        0,
+        0
+      ],
+      "unmetForeignOrdersB": [
+        0,
+        0,
+        0
+      ],
+      "annualRevenueA": [
+        51.91624934700131,
+        274.941373610306,
+        643.2145965707502
+      ],
+      "annualRevenueB": [
+        267.70466010971296,
+        1541.4649677175505,
+        4162.506237246586
+      ],
+      "annualOperatingProfitA": [
+        -54.106359559871805,
+        78.03449334707734,
+        247.3178732952217
+      ],
+      "annualOperatingProfitB": [
+        -83.3601714230975,
+        646.2021605786001,
+        2351.720743857275
+      ],
+      "annualMarginA": [
+        -1.0421854475316983,
+        0.2838223011778547,
+        0.3845028931460482
+      ],
+      "annualMarginB": [
+        -0.3113885704826137,
+        0.41921300458448474,
+        0.5649771098992733
+      ],
+      "serverM01M12A": [
+        273334,
+        1202053
+      ],
+      "serverM01M12B": [
+        392642.8,
+        4574827.6
+      ],
+      "rndY1CostA": 16800000,
+      "rndY1CostB": 25200000,
+      "firstEkycMonthA": 12,
+      "firstEkycMonthB": 10
+    },
+    "formulaErrorMatches": 0
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "jp": {
+    "file": "/Users/eason/Documents/New project/outputs/01a01893-cba2-7063-ab00-e9f8e301040a/NeeDo_3カ年財務モデル_JP_V2.1_2026-08-22_日本語版.xlsx",
+    "bytes": 128432,
+    "sheets": 9,
+    "status": "PASS",
+    "detailedChecks": 39,
+    "assumptions": {
+      "monthlyStoreFee": 9800,
+      "minimumContractMonths": 6,
+      "successFeePerSalesReferralStore": 30000,
+      "serverFixedPerMonth": 250000,
+      "serverPerOrder": 15,
+      "serverPerActiveAccountMonth": 10,
+      "developmentCostM01Only": 20000000,
+      "scenarioBStoreTargets": [
+        1200,
+        3000,
+        6000
+      ]
+    },
+    "outcomes": {
+      "scenarioAEkycStartMonth": 11,
+      "scenarioBEkycStartMonth": 10,
+      "scenarioAServerM01": 307588,
+      "scenarioAServerM12": 1156381,
+      "scenarioBServerM01": 533149.9,
+      "scenarioBServerM12": 3844085.2,
+      "scenarioAOperatingProfit": [
+        -38.76127745260078,
+        102.50700596375985,
+        283.0115325947023
+      ],
+      "scenarioBOperatingProfit": [
+        -60.57577176556068,
+        653.6471765339004,
+        2319.728939674275
+      ]
+    },
+    "formulaErrorMatches": 0
+  },
+  "cn": {
+    "file": "/Users/eason/Documents/New project/outputs/01a01893-cba2-7063-ab00-e9f8e301040a/NeeDo_三年财务模型_CN_V2.1_2026-08-22.xlsx",
+    "bytes": 126590,
+    "sheets": 9,
+    "status": "PASS",
+    "detailedChecks": 39,
+    "assumptions": {
+      "monthlyStoreFee": 9800,
+      "minimumContractMonths": 6,
+      "successFeePerSalesReferralStore": 30000,
+      "serverFixedPerMonth": 250000,
+      "serverPerOrder": 15,
+      "serverPerActiveAccountMonth": 10,
+      "developmentCostM01Only": 20000000,
+      "scenarioBStoreTargets": [
+        1200,
+        3000,
+        6000
+      ]
+    },
+    "outcomes": {
+      "scenarioAEkycStartMonth": 11,
+      "scenarioBEkycStartMonth": 10,
+      "scenarioAServerM01": 307588,
+      "scenarioAServerM12": 1156381,
+      "scenarioBServerM01": 533149.9,
+      "scenarioBServerM12": 3844085.2,
+      "scenarioAOperatingProfit": [
+        -38.76127745260078,
+        102.50700596375985,
+        283.0115325947023
+      ],
+      "scenarioBOperatingProfit": [
+        -60.57577176556068,
+        653.6471765339004,
+        2319.728939674275
+      ]
+    },
+    "formulaErrorMatches": 0
+  }
+}

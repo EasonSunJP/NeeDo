@@ -1,0 +1,30 @@
+{
+  "jp": {
+    "file": "/Users/eason/Documents/New project/outputs/01a01893-cba2-7063-ab00-e9f8e301040a/NeeDo_3カ年財務モデル_JP_V2.0_2026-08-21_日本語版.xlsx",
+    "bytes": 118466,
+    "sheets": 9,
+    "status": "PASS",
+    "detailedChecks": 23,
+    "assumptions": {
+      "monthlyStoreFee": 9800,
+      "minimumContractMonths": 6,
+      "successFeePerNewStore": 30000,
+      "ekycEarliestMonth": 7
+    },
+    "formulaErrorMatches": 0
+  },
+  "cn": {
+    "file": "/Users/eason/Documents/New project/outputs/01a01893-cba2-7063-ab00-e9f8e301040a/NeeDo_三年财务模型_CN_V2.0_2026-08-21.xlsx",
+    "bytes": 116704,
+    "sheets": 9,
+    "status": "PASS",
+    "detailedChecks": 23,
+    "assumptions": {
+      "monthlyStoreFee": 9800,
+      "minimumContractMonths": 6,
+      "successFeePerNewStore": 30000,
+      "ekycEarliestMonth": 7
+    },
+    "formulaErrorMatches": 0
+  }
+}

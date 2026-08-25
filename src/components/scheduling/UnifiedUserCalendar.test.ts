@@ -95,7 +95,31 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(source).toContain("onCreate(draftRange.date, minutesToTime(draftRange.start), minutesToTime(draftRange.end));");
     expect(source).toContain('title="新建行程"');
     expect(source).toContain("compact={useCompactDraftAction}");
-    expect(source).toContain("onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}");
+    expect(source).toContain("onCreate={openCreate}");
+    expect(source).not.toContain("onCreate={isMerchantAppointmentStatusMode ? undefined : openCreate}");
+  });
+
+  it("keeps merchant appointment status mode able to create local itinerary items", () => {
+    const allEventsSource = source.slice(
+      source.indexOf("const allEvents = useMemo"),
+      source.indexOf("const periodEvents = useMemo")
+    );
+    const filterSource = source.slice(
+      source.indexOf("const filteredVisiblePeriodEvents = useMemo"),
+      source.indexOf("const searchedVisiblePeriodEvents = useMemo")
+    );
+    const floatingActionSource = source.slice(
+      source.indexOf("<FloatingActionButton"),
+      source.indexOf("</UnifiedCalendarSurface>")
+    );
+
+    expect(allEventsSource).toContain("const localCalendarEvents = getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);");
+    expect(allEventsSource).toContain("return [");
+    expect(allEventsSource).toContain("...localCalendarEvents,");
+    expect(allEventsSource).toContain("...neeDoEvents");
+    expect(filterSource).toContain('event.sourceId !== "merchant" || matchesMerchantAppointmentStatusFilter(event, appointmentStatusFilter)');
+    expect(floatingActionSource).toContain("<FloatingActionButton");
+    expect(floatingActionSource).not.toContain("!isMerchantAppointmentStatusMode");
   });
 
   it("centers day, three-day, and week timelines on the first timed event", () => {
@@ -127,9 +151,37 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(source).toContain("letterSpacing: 0");
     expect(source).toContain('textOrientation: "upright"');
     expect(source).toContain('writingMode: "vertical-rl"');
+    expect(source).toContain("const dense = true;");
+    expect(source).not.toContain("const dense = !hasThreeDayLayout;");
     expect(source).toContain('dense ? "grid place-items-center px-0.5 py-1 text-center text-[8px] leading-[9px]"');
     expect(source).toContain('className="focus-ring block h-[14px] w-full truncate');
     expect(source).not.toContain("break-words");
+  });
+
+  it("keeps Japanese holiday names as header-only annotations instead of itinerary events", () => {
+    const daySource = source.slice(
+      source.indexOf("function DayTimeline"),
+      source.indexOf("export function UnifiedCalendarDayTimeline")
+    );
+    const multiDaySource = source.slice(
+      source.indexOf("export function UnifiedCalendarMultiDayTimeline"),
+      source.indexOf("type CalendarMonthGridProps")
+    );
+    const monthGridSource = source.slice(
+      source.indexOf("export function UnifiedCalendarMonthGrid"),
+      source.indexOf("type EventParticipantStackProps")
+    );
+
+    expect(source).toContain("function CalendarHolidayNameStrip");
+    expect(source).toContain('compact ? "h-[20px] w-full px-0.5 py-1 text-[8px]"');
+    expect(daySource).toContain("<CalendarHolidayNameStrip date={date} />");
+    expect(multiDaySource).toContain('<CalendarHolidayNameStrip className="mt-1" compact={dates.length > 3} date={date} />');
+    expect(multiDaySource).not.toContain("<HolidayCornerBadge date={date} />");
+    expect(monthGridSource).toContain("<HolidayCornerBadge date={date} />");
+    expect(monthGridSource).not.toContain("<CalendarHolidayNameStrip");
+    expect(source).not.toContain("function getReferenceCalendarEvents");
+    expect(source).not.toContain("japaneseHolidaySeeds.map");
+    expect(source).not.toContain("...getReferenceCalendarEvents()");
   });
 
   it("keeps the customer calendar focused on customer appointments instead of staff shift blocks", () => {

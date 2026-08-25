@@ -218,6 +218,13 @@ model User {
   followers                 Follow[]                  @relation("FollowFollowing")
   receivedNotifications     Notification[]            @relation("NotificationRecipient")
   actedNotifications        Notification[]            @relation("NotificationActor")
+  ownedMerchantAccounts      MerchantAccount[]          @relation("MerchantAccountOwner")
+  createdMerchantMemberships MerchantShopMembership[]   @relation("MerchantMembershipCreatedBy")
+  removedMerchantMemberships MerchantShopMembership[]   @relation("MerchantMembershipRemovedBy")
+  createdSaasFreePeriods     SaasFreePeriod[]           @relation("SaasFreePeriodCreatedBy")
+  reviewedSaasPayments       SaasPayment[]              @relation("SaasPaymentReviewedBy")
+  createdEntitySuspensions   EntitySuspension[]         @relation("EntitySuspensionCreatedBy")
+  releasedEntitySuspensions  EntitySuspension[]         @relation("EntitySuspensionReleasedBy")
 
   @@index([email])
   @@index([phone])
@@ -289,6 +296,11 @@ model Shop {
   payslips            Payslip[]
   payoutRecords       PayoutRecord[]
   payrollAdjustments  PayrollAdjustmentRequest[]
+  merchantMemberships MerchantShopMembership[]
+  saasBillingProfiles SaasBillingProfile[]
+  payerSaasInvoices   SaasInvoice[]
+  saasInvoiceLines    SaasInvoiceLine[]
+  entitySuspensions   EntitySuspension[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -1673,4 +1685,246 @@ model PayoutRecord {
   @@index([createdById])
   @@index([deletedAt])
   @@map("payout_records")
+}
+model MerchantAccount {
+  id                    Int       @id @default(autoincrement())
+  code                  String    @unique @db.VarChar(100)
+  ownerUserId           Int?      @map("owner_user_id")
+  name                  String    @db.VarChar(160)
+  status                String    @default("active") @db.VarChar(40)
+  paymentResponsibility String    @default("group_consolidated") @map("payment_responsibility") @db.VarChar(40)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  owner             User?                    @relation("MerchantAccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  memberships       MerchantShopMembership[]
+  billingProfiles   SaasBillingProfile[]
+  payerInvoices     SaasInvoice[]
+  invoiceLines      SaasInvoiceLine[]
+  entitySuspensions EntitySuspension[]
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@index([paymentResponsibility])
+  @@index([deletedAt])
+  @@map("merchant_accounts")
+}
+
+model MerchantShopMembership {
+  id                Int       @id @default(autoincrement())
+  merchantAccountId Int       @map("merchant_account_id")
+  shopId            Int       @map("shop_id")
+  activeKey         String?   @unique @map("active_key") @db.VarChar(120)
+  startsAt          DateTime  @map("starts_at")
+  endsAt            DateTime? @map("ends_at")
+  removedReason     String?   @map("removed_reason") @db.VarChar(500)
+  createdById       Int?      @map("created_by_id")
+  removedById       Int?      @map("removed_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  merchantAccount MerchantAccount @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict)
+  shop            Shop            @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy       User?           @relation("MerchantMembershipCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  removedBy       User?           @relation("MerchantMembershipRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+
+  @@index([merchantAccountId])
+  @@index([shopId])
+  @@index([startsAt, endsAt])
+  @@index([createdById])
+  @@index([removedById])
+  @@index([deletedAt])
+  @@map("merchant_shop_memberships")
+}
+
+model SaasBillingProfile {
+  id                Int       @id @default(autoincrement())
+  subjectType       String    @map("subject_type") @db.VarChar(40)
+  subjectId         Int       @map("subject_id")
+  merchantAccountId Int?      @map("merchant_account_id")
+  shopId            Int?      @map("shop_id")
+  activeKey         String?   @unique @map("active_key") @db.VarChar(120)
+  billingCadence    String    @default("monthly") @map("billing_cadence") @db.VarChar(40)
+  monthlyFeeJpy     Int       @default(9800) @map("monthly_fee_jpy")
+  cadenceLocked     Boolean   @default(false) @map("cadence_locked")
+  amountLocked      Boolean   @default(false) @map("amount_locked")
+  trialStatus       String    @default("not_started") @map("trial_status") @db.VarChar(40)
+  trialStartedAt    DateTime? @map("trial_started_at")
+  trialEndsAt       DateTime? @map("trial_ends_at")
+  trialUsedAt       DateTime? @map("trial_used_at")
+  paidThrough       DateTime? @map("paid_through")
+  paymentProvider   String    @default("manual") @map("payment_provider") @db.VarChar(40)
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  merchantAccount MerchantAccount? @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict)
+  shop            Shop?            @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  freePeriods     SaasFreePeriod[]
+
+  @@index([subjectType, subjectId])
+  @@index([merchantAccountId])
+  @@index([shopId])
+  @@index([billingCadence])
+  @@index([trialStatus])
+  @@index([paymentProvider])
+  @@index([deletedAt])
+  @@map("saas_billing_profiles")
+}
+
+model SaasFreePeriod {
+  id                Int       @id @default(autoincrement())
+  billingProfileId  Int       @map("billing_profile_id")
+  periodType        String    @map("period_type") @db.VarChar(40)
+  startsAt          DateTime  @map("starts_at")
+  endsAt            DateTime? @map("ends_at")
+  extensionSequence Int?      @map("extension_sequence")
+  reason            String?   @db.VarChar(500)
+  idempotencyKey    String    @unique @map("idempotency_key") @db.VarChar(191)
+  createdById       Int?      @map("created_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  billingProfile SaasBillingProfile @relation(fields: [billingProfileId], references: [id], onDelete: Restrict)
+  createdBy      User?              @relation("SaasFreePeriodCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([billingProfileId])
+  @@index([periodType])
+  @@index([startsAt, endsAt])
+  @@index([extensionSequence])
+  @@index([createdById])
+  @@index([deletedAt])
+  @@map("saas_free_periods")
+}
+
+model SaasInvoice {
+  id                Int       @id @default(autoincrement())
+  invoiceNo         String    @unique @map("invoice_no") @db.VarChar(80)
+  payerType         String    @map("payer_type") @db.VarChar(40)
+  merchantAccountId Int?      @map("merchant_account_id")
+  shopId            Int?      @map("shop_id")
+  billingCadence    String    @map("billing_cadence") @db.VarChar(40)
+  periodStartsAt    DateTime  @map("period_starts_at")
+  periodEndsAt      DateTime  @map("period_ends_at")
+  dueAt             DateTime  @map("due_at")
+  amountJpy         Int       @map("amount_jpy")
+  status            String    @default("pending") @db.VarChar(40)
+  paymentProvider   String    @default("manual") @map("payment_provider") @db.VarChar(40)
+  idempotencyKey    String    @unique @map("idempotency_key") @db.VarChar(191)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  merchantAccount MerchantAccount?  @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict)
+  shop            Shop?             @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  lines           SaasInvoiceLine[]
+  payments        SaasPayment[]
+
+  @@index([payerType])
+  @@index([merchantAccountId])
+  @@index([shopId])
+  @@index([periodStartsAt, periodEndsAt])
+  @@index([dueAt])
+  @@index([status])
+  @@index([paymentProvider])
+  @@index([deletedAt])
+  @@map("saas_invoices")
+}
+
+model SaasInvoiceLine {
+  id                Int       @id @default(autoincrement())
+  invoiceId         Int       @map("invoice_id")
+  subjectType       String    @map("subject_type") @db.VarChar(40)
+  merchantAccountId Int?      @map("merchant_account_id")
+  shopId            Int?      @map("shop_id")
+  description       String    @db.VarChar(255)
+  monthlyFeeJpy     Int       @map("monthly_fee_jpy")
+  amountJpy         Int       @map("amount_jpy")
+  periodStartsAt    DateTime  @map("period_starts_at")
+  periodEndsAt      DateTime  @map("period_ends_at")
+  idempotencyKey    String    @unique @map("idempotency_key") @db.VarChar(191)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  invoice         SaasInvoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  merchantAccount MerchantAccount? @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict)
+  shop            Shop?            @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@index([subjectType])
+  @@index([merchantAccountId])
+  @@index([shopId])
+  @@index([periodStartsAt, periodEndsAt])
+  @@index([deletedAt])
+  @@map("saas_invoice_lines")
+}
+
+model SaasPayment {
+  id                Int       @id @default(autoincrement())
+  invoiceId         Int       @map("invoice_id")
+  provider          String    @default("manual") @db.VarChar(40)
+  externalReference String?   @map("external_reference") @db.VarChar(191)
+  amountJpy         Int       @map("amount_jpy")
+  receivedAt        DateTime  @map("received_at")
+  status            String    @default("pending_review") @db.VarChar(40)
+  reviewedById      Int?      @map("reviewed_by_id")
+  reviewedAt        DateTime? @map("reviewed_at")
+  idempotencyKey    String    @unique @map("idempotency_key") @db.VarChar(191)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  invoice    SaasInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  reviewedBy User?       @relation("SaasPaymentReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalReference])
+  @@index([invoiceId])
+  @@index([status])
+  @@index([receivedAt])
+  @@index([reviewedById])
+  @@index([deletedAt])
+  @@map("saas_payments")
+}
+
+model EntitySuspension {
+  id                Int       @id @default(autoincrement())
+  subjectType       String    @map("subject_type") @db.VarChar(40)
+  merchantAccountId Int?      @map("merchant_account_id")
+  shopId            Int?      @map("shop_id")
+  activeKey         String?   @unique @map("active_key") @db.VarChar(120)
+  batchKey          String?   @map("batch_key") @db.VarChar(191)
+  status            String    @default("active") @db.VarChar(40)
+  scope             String    @db.VarChar(60)
+  reasonCodes       Json      @map("reason_codes")
+  note              String?   @db.VarChar(1000)
+  createdById       Int       @map("created_by_id")
+  startsAt          DateTime  @map("starts_at")
+  releasedAt        DateTime? @map("released_at")
+  releasedById      Int?      @map("released_by_id")
+  releaseReason     String?   @map("release_reason") @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  merchantAccount MerchantAccount? @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict)
+  shop            Shop?            @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy       User             @relation("EntitySuspensionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  releasedBy      User?            @relation("EntitySuspensionReleasedBy", fields: [releasedById], references: [id], onDelete: SetNull)
+
+  @@index([subjectType])
+  @@index([merchantAccountId])
+  @@index([shopId])
+  @@index([batchKey])
+  @@index([status])
+  @@index([scope])
+  @@index([createdById])
+  @@index([releasedById])
+  @@index([startsAt])
+  @@index([deletedAt])
+  @@map("entity_suspensions")
 }

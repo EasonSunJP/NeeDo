@@ -101,7 +101,7 @@ export type ScheduleSlotDeleteInput = ScheduleScope & { id: number };
 
 export type ScheduleMutationResult =
   | { outcome: "ok"; slot: ScheduleSlotPayload }
-  | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" };
+  | { outcome: "not_found" | "conflict" | "in_use" | "duration_mismatch" | "suspended" };
 
 export interface OrderTransitionRepositoryInput {
   id: number;
@@ -202,6 +202,9 @@ export interface BookingRepositoryPort {
     input: AvailabilityListInput
   ) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   createBooking: (input: BookingCreateRepositoryInput) => Promise<BookingOrderPayload | null>;
+  findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
+  findTechnicianShopId?: (technicianProfileId: number) => Promise<number | null>;
+  isShopSuspended?: (shopId: number) => Promise<boolean>;
   listOrders: (input: OrderListInput) => Promise<PaginatedResponse<BookingOrderPayload>>;
   findOrderById: (id: number) => Promise<BookingOrderPayload | null>;
   transitionOrder: (
@@ -284,7 +287,10 @@ export class BookingRepository implements BookingRepositoryPort {
         : {}),
       shop: {
         deletedAt: null,
-        status: "published"
+        status: "published",
+        entitySuspensions: {
+          none: { activeKey: { not: null }, status: "active", deletedAt: null }
+        }
       },
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianId ? { technicianProfileId: input.technicianId } : {})
@@ -305,6 +311,26 @@ export class BookingRepository implements BookingRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async findScheduleSlotShopId(scheduleSlotId: number): Promise<number | null> {
+    const slot = await this.client.scheduleSlot.findFirst({
+      where: { id: scheduleSlotId, deletedAt: null },
+      select: { shopId: true }
+    });
+    return slot?.shopId ?? null;
+  }
+
+  public async findTechnicianShopId(technicianProfileId: number): Promise<number | null> {
+    const technician = await this.client.technicianProfile.findFirst({
+      where: { id: technicianProfileId, deletedAt: null },
+      select: { shopId: true }
+    });
+    return technician?.shopId ?? null;
+  }
+
+  public async isShopSuspended(shopId: number): Promise<boolean> {
+    return this.isShopSuspendedInTransaction(this.client, shopId);
   }
 
   public async listScheduleSlots(
@@ -339,6 +365,7 @@ export class BookingRepository implements BookingRepositoryPort {
     return this.client.$transaction(async (transaction) => {
       const target = await this.resolveScheduleTarget(transaction, input, input.serviceId, input.technicianServiceId, input.technicianProfileId ?? null);
       if (!target) return { outcome: "not_found" };
+      if (await this.isShopSuspendedInTransaction(transaction, target.shopId)) return { outcome: "suspended" };
       await this.lockScheduleOwner(transaction, target.shopId, target.technicianProfileId);
       if (!this.matchesServiceDuration(input.startsAt, input.endsAt, target.durationMinutes)) {
         return { outcome: "duration_mismatch" };
@@ -380,6 +407,7 @@ export class BookingRepository implements BookingRepositoryPort {
         where: { id: input.id, deletedAt: null, ...this.scheduleScopeWhere(input) },
         include: this.slotInclude()
       });
+      if (existing && await this.isShopSuspendedInTransaction(transaction, existing.shopId)) return { outcome: "suspended" };
       if (!existing || (!existing.serviceId && !existing.technicianServiceId)) return { outcome: "not_found" };
       await this.lockScheduleOwner(transaction, existing.shopId, existing.technicianProfileId);
       const startsAt = input.startsAt ?? existing.startsAt;
@@ -470,7 +498,10 @@ export class BookingRepository implements BookingRepositoryPort {
             : {}),
           shop: {
             deletedAt: null,
-            status: "published"
+            status: "published",
+            entitySuspensions: {
+              none: { activeKey: { not: null }, status: "active", deletedAt: null }
+            }
           }
         },
         include: this.slotInclude()
@@ -578,6 +609,23 @@ export class BookingRepository implements BookingRepositoryPort {
 
       return this.mapOrder(order);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+  }
+
+  private async isShopSuspendedInTransaction(
+    transaction: Pick<Prisma.TransactionClient, "entitySuspension">,
+    shopId: number
+  ): Promise<boolean> {
+    const suspension = await transaction.entitySuspension.findFirst({
+      where: {
+        subjectType: "shop",
+        shopId,
+        activeKey: { not: null },
+        status: "active",
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    return suspension !== null;
   }
 
   public async listOrders(input: OrderListInput): Promise<PaginatedResponse<BookingOrderPayload>> {
