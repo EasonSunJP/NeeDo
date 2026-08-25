@@ -43,6 +43,8 @@ describe("FormalStoreDetailPage real-data boundary", () => {
     expect(source).toContain("shop.services.map");
     expect(source).toContain("shop.technicians.map");
     expect(source).toContain("shop.reviewSummary");
+    expect(source).toContain("const firstService = shop.services[0] ?? null;");
+    expect(source).toContain('to={`/checkout/${firstService.id}`}');
   });
 
   it("does not depend on legacy or browser-local records", () => {
@@ -126,35 +128,35 @@ const copyByLanguage: Record<Language, FormalStoreDetailCopy> = {
   zh: {
     title: "店铺详情", apiSource: "数据库正式资料", loading: "正在加载店铺资料", loadFailed: "店铺资料加载失败",
     unavailable: "当前店铺没有可公开的正式资料", retry: "重新加载", services: "服务项目", noServices: "该店铺尚未发布服务",
-    technicians: "店铺技师", noTechnicians: "该店铺尚未安排技师账号", reviews: "评价汇总",
+    technicians: "店铺技师", noTechnicians: "该店铺尚未安排技师", reviews: "评价汇总",
     noPublicReviewDetails: "当前接口仅提供评价汇总，暂无可公开的评价明细。", book: "预约此服务", details: "查看资料",
     reviewCount: (count) => `${count} 条评价`, duration: (minutes) => `${minutes} 分钟`
   },
   "zh-Hant": {
     title: "店鋪詳情", apiSource: "資料庫正式資料", loading: "正在載入店鋪資料", loadFailed: "店鋪資料載入失敗",
     unavailable: "目前店鋪沒有可公開的正式資料", retry: "重新載入", services: "服務項目", noServices: "該店鋪尚未發佈服務",
-    technicians: "店鋪技師", noTechnicians: "該店鋪尚未安排技師帳號", reviews: "評價彙總",
+    technicians: "店鋪技師", noTechnicians: "該店鋪尚未安排技師", reviews: "評價彙總",
     noPublicReviewDetails: "目前介面僅提供評價彙總，暫無可公開的評價明細。", book: "預約此服務", details: "查看資料",
     reviewCount: (count) => `${count} 則評價`, duration: (minutes) => `${minutes} 分鐘`
   },
   ja: {
     title: "店舗詳細", apiSource: "データベースの正式データ", loading: "店舗情報を読み込んでいます", loadFailed: "店舗情報を読み込めませんでした",
     unavailable: "公開可能な正式店舗情報がありません", retry: "再読み込み", services: "サービス", noServices: "公開中のサービスはありません",
-    technicians: "在籍スタッフ", noTechnicians: "スタッフのテストアカウントはまだ配置されていません", reviews: "評価概要",
+    technicians: "在籍スタッフ", noTechnicians: "在籍スタッフはまだ登録されていません", reviews: "評価概要",
     noPublicReviewDetails: "現在のAPIは評価概要のみを提供しており、公開可能な口コミ詳細はありません。", book: "このサービスを予約", details: "プロフィールを見る",
     reviewCount: (count) => `${count}件の評価`, duration: (minutes) => `${minutes}分`
   },
   en: {
     title: "Store details", apiSource: "Formal database record", loading: "Loading store record", loadFailed: "Store record could not be loaded",
     unavailable: "No public formal record is available for this store", retry: "Reload", services: "Services", noServices: "This store has not published services",
-    technicians: "Store technicians", noTechnicians: "No technician test accounts are assigned to this store", reviews: "Review summary",
+    technicians: "Store technicians", noTechnicians: "No technicians are assigned to this store", reviews: "Review summary",
     noPublicReviewDetails: "The API currently provides an aggregate only; no public review details are available.", book: "Book this service", details: "View profile",
     reviewCount: (count) => `${count} reviews`, duration: (minutes) => `${minutes} min`
   },
   ko: {
     title: "매장 상세", apiSource: "데이터베이스 정식 정보", loading: "매장 정보를 불러오는 중", loadFailed: "매장 정보를 불러오지 못했습니다",
     unavailable: "공개 가능한 정식 매장 정보가 없습니다", retry: "다시 불러오기", services: "서비스", noServices: "등록된 서비스가 없습니다",
-    technicians: "소속 테라피스트", noTechnicians: "배정된 테라피스트 테스트 계정이 없습니다", reviews: "리뷰 요약",
+    technicians: "소속 테라피스트", noTechnicians: "배정된 테라피스트가 없습니다", reviews: "리뷰 요약",
     noPublicReviewDetails: "현재 API는 리뷰 요약만 제공하며 공개 가능한 상세 리뷰는 없습니다.", book: "이 서비스 예약", details: "프로필 보기",
     reviewCount: (count) => `리뷰 ${count}개`, duration: (minutes) => `${minutes}분`
   }
@@ -186,6 +188,8 @@ function FormalStoreContent({ copy, language, scope, shop }: {
   scope: "user" | "merchant";
   shop: CoreShopDetail;
 }) {
+  const firstService = shop.services[0] ?? null;
+
   return (
     <>
       <SurfacePanel className="overflow-hidden p-0">
@@ -234,10 +238,7 @@ function FormalStoreContent({ copy, language, scope, shop }: {
                     <p className="mt-2 text-sm font-black text-[color:var(--client-primary)]">{formatMoney(service.priceAmount, service.currency, language)} · {copy.duration(service.durationMinutes)}</p>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <SecondaryButton className="w-full" to={`/services/${service.id}`}>{copy.details}</SecondaryButton>
-                  <PrimaryButton className="w-full" to={`/checkout/${service.id}`}>{copy.book}</PrimaryButton>
-                </div>
+                <SecondaryButton className="mt-3 w-full" to={`/services/${service.id}`}>{copy.details}</SecondaryButton>
               </article>
             ))}
           </div>
@@ -277,6 +278,8 @@ function FormalStoreContent({ copy, language, scope, shop }: {
         <p className="mt-1 text-sm font-bold text-[color:var(--client-muted)]">{copy.reviewCount(shop.reviewSummary.reviewCount)}</p>
         <p className="mt-4 rounded-[18px] border border-dashed border-[color:var(--client-line)] p-4 text-sm font-bold leading-6 text-[color:var(--client-muted)]">{copy.noPublicReviewDetails}</p>
       </SurfacePanel>
+
+      {firstService ? <PrimaryButton className="sticky bottom-4 z-30 w-full" to={`/checkout/${firstService.id}`}>{copy.book}</PrimaryButton> : null}
     </>
   );
 }
@@ -347,6 +350,11 @@ describe("StoreDetailPage formal route isolation", () => {
     expect(pageSource).toContain("allowLegacyStore ? stores.find((item) => item.id === id) ?? null : null");
     expect(pageSource).not.toContain("stores.find((item) => item.id === id) ?? stores[0]");
   });
+
+  it("localizes the formal invalid-link state", () => {
+    expect(pageSource).toContain("const formalStoreLinkCopy: Record<Language");
+    expect(pageSource).toContain("formalStoreLinkCopy[language]");
+  });
 });
 ```
 
@@ -372,9 +380,18 @@ import { FormalStoreDetailPage } from "./FormalStoreDetailPage";
 Remove the route-only imports `mapCoreShopToStore`, `mapCoreTechnicianToTechnician`, and `useCoreReadQuery` if no legacy code above uses them. Replace the current exported route component with:
 
 ```tsx
+const formalStoreLinkCopy: Record<Language, { description: string; title: string }> = {
+  zh: { description: "请从正式店铺列表重新选择店铺。", title: "店铺链接不可用" },
+  "zh-Hant": { description: "請從正式店鋪列表重新選擇店鋪。", title: "店鋪連結不可用" },
+  ja: { description: "正式な店舗一覧から店舗を選び直してください。", title: "店舗リンクを利用できません" },
+  en: { description: "Select the store again from the formal store list.", title: "Store link unavailable" },
+  ko: { description: "정식 매장 목록에서 매장을 다시 선택해 주세요.", title: "매장 링크를 사용할 수 없습니다" }
+};
+
 export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" } = {}) {
   const { id } = useParams();
   const { stores } = useEntityStore();
+  const { language } = useI18n();
   const apiId = coreReadIdFromRoute(id);
 
   if (apiId) {
@@ -385,7 +402,8 @@ export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant
   const legacyStore = allowLegacyStore ? stores.find((item) => item.id === id) ?? null : null;
 
   if (!legacyStore) {
-    return <StoreDetailStatus description="请从正式店铺列表重新选择店铺。" scope={scope} title="店铺链接不可用" />;
+    const unavailableCopy = formalStoreLinkCopy[language];
+    return <StoreDetailStatus description={unavailableCopy.description} scope={scope} title={unavailableCopy.title} />;
   }
 
   return <StoreDetailExperience scope={scope} store={legacyStore} />;
