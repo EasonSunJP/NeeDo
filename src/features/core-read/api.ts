@@ -111,6 +111,11 @@ export type CoreCustomerProfile = {
   city: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  gender?: "female" | "male" | "private";
+  age?: number | null;
+  heightCm?: number | null;
+  languages?: string[];
+  visibility?: "public" | "privateAll" | "limited" | "network";
   membershipLevel: string;
   reviewSummary: CoreReviewSummary;
   createdAt: string;
@@ -353,7 +358,10 @@ export function mapCoreCustomerToCustomer(customer: CoreCustomerProfile): Custom
     avatar: customer.avatarUrl ?? fallbackCustomerAvatar,
     phone: "",
     nickname: customer.displayName,
-    languages: ["日本語"],
+    gender: customer.gender,
+    age: customer.age === null || customer.age === undefined ? undefined : String(customer.age),
+    height: customer.heightCm === null || customer.heightCm === undefined ? undefined : `${customer.heightCm}cm`,
+    languages: customer.languages?.length ? customer.languages : ["日本語"],
     bio: customer.bio ?? undefined,
     creditRating: customer.reviewSummary.reviewCount > 0 ? "A" : undefined,
     points: 0,
