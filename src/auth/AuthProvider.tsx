@@ -51,7 +51,7 @@ type AuthContextValue = {
   enterFrontendWithoutAuthentication: (portal: PortalScope) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
   switchPortal: (portal: PortalScope) => Promise<AuthActionResult>;
-  refreshSession: () => Promise<AuthActionResult>;
+  refreshSession: (requestedPortal?: PortalScope) => Promise<AuthActionResult>;
   canAccess: (portal: PortalScope) => boolean;
   canEnterPortal: (portal: PortalScope) => boolean;
   hasRememberedPortalAuthorization: (portal: PortalScope) => boolean;
@@ -460,14 +460,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [persistSession, restoreRememberedPortalSession, session]);
 
-  const refreshSession = useCallback(async (): Promise<AuthActionResult> => {
+  const refreshSession = useCallback(async (requestedPortal?: PortalScope): Promise<AuthActionResult> => {
     if (!session) {
       return { ok: false, message: "error.auth.unauthorized" };
     }
 
     try {
-      const me = await authApi.me();
-      const nextSession = buildAuthSessionFromMe(me, session.portal, session.loginMethod);
+      let me = await authApi.me();
+      const targetPortal = requestedPortal ?? session.portal;
+      const portalIdentity = findIdentityForPortal(me.identities, targetPortal);
+      if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
+        me = (await authApi.switchIdentity(portalIdentity.id)).me;
+      }
+      const nextSession = buildAuthSessionFromMe(me, targetPortal, session.loginMethod);
       persistSession(nextSession);
       return { ok: true, session: nextSession };
     } catch (error) {

@@ -134,6 +134,10 @@ import {
   UnifiedSettingsTermsPage,
   UnifiedSettingsVerificationPage
 } from "./features/settings/UnifiedSettingsPages";
+import { TechnicianApplicationPage } from "./features/identity-applications/TechnicianApplicationPage";
+import { MerchantApplicationPage } from "./features/identity-applications/MerchantApplicationPage";
+import { AffiliateActivationPage } from "./features/identity-applications/AffiliateActivationPage";
+import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
 import { OfficialNoticeAutoPopup } from "./components/ui/OfficialNoticeAutoPopup";
@@ -1106,6 +1110,9 @@ export default function App() {
               <Route path="/me/settings/theme" element={protect("user", <UserSettingsThemePage />)} />
               <Route path="/me/settings/language" element={protect("user", <UserSettingsLanguagePage />)} />
               <Route path="/me/settings/portal" element={protect("user", <UserSettingsPortalPage />)} />
+              <Route path="/me/identity/technician/apply" element={protect("user", <TechnicianApplicationPage />)} />
+              <Route path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)} />
+              <Route path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)} />
               <Route path="/me/settings/home-shortcuts" element={protect("user", <Navigate replace to="/me/settings" />)} />
               <Route path="/me/settings/profile" element={protect("user", <UserSettingsProfilePage />)} />
               <Route path="/me/settings/profile-card-background" element={protect("user", <UserSettingsProfileCardBackgroundPage />)} />
@@ -1122,6 +1129,7 @@ export default function App() {
               <Route path="/support" element={protect("user", <SupportPage />)} />
 
               <Route path="/merchant" element={protect("merchant", <MerchantPortalPage />)} />
+              <Route path="/merchant/technician-applications" element={protectPermission("merchant", "merchant:technician-application:read", <TechnicianApplicationsReviewPage />)} />
               <Route path="/merchant/messages" element={protect("merchant", <ImScopeProvider scope="merchant"><ImMessagesEntryPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/new" element={protect("merchant", <ImScopeProvider scope="merchant"><ImNewConversationPage /></ImScopeProvider>)} />
               <Route path="/merchant/messages/:conversationId/info" element={protect("merchant", <ImScopeProvider scope="merchant"><ImConversationInfoPage /></ImScopeProvider>)} />
@@ -1324,6 +1332,7 @@ export default function App() {
               <Route path="/admin/finance" element={protect("admin", <FinancePage />)} />
               <Route path="/admin/reviews" element={protect("admin", <ReviewsPage />)} />
               <Route path="/admin/merchants" element={protect("admin", <MerchantsPage />)} />
+              <Route path="/admin/merchant-applications" element={protectPermission("admin", "ops:merchant-application:read", <MerchantApplicationsReviewPage />)} />
               <Route path="/admin/inventory" element={protect("admin", <InventoryPage />)} />
               <Route path="/admin/floorplan" element={protect("admin", <FloorplanPage />)} />
               <Route path="/admin/roles" element={protectPermission("admin", "page:role-management", <RolesPage />)} />

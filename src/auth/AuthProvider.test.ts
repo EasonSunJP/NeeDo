@@ -38,9 +38,10 @@ describe("AuthProvider legacy login bridge", () => {
   });
 
   it("can refresh identity availability after an application or contract activation", () => {
-    expect(authProviderSource).toContain("refreshSession: () => Promise<AuthActionResult>");
+    expect(authProviderSource).toContain("refreshSession: (requestedPortal?: PortalScope) => Promise<AuthActionResult>");
     expect(authProviderSource).toContain("const refreshSession = useCallback");
     expect(authProviderSource).toContain("const me = await authApi.me()");
+    expect(authProviderSource).toContain("authApi.switchIdentity(portalIdentity.id)");
   });
 
   it("switches the backend identity when a portal has a matching formal identity", () => {

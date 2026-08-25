@@ -81,6 +81,7 @@ export type TechnicianReview = {
   bio: string | null;
   gender: string | null;
   birthDate: string | null;
+  submittedAt?: string | null;
   media: Array<{ id: number; purpose: string; url: string; mimeType: string }>;
 };
 
@@ -91,14 +92,17 @@ export type MerchantReview = {
   version: number;
   applicantKind: "corporate" | "individual";
   corporateLegalName: string | null;
+  corporateLegalNameKana: string | null;
   representativeName: string;
+  representativeNameKana: string;
   shopName: string;
   businessAddress: string;
   contactPhone: string;
   responsiblePersonName: string;
   showcaseDraft: Record<string, unknown> | null;
-  bankAccount: { accountNumberMasked: string; accountHolderMasked: string; holderMatched: boolean; verificationStatus: string } | null;
+  bankAccount: { bankCode: string; bankName: string; branchCode: string; branchName: string; accountType: string; accountNumberMasked: string; accountHolderMasked: string; holderMatched: boolean; verificationStatus: string; verificationSource: string } | null;
   eKycVerified: boolean;
+  contractAcceptance: { contractVersion: string; contentHash: string; language: string; receiptId: string; acceptedAt: string } | null;
   media: Array<{ id: number; purpose: string; url: string; mimeType: string }>;
 };
 
@@ -126,7 +130,7 @@ export const identityApplicationsApi = {
     return httpClient.request<IdentityApplication>(`/identity-applications/${id}/merchant-showcase`, { body, method: "PATCH" });
   },
   bindMerchantBankAccount(id: number, body: BankAccountInput & { expectedVersion: number }) {
-    return httpClient.request<IdentityApplication>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
+    return httpClient.request<{ applicationVersion: number; accountNumberMasked: string; holderMatched: true }>(`/identity-applications/${id}/merchant-bank-account`, { body, method: "PATCH" });
   },
   uploadMedia(id: number, purpose: string, expectedVersion: number, file: File) {
     return httpClient.request<{ id: number; applicationVersion: number }>(`/identity-applications/${id}/media`, {

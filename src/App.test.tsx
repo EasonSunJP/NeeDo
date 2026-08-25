@@ -39,9 +39,15 @@ describe("portal identity switching boundaries", () => {
   });
 
   it("keeps explicit identity switching inside the settings identity page", () => {
-    expect(settingsPortalPageSource).toContain("void switchPortal(nextPortal);");
-    expect(settingsPortalPageSource).not.toContain("await switchPortal(nextPortal)");
+    expect(settingsPortalPageSource).toContain("const result = await switchPortal(nextPortal);");
+    expect(settingsPortalPageSource).toContain("if (!result.ok)");
     expect(settingsPortalPageSource).toContain("settingsPortalTarget: nextPortal");
+  });
+
+  it("keeps all three ordinary-user application flows behind user authentication", () => {
+    expect(appSource).toContain('path="/me/identity/technician/apply" element={protect("user", <TechnicianApplicationPage />)}');
+    expect(appSource).toContain('path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)}');
+    expect(appSource).toContain('path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)}');
   });
 });
 

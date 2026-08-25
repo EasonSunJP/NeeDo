@@ -1,5 +1,7 @@
 # User Management — NeeDo 账号体系、认证、权限、角色与 RBAC 专项开发文档
 
+> 用户、技师、店铺与联盟营销身份的申请、审核、合同、银行名义、试用期和 30 天删除规则，以 [`IDENTITY_APPLICATION_WORKFLOWS.md`](./IDENTITY_APPLICATION_WORKFLOWS.md) 为准。
+
 > 文档版本：v1.2.0  
 > 最后更新：2026-05-24  
 > 原文件名：`用户管理.md`  

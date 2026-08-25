@@ -1,3 +1,5 @@
+import { identityApplicationTranslations } from "../features/identity-applications/i18n";
+
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
 export type TranslationEntry = Partial<Record<TargetLanguage, string>>;
@@ -33,6 +35,7 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 type TranslationMap = Record<string, TranslationEntry>;
 
 export const translations: TranslationMap = {
+  ...identityApplicationTranslations,
   "近 7 天": { "zh-Hant": "近 7 天", ja: "直近 7 日間", en: "Last 7 days", ko: "최근 7일" },
   "历史累计": { "zh-Hant": "歷史累計", ja: "全期間", en: "All time", ko: "전체 기간" },
   "结算期间": { "zh-Hant": "結算期間", ja: "集計期間", en: "Settlement period", ko: "정산 기간" },

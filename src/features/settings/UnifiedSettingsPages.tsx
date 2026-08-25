@@ -66,6 +66,7 @@ import {
 } from "./portalSettingsState";
 import { getLegalPrivacyDocument, getLegalPrivacyUiCopy, type LegalPrivacyBlock } from "./legalPrivacyContent";
 import { getLegalTermsDocument, getLegalTermsUiCopy } from "./legalTermsContent";
+import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -184,6 +185,22 @@ export function getPortalEntry(portal: PortalScope | UnifiedSettingsPortal) {
   return "/";
 }
 
+function getIdentityApplicationPath(kind: IdentityKind) {
+  if (kind === "technician") {
+    return "/me/identity/technician/apply";
+  }
+
+  if (kind === "merchant") {
+    return "/me/identity/merchant/apply";
+  }
+
+  if (kind === "affiliate") {
+    return "/me/identity/affiliate/contract";
+  }
+
+  return "/me/settings/portal";
+}
+
 function SettingsPortalSelectionIndicator({ active }: { active: boolean }) {
   return (
     <span
@@ -216,6 +233,7 @@ function SettingsPortalInfoTrigger({ content, label }: { content: ReactNode; lab
 function SettingsPortalActionRow({
   active = false,
   actionLabel,
+  disabled = false,
   info,
   infoLabel,
   onClick,
@@ -224,6 +242,7 @@ function SettingsPortalActionRow({
 }: {
   active?: boolean;
   actionLabel: string;
+  disabled?: boolean;
   info: ReactNode;
   infoLabel: string;
   onClick: () => void;
@@ -234,20 +253,26 @@ function SettingsPortalActionRow({
     <div
       aria-label={actionLabel}
       className={cn(
-        "group relative flex min-h-[60px] w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition before:pointer-events-none before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition focus:outline-none focus-visible:before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] focus-within:before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+        "group relative flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition before:pointer-events-none before:absolute before:inset-x-1 before:inset-y-1.5 before:rounded-[18px] before:transition focus:outline-none focus-visible:before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)] focus-within:before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]",
+        disabled ? "cursor-default opacity-70" : "cursor-pointer",
         active
           ? "before:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,transparent)]"
           : "hover:before:bg-[color:color-mix(in_srgb,var(--client-primary)_6%,transparent)]"
       )}
-      onClick={onClick}
+      aria-disabled={disabled}
+      onClick={() => {
+        if (!disabled) {
+          onClick();
+        }
+      }}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (!disabled && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onClick();
         }
       }}
       role="button"
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
     >
       <div className="relative z-10 min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
@@ -1572,6 +1597,14 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           <SettingsListItem title={t("UI 切换")} to={getSettingsPath(portal, "theme")} value={currentThemeLabel} />
           <SettingsListItem dataNoI18n title={t("语言")} to={getSettingsPath(portal, "language")} value={currentLanguageLabel} />
           <SettingsListItem title={t("身份切换")} to={getSettingsPath(portal, "portal")} value={t(compactPortalLabels[portal].label)} />
+          {portal === "merchant" ? (
+            <SettingsListItem
+              subtitle={t("查看资料与照片、批准入驻、联系申请人或下载 Excel 简历")}
+              title={t("技师入驻申请")}
+              to="/merchant/technician-applications"
+              value={t("审核")}
+            />
+          ) : null}
           {pwaInstall.showInstallEntry ? (
             <SettingsListItem
               onClick={() => {
@@ -1760,8 +1793,11 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
   const { language } = useI18n();
   const { session, switchPortal } = useAuth();
   const selectedPortal = resolveSettingsSelectedPortal(portal, session?.portal) as SwitchableSettingsPortal;
+  const [switchError, setSwitchError] = useState("");
+  const [switchingPortal, setSwitchingPortal] = useState<SwitchableSettingsPortal | null>(null);
+  const identityRows = buildIdentityRows(session?.identityAvailability ?? defaultIdentityAvailability(), selectedPortal);
   const t = (source: string) => translateText(source, language);
-  const selectPortal = (nextPortal: SwitchableSettingsPortal) => {
+  const selectPortal = async (nextPortal: SwitchableSettingsPortal) => {
     if (nextPortal === selectedPortal) {
       return;
     }
@@ -1771,7 +1807,15 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
       settingsSwitchedFromPortal: true,
       settingsPortalTarget: nextPortal
     } satisfies SettingsNavigationState;
-    void switchPortal(nextPortal);
+    setSwitchError("");
+    setSwitchingPortal(nextPortal);
+    const result = await switchPortal(nextPortal);
+    setSwitchingPortal(null);
+
+    if (!result.ok) {
+      setSwitchError(result.message);
+      return;
+    }
 
     navigate(nextEntry, {
       replace: true,
@@ -1795,24 +1839,66 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
           panelClassName="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]"
           title={t("前台身份")}
         >
-          {settingsPortalOptions.map((item) => {
-            const active = item === selectedPortal;
+          {identityRows.map((row) => {
+            const label = compactPortalLabels[row.portal].label;
+            const actionText =
+              row.action === "current"
+                ? t("当前")
+                : row.action === "switch"
+                  ? switchingPortal === row.portal
+                    ? t("切换中")
+                    : t("切换")
+                  : row.action === "pending"
+                    ? t("审核中")
+                    : row.action === "retry"
+                      ? t("重新申请")
+                      : row.action === "continue"
+                        ? t("继续申请")
+                        : row.kind === "affiliate"
+                          ? t("确认并开启")
+                          : t("申请");
+            const disabled = row.action === "current" || row.action === "pending" || switchingPortal !== null;
 
             return (
               <SettingsPortalActionRow
-                active={active}
-                actionLabel={`${t("切换身份")}：${t(compactPortalLabels[item].label)}`}
-                info={t(compactPortalLabels[item].caption)}
+                active={row.active}
+                actionLabel={`${actionText}：${t(label)}`}
+                disabled={disabled}
+                info={
+                  <span>
+                    {t(compactPortalLabels[row.portal].caption)}
+                    {row.rejectionReason ? ` · ${t("驳回原因")}：${row.rejectionReason}` : ""}
+                  </span>
+                }
                 infoLabel={t("查看身份说明")}
-                key={item}
+                key={row.kind}
                 onClick={() => {
-                  void selectPortal(item);
+                  if (row.action === "switch") {
+                    void selectPortal(row.portal);
+                    return;
+                  }
+
+                  navigate(getIdentityApplicationPath(row.kind));
                 }}
-                title={t(compactPortalLabels[item].label)}
-                trailing={<SettingsPortalSelectionIndicator active={active} />}
+                title={t(label)}
+                trailing={
+                  row.action === "current" ? (
+                    <SettingsPortalSelectionIndicator active />
+                  ) : (
+                    <span className={cn(
+                      "rounded-full px-3 py-1.5 text-[12px] font-black",
+                      row.action === "pending"
+                        ? "border border-[color:var(--client-line)] text-[color:var(--client-muted)]"
+                        : "bg-[color:var(--client-primary)] text-[color:var(--client-needo-text)]"
+                    )}>
+                      {actionText}
+                    </span>
+                  )
+                }
               />
             );
           })}
+          {switchError ? <p className="px-4 py-3 text-xs font-bold text-[color:var(--client-danger)]">{t(switchError)}</p> : null}
         </SettingsSection>
 
         <SettingsSection
