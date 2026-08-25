@@ -13,6 +13,9 @@ describe("AffiliateLinkTokenService", () => {
       publicBaseUrl: "https://app.needo.test/afirieito/"
     });
 
+  const tamperLastCharacter = (value: string): string =>
+    `${value.slice(0, -1)}${value.endsWith("0") ? "1" : "0"}`;
+
   it("issues an opaque signed promotion URL that can be rebuilt after refresh", () => {
     const service = createService();
     const issued = service.issue(subject);
@@ -46,13 +49,13 @@ describe("AffiliateLinkTokenService", () => {
     expect(
       service.verify({
         ...verification,
-        publicToken: `${issued.publicToken.slice(0, -1)}x`
+        publicToken: tamperLastCharacter(issued.publicToken)
       })
     ).toBe(false);
     expect(
       service.verify({
         ...verification,
-        tokenHash: `${issued.tokenHash.slice(0, -1)}0`
+        tokenHash: tamperLastCharacter(issued.tokenHash)
       })
     ).toBe(false);
     expect(
