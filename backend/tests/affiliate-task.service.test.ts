@@ -513,6 +513,24 @@ describe("AffiliateTaskService drafts", () => {
     });
     expect((await service.getPublisherTask(shopActor, created.id)).name).toBe(taskFields.name);
   });
+
+  it("rejects arbitrary shop ids when updating a shop-published draft", async () => {
+    const { service } = createFixture();
+    const created = await createShopDraft(service);
+
+    await expect(
+      service.updateDraft(shopActor, created.id, {
+        ...taskFields,
+        name: "Attempted cross-shop edit",
+        shopIds: [12],
+        lockVersion: created.lockVersion
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.IDENTITY_FORBIDDEN,
+      message: "error.affiliate.publisher_scope_invalid"
+    });
+    expect((await service.getPublisherTask(shopActor, created.id)).name).toBe(taskFields.name);
+  });
 });
 
 describe("AffiliateTaskService submission and review", () => {

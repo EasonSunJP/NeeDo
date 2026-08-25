@@ -327,6 +327,9 @@ export class AffiliateTaskService {
       if (task.status !== "draft") {
         throw this.invalidStateError("error.affiliate.task_not_editable");
       }
+      if (task.publisherType === "shop" && input.shopIds !== undefined) {
+        throw this.publisherScopeError();
+      }
 
       const fields = this.normalizeAndValidateFields(input);
       const shopIds =

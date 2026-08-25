@@ -43,6 +43,85 @@ const idPathParameter = (name = "id") => ({
   schema: { type: "integer", minimum: 1 }
 });
 
+const affiliateTaskStatuses = [
+  "draft",
+  "pending_review",
+  "scheduled",
+  "active",
+  "paused",
+  "budget_exhausted",
+  "ended",
+  "cancelled",
+  "rejected"
+];
+
+const affiliateEditableTaskProperties = {
+  name: { type: "string", minLength: 1, maxLength: 160 },
+  description: { type: ["string", "null"], maxLength: 10000 },
+  coverMediaAssetId: { type: ["integer", "null"], minimum: 1 },
+  rewardNdpPerCompletedOrder: { type: "integer", minimum: 1, maximum: 100000000 },
+  totalBudgetNdp: { type: "integer", minimum: 1, maximum: 2000000000 },
+  customerDiscountType: {
+    type: "string",
+    enum: ["none", "fixed_jpy", "percent"]
+  },
+  fixedDiscountJpy: { type: "integer", minimum: 0, maximum: 100000000 },
+  discountRateBps: { type: "integer", minimum: 0, maximum: 10000 },
+  discountCapJpy: { type: "integer", minimum: 0, maximum: 100000000 },
+  minimumOrderAmountJpy: { type: "integer", minimum: 0, maximum: 100000000 },
+  claimStartsAt: { type: "string", format: "date-time" },
+  claimEndsAt: { type: "string", format: "date-time" },
+  taskStartsAt: { type: "string", format: "date-time" },
+  taskEndsAt: { type: "string", format: "date-time" },
+  attributionWindowDays: { type: "integer", minimum: 1, maximum: 365 },
+  maxCompletedOrdersPerClaim: {
+    type: ["integer", "null"],
+    minimum: 1,
+    maximum: 1000000
+  },
+  maxCompletedOrdersPerCustomer: {
+    type: ["integer", "null"],
+    minimum: 1,
+    maximum: 1000000
+  },
+  serviceScopeMode: {
+    type: "string",
+    enum: ["all_current_services", "selected_services"]
+  },
+  selectedServiceIds: {
+    type: "array",
+    maxItems: 10000,
+    uniqueItems: true,
+    items: { type: "integer", minimum: 1 }
+  }
+};
+
+const affiliateEditableTaskRequired = Object.keys(affiliateEditableTaskProperties);
+
+const affiliateTaskListParameters = [
+  { name: "status", in: "query", schema: { type: "string", enum: affiliateTaskStatuses } },
+  {
+    name: "publisherType",
+    in: "query",
+    schema: { type: "string", enum: ["merchant_account", "shop"] }
+  },
+  { name: "keyword", in: "query", schema: { type: "string", maxLength: 160 } },
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100 }
+  }
+];
+
+const affiliateTaskErrorResponses = {
+  "400": { description: "Invalid affiliate task contract" },
+  "401": { description: "Missing or invalid access token" },
+  "403": { description: "Missing permission or publisher scope" },
+  "404": { description: "Affiliate task not found in caller scope" },
+  "409": { description: "Task state, optimistic lock, or NDP balance conflict" }
+};
+
 const merchantPreviewShopHeaderParameter = {
   name: "X-NeeDo-Merchant-Preview-Shop-Id",
   in: "header",
@@ -2283,10 +2362,372 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" }
         }
+      },
+      AffiliateTaskShopSnapshot: {
+        type: "object",
+        required: ["id", "shopId", "shopNameSnapshot"],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", minimum: 1 },
+          shopNameSnapshot: { type: "string", maxLength: 160 }
+        }
+      },
+      AffiliateTaskServiceSnapshot: {
+        type: "object",
+        required: [
+          "id",
+          "shopId",
+          "serviceId",
+          "serviceNameSnapshot",
+          "servicePriceJpySnapshot"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          shopId: { type: "integer", minimum: 1 },
+          serviceId: { type: "integer", minimum: 1 },
+          serviceNameSnapshot: { type: "string", maxLength: 160 },
+          servicePriceJpySnapshot: { type: "integer", minimum: 0 }
+        }
+      },
+      AffiliateBudgetReservation: {
+        type: ["object", "null"],
+        required: [
+          "id",
+          "taskId",
+          "walletId",
+          "totalFrozenNdp",
+          "allocatedNdp",
+          "capturedNdp",
+          "releasedNdp",
+          "status",
+          "idempotencyKey",
+          "frozenAt",
+          "releasedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          taskId: { type: "integer", minimum: 1 },
+          walletId: { type: "integer", minimum: 1 },
+          totalFrozenNdp: { type: "integer", minimum: 0 },
+          allocatedNdp: { type: "integer", minimum: 0 },
+          capturedNdp: { type: "integer", minimum: 0 },
+          releasedNdp: { type: "integer", minimum: 0 },
+          status: { type: "string", enum: ["active", "released", "exhausted"] },
+          idempotencyKey: { type: "string", maxLength: 180 },
+          frozenAt: { type: "string", format: "date-time" },
+          releasedAt: { type: ["string", "null"], format: "date-time" }
+        }
+      },
+      AffiliateTask: {
+        type: "object",
+        required: [
+          "id",
+          "taskCode",
+          "lineageKey",
+          "version",
+          "lockVersion",
+          "publisherType",
+          "name",
+          "rewardNdpPerCompletedOrder",
+          "totalBudgetNdp",
+          "reservedBudgetNdp",
+          "allocatedBudgetNdp",
+          "settledBudgetNdp",
+          "releasedBudgetNdp",
+          "customerDiscountType",
+          "claimStartsAt",
+          "claimEndsAt",
+          "taskStartsAt",
+          "taskEndsAt",
+          "serviceScopeMode",
+          "status",
+          "shops",
+          "services",
+          "budgetReservation",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          id: { type: "integer", minimum: 1 },
+          taskCode: { type: "string", maxLength: 80 },
+          lineageKey: { type: "string", maxLength: 80 },
+          version: { type: "integer", minimum: 1 },
+          lockVersion: { type: "integer", minimum: 1 },
+          publisherType: { type: "string", enum: ["merchant_account", "shop"] },
+          publisherMerchantAccountId: { type: ["integer", "null"], minimum: 1 },
+          publisherShopId: { type: ["integer", "null"], minimum: 1 },
+          name: affiliateEditableTaskProperties.name,
+          description: affiliateEditableTaskProperties.description,
+          coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
+          rewardNdpPerCompletedOrder:
+            affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
+          totalBudgetNdp: affiliateEditableTaskProperties.totalBudgetNdp,
+          customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
+          fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
+          discountRateBps: affiliateEditableTaskProperties.discountRateBps,
+          discountCapJpy: affiliateEditableTaskProperties.discountCapJpy,
+          minimumOrderAmountJpy: affiliateEditableTaskProperties.minimumOrderAmountJpy,
+          claimStartsAt: affiliateEditableTaskProperties.claimStartsAt,
+          claimEndsAt: affiliateEditableTaskProperties.claimEndsAt,
+          taskStartsAt: affiliateEditableTaskProperties.taskStartsAt,
+          taskEndsAt: affiliateEditableTaskProperties.taskEndsAt,
+          attributionWindowDays: affiliateEditableTaskProperties.attributionWindowDays,
+          maxCompletedOrdersPerClaim:
+            affiliateEditableTaskProperties.maxCompletedOrdersPerClaim,
+          maxCompletedOrdersPerCustomer:
+            affiliateEditableTaskProperties.maxCompletedOrdersPerCustomer,
+          serviceScopeMode: affiliateEditableTaskProperties.serviceScopeMode,
+          reservedBudgetNdp: { type: "integer", minimum: 0 },
+          allocatedBudgetNdp: { type: "integer", minimum: 0 },
+          settledBudgetNdp: { type: "integer", minimum: 0 },
+          releasedBudgetNdp: { type: "integer", minimum: 0 },
+          status: { type: "string", enum: affiliateTaskStatuses },
+          reviewedById: { type: ["integer", "null"], minimum: 1 },
+          reviewedAt: { type: ["string", "null"], format: "date-time" },
+          rejectionReason: { type: ["string", "null"], maxLength: 500 },
+          submittedAt: { type: ["string", "null"], format: "date-time" },
+          activatedAt: { type: ["string", "null"], format: "date-time" },
+          shops: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateTaskShopSnapshot" }
+          },
+          services: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateTaskServiceSnapshot" }
+          },
+          budgetReservation: { $ref: "#/components/schemas/AffiliateBudgetReservation" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateTaskCreate: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["publisherType", ...affiliateEditableTaskRequired],
+            properties: {
+              publisherType: { type: "string", const: "shop" },
+              ...affiliateEditableTaskProperties
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "publisherType",
+              "merchantAccountId",
+              "shopIds",
+              ...affiliateEditableTaskRequired
+            ],
+            properties: {
+              publisherType: { type: "string", const: "merchant_account" },
+              merchantAccountId: { type: "integer", minimum: 1 },
+              shopIds: {
+                type: "array",
+                minItems: 1,
+                maxItems: 1000,
+                uniqueItems: true,
+                items: { type: "integer", minimum: 1 }
+              },
+              ...affiliateEditableTaskProperties
+            }
+          }
+        ],
+        discriminator: { propertyName: "publisherType" }
+      },
+      AffiliateTaskUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["lockVersion", ...affiliateEditableTaskRequired],
+        properties: {
+          lockVersion: { type: "integer", minimum: 1 },
+          shopIds: {
+            type: "array",
+            minItems: 1,
+            maxItems: 1000,
+            uniqueItems: true,
+            items: { type: "integer", minimum: 1 }
+          },
+          ...affiliateEditableTaskProperties
+        }
+      },
+      AffiliateTaskPage: {
+        type: "object",
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AffiliateTask" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
       }
     }
   },
   paths: {
+    [`${config.API_PREFIX}/merchant-admin/affiliate/tasks`]: {
+      get: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "List affiliate tasks visible to the current shop or merchant account",
+        security: [{ bearerAuth: [] }],
+        parameters: affiliateTaskListParameters,
+        responses: {
+          "200": jsonDataResponse("Paginated publisher affiliate tasks", {
+            $ref: "#/components/schemas/AffiliateTaskPage"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      },
+      post: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "Create an unfunded affiliate task draft",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateTaskCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created affiliate task draft", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/tasks/{taskId}`]: {
+      get: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "Get one affiliate task in publisher scope",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        responses: {
+          "200": jsonDataResponse("Publisher affiliate task", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      },
+      patch: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "Replace editable fields on an unfunded draft using optimistic lock",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateTaskUpdate" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated affiliate task draft", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/affiliate/tasks/{taskId}/submit`]: {
+      post: {
+        tags: ["Affiliate Task Publishing"],
+        summary: "Freeze the full NDP budget and submit the task for operations review",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        responses: {
+          "200": jsonDataResponse("Submitted affiliate task", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/tasks`]: {
+      get: {
+        tags: ["Affiliate Operations"],
+        summary: "List affiliate tasks across publishers for operations review",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          ...affiliateTaskListParameters,
+          {
+            name: "merchantAccountId",
+            in: "query",
+            schema: { type: "integer", minimum: 1 }
+          },
+          { name: "shopId", in: "query", schema: { type: "integer", minimum: 1 } }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated backoffice affiliate tasks", {
+            $ref: "#/components/schemas/AffiliateTaskPage"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/tasks/{taskId}`]: {
+      get: {
+        tags: ["Affiliate Operations"],
+        summary: "Get one affiliate task for operations review",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        responses: {
+          "200": jsonDataResponse("Backoffice affiliate task", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/tasks/{taskId}/approve`]: {
+      post: {
+        tags: ["Affiliate Operations"],
+        summary: "Approve a fully funded task into scheduled or active state",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        responses: {
+          "200": jsonDataResponse("Approved affiliate task", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/tasks/{taskId}/reject`]: {
+      post: {
+        tags: ["Affiliate Operations"],
+        summary: "Reject a task and atomically unfreeze its complete unused NDP budget",
+        security: [{ bearerAuth: [] }],
+        parameters: [idPathParameter("taskId")],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["reason"],
+                properties: {
+                  reason: { type: "string", minLength: 1, maxLength: 500 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Rejected affiliate task with released budget", {
+            $ref: "#/components/schemas/AffiliateTask"
+          }),
+          ...affiliateTaskErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/backoffice/merchant-accounts`]: {
       get: {
         tags: ["Merchant SaaS Billing"],

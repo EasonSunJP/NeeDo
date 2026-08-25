@@ -292,7 +292,7 @@ Document security, tags, request/response schemas, publisher variants, task DTO,
 Run:
 
 ```bash
-npm --prefix backend test -- --runTestsByPath tests/affiliate-task-api.test.ts tests/openapi.test.ts tests/app.test.ts
+npm --prefix backend test -- --runTestsByPath tests/affiliate-task-api.test.ts tests/openapi.test.ts tests/health.test.ts
 npm --prefix backend run lint
 npm --prefix backend run build
 ```

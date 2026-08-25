@@ -18,6 +18,10 @@ import { createTracingMiddleware } from "./middlewares/tracing.middleware";
 import type { AuditLogRepositoryPort } from "./repositories/audit-log.repository";
 import type { AuthRepositoryPort } from "./repositories/auth.repository";
 import type { BackofficeRepositoryPort } from "./services/backoffice.service";
+import type {
+  AffiliateTaskRepositoryPort,
+  AffiliateTaskService
+} from "./services/affiliate-task.service";
 import type { BookingRepositoryPort } from "./repositories/booking.repository";
 import type { CompensationProfileRepositoryPort } from "./services/compensation-profile.service";
 import type { CoreReadRepositoryPort } from "./repositories/core-read.repository";
@@ -39,6 +43,7 @@ import {
 import type { RoleRepositoryPort } from "./repositories/role.repository";
 import type { UserRepositoryPort } from "./repositories/user.repository";
 import { createAuthRoutes } from "./routes/auth.routes";
+import { createAffiliateTaskRoutes } from "./routes/affiliate-task.routes";
 import { createBackofficeRoutes } from "./routes/backoffice.routes";
 import { createBookingRoutes } from "./routes/booking.routes";
 import { createCompensationProfileRoutes } from "./routes/compensation-profile.routes";
@@ -91,6 +96,8 @@ export interface AppDependencies {
   bookingRepository?: BookingRepositoryPort;
   ledgerRepository?: LedgerRepositoryPort;
   backofficeRepository?: BackofficeRepositoryPort;
+  affiliateTaskRepository?: AffiliateTaskRepositoryPort;
+  affiliateTaskService?: AffiliateTaskService;
   realtimeRepository?: RealtimeRepositoryPort;
   realtimeEventGateway?: RealtimeEventGatewayPort;
   realtimeService?: RealtimeService;
@@ -151,6 +158,7 @@ export const createApp = (
   apiRouter.use(createPayrollRoutes(config, resolvedDependencies));
   apiRouter.use(createCompensationProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
+  apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
