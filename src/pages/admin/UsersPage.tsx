@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { backofficeRealDataApi, type BackofficeCustomerPayload } from "../../api/backofficeRealData";
+import {
+  backofficeRealDataApi,
+  type BackofficeCustomerDetailPayload,
+  type BackofficeCustomerPayload
+} from "../../api/backofficeRealData";
 import { AdminLayout } from "../../components/admin/AdminLayout";
-import { DetailGrid } from "../../components/admin/DetailGrid";
+import { FormalCustomerDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -14,12 +18,26 @@ const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 
 
 function CustomerProfilesWorkspace() {
   const [customers, setCustomers] = useState<BackofficeCustomerPayload[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<BackofficeCustomerPayload | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [customerDetail, setCustomerDetail] = useState<BackofficeCustomerDetailPayload | null>(null);
+  const [customerDetailLoading, setCustomerDetailLoading] = useState(false);
+  const [customerDetailError, setCustomerDetailError] = useState("");
   const [draft, setDraft] = useState({ displayName: "", city: "", membershipLevel: "standard", isPublic: true });
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const mountedRef = useRef(false);
+  const selectedCustomerIdRef = useRef<number | null>(null);
+  const customerDetailRequestRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      customerDetailRequestRef.current += 1;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,18 +52,73 @@ function CustomerProfilesWorkspace() {
     }
   }, [keyword]);
 
+  const loadCustomerDetail = useCallback(async (customerId: number) => {
+    const requestId = ++customerDetailRequestRef.current;
+    setCustomerDetail(null);
+    setCustomerDetailLoading(true);
+    setCustomerDetailError("");
+    try {
+      const detail = await backofficeRealDataApi.customer("backoffice", customerId);
+      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
+      setCustomerDetail(detail);
+      setDraft({
+        displayName: detail.displayName,
+        city: detail.city ?? "",
+        membershipLevel: detail.membershipLevel,
+        isPublic: detail.isPublic
+      });
+    } catch (detailError) {
+      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
+      setCustomerDetailError(detailError instanceof Error ? detailError.message : String(detailError));
+    } finally {
+      if (mountedRef.current && requestId === customerDetailRequestRef.current && selectedCustomerIdRef.current === customerId) {
+        setCustomerDetailLoading(false);
+      }
+    }
+  }, []);
+
+  const closeCustomer = useCallback(() => {
+    selectedCustomerIdRef.current = null;
+    customerDetailRequestRef.current += 1;
+    setSelectedCustomerId(null);
+    setCustomerDetail(null);
+    setCustomerDetailLoading(false);
+    setCustomerDetailError("");
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
 
   const openCustomer = (customer: BackofficeCustomerPayload) => {
-    setSelectedCustomer(customer);
-    setDraft({ displayName: customer.displayName, city: customer.city ?? "", membershipLevel: customer.membershipLevel, isPublic: customer.isPublic });
+    selectedCustomerIdRef.current = customer.id;
+    setSelectedCustomerId(customer.id);
+    setDraft({ displayName: "", city: "", membershipLevel: "standard", isPublic: true });
+    void loadCustomerDetail(customer.id);
   };
 
-  const mutate = async (action: () => Promise<unknown>) => {
+  const mutate = async (customerId: number, action: () => Promise<unknown>) => {
     setSaving(true);
     setError("");
     try {
       await action();
+      await load();
+      if (mountedRef.current && selectedCustomerIdRef.current === customerId) {
+        await loadCustomerDetail(customerId);
+      }
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteCustomer = async (customerId: number) => {
+    setSaving(true);
+    setError("");
+    try {
+      await backofficeRealDataApi.deleteCustomer(customerId);
+      if (selectedCustomerIdRef.current === customerId) {
+        closeCustomer();
+      }
       await load();
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
@@ -70,15 +143,27 @@ function CustomerProfilesWorkspace() {
         ]} footerPlacement="inline" onView={openCustomer} rows={customers} />
       </ModuleShell>
 
-      <Drawer onClose={() => setSelectedCustomer(null)} open={Boolean(selectedCustomer)} title="客户集中详情">
-        {selectedCustomer ? <div className="space-y-5">
-          <DetailGrid items={[{ label: "客户档案 ID", value: selectedCustomer.id }, { label: "账号 ID", value: selectedCustomer.userId }, { label: "登录邮箱", value: selectedCustomer.email }, { label: "预约数", value: selectedCustomer.bookingCount }, { label: "创建时间", value: selectedCustomer.createdAt }]} />
-          <label className="block"><span className="mb-2 block text-sm font-black">显示名称</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} value={draft.displayName} /></label>
-          <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} value={draft.city} /></label>
-          <label className="block"><span className="mb-2 block text-sm font-black">会员等级</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, membershipLevel: event.target.value }))} value={draft.membershipLevel} /></label>
-          <label className="flex items-center gap-3 text-sm font-black"><input checked={draft.isPublic} onChange={(event) => setDraft((current) => ({ ...current, isPublic: event.target.checked }))} type="checkbox" />允许公开客户资料</label>
-          <div className="flex flex-wrap gap-2"><Button disabled={saving} onClick={() => void mutate(async () => setSelectedCustomer(await backofficeRealDataApi.updateCustomer(selectedCustomer.id, { ...draft, city: draft.city || null })))}>保存资料</Button><Button disabled={saving} onClick={() => void mutate(async () => { await backofficeRealDataApi.deleteCustomer(selectedCustomer.id); setSelectedCustomer(null); })} variant="danger">软删除客户</Button></div>
-        </div> : null}
+      <Drawer onClose={closeCustomer} open={selectedCustomerId !== null} title="客户集中详情">
+        {customerDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取客户正式详情...</p> : null}
+        {!customerDetailLoading && customerDetailError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+            <span>{customerDetailError}</span>
+            <Button onClick={() => { if (selectedCustomerId !== null) void loadCustomerDetail(selectedCustomerId); }} size="sm" variant="secondary">重试</Button>
+          </div>
+        ) : null}
+        {!customerDetailLoading && !customerDetailError && customerDetail ? (
+          <FormalCustomerDetailPanel
+            actionContent={<Button disabled={saving} onClick={() => void deleteCustomer(customerDetail.id)} variant="danger">软删除客户</Button>}
+            detail={customerDetail}
+            editContent={<div className="space-y-4">
+              <label className="block"><span className="mb-2 block text-sm font-black">显示名称</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} value={draft.displayName} /></label>
+              <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} value={draft.city} /></label>
+              <label className="block"><span className="mb-2 block text-sm font-black">会员等级</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, membershipLevel: event.target.value }))} value={draft.membershipLevel} /></label>
+              <label className="flex items-center gap-3 text-sm font-black"><input checked={draft.isPublic} onChange={(event) => setDraft((current) => ({ ...current, isPublic: event.target.checked }))} type="checkbox" />允许公开客户资料</label>
+              <Button disabled={saving} onClick={() => void mutate(customerDetail.id, () => backofficeRealDataApi.updateCustomer(customerDetail.id, { ...draft, city: draft.city || null }))}>保存资料</Button>
+            </div>}
+          />
+        ) : null}
       </Drawer>
     </AdminLayout>
   );

@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   backofficeRealDataApi,
+  type BackofficeCustomerDetailPayload,
   type BackofficeCustomerPayload,
+  type BackofficeTechnicianDetailPayload,
   type BackofficeTechnicianPayload
 } from "../../api/backofficeRealData";
-import { DetailGrid } from "../../components/admin/DetailGrid";
+import {
+  FormalCustomerDetailPanel,
+  FormalTechnicianDetailPanel
+} from "../../components/admin/FormalProfileDetailPanels";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { Badge } from "../../components/ui/Badge";
@@ -44,8 +49,14 @@ export function MerchantAdminPeoplePage() {
   const module = normalizeModule(searchParams.get("module"));
   const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
   const [customers, setCustomers] = useState<BackofficeCustomerPayload[]>([]);
-  const [selectedTechnician, setSelectedTechnician] = useState<BackofficeTechnicianPayload | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<BackofficeCustomerPayload | null>(null);
+  const [selectedTechnicianId, setSelectedTechnicianId] = useState<number | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [technicianDetail, setTechnicianDetail] = useState<BackofficeTechnicianDetailPayload | null>(null);
+  const [customerDetail, setCustomerDetail] = useState<BackofficeCustomerDetailPayload | null>(null);
+  const [technicianDetailLoading, setTechnicianDetailLoading] = useState(false);
+  const [customerDetailLoading, setCustomerDetailLoading] = useState(false);
+  const [technicianDetailError, setTechnicianDetailError] = useState("");
+  const [customerDetailError, setCustomerDetailError] = useState("");
   const [draft, setDraft] = useState<TechnicianDraft>({ displayName: "", city: "", serviceArea: "" });
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
@@ -55,6 +66,20 @@ export function MerchantAdminPeoplePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [confirmationAction, setConfirmationAction] = useState<ConfirmationAction>(null);
+  const mountedRef = useRef(false);
+  const selectedTechnicianIdRef = useRef<number | null>(null);
+  const selectedCustomerIdRef = useRef<number | null>(null);
+  const technicianDetailRequestRef = useRef(0);
+  const customerDetailRequestRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      technicianDetailRequestRef.current += 1;
+      customerDetailRequestRef.current += 1;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     if (module === "reviews") {
@@ -88,12 +113,69 @@ export function MerchantAdminPeoplePage() {
     }
   }, [keyword, module, page]);
 
+  const loadTechnicianDetail = useCallback(async (technicianId: number) => {
+    const requestId = ++technicianDetailRequestRef.current;
+    setTechnicianDetail(null);
+    setTechnicianDetailLoading(true);
+    setTechnicianDetailError("");
+    try {
+      const detail = await backofficeRealDataApi.technician("merchant-admin", technicianId);
+      if (!mountedRef.current || requestId !== technicianDetailRequestRef.current || selectedTechnicianIdRef.current !== technicianId) return;
+      setTechnicianDetail(detail);
+      setDraft(technicianDraft(detail));
+    } catch (detailError) {
+      if (!mountedRef.current || requestId !== technicianDetailRequestRef.current || selectedTechnicianIdRef.current !== technicianId) return;
+      setTechnicianDetailError(detailError instanceof Error ? detailError.message : String(detailError));
+    } finally {
+      if (mountedRef.current && requestId === technicianDetailRequestRef.current && selectedTechnicianIdRef.current === technicianId) {
+        setTechnicianDetailLoading(false);
+      }
+    }
+  }, []);
+
+  const loadCustomerDetail = useCallback(async (customerId: number) => {
+    const requestId = ++customerDetailRequestRef.current;
+    setCustomerDetail(null);
+    setCustomerDetailLoading(true);
+    setCustomerDetailError("");
+    try {
+      const detail = await backofficeRealDataApi.customer("merchant-admin", customerId);
+      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
+      setCustomerDetail(detail);
+    } catch (detailError) {
+      if (!mountedRef.current || requestId !== customerDetailRequestRef.current || selectedCustomerIdRef.current !== customerId) return;
+      setCustomerDetailError(detailError instanceof Error ? detailError.message : String(detailError));
+    } finally {
+      if (mountedRef.current && requestId === customerDetailRequestRef.current && selectedCustomerIdRef.current === customerId) {
+        setCustomerDetailLoading(false);
+      }
+    }
+  }, []);
+
+  const closeTechnician = useCallback(() => {
+    selectedTechnicianIdRef.current = null;
+    technicianDetailRequestRef.current += 1;
+    setSelectedTechnicianId(null);
+    setTechnicianDetail(null);
+    setTechnicianDetailLoading(false);
+    setTechnicianDetailError("");
+    setConfirmationAction(null);
+  }, []);
+
+  const closeCustomer = useCallback(() => {
+    selectedCustomerIdRef.current = null;
+    customerDetailRequestRef.current += 1;
+    setSelectedCustomerId(null);
+    setCustomerDetail(null);
+    setCustomerDetailLoading(false);
+    setCustomerDetailError("");
+  }, []);
+
   useEffect(() => {
     setPage(1);
-    setSelectedTechnician(null);
-    setSelectedCustomer(null);
-    setConfirmationAction(null);
-  }, [module]);
+    closeTechnician();
+    closeCustomer();
+  }, [closeCustomer, closeTechnician, module]);
 
   useEffect(() => {
     void load();
@@ -106,21 +188,31 @@ export function MerchantAdminPeoplePage() {
   };
 
   const openTechnician = (technician: BackofficeTechnicianPayload) => {
-    setSelectedTechnician(technician);
-    setSelectedCustomer(null);
-    setDraft(technicianDraft(technician));
+    closeCustomer();
+    selectedTechnicianIdRef.current = technician.id;
+    setSelectedTechnicianId(technician.id);
+    setDraft({ displayName: "", city: "", serviceArea: "" });
     setConfirmationAction(null);
+    void loadTechnicianDetail(technician.id);
   };
 
-  const runMutation = async (mutation: () => Promise<BackofficeTechnicianPayload>) => {
+  const openCustomer = (customer: BackofficeCustomerPayload) => {
+    closeTechnician();
+    selectedCustomerIdRef.current = customer.id;
+    setSelectedCustomerId(customer.id);
+    void loadCustomerDetail(customer.id);
+  };
+
+  const runMutation = async (technicianId: number, mutation: () => Promise<BackofficeTechnicianPayload>) => {
     setSaving(true);
     setError("");
     try {
-      const updated = await mutation();
-      setSelectedTechnician(updated);
-      setDraft(technicianDraft(updated));
+      await mutation();
       setConfirmationAction(null);
       await load();
+      if (mountedRef.current && selectedTechnicianIdRef.current === technicianId) {
+        await loadTechnicianDetail(technicianId);
+      }
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
     } finally {
@@ -129,26 +221,28 @@ export function MerchantAdminPeoplePage() {
   };
 
   const approveTechnician = async () => {
-    if (!selectedTechnician) return;
+    if (selectedTechnicianId === null) return;
     if (confirmationAction !== "approve") {
       setConfirmationAction("approve");
       return;
     }
-    await runMutation(() => backofficeRealDataApi.approveTechnician("merchant-admin", selectedTechnician.id));
+    await runMutation(selectedTechnicianId, () => backofficeRealDataApi.approveTechnician("merchant-admin", selectedTechnicianId));
   };
 
   const deleteTechnician = async () => {
-    if (!selectedTechnician) return;
+    if (selectedTechnicianId === null) return;
     if (confirmationAction !== "delete") {
       setConfirmationAction("delete");
       return;
     }
+    const technicianId = selectedTechnicianId;
     setSaving(true);
     setError("");
     try {
-      await backofficeRealDataApi.deleteTechnician("merchant-admin", selectedTechnician.id);
-      setSelectedTechnician(null);
-      setConfirmationAction(null);
+      await backofficeRealDataApi.deleteTechnician("merchant-admin", technicianId);
+      if (selectedTechnicianIdRef.current === technicianId) {
+        closeTechnician();
+      }
       await load();
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : String(mutationError));
@@ -218,7 +312,7 @@ export function MerchantAdminPeoplePage() {
                 { key: "visibility", title: "公开资料", render: (row) => <Badge tone={row.isPublic ? "green" : "neutral"}>{row.isPublic ? "公开" : "不公开"}</Badge> }
               ]}
               footerPlacement="inline"
-              onView={(customer) => { setSelectedCustomer(customer); setSelectedTechnician(null); }}
+              onView={openCustomer}
               pageSize={pageSize}
               rows={customers}
               showFooterActions={false}
@@ -244,42 +338,40 @@ export function MerchantAdminPeoplePage() {
           </section>
         ) : null}
 
-        <Drawer onClose={() => { setSelectedTechnician(null); setConfirmationAction(null); }} open={Boolean(selectedTechnician)} title="技师正式档案">
-          {selectedTechnician ? (
-            <div className="space-y-5">
-              <DetailGrid items={[
-                { label: "技师 ID", value: selectedTechnician.id },
-                { label: "账号 ID", value: selectedTechnician.userId },
-                { label: "登录邮箱", value: selectedTechnician.email },
-                { label: "所属店铺", value: selectedTechnician.shopName ?? "未分配" },
-                { label: "状态", value: selectedTechnician.status },
-                { label: "审核时间", value: selectedTechnician.verifiedAt ?? "未审核" },
-                { label: "创建时间", value: selectedTechnician.createdAt }
-              ]} />
-              <label className="block"><span className="mb-2 block text-sm font-black">显示名称</span><input className={inputClassName} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} value={draft.displayName} /></label>
-              <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} maxLength={100} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} value={draft.city} /></label>
-              <label className="block"><span className="mb-2 block text-sm font-black">服务区域</span><input className={inputClassName} maxLength={255} onChange={(event) => setDraft((current) => ({ ...current, serviceArea: event.target.value }))} value={draft.serviceArea} /></label>
-              <div className="flex flex-wrap gap-2">
-                <Button disabled={saving || !draft.displayName.trim() || !draft.city.trim()} onClick={() => void runMutation(() => backofficeRealDataApi.updateTechnician("merchant-admin", selectedTechnician.id, { displayName: draft.displayName.trim(), city: draft.city.trim(), serviceArea: draft.serviceArea.trim() || null }))}>{saving ? "处理中..." : "保存资料"}</Button>
-                {selectedTechnician.status !== "published" ? <Button disabled={saving} onClick={() => void approveTechnician()} variant="secondary">{confirmationAction === "approve" ? "再次点击确认审核技师" : "审核通过"}</Button> : null}
-                <Button disabled={saving} onClick={() => void deleteTechnician()} variant="danger">{confirmationAction === "delete" ? "再次点击确认移除技师" : "移除技师"}</Button>
-              </div>
+        <Drawer onClose={closeTechnician} open={selectedTechnicianId !== null} title="技师正式档案">
+          {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取技师正式详情...</p> : null}
+          {!technicianDetailLoading && technicianDetailError ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              <span>{technicianDetailError}</span>
+              <Button onClick={() => { if (selectedTechnicianId !== null) void loadTechnicianDetail(selectedTechnicianId); }} size="sm" variant="secondary">重试</Button>
             </div>
+          ) : null}
+          {!technicianDetailLoading && !technicianDetailError && technicianDetail ? (
+            <FormalTechnicianDetailPanel
+              actionContent={<>
+                {technicianDetail.status !== "published" ? <Button disabled={saving} onClick={() => void approveTechnician()} variant="secondary">{confirmationAction === "approve" ? "再次点击确认审核技师" : "审核通过"}</Button> : null}
+                <Button disabled={saving} onClick={() => void deleteTechnician()} variant="danger">{confirmationAction === "delete" ? "再次点击确认移除技师" : "移除技师"}</Button>
+              </>}
+              detail={technicianDetail}
+              editContent={<div className="space-y-4">
+                <label className="block"><span className="mb-2 block text-sm font-black">显示名称</span><input className={inputClassName} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} value={draft.displayName} /></label>
+                <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} maxLength={100} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} value={draft.city} /></label>
+                <label className="block"><span className="mb-2 block text-sm font-black">服务区域</span><input className={inputClassName} maxLength={255} onChange={(event) => setDraft((current) => ({ ...current, serviceArea: event.target.value }))} value={draft.serviceArea} /></label>
+                <Button disabled={saving || !draft.displayName.trim() || !draft.city.trim()} onClick={() => void runMutation(technicianDetail.id, () => backofficeRealDataApi.updateTechnician("merchant-admin", technicianDetail.id, { displayName: draft.displayName.trim(), city: draft.city.trim(), serviceArea: draft.serviceArea.trim() || null }))}>{saving ? "处理中..." : "保存资料"}</Button>
+              </div>}
+            />
           ) : null}
         </Drawer>
 
-        <Drawer onClose={() => setSelectedCustomer(null)} open={Boolean(selectedCustomer)} title="客户正式档案">
-          {selectedCustomer ? <DetailGrid items={[
-            { label: "客户档案 ID", value: selectedCustomer.id },
-            { label: "账号 ID", value: selectedCustomer.userId },
-            { label: "显示名称", value: selectedCustomer.displayName },
-            { label: "登录邮箱", value: selectedCustomer.email },
-            { label: "城市", value: selectedCustomer.city ?? "未设置" },
-            { label: "会员等级", value: selectedCustomer.membershipLevel },
-            { label: "预约数", value: selectedCustomer.bookingCount },
-            { label: "公开资料", value: selectedCustomer.isPublic ? "公开" : "不公开" },
-            { label: "创建时间", value: selectedCustomer.createdAt }
-          ]} /> : null}
+        <Drawer onClose={closeCustomer} open={selectedCustomerId !== null} title="客户正式档案">
+          {customerDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取客户正式详情...</p> : null}
+          {!customerDetailLoading && customerDetailError ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+              <span>{customerDetailError}</span>
+              <Button onClick={() => { if (selectedCustomerId !== null) void loadCustomerDetail(selectedCustomerId); }} size="sm" variant="secondary">重试</Button>
+            </div>
+          ) : null}
+          {!customerDetailLoading && !customerDetailError && customerDetail ? <FormalCustomerDetailPanel detail={customerDetail} /> : null}
         </Drawer>
       </ModuleShell>
     </MerchantAdminLayout>

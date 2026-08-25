@@ -35,6 +35,11 @@ describe("master data pages", () => {
     expect(source).not.toContain("TechnicianProfilePanel");
     expect(source).toContain("backofficeRealDataApi.approveTechnician");
     expect(source).toContain("backofficeRealDataApi.updateTechnician");
+    expect(source).toContain('backofficeRealDataApi.technician("backoffice"');
+    expect(source).toContain("FormalTechnicianDetailPanel");
+    expect(source).toContain("technicianDetailRequestRef");
+    expect(source).toContain("mountedRef.current");
+    expect(source).toContain("重试");
   });
 
   it("keeps operations customer profiles on formal paginated APIs", () => {
@@ -42,6 +47,11 @@ describe("master data pages", () => {
     expect(source).toContain('backofficeRealDataApi.customers("backoffice"');
     expect(source).toContain("backofficeRealDataApi.updateCustomer(");
     expect(source).toContain("backofficeRealDataApi.deleteCustomer(");
+    expect(source).toContain('backofficeRealDataApi.customer("backoffice"');
+    expect(source).toContain("FormalCustomerDetailPanel");
+    expect(source).toContain("customerDetailRequestRef");
+    expect(source).toContain("mountedRef.current");
+    expect(source).toContain("重试");
     expect(source).not.toContain("../../data/mock");
   });
 
@@ -51,5 +61,9 @@ describe("master data pages", () => {
     expect(source).toMatch(/backofficeRealDataApi\.customers\(\s*"merchant-admin"/);
     expect(source).toMatch(/backofficeRealDataApi\.technicians\(\s*"merchant-admin"/);
     expect(source).toContain('backofficeRealDataApi.approveTechnician("merchant-admin"');
+    expect(source).toContain('backofficeRealDataApi.technician("merchant-admin"');
+    expect(source).toContain('backofficeRealDataApi.customer("merchant-admin"');
+    expect(source).toContain("FormalTechnicianDetailPanel");
+    expect(source).toContain("FormalCustomerDetailPanel");
   });
 });

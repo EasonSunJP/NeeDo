@@ -23,6 +23,24 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain("再次点击确认移除技师");
   });
 
+  it("loads formal selected profiles into the shared detail panels", () => {
+    expect(source).toContain('backofficeRealDataApi.technician("merchant-admin"');
+    expect(source).toContain('backofficeRealDataApi.customer("merchant-admin"');
+    expect(source).toContain("FormalTechnicianDetailPanel");
+    expect(source).toContain("FormalCustomerDetailPanel");
+    expect(source).toContain("selectedTechnicianId");
+    expect(source).toContain("selectedCustomerId");
+    expect(source).toContain("重试");
+  });
+
+  it("protects both formal detail requests from stale responses and refreshes after writes", () => {
+    expect(source).toContain("technicianDetailRequestRef");
+    expect(source).toContain("customerDetailRequestRef");
+    expect(source).toContain("mountedRef.current");
+    expect(source).toContain("await load();");
+    expect(source).toContain("await loadTechnicianDetail(");
+  });
+
   it("does not invent reviews or customer analytics", () => {
     expect(source).not.toContain("LTV");
     expect(source).not.toContain("churnRisk");
