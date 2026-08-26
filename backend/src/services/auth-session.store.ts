@@ -54,13 +54,14 @@ export interface AuthSessionStore {
     challengeId: string;
     reservationToken: string;
     accessTokenJti: string;
+    recoveryProof: string;
     accessTokenTtlSeconds: number;
     sessionGeneration: number;
   }) => Promise<boolean>;
   getGoogleUnlinkCompletion?: (input: {
     userId: number;
     challengeId: string;
-    accessTokenJti: string;
+    recoveryProof: string;
   }) => Promise<boolean>;
   hasRefreshToken: (userId: number, jti: string) => Promise<boolean>;
   revokeRefreshToken: (userId: number, jti: string) => Promise<void>;
@@ -212,6 +213,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     challengeId: string;
     reservationToken: string;
     accessTokenJti: string;
+    recoveryProof: string;
     accessTokenTtlSeconds: number;
     sessionGeneration: number;
   }): Promise<boolean> {
@@ -231,7 +233,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         String(Math.max(0, input.accessTokenTtlSeconds)),
         "600",
         String(input.sessionGeneration),
-        input.accessTokenJti
+        input.recoveryProof
       ]
     );
     return result === "ok" || result === "already_completed";
@@ -240,11 +242,11 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   public async getGoogleUnlinkCompletion(input: {
     userId: number;
     challengeId: string;
-    accessTokenJti: string;
+    recoveryProof: string;
   }): Promise<boolean> {
     return (
       (await this.getValue(`auth:verification:unlink-complete:${input.challengeId}`)) ===
-      `${input.userId}:${input.accessTokenJti}`
+      `${input.userId}:${input.recoveryProof}`
     );
   }
 

@@ -4,7 +4,10 @@ import { config as loadDotenv } from "dotenv";
 import type { PrismaClient } from "@prisma/client";
 import { env } from "../src/config/env";
 import { createRedisClient, type RedisClient } from "../src/config/redis";
-import { AuthRepository } from "../src/repositories/auth.repository";
+import {
+  AuthRepository,
+  createGoogleUnlinkRecoveryProof
+} from "../src/repositories/auth.repository";
 import { RedisAuthSessionStore, type AuthSessionStore } from "../src/services/auth-session.store";
 import { AuthTokenService } from "../src/services/auth-token.service";
 import { AuthService, type AuthenticatedAccessContext } from "../src/services/auth.service";
@@ -383,18 +386,8 @@ describeIntegration("formal account-security recovery integration", () => {
       statusCode: 401
     });
     await expect(service.refresh(refresh.token)).rejects.toMatchObject({ statusCode: 401 });
-    const recovery = await service.authenticateGoogleUnlinkRecovery(
-      access.token,
-      unlink.challengeId
-    );
-    expect(recovery).toMatchObject({
-      userId: account.id,
-      isGoogleUnlinkRecovery: true,
-      roles: [],
-      permissions: []
-    });
     await expect(
-      service.verifyGoogleUnlink(unlink.challengeId, delivered[0], recovery, { ip: "127.0.0.1" })
+      service.recoverGoogleUnlinkCompletion(access.token, unlink.challengeId)
     ).resolves.toEqual({ signedOut: true });
   }, 15_000);
 
@@ -465,6 +458,7 @@ describeIntegration("formal account-security recovery integration", () => {
         challengeId: challenge.challengeId,
         reservationToken: reserved.reservationToken,
         accessTokenJti: oldAccess.jti,
+        recoveryProof: createGoogleUnlinkRecoveryProof(oldAccess.jti),
         accessTokenTtlSeconds: oldAccess.expiresIn,
         sessionGeneration: 1
       })

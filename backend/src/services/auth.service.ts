@@ -5,6 +5,7 @@ import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
 import {
   ExternalAuthAccountConflictError,
+  createGoogleUnlinkRecoveryProof,
   GoogleLoginStateError,
   type AuthRepositoryPort,
   type AuthUserRecord,
@@ -68,7 +69,6 @@ export interface AuthenticatedAccessContext {
   permissions: string[];
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
-  isGoogleUnlinkRecovery?: boolean;
 }
 
 export interface AuthIdentityPayload {
@@ -400,7 +400,7 @@ export class AuthService {
       (await this.sessionStore.getGoogleUnlinkCompletion({
         userId: auth.userId,
         challengeId,
-        accessTokenJti: auth.accessTokenJti
+        recoveryProof: createGoogleUnlinkRecoveryProof(auth.accessTokenJti)
       }))
     ) {
       return { signedOut: true };
@@ -418,7 +418,7 @@ export class AuthService {
       const completed = await this.accountSecurityRepository().completeGoogleUnlink({
         challengeId,
         userId: user.id,
-        accessTokenJti: auth.accessTokenJti,
+        recoveryProof: createGoogleUnlinkRecoveryProof(auth.accessTokenJti),
         context: { ip: context.ip, userAgent: context.userAgent }
       });
       if (!this.sessionStore.completeGoogleUnlink) throw this.redisUnavailableError();
@@ -428,6 +428,7 @@ export class AuthService {
           challengeId,
           reservationToken: reserved.reservationToken,
           accessTokenJti: auth.accessTokenJti,
+          recoveryProof: createGoogleUnlinkRecoveryProof(auth.accessTokenJti),
           accessTokenTtlSeconds: Math.max(
             0,
             auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
@@ -891,7 +892,8 @@ export class AuthService {
 
     const user = await this.repository.findUserById(userId);
     this.assertActiveUser(user);
-    if (this.userSessionGeneration(user) !== payload.sessionGeneration) throw this.tokenInvalidError();
+    if (this.userSessionGeneration(user) !== payload.sessionGeneration)
+      throw this.tokenInvalidError();
 
     if (!(await this.sessionStore.hasRefreshToken(userId, payload.jti))) {
       throw new AppError({
@@ -920,10 +922,10 @@ export class AuthService {
    * It never grants roles or permissions and callers must use it only for the
    * matching unlink verification operation.
    */
-  public async authenticateGoogleUnlinkRecovery(
+  public async recoverGoogleUnlinkCompletion(
     token: string,
     challengeId: string
-  ): Promise<AuthenticatedAccessContext> {
+  ): Promise<GoogleUnlinkVerificationPayload> {
     const payload = this.tokenService.verifyAccessToken(token);
     const userId = this.getUserIdFromToken(payload);
     const user = await this.repository.findUserById(userId);
@@ -932,21 +934,22 @@ export class AuthService {
       !(await this.accountSecurityRepository().hasGoogleUnlinkCompletion({
         userId,
         challengeId,
-        accessTokenJti: payload.jti
+        recoveryProof: createGoogleUnlinkRecoveryProof(payload.jti)
       }))
     ) {
       throw this.tokenInvalidError();
     }
-    return {
-      userId,
-      email: payload.email,
-      accessTokenJti: payload.jti,
-      accessTokenExpiresAt: payload.exp,
-      sessionGeneration: payload.sessionGeneration,
-      roles: [],
-      permissions: [],
-      isGoogleUnlinkRecovery: true
-    };
+    if (!this.sessionStore.getGoogleUnlinkCompletion) throw this.redisUnavailableError();
+    if (
+      !(await this.sessionStore.getGoogleUnlinkCompletion({
+        userId,
+        challengeId,
+        recoveryProof: createGoogleUnlinkRecoveryProof(payload.jti)
+      }))
+    ) {
+      throw this.redisUnavailableError();
+    }
+    return { signedOut: true };
   }
 
   public async switchIdentity(
@@ -968,7 +971,8 @@ export class AuthService {
 
     const user = await this.repository.findUserById(refreshUserId);
     this.assertActiveUser(user);
-    if (this.userSessionGeneration(user) !== refreshPayload.sessionGeneration) throw this.tokenInvalidError();
+    if (this.userSessionGeneration(user) !== refreshPayload.sessionGeneration)
+      throw this.tokenInvalidError();
     if (!(await this.sessionStore.hasRefreshToken(refreshUserId, refreshPayload.jti))) {
       throw this.tokenInvalidError();
     }
@@ -1076,7 +1080,8 @@ export class AuthService {
     const userId = this.getUserIdFromToken(payload);
     const user = await this.repository.findUserById(userId);
     this.assertActiveUser(user);
-    if (this.userSessionGeneration(user) !== payload.sessionGeneration) throw this.tokenInvalidError();
+    if (this.userSessionGeneration(user) !== payload.sessionGeneration)
+      throw this.tokenInvalidError();
     const me = this.buildMePayload(user, payload.currentIdentityId);
 
     if (requiredPermission && !me.permissions.includes(requiredPermission)) {

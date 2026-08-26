@@ -1,6 +1,14 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { env } from "../config/env";
 import { prisma } from "../prisma/client";
 import { NeedoIdAllocator } from "../services/needo-id.service";
+
+export const createGoogleUnlinkRecoveryProof = (jti: string): string =>
+  createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
+    .update("google-unlink-recovery\u0000")
+    .update(jti)
+    .digest("base64url");
 
 export interface AuthIdentityRecord {
   id: number;
@@ -189,7 +197,7 @@ export interface CompletePasswordSetupInput {
 export interface CompleteGoogleUnlinkInput {
   challengeId: string;
   userId: number;
-  accessTokenJti: string;
+  recoveryProof: string;
   context: { ip: string; userAgent?: string | null };
 }
 
@@ -233,7 +241,7 @@ export interface GoogleAuthRepositoryPort {
   hasGoogleUnlinkCompletion: (input: {
     challengeId: string;
     userId: number;
-    accessTokenJti: string;
+    recoveryProof: string;
   }) => Promise<boolean>;
   updatePasswordHash: (userId: number, passwordHash: string) => Promise<boolean>;
   softUnlinkGoogleBinding: (userId: number) => Promise<boolean>;
@@ -716,7 +724,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
           challengeId: input.challengeId,
           userId: account.id,
           context: input.context,
-          accessTokenJti: input.accessTokenJti
+          recoveryProof: input.recoveryProof
         });
       }
       const fresh = await transaction.user.findUniqueOrThrow({
@@ -730,7 +738,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   public async hasGoogleUnlinkCompletion(input: {
     challengeId: string;
     userId: number;
-    accessTokenJti: string;
+    recoveryProof: string;
   }): Promise<boolean> {
     return Boolean(
       await this.client.auditLog
@@ -749,7 +757,13 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         .then((audit) => {
           if (!audit?.metadata || typeof audit.metadata !== "object") return null;
           const metadata = audit.metadata as Record<string, unknown>;
-          return metadata.accessTokenJti === input.accessTokenJti ? audit : null;
+          const stored = metadata.recoveryProof;
+          if (typeof stored !== "string") return null;
+          const expected = Buffer.from(input.recoveryProof);
+          const actual = Buffer.from(stored);
+          return actual.length === expected.length && timingSafeEqual(actual, expected)
+            ? audit
+            : null;
         })
     );
   }
@@ -1031,7 +1045,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       challengeId: string;
       userId: number;
       context: { ip: string; userAgent?: string | null };
-      accessTokenJti?: string;
+      recoveryProof?: string;
     }
   ): Promise<void> {
     if (
@@ -1054,7 +1068,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         userAgent: input.context.userAgent ?? null,
         metadata: {
           challengeId: input.challengeId,
-          ...(input.accessTokenJti ? { accessTokenJti: input.accessTokenJti } : {})
+          ...(input.recoveryProof ? { recoveryProof: input.recoveryProof } : {})
         }
       }
     });
