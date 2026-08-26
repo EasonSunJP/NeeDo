@@ -18,10 +18,10 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("assertSafeAffiliateCompletionDatabase");
     expect(source).toContain("AffiliateTaskExpiryRepository");
     expect(source).toContain("AffiliateTaskExpiryService");
+    expect(source).toContain("affiliate-expiry-acceptance-guard");
     expect(source).toContain("FixtureOwnedAffiliateTaskExpiryRepository");
-    expect(source).toContain("listExpiryCandidateTaskIds");
-    expect(source).toContain("this.delegate.listExpiryCandidateTaskIds(input)");
-    expect(source).toContain("fixture-owned expiry candidate allow-set rejected task");
+    expect(source).toContain("resolveVerifiedDeadlockVictim");
+    expect(source).toContain("requireSuccessfulExpirySummary");
     expect(source).toContain("allowedTaskIds");
     expect(source).toContain("LedgerRepository");
     expect(source).toContain("LedgerService");
@@ -90,7 +90,10 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
       /concurrentState\.task\.totalBudgetNdp === 1_000[\s\S]*concurrentState\.task\.reservedBudgetNdp === 1_000[\s\S]*concurrentState\.task\.allocatedBudgetNdp === 0[\s\S]*concurrentState\.task\.settledBudgetNdp === 0[\s\S]*concurrentState\.task\.releasedBudgetNdp === 1_000[\s\S]*concurrentState\.reservation\.totalFrozenNdp === 1_000[\s\S]*concurrentState\.reservation\.allocatedNdp === 0[\s\S]*concurrentState\.reservation\.capturedNdp === 0[\s\S]*concurrentState\.reservation\.releasedNdp === 1_000/
     );
     expect(source).toContain("Promise.allSettled");
-    expect(source).toContain("isRetryableDeadlock");
+    expect(source).toContain("concurrentFailures");
+    expect(source).toContain("run.value.failed === 0");
+    expect(source).toContain("concurrentFailures.length === 0");
+    expect(source).toContain("run.value.released : 0");
     expect(source).toContain("isolation");
     expect(source).toContain("attributionPreservation");
     expect(source).toContain("completionRace");

@@ -184,12 +184,18 @@ describe("AffiliateCheckoutRepository contract", () => {
     };
     const sql = query.strings?.join(" ") ?? "";
     expect(sql).toContain("task.status = 'ended'");
+    expect(sql).toContain("INNER JOIN affiliate_tasks AS task ON task.id = reservation.task_id");
+    expect(sql).toContain("WHERE reservation.id =");
+    expect(sql).toContain("AND reservation.task_id =");
+    expect(sql).toContain("reservation.deleted_at IS NULL");
+    expect(sql).toContain("task.deleted_at IS NULL");
     expect(sql).toContain("reservation.allocated_ndp = 0");
     expect(sql).toContain(
       "reservation.total_frozen_ndp = reservation.captured_ndp + reservation.released_ndp"
     );
     expect(sql).toContain("reservation.status = 'released'");
     expect(sql).toContain("COALESCE(reservation.released_at");
+    expect(query).toMatchObject({ values: [settlementInput.settledAt, 81, 31] });
   });
 
   it.each([

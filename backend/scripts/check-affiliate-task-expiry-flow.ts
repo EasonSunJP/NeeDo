@@ -1,110 +1,19 @@
 import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
-import type {
-  AffiliateTaskExpiryFailureReporter,
-  AffiliateTaskExpiryRepositoryPort,
-  AffiliateTaskExpiryTaskRecord,
-  AffiliateTaskExpiryTransactionClient
-} from "../src/services/affiliate-task-expiry.service";
-import type { AffiliateBudgetReservationRecord } from "../src/services/affiliate-task.service";
+import type { AffiliateTaskExpiryFailureReporter } from "../src/services/affiliate-task-expiry.service";
 import { assertSafeAffiliateCompletionDatabase } from "./lib/assert-safe-affiliate-completion-database";
+import {
+  FixtureOwnedAffiliateTaskExpiryRepository,
+  requireSuccessfulExpirySummary,
+  resolveVerifiedDeadlockVictim
+} from "./lib/affiliate-expiry-acceptance-guard";
 
 const REWARD_NDP = 500;
 const SERVICE_PRICE_JPY = 8_800;
 
 const assert = (condition: unknown, message: string): asserts condition => {
   if (!condition) throw new Error(message);
-};
-
-class FixtureOwnedAffiliateTaskExpiryRepository implements AffiliateTaskExpiryRepositoryPort {
-  public readonly listInputs: Array<{ now: Date; batchSize: number; afterTaskId: number }> = [];
-  public lastRejectedTaskIds: number[] = [];
-  public readonly transactionErrors: unknown[] = [];
-
-  public constructor(
-    private readonly delegate: AffiliateTaskExpiryRepositoryPort,
-    private readonly allowedTaskIds: ReadonlySet<number>
-  ) {}
-
-  public async listExpiryCandidateTaskIds(input: {
-    now: Date;
-    batchSize: number;
-    afterTaskId: number;
-  }): Promise<number[]> {
-    this.listInputs.push(input);
-    const candidateTaskIds = await this.delegate.listExpiryCandidateTaskIds(input);
-    this.lastRejectedTaskIds = candidateTaskIds.filter(
-      (taskId) => !this.allowedTaskIds.has(taskId)
-    );
-    if (this.lastRejectedTaskIds.length > 0) {
-      throw new Error(
-        `fixture-owned expiry candidate allow-set rejected task: ${this.lastRejectedTaskIds.join(",")}`
-      );
-    }
-    return candidateTaskIds;
-  }
-
-  public async runInTransaction<T>(
-    handler: (
-      repository: AffiliateTaskExpiryRepositoryPort,
-      transactionClient?: AffiliateTaskExpiryTransactionClient
-    ) => Promise<T>
-  ): Promise<T> {
-    try {
-      return await this.delegate.runInTransaction(handler);
-    } catch (error) {
-      this.transactionErrors.push(error);
-      throw error;
-    }
-  }
-
-  public lockTask(taskId: number): Promise<AffiliateTaskExpiryTaskRecord | null> {
-    return this.delegate.lockTask(taskId);
-  }
-
-  public lockBudgetReservation(taskId: number): Promise<AffiliateBudgetReservationRecord | null> {
-    return this.delegate.lockBudgetReservation(taskId);
-  }
-
-  public markTaskEnded(
-    input: Parameters<AffiliateTaskExpiryRepositoryPort["markTaskEnded"]>[0]
-  ): Promise<void> {
-    return this.delegate.markTaskEnded(input);
-  }
-
-  public recordBudgetRelease(
-    input: Parameters<AffiliateTaskExpiryRepositoryPort["recordBudgetRelease"]>[0]
-  ): Promise<void> {
-    return this.delegate.recordBudgetRelease(input);
-  }
-
-  public createBudgetTransactionLink(
-    input: Parameters<AffiliateTaskExpiryRepositoryPort["createBudgetTransactionLink"]>[0]
-  ): Promise<void> {
-    return this.delegate.createBudgetTransactionLink(input);
-  }
-
-  public createAuditLog(
-    input: Parameters<AffiliateTaskExpiryRepositoryPort["createAuditLog"]>[0]
-  ): Promise<void> {
-    return this.delegate.createAuditLog(input);
-  }
-}
-
-const isRetryableDeadlock = (error: unknown): boolean => {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    code?: unknown;
-    message?: unknown;
-    meta?: { code?: unknown; message?: unknown };
-  };
-  const code = typeof candidate.code === "string" ? candidate.code : "";
-  const metaCode = typeof candidate.meta?.code === "string" ? candidate.meta.code : "";
-  const message = [candidate.message, candidate.meta?.message]
-    .filter((value): value is string => typeof value === "string")
-    .join(" ");
-  return code === "P2034" || metaCode === "1213" || /deadlock|1213|40001/i.test(message);
 };
 
 const sameDate = (left: Date | null, right: Date | null): boolean =>
@@ -240,6 +149,27 @@ const main = async (): Promise<void> => {
     );
     const createExpiry = (reportFailure?: AffiliateTaskExpiryFailureReporter) =>
       new AffiliateTaskExpiryService(guardedRepository, ledger, reportFailure);
+    const runRaceExpiry = async (
+      failures: Array<{ taskId: number; code: number; message: string }>
+    ) => {
+      const transactionErrorStart = guardedRepository.transactionErrors.length;
+      const failureStart = failures.length;
+      const summary = await createExpiry((failure) => failures.push(failure)).expireDue({
+        now,
+        batchSize: 500
+      });
+      if (summary.failed !== 0) {
+        const raceErrors = guardedRepository.transactionErrors.slice(transactionErrorStart);
+        assert(
+          summary.failed === 1 &&
+            failures.length - failureStart === 1 &&
+            raceErrors.length === 1,
+          "expiry race did not expose exactly one rejected transaction"
+        );
+        throw raceErrors[0];
+      }
+      return requireSuccessfulExpirySummary(summary);
+    };
 
     type TaskFixture = {
       task: { id: number };
@@ -707,83 +637,74 @@ const main = async (): Promise<void> => {
       where: { id: publisherWallet.id }
     });
     const completionExpiryFailures: Array<{ taskId: number; code: number; message: string }> = [];
-    const completionTransactionErrorStart = guardedRepository.transactionErrors.length;
     const completionRuns = await Promise.allSettled([
-      createExpiry((failure) => completionExpiryFailures.push(failure)).expireDue({
-        now,
-        batchSize: 500
-      }),
+      runRaceExpiry(completionExpiryFailures),
       settleCompletedBooking(completionRaceOrder.order.id, customerCompletionRace.id)
     ]);
-    assert(completionRuns[0].status === "fulfilled", "completion expiry race scan rejected");
-    let completionExpirySummary = completionRuns[0].value;
-    let completionFormalResult =
-      completionRuns[1].status === "fulfilled" ? completionRuns[1].value : null;
-    let completionDeadlockRetries = 0;
-    const completionExpiryWasDeadlock = completionExpirySummary.failed === 1;
-    const completionFormalWasDeadlock = completionRuns[1].status === "rejected";
     assert(
-      !(completionExpiryWasDeadlock && completionFormalWasDeadlock),
+      !(completionRuns[0].status === "rejected" && completionRuns[1].status === "rejected"),
       "completion expiry race lost both operations"
     );
-    if (completionExpiryWasDeadlock) {
-      const raceError = guardedRepository.transactionErrors[completionTransactionErrorStart];
-      assert(
-        completionExpiryFailures.length === 1 && isRetryableDeadlock(raceError),
-        "completion expiry race failed for a non-deadlock reason"
-      );
-      const rollbackTask = await prisma.affiliateTask.findUniqueOrThrow({
-        where: { id: completionRaceFixture.task.id }
-      });
-      assert(
-        rollbackTask.endedAt === null &&
-          (await prisma.ledgerTransaction.count({
-            where: {
-              type: "AFFILIATE_TASK_BUDGET_RELEASE",
-              referenceType: "affiliate_task",
-              referenceId: completionRaceFixture.task.id
-            }
-          })) === 0 &&
-          (await prisma.auditLog.count({
-            where: {
-              targetType: "affiliate_task",
-              targetId: completionRaceFixture.task.id,
-              action: "affiliate.task.expired"
-            }
-          })) === 0,
-        "completion expiry deadlock victim did not roll back"
-      );
-      completionExpirySummary = await createExpiry().expireDue({ now, batchSize: 500 });
-      completionDeadlockRetries += 1;
-    }
-    if (completionFormalWasDeadlock) {
-      assert(
-        isRetryableDeadlock(completionRuns[1].reason),
-        "completion race formal operation failed for a non-deadlock reason"
-      );
-      const rollbackAttribution = await prisma.affiliateAttribution.findUniqueOrThrow({
-        where: { id: completionRaceOrder.attribution.id }
-      });
-      assert(
-        rollbackAttribution.status === "ATTRIBUTED" &&
-          (await prisma.affiliateReward.count({
-            where: { attributionId: completionRaceOrder.attribution.id, deletedAt: null }
-          })) === 0 &&
-          (await prisma.wallet.count({
-            where: {
-              ownerType: "USER",
-              ownerId: claimantCompletionRace.id,
-              currency: "NDP"
-            }
-          })) === 0,
-        "completion formal deadlock victim did not roll back"
-      );
-      completionFormalResult = await settleCompletedBooking(
-        completionRaceOrder.order.id,
-        customerCompletionRace.id
-      );
-      completionDeadlockRetries += 1;
-    }
+    const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+      initial: completionRuns[0],
+      retry: () => runRaceExpiry([]),
+      verifyRollback: async () => {
+        assert(
+          completionExpiryFailures.length === 1,
+          "completion expiry race did not report its deadlock victim"
+        );
+        const rollbackTask = await prisma.affiliateTask.findUniqueOrThrow({
+          where: { id: completionRaceFixture.task.id }
+        });
+        assert(
+          rollbackTask.endedAt === null &&
+            (await prisma.ledgerTransaction.count({
+              where: {
+                type: "AFFILIATE_TASK_BUDGET_RELEASE",
+                referenceType: "affiliate_task",
+                referenceId: completionRaceFixture.task.id
+              }
+            })) === 0 &&
+            (await prisma.auditLog.count({
+              where: {
+                targetType: "affiliate_task",
+                targetId: completionRaceFixture.task.id,
+                action: "affiliate.task.expired"
+              }
+            })) === 0,
+          "completion expiry deadlock victim did not roll back"
+        );
+      },
+      validateFulfilled: requireSuccessfulExpirySummary
+    });
+    const completionFormalResolution = await resolveVerifiedDeadlockVictim({
+      initial: completionRuns[1],
+      retry: () =>
+        settleCompletedBooking(completionRaceOrder.order.id, customerCompletionRace.id),
+      verifyRollback: async () => {
+        const rollbackAttribution = await prisma.affiliateAttribution.findUniqueOrThrow({
+          where: { id: completionRaceOrder.attribution.id }
+        });
+        assert(
+          rollbackAttribution.status === "ATTRIBUTED" &&
+            (await prisma.affiliateReward.count({
+              where: { attributionId: completionRaceOrder.attribution.id, deletedAt: null }
+            })) === 0 &&
+            (await prisma.wallet.count({
+              where: {
+                ownerType: "USER",
+                ownerId: claimantCompletionRace.id,
+                currency: "NDP"
+              }
+            })) === 0,
+          "completion formal deadlock victim did not roll back"
+        );
+      }
+    });
+    const completionExpirySummary = completionExpiryResolution.value;
+    const completionFormalResult = completionFormalResolution.value;
+    const completionDeadlockRetries =
+      Number(completionExpiryResolution.retried) + Number(completionFormalResolution.retried);
     assert(
       completionExpirySummary.failed === 0 && completionFormalResult?.status === "settled",
       "completion expiry race did not finish both formal operations"
@@ -882,69 +803,65 @@ const main = async (): Promise<void> => {
       where: { id: publisherWallet.id }
     });
     const cancellationExpiryFailures: Array<{ taskId: number; code: number; message: string }> = [];
-    const cancellationTransactionErrorStart = guardedRepository.transactionErrors.length;
     const cancellationRuns = await Promise.allSettled([
-      createExpiry((failure) => cancellationExpiryFailures.push(failure)).expireDue({
-        now,
-        batchSize: 500
-      }),
+      runRaceExpiry(cancellationExpiryFailures),
       invalidateCancelledBooking(cancellationRaceOrder.order.id, customerCancellationRace.id)
     ]);
-    assert(cancellationRuns[0].status === "fulfilled", "cancellation expiry race scan rejected");
-    let cancellationExpirySummary = cancellationRuns[0].value;
-    let cancellationDeadlockRetries = 0;
-    const cancellationExpiryWasDeadlock = cancellationExpirySummary.failed === 1;
-    const cancellationFormalWasDeadlock = cancellationRuns[1].status === "rejected";
     assert(
-      !(cancellationExpiryWasDeadlock && cancellationFormalWasDeadlock),
+      !(cancellationRuns[0].status === "rejected" && cancellationRuns[1].status === "rejected"),
       "cancellation expiry race lost both operations"
     );
-    if (cancellationExpiryWasDeadlock) {
-      const raceError = guardedRepository.transactionErrors[cancellationTransactionErrorStart];
-      assert(
-        cancellationExpiryFailures.length === 1 && isRetryableDeadlock(raceError),
-        "cancellation expiry race failed for a non-deadlock reason"
-      );
-      const rollbackTask = await prisma.affiliateTask.findUniqueOrThrow({
-        where: { id: cancellationRaceFixture.task.id }
-      });
-      assert(
-        rollbackTask.endedAt === null &&
-          (await prisma.ledgerTransaction.count({
-            where: {
-              type: "AFFILIATE_TASK_BUDGET_RELEASE",
-              referenceType: "affiliate_task",
-              referenceId: cancellationRaceFixture.task.id
-            }
-          })) === 0,
-        "cancellation expiry deadlock victim did not roll back"
-      );
-      cancellationExpirySummary = await createExpiry().expireDue({ now, batchSize: 500 });
-      cancellationDeadlockRetries += 1;
-    }
-    if (cancellationFormalWasDeadlock) {
-      assert(
-        isRetryableDeadlock(cancellationRuns[1].reason),
-        "cancellation race formal operation failed for a non-deadlock reason"
-      );
-      const rollbackAttribution = await prisma.affiliateAttribution.findUniqueOrThrow({
-        where: { id: cancellationRaceOrder.attribution.id }
-      });
-      assert(
-        rollbackAttribution.status === "ATTRIBUTED" &&
-          rollbackAttribution.activeKey !== null &&
-          (await prisma.auditLog.count({
-            where: {
-              action: "affiliate.attribution.invalidated",
-              targetType: "booking_order",
-              targetId: cancellationRaceOrder.order.id
-            }
-          })) === 0,
-        "cancellation formal deadlock victim did not roll back"
-      );
-      await invalidateCancelledBooking(cancellationRaceOrder.order.id, customerCancellationRace.id);
-      cancellationDeadlockRetries += 1;
-    }
+    const cancellationExpiryResolution = await resolveVerifiedDeadlockVictim({
+      initial: cancellationRuns[0],
+      retry: () => runRaceExpiry([]),
+      verifyRollback: async () => {
+        assert(
+          cancellationExpiryFailures.length === 1,
+          "cancellation expiry race did not report its deadlock victim"
+        );
+        const rollbackTask = await prisma.affiliateTask.findUniqueOrThrow({
+          where: { id: cancellationRaceFixture.task.id }
+        });
+        assert(
+          rollbackTask.endedAt === null &&
+            (await prisma.ledgerTransaction.count({
+              where: {
+                type: "AFFILIATE_TASK_BUDGET_RELEASE",
+                referenceType: "affiliate_task",
+                referenceId: cancellationRaceFixture.task.id
+              }
+            })) === 0,
+          "cancellation expiry deadlock victim did not roll back"
+        );
+      },
+      validateFulfilled: requireSuccessfulExpirySummary
+    });
+    const cancellationFormalResolution = await resolveVerifiedDeadlockVictim({
+      initial: cancellationRuns[1],
+      retry: () =>
+        invalidateCancelledBooking(cancellationRaceOrder.order.id, customerCancellationRace.id),
+      verifyRollback: async () => {
+        const rollbackAttribution = await prisma.affiliateAttribution.findUniqueOrThrow({
+          where: { id: cancellationRaceOrder.attribution.id }
+        });
+        assert(
+          rollbackAttribution.status === "ATTRIBUTED" &&
+            rollbackAttribution.activeKey !== null &&
+            (await prisma.auditLog.count({
+              where: {
+                action: "affiliate.attribution.invalidated",
+                targetType: "booking_order",
+                targetId: cancellationRaceOrder.order.id
+              }
+            })) === 0,
+          "cancellation formal deadlock victim did not roll back"
+        );
+      }
+    });
+    const cancellationExpirySummary = cancellationExpiryResolution.value;
+    const cancellationDeadlockRetries =
+      Number(cancellationExpiryResolution.retried) +
+      Number(cancellationFormalResolution.retried);
     assert(cancellationExpirySummary.failed === 0, "cancellation expiry race did not end task");
     const cancellationEndedState = await budgetState(cancellationRaceFixture.task.id);
     const cancellationEndedAt = cancellationEndedState.task.endedAt;
@@ -1003,12 +920,25 @@ const main = async (): Promise<void> => {
     const concurrentWalletBefore = await prisma.wallet.findUniqueOrThrow({
       where: { id: publisherWallet.id }
     });
+    const concurrentFailures: Array<{ taskId: number; code: number; message: string }> = [];
     const concurrentRuns = await Promise.allSettled([
-      createExpiry().expireDue({ now, batchSize: 500 }),
-      createExpiry().expireDue({ now, batchSize: 500 })
+      createExpiry((failure) => concurrentFailures.push(failure)).expireDue({
+        now,
+        batchSize: 500
+      }),
+      createExpiry((failure) => concurrentFailures.push(failure)).expireDue({
+        now,
+        batchSize: 500
+      })
     ]);
     assert(
       concurrentRuns.every((run) => run.status === "fulfilled") &&
+        concurrentRuns.every((run) => run.status === "fulfilled" && run.value.failed === 0) &&
+        concurrentFailures.length === 0 &&
+        concurrentRuns.reduce(
+          (sum, run) => sum + (run.status === "fulfilled" ? run.value.released : 0),
+          0
+        ) === 1 &&
         concurrentRuns.reduce(
           (sum, run) => sum + (run.status === "fulfilled" ? run.value.releasedNdp : 0),
           0
