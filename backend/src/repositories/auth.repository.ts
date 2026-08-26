@@ -56,7 +56,7 @@ export interface AuthUserRecord {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
-  sessionGeneration: number;
+  sessionGeneration?: number;
   accessState: AuthAccountAccessState;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
