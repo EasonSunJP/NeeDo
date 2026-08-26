@@ -729,8 +729,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
           provider: "google",
           providerSubject,
           providerEmail,
-          providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
-          lastUsedAt: new Date()
+          providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt
         }
       });
       return { ...binding, provider: "google", user: toAuthUserRecord(user) };
@@ -742,21 +741,18 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         where: { id: existing.id },
         data: {
           providerEmail,
-          providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
-          lastUsedAt: new Date()
+          providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt
         }
       });
       return { ...binding, provider: "google", user: toAuthUserRecord(user) };
     }
 
-    const restoredAt = new Date();
     const restored = await transaction.externalAuthAccount.updateMany({
       where: { id: existing.id, deletedAt: existing.deletedAt },
       data: {
         userId: user.id,
         providerEmail,
         providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
-        lastUsedAt: restoredAt,
         deletedAt: null
       }
     });
@@ -766,7 +762,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         userId: user.id,
         providerEmail,
         providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
-        lastUsedAt: restoredAt,
+        lastUsedAt: existing.lastUsedAt,
         deletedAt: null,
         user: toAuthUserRecord(user)
       };
@@ -774,7 +770,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
 
     const retainedBySameUser = await transaction.externalAuthAccount.updateMany({
       where: { id: existing.id, userId: user.id, deletedAt: null },
-      data: { lastUsedAt: restoredAt }
+      data: {}
     });
     if (retainedBySameUser.count !== 1) throw new ExternalAuthAccountConflictError();
 
@@ -783,7 +779,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       userId: user.id,
       providerEmail,
       providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
-      lastUsedAt: restoredAt,
+      lastUsedAt: existing.lastUsedAt,
       deletedAt: null,
       user: toAuthUserRecord(user)
     };

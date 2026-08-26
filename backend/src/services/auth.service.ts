@@ -846,6 +846,16 @@ export class AuthService {
     context: AuthRequestContext
   ): Promise<{ user: AuthUserRecord; created: boolean }> {
     const googleRepository = this.googleRepository();
+    const recoveredRegistration = await this.repository.findVerifiedRegistrationByChallenge(
+      challengeId,
+      googleIdentity.email
+    );
+    if (recoveredRegistration) {
+      const binding = await googleRepository.findGoogleBindingBySubject(googleIdentity.subject);
+      if (!binding || binding.userId !== recoveredRegistration.id) throw this.googleConflictError();
+      this.assertGoogleBindingUser(binding);
+      return { user: binding.user, created: true };
+    }
     const currentBinding = await googleRepository.findGoogleBindingBySubject(
       googleIdentity.subject
     );

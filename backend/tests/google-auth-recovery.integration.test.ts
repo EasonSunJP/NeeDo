@@ -226,6 +226,7 @@ describeIntegration("formal Google recovery integration", () => {
       await import("../src/services/auth-token.service")
     ).AuthTokenService(env).verifyRefreshToken(recovered.refreshToken);
     refreshes.push({ userId: committed.id, jti: refreshPayload.jti });
+    expect(recovered.needoId).toBe(committed.needoId);
     expect(await prisma.user.count({ where: { email: googleOnlyEmail } })).toBe(1);
     expect(
       await prisma.externalAuthAccount.count({
@@ -241,6 +242,9 @@ describeIntegration("formal Google recovery integration", () => {
         }
       })
     ).toBe(1);
+    expect(
+      await prisma.auditLog.count({ where: { action: "auth.google.link", targetId: committed.id } })
+    ).toBe(0);
     await expect(
       service.verifyGoogleRegistrationOrLink(pending.challengeId, delivered[0], { ip: "127.0.0.1" })
     ).rejects.toBeDefined();
