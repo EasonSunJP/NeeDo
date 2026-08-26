@@ -351,7 +351,7 @@ export interface AffiliateCompletionInput {
   bookingOrderId: number;
   customerUserId: number;
   shopId: number;
-  serviceId: number;
+  serviceId: number | null;
   actorUserId: number;
   transactionClient: AffiliateCheckoutTransactionClient;
 }
@@ -750,7 +750,7 @@ export class AffiliateCheckoutService {
     if (
       attribution.customerUserId !== input.customerUserId ||
       attribution.shopId !== input.shopId ||
-      attribution.serviceId !== input.serviceId
+      (input.serviceId !== null && attribution.serviceId !== input.serviceId)
     ) {
       throw this.rewardSettlementConflictError();
     }

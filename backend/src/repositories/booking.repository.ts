@@ -1260,9 +1260,7 @@ export class BookingRepository implements BookingRepositoryPort {
             rewardAllocatedNdp:
               order.affiliateAttributions[0].rewardAllocatedNdp,
             attributionStatus:
-              order.affiliateAttributions[0].status === "INVALIDATED"
-                ? "invalidated"
-                : "attributed"
+              order.affiliateAttributions[0].status.toLowerCase() as AffiliateCheckoutSummary["attributionStatus"]
           }
         : null,
       createdAt: order.createdAt,

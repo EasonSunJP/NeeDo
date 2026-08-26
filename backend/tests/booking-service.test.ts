@@ -210,12 +210,16 @@ describe("BookingService state machine", () => {
     const affiliateCheckout: jest.Mocked<
       Pick<
         AffiliateCheckoutService,
-        "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+        | "prepareCheckout"
+        | "persistAttribution"
+        | "invalidateCancelledBooking"
+        | "settleCompletedBooking"
       >
     > = {
       prepareCheckout: jest.fn().mockResolvedValue(prepared),
       persistAttribution: jest.fn().mockResolvedValue(undefined),
-      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined)
+      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined),
+      settleCompletedBooking: jest.fn()
     };
     const service = new BookingService(
       repository,
@@ -272,10 +276,14 @@ describe("BookingService state machine", () => {
     const affiliateCheckout = {
       prepareCheckout: jest.fn(),
       persistAttribution: jest.fn(),
-      invalidateCancelledBooking: jest.fn()
+      invalidateCancelledBooking: jest.fn(),
+      settleCompletedBooking: jest.fn()
     } as unknown as Pick<
       AffiliateCheckoutService,
-      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+      | "prepareCheckout"
+      | "persistAttribution"
+      | "invalidateCancelledBooking"
+      | "settleCompletedBooking"
     >;
     const service = new BookingService(
       repository,
@@ -407,10 +415,14 @@ describe("BookingService state machine", () => {
     const affiliateCheckout = {
       prepareCheckout: jest.fn(),
       persistAttribution: jest.fn(),
-      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined)
+      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined),
+      settleCompletedBooking: jest.fn()
     } as unknown as Pick<
       AffiliateCheckoutService,
-      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+      | "prepareCheckout"
+      | "persistAttribution"
+      | "invalidateCancelledBooking"
+      | "settleCompletedBooking"
     >;
     const service = new BookingService(
       repository,
@@ -439,10 +451,14 @@ describe("BookingService state machine", () => {
     const affiliateCheckout = {
       prepareCheckout: jest.fn(),
       persistAttribution: jest.fn(),
-      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined)
+      invalidateCancelledBooking: jest.fn().mockResolvedValue(undefined),
+      settleCompletedBooking: jest.fn()
     } as unknown as Pick<
       AffiliateCheckoutService,
-      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+      | "prepareCheckout"
+      | "persistAttribution"
+      | "invalidateCancelledBooking"
+      | "settleCompletedBooking"
     >;
     const service = new BookingService(
       createRepository(makeOrder("confirmed")),
@@ -456,6 +472,59 @@ describe("BookingService state machine", () => {
 
     expect(ledgerService.releaseBookingHold).toHaveBeenCalledTimes(1);
     expect(affiliateCheckout.invalidateCancelledBooking).toHaveBeenCalledTimes(1);
+  });
+
+  it("composes booking finance and affiliate reward settlement in the completion transaction", async () => {
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn(),
+      settleBookingCompletion: jest.fn().mockResolvedValue(undefined),
+      compensateCustomerForMerchantCancellation: jest.fn()
+    };
+    const settleCompletedBooking = jest.fn().mockResolvedValue({
+      status: "no_op",
+      reason: "no_attribution"
+    });
+    const affiliateCheckout = {
+      prepareCheckout: jest.fn(),
+      persistAttribution: jest.fn(),
+      invalidateCancelledBooking: jest.fn(),
+      settleCompletedBooking
+    } as unknown as Pick<
+      AffiliateCheckoutService,
+      | "prepareCheckout"
+      | "persistAttribution"
+      | "invalidateCancelledBooking"
+      | "settleCompletedBooking"
+    >;
+    const providerActor = {
+      userId: 2,
+      roles: ["merchant_owner"],
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: 1
+    };
+    const repository = createRepository(makeOrder("inService"));
+
+    await new BookingService(
+      repository,
+      ledgerService,
+      undefined,
+      undefined,
+      affiliateCheckout
+    ).transitionOrder(providerActor, 1, "complete");
+
+    expect(ledgerService.settleBookingCompletion).toHaveBeenCalledTimes(1);
+    expect(settleCompletedBooking).toHaveBeenCalledWith({
+      bookingOrderId: 1,
+      customerUserId: 1,
+      shopId: 1,
+      serviceId: 1,
+      actorUserId: 2,
+      transactionClient: expect.anything()
+    });
+    const ledgerContext = ledgerService.settleBookingCompletion.mock.calls[0][1];
+    const affiliateContext = settleCompletedBooking.mock.calls[0][0].transactionClient;
+    expect(affiliateContext).toBe(ledgerContext?.transactionClient);
   });
 
   it("settles ledger side effects when confirming, cancelling, and completing booking orders", async () => {

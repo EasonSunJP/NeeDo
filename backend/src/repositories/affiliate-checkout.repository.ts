@@ -399,6 +399,9 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         rewardLedgerTransactionId: number | null;
         rewardPublisherWalletId: number | null;
         rewardClaimantWalletId: number | null;
+        bookingCustomerUserId: number;
+        bookingShopId: number;
+        bookingServiceId: number | null;
       }>
     >(
       Prisma.sql`
@@ -424,8 +427,16 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
                reward.reward_ndp AS rewardNdp,
                reward_transaction.ledger_transaction_id AS rewardLedgerTransactionId,
                reward.publisher_wallet_id AS rewardPublisherWalletId,
-               reward.claimant_wallet_id AS rewardClaimantWalletId
+               reward.claimant_wallet_id AS rewardClaimantWalletId,
+               booking.customer_user_id AS bookingCustomerUserId,
+               booking.shop_id AS bookingShopId,
+               COALESCE(
+                 booking.service_id,
+                 booked_technician_service.source_shop_service_id
+               ) AS bookingServiceId
         FROM affiliate_attributions AS attribution
+        INNER JOIN booking_orders AS booking
+          ON booking.id = attribution.booking_order_id
         INNER JOIN affiliate_tasks AS task
           ON task.id = attribution.task_id
         INNER JOIN affiliate_claims AS claim
@@ -439,6 +450,9 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
           ON reward_transaction.reward_id = reward.id
          AND reward_transaction.kind = 'settlement'
          AND reward_transaction.deleted_at IS NULL
+        LEFT JOIN technician_services AS booked_technician_service
+          ON booked_technician_service.id = booking.technician_service_id
+         AND booked_technician_service.deleted_at IS NULL
         WHERE attribution.booking_order_id = ${bookingOrderId}
           AND attribution.deleted_at IS NULL
           AND task.deleted_at IS NULL
@@ -454,6 +468,14 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     const row = rows[0];
     if (!row) {
       return null;
+    }
+    if (
+      Number(row.customerUserId) !== Number(row.bookingCustomerUserId) ||
+      Number(row.shopId) !== Number(row.bookingShopId) ||
+      row.bookingServiceId === null ||
+      Number(row.serviceId) !== Number(row.bookingServiceId)
+    ) {
+      throw new Error("error.affiliate.reward_settlement_conflict");
     }
 
     const publisherOwnerType = row.publisherOwnerType.toLowerCase() as

@@ -467,6 +467,16 @@ describe("GET /api/v1/openapi.json", () => {
         { type: "null" }
       ]
     });
+    expect(
+      response.body.components.schemas.AffiliateCheckoutSummary.properties
+        .attributionStatus.enum
+    ).toEqual([
+      "attributed",
+      "qualified",
+      "settled",
+      "invalidated",
+      "reversed"
+    ]);
     const codeValidationPath =
       response.body.paths["/api/v1/affiliate/codes/validate"].post;
     expect(codeValidationPath.security).toEqual([{ bearerAuth: [] }]);

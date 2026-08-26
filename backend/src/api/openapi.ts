@@ -2929,7 +2929,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           rewardAllocatedNdp: { type: "integer", minimum: 1 },
           attributionStatus: {
             type: "string",
-            enum: ["attributed", "invalidated"]
+            enum: [
+              "attributed",
+              "qualified",
+              "settled",
+              "invalidated",
+              "reversed"
+            ]
           }
         }
       },
