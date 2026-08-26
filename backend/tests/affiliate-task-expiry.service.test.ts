@@ -68,6 +68,7 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
   }> = [];
   public candidateIds: number[] = [];
   public candidateInputs: Array<{ now: Date; batchSize: number }> = [];
+  public afterCandidateScan: (() => void) | undefined;
 
   public seed(inputTask: AffiliateTaskExpiryTaskRecord, inputReservation: AffiliateBudgetReservationRecord) {
     this.tasks.set(inputTask.id, inputTask);
@@ -80,6 +81,7 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
     batchSize: number;
   }): Promise<number[]> {
     this.candidateInputs.push(input);
+    this.afterCandidateScan?.();
     return this.candidateIds;
   }
 
@@ -312,6 +314,28 @@ describe("AffiliateTaskExpiryService", () => {
       releasedNdp: 0
     });
     expect(ledger.calls).toHaveLength(1);
+  });
+
+  it("no-ops a candidate reloaded as ineligible before reading its malformed reservation", async () => {
+    const { repository, ledger, service } = createFixture();
+    repository.seed(task(), reservation());
+    repository.afterCandidateScan = () => {
+      repository.tasks.set(71, task({ status: "cancelled" }));
+      repository.reservations.set(71, reservation({ releasedNdp: 100 }));
+    };
+
+    await expect(expire(service)).resolves.toEqual({
+      scanned: 1,
+      ended: 0,
+      released: 0,
+      failed: 0,
+      releasedNdp: 0
+    });
+    expect(ledger.calls).toHaveLength(0);
+    expect(repository.links).toHaveLength(0);
+    expect(repository.audits).toHaveLength(0);
+    expect(repository.tasks.get(71)).toMatchObject({ status: "cancelled", endedAt: null });
+    expect(repository.reservations.get(71)).toMatchObject({ releasedNdp: 100 });
   });
 
   it("isolates candidate failures so another task can expire and release", async () => {

@@ -142,6 +142,9 @@ export class AffiliateTaskExpiryService {
       if (!task) {
         return this.noop();
       }
+      if (task.status !== "ended" && !isExpirableStatus(task.status)) {
+        return this.noop();
+      }
       const reservation = await repository.lockBudgetReservation(taskId);
       if (!reservation) {
         return this.noop();
