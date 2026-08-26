@@ -60,7 +60,6 @@ describeIntegration("formal account-security recovery integration", () => {
             OR: [
               {
                 action: "auth.register",
-                actorId: { in: userIds },
                 targetId: { in: userIds }
               },
               {
@@ -79,6 +78,22 @@ describeIntegration("formal account-security recovery integration", () => {
         await transaction.userIdentity.deleteMany({ where: { userId: { in: userIds } } });
         await transaction.customerProfile.deleteMany({ where: { userId: { in: userIds } } });
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });
+        expect(
+          await transaction.auditLog.count({
+            where: {
+              targetType: "User",
+              targetId: { in: userIds },
+              action: {
+                in: [
+                  "auth.register",
+                  "auth.google.link",
+                  "auth.google.unlink",
+                  "auth.password.setup"
+                ]
+              }
+            }
+          })
+        ).toBe(0);
       });
       expect(await prisma.user.count({ where: { email: { startsWith: marker } } })).toBe(0);
       expect(
