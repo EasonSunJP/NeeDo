@@ -322,7 +322,9 @@ const createFixture = () => {
       );
       if (!binding) throw new Error("missing binding");
       binding.deletedAt = new Date();
-      users.get(input.userId)!.sessionGeneration += 1;
+      const unlinkingUser = users.get(input.userId);
+      if (!unlinkingUser) throw new Error("missing unlink user");
+      unlinkingUser.sessionGeneration = (unlinkingUser.sessionGeneration ?? 0) + 1;
       if (
         !audits.some(
           (audit) =>
