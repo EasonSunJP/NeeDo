@@ -7,6 +7,7 @@ import { AuthRepository } from "../src/repositories/auth.repository";
 import type { AuthSessionStore } from "../src/services/auth-session.store";
 import { RedisAuthSessionStore } from "../src/services/auth-session.store";
 import { AuthService } from "../src/services/auth.service";
+import { AuthTokenService } from "../src/services/auth-token.service";
 import { RedisVerificationChallengeStore } from "../src/services/auth-verification-challenge.store";
 
 const allowedHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -35,21 +36,30 @@ describeIntegration("verified registration recovery integration", () => {
   let redis: RedisClient;
   let createdUserId: number | undefined;
   let challengeId: string | undefined;
+  let refreshJti: string | undefined;
 
   afterAll(async () => {
     if (prisma && createdUserId) {
+      const userId = createdUserId;
       await prisma.$transaction(async (transaction) => {
         await transaction.auditLog.deleteMany({
-          where: { targetType: "User", targetId: createdUserId }
+          where: { targetType: "User", targetId: userId }
         });
-        await transaction.loginLog.deleteMany({ where: { userId: createdUserId } });
-        await transaction.userRole.deleteMany({ where: { userId: createdUserId } });
-        await transaction.userIdentity.deleteMany({ where: { userId: createdUserId } });
-        await transaction.customerProfile.deleteMany({ where: { userId: createdUserId } });
-        await transaction.user.deleteMany({ where: { id: createdUserId } });
+        await transaction.loginLog.deleteMany({ where: { userId } });
+        await transaction.userRole.deleteMany({ where: { userId } });
+        await transaction.userIdentity.deleteMany({ where: { userId } });
+        await transaction.customerProfile.deleteMany({ where: { userId } });
+        await transaction.user.deleteMany({ where: { id: userId } });
       });
+      expect(await prisma.user.count({ where: { id: userId } })).toBe(0);
+      expect(await prisma.userIdentity.count({ where: { userId } })).toBe(0);
     }
     if (redis && challengeId) {
+      if (createdUserId && refreshJti) {
+        const sessionStore = new RedisAuthSessionStore(() => redis);
+        await sessionStore.revokeRefreshToken(createdUserId, refreshJti);
+        expect(await sessionStore.hasRefreshToken(createdUserId, refreshJti)).toBe(false);
+      }
       const cooldownKey = `auth:verification:cooldown:${createHmac(
         "sha256",
         env.AUTH_VERIFICATION_SECRET
@@ -61,6 +71,10 @@ describeIntegration("verified registration recovery integration", () => {
         .update(email)
         .digest("base64url")}`;
       await redis.del([`auth:verification:email:${challengeId}`, cooldownKey]);
+      expect(await redis.mGet([`auth:verification:email:${challengeId}`, cooldownKey])).toEqual([
+        null,
+        null
+      ]);
       await redis.quit();
     }
     if (prisma) {
@@ -120,6 +134,7 @@ describeIntegration("verified registration recovery integration", () => {
     const stored = await repository.findVerifiedRegistrationByChallenge(challengeId, email);
     if (!stored) throw new Error("committed registration audit evidence was not found");
     createdUserId = stored.id;
+    refreshJti = new AuthTokenService(env).verifyRefreshToken(recovered.refreshToken).jti;
     expect(recovered.needoId).toBe(stored.needoId);
     expect(await prisma.user.count({ where: { email } })).toBe(1);
     expect(await redis.get(`auth:verification:email:${challengeId}`)).toBeNull();

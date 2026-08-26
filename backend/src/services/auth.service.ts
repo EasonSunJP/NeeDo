@@ -3,10 +3,7 @@ import { compare, hash } from "bcryptjs";
 import { NeedoIdAllocationExhaustedError } from "./needo-id.service";
 import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
-import type {
-  AuthRepositoryPort,
-  AuthUserRecord
-} from "../repositories/auth.repository";
+import type { AuthRepositoryPort, AuthUserRecord } from "../repositories/auth.repository";
 import { AppError } from "../utils/app-error";
 import type { OtpDeliveryClient } from "./auth-otp-delivery.service";
 import type { AuthSessionStore } from "./auth-session.store";
@@ -67,11 +64,7 @@ export interface AuthIdentityPayload {
   scopeId: number | null;
 }
 
-export type AuthIdentityAvailabilityKind =
-  | "customer"
-  | "technician"
-  | "merchant"
-  | "affiliate";
+export type AuthIdentityAvailabilityKind = "customer" | "technician" | "merchant" | "affiliate";
 export type AuthIdentityAvailabilityState =
   | "active"
   | "available_to_apply"
@@ -592,7 +585,8 @@ export class AuthService {
     context: AuthRequestContext,
     currentIdentityId?: number
   ): Promise<TokenPairPayload> {
-    return (await this.completeSuccessfulLoginWithReceipt(user, context, currentIdentityId)).payload;
+    return (await this.completeSuccessfulLoginWithReceipt(user, context, currentIdentityId))
+      .payload;
   }
 
   private async completeSuccessfulLoginWithReceipt(
@@ -642,7 +636,10 @@ export class AuthService {
     };
   }
 
-  private async revokeRefreshTokenAfterFailedLogin(userId: number | undefined, jti: string): Promise<void> {
+  private async revokeRefreshTokenAfterFailedLogin(
+    userId: number | undefined,
+    jti: string
+  ): Promise<void> {
     if (!userId) return;
     try {
       await this.sessionStore.revokeRefreshToken(userId, jti);
@@ -829,9 +826,7 @@ export class AuthService {
 
     const applications = user.identityApplications ?? [];
     return (["customer", "technician", "merchant", "affiliate"] as const).map((kind) => {
-      const identity = identities.find((candidate) =>
-        identityTypes[kind].includes(candidate.type)
-      );
+      const identity = identities.find((candidate) => identityTypes[kind].includes(candidate.type));
       if (identity) {
         return {
           kind,
