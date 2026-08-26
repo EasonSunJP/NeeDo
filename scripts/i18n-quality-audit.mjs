@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const workspaceRoot = "/Users/eason/Documents/New project";
+const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const translationsPath = path.join(workspaceRoot, "src", "i18n", "translations.ts");
+const identityApplicationTranslationsPath = path.join(workspaceRoot, "src", "features", "identity-applications", "i18n.ts");
 const outputDir = path.join(workspaceRoot, "exports", "i18n");
 const jsonReportPath = path.join(outputDir, "i18n-quality-report.json");
 const markdownReportPath = path.join(outputDir, "i18n-quality-report.md");
@@ -107,15 +109,26 @@ function analyzeTranslations(translations) {
 
 async function loadTranslations() {
   const source = await fs.readFile(translationsPath, "utf8");
+  const identityApplicationSource = await fs.readFile(identityApplicationTranslationsPath, "utf8");
+  const compilerOptions = {
+    module: ts.ModuleKind.ES2022,
+    target: ts.ScriptTarget.ES2022
+  };
+  const transpiledIdentityApplicationTranslations = ts.transpileModule(identityApplicationSource, {
+    compilerOptions
+  }).outputText;
+  const tempToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const identityApplicationTempFileName = `identity-application-translations-quality-${tempToken}.mjs`;
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
-      module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022
+      ...compilerOptions
     }
-  }).outputText;
-  const tempFile = path.join(outputDir, `translations-quality-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
+  }).outputText.replace("../features/identity-applications/i18n", `./${identityApplicationTempFileName}`);
+  const tempFile = path.join(outputDir, `translations-quality-${tempToken}.mjs`);
+  const identityApplicationTempFile = path.join(outputDir, identityApplicationTempFileName);
 
   await fs.mkdir(outputDir, { recursive: true });
+  await fs.writeFile(identityApplicationTempFile, transpiledIdentityApplicationTranslations, "utf8");
   await fs.writeFile(tempFile, transpiled, "utf8");
 
   try {
@@ -123,6 +136,7 @@ async function loadTranslations() {
     return loaded.translations ?? {};
   } finally {
     await fs.unlink(tempFile).catch(() => {});
+    await fs.unlink(identityApplicationTempFile).catch(() => {});
   }
 }
 
@@ -179,4 +193,3 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
-
