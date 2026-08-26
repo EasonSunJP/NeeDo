@@ -10,6 +10,7 @@ import {
 } from "./lib/affiliate-expiry-acceptance-guard";
 
 const REWARD_NDP = 500;
+const BOOKING_FEE_NDP = 100;
 const SERVICE_PRICE_JPY = 8_800;
 
 const assert = (condition: unknown, message: string): asserts condition => {
@@ -33,6 +34,8 @@ const main = async (): Promise<void> => {
     { AffiliateTaskExpiryService },
     { BookingRepository },
     { BookingService },
+    { FeeRuleRepository },
+    { FeeCalculationService },
     { LedgerRepository },
     { LedgerService },
     { prisma, disconnectPrisma }
@@ -44,6 +47,8 @@ const main = async (): Promise<void> => {
     import("../src/services/affiliate-task-expiry.service"),
     import("../src/repositories/booking.repository"),
     import("../src/services/booking.service"),
+    import("../src/repositories/fee-rule.repository"),
+    import("../src/services/fee-calculation.service"),
     import("../src/repositories/ledger.repository"),
     import("../src/services/ledger.service"),
     import("../src/prisma/client")
@@ -61,6 +66,7 @@ const main = async (): Promise<void> => {
   let categoryId: number | null = null;
   let shopId: number | null = null;
   let serviceId: number | null = null;
+  let feeRuleSetId: number | null = null;
   let result: Record<string, unknown> | null = null;
 
   try {
@@ -130,7 +136,47 @@ const main = async (): Promise<void> => {
       secret: process.env.AFFILIATE_LINK_SECRET || "",
       publicBaseUrl: process.env.AFFILIATE_PUBLIC_BASE_URL || ""
     });
-    const ledger = new LedgerService(new LedgerRepository(prisma));
+    const feeRuleSet = await prisma.platformFeeRuleSet.create({
+      data: {
+        name: `${marker} booking fee`,
+        status: "active",
+        priority: -2_000_000_000,
+        effectiveFrom: taskStartsAt,
+        createdById: publisher.id,
+        updatedById: publisher.id,
+        rules: {
+          create: [
+            {
+              feeType: "b_platform_fee",
+              orderType: "booking",
+              payerType: "shop",
+              baseAmountNdp: BOOKING_FEE_NDP,
+              priority: -2_000_000_000,
+              conditionJson: { shopIds: [shop.id], serviceIds: [service.id] },
+              status: "active",
+              createdById: publisher.id,
+              updatedById: publisher.id
+            },
+            {
+              feeType: "user_reward",
+              orderType: "booking",
+              payerType: "platform",
+              baseAmountNdp: 0,
+              priority: -2_000_000_000,
+              conditionJson: { shopIds: [shop.id], serviceIds: [service.id] },
+              status: "active",
+              createdById: publisher.id,
+              updatedById: publisher.id
+            }
+          ]
+        }
+      }
+    });
+    feeRuleSetId = feeRuleSet.id;
+    const ledger = new LedgerService(
+      new LedgerRepository(prisma),
+      new FeeCalculationService(new FeeRuleRepository(prisma))
+    );
     const affiliateCheckout = new AffiliateCheckoutService(
       new AffiliateCheckoutRepository(prisma),
       linkTokens,
@@ -309,6 +355,10 @@ const main = async (): Promise<void> => {
           transactionClient: transaction
         })
       );
+    const advanceToInService = async (customerUserId: number, bookingOrderId: number) => {
+      await booking.transitionOrder(actor(customerUserId), bookingOrderId, "confirm");
+      return booking.transitionOrder(actor(customerUserId), bookingOrderId, "start");
+    };
     const makeDue = (taskId: number) =>
       prisma.affiliateTask.update({ where: { id: taskId }, data: { taskEndsAt: dueAt } });
     const budgetState = async (taskId: number) => {
@@ -632,6 +682,7 @@ const main = async (): Promise<void> => {
       completionRaceFixture,
       customerCompletionRace.id
     );
+    await advanceToInService(customerCompletionRace.id, completionRaceOrder.order.id);
     await makeDue(completionRaceFixture.task.id);
     const completionPublisherBefore = await prisma.wallet.findUniqueOrThrow({
       where: { id: publisherWallet.id }
@@ -639,7 +690,11 @@ const main = async (): Promise<void> => {
     const completionExpiryFailures: Array<{ taskId: number; code: number; message: string }> = [];
     const completionRuns = await Promise.allSettled([
       runRaceExpiry(completionExpiryFailures),
-      settleCompletedBooking(completionRaceOrder.order.id, customerCompletionRace.id)
+      booking.transitionOrder(
+        actor(customerCompletionRace.id),
+        completionRaceOrder.order.id,
+        "complete"
+      )
     ]);
     assert(
       !(completionRuns[0].status === "rejected" && completionRuns[1].status === "rejected"),
@@ -680,13 +735,82 @@ const main = async (): Promise<void> => {
     const completionFormalResolution = await resolveVerifiedDeadlockVictim({
       initial: completionRuns[1],
       retry: () =>
-        settleCompletedBooking(completionRaceOrder.order.id, customerCompletionRace.id),
+        booking.transitionOrder(
+          actor(customerCompletionRace.id),
+          completionRaceOrder.order.id,
+          "complete"
+        ),
       verifyRollback: async () => {
-        const rollbackAttribution = await prisma.affiliateAttribution.findUniqueOrThrow({
-          where: { id: completionRaceOrder.attribution.id }
-        });
+        const [
+          rollbackBooking,
+          rollbackHistory,
+          rollbackSlot,
+          rollbackHold,
+          rollbackFinancial,
+          rollbackAttribution,
+          rollbackCompletionLedgerCount,
+          rollbackCaptureLogCount,
+          rollbackCompletionAuditCount
+        ] = await Promise.all([
+          prisma.bookingOrder.findUniqueOrThrow({ where: { id: completionRaceOrder.order.id } }),
+          prisma.orderStatusHistory.findMany({
+            where: { bookingOrderId: completionRaceOrder.order.id },
+            orderBy: { id: "asc" }
+          }),
+          prisma.scheduleSlot.findUniqueOrThrow({
+            where: { id: completionRaceOrder.order.scheduleSlotId }
+          }),
+          prisma.walletHold.findFirstOrThrow({
+            where: { bookingOrderId: completionRaceOrder.order.id, deletedAt: null }
+          }),
+          prisma.orderFinancial.findUniqueOrThrow({
+            where: { bookingOrderId: completionRaceOrder.order.id }
+          }),
+          prisma.affiliateAttribution.findUniqueOrThrow({
+            where: { id: completionRaceOrder.attribution.id }
+          }),
+          prisma.ledgerTransaction.count({
+            where: {
+              type: "BOOKING_COMPLETE_SETTLEMENT",
+              referenceType: "booking_order",
+              referenceId: completionRaceOrder.order.id,
+              deletedAt: null
+            }
+          }),
+          prisma.feeCalculationLog.count({
+            where: {
+              bookingOrderId: completionRaceOrder.order.id,
+              calculationStage: "capture",
+              deletedAt: null
+            }
+          }),
+          prisma.auditLog.count({
+            where: {
+              actorId: customerCompletionRace.id,
+              action: {
+                in: [
+                  "ledger.booking_complete.settlement",
+                  "ledger.affiliate_reward.settlement",
+                  "affiliate.reward.settled"
+                ]
+              },
+              deletedAt: null
+            }
+          })
+        ]);
         assert(
-          rollbackAttribution.status === "ATTRIBUTED" &&
+          rollbackBooking.status === "IN_SERVICE" &&
+            rollbackHistory.length === 3 &&
+            rollbackHistory[2].toStatus === "IN_SERVICE" &&
+            rollbackSlot.status === "BOOKED" &&
+            rollbackSlot.bookedCount === 1 &&
+            rollbackHold.status === "active" &&
+            rollbackHold.capturedAmountNdp === 0 &&
+            rollbackHold.releasedAmountNdp === 0 &&
+            rollbackFinancial.settlementStatus === "holding" &&
+            rollbackFinancial.bPlatformFeeActualNdp === 0 &&
+            rollbackFinancial.releasedNdp === 0 &&
+            rollbackAttribution.status === "ATTRIBUTED" &&
             (await prisma.affiliateReward.count({
               where: { attributionId: completionRaceOrder.attribution.id, deletedAt: null }
             })) === 0 &&
@@ -696,8 +820,11 @@ const main = async (): Promise<void> => {
                 ownerId: claimantCompletionRace.id,
                 currency: "NDP"
               }
-            })) === 0,
-          "completion formal deadlock victim did not roll back"
+            })) === 0 &&
+            rollbackCompletionLedgerCount === 0 &&
+            rollbackCaptureLogCount === 0 &&
+            rollbackCompletionAuditCount === 0,
+          "completion outer booking deadlock victim did not roll back"
         );
       }
     });
@@ -706,7 +833,7 @@ const main = async (): Promise<void> => {
     const completionDeadlockRetries =
       Number(completionExpiryResolution.retried) + Number(completionFormalResolution.retried);
     assert(
-      completionExpirySummary.failed === 0 && completionFormalResult?.status === "settled",
+      completionExpirySummary.failed === 0 && completionFormalResult.status === "completed",
       "completion expiry race did not finish both formal operations"
     );
     const completionState = await budgetState(completionRaceFixture.task.id);
@@ -739,9 +866,114 @@ const main = async (): Promise<void> => {
     const completionPublisherAfter = await prisma.wallet.findUniqueOrThrow({
       where: { id: publisherWallet.id }
     });
+    const completionCustomerWallet = await prisma.wallet.findUniqueOrThrow({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "USER",
+          ownerId: customerCompletionRace.id,
+          currency: "NDP"
+        }
+      }
+    });
+    walletIds.push(completionCustomerWallet.id);
+    const [
+      completionBooking,
+      completionHistory,
+      completionSlot,
+      completionHold,
+      completionFinancial,
+      completionBookingLedgers,
+      completionFeeLogs
+    ] = await Promise.all([
+      prisma.bookingOrder.findUniqueOrThrow({ where: { id: completionRaceOrder.order.id } }),
+      prisma.orderStatusHistory.findMany({
+        where: { bookingOrderId: completionRaceOrder.order.id },
+        orderBy: { id: "asc" }
+      }),
+      prisma.scheduleSlot.findUniqueOrThrow({
+        where: { id: completionRaceOrder.order.scheduleSlotId }
+      }),
+      prisma.walletHold.findFirstOrThrow({
+        where: { bookingOrderId: completionRaceOrder.order.id, deletedAt: null }
+      }),
+      prisma.orderFinancial.findUniqueOrThrow({
+        where: { bookingOrderId: completionRaceOrder.order.id }
+      }),
+      prisma.ledgerTransaction.findMany({
+        where: {
+          type: { in: ["BOOKING_ACCEPT_FREEZE", "BOOKING_COMPLETE_SETTLEMENT"] },
+          referenceType: "booking_order",
+          referenceId: completionRaceOrder.order.id,
+          deletedAt: null
+        },
+        include: { entries: true, reconciliation: true },
+        orderBy: { id: "asc" }
+      }),
+      prisma.feeCalculationLog.findMany({
+        where: { bookingOrderId: completionRaceOrder.order.id, deletedAt: null },
+        orderBy: { id: "asc" }
+      })
+    ]);
+    ledgerTransactionIds.push(...completionBookingLedgers.map((transaction) => transaction.id));
+    const completionFormalAudits = await prisma.auditLog.findMany({
+      where: {
+        actorId: customerCompletionRace.id,
+        action: {
+          in: [
+            "ledger.booking_accept.freeze",
+            "ledger.booking_complete.settlement",
+            "ledger.affiliate_reward.settlement",
+            "affiliate.reward.settled"
+          ]
+        },
+        deletedAt: null
+      }
+    });
     const completionEndedAt = completionState.task.endedAt;
     assert(
-      completionAttribution.status === "SETTLED" &&
+      completionBooking.status === "COMPLETED" &&
+        completionHistory.length === 4 &&
+        completionHistory[0].fromStatus === null &&
+        completionHistory[0].toStatus === "PENDING" &&
+        completionHistory[1].fromStatus === "PENDING" &&
+        completionHistory[1].toStatus === "CONFIRMED" &&
+        completionHistory[2].fromStatus === "CONFIRMED" &&
+        completionHistory[2].toStatus === "IN_SERVICE" &&
+        completionHistory[3].fromStatus === "IN_SERVICE" &&
+        completionHistory[3].toStatus === "COMPLETED" &&
+        completionSlot.status === "BOOKED" &&
+        completionSlot.bookedCount === 1 &&
+        completionHold.holdAmountNdp === BOOKING_FEE_NDP &&
+        completionHold.capturedAmountNdp === BOOKING_FEE_NDP &&
+        completionHold.releasedAmountNdp === 0 &&
+        completionHold.status === "captured" &&
+        completionHold.capturedAt !== null &&
+        completionFinancial.bPlatformFeeHoldNdp === BOOKING_FEE_NDP &&
+        completionFinancial.bPlatformFeeActualNdp === BOOKING_FEE_NDP &&
+        completionFinancial.userRewardNdp === 0 &&
+        completionFinancial.releasedNdp === 0 &&
+        completionFinancial.settlementStatus === "settled" &&
+        completionFeeLogs.length === 3 &&
+        completionFeeLogs.filter((row) => row.calculationStage === "hold").length === 1 &&
+        completionFeeLogs.filter((row) => row.calculationStage === "capture").length === 2 &&
+        completionBookingLedgers.length === 2 &&
+        completionBookingLedgers[0].type === "BOOKING_ACCEPT_FREEZE" &&
+        completionBookingLedgers[0].amount === BOOKING_FEE_NDP &&
+        completionBookingLedgers[0].entries.length === 1 &&
+        completionBookingLedgers[0].entries[0].availableDelta === -BOOKING_FEE_NDP &&
+        completionBookingLedgers[0].entries[0].frozenDelta === BOOKING_FEE_NDP &&
+        completionBookingLedgers[0].reconciliation?.differenceAmount === 0 &&
+        completionBookingLedgers[1].type === "BOOKING_COMPLETE_SETTLEMENT" &&
+        completionBookingLedgers[1].amount === BOOKING_FEE_NDP &&
+        completionBookingLedgers[1].entries.length === 1 &&
+        completionBookingLedgers[1].entries[0].availableDelta === 0 &&
+        completionBookingLedgers[1].entries[0].frozenDelta === -BOOKING_FEE_NDP &&
+        completionBookingLedgers[1].reconciliation?.differenceAmount === 0 &&
+        completionFormalAudits.length === 4 &&
+        new Set(completionFormalAudits.map((row) => row.action)).size === 4 &&
+        completionCustomerWallet.availableBalance === 0 &&
+        completionCustomerWallet.frozenBalance === 0 &&
+        completionAttribution.status === "SETTLED" &&
         completionReward.status === "SETTLED" &&
         completionReward.rewardNdp === REWARD_NDP &&
         completionReward.transactions.length === 1 &&
@@ -757,7 +989,7 @@ const main = async (): Promise<void> => {
         completionPublisherAfter.availableBalance - completionPublisherBefore.availableBalance ===
           1_000 &&
         completionPublisherAfter.frozenBalance - completionPublisherBefore.frozenBalance ===
-          -1_500 &&
+          -1_500 - BOOKING_FEE_NDP &&
         completionClaimantWallet.availableBalance === REWARD_NDP &&
         completionSettlementLedger.entries.length === 2 &&
         completionSettlementLedger.reconciliation?.differenceAmount === 0 &&
@@ -766,7 +998,8 @@ const main = async (): Promise<void> => {
         completionPublisherBefore.availableBalance + completionPublisherBefore.frozenBalance ===
           completionPublisherAfter.availableBalance +
             completionPublisherAfter.frozenBalance +
-            completionClaimantWallet.availableBalance,
+            completionClaimantWallet.availableBalance +
+            BOOKING_FEE_NDP,
       "completion expiry race violated reward uniqueness or wallet conservation"
     );
     assert(
@@ -798,6 +1031,11 @@ const main = async (): Promise<void> => {
       cancellationRaceFixture,
       customerCancellationRace.id
     );
+    await booking.transitionOrder(
+      actor(customerCancellationRace.id),
+      cancellationRaceOrder.order.id,
+      "confirm"
+    );
     await makeDue(cancellationRaceFixture.task.id);
     const cancellationWalletBefore = await prisma.wallet.findUniqueOrThrow({
       where: { id: publisherWallet.id }
@@ -805,7 +1043,12 @@ const main = async (): Promise<void> => {
     const cancellationExpiryFailures: Array<{ taskId: number; code: number; message: string }> = [];
     const cancellationRuns = await Promise.allSettled([
       runRaceExpiry(cancellationExpiryFailures),
-      invalidateCancelledBooking(cancellationRaceOrder.order.id, customerCancellationRace.id)
+      booking.transitionOrder(
+        actor(customerCancellationRace.id),
+        cancellationRaceOrder.order.id,
+        "cancel",
+        "expiry acceptance cancellation race"
+      )
     ]);
     assert(
       !(cancellationRuns[0].status === "rejected" && cancellationRuns[1].status === "rejected"),
@@ -839,22 +1082,75 @@ const main = async (): Promise<void> => {
     const cancellationFormalResolution = await resolveVerifiedDeadlockVictim({
       initial: cancellationRuns[1],
       retry: () =>
-        invalidateCancelledBooking(cancellationRaceOrder.order.id, customerCancellationRace.id),
+        booking.transitionOrder(
+          actor(customerCancellationRace.id),
+          cancellationRaceOrder.order.id,
+          "cancel",
+          "expiry acceptance cancellation race"
+        ),
       verifyRollback: async () => {
-        const rollbackAttribution = await prisma.affiliateAttribution.findUniqueOrThrow({
-          where: { id: cancellationRaceOrder.attribution.id }
-        });
+        const [
+          rollbackBooking,
+          rollbackHistory,
+          rollbackSlot,
+          rollbackHold,
+          rollbackFinancial,
+          rollbackAttribution,
+          rollbackCancellationLedgerCount,
+          rollbackCancellationAuditCount
+        ] = await Promise.all([
+          prisma.bookingOrder.findUniqueOrThrow({ where: { id: cancellationRaceOrder.order.id } }),
+          prisma.orderStatusHistory.findMany({
+            where: { bookingOrderId: cancellationRaceOrder.order.id },
+            orderBy: { id: "asc" }
+          }),
+          prisma.scheduleSlot.findUniqueOrThrow({
+            where: { id: cancellationRaceOrder.order.scheduleSlotId }
+          }),
+          prisma.walletHold.findFirstOrThrow({
+            where: { bookingOrderId: cancellationRaceOrder.order.id, deletedAt: null }
+          }),
+          prisma.orderFinancial.findUniqueOrThrow({
+            where: { bookingOrderId: cancellationRaceOrder.order.id }
+          }),
+          prisma.affiliateAttribution.findUniqueOrThrow({
+            where: { id: cancellationRaceOrder.attribution.id }
+          }),
+          prisma.ledgerTransaction.count({
+            where: {
+              type: "BOOKING_CANCEL_UNFREEZE",
+              referenceType: "booking_order",
+              referenceId: cancellationRaceOrder.order.id,
+              deletedAt: null
+            }
+          }),
+          prisma.auditLog.count({
+            where: {
+              actorId: customerCancellationRace.id,
+              action: {
+                in: ["ledger.booking_cancel.unfreeze", "affiliate.attribution.invalidated"]
+              },
+              deletedAt: null
+            }
+          })
+        ]);
         assert(
-          rollbackAttribution.status === "ATTRIBUTED" &&
+          rollbackBooking.status === "CONFIRMED" &&
+            rollbackHistory.length === 2 &&
+            rollbackHistory[1].toStatus === "CONFIRMED" &&
+            rollbackSlot.status === "BOOKED" &&
+            rollbackSlot.bookedCount === 1 &&
+            rollbackHold.status === "active" &&
+            rollbackHold.capturedAmountNdp === 0 &&
+            rollbackHold.releasedAmountNdp === 0 &&
+            rollbackFinancial.settlementStatus === "holding" &&
+            rollbackFinancial.bPlatformFeeActualNdp === 0 &&
+            rollbackFinancial.releasedNdp === 0 &&
+            rollbackAttribution.status === "ATTRIBUTED" &&
             rollbackAttribution.activeKey !== null &&
-            (await prisma.auditLog.count({
-              where: {
-                action: "affiliate.attribution.invalidated",
-                targetType: "booking_order",
-                targetId: cancellationRaceOrder.order.id
-              }
-            })) === 0,
-          "cancellation formal deadlock victim did not roll back"
+            rollbackCancellationLedgerCount === 0 &&
+            rollbackCancellationAuditCount === 0,
+          "cancellation outer booking deadlock victim did not roll back"
         );
       }
     });
@@ -862,7 +1158,11 @@ const main = async (): Promise<void> => {
     const cancellationDeadlockRetries =
       Number(cancellationExpiryResolution.retried) +
       Number(cancellationFormalResolution.retried);
-    assert(cancellationExpirySummary.failed === 0, "cancellation expiry race did not end task");
+    assert(
+      cancellationExpirySummary.failed === 0 &&
+        cancellationFormalResolution.value.status === "cancelled",
+      "cancellation expiry race did not finish both formal operations"
+    );
     const cancellationEndedState = await budgetState(cancellationRaceFixture.task.id);
     const cancellationEndedAt = cancellationEndedState.task.endedAt;
     assert(cancellationEndedAt !== null, "cancellation expiry race did not record endedAt");
@@ -882,8 +1182,99 @@ const main = async (): Promise<void> => {
         deletedAt: null
       }
     });
+    const [
+      cancellationBooking,
+      cancellationHistory,
+      cancellationSlot,
+      cancellationHold,
+      cancellationFinancial,
+      cancellationBookingLedgers,
+      cancellationFeeLogs
+    ] = await Promise.all([
+      prisma.bookingOrder.findUniqueOrThrow({ where: { id: cancellationRaceOrder.order.id } }),
+      prisma.orderStatusHistory.findMany({
+        where: { bookingOrderId: cancellationRaceOrder.order.id },
+        orderBy: { id: "asc" }
+      }),
+      prisma.scheduleSlot.findUniqueOrThrow({
+        where: { id: cancellationRaceOrder.order.scheduleSlotId }
+      }),
+      prisma.walletHold.findFirstOrThrow({
+        where: { bookingOrderId: cancellationRaceOrder.order.id, deletedAt: null }
+      }),
+      prisma.orderFinancial.findUniqueOrThrow({
+        where: { bookingOrderId: cancellationRaceOrder.order.id }
+      }),
+      prisma.ledgerTransaction.findMany({
+        where: {
+          type: { in: ["BOOKING_ACCEPT_FREEZE", "BOOKING_CANCEL_UNFREEZE"] },
+          referenceType: "booking_order",
+          referenceId: cancellationRaceOrder.order.id,
+          deletedAt: null
+        },
+        include: { entries: true, reconciliation: true },
+        orderBy: { id: "asc" }
+      }),
+      prisma.feeCalculationLog.findMany({
+        where: { bookingOrderId: cancellationRaceOrder.order.id, deletedAt: null },
+        orderBy: { id: "asc" }
+      })
+    ]);
+    ledgerTransactionIds.push(...cancellationBookingLedgers.map((transaction) => transaction.id));
+    const cancellationFormalAudits = await prisma.auditLog.findMany({
+      where: {
+        actorId: customerCancellationRace.id,
+        action: {
+          in: [
+            "ledger.booking_accept.freeze",
+            "ledger.booking_cancel.unfreeze",
+            "affiliate.attribution.invalidated"
+          ]
+        },
+        deletedAt: null
+      }
+    });
     assert(
-      cancellationAttribution.status === "INVALIDATED" &&
+      cancellationBooking.status === "CANCELLED" &&
+        cancellationBooking.cancelReason === "expiry acceptance cancellation race" &&
+        cancellationHistory.length === 3 &&
+        cancellationHistory[0].fromStatus === null &&
+        cancellationHistory[0].toStatus === "PENDING" &&
+        cancellationHistory[1].fromStatus === "PENDING" &&
+        cancellationHistory[1].toStatus === "CONFIRMED" &&
+        cancellationHistory[2].fromStatus === "CONFIRMED" &&
+        cancellationHistory[2].toStatus === "CANCELLED" &&
+        cancellationHistory[2].reason === "expiry acceptance cancellation race" &&
+        cancellationSlot.status === "AVAILABLE" &&
+        cancellationSlot.bookedCount === 0 &&
+        cancellationHold.holdAmountNdp === BOOKING_FEE_NDP &&
+        cancellationHold.capturedAmountNdp === 0 &&
+        cancellationHold.releasedAmountNdp === BOOKING_FEE_NDP &&
+        cancellationHold.status === "released" &&
+        cancellationHold.releasedAt !== null &&
+        cancellationFinancial.bPlatformFeeHoldNdp === BOOKING_FEE_NDP &&
+        cancellationFinancial.bPlatformFeeActualNdp === 0 &&
+        cancellationFinancial.userRewardNdp === 0 &&
+        cancellationFinancial.releasedNdp === BOOKING_FEE_NDP &&
+        cancellationFinancial.settlementStatus === "cancelled" &&
+        cancellationFeeLogs.length === 1 &&
+        cancellationFeeLogs[0].calculationStage === "hold" &&
+        cancellationBookingLedgers.length === 2 &&
+        cancellationBookingLedgers[0].type === "BOOKING_ACCEPT_FREEZE" &&
+        cancellationBookingLedgers[0].amount === BOOKING_FEE_NDP &&
+        cancellationBookingLedgers[0].entries.length === 1 &&
+        cancellationBookingLedgers[0].entries[0].availableDelta === -BOOKING_FEE_NDP &&
+        cancellationBookingLedgers[0].entries[0].frozenDelta === BOOKING_FEE_NDP &&
+        cancellationBookingLedgers[0].reconciliation?.differenceAmount === 0 &&
+        cancellationBookingLedgers[1].type === "BOOKING_CANCEL_UNFREEZE" &&
+        cancellationBookingLedgers[1].amount === BOOKING_FEE_NDP &&
+        cancellationBookingLedgers[1].entries.length === 1 &&
+        cancellationBookingLedgers[1].entries[0].availableDelta === BOOKING_FEE_NDP &&
+        cancellationBookingLedgers[1].entries[0].frozenDelta === -BOOKING_FEE_NDP &&
+        cancellationBookingLedgers[1].reconciliation?.differenceAmount === 0 &&
+        cancellationFormalAudits.length === 3 &&
+        new Set(cancellationFormalAudits.map((row) => row.action)).size === 3 &&
+        cancellationAttribution.status === "INVALIDATED" &&
         cancellationAttribution.activeKey === null &&
         cancellationAttribution.invalidationReason === "booking_cancelled" &&
         cancellationState.task.status === "ENDED" &&
@@ -896,8 +1287,9 @@ const main = async (): Promise<void> => {
         cancellationState.reservation.releasedNdp === 1_500 &&
         cancellationState.reservation.status === "RELEASED" &&
         cancellationWalletAfter.availableBalance - cancellationWalletBefore.availableBalance ===
-          1_500 &&
-        cancellationWalletAfter.frozenBalance - cancellationWalletBefore.frozenBalance === -1_500 &&
+          1_500 + BOOKING_FEE_NDP &&
+        cancellationWalletAfter.frozenBalance - cancellationWalletBefore.frozenBalance ===
+          -1_500 - BOOKING_FEE_NDP &&
         cancellationReleaseLedgers.length >= 1 &&
         cancellationReleaseLedgers.length <= 2 &&
         cancellationReleaseLedgers.reduce((sum, row) => sum + row.amount, 0) === 1_500 &&
@@ -1103,11 +1495,15 @@ const main = async (): Promise<void> => {
         laterIncremental: incrementalInvalidated.status === "INVALIDATED"
       },
       completionRace: {
+        bookingCompleted: completionBooking.status === "COMPLETED",
         settled: completionAttribution.status === "SETTLED",
+        outerFinance: completionFinancial.settlementStatus === "settled",
         deadlockRetries: completionDeadlockRetries
       },
       cancellationRace: {
+        bookingCancelled: cancellationBooking.status === "CANCELLED",
         invalidated: cancellationAttribution.status === "INVALIDATED",
+        outerFinance: cancellationFinancial.settlementStatus === "cancelled",
         releaseTransactions: cancellationReleaseLedgers.length,
         deadlockRetries: cancellationDeadlockRetries
       },
@@ -1122,6 +1518,8 @@ const main = async (): Promise<void> => {
       finance: {
         releaseTransactions: releaseTransactions.length,
         settlementTransactions: settlementTransactions.length,
+        bookingTransactions:
+          completionBookingLedgers.length + cancellationBookingLedgers.length,
         reconciled: true,
         audited: true
       },
@@ -1165,6 +1563,10 @@ const main = async (): Promise<void> => {
               type: "AFFILIATE_REWARD_SETTLEMENT",
               referenceType: "affiliate_reward",
               referenceId: { in: rewardIds }
+            },
+            {
+              referenceType: "booking_order",
+              referenceId: { in: bookingIds }
             }
           ]
         },
@@ -1210,6 +1612,15 @@ const main = async (): Promise<void> => {
         await transaction.affiliateClaim.deleteMany({ where: { taskId: { in: taskIds } } });
       }
       if (bookingIds.length > 0) {
+        await transaction.walletHold.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
+        await transaction.orderFinancial.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
+        await transaction.feeCalculationLog.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
         await transaction.orderStatusHistory.deleteMany({
           where: { bookingOrderId: { in: bookingIds } }
         });
@@ -1249,6 +1660,10 @@ const main = async (): Promise<void> => {
       if (serviceId !== null) await transaction.service.deleteMany({ where: { id: serviceId } });
       if (shopId !== null) await transaction.shop.deleteMany({ where: { id: shopId } });
       if (categoryId !== null) await transaction.category.deleteMany({ where: { id: categoryId } });
+      if (feeRuleSetId !== null) {
+        await transaction.platformFeeRule.deleteMany({ where: { ruleSetId: feeRuleSetId } });
+        await transaction.platformFeeRuleSet.deleteMany({ where: { id: feeRuleSetId } });
+      }
       if (userIds.length > 0) {
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });
       }
@@ -1265,8 +1680,22 @@ const main = async (): Promise<void> => {
       prisma.affiliateAttribution.count({ where: { taskId: { in: taskIds } } }),
       prisma.affiliateReward.count({ where: { taskId: { in: taskIds } } }),
       prisma.bookingOrder.count({ where: { id: { in: bookingIds } } }),
+      prisma.walletHold.count({ where: { bookingOrderId: { in: bookingIds } } }),
+      prisma.orderFinancial.count({ where: { bookingOrderId: { in: bookingIds } } }),
+      prisma.feeCalculationLog.count({ where: { bookingOrderId: { in: bookingIds } } }),
+      prisma.orderStatusHistory.count({ where: { bookingOrderId: { in: bookingIds } } }),
       prisma.scheduleSlot.count({ where: { id: { in: slotIds } } }),
       prisma.affiliateBudgetReservation.count({ where: { taskId: { in: taskIds } } }),
+      prisma.affiliateRewardTransaction.count({
+        where: { ledgerTransactionId: { in: ledgerTransactionIds } }
+      }),
+      prisma.affiliateBudgetTransaction.count({
+        where: { ledgerTransactionId: { in: ledgerTransactionIds } }
+      }),
+      prisma.walletLedger.count({ where: { transactionId: { in: ledgerTransactionIds } } }),
+      prisma.financeReconciliation.count({
+        where: { transactionId: { in: ledgerTransactionIds } }
+      }),
       prisma.ledgerTransaction.count({ where: { id: { in: ledgerTransactionIds } } }),
       prisma.auditLog.count({
         where: {
@@ -1277,7 +1706,13 @@ const main = async (): Promise<void> => {
             { targetType: "ledger_transaction", targetId: { in: ledgerTransactionIds } }
           ]
         }
-      })
+      }),
+      ...(feeRuleSetId === null
+        ? []
+        : [
+            prisma.platformFeeRule.count({ where: { ruleSetId: feeRuleSetId } }),
+            prisma.platformFeeRuleSet.count({ where: { id: feeRuleSetId } })
+          ])
     ]);
     assert(
       cleanupCounts.every((count) => count === 0),

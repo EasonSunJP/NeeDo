@@ -132,6 +132,23 @@ describe("affiliate expiry acceptance guard", () => {
     expect(verifyRollback).not.toHaveBeenCalled();
   });
 
+  it("does not retry when rollback verification detects a partial outer transaction", async () => {
+    const retry = jest.fn();
+    const rollbackFailure = new Error("outer booking finance partially committed");
+    const verifyRollback = jest.fn().mockRejectedValue(rollbackFailure);
+    const deadlock = Object.assign(new Error("MySQL deadlock 1213"), { code: "P2034" });
+
+    await expect(
+      resolveVerifiedDeadlockVictim({
+        initial: { status: "rejected", reason: deadlock },
+        retry,
+        verifyRollback
+      })
+    ).rejects.toBe(rollbackFailure);
+    expect(verifyRollback).toHaveBeenCalledTimes(1);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
   it("never accepts or retries a fulfilled expiry summary that reports candidate failure", async () => {
     const retry = jest.fn();
     const verifyRollback = jest.fn();

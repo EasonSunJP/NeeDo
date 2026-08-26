@@ -30,6 +30,8 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("AffiliateLinkTokenService");
     expect(source).toContain("BookingRepository");
     expect(source).toContain("BookingService");
+    expect(source).toContain("FeeRuleRepository");
+    expect(source).toContain("FeeCalculationService");
     expect(source).toContain("affiliate-task-expiry-${Date.now()}");
     expect(source).toContain("affiliate_task_budget_release");
     expect(source).toContain("deliberately NOT allowed due sentinel");
@@ -47,6 +49,33 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("INVALIDATED");
     expect(source).toContain("completion expiry race");
     expect(source).toContain("cancellation expiry race");
+    expect(source).toContain("advanceToInService(customerCompletionRace.id");
+    expect(source).toMatch(
+      /completionRuns = await Promise\.allSettled\([\s\S]{0,500}booking\.transitionOrder\([\s\S]{0,200}"complete"/
+    );
+    expect(source).toMatch(
+      /cancellationRuns = await Promise\.allSettled\([\s\S]{0,500}booking\.transitionOrder\([\s\S]{0,200}"cancel"/
+    );
+    expect(source).not.toMatch(
+      /completionRuns = await Promise\.allSettled\([\s\S]{0,500}settleCompletedBooking/
+    );
+    expect(source).not.toMatch(
+      /cancellationRuns = await Promise\.allSettled\([\s\S]{0,500}invalidateCancelledBooking/
+    );
+    expect(source).toContain("completionBooking");
+    expect(source).toContain("completionHistory");
+    expect(source).toContain("completionSlot");
+    expect(source).toContain("completionHold");
+    expect(source).toContain("completionFinancial");
+    expect(source).toContain("completionBookingLedgers");
+    expect(source).toContain("cancellationBooking");
+    expect(source).toContain("cancellationHistory");
+    expect(source).toContain("cancellationSlot");
+    expect(source).toContain("cancellationHold");
+    expect(source).toContain("cancellationFinancial");
+    expect(source).toContain("cancellationBookingLedgers");
+    expect(source).toContain("completion outer booking deadlock victim did not roll back");
+    expect(source).toContain("cancellation outer booking deadlock victim did not roll back");
     expect(source).toContain("completionReleaseLedgers");
     expect(source).toContain('completionState.reservation.status === "RELEASED"');
     expect(source).toContain('cancellationState.reservation.status === "RELEASED"');
@@ -99,6 +128,11 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("completionRace");
     expect(source).toContain("cancellationRace");
     expect(source).toContain("marker cleanup left affiliate expiry rows behind");
+    expect(source).toContain("walletHold.deleteMany");
+    expect(source).toContain("orderFinancial.deleteMany");
+    expect(source).toContain("feeCalculationLog.deleteMany");
+    expect(source).toContain("platformFeeRule.deleteMany");
+    expect(source).toContain("platformFeeRuleSet.deleteMany");
     expect(source).toContain("finally");
     expect(source).not.toMatch(/affiliateTask\.update\([\s\S]{0,300}allocatedBudgetNdp:\s*0/);
     expect(source).not.toMatch(
