@@ -200,6 +200,26 @@ describe("UserCenterPage inline profile editing", () => {
     expect(container.textContent).toContain("对好友以及关联人可见");
   });
 
+  it("keeps a single-line nickname editor compact so the privacy control stays on the view-state grid", async () => {
+    await renderUserCenter();
+
+    await click(findIconButton("编辑资料"));
+    const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
+
+    expect(nickname).not.toBeNull();
+    expect(nickname?.rows).toBe(1);
+    expect(nickname?.className).toContain("[field-sizing:content]");
+  });
+
+  it("does not reserve an empty membership badge slot before the level label", async () => {
+    await renderUserCenter();
+
+    const levelLabel = Array.from(container.querySelectorAll("span")).find((element) => element.textContent === "Lv.1");
+
+    expect(levelLabel).toBeDefined();
+    expect(levelLabel?.parentElement?.children).toHaveLength(1);
+  });
+
   it("uses the server-returned profile after one disabled formal save", async () => {
     let resolveUpdate: (value: typeof savedProfile) => void = () => undefined;
     testState.updateMine.mockImplementation(

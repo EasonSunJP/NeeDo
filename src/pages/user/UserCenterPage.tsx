@@ -963,13 +963,13 @@ function CompleteUserCenterPage({
                           <textarea
                             aria-label="昵称"
                             autoFocus
-                            className="-ml-0.5 -mt-1 max-h-[84px] min-h-[38px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-1 text-[21px] font-black leading-tight shadow-none outline-none [appearance:none] [overflow-wrap:anywhere]"
+                            className="-ml-0.5 max-h-[79px] min-h-[26px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-0 text-[21px] font-black leading-tight shadow-none outline-none [appearance:none] [field-sizing:content] [overflow-wrap:anywhere]"
                             data-profile-field="nickname"
                             readOnly={isSavingProfile}
                             onChange={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
                             onInput={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
                             ref={nicknameInputRef}
-                            rows={3}
+                            rows={1}
                             style={{ width: profileNameEditorWidth }}
                             value={profileNameOverride}
                           />
@@ -983,15 +983,12 @@ function CompleteUserCenterPage({
                       )}
                     </div>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="inline-flex h-7 shrink-0 items-center gap-1 text-[11px] font-black">
-                        <CustomerMembershipBadge
-                          className="h-6 w-6"
-                          fallbackClassName="hidden"
-                          imageClassName="h-6 w-6"
-                          level={currentCustomer.memberLevel}
-                          showFallback={false}
-                        />
-                      </span>
+                      <CustomerMembershipBadge
+                        className="h-6 w-6"
+                        imageClassName="h-6 w-6"
+                        level={currentCustomer.memberLevel}
+                        showFallback={false}
+                      />
                       <span className={cn("inline-flex h-7 shrink-0 items-center text-[11px] font-black", membershipSurface.muted)}>
                         {levelLabel}
                       </span>
