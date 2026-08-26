@@ -263,19 +263,18 @@ export class AuthService {
       purpose: "google_registration_or_link"
     });
     if (!reserved.ok) this.throwVerificationChallengeError(reserved.reason);
-    const googleIdentity = this.googleIdentityFromChallenge(
-      reserved.metadata as unknown as {
-        providerSubject?: unknown;
-        providerEmail?: unknown;
-        providerEmailVerifiedAt?: unknown;
-      }
-    );
-    if (!googleIdentity || reserved.email !== googleIdentity.email) {
-      this.throwVerificationChallengeError("missing");
-    }
-
     let loginReceipt: { payload: TokenPairPayload; refreshJti: string; userId: number } | undefined;
     try {
+      const googleIdentity = this.googleIdentityFromChallenge(
+        reserved.metadata as unknown as {
+          providerSubject?: unknown;
+          providerEmail?: unknown;
+          providerEmailVerifiedAt?: unknown;
+        }
+      );
+      if (!googleIdentity || reserved.email !== googleIdentity.email) {
+        this.throwVerificationChallengeError("missing");
+      }
       const { user, created } = await this.resolveGoogleFirstUse(
         googleIdentity,
         challengeId,

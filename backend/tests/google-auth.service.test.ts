@@ -433,6 +433,25 @@ describe("formal Google sign-in service", () => {
     expect(logged).not.toContain("google-subject-1");
   });
 
+  it("allows exactly one concurrent submission for one nonce", async () => {
+    const fixture = createFixture();
+    const init = await fixture.service.initializeGoogleLogin();
+    const results = await Promise.allSettled([
+      fixture.service.submitGoogleCredential(
+        { credential: "credential-a", nonceChallengeId: init.nonceChallengeId },
+        context
+      ),
+      fixture.service.submitGoogleCredential(
+        { credential: "credential-b", nonceChallengeId: init.nonceChallengeId },
+        context
+      )
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")[0]).toMatchObject({
+      reason: { code: ERROR_CODES.INVALID_CREDENTIALS }
+    });
+  });
+
   it("returns a stable Google conflict when a concurrent subject resolves to another account", async () => {
     const fixture = createFixture();
     const init = await fixture.service.initializeGoogleLogin();
@@ -460,5 +479,22 @@ describe("formal Google sign-in service", () => {
         context
       )
     ).rejects.toMatchObject({ message: "error.auth.google_conflict" } satisfies Partial<AppError>);
+  });
+
+  it("releases a reserved malformed first-use challenge without replacing the stable error", async () => {
+    const fixture = createFixture();
+    const challenge = await fixture.challengeStore.createEmailChallenge({
+      email: "existing@example.com",
+      otp: "123456",
+      purpose: "google_registration_or_link",
+      metadata: { providerSubject: "subject-only" }
+    });
+
+    await expect(
+      fixture.service.verifyGoogleRegistrationOrLink(challenge.challengeId, "123456", context)
+    ).rejects.toMatchObject({ message: "error.auth.verification_challenge_expired" });
+    await expect(
+      fixture.service.verifyGoogleRegistrationOrLink(challenge.challengeId, "123456", context)
+    ).rejects.toMatchObject({ message: "error.auth.verification_challenge_expired" });
   });
 });
