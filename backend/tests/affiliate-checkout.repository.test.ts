@@ -2,6 +2,28 @@ import { AffiliateCheckoutRepository } from "../src/repositories/affiliate-check
 import type { AffiliateCheckoutRepositoryPort } from "../src/services/affiliate-checkout.service";
 
 describe("AffiliateCheckoutRepository contract", () => {
+  const createSettlementClient = (closureCount: number) => ({
+    $executeRaw: jest.fn().mockResolvedValue(closureCount),
+    affiliateAttribution: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    affiliateReward: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    affiliateBudgetReservation: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    affiliateTask: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    affiliateClaim: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    affiliateBudgetTransaction: { create: jest.fn().mockResolvedValue({ id: 1 }) },
+    affiliateRewardTransaction: { create: jest.fn().mockResolvedValue({ id: 2 }) }
+  });
+
+  const settlementInput = {
+    attributionId: 71,
+    taskId: 31,
+    claimId: 41,
+    reservationId: 81,
+    rewardId: 61,
+    rewardNdp: 1_000,
+    ledgerTransactionId: 91,
+    settledAt: new Date("2026-08-26T00:00:00.000Z")
+  };
+
   it("scopes every operation to the caller transaction", () => {
     const transactionClient = {
       $queryRaw: jest.fn(),
@@ -148,5 +170,36 @@ describe("AffiliateCheckoutRepository contract", () => {
     const sql = query.strings?.join(" ") ?? "";
     expect(sql).toContain("LEFT JOIN technician_services");
     expect(sql).not.toContain("booked_technician_service.deleted_at");
+  });
+
+  it("closes an ended reservation only when capture leaves no allocation or unallocated budget", async () => {
+    const transactionClient = createSettlementClient(1);
+    const repository = new AffiliateCheckoutRepository(transactionClient as never);
+
+    await expect(repository.settleRewardAndCaptureBudget(settlementInput)).resolves.toBeUndefined();
+
+    expect(transactionClient.$executeRaw).toHaveBeenCalledTimes(1);
+    const query = transactionClient.$executeRaw.mock.calls[0]?.[0] as {
+      strings?: readonly string[];
+    };
+    const sql = query.strings?.join(" ") ?? "";
+    expect(sql).toContain("task.status = 'ended'");
+    expect(sql).toContain("reservation.allocated_ndp = 0");
+    expect(sql).toContain(
+      "reservation.total_frozen_ndp = reservation.captured_ndp + reservation.released_ndp"
+    );
+    expect(sql).toContain("reservation.status = 'released'");
+    expect(sql).toContain("COALESCE(reservation.released_at");
+  });
+
+  it.each([
+    "ended reservation with allocation or unallocated budget",
+    "fully cleared reservation for a non-ended task"
+  ])("does not treat zero-row expiry closure as a settlement conflict: %s", async () => {
+    const transactionClient = createSettlementClient(0);
+    const repository = new AffiliateCheckoutRepository(transactionClient as never);
+
+    await expect(repository.settleRewardAndCaptureBudget(settlementInput)).resolves.toBeUndefined();
+    expect(transactionClient.$executeRaw).toHaveBeenCalledTimes(1);
   });
 });
