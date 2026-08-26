@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { disconnectPrisma, prisma } from "../src/prisma/client";
 import { CustomerProfileRepository } from "../src/repositories/customer-profile.repository";
+import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const runIntegration = process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
 const describeIntegration = runIntegration ? describe : describe.skip;
@@ -13,13 +14,15 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
   const repository = new CustomerProfileRepository(prisma);
 
   beforeAll(async () => {
-    const user = await prisma.user.create({
+    const user = await new NeedoIdAllocator().withNewId((needoId) => prisma.user.create({
       data: {
+        needoId,
         email: `${marker}@needo.local`,
+        emailVerifiedAt: new Date(),
         passwordHash: "integration-test-password-hash",
         username: marker
       }
-    });
+    }));
     userId = user.id;
     const profile = await prisma.customerProfile.create({
       data: {

@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, Role, User, UserIdentity, UserRole } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { NeedoIdAllocator } from "../services/needo-id.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { RoleRecord } from "./role.repository";
@@ -78,7 +79,10 @@ const userInclude = {
 };
 
 export class UserRepository implements UserRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    private readonly needoIdAllocator = new NeedoIdAllocator()
+  ) {}
 
   public async list(input: UserListInput): Promise<PaginatedResponse<UserRecord>> {
     const pagination = toPrismaPagination(input);
@@ -119,16 +123,18 @@ export class UserRepository implements UserRepositoryPort {
   }
 
   public async create(input: UserCreateData): Promise<UserRecord> {
-    const user = await this.client.user.create({
+    const user = await this.needoIdAllocator.withNewId((needoId) => this.client.user.create({
       data: {
+        needoId,
         email: input.email,
         phone: input.phone ?? null,
+        emailVerifiedAt: new Date(),
         passwordHash: input.passwordHash,
         username: input.username,
         avatarUrl: input.avatarUrl ?? null,
         isActive: input.isActive
       }
-    });
+    }));
 
     return { ...user, identities: [], userRoles: [] };
   }

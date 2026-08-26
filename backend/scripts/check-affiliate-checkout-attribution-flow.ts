@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
+import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const REWARD_NDP = 1_000;
 const SERVICE_PRICE_JPY = 8_800;
@@ -81,14 +82,17 @@ const main = async (): Promise<void> => {
 
   try {
     const passwordHash = await hash("AffiliateCheckoutFlow.2026!", 12);
+    const needoIdAllocator = new NeedoIdAllocator();
     const createUser = async (label: string) => {
-      const user = await prisma.user.create({
+      const user = await needoIdAllocator.withNewId((needoId) => prisma.user.create({
         data: {
+          needoId,
           email: `${marker}-${label}@needo.test`,
+          emailVerifiedAt: new Date(),
           username: `${marker} ${label}`,
           passwordHash
         }
-      });
+      }));
       userIds.push(user.id);
       return user;
     };

@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { NeedoIdAllocator } from "../services/needo-id.service";
 
 export interface AuthIdentityRecord {
   id: number;
@@ -49,7 +50,7 @@ export interface AuthUserRecord {
   id: number;
   email: string;
   phone: string | null;
-  passwordHash: string;
+  passwordHash: string | null;
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
@@ -157,7 +158,10 @@ const authUserInclude = {
 };
 
 export class AuthRepository implements AuthRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    private readonly needoIdAllocator = new NeedoIdAllocator()
+  ) {}
 
   public async findUserByEmail(email: string): Promise<AuthUserRecord | null> {
     return this.client.user.findFirst({
@@ -190,7 +194,7 @@ export class AuthRepository implements AuthRepositoryPort {
   }
 
   public registerUser(input: RegisterUserData): Promise<RegisteredAccountRecord> {
-    return this.client.$transaction(async (transaction) => {
+    return this.needoIdAllocator.withNewId((needoId) => this.client.$transaction(async (transaction) => {
       const role = await transaction.role.findFirst({
         where: {
           code: input.accountType,
@@ -205,9 +209,10 @@ export class AuthRepository implements AuthRepositoryPort {
       const isCustomer = input.accountType === "customer";
       const user = await transaction.user.create({
         data: {
+          needoId,
           email: input.email,
           passwordHash: input.passwordHash,
-          username: input.username,
+          username: needoId,
           isActive: isCustomer
         }
       });
@@ -215,13 +220,13 @@ export class AuthRepository implements AuthRepositoryPort {
         ? await transaction.customerProfile.create({
             data: {
               userId: user.id,
-              displayName: input.username
+              displayName: needoId
             }
           })
         : await transaction.technicianProfile.create({
             data: {
               userId: user.id,
-              displayName: input.username,
+              displayName: needoId,
               city: input.city,
               status: "pending_review"
             }
@@ -232,9 +237,9 @@ export class AuthRepository implements AuthRepositoryPort {
         data: {
           userId: user.id,
           type: input.accountType,
-          scopeType,
-          scopeId: profile.id,
-          displayName: input.username,
+            scopeType,
+            scopeId: profile.id,
+            displayName: needoId,
           isDefault: true,
           isActive: isCustomer
         }
@@ -269,7 +274,7 @@ export class AuthRepository implements AuthRepositoryPort {
         approvalStatus: isCustomer ? "approved" : "pending_review",
         isActive: user.isActive
       };
-    });
+    }));
   }
 
   public async updateLastLoginAt(id: number, loggedInAt: Date): Promise<void> {

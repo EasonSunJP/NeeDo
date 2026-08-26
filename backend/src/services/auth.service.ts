@@ -138,7 +138,7 @@ export class AuthService {
     await this.assertNotLoginLocked(loginIdentifier, context);
 
     const user = await this.repository.findUserByLoginIdentifier(loginIdentifier);
-    const passwordMatches = user ? await compare(password, user.passwordHash) : false;
+    const passwordMatches = user?.passwordHash ? await compare(password, user.passwordHash) : false;
 
     if (!user || !passwordMatches) {
       await this.rejectFailedLogin({

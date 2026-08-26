@@ -303,17 +303,19 @@ enum NotificationType {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique @db.VarChar(255)
-  phone        String?   @unique @db.VarChar(32)
-  passwordHash String    @map("password_hash") @db.VarChar(255)
-  username     String    @db.VarChar(100)
-  avatarUrl    String?   @map("avatar_url") @db.VarChar(500)
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  id              Int       @id @default(autoincrement())
+  needoId         String    @unique @map("needo_id") @db.VarChar(32)
+  email           String    @unique @db.VarChar(255)
+  phone           String?   @unique @db.VarChar(32)
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  passwordHash    String?   @map("password_hash") @db.VarChar(255)
+  username        String    @db.VarChar(100)
+  avatarUrl       String?   @map("avatar_url") @db.VarChar(500)
+  isActive        Boolean   @default(true) @map("is_active")
+  lastLoginAt     DateTime? @map("last_login_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
 
   identities                      UserIdentity[]
   userRoles                       UserRole[]
@@ -377,12 +379,32 @@ model User {
   contractAcceptances             ContractAcceptance[]
   applicationMediaAssets          MediaAsset[]               @relation("ApplicationMediaOwner")
   ekycVerifications               EkycVerification[]
+  externalAccounts                ExternalAuthAccount[]
 
   @@index([email])
   @@index([phone])
   @@index([isActive])
   @@index([deletedAt])
   @@map("users")
+}
+
+model ExternalAuthAccount {
+  id                      Int       @id @default(autoincrement())
+  userId                  Int       @map("user_id")
+  provider                String    @db.VarChar(32)
+  providerSubject         String    @map("provider_subject") @db.VarChar(255)
+  providerEmail           String    @map("provider_email") @db.VarChar(255)
+  providerEmailVerifiedAt DateTime  @map("provider_email_verified_at")
+  lastUsedAt              DateTime? @map("last_used_at")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  deletedAt               DateTime? @map("deleted_at")
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerSubject], map: "external_auth_provider_subject_key")
+  @@index([userId, provider, deletedAt], map: "external_auth_user_provider_deleted_idx")
+  @@index([providerEmail, provider, deletedAt], map: "external_auth_email_provider_deleted_idx")
+  @@map("external_auth_accounts")
 }
 
 model Category {

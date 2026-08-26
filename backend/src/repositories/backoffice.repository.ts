@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
+import { NeedoIdAllocator } from "../services/needo-id.service";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import {
@@ -161,7 +162,10 @@ type ServiceRecord = Prisma.ServiceGetPayload<{
 }>;
 
 export class BackofficeRepository implements BackofficeRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(
+    private readonly client: PrismaClient = prisma,
+    private readonly needoIdAllocator = new NeedoIdAllocator()
+  ) {}
 
   public async getDashboard(scope: BackofficeScope): Promise<BackofficeDashboardPayload> {
     const orderWhere = this.orderWhere(scope, {});
@@ -860,7 +864,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public createShop(input: BackofficeShopCreateData): Promise<BackofficeShopPayload> {
-    return this.client.$transaction(async (transaction) => {
+    return this.needoIdAllocator.withNewId((needoId) => this.client.$transaction(async (transaction) => {
       const role = await transaction.role.findFirst({
         where: { code: "merchant_owner", deletedAt: null }
       });
@@ -869,7 +873,9 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       }
       const owner = await transaction.user.create({
         data: {
+          needoId,
           email: input.ownerEmail,
+          emailVerifiedAt: new Date(),
           passwordHash: input.ownerPasswordHash,
           username: input.ownerUsername,
           isActive: false
@@ -914,7 +920,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         throw new Error("Created shop could not be reloaded");
       }
       return this.mapShop(record);
-    });
+    }));
   }
 
   public async updateShop(

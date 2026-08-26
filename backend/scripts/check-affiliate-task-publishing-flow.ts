@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
+import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const SHOP_BUDGET_NDP = 2_500_000;
 const MERCHANT_BUDGET_NDP = 3_000_000;
@@ -61,20 +62,15 @@ const main = async (): Promise<void> => {
 
   try {
     const passwordHash = await hash("AffiliateFlow.2026!", 12);
-    const owner = await prisma.user.create({
-      data: {
-        email: `${marker}-owner@needo.test`,
-        passwordHash,
-        username: `${marker} owner`
-      }
-    });
-    const operator = await prisma.user.create({
-      data: {
-        email: `${marker}-operator@needo.test`,
-        passwordHash,
-        username: `${marker} operator`
-      }
-    });
+    const needoIdAllocator = new NeedoIdAllocator();
+    const createUser = (email: string, username: string) =>
+      needoIdAllocator.withNewId((needoId) =>
+        prisma.user.create({
+          data: { needoId, email, emailVerifiedAt: new Date(), passwordHash, username }
+        })
+      );
+    const owner = await createUser(`${marker}-owner@needo.test`, `${marker} owner`);
+    const operator = await createUser(`${marker}-operator@needo.test`, `${marker} operator`);
     userIds.push(owner.id, operator.id);
 
     const category = await prisma.category.create({
