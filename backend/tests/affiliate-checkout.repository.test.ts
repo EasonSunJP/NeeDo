@@ -31,6 +31,11 @@ describe("AffiliateCheckoutRepository contract", () => {
         allocateAttribution: expect.any(Function),
         createAttributionAudit: expect.any(Function),
         lockActiveAttributionForCancellation: expect.any(Function),
+        lockAttributionForCompletion: expect.any(Function),
+        countSettledCustomerOrders: expect.any(Function),
+        qualifyAttributionAndCreateReward: expect.any(Function),
+        settleRewardAndCaptureBudget: expect.any(Function),
+        createRewardSettlementAudit: expect.any(Function),
         invalidateAttributionAndRelease: expect.any(Function),
         createInvalidationAudit: expect.any(Function)
       })

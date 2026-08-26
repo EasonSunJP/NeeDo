@@ -2,11 +2,13 @@ import {
   AffiliateCheckoutService,
   calculateAffiliatePrice,
   selectAffiliatePromotion,
+  type AffiliateCompletionRecord,
   type AffiliateCheckoutClaimRecord,
   type AffiliateCancellationRecord,
   type AffiliateCheckoutRepositoryPort
 } from "../src/services/affiliate-checkout.service";
 import { AffiliateLinkTokenService } from "../src/services/affiliate-link-token.service";
+import type { AffiliateRewardSettlementPort } from "../src/services/ledger.service";
 import type { AppError } from "../src/utils/app-error";
 import { ERROR_CODES } from "../src/constants/error-codes";
 
@@ -67,6 +69,11 @@ const createRepository = (
     allocateAttribution: jest.fn().mockResolvedValue(undefined),
     createAttributionAudit: jest.fn().mockResolvedValue(undefined),
     lockActiveAttributionForCancellation: jest.fn().mockResolvedValue(null),
+    lockAttributionForCompletion: jest.fn().mockResolvedValue(null),
+    countSettledCustomerOrders: jest.fn().mockResolvedValue(0),
+    qualifyAttributionAndCreateReward: jest.fn(),
+    settleRewardAndCaptureBudget: jest.fn().mockResolvedValue(undefined),
+    createRewardSettlementAudit: jest.fn().mockResolvedValue(undefined),
     invalidateAttributionAndRelease: jest.fn().mockResolvedValue(undefined),
     createInvalidationAudit: jest.fn().mockResolvedValue(undefined)
   };
@@ -80,6 +87,57 @@ const createLinkTokens = (): AffiliateLinkTokenService =>
     publicBaseUrl: "https://app.needo.test/afirieito",
     createPublicTokenId: () => "public-token-id"
   });
+
+const createCompletionRecord = (
+  overrides: Partial<AffiliateCompletionRecord> = {}
+): AffiliateCompletionRecord => ({
+  attributionId: 301,
+  attributionStatus: "attributed",
+  taskId: 31,
+  claimId: 41,
+  claimantUserId: 701,
+  customerUserId: 501,
+  shopId: 8,
+  serviceId: 88,
+  rewardAllocatedNdp: 1_000,
+  maxCompletedOrdersPerClaim: 3,
+  maxCompletedOrdersPerCustomer: 2,
+  claimCompletedOrderCount: 0,
+  reservationId: 91,
+  publisherWalletId: 191,
+  publisherOwnerType: "merchant_account",
+  publisherOwnerId: 61,
+  rewardId: null,
+  rewardStatus: null,
+  rewardNdp: null,
+  rewardLedgerTransactionId: null,
+  rewardPublisherWalletId: null,
+  rewardClaimantWalletId: null,
+  ...overrides
+});
+
+const createRewardLedger = (): jest.Mocked<AffiliateRewardSettlementPort> => ({
+  settleAffiliateReward: jest.fn().mockResolvedValue({
+    transaction: {
+      id: 801,
+      transactionNo: "AFF-REWARD-801",
+      idempotencyKey: "affiliate:task:31:booking:9001:reward:settlement",
+      type: "affiliate_reward_settlement",
+      status: "applied",
+      referenceType: "affiliate_reward",
+      referenceId: 601,
+      actorUserId: 7,
+      amount: 1_000,
+      currency: "NDP",
+      metadata: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+      entries: []
+    },
+    publisherWalletId: 191,
+    claimantWalletId: 291
+  })
+});
 
 const prepareInput = {
   selector: { source: "code", value: "NDO-VALID" } as const,
@@ -581,6 +639,262 @@ describe("AffiliateCheckoutService", () => {
 
     expect(repository.invalidateAttributionAndRelease).not.toHaveBeenCalled();
     expect(repository.createInvalidationAudit).not.toHaveBeenCalled();
+  });
+
+  it("settles an attributed reward from frozen budget after service completion", async () => {
+    const repository = createRepository();
+    const rewardLedger = createRewardLedger();
+    repository.lockAttributionForCompletion.mockResolvedValue(
+      createCompletionRecord()
+    );
+    repository.qualifyAttributionAndCreateReward.mockResolvedValue({
+      rewardId: 601,
+      publisherWalletId: 191,
+      claimantWalletId: 291
+    });
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW,
+      rewardLedger
+    });
+
+    await expect(
+      service.settleCompletedBooking({
+        bookingOrderId: 9001,
+        customerUserId: 501,
+        shopId: 8,
+        serviceId: 88,
+        actorUserId: 7,
+        transactionClient: TRANSACTION_CLIENT
+      })
+    ).resolves.toEqual({
+      status: "settled",
+      attributionId: 301,
+      rewardId: 601,
+      ledgerTransactionId: 801,
+      rewardNdp: 1_000,
+      idempotent: false
+    });
+    expect(repository.countSettledCustomerOrders).toHaveBeenCalledWith({
+      taskId: 31,
+      customerUserId: 501
+    });
+    expect(repository.qualifyAttributionAndCreateReward).toHaveBeenCalledWith({
+      attributionId: 301,
+      taskId: 31,
+      claimId: 41,
+      bookingOrderId: 9001,
+      publisherWalletId: 191,
+      claimantUserId: 701,
+      rewardNdp: 1_000,
+      qualifiedAt: NOW
+    });
+    expect(rewardLedger.settleAffiliateReward).toHaveBeenCalledWith(
+      {
+        taskId: 31,
+        attributionId: 301,
+        rewardId: 601,
+        bookingOrderId: 9001,
+        publisherOwnerType: "merchant_account",
+        publisherOwnerId: 61,
+        publisherWalletId: 191,
+        claimantUserId: 701,
+        amountNdp: 1_000,
+        idempotencyKey: "affiliate:task:31:booking:9001:reward:settlement",
+        actorUserId: 7
+      },
+      { transactionClient: TRANSACTION_CLIENT }
+    );
+    expect(repository.settleRewardAndCaptureBudget).toHaveBeenCalledWith({
+      attributionId: 301,
+      taskId: 31,
+      claimId: 41,
+      reservationId: 91,
+      rewardId: 601,
+      rewardNdp: 1_000,
+      ledgerTransactionId: 801,
+      settledAt: NOW
+    });
+    expect(repository.createRewardSettlementAudit).toHaveBeenCalledWith({
+      actorUserId: 7,
+      bookingOrderId: 9001,
+      attributionId: 301,
+      taskId: 31,
+      claimId: 41,
+      rewardId: 601,
+      ledgerTransactionId: 801,
+      rewardSettledNdp: 1_000
+    });
+  });
+
+  it("returns the existing settlement without moving money again", async () => {
+    const repository = createRepository();
+    const rewardLedger = createRewardLedger();
+    repository.lockAttributionForCompletion.mockResolvedValue(
+      createCompletionRecord({
+        attributionStatus: "settled",
+        rewardId: 601,
+        rewardStatus: "settled",
+        rewardNdp: 1_000,
+        rewardLedgerTransactionId: 801,
+        rewardPublisherWalletId: 191,
+        rewardClaimantWalletId: 291
+      })
+    );
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW,
+      rewardLedger
+    });
+
+    await expect(
+      service.settleCompletedBooking({
+        bookingOrderId: 9001,
+        customerUserId: 501,
+        shopId: 8,
+        serviceId: 88,
+        actorUserId: 7,
+        transactionClient: TRANSACTION_CLIENT
+      })
+    ).resolves.toEqual({
+      status: "settled",
+      attributionId: 301,
+      rewardId: 601,
+      ledgerTransactionId: 801,
+      rewardNdp: 1_000,
+      idempotent: true
+    });
+    expect(repository.qualifyAttributionAndCreateReward).not.toHaveBeenCalled();
+    expect(rewardLedger.settleAffiliateReward).not.toHaveBeenCalled();
+    expect(repository.settleRewardAndCaptureBudget).not.toHaveBeenCalled();
+  });
+
+  it("releases allocation without reward when the claim completion limit is reached", async () => {
+    const repository = createRepository();
+    const rewardLedger = createRewardLedger();
+    repository.lockAttributionForCompletion.mockResolvedValue(
+      createCompletionRecord({ claimCompletedOrderCount: 3 })
+    );
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW,
+      rewardLedger
+    });
+
+    await expect(
+      service.settleCompletedBooking({
+        bookingOrderId: 9001,
+        customerUserId: 501,
+        shopId: 8,
+        serviceId: 88,
+        actorUserId: 7,
+        transactionClient: TRANSACTION_CLIENT
+      })
+    ).resolves.toEqual({
+      status: "limit_released",
+      attributionId: 301,
+      reason: "claim_completed_order_limit_reached",
+      rewardReleasedNdp: 1_000
+    });
+    expect(repository.invalidateAttributionAndRelease).toHaveBeenCalledWith({
+      attributionId: 301,
+      taskId: 31,
+      rewardNdp: 1_000,
+      invalidatedAt: NOW,
+      reason: "claim_completed_order_limit_reached",
+      restoreTaskStatus: null
+    });
+    expect(rewardLedger.settleAffiliateReward).not.toHaveBeenCalled();
+  });
+
+  it("releases allocation without reward when the customer completion limit is reached", async () => {
+    const repository = createRepository();
+    const rewardLedger = createRewardLedger();
+    repository.lockAttributionForCompletion.mockResolvedValue(
+      createCompletionRecord()
+    );
+    repository.countSettledCustomerOrders.mockResolvedValue(2);
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW,
+      rewardLedger
+    });
+
+    await expect(
+      service.settleCompletedBooking({
+        bookingOrderId: 9001,
+        customerUserId: 501,
+        shopId: 8,
+        serviceId: 88,
+        actorUserId: 7,
+        transactionClient: TRANSACTION_CLIENT
+      })
+    ).resolves.toMatchObject({
+      status: "limit_released",
+      reason: "customer_completed_order_limit_reached"
+    });
+    expect(repository.invalidateAttributionAndRelease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "customer_completed_order_limit_reached"
+      })
+    );
+    expect(rewardLedger.settleAffiliateReward).not.toHaveBeenCalled();
+  });
+
+  it("rejects a completion whose booking snapshot does not match attribution", async () => {
+    const repository = createRepository();
+    repository.lockAttributionForCompletion.mockResolvedValue(
+      createCompletionRecord({ serviceId: 89 })
+    );
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW,
+      rewardLedger: createRewardLedger()
+    });
+
+    await expect(
+      service.settleCompletedBooking({
+        bookingOrderId: 9001,
+        customerUserId: 501,
+        shopId: 8,
+        serviceId: 88,
+        actorUserId: 7,
+        transactionClient: TRANSACTION_CLIENT
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.AFFILIATE_REWARD_SETTLEMENT_CONFLICT,
+      message: "error.affiliate.reward_settlement_conflict",
+      statusCode: 409
+    });
+  });
+
+  it("translates a guarded reward capture conflict into the stable domain error", async () => {
+    const repository = createRepository();
+    repository.lockAttributionForCompletion.mockResolvedValue(
+      createCompletionRecord()
+    );
+    repository.qualifyAttributionAndCreateReward.mockResolvedValue({
+      rewardId: 601,
+      publisherWalletId: 191,
+      claimantWalletId: 291
+    });
+    repository.settleRewardAndCaptureBudget.mockRejectedValue(
+      new Error("error.affiliate.reward_settlement_conflict")
+    );
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW,
+      rewardLedger: createRewardLedger()
+    });
+
+    await expect(
+      service.settleCompletedBooking({
+        bookingOrderId: 9001,
+        customerUserId: 501,
+        shopId: 8,
+        serviceId: 88,
+        actorUserId: 7,
+        transactionClient: TRANSACTION_CLIENT
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.AFFILIATE_REWARD_SETTLEMENT_CONFLICT,
+      message: "error.affiliate.reward_settlement_conflict",
+      statusCode: 409
+    });
   });
 
   it("prevalidates a code from a server-resolved schedule slot without persistence", async () => {

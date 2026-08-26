@@ -4,6 +4,9 @@ import type {
   AffiliateCancellationAuditInput,
   AffiliateCancellationRecord,
   AffiliateCancellationReleaseInput,
+  AffiliateCompletionAttributionStatus,
+  AffiliateCompletionRecord,
+  AffiliateCompletionRewardStatus,
   AffiliateCheckoutAttributionInput,
   AffiliateCheckoutAuditInput,
   AffiliateCheckoutBudgetStatus,
@@ -14,6 +17,10 @@ import type {
   AffiliateCheckoutTaskStatus,
   AffiliateCheckoutTouchInput,
   AffiliateCheckoutTransactionClient,
+  AffiliateRewardCaptureInput,
+  AffiliateRewardQualificationInput,
+  AffiliateRewardQualificationResult,
+  AffiliateRewardSettlementAuditInput,
   AffiliateValidationSlotRecord
 } from "../services/affiliate-checkout.service";
 
@@ -362,6 +369,332 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
           taskEndsAt: row.taskEndsAt
         }
       : null;
+  }
+
+  public async lockAttributionForCompletion(
+    bookingOrderId: number
+  ): Promise<AffiliateCompletionRecord | null> {
+    const rows = await this.client.$queryRaw<
+      Array<{
+        attributionId: number;
+        attributionStatus: string;
+        taskId: number;
+        claimId: number;
+        claimantUserId: number;
+        customerUserId: number;
+        shopId: number;
+        serviceId: number;
+        rewardAllocatedNdp: number;
+        maxCompletedOrdersPerClaim: number | null;
+        maxCompletedOrdersPerCustomer: number | null;
+        claimCompletedOrderCount: number;
+        reservationId: number;
+        publisherWalletId: number;
+        publisherOwnerType: string;
+        publisherMerchantAccountId: number | null;
+        publisherShopId: number | null;
+        rewardId: number | null;
+        rewardStatus: string | null;
+        rewardNdp: number | null;
+        rewardLedgerTransactionId: number | null;
+        rewardPublisherWalletId: number | null;
+        rewardClaimantWalletId: number | null;
+      }>
+    >(
+      Prisma.sql`
+        SELECT attribution.id AS attributionId,
+               attribution.status AS attributionStatus,
+               attribution.task_id AS taskId,
+               attribution.claim_id AS claimId,
+               attribution.claimant_user_id AS claimantUserId,
+               attribution.customer_user_id AS customerUserId,
+               attribution.shop_id AS shopId,
+               attribution.service_id AS serviceId,
+               attribution.reward_allocated_ndp AS rewardAllocatedNdp,
+               task.max_completed_orders_per_claim AS maxCompletedOrdersPerClaim,
+               task.max_completed_orders_per_customer AS maxCompletedOrdersPerCustomer,
+               claim.completed_order_count AS claimCompletedOrderCount,
+               reservation.id AS reservationId,
+               reservation.wallet_id AS publisherWalletId,
+               task.publisher_type AS publisherOwnerType,
+               task.publisher_merchant_account_id AS publisherMerchantAccountId,
+               task.publisher_shop_id AS publisherShopId,
+               reward.id AS rewardId,
+               reward.status AS rewardStatus,
+               reward.reward_ndp AS rewardNdp,
+               reward_transaction.ledger_transaction_id AS rewardLedgerTransactionId,
+               reward.publisher_wallet_id AS rewardPublisherWalletId,
+               reward.claimant_wallet_id AS rewardClaimantWalletId
+        FROM affiliate_attributions AS attribution
+        INNER JOIN affiliate_tasks AS task
+          ON task.id = attribution.task_id
+        INNER JOIN affiliate_claims AS claim
+          ON claim.id = attribution.claim_id
+        INNER JOIN affiliate_budget_reservations AS reservation
+          ON reservation.task_id = task.id
+        LEFT JOIN affiliate_rewards AS reward
+          ON reward.attribution_id = attribution.id
+         AND reward.deleted_at IS NULL
+        LEFT JOIN affiliate_reward_transactions AS reward_transaction
+          ON reward_transaction.reward_id = reward.id
+         AND reward_transaction.kind = 'settlement'
+         AND reward_transaction.deleted_at IS NULL
+        WHERE attribution.booking_order_id = ${bookingOrderId}
+          AND attribution.deleted_at IS NULL
+          AND task.deleted_at IS NULL
+          AND claim.deleted_at IS NULL
+          AND reservation.deleted_at IS NULL
+        LIMIT 2
+        FOR UPDATE
+      `
+    );
+    if (rows.length > 1) {
+      throw new Error("error.affiliate.reward_settlement_conflict");
+    }
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const publisherOwnerType = row.publisherOwnerType.toLowerCase() as
+      | "merchant_account"
+      | "shop";
+    const publisherOwnerId =
+      publisherOwnerType === "merchant_account"
+        ? row.publisherMerchantAccountId
+        : row.publisherShopId;
+    if (!publisherOwnerId) {
+      throw new Error("error.affiliate.reward_settlement_conflict");
+    }
+
+    return {
+      attributionId: Number(row.attributionId),
+      attributionStatus: row.attributionStatus.toLowerCase() as AffiliateCompletionAttributionStatus,
+      taskId: Number(row.taskId),
+      claimId: Number(row.claimId),
+      claimantUserId: Number(row.claimantUserId),
+      customerUserId: Number(row.customerUserId),
+      shopId: Number(row.shopId),
+      serviceId: Number(row.serviceId),
+      rewardAllocatedNdp: Number(row.rewardAllocatedNdp),
+      maxCompletedOrdersPerClaim:
+        row.maxCompletedOrdersPerClaim === null
+          ? null
+          : Number(row.maxCompletedOrdersPerClaim),
+      maxCompletedOrdersPerCustomer:
+        row.maxCompletedOrdersPerCustomer === null
+          ? null
+          : Number(row.maxCompletedOrdersPerCustomer),
+      claimCompletedOrderCount: Number(row.claimCompletedOrderCount),
+      reservationId: Number(row.reservationId),
+      publisherWalletId: Number(row.publisherWalletId),
+      publisherOwnerType,
+      publisherOwnerId: Number(publisherOwnerId),
+      rewardId: row.rewardId === null ? null : Number(row.rewardId),
+      rewardStatus:
+        row.rewardStatus === null
+          ? null
+          : (row.rewardStatus.toLowerCase() as AffiliateCompletionRewardStatus),
+      rewardNdp: row.rewardNdp === null ? null : Number(row.rewardNdp),
+      rewardLedgerTransactionId:
+        row.rewardLedgerTransactionId === null
+          ? null
+          : Number(row.rewardLedgerTransactionId),
+      rewardPublisherWalletId:
+        row.rewardPublisherWalletId === null
+          ? null
+          : Number(row.rewardPublisherWalletId),
+      rewardClaimantWalletId:
+        row.rewardClaimantWalletId === null
+          ? null
+          : Number(row.rewardClaimantWalletId)
+    };
+  }
+
+  public countSettledCustomerOrders(input: {
+    taskId: number;
+    customerUserId: number;
+  }): Promise<number> {
+    return this.client.affiliateAttribution.count({
+      where: {
+        taskId: input.taskId,
+        customerUserId: input.customerUserId,
+        status: "SETTLED",
+        deletedAt: null
+      }
+    });
+  }
+
+  public async qualifyAttributionAndCreateReward(
+    input: AffiliateRewardQualificationInput
+  ): Promise<AffiliateRewardQualificationResult> {
+    const claimantWallet = await this.client.wallet.upsert({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "USER",
+          ownerId: input.claimantUserId,
+          currency: "NDP"
+        }
+      },
+      create: {
+        ownerType: "USER",
+        ownerId: input.claimantUserId,
+        currency: "NDP"
+      },
+      update: { deletedAt: null }
+    });
+    const attribution = await this.client.affiliateAttribution.updateMany({
+      where: {
+        id: input.attributionId,
+        taskId: input.taskId,
+        claimId: input.claimId,
+        bookingOrderId: input.bookingOrderId,
+        status: "ATTRIBUTED",
+        deletedAt: null
+      },
+      data: {
+        status: "QUALIFIED",
+        qualifiedAt: input.qualifiedAt
+      }
+    });
+    if (attribution.count !== 1) {
+      throw new Error("error.affiliate.reward_settlement_conflict");
+    }
+
+    const reward = await this.client.affiliateReward.create({
+      data: {
+        attributionId: input.attributionId,
+        taskId: input.taskId,
+        claimId: input.claimId,
+        bookingOrderId: input.bookingOrderId,
+        publisherWalletId: input.publisherWalletId,
+        claimantWalletId: claimantWallet.id,
+        rewardNdp: input.rewardNdp,
+        status: "PENDING"
+      },
+      select: { id: true }
+    });
+
+    return {
+      rewardId: reward.id,
+      publisherWalletId: input.publisherWalletId,
+      claimantWalletId: claimantWallet.id
+    };
+  }
+
+  public async settleRewardAndCaptureBudget(
+    input: AffiliateRewardCaptureInput
+  ): Promise<void> {
+    const attribution = await this.client.affiliateAttribution.updateMany({
+      where: {
+        id: input.attributionId,
+        taskId: input.taskId,
+        claimId: input.claimId,
+        status: "QUALIFIED",
+        deletedAt: null
+      },
+      data: {
+        status: "SETTLED",
+        settledAt: input.settledAt
+      }
+    });
+    const reward = await this.client.affiliateReward.updateMany({
+      where: {
+        id: input.rewardId,
+        attributionId: input.attributionId,
+        taskId: input.taskId,
+        claimId: input.claimId,
+        rewardNdp: input.rewardNdp,
+        status: "PENDING",
+        deletedAt: null
+      },
+      data: {
+        status: "SETTLED",
+        settledAt: input.settledAt
+      }
+    });
+    const reservation = await this.client.affiliateBudgetReservation.updateMany({
+      where: {
+        id: input.reservationId,
+        taskId: input.taskId,
+        allocatedNdp: { gte: input.rewardNdp },
+        deletedAt: null
+      },
+      data: {
+        allocatedNdp: { decrement: input.rewardNdp },
+        capturedNdp: { increment: input.rewardNdp }
+      }
+    });
+    const task = await this.client.affiliateTask.updateMany({
+      where: {
+        id: input.taskId,
+        allocatedBudgetNdp: { gte: input.rewardNdp },
+        deletedAt: null
+      },
+      data: {
+        allocatedBudgetNdp: { decrement: input.rewardNdp },
+        settledBudgetNdp: { increment: input.rewardNdp }
+      }
+    });
+    const claim = await this.client.affiliateClaim.updateMany({
+      where: {
+        id: input.claimId,
+        taskId: input.taskId,
+        deletedAt: null
+      },
+      data: {
+        completedOrderCount: { increment: 1 },
+        settledRewardNdp: { increment: input.rewardNdp }
+      }
+    });
+
+    if (
+      attribution.count !== 1 ||
+      reward.count !== 1 ||
+      reservation.count !== 1 ||
+      task.count !== 1 ||
+      claim.count !== 1
+    ) {
+      throw new Error("error.affiliate.reward_settlement_conflict");
+    }
+
+    await this.client.affiliateBudgetTransaction.create({
+      data: {
+        budgetReservationId: input.reservationId,
+        ledgerTransactionId: input.ledgerTransactionId,
+        kind: "SETTLEMENT",
+        amountNdp: input.rewardNdp
+      }
+    });
+    await this.client.affiliateRewardTransaction.create({
+      data: {
+        rewardId: input.rewardId,
+        ledgerTransactionId: input.ledgerTransactionId,
+        kind: "SETTLEMENT",
+        amountNdp: input.rewardNdp
+      }
+    });
+  }
+
+  public async createRewardSettlementAudit(
+    input: AffiliateRewardSettlementAuditInput
+  ): Promise<void> {
+    await this.client.auditLog.create({
+      data: {
+        actorId: input.actorUserId,
+        action: "affiliate.reward.settled",
+        targetType: "booking_order",
+        targetId: input.bookingOrderId,
+        metadata: {
+          attributionId: input.attributionId,
+          taskId: input.taskId,
+          claimId: input.claimId,
+          rewardId: input.rewardId,
+          ledgerTransactionId: input.ledgerTransactionId,
+          rewardSettledNdp: input.rewardSettledNdp
+        }
+      }
+    });
   }
 
   public async invalidateAttributionAndRelease(
