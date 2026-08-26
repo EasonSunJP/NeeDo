@@ -22,11 +22,21 @@ class InMemoryAuthSessionStore {
     return this.getValue(`login:lock:${email}`) !== null;
   }
 
+  public async getAccountLoginLock(): Promise<boolean> {
+    return false;
+  }
+
   public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> {
     return { count: 1, locked: false };
   }
 
   public async clearFailedLogin(): Promise<void> {}
+
+  public async recordFailedLoginForAccount(): Promise<{ count: number; locked: boolean }> {
+    return { count: 1, locked: false };
+  }
+
+  public async clearFailedLoginForAccount(): Promise<void> {}
 
   public async storeOtp(email: string, otp: string, ttlSeconds: number): Promise<void> {
     this.setValue(`otp:${email}`, otp, ttlSeconds);
@@ -229,6 +239,7 @@ const createFixture = async () => {
     createVerifiedBaselineCustomer: jest.fn(async () => {
       throw new Error("unexpected verified registration");
     }),
+    findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
     createAuditLog: jest.fn(async (entry: unknown) => {
@@ -266,6 +277,7 @@ const createFixture = async () => {
     {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 0 }),
       authRepository,
+      testOnlyAllowLegacyAuthAdapters: true,
       authSessionStore: new InMemoryAuthSessionStore(),
       auditLogRepository: {
         create: jest.fn(async (entry: unknown) => {

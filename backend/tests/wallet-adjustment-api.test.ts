@@ -81,6 +81,7 @@ const createFixture = async () => {
       createLoginLog: jest.fn(async () => undefined),
       createAuditLog: jest.fn(async () => undefined)
     },
+    testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemorySessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     ledgerRepository

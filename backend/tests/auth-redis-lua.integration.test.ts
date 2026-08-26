@@ -30,12 +30,26 @@ describeRedis("Redis auth-store Lua integration", () => {
       .update("\u0000")
       .update(email)
       .digest("base64url")}`;
+  const registrationEmail = `task5-${marker}@needo.local`;
+  const registrationCancelEmail = `task5-cancel-${marker}@needo.local`;
+  const registrationCooldownKey = (email = registrationEmail): string =>
+    `auth:verification:cooldown:${createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
+      .update("email")
+      .update("\u0000")
+      .update("email_registration")
+      .update("\u0000")
+      .update(email)
+      .digest("base64url")}`;
 
   const createdKeys = (): string[] => [
     emailCooldownKey(),
+    registrationCooldownKey(),
+    registrationCooldownKey(registrationCancelEmail),
     ...challengeIds.map((challengeId) => `auth:verification:email:${challengeId}`),
     ...nonceIds.map((challengeId) => `auth:verification:google-nonce:${challengeId}`),
     `auth:v2:refresh:user:${userId}`,
+    `auth:v2:login:account:fail:${userId}`,
+    `auth:v2:login:account:lock:${userId}`,
     ...jtis.map((jti) => `auth:v2:refresh:${userId}:${jti}`)
   ];
 
@@ -96,5 +110,94 @@ describeRedis("Redis auth-store Lua integration", () => {
     await sessionStore.revokeAllRefreshTokens(userId);
     await expect(sessionStore.hasRefreshToken(userId, jtis[1])).resolves.toBe(false);
     await expect(sessionStore.hasRefreshToken(userId, jtis[2])).resolves.toBe(false);
+  });
+
+  it("enforces reservation CAS, exact cancellation cleanup, and immutable account locks in Redis", async () => {
+    const challenge = await challengeStore.createEmailChallenge({
+      email: registrationEmail,
+      otp: "123456",
+      purpose: "email_registration",
+      metadata: { passwordHash: await hash("Abcd@1234", 12) }
+    });
+    challengeIds.push(challenge.challengeId);
+    const first = await challengeStore.reserveEmailChallenge({
+      challengeId: challenge.challengeId,
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    expect(first).toMatchObject({ ok: true, reservationToken: expect.any(String) });
+    if (!first.ok) throw new Error("reservation did not succeed");
+    await expect(
+      challengeStore.finalizeEmailChallenge({
+        challengeId: challenge.challengeId,
+        reservationToken: "not-the-owner"
+      })
+    ).resolves.toBe(false);
+    await expect(
+      challengeStore.releaseEmailChallenge({
+        challengeId: challenge.challengeId,
+        reservationToken: first.reservationToken
+      })
+    ).resolves.toBe(true);
+    const challengeKey = `auth:verification:email:${challenge.challengeId}`;
+    const serialized = await client!.get(challengeKey);
+    if (!serialized) throw new Error("released challenge was unexpectedly missing");
+    const staleLease = JSON.parse(serialized) as Record<string, unknown>;
+    staleLease.reservationToken = "expired-owner";
+    staleLease.reservationExpiresAt = Date.now() - 1;
+    await client!.set(challengeKey, JSON.stringify(staleLease), {
+      EX: await client!.ttl(challengeKey)
+    });
+    const recovered = await challengeStore.reserveEmailChallenge({
+      challengeId: challenge.challengeId,
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    expect(recovered).toMatchObject({ ok: true, reservationToken: expect.any(String) });
+    if (!recovered.ok) throw new Error("reservation did not recover");
+    await expect(
+      challengeStore.finalizeEmailChallenge({
+        challengeId: challenge.challengeId,
+        reservationToken: recovered.reservationToken
+      })
+    ).resolves.toBe(true);
+    await expect(
+      challengeStore.reserveEmailChallenge({
+        challengeId: challenge.challengeId,
+        otp: "123456",
+        purpose: "email_registration"
+      })
+    ).resolves.toEqual({ ok: false, reason: "missing" });
+
+    const cancelled = await challengeStore.createEmailChallenge({
+      email: registrationCancelEmail,
+      otp: "654321",
+      purpose: "email_registration",
+      metadata: { passwordHash: await hash("Abcd@1234", 12) }
+    });
+    challengeIds.push(cancelled.challengeId);
+    await expect(
+      challengeStore.cancelEmailChallenge({
+        challengeId: cancelled.challengeId,
+        email: registrationCancelEmail,
+        purpose: "email_registration"
+      })
+    ).resolves.toBe(true);
+    await expect(client!.exists([registrationCooldownKey(registrationCancelEmail)])).resolves.toBe(
+      0
+    );
+    await expect(
+      client!.exists([`auth:verification:email:${cancelled.challengeId}`])
+    ).resolves.toBe(0);
+
+    const options = { failureLimit: 2, windowSeconds: 60, lockSeconds: 120 };
+    await sessionStore.recordFailedLoginForAccount(userId, options);
+    await expect(sessionStore.recordFailedLoginForAccount(userId, options)).resolves.toEqual({
+      count: 2,
+      locked: true
+    });
+    await expect(sessionStore.getAccountLoginLock(userId)).resolves.toBe(true);
+    await sessionStore.clearFailedLoginForAccount(userId);
+    await expect(sessionStore.getAccountLoginLock(userId)).resolves.toBe(false);
   });
 });

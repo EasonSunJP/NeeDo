@@ -66,6 +66,7 @@ const createFixture = async () => {
       findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
       updateLastLoginAt: jest.fn(async () => undefined), createLoginLog: jest.fn(async () => undefined), createAuditLog: jest.fn(async () => undefined)
     },
+    testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemorySessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository: { create: jest.fn(async (entry: Record<string, unknown>) => { if (auditFailure) throw new Error("audit unavailable"); auditLogs.push(entry); }) },

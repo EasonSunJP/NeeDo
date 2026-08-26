@@ -213,6 +213,34 @@ describeIntegration("AuthRepository verified account and Google binding integrat
     ).resolves.toBeTruthy();
   });
 
+  it("finds exactly the committed verified registration by its challenge audit evidence", async () => {
+    const challengeId = randomUUID();
+    const email = `${marker}-registration-recovery@needo.test`;
+    const account = await repository.createVerifiedBaselineCustomer({
+      email,
+      emailVerifiedAt: new Date("2026-08-27T00:00:00.000Z"),
+      passwordHash: "prepared-password-hash",
+      registrationChallengeId: challengeId,
+      context: { ip: "127.0.0.1", userAgent: "registration-recovery-integration" }
+    });
+    createdUserIds.push(account.id);
+
+    await expect(
+      repository.findVerifiedRegistrationByChallenge(challengeId, email)
+    ).resolves.toMatchObject({ id: account.id, email, emailVerifiedAt: expect.any(Date) });
+    await expect(
+      repository.findVerifiedRegistrationByChallenge(challengeId, "other@example.com")
+    ).resolves.toBeNull();
+    await expect(
+      prisma.auditLog.findFirst({
+        where: { action: "auth.register", targetType: "User", targetId: account.id },
+        select: { metadata: true }
+      })
+    ).resolves.toMatchObject({
+      metadata: expect.objectContaining({ registrationChallengeId: challengeId })
+    });
+  });
+
   it("links only the account resolved from the normalized verified Google email", async () => {
     const verifiedAt = new Date("2026-08-26T02:03:04.000Z");
     const existing = await repository.createVerifiedBaselineCustomer({

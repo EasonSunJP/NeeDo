@@ -20,6 +20,8 @@ class InMemoryAuthSessionStore {
   public readonly blacklistedAccessTokens = new Set<string>();
   private readonly values = new Map<string, StoredValue>();
   private readonly failureCounts = new Map<string, number>();
+  private readonly accountFailureCounts = new Map<number, number>();
+  public failNextRefreshStore = false;
 
   public async getLoginLock(email: string): Promise<boolean> {
     return this.getValue(`login:lock:${email}`) !== null;
@@ -50,6 +52,30 @@ class InMemoryAuthSessionStore {
     this.values.delete(`login:lock:${email}`);
   }
 
+  public async getAccountLoginLock(userId: number): Promise<boolean> {
+    return this.getValue(`login:account:lock:${userId}`) !== null;
+  }
+
+  public async recordFailedLoginForAccount(
+    userId: number,
+    options: { failureLimit: number; windowSeconds: number; lockSeconds: number }
+  ): Promise<{ count: number; locked: boolean }> {
+    const nextCount = (this.accountFailureCounts.get(userId) ?? 0) + 1;
+    this.accountFailureCounts.set(userId, nextCount);
+    this.setValue(`login:account:fail:${userId}`, String(nextCount), options.windowSeconds);
+    if (nextCount >= options.failureLimit) {
+      this.setValue(`login:account:lock:${userId}`, "1", options.lockSeconds);
+      return { count: nextCount, locked: true };
+    }
+    return { count: nextCount, locked: false };
+  }
+
+  public async clearFailedLoginForAccount(userId: number): Promise<void> {
+    this.accountFailureCounts.delete(userId);
+    this.values.delete(`login:account:fail:${userId}`);
+    this.values.delete(`login:account:lock:${userId}`);
+  }
+
   public async storeOtp(email: string, otp: string, ttlSeconds: number): Promise<void> {
     this.setValue(`otp:${email}`, otp, ttlSeconds);
   }
@@ -75,6 +101,10 @@ class InMemoryAuthSessionStore {
   }
 
   public async storeRefreshToken(userId: number, jti: string, ttlSeconds: number): Promise<void> {
+    if (this.failNextRefreshStore) {
+      this.failNextRefreshStore = false;
+      throw new Error("simulated session store failure");
+    }
     this.refreshTokens.add(`${userId}:${jti}`);
     this.setValue(`refresh:${userId}:${jti}`, "1", ttlSeconds);
   }
@@ -120,7 +150,11 @@ class InMemoryAuthSessionStore {
 class InMemoryVerificationChallengeStore {
   private readonly challenges = new Map<
     string,
-    CreateVerificationChallengeInput & { attempts: number; expired: boolean }
+    CreateVerificationChallengeInput & {
+      attempts: number;
+      expired: boolean;
+      reservationToken?: string;
+    }
   >();
 
   public async createEmailChallenge(input: CreateVerificationChallengeInput) {
@@ -133,7 +167,7 @@ class InMemoryVerificationChallengeStore {
     };
   }
 
-  public async consumeEmailChallenge(input: ConsumeVerificationChallengeInput) {
+  public async reserveEmailChallenge(input: ConsumeVerificationChallengeInput) {
     const challenge = this.challenges.get(input.challengeId);
     if (!challenge || challenge.expired) return { ok: false as const, reason: "missing" as const };
     if (challenge.purpose !== input.purpose) {
@@ -151,8 +185,45 @@ class InMemoryVerificationChallengeStore {
       return { ok: false as const, reason: "invalid_otp" as const, attempts: challenge.attempts };
     }
 
+    if (challenge.reservationToken) {
+      return { ok: false as const, reason: "reserved" as const };
+    }
+    const reservationToken = randomUUID();
+    challenge.reservationToken = reservationToken;
+    return {
+      ok: true as const,
+      email: challenge.email,
+      metadata: challenge.metadata ?? {},
+      reservationToken
+    };
+  }
+
+  public async finalizeEmailChallenge(input: { challengeId: string; reservationToken: string }) {
+    const challenge = this.challenges.get(input.challengeId);
+    if (!challenge || challenge.reservationToken !== input.reservationToken) return false;
     this.challenges.delete(input.challengeId);
-    return { ok: true as const, email: challenge.email, metadata: challenge.metadata ?? {} };
+    return true;
+  }
+
+  public async releaseEmailChallenge(input: { challengeId: string; reservationToken: string }) {
+    const challenge = this.challenges.get(input.challengeId);
+    if (!challenge || challenge.reservationToken !== input.reservationToken) return false;
+    delete challenge.reservationToken;
+    return true;
+  }
+
+  public async cancelEmailChallenge(input: { challengeId: string }) {
+    return this.challenges.delete(input.challengeId);
+  }
+
+  public async consumeEmailChallenge(input: ConsumeVerificationChallengeInput) {
+    const reserved = await this.reserveEmailChallenge(input);
+    if (!reserved.ok) return reserved;
+    await this.finalizeEmailChallenge({
+      challengeId: input.challengeId,
+      reservationToken: reserved.reservationToken
+    });
+    return { ok: true as const, email: reserved.email, metadata: reserved.metadata };
   }
 
   public async createGoogleNonce() {
@@ -433,6 +504,7 @@ const createAuthFixture = async () => {
     googleOnlyUser
   ];
   const registrations: Array<Record<string, unknown>> = [];
+  const registrationsByChallenge = new Map<string, (typeof users)[number]>();
   const challengeStore = new InMemoryVerificationChallengeStore();
 
   const repository = {
@@ -448,6 +520,10 @@ const createAuthFixture = async () => {
     findUserById: jest.fn(
       async (id: number) => users.find((item) => item.id === id && !item.deletedAt) ?? null
     ),
+    findVerifiedRegistrationByChallenge: jest.fn(async (challengeId: string, email: string) => {
+      const registered = registrationsByChallenge.get(challengeId);
+      return registered?.email === email ? registered : null;
+    }),
     registerUser: jest.fn(async (input: Record<string, unknown>) => {
       registrations.push(input);
       const accountType = input.accountType as "customer" | "technician";
@@ -482,6 +558,7 @@ const createAuthFixture = async () => {
       };
       users.push(createdUser);
       registrations.push(input);
+      registrationsByChallenge.set(input.registrationChallengeId as string, createdUser);
       return createdUser;
     }),
     updateLastLoginAt: jest.fn(async (id: number, loggedInAt: Date) => {
@@ -521,6 +598,7 @@ const createAuthFixture = async () => {
     auditLogs,
     registrations,
     challengeStore,
+    otpDeliveryClient,
     user: passwordUser,
     customerUser,
     disabledUser,
@@ -613,6 +691,70 @@ describe("verified email registration and formal password authentication", () =>
 
     expect(responses.map((response) => response.status).sort()).toEqual([200, 401]);
     expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases a valid registration reservation when the database transaction fails so retry can create", async () => {
+    const fixture = await createAuthFixture();
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "transaction-retry@example.com",
+      password: "Customer.2026!"
+    });
+    fixture.repository.createVerifiedBaselineCustomer.mockRejectedValueOnce(
+      new Error("simulated database transaction failure")
+    );
+    const input = { challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp };
+
+    await request(fixture.app).post("/api/v1/auth/register/verify").send(input).expect(500);
+    await request(fixture.app).post("/api/v1/auth/register/verify").send(input).expect(200);
+    expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers a committed registration after session persistence fails without creating a second user", async () => {
+    const fixture = await createAuthFixture();
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "session-recovery@example.com",
+      password: "Customer.2026!"
+    });
+    fixture.sessionStore.failNextRefreshStore = true;
+    const input = { challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp };
+
+    await request(fixture.app).post("/api/v1/auth/register/verify").send(input).expect(500);
+    await request(fixture.app).post("/api/v1/auth/register/verify").send(input).expect(200);
+    expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(1);
+    expect(fixture.repository.findVerifiedRegistrationByChallenge).toHaveBeenCalledWith(
+      input.challengeId,
+      "session-recovery@example.com"
+    );
+  });
+
+  it("recovers the same registration after a unique-email race when its audit evidence committed", async () => {
+    const fixture = await createAuthFixture();
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "unique-race@example.com",
+      password: "Customer.2026!"
+    });
+    const input = { challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp };
+    const originalCreate =
+      fixture.repository.createVerifiedBaselineCustomer.getMockImplementation();
+    fixture.repository.createVerifiedBaselineCustomer.mockImplementationOnce(
+      async (creation: Record<string, unknown>) => {
+        await originalCreate!(creation);
+        throw { code: "P2002" };
+      }
+    );
+
+    await request(fixture.app).post("/api/v1/auth/register/verify").send(input).expect(200);
+    expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels only its registration challenge and cooldown when OTP delivery fails", async () => {
+    const fixture = await createAuthFixture();
+    fixture.otpDeliveryClient.sendOtp.mockRejectedValueOnce(new Error("provider timeout"));
+    const registration = { email: "delivery-retry@example.com", password: "Customer.2026!" };
+
+    await request(fixture.app).post("/api/v1/auth/register").send(registration).expect(500);
+    await request(fixture.app).post("/api/v1/auth/register").send(registration).expect(200);
+    expect(fixture.deliveredOtps).toHaveLength(1);
   });
 
   it("rejects expired, wrong-purpose, and exhausted registration challenges", async () => {
@@ -920,6 +1062,69 @@ describe("verified email registration and formal password authentication", () =>
     );
   });
 
+  it("shares failed-login state across email and immutable NeeDo ID, then clears it on success", async () => {
+    const fixture = await createAuthFixture();
+    for (let index = 0; index < 4; index += 1) {
+      await request(fixture.app)
+        .post("/api/v1/auth/login")
+        .send({ loginIdentifier: "admin@example.com", password: "wrong-password" })
+        .expect(401);
+    }
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "n0000000001", password: "Abcd@1234" })
+      .expect(200);
+
+    for (let index = 0; index < 4; index += 1) {
+      await request(fixture.app)
+        .post("/api/v1/auth/login")
+        .send({ loginIdentifier: "n0000000001", password: "wrong-password" })
+        .expect(401);
+    }
+    expect(await fixture.sessionStore.getAccountLoginLock(1)).toBe(false);
+  });
+
+  it("locks a found account across NeeDo ID and email while unknown identifiers retain generic input-scoped failures", async () => {
+    const fixture = await createAuthFixture();
+    for (let index = 0; index < 5; index += 1) {
+      await request(fixture.app)
+        .post("/api/v1/auth/login")
+        .send({ loginIdentifier: "n0000000001", password: "wrong-password" })
+        .expect(index === 4 ? 429 : 401);
+    }
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(429);
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "not-an-account@example.com", password: "wrong-password" })
+      .expect(401)
+      .expect((response) => {
+        expect(response.body).toEqual({
+          code: ERROR_CODES.INVALID_CREDENTIALS,
+          message: "error.auth.invalid_credentials",
+          data: null
+        });
+      });
+  });
+
+  it("keeps unknown identifiers on the existing IP-plus-normalized-input limiter without affecting an account", async () => {
+    const fixture = await createAuthFixture();
+    for (let index = 0; index < 5; index += 1) {
+      await request(fixture.app)
+        .post("/api/v1/auth/login")
+        .send({ loginIdentifier: "missing@example.com", password: "wrong-password" })
+        .expect(index === 4 ? 429 : 401);
+    }
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
+  });
+
   it("rejects disabled users before issuing tokens", async () => {
     const fixture = await createAuthFixture();
 
@@ -958,7 +1163,7 @@ describe("verified email registration and formal password authentication", () =>
     expect(fixture.sessionStore.refreshTokens.size).toBe(0);
   });
 
-  it("derives the formal account state when a stale repository adapter omits it", async () => {
+  it("fails closed when a repository adapter violates the required access-state contract", async () => {
     const fixture = await createAuthFixture();
     fixture.repository.findUserByLoginIdentifier.mockResolvedValueOnce({
       ...fixture.user,
@@ -968,7 +1173,10 @@ describe("verified email registration and formal password authentication", () =>
     await request(fixture.app)
       .post("/api/v1/auth/login")
       .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
-      .expect(200);
+      .expect(403)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.account_disabled");
+      });
   });
 
   it("sends, verifies, and invalidates a six-digit email OTP", async () => {
@@ -1115,10 +1323,34 @@ describe("verified email registration and formal password authentication", () =>
       .expect(200)
       .expect((response) => {
         expect(response.body.data.identityAvailability).toEqual([
-          { kind: "customer", state: "active", identityId: 20, applicationId: null, rejectionReason: null },
-          { kind: "technician", state: "draft", identityId: null, applicationId: 201, rejectionReason: null },
-          { kind: "merchant", state: "rejected", identityId: null, applicationId: 202, rejectionReason: "法人资料无法确认" },
-          { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
+          {
+            kind: "customer",
+            state: "active",
+            identityId: 20,
+            applicationId: null,
+            rejectionReason: null
+          },
+          {
+            kind: "technician",
+            state: "draft",
+            identityId: null,
+            applicationId: 201,
+            rejectionReason: null
+          },
+          {
+            kind: "merchant",
+            state: "rejected",
+            identityId: null,
+            applicationId: 202,
+            rejectionReason: "法人资料无法确认"
+          },
+          {
+            kind: "affiliate",
+            state: "available_to_apply",
+            identityId: null,
+            applicationId: null,
+            rejectionReason: null
+          }
         ]);
       });
 
@@ -1132,10 +1364,34 @@ describe("verified email registration and formal password authentication", () =>
       .expect(200)
       .expect((response) => {
         expect(response.body.data.identityAvailability).toEqual([
-          { kind: "customer", state: "active", identityId: 50, applicationId: null, rejectionReason: null },
-          { kind: "technician", state: "active", identityId: 51, applicationId: null, rejectionReason: null },
-          { kind: "merchant", state: "pending", identityId: null, applicationId: 203, rejectionReason: null },
-          { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
+          {
+            kind: "customer",
+            state: "active",
+            identityId: 50,
+            applicationId: null,
+            rejectionReason: null
+          },
+          {
+            kind: "technician",
+            state: "active",
+            identityId: 51,
+            applicationId: null,
+            rejectionReason: null
+          },
+          {
+            kind: "merchant",
+            state: "pending",
+            identityId: null,
+            applicationId: 203,
+            rejectionReason: null
+          },
+          {
+            kind: "affiliate",
+            state: "available_to_apply",
+            identityId: null,
+            applicationId: null,
+            rejectionReason: null
+          }
         ]);
       });
   });

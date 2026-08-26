@@ -118,6 +118,7 @@ export interface AppDependencies {
   databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
   metricsService?: ObservabilityMetricsPort;
   authRepository?: AuthRepositoryPort;
+  testOnlyAllowLegacyAuthAdapters?: boolean;
   authSessionStore?: AuthSessionStore;
   otpDeliveryClient?: OtpDeliveryClient;
   verificationChallengeStore?: VerificationChallengeStore;

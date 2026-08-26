@@ -75,6 +75,21 @@ class FakeRedis {
       }
       return ["ok"];
     }
+    if (script.includes("auth-account-login-failure")) {
+      const [failureKey, lockKey] = options.keys;
+      const [limit, windowSeconds, lockSeconds] = options.arguments;
+      const count = Number((await this.get(failureKey)) ?? "0") + 1;
+      await this.set(failureKey, String(count), { EX: Number(windowSeconds) });
+      if (count >= Number(limit)) {
+        await this.set(lockKey, "1", { EX: Number(lockSeconds) });
+        return ["locked", String(count)];
+      }
+      return ["ok", String(count)];
+    }
+    if (script.includes("auth-account-login-clear")) {
+      await this.del(...options.keys);
+      return ["ok"];
+    }
     if (script.includes("auth-refresh-revoke-one")) {
       const [refreshKey, userIndexKey] = options.keys;
       const [jti] = options.arguments;
@@ -149,5 +164,26 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     });
     expect(client.values.size).toBe(0);
     expect(client.sets.size).toBe(0);
+  });
+
+  it("tracks locks by immutable account id and clears the exact account state atomically", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never);
+    const options = { failureLimit: 2, windowSeconds: 60, lockSeconds: 120 };
+
+    await expect(store.recordFailedLoginForAccount(7, options)).resolves.toEqual({
+      count: 1,
+      locked: false
+    });
+    await expect(store.recordFailedLoginForAccount(7, options)).resolves.toEqual({
+      count: 2,
+      locked: true
+    });
+    await expect(store.getAccountLoginLock(7)).resolves.toBe(true);
+    await expect(store.getAccountLoginLock(8)).resolves.toBe(false);
+    await expect(store.clearFailedLoginForAccount(7)).resolves.toBeUndefined();
+    await expect(store.getAccountLoginLock(7)).resolves.toBe(false);
+    expect(client.values.has("auth:v2:login:account:fail:7")).toBe(false);
+    expect(client.values.has("auth:v2:login:account:lock:7")).toBe(false);
   });
 });

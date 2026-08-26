@@ -7,6 +7,7 @@ import { AppError } from "../utils/app-error";
 
 const EMAIL_CHALLENGE_TTL_SECONDS = 600;
 const EMAIL_CHALLENGE_COOLDOWN_SECONDS = 60;
+const EMAIL_CHALLENGE_RESERVATION_SECONDS = 30;
 
 export type VerificationPurpose =
   | "email_registration"
@@ -56,21 +57,47 @@ export interface CreatedGoogleNonce {
   expiresInSeconds: number;
 }
 
+type ChallengeFailureReason =
+  | "missing"
+  | "purpose_mismatch"
+  | "user_mismatch"
+  | "invalid_otp"
+  | "attempts_exhausted";
+
 export type ConsumeChallengeResult =
   | { ok: true; email: string; metadata: VerificationChallengeMetadata }
   | {
       ok: false;
-      reason:
-        | "missing"
-        | "purpose_mismatch"
-        | "user_mismatch"
-        | "invalid_otp"
-        | "attempts_exhausted";
+      reason: ChallengeFailureReason;
+      attempts?: number;
+    };
+
+export type ReserveChallengeResult =
+  | {
+      ok: true;
+      email: string;
+      metadata: VerificationChallengeMetadata;
+      reservationToken: string;
+    }
+  | {
+      ok: false;
+      reason: ChallengeFailureReason | "reserved";
       attempts?: number;
     };
 
 export interface VerificationChallengeStore {
   createEmailChallenge(input: CreateVerificationChallengeInput): Promise<CreatedChallenge>;
+  reserveEmailChallenge(input: ConsumeVerificationChallengeInput): Promise<ReserveChallengeResult>;
+  finalizeEmailChallenge(input: {
+    challengeId: string;
+    reservationToken: string;
+  }): Promise<boolean>;
+  releaseEmailChallenge(input: { challengeId: string; reservationToken: string }): Promise<boolean>;
+  cancelEmailChallenge(input: {
+    challengeId: string;
+    email: string;
+    purpose: VerificationPurpose;
+  }): Promise<boolean>;
   consumeEmailChallenge(input: ConsumeVerificationChallengeInput): Promise<ConsumeChallengeResult>;
   createGoogleNonce(input: { userId?: number }): Promise<CreatedGoogleNonce>;
   consumeGoogleNonce(input: {
@@ -112,6 +139,7 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
       [this.emailCooldownKey(input.email, input.purpose), this.emailChallengeKey(challengeId)],
       [
         String(EMAIL_CHALLENGE_COOLDOWN_SECONDS),
+        challengeId,
         JSON.stringify({
           email: input.email.trim().toLowerCase(),
           purpose: input.purpose,
@@ -144,19 +172,46 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
   public async consumeEmailChallenge(
     input: ConsumeVerificationChallengeInput
   ): Promise<ConsumeChallengeResult> {
+    const reserved = await this.reserveEmailChallenge(input);
+    if (!reserved.ok) {
+      if (reserved.reason === "reserved") return { ok: false, reason: "missing" };
+      return {
+        ok: false,
+        reason: reserved.reason as ChallengeFailureReason,
+        attempts: reserved.attempts
+      };
+    }
+    if (
+      !(await this.finalizeEmailChallenge({
+        challengeId: input.challengeId,
+        reservationToken: reserved.reservationToken
+      }))
+    ) {
+      return { ok: false, reason: "missing" };
+    }
+    return { ok: true, email: reserved.email, metadata: reserved.metadata };
+  }
+
+  public async reserveEmailChallenge(
+    input: ConsumeVerificationChallengeInput
+  ): Promise<ReserveChallengeResult> {
+    const reservationToken = randomUUID();
     const response = await this.eval(
-      EMAIL_CONSUME_LUA,
+      EMAIL_RESERVE_LUA,
       [this.emailChallengeKey(input.challengeId)],
       [
         input.purpose,
         input.userId === undefined ? "" : String(input.userId),
         this.createDigest(input.challengeId, input.purpose, input.otp),
-        String(env.AUTH_VERIFICATION_MAX_ATTEMPTS)
+        String(env.AUTH_VERIFICATION_MAX_ATTEMPTS),
+        reservationToken,
+        String(Date.now()),
+        String(EMAIL_CHALLENGE_RESERVATION_SECONDS * 1000)
       ]
     );
     const [result, detail] = response;
     if (result === "ok") {
-      return { ok: true, ...this.parseConsumedChallenge(detail) };
+      return { ok: true, reservationToken, ...this.parseConsumedChallenge(detail) };
     }
     if (result === "invalid_otp") {
       return { ok: false, reason: result, attempts: Number(detail) };
@@ -165,12 +220,53 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
       result === "missing" ||
       result === "purpose_mismatch" ||
       result === "user_mismatch" ||
-      result === "attempts_exhausted"
+      result === "attempts_exhausted" ||
+      result === "reserved"
     ) {
       return { ok: false, reason: result };
     }
 
     return { ok: false, reason: "missing" };
+  }
+
+  public async finalizeEmailChallenge(input: {
+    challengeId: string;
+    reservationToken: string;
+  }): Promise<boolean> {
+    const [result] = await this.eval(
+      EMAIL_FINALIZE_LUA,
+      [this.emailChallengeKey(input.challengeId)],
+      [input.reservationToken]
+    );
+    return result === "ok";
+  }
+
+  public async releaseEmailChallenge(input: {
+    challengeId: string;
+    reservationToken: string;
+  }): Promise<boolean> {
+    const [result] = await this.eval(
+      EMAIL_RELEASE_LUA,
+      [this.emailChallengeKey(input.challengeId)],
+      [input.reservationToken]
+    );
+    return result === "ok";
+  }
+
+  public async cancelEmailChallenge(input: {
+    challengeId: string;
+    email: string;
+    purpose: VerificationPurpose;
+  }): Promise<boolean> {
+    const [result] = await this.eval(
+      EMAIL_CANCEL_LUA,
+      [
+        this.emailChallengeKey(input.challengeId),
+        this.emailCooldownKey(input.email, input.purpose)
+      ],
+      [input.challengeId]
+    );
+    return result === "ok";
   }
 
   public async createGoogleNonce(input: { userId?: number }): Promise<CreatedGoogleNonce> {
@@ -375,15 +471,16 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
 const EMAIL_CREATE_LUA = `
 -- auth-verification-email-create
 if redis.call('EXISTS', KEYS[1]) == 1 then return {'cooldown'} end
-if not redis.call('SET', KEYS[2], ARGV[2], 'NX', 'EX', ARGV[3]) then return {'collision'} end
-if not redis.call('SET', KEYS[1], '1', 'NX', 'EX', ARGV[1]) then
+if not redis.call('SET', KEYS[2], ARGV[3], 'NX', 'EX', ARGV[4]) then return {'collision'} end
+if not redis.call('SET', KEYS[1], ARGV[2], 'NX', 'EX', ARGV[1]) then
   redis.call('DEL', KEYS[2])
   return {'cooldown'}
 end
 return {'ok'}
 `;
 
-const EMAIL_CONSUME_LUA = `
+const EMAIL_RESERVE_LUA = `
+-- auth-verification-email-reserve
 local serialized = redis.call('GET', KEYS[1])
 if not serialized then return {'missing'} end
 local challenge = cjson.decode(serialized)
@@ -409,8 +506,52 @@ if challenge.digest ~= ARGV[3] then
   end
   return {'invalid_otp', tostring(attempts)}
 end
+local now = tonumber(ARGV[6])
+local reservationExpiresAt = tonumber(challenge.reservationExpiresAt) or 0
+if challenge.reservationToken ~= nil and reservationExpiresAt > now then return {'reserved'} end
+challenge.reservationToken = ARGV[5]
+challenge.reservationExpiresAt = now + tonumber(ARGV[7])
+local ttl = redis.call('TTL', KEYS[1])
+if ttl <= 0 then
+  redis.call('DEL', KEYS[1])
+  return {'missing'}
+end
+redis.call('SET', KEYS[1], cjson.encode(challenge), 'EX', ttl)
+return {'ok', cjson.encode({email = challenge.email, metadata = challenge.metadata or {}})}
+`;
+
+const EMAIL_FINALIZE_LUA = `
+-- auth-verification-email-finalize
+local serialized = redis.call('GET', KEYS[1])
+if not serialized then return {'missing'} end
+local challenge = cjson.decode(serialized)
+if challenge.reservationToken ~= ARGV[1] then return {'reservation_mismatch'} end
 redis.call('DEL', KEYS[1])
- return {'ok', cjson.encode({email = challenge.email, metadata = challenge.metadata or {}})}
+return {'ok'}
+`;
+
+const EMAIL_RELEASE_LUA = `
+-- auth-verification-email-release
+local serialized = redis.call('GET', KEYS[1])
+if not serialized then return {'missing'} end
+local challenge = cjson.decode(serialized)
+if challenge.reservationToken ~= ARGV[1] then return {'reservation_mismatch'} end
+challenge.reservationToken = nil
+challenge.reservationExpiresAt = nil
+local ttl = redis.call('TTL', KEYS[1])
+if ttl <= 0 then
+  redis.call('DEL', KEYS[1])
+  return {'missing'}
+end
+redis.call('SET', KEYS[1], cjson.encode(challenge), 'EX', ttl)
+return {'ok'}
+`;
+
+const EMAIL_CANCEL_LUA = `
+-- auth-verification-email-cancel
+redis.call('DEL', KEYS[1])
+if redis.call('GET', KEYS[2]) == ARGV[1] then redis.call('DEL', KEYS[2]) end
+return {'ok'}
 `;
 
 const GOOGLE_NONCE_CONSUME_LUA = `

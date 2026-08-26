@@ -100,6 +100,7 @@ const createFixture = (permissions = permissionCodes) => {
   };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
+    testOnlyAllowLegacyAuthAdapters: true,
     authRepository: { findUserById: jest.fn(async () => user) },
     authSessionStore: { isAccessTokenBlacklisted: jest.fn(async () => false) },
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },

@@ -15,5 +15,6 @@ export const createAuthServiceForRoutes = (
     dependencies.authRepository ?? new AuthRepository(),
     dependencies.authSessionStore ?? new RedisAuthSessionStore(),
     dependencies.otpDeliveryClient ?? new WebhookOtpDeliveryClient(config),
-    dependencies.verificationChallengeStore ?? new RedisVerificationChallengeStore()
+    dependencies.verificationChallengeStore ?? new RedisVerificationChallengeStore(),
+    dependencies.testOnlyAllowLegacyAuthAdapters ?? false
   );

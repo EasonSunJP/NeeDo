@@ -135,7 +135,8 @@ export class AuthService {
     private readonly repository: AuthRepositoryPort,
     private readonly sessionStore: AuthSessionStore,
     private readonly otpDeliveryClient: OtpDeliveryClient,
-    private readonly verificationChallengeStore: VerificationChallengeStore
+    private readonly verificationChallengeStore: VerificationChallengeStore,
+    private readonly allowLegacyAuthAdaptersForTest = false
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -147,9 +148,12 @@ export class AuthService {
   ): Promise<TokenPairPayload> {
     const loginIdentifier = this.normalizeLoginIdentifier(loginIdentifierInput);
 
-    await this.assertNotLoginLocked(loginIdentifier, context);
-
     const user = await this.repository.findUserByLoginIdentifier(loginIdentifier);
+    if (user) {
+      await this.assertNotAccountLoginLocked(user, context);
+    } else {
+      await this.assertNotLoginLocked(loginIdentifier, context);
+    }
     const passwordMatches = await compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
 
     if (!user || !user.passwordHash || !passwordMatches) {
@@ -195,7 +199,18 @@ export class AuthService {
     }
 
     this.assertActiveUser(user);
-    await this.sessionStore.clearFailedLogin(context.ip, loginIdentifier);
+    const accountStore = this.sessionStore as Partial<AuthSessionStore>;
+    if (accountStore.clearFailedLoginForAccount) {
+      await accountStore.clearFailedLoginForAccount(user.id);
+    } else if (this.allowLegacyAuthAdaptersForTest) {
+      await this.sessionStore.clearFailedLogin(context.ip, loginIdentifier);
+    } else {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.redis_unavailable",
+        statusCode: 503
+      });
+    }
 
     return this.completeSuccessfulLogin(user, context);
   }
@@ -214,7 +229,16 @@ export class AuthService {
         purpose: "email_registration",
         metadata: { passwordHash: await hash(input.password, BCRYPT_ROUNDS) }
       });
-      await this.otpDeliveryClient.sendOtp(email, otp);
+      try {
+        await this.otpDeliveryClient.sendOtp(email, otp);
+      } catch (error) {
+        await this.verificationChallengeStore.cancelEmailChallenge({
+          challengeId: challenge.challengeId,
+          email,
+          purpose: "email_registration"
+        });
+        throw error;
+      }
       return {
         challengeId: challenge.challengeId,
         maskedEmail: challenge.maskedEmail,
@@ -238,31 +262,63 @@ export class AuthService {
     otp: string,
     context: AuthRequestContext
   ): Promise<VerifiedRegistrationPayload> {
-    const consumed = await this.verificationChallengeStore.consumeEmailChallenge({
+    const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
       otp,
       purpose: "email_registration"
     });
-    if (!consumed.ok) {
-      this.throwVerificationChallengeError(consumed.reason);
+    if (!reserved.ok) {
+      this.throwVerificationChallengeError(reserved.reason);
     }
     const passwordHash =
-      "passwordHash" in consumed.metadata ? consumed.metadata.passwordHash : undefined;
+      "passwordHash" in reserved.metadata ? reserved.metadata.passwordHash : undefined;
     if (typeof passwordHash !== "string") {
       this.throwVerificationChallengeError("missing");
     }
 
     try {
-      const user = await this.repository.createVerifiedBaselineCustomer({
-        email: consumed.email,
-        passwordHash,
-        emailVerifiedAt: new Date(),
-        context: { ip: context.ip, userAgent: context.userAgent }
-      });
+      let user = await this.repository.findVerifiedRegistrationByChallenge(
+        challengeId,
+        reserved.email
+      );
+      if (!user) {
+        try {
+          user = await this.repository.createVerifiedBaselineCustomer({
+            email: reserved.email,
+            passwordHash,
+            emailVerifiedAt: new Date(),
+            registrationChallengeId: challengeId,
+            context: { ip: context.ip, userAgent: context.userAgent }
+          });
+        } catch (error) {
+          if (!this.isUniqueConstraintError(error)) throw error;
+          user = await this.repository.findVerifiedRegistrationByChallenge(
+            challengeId,
+            reserved.email
+          );
+          if (!user) throw this.emailAlreadyExistsError();
+        }
+      }
       this.assertActiveUser(user);
       const tokens = await this.completeSuccessfulLogin(user, context);
+      if (
+        !(await this.verificationChallengeStore.finalizeEmailChallenge({
+          challengeId,
+          reservationToken: reserved.reservationToken
+        }))
+      ) {
+        throw new AppError({
+          code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+          message: "error.dependency.redis_unavailable",
+          statusCode: 503
+        });
+      }
       return { ...tokens, needoId: user.needoId };
     } catch (error) {
+      await this.verificationChallengeStore.releaseEmailChallenge({
+        challengeId,
+        reservationToken: reserved.reservationToken
+      });
       if (error instanceof NeedoIdAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
@@ -581,12 +637,47 @@ export class AuthService {
     });
   }
 
+  private async assertNotAccountLoginLocked(
+    user: AuthUserRecord,
+    context: AuthRequestContext
+  ): Promise<void> {
+    const accountStore = this.sessionStore as Partial<AuthSessionStore>;
+    const locked = accountStore.getAccountLoginLock
+      ? await accountStore.getAccountLoginLock(user.id)
+      : this.allowLegacyAuthAdaptersForTest
+        ? false
+        : true;
+    if (!locked) {
+      return;
+    }
+
+    await this.repository.createLoginLog({
+      userId: user.id,
+      email: user.email,
+      ip: context.ip,
+      userAgent: context.userAgent,
+      status: "locked",
+      failReason: "too_many_attempts"
+    });
+    throw new AppError({
+      code: ERROR_CODES.ACCOUNT_LOCKED,
+      message: "error.auth.account_locked",
+      statusCode: 429
+    });
+  }
+
   private async rejectFailedLogin(input: LoginFailureInput): Promise<never> {
-    const failure = await this.sessionStore.recordFailedLogin(input.context.ip, input.email, {
+    const options = {
       failureLimit: this.config.AUTH_LOGIN_FAILURE_LIMIT,
       windowSeconds: this.config.AUTH_LOGIN_FAILURE_WINDOW_SECONDS,
       lockSeconds: this.config.AUTH_LOGIN_LOCK_SECONDS
-    });
+    };
+    const accountStore = this.sessionStore as Partial<AuthSessionStore>;
+    const failure = input.userId
+      ? accountStore.recordFailedLoginForAccount
+        ? await accountStore.recordFailedLoginForAccount(input.userId, options)
+        : await this.sessionStore.recordFailedLogin(input.context.ip, input.email, options)
+      : await this.sessionStore.recordFailedLogin(input.context.ip, input.email, options);
 
     await this.repository.createLoginLog({
       userId: input.userId,
@@ -802,7 +893,13 @@ export class AuthService {
   }
 
   private throwVerificationChallengeError(
-    reason: "missing" | "purpose_mismatch" | "user_mismatch" | "invalid_otp" | "attempts_exhausted"
+    reason:
+      | "missing"
+      | "purpose_mismatch"
+      | "user_mismatch"
+      | "invalid_otp"
+      | "attempts_exhausted"
+      | "reserved"
   ): never {
     if (reason === "invalid_otp") {
       throw new AppError({
@@ -829,14 +926,14 @@ export class AuthService {
     disabled: boolean;
     restricted: boolean;
   } {
-    return (
-      user.accessState ?? {
-        disabled: !user.isActive,
-        restricted: !user.identities.some(
-          (identity) => identity.deletedAt === null && identity.isActive
-        )
-      }
-    );
+    if (user.accessState) return user.accessState;
+    if (!this.allowLegacyAuthAdaptersForTest) return { disabled: true, restricted: true };
+    return {
+      disabled: !user.isActive,
+      restricted: !user.identities.some(
+        (identity) => identity.deletedAt === null && identity.isActive
+      )
+    };
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

@@ -17,12 +17,18 @@ export interface LoginFailureResult {
 
 export interface AuthSessionStore {
   getLoginLock: (email: string) => Promise<boolean>;
+  getAccountLoginLock: (userId: number) => Promise<boolean>;
   recordFailedLogin: (
     ip: string,
     email: string,
     options: LoginFailureOptions
   ) => Promise<LoginFailureResult>;
   clearFailedLogin: (ip: string, email: string) => Promise<void>;
+  recordFailedLoginForAccount: (
+    userId: number,
+    options: LoginFailureOptions
+  ) => Promise<LoginFailureResult>;
+  clearFailedLoginForAccount: (userId: number) => Promise<void>;
   storeOtp: (email: string, otp: string, ttlSeconds: number) => Promise<void>;
   getOtp: (email: string) => Promise<string | null>;
   deleteOtp: (email: string) => Promise<void>;
@@ -55,6 +61,10 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     return (await this.getValue(this.loginLockKey(email))) !== null;
   }
 
+  public async getAccountLoginLock(userId: number): Promise<boolean> {
+    return (await this.getValue(this.accountLoginLockKey(userId))) !== null;
+  }
+
   public async recordFailedLogin(
     ip: string,
     email: string,
@@ -82,6 +92,26 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     const client = await this.connect();
     await client.del(this.loginFailureKey(ip, email));
     await client.del(this.loginLockKey(email));
+  }
+
+  public async recordFailedLoginForAccount(
+    userId: number,
+    options: LoginFailureOptions
+  ): Promise<LoginFailureResult> {
+    const [result, count] = await this.eval(
+      ACCOUNT_LOGIN_FAILURE_LUA,
+      [this.accountLoginFailureKey(userId), this.accountLoginLockKey(userId)],
+      [String(options.failureLimit), String(options.windowSeconds), String(options.lockSeconds)]
+    );
+    return { count: Number(count), locked: result === "locked" };
+  }
+
+  public async clearFailedLoginForAccount(userId: number): Promise<void> {
+    await this.eval(
+      ACCOUNT_LOGIN_CLEAR_LUA,
+      [this.accountLoginFailureKey(userId), this.accountLoginLockKey(userId)],
+      []
+    );
   }
 
   public async storeOtp(email: string, otp: string, ttlSeconds: number): Promise<void> {
@@ -162,9 +192,12 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     );
   }
 
-  private async eval(script: string, keys: string[], args: string[]): Promise<void> {
+  private async eval(script: string, keys: string[], args: string[]): Promise<string[]> {
     const client = await this.connect();
-    await this.withRedisUnavailableGuard(() => client.eval(script, { keys, arguments: args }));
+    const response = await this.withRedisUnavailableGuard(() =>
+      client.eval(script, { keys, arguments: args })
+    );
+    return Array.isArray(response) ? response.map((value) => String(value)) : [];
   }
 
   private async getValue(key: string): Promise<string | null> {
@@ -220,6 +253,14 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     return `login:lock:${email}`;
   }
 
+  private accountLoginFailureKey(userId: number): string {
+    return `auth:v2:login:account:fail:${userId}`;
+  }
+
+  private accountLoginLockKey(userId: number): string {
+    return `auth:v2:login:account:lock:${userId}`;
+  }
+
   private otpKey(email: string): string {
     return `otp:${email}`;
   }
@@ -247,6 +288,23 @@ redis.call('SET', KEYS[1], '1', 'EX', ARGV[2])
 redis.call('SADD', KEYS[2], ARGV[1])
 local indexTtl = redis.call('TTL', KEYS[2])
 if indexTtl < tonumber(ARGV[2]) then redis.call('EXPIRE', KEYS[2], ARGV[2]) end
+return {'ok'}
+`;
+
+const ACCOUNT_LOGIN_FAILURE_LUA = `
+-- auth-account-login-failure
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
+if count >= tonumber(ARGV[1]) then
+  redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
+  return {'locked', tostring(count)}
+end
+return {'ok', tostring(count)}
+`;
+
+const ACCOUNT_LOGIN_CLEAR_LUA = `
+-- auth-account-login-clear
+redis.call('DEL', KEYS[1], KEYS[2])
 return {'ok'}
 `;
 

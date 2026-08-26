@@ -715,6 +715,7 @@ export const createStep06Fixture = async () => {
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository,
+    testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: sessionStore,
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,

@@ -75,10 +75,82 @@ class FakeRedis {
     }
     if (script.includes("auth-verification-email-create")) {
       const [cooldownKey, challengeKey] = options.keys;
-      const [cooldownTtl, challengeValue, challengeTtl] = options.arguments;
+      const [cooldownTtl, challengeId, challengeValue, challengeTtl] = options.arguments;
       if ((await this.get(cooldownKey)) !== null) return ["cooldown"];
       await this.set(challengeKey, challengeValue, { EX: Number(challengeTtl), NX: true });
-      await this.set(cooldownKey, "1", { EX: Number(cooldownTtl), NX: true });
+      await this.set(cooldownKey, challengeId, { EX: Number(cooldownTtl), NX: true });
+      return ["ok"];
+    }
+    if (script.includes("auth-verification-email-reserve")) {
+      const [key] = options.keys;
+      const [purpose, suppliedUserId, digest, maxAttempts, reservationToken, now, leaseMs] =
+        options.arguments;
+      const stored = await this.get(key);
+      if (!stored) return ["missing"];
+      const challenge = JSON.parse(stored) as {
+        purpose: string;
+        userId?: number | null;
+        digest: string;
+        attempts?: number;
+        email?: string;
+        metadata?: Record<string, unknown>;
+        reservationToken?: string;
+        reservationExpiresAt?: number;
+      };
+      if (challenge.purpose !== purpose) return ["purpose_mismatch"];
+      const userId = suppliedUserId === "" ? undefined : Number(suppliedUserId);
+      if ((challenge.userId ?? undefined) !== userId) return ["user_mismatch"];
+      if (challenge.digest !== digest) {
+        const attempts = (challenge.attempts ?? 0) + 1;
+        if (attempts >= Number(maxAttempts)) {
+          await this.del(key);
+          return ["attempts_exhausted"];
+        }
+        challenge.attempts = attempts;
+        await this.set(key, JSON.stringify(challenge), { EX: await this.ttl(key) });
+        return ["invalid_otp", String(attempts)];
+      }
+      if (challenge.reservationToken && (challenge.reservationExpiresAt ?? 0) > Number(now)) {
+        return ["reserved"];
+      }
+      challenge.reservationToken = reservationToken;
+      challenge.reservationExpiresAt = Number(now) + Number(leaseMs);
+      await this.set(key, JSON.stringify(challenge), { EX: await this.ttl(key) });
+      return ["ok", JSON.stringify({ email: challenge.email, metadata: challenge.metadata ?? {} })];
+    }
+    if (script.includes("auth-verification-email-finalize")) {
+      const [key] = options.keys;
+      const [reservationToken] = options.arguments;
+      const stored = await this.get(key);
+      if (!stored) return ["missing"];
+      if (
+        (JSON.parse(stored) as { reservationToken?: string }).reservationToken !== reservationToken
+      ) {
+        return ["reservation_mismatch"];
+      }
+      await this.del(key);
+      return ["ok"];
+    }
+    if (script.includes("auth-verification-email-release")) {
+      const [key] = options.keys;
+      const [reservationToken] = options.arguments;
+      const stored = await this.get(key);
+      if (!stored) return ["missing"];
+      const challenge = JSON.parse(stored) as {
+        reservationToken?: string;
+        reservationExpiresAt?: number;
+      };
+      if (challenge.reservationToken !== reservationToken) return ["reservation_mismatch"];
+      delete challenge.reservationToken;
+      delete challenge.reservationExpiresAt;
+      await this.set(key, JSON.stringify(challenge), { EX: await this.ttl(key) });
+      return ["ok"];
+    }
+    if (script.includes("auth-verification-email-cancel")) {
+      const [challengeKey, cooldownKey] = options.keys;
+      const [challengeId] = options.arguments;
+      await this.del(challengeKey);
+      if ((await this.get(cooldownKey)) === challengeId) await this.del(cooldownKey);
       return ["ok"];
     }
     const [key] = options.keys;
@@ -491,5 +563,105 @@ describe("RedisVerificationChallengeStore", () => {
       })
     ).rejects.toMatchObject({ code: 50301 });
     expect(client.values.size).toBe(0);
+  });
+
+  it("uses a CAS reservation lease before finalization and recovers after release or lease expiry", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-08-27T00:00:00.000Z"));
+    const client = new FakeRedis();
+    const store = new RedisVerificationChallengeStore(() => client as never);
+    const challenge = await store.createEmailChallenge({
+      email: "lease@example.com",
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    const first = await store.reserveEmailChallenge({
+      challengeId: challenge.challengeId,
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    expect(first).toMatchObject({ ok: true, reservationToken: expect.any(String) });
+    if (!first.ok) throw new Error("reservation did not succeed");
+    await expect(
+      store.reserveEmailChallenge({
+        challengeId: challenge.challengeId,
+        otp: "123456",
+        purpose: "email_registration"
+      })
+    ).resolves.toEqual({ ok: false, reason: "reserved" });
+    await expect(
+      store.finalizeEmailChallenge({
+        challengeId: challenge.challengeId,
+        reservationToken: "wrong-owner"
+      })
+    ).resolves.toBe(false);
+    await expect(
+      store.releaseEmailChallenge({
+        challengeId: challenge.challengeId,
+        reservationToken: "wrong-owner"
+      })
+    ).resolves.toBe(false);
+    await expect(
+      store.releaseEmailChallenge({
+        challengeId: challenge.challengeId,
+        reservationToken: first.reservationToken
+      })
+    ).resolves.toBe(true);
+    const released = await store.reserveEmailChallenge({
+      challengeId: challenge.challengeId,
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    expect(released).toMatchObject({ ok: true });
+    jest.advanceTimersByTime(30_001);
+    await expect(
+      store.reserveEmailChallenge({
+        challengeId: challenge.challengeId,
+        otp: "123456",
+        purpose: "email_registration"
+      })
+    ).resolves.toMatchObject({ ok: true });
+    jest.useRealTimers();
+  });
+
+  it("cancels only the failed-delivery challenge and its matching cooldown", async () => {
+    const client = new FakeRedis();
+    const store = new RedisVerificationChallengeStore(() => client as never);
+    const first = await store.createEmailChallenge({
+      email: "cancel@example.com",
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    await expect(
+      store.cancelEmailChallenge({
+        challengeId: first.challengeId,
+        email: "cancel@example.com",
+        purpose: "email_registration"
+      })
+    ).resolves.toBe(true);
+    const second = await store.createEmailChallenge({
+      email: "cancel@example.com",
+      otp: "654321",
+      purpose: "email_registration"
+    });
+    await store.cancelEmailChallenge({
+      challengeId: first.challengeId,
+      email: "cancel@example.com",
+      purpose: "email_registration"
+    });
+    await expect(
+      store.createEmailChallenge({
+        email: "cancel@example.com",
+        otp: "111111",
+        purpose: "email_registration"
+      })
+    ).rejects.toMatchObject({ reason: "cooldown" });
+    await expect(
+      store.cancelEmailChallenge({
+        challengeId: second.challengeId,
+        email: "cancel@example.com",
+        purpose: "email_registration"
+      })
+    ).resolves.toBe(true);
   });
 });

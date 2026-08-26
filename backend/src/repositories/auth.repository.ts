@@ -110,6 +110,7 @@ export interface CreateVerifiedBaselineCustomerInput {
   email: string;
   passwordHash: string | null;
   emailVerifiedAt: Date;
+  registrationChallengeId?: string;
   context: {
     ip: string;
     userAgent?: string | null;
@@ -164,6 +165,10 @@ export interface AuthRepositoryPort {
   createVerifiedBaselineCustomer: (
     input: CreateVerifiedBaselineCustomerInput
   ) => Promise<AuthUserRecord>;
+  findVerifiedRegistrationByChallenge: (
+    registrationChallengeId: string,
+    email: string
+  ) => Promise<AuthUserRecord | null>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
   createAuditLog: (input: CreateAuditLogInput) => Promise<void>;
@@ -354,7 +359,13 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
               targetId: user.id,
               ip: input.context.ip,
               userAgent: input.context.userAgent ?? null,
-              metadata: { accountType: "customer", verified: true }
+              metadata: {
+                accountType: "customer",
+                verified: true,
+                ...(input.registrationChallengeId
+                  ? { registrationChallengeId: input.registrationChallengeId }
+                  : {})
+              }
             }
           });
 
@@ -371,6 +382,29 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         throw error;
       }
     });
+  }
+
+  public async findVerifiedRegistrationByChallenge(
+    registrationChallengeId: string,
+    email: string
+  ): Promise<AuthUserRecord | null> {
+    const auditLog = await this.client.auditLog.findFirst({
+      where: {
+        action: "auth.register",
+        targetType: "User",
+        deletedAt: null,
+        metadata: {
+          path: "$.registrationChallengeId",
+          equals: registrationChallengeId
+        }
+      },
+      orderBy: { id: "desc" },
+      select: { targetId: true }
+    });
+    if (!auditLog?.targetId) return null;
+
+    const user = await this.findUserById(auditLog.targetId);
+    return user?.email === email.trim().toLowerCase() && user.emailVerifiedAt ? user : null;
   }
 
   public createOrRestoreGoogleBinding(
