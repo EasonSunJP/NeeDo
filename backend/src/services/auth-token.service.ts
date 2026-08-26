@@ -10,6 +10,7 @@ export interface AuthTokenSubject {
   id: number;
   email: string;
   currentIdentityId?: number;
+  sessionGeneration?: number;
 }
 
 export interface AuthTokenPayload {
@@ -20,6 +21,7 @@ export interface AuthTokenPayload {
   iat: number;
   exp: number;
   currentIdentityId?: number;
+  sessionGeneration: number;
 }
 
 export interface IssuedAuthToken {
@@ -46,7 +48,8 @@ const jwtPayloadSchema = z.object({
   jti: z.string().min(1),
   iat: z.number().int().positive(),
   exp: z.number().int().positive(),
-  currentIdentityId: z.number().int().positive().optional()
+  currentIdentityId: z.number().int().positive().optional(),
+  sessionGeneration: z.number().int().nonnegative().optional()
 });
 
 const toBase64Url = (input: string | Buffer): string => Buffer.from(input).toString("base64url");
@@ -106,7 +109,8 @@ export class AuthTokenService {
       jti: randomUUID(),
       iat: issuedAt,
       exp: expiresAt,
-      ...(subject.currentIdentityId ? { currentIdentityId: subject.currentIdentityId } : {})
+      ...(subject.currentIdentityId ? { currentIdentityId: subject.currentIdentityId } : {}),
+      sessionGeneration: subject.sessionGeneration ?? 0
     };
     const token = this.sign(payload, type);
 
@@ -161,7 +165,7 @@ export class AuthTokenService {
         });
       }
 
-      return payload;
+      return { ...payload, sessionGeneration: payload.sessionGeneration ?? 0 };
     } catch (error) {
       if (error instanceof AppError) {
         throw error;

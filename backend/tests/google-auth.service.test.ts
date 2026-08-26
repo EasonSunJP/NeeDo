@@ -137,6 +137,9 @@ class InMemoryChallengeStore {
 }
 
 class InMemorySessionStore {
+  public async getSessionGeneration() {
+    return 0;
+  }
   public readonly refresh = new Set<string>();
   public failNextStore = false;
   public failNextRevoke = false;

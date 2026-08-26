@@ -59,6 +59,7 @@ export interface AuthenticatedAccessContext {
   email: string;
   accessTokenJti: string;
   accessTokenExpiresAt: number;
+  sessionGeneration?: number;
   currentIdentityId?: number;
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
@@ -408,19 +409,20 @@ export class AuthService {
         userId: user.id,
         context: { ip: context.ip, userAgent: context.userAgent }
       });
-      await this.sessionStore.revokeAllRefreshTokens(user.id);
-      await this.sessionStore.blacklistAccessToken(
-        auth.accessTokenJti,
-        Math.max(0, auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000))
-      );
+      if (!this.sessionStore.completeGoogleUnlink) throw this.redisUnavailableError();
       if (
-        !(await this.verificationChallengeStore.finalizeEmailChallenge({
+        !(await this.sessionStore.completeGoogleUnlink({
+          userId: user.id,
           challengeId,
-          reservationToken: reserved.reservationToken
+          reservationToken: reserved.reservationToken,
+          accessTokenJti: auth.accessTokenJti,
+          accessTokenTtlSeconds: Math.max(
+            0,
+            auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
+          )
         }))
-      ) {
+      )
         throw this.redisUnavailableError();
-      }
       return { signedOut: true };
     } catch (error) {
       return this.releaseAccountSecurityChallengeAndThrow(
@@ -874,6 +876,14 @@ export class AuthService {
     const payload = this.tokenService.verifyRefreshToken(refreshToken);
     const userId = this.getUserIdFromToken(payload);
 
+    if ((await this.getCurrentSessionGeneration(userId)) !== payload.sessionGeneration) {
+      throw new AppError({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: "error.auth.token_invalid",
+        statusCode: 401
+      });
+    }
+
     if (!(await this.sessionStore.hasRefreshToken(userId, payload.jti))) {
       throw new AppError({
         code: ERROR_CODES.TOKEN_INVALID,
@@ -888,7 +898,8 @@ export class AuthService {
     const accessToken = this.tokenService.issueAccessToken({
       id: user.id,
       email: user.email,
-      currentIdentityId: payload.currentIdentityId
+      currentIdentityId: payload.currentIdentityId,
+      sessionGeneration: payload.sessionGeneration
     });
 
     return {
@@ -914,6 +925,12 @@ export class AuthService {
       });
     }
 
+    if (
+      (await this.getCurrentSessionGeneration(refreshUserId)) !== refreshPayload.sessionGeneration
+    ) {
+      throw this.tokenInvalidError();
+    }
+
     if (!(await this.sessionStore.hasRefreshToken(refreshUserId, refreshPayload.jti))) {
       throw new AppError({
         code: ERROR_CODES.TOKEN_INVALID,
@@ -928,17 +945,24 @@ export class AuthService {
     const subject: AuthTokenSubject = {
       id: user.id,
       email: user.email,
-      currentIdentityId: me.currentIdentity.id
+      currentIdentityId: me.currentIdentity.id,
+      sessionGeneration: refreshPayload.sessionGeneration
     };
     const nextAccessToken = this.tokenService.issueAccessToken(subject);
     const nextRefreshToken = this.tokenService.issueRefreshToken(subject);
 
-    await this.sessionStore.revokeRefreshToken(refreshUserId, refreshPayload.jti);
-    await this.sessionStore.storeRefreshToken(
-      user.id,
-      nextRefreshToken.jti,
-      this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
-    );
+    if (!this.sessionStore.rotateRefreshToken) throw this.redisUnavailableError();
+    if (
+      !(await this.sessionStore.rotateRefreshToken({
+        userId: user.id,
+        generation: refreshPayload.sessionGeneration,
+        oldJti: refreshPayload.jti,
+        newJti: nextRefreshToken.jti,
+        ttlSeconds: this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+      }))
+    ) {
+      throw this.tokenInvalidError();
+    }
     await this.sessionStore.blacklistAccessToken(
       auth.accessTokenJti,
       auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
@@ -1019,6 +1043,13 @@ export class AuthService {
     }
 
     const userId = this.getUserIdFromToken(payload);
+    if ((await this.getCurrentSessionGeneration(userId)) !== payload.sessionGeneration) {
+      throw new AppError({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: "error.auth.token_invalid",
+        statusCode: 401
+      });
+    }
     const user = await this.repository.findUserById(userId);
     this.assertActiveUser(user);
     const me = this.buildMePayload(user, payload.currentIdentityId);
@@ -1036,6 +1067,7 @@ export class AuthService {
       email: payload.email,
       accessTokenJti: payload.jti,
       accessTokenExpiresAt: payload.exp,
+      sessionGeneration: payload.sessionGeneration,
       currentIdentityId: me.currentIdentity.id,
       currentIdentityType: me.currentIdentity.type,
       currentIdentityScopeType: me.currentIdentity.scopeType,
@@ -1078,6 +1110,26 @@ export class AuthService {
     const user = await this.repository.findUserById(auth.userId);
     this.assertActiveUser(user);
     return user;
+  }
+
+  private async getCurrentSessionGeneration(userId: number): Promise<number> {
+    if (this.sessionStore.getSessionGeneration) {
+      return this.sessionStore.getSessionGeneration(userId);
+    }
+    if (this.allowLegacyAuthAdaptersForTest) return 0;
+    throw new AppError({
+      code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+      message: "error.dependency.redis_unavailable",
+      statusCode: 503
+    });
+  }
+
+  private tokenInvalidError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.TOKEN_INVALID,
+      message: "error.auth.token_invalid",
+      statusCode: 401
+    });
   }
 
   private async createAndDeliverAccountSecurityChallenge(input: {
@@ -1337,21 +1389,27 @@ export class AuthService {
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const loggedInAt = new Date();
     const me = this.buildMePayload(user, currentIdentityId);
+    const sessionGeneration = await this.getCurrentSessionGeneration(user.id);
     const subject: AuthTokenSubject = {
       id: user.id,
       email: user.email,
-      currentIdentityId: me.currentIdentity.id
+      currentIdentityId: me.currentIdentity.id,
+      sessionGeneration
     };
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
 
     let refreshStored = false;
     try {
-      await this.sessionStore.storeRefreshToken(
-        user.id,
-        refreshToken.jti,
-        this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
-      );
+      if (
+        (await this.sessionStore.storeRefreshToken(
+          user.id,
+          refreshToken.jti,
+          this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+          sessionGeneration
+        )) === false
+      )
+        throw this.tokenInvalidError();
       refreshStored = true;
       await this.repository.updateLastLoginAt(user.id, loggedInAt);
       await this.repository.createLoginLog({
@@ -1392,20 +1450,26 @@ export class AuthService {
     context: AuthRequestContext
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const me = this.buildMePayload(user);
+    const sessionGeneration = await this.getCurrentSessionGeneration(user.id);
     const subject: AuthTokenSubject = {
       id: user.id,
       email: user.email,
-      currentIdentityId: me.currentIdentity.id
+      currentIdentityId: me.currentIdentity.id,
+      sessionGeneration
     };
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
     let refreshStored = false;
     try {
-      await this.sessionStore.storeRefreshToken(
-        user.id,
-        refreshToken.jti,
-        this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
-      );
+      if (
+        (await this.sessionStore.storeRefreshToken(
+          user.id,
+          refreshToken.jti,
+          this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+          sessionGeneration
+        )) === false
+      )
+        throw this.tokenInvalidError();
       refreshStored = true;
       const fresh = await this.googleRepository().completeSuccessfulGoogleLogin({
         providerSubject,

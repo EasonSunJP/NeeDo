@@ -653,10 +653,14 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         account.id
       );
       if (!auditExists) {
-        await transaction.user.update({
-          where: { id: account.id },
+        // A password-setup challenge is one-way.  Do not let a second valid
+        // challenge replace the first password: password changes require their
+        // own, current-password-authenticated flow.
+        const updated = await transaction.user.updateMany({
+          where: { id: account.id, deletedAt: null, passwordHash: null },
           data: { passwordHash: input.passwordHash }
         });
+        if (updated.count !== 1) throw new GoogleLoginStateError("conflict");
         await this.createAccountSecurityAuditInTransaction(transaction, {
           action: "auth.password.setup",
           challengeId: input.challengeId,
@@ -693,7 +697,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         if (!account.passwordHash) throw new GoogleLoginStateError("conflict");
         const unlinked = await transaction.externalAuthAccount.updateMany({
           where: { userId: account.id, provider: "google", deletedAt: null },
-          data: { deletedAt: new Date() }
+          data: { deletedAt: new Date(), activeUserProviderKey: null }
         });
         if (unlinked.count !== 1) throw new GoogleLoginStateError("missing");
         await this.createAccountSecurityAuditInTransaction(transaction, {
@@ -722,7 +726,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   public async softUnlinkGoogleBinding(userId: number): Promise<boolean> {
     const result = await this.client.externalAuthAccount.updateMany({
       where: { userId, provider: "google", deletedAt: null, user: { deletedAt: null } },
-      data: { deletedAt: new Date() }
+      data: { deletedAt: new Date(), activeUserProviderKey: null }
     });
     return result.count === 1;
   }
@@ -879,6 +883,16 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       where: { provider: "google", providerSubject }
     });
 
+    // A provider subject may only belong to one account, and an account may
+    // only have one active identity for each provider.  The latter is also
+    // protected by activeUserProviderKey at the database boundary.
+    const activeForUser = await transaction.externalAuthAccount.findFirst({
+      where: { userId: user.id, provider: "google", deletedAt: null }
+    });
+    if (activeForUser && activeForUser.providerSubject !== providerSubject) {
+      throw new ExternalAuthAccountConflictError();
+    }
+
     if (existing && !existing.deletedAt && existing.userId !== user.id) {
       throw new ExternalAuthAccountConflictError();
     }
@@ -888,6 +902,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         data: {
           userId: user.id,
           provider: "google",
+          activeUserProviderKey: `google:${user.id}`,
           providerSubject,
           providerEmail,
           providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt
@@ -901,6 +916,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       const binding = await transaction.externalAuthAccount.update({
         where: { id: existing.id },
         data: {
+          activeUserProviderKey: `google:${user.id}`,
           providerEmail,
           providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt
         }
@@ -912,6 +928,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       where: { id: existing.id, deletedAt: existing.deletedAt },
       data: {
         userId: user.id,
+        activeUserProviderKey: `google:${user.id}`,
         providerEmail,
         providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
         deletedAt: null
@@ -1037,7 +1054,10 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       .some((value) => {
         const target = String(value ?? "");
         return (
-          target.includes("external_auth_provider_subject") || target.includes("provider_subject")
+          target.includes("external_auth_provider_subject") ||
+          target.includes("external_auth_active_user_provider_key") ||
+          target.includes("provider_subject") ||
+          target.includes("active_user_provider_key")
         );
       });
   }

@@ -203,6 +203,15 @@ class SessionStore implements AuthSessionStore {
     }
     this.revokedAll.push(userId);
   }
+  public async completeGoogleUnlink(input: {
+    userId: number;
+    accessTokenJti: string;
+    accessTokenTtlSeconds: number;
+  }) {
+    await this.revokeAllRefreshTokens(input.userId);
+    await this.blacklistAccessToken(input.accessTokenJti, input.accessTokenTtlSeconds);
+    return true;
+  }
   public async blacklistAccessToken(jti: string, ttl: number) {
     this.blacklisted.push({ jti, ttl });
   }

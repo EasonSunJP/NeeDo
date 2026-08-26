@@ -17,6 +17,9 @@ interface StoredValue {
 }
 
 class InMemoryAuthSessionStore {
+  public async getSessionGeneration() {
+    return 0;
+  }
   public readonly refreshTokens = new Set<string>();
   public readonly blacklistedAccessTokens = new Set<string>();
   private readonly values = new Map<string, StoredValue>();
@@ -112,6 +115,18 @@ class InMemoryAuthSessionStore {
     this.storedRefreshTokens.push({ userId, jti });
     this.refreshTokens.add(`${userId}:${jti}`);
     this.setValue(`refresh:${userId}:${jti}`, "1", ttlSeconds);
+  }
+
+  public async rotateRefreshToken(input: {
+    userId: number;
+    oldJti: string;
+    newJti: string;
+    ttlSeconds: number;
+  }): Promise<boolean> {
+    if (!(await this.hasRefreshToken(input.userId, input.oldJti))) return false;
+    await this.revokeRefreshToken(input.userId, input.oldJti);
+    await this.storeRefreshToken(input.userId, input.newJti, input.ttlSeconds);
+    return true;
   }
 
   public async hasRefreshToken(userId: number, jti: string): Promise<boolean> {

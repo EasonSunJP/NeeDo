@@ -399,6 +399,7 @@ model ExternalAuthAccount {
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
   deletedAt               DateTime? @map("deleted_at")
+  activeUserProviderKey   String?   @unique(map: "external_auth_active_user_provider_key") @map("active_user_provider_key") @db.VarChar(300)
   user                    User      @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([provider, providerSubject], map: "external_auth_provider_subject_key")

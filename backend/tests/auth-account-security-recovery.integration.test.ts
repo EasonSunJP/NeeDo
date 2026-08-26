@@ -6,6 +6,7 @@ import { env } from "../src/config/env";
 import { createRedisClient, type RedisClient } from "../src/config/redis";
 import { AuthRepository } from "../src/repositories/auth.repository";
 import { RedisAuthSessionStore, type AuthSessionStore } from "../src/services/auth-session.store";
+import { AuthTokenService } from "../src/services/auth-token.service";
 import { AuthService, type AuthenticatedAccessContext } from "../src/services/auth.service";
 import { RedisVerificationChallengeStore } from "../src/services/auth-verification-challenge.store";
 
@@ -50,7 +51,14 @@ describeIntegration("formal account-security recovery integration", () => {
     if (prisma && userIds.length) {
       await prisma.$transaction(async (transaction) => {
         await transaction.auditLog.deleteMany({
-          where: { OR: [{ actorId: { in: userIds } }, { targetId: { in: userIds } }] }
+          where: {
+            targetType: "User",
+            targetId: { in: userIds },
+            action: { in: ["auth.google.link", "auth.google.unlink", "auth.password.setup"] },
+            OR: challengeIds.map((challengeId) => ({
+              metadata: { path: "$.challengeId", equals: challengeId }
+            }))
+          }
         });
         await transaction.loginLog.deleteMany({ where: { userId: { in: userIds } } });
         await transaction.externalAuthAccount.deleteMany({ where: { userId: { in: userIds } } });
@@ -114,16 +122,16 @@ describeIntegration("formal account-security recovery integration", () => {
     const challenges = new RedisVerificationChallengeStore(() => redis);
     const baseSessions = new RedisAuthSessionStore(() => redis);
     const delivered: string[] = [];
-    let failRevokeAll = true;
+    let failCompletion = true;
     const sessions = new Proxy(baseSessions, {
       get(target, property, receiver) {
-        if (property === "revokeAllRefreshTokens") {
-          return async (userId: number) => {
-            if (failRevokeAll) {
-              failRevokeAll = false;
-              throw new Error("injected revoke-all failure");
+        if (property === "completeGoogleUnlink") {
+          return async (...args: Parameters<RedisAuthSessionStore["completeGoogleUnlink"]>) => {
+            if (failCompletion) {
+              failCompletion = false;
+              throw new Error("injected unlink completion failure");
             }
-            return target.revokeAllRefreshTokens(userId);
+            return target.completeGoogleUnlink(...args);
           };
         }
         const value = Reflect.get(target, property, receiver);
@@ -195,7 +203,7 @@ describeIntegration("formal account-security recovery integration", () => {
     challengeIds.push(unlink.challengeId);
     await expect(
       service.verifyGoogleUnlink(unlink.challengeId, delivered[1], auth, { ip: "127.0.0.1" })
-    ).rejects.toThrow("injected revoke-all failure");
+    ).rejects.toThrow("injected unlink completion failure");
     expect(
       await prisma.externalAuthAccount.count({
         where: { id: binding.id, deletedAt: { not: null } }
@@ -278,6 +286,201 @@ describeIntegration("formal account-security recovery integration", () => {
           targetId: account.id,
           metadata: { path: "$.challengeId", equals: setup.challengeId }
         }
+      })
+    ).toBe(1);
+  }, 15_000);
+
+  it("leaves no usable old-generation session when unlink races refresh rotation in real Redis", async () => {
+    assertNeedoTest();
+    const email = `${marker}-session-race@needo.test`;
+    const oldJti = `${marker}-session-race-old`;
+    const newJti = `${marker}-session-race-new`;
+    emails.push(email);
+    refreshes.push({ userId: 0, jti: oldJti }, { userId: 0, jti: newJti });
+    const repository = new AuthRepository(prisma);
+    const account = await repository.createVerifiedBaselineCustomer({
+      email,
+      passwordHash: await hash("StrongPass1!", 12),
+      emailVerifiedAt: new Date(),
+      context: { ip: "127.0.0.1" }
+    });
+    userIds.push(account.id);
+    refreshes[refreshes.length - 2].userId = account.id;
+    refreshes[refreshes.length - 1].userId = account.id;
+    const challenges = new RedisVerificationChallengeStore(() => redis);
+    const sessions = new RedisAuthSessionStore(() => redis);
+    const challenge = await challenges.createEmailChallenge({
+      email,
+      otp: "123456",
+      purpose: "google_unlink",
+      userId: account.id
+    });
+    challengeIds.push(challenge.challengeId);
+    const reserved = await challenges.reserveEmailChallenge({
+      challengeId: challenge.challengeId,
+      otp: "123456",
+      purpose: "google_unlink",
+      userId: account.id
+    });
+    if (!reserved.ok) throw new Error("unlink race challenge was not reserved");
+    await expect(sessions.storeRefreshToken(account.id, oldJti, 300, 0)).resolves.toBe(true);
+    const tokenService = new AuthTokenService(env);
+    const oldAccess = tokenService.issueAccessToken({
+      id: account.id,
+      email,
+      currentIdentityId: account.identities[0].id,
+      sessionGeneration: 0
+    });
+    const service = new AuthService(
+      env,
+      repository,
+      sessions,
+      { sendOtp: async () => undefined },
+      challenges,
+      false
+    );
+    await expect(service.authenticateAccessToken(oldAccess.token)).resolves.toMatchObject({
+      userId: account.id,
+      sessionGeneration: 0
+    });
+
+    const [rotation, completion] = await Promise.all([
+      sessions.rotateRefreshToken({
+        userId: account.id,
+        generation: 0,
+        oldJti,
+        newJti,
+        ttlSeconds: 300
+      }),
+      sessions.completeGoogleUnlink({
+        userId: account.id,
+        challengeId: challenge.challengeId,
+        reservationToken: reserved.reservationToken,
+        accessTokenJti: oldAccess.jti,
+        accessTokenTtlSeconds: oldAccess.expiresIn
+      })
+    ]);
+    expect(completion).toBe(true);
+    expect(await sessions.getSessionGeneration(account.id)).toBe(1);
+    expect(await sessions.hasRefreshToken(account.id, oldJti)).toBe(false);
+    expect(await sessions.hasRefreshToken(account.id, newJti)).toBe(false);
+    expect(rotation === true || rotation === false).toBe(true);
+    await expect(service.authenticateAccessToken(oldAccess.token)).rejects.toMatchObject({
+      statusCode: 401
+    });
+  }, 15_000);
+
+  it("keeps the first password setup and one active Google identity under concurrent challenges", async () => {
+    assertNeedoTest();
+    const email = `${marker}-cas@needo.test`;
+    const subject = `${marker}-single-provider`;
+    const alternateSubject = `${marker}-alternate-provider`;
+    const firstChallengeId = `${marker}-password-first`;
+    const secondChallengeId = `${marker}-password-second`;
+    emails.push(email);
+    challengeIds.push(firstChallengeId, secondChallengeId);
+    const repository = new AuthRepository(prisma);
+    const account = await repository.createVerifiedBaselineCustomer({
+      email,
+      passwordHash: null,
+      emailVerifiedAt: new Date(),
+      context: { ip: "127.0.0.1" },
+      googleIdentity: { subject, email, emailVerifiedAt: new Date() }
+    });
+    userIds.push(account.id);
+    const [firstHash, secondHash] = await Promise.all([
+      hash("FirstStrongPass1!", 12),
+      hash("SecondStrongPass1!", 12)
+    ]);
+
+    const completed = await Promise.allSettled([
+      repository.completePasswordSetup({
+        challengeId: firstChallengeId,
+        userId: account.id,
+        passwordHash: firstHash,
+        context: { ip: "127.0.0.1" }
+      }),
+      repository.completePasswordSetup({
+        challengeId: secondChallengeId,
+        userId: account.id,
+        passwordHash: secondHash,
+        context: { ip: "127.0.0.1" }
+      })
+    ]);
+    expect(completed.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(completed.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const persisted = await prisma.user.findUniqueOrThrow({ where: { id: account.id } });
+    expect([firstHash, secondHash]).toContain(persisted.passwordHash);
+    const establishedHash = persisted.passwordHash;
+    const fulfilledIndex = completed.findIndex((result) => result.status === "fulfilled");
+    const fulfilledChallengeId = [firstChallengeId, secondChallengeId][fulfilledIndex];
+    await repository.completePasswordSetup({
+      challengeId: fulfilledChallengeId,
+      userId: account.id,
+      passwordHash: firstHash === establishedHash ? secondHash : firstHash,
+      context: { ip: "127.0.0.1" }
+    });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: account.id } })).passwordHash).toBe(
+      establishedHash
+    );
+
+    await expect(
+      repository.completeAuthenticatedGoogleLink({
+        challengeId: `${marker}-second-subject`,
+        userId: account.id,
+        googleIdentity: {
+          subject: alternateSubject,
+          email: `${marker}-alternate@needo.test`,
+          emailVerifiedAt: new Date()
+        },
+        context: { ip: "127.0.0.1" }
+      })
+    ).rejects.toMatchObject({ name: "ExternalAuthAccountConflictError" });
+    expect(
+      await prisma.externalAuthAccount.count({
+        where: { userId: account.id, provider: "google", deletedAt: null }
+      })
+    ).toBe(1);
+
+    const concurrentEmail = `${marker}-concurrent-provider@needo.test`;
+    const concurrentChallengeA = `${marker}-concurrent-provider-a`;
+    const concurrentChallengeB = `${marker}-concurrent-provider-b`;
+    emails.push(concurrentEmail);
+    challengeIds.push(concurrentChallengeA, concurrentChallengeB);
+    const concurrentAccount = await repository.createVerifiedBaselineCustomer({
+      email: concurrentEmail,
+      passwordHash: await hash("StrongPass1!", 12),
+      emailVerifiedAt: new Date(),
+      context: { ip: "127.0.0.1" }
+    });
+    userIds.push(concurrentAccount.id);
+    const concurrentLinks = await Promise.allSettled([
+      repository.completeAuthenticatedGoogleLink({
+        challengeId: concurrentChallengeA,
+        userId: concurrentAccount.id,
+        googleIdentity: {
+          subject: `${marker}-concurrent-subject-a`,
+          email: `${marker}-concurrent-a@needo.test`,
+          emailVerifiedAt: new Date()
+        },
+        context: { ip: "127.0.0.1" }
+      }),
+      repository.completeAuthenticatedGoogleLink({
+        challengeId: concurrentChallengeB,
+        userId: concurrentAccount.id,
+        googleIdentity: {
+          subject: `${marker}-concurrent-subject-b`,
+          email: `${marker}-concurrent-b@needo.test`,
+          emailVerifiedAt: new Date()
+        },
+        context: { ip: "127.0.0.1" }
+      })
+    ]);
+    expect(concurrentLinks.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(concurrentLinks.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(
+      await prisma.externalAuthAccount.count({
+        where: { userId: concurrentAccount.id, provider: "google", deletedAt: null }
       })
     ).toBe(1);
   }, 15_000);
