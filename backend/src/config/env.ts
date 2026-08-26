@@ -115,6 +115,7 @@ const envSchema = z
   AUTH_VERIFICATION_SECRET: z.string().min(32),
   AUTH_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5),
   AUTH_GOOGLE_NONCE_TTL_SECONDS: z.coerce.number().int().positive().max(600),
+  GOOGLE_AUTH_CLIENT_ID: z.string().min(1),
   GOOGLE_AUTH_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive(),
   AFFILIATE_LINK_SECRET: z.string().min(32),
   SENSITIVE_DATA_ENCRYPTION_KEY: z.string().min(32),
@@ -213,6 +214,14 @@ const envSchema = z
         context,
         "AUTH_VERIFICATION_SECRET",
         "AUTH_VERIFICATION_SECRET must not use a placeholder value in production"
+      );
+    }
+
+    if (productionPlaceholderPattern.test(value.GOOGLE_AUTH_CLIENT_ID)) {
+      addProductionIssue(
+        context,
+        "GOOGLE_AUTH_CLIENT_ID",
+        "GOOGLE_AUTH_CLIENT_ID must not use a placeholder value in production"
       );
     }
     if (

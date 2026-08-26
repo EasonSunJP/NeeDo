@@ -67,6 +67,7 @@ process.env.AUTH_REFRESH_TOKEN_SECRET = "test-refresh-token-secret-with-at-least
 process.env.AUTH_VERIFICATION_SECRET = "test-verification-secret-with-at-least-32-chars";
 process.env.AUTH_VERIFICATION_MAX_ATTEMPTS = "5";
 process.env.AUTH_GOOGLE_NONCE_TTL_SECONDS = "300";
+process.env.GOOGLE_AUTH_CLIENT_ID = "test-google-client-id.apps.googleusercontent.com";
 process.env.GOOGLE_AUTH_VERIFY_TIMEOUT_MS = "5000";
 process.env.AFFILIATE_LINK_SECRET = "test-affiliate-link-secret-with-at-least-32-chars";
 process.env.SENSITIVE_DATA_ENCRYPTION_KEY = "test-sensitive-data-key-with-at-least-32-chars";
