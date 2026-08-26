@@ -1,6 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
-import type { VerifiedGoogleIdentity } from "../services/google-credential-verifier.service";
 import { NeedoIdAllocator } from "../services/needo-id.service";
 
 export interface AuthIdentityRecord {
@@ -57,6 +56,7 @@ export interface AuthUserRecord {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  accessState?: AuthAccountAccessState;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
   identities: AuthIdentityRecord[];
@@ -114,7 +114,18 @@ export interface CreateVerifiedBaselineCustomerInput {
     ip: string;
     userAgent?: string | null;
   };
-  googleIdentity?: VerifiedGoogleIdentity;
+  googleIdentity?: GoogleAuthPersistenceInput;
+}
+
+export interface GoogleAuthPersistenceInput {
+  subject: string;
+  email: string;
+  emailVerifiedAt: Date;
+}
+
+export interface AuthAccountAccessState {
+  disabled: boolean;
+  restricted: boolean;
 }
 
 export interface GoogleBindingRecord {
@@ -131,7 +142,7 @@ export interface GoogleBindingRecord {
 
 export interface CreateOrRestoreGoogleBindingInput {
   userId: number;
-  googleIdentity: VerifiedGoogleIdentity;
+  googleIdentity: GoogleAuthPersistenceInput;
 }
 
 export interface GoogleBindingStatus {
@@ -214,6 +225,18 @@ const authUserInclude = {
   }
 };
 
+type AuthUserPrismaRecord = Prisma.UserGetPayload<{ include: typeof authUserInclude }>;
+
+const toAuthUserRecord = (user: AuthUserPrismaRecord): AuthUserRecord => ({
+  ...user,
+  accessState: {
+    disabled: !user.isActive,
+    restricted: !user.identities.some(
+      (identity) => identity.deletedAt === null && identity.isActive
+    )
+  }
+});
+
 export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
@@ -221,39 +244,42 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   ) {}
 
   public async findUserByEmail(email: string): Promise<AuthUserRecord | null> {
-    return this.client.user.findFirst({
+    const user = await this.client.user.findFirst({
       where: {
         email,
         deletedAt: null
       },
       include: authUserInclude
     });
+    return user ? toAuthUserRecord(user) : null;
   }
 
   public async findUserByLoginIdentifier(identifier: string): Promise<AuthUserRecord | null> {
-    return this.client.user.findFirst({
+    const user = await this.client.user.findFirst({
       where: {
         OR: [{ email: identifier }, { needoId: identifier }],
         deletedAt: null
       },
       include: authUserInclude
     });
+    return user ? toAuthUserRecord(user) : null;
   }
 
   public async findUserById(id: number): Promise<AuthUserRecord | null> {
-    return this.client.user.findFirst({
+    const user = await this.client.user.findFirst({
       where: {
         id,
         deletedAt: null
       },
       include: authUserInclude
     });
+    return user ? toAuthUserRecord(user) : null;
   }
 
   public async findGoogleBindingBySubject(
     providerSubject: string
   ): Promise<GoogleBindingRecord | null> {
-    return this.client.externalAuthAccount.findFirst({
+    const binding = await this.client.externalAuthAccount.findFirst({
       where: {
         provider: "google",
         providerSubject,
@@ -264,6 +290,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         user: { include: authUserInclude }
       }
     });
+    return binding ? { ...binding, user: toAuthUserRecord(binding.user) } : null;
   }
 
   public createVerifiedBaselineCustomer(
@@ -271,78 +298,83 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   ): Promise<AuthUserRecord> {
     const email = input.email.trim().toLowerCase();
 
-    return this.needoIdAllocator.withNewId((needoId) =>
-      this.client.$transaction(async (transaction) => {
-        const customerRole = await transaction.role.findFirst({
-          where: { code: "customer", deletedAt: null },
-          select: { id: true }
-        });
-        if (!customerRole) throw new Error("Registration role is missing: customer");
-
-        const user = await transaction.user.create({
-          data: {
-            needoId,
-            email,
-            emailVerifiedAt: input.emailVerifiedAt,
-            passwordHash: input.passwordHash,
-            username: needoId,
-            isActive: true
-          }
-        });
-        const customerProfile = await transaction.customerProfile.create({
-          data: { userId: user.id, displayName: needoId }
-        });
-        await transaction.userIdentity.create({
-          data: {
-            userId: user.id,
-            type: "customer",
-            scopeType: "customer_profile",
-            scopeId: customerProfile.id,
-            displayName: needoId,
-            isDefault: true,
-            isActive: true
-          }
-        });
-        await transaction.userRole.create({
-          data: {
-            userId: user.id,
-            roleId: customerRole.id,
-            scopeType: "customer_profile",
-            scopeId: customerProfile.id
-          }
-        });
-        if (input.googleIdentity) {
-          await this.createOrRestoreGoogleBindingInTransaction(transaction, {
-            userId: user.id,
-            googleIdentity: input.googleIdentity
+    return this.needoIdAllocator.withNewId(async (needoId) => {
+      try {
+        return await this.client.$transaction(async (transaction) => {
+          const customerRole = await transaction.role.findFirst({
+            where: { code: "customer", deletedAt: null },
+            select: { id: true }
           });
-        }
-        await transaction.auditLog.create({
-          data: {
-            action: "auth.register",
-            targetType: "User",
-            targetId: user.id,
-            ip: input.context.ip,
-            userAgent: input.context.userAgent ?? null,
-            metadata: { accountType: "customer", verified: true }
-          }
-        });
+          if (!customerRole) throw new Error("Registration role is missing: customer");
 
-        const registered = await transaction.user.findUniqueOrThrow({
-          where: { id: user.id },
-          include: authUserInclude
+          const user = await transaction.user.create({
+            data: {
+              needoId,
+              email,
+              emailVerifiedAt: input.emailVerifiedAt,
+              passwordHash: input.passwordHash,
+              username: needoId,
+              isActive: true
+            }
+          });
+          const customerProfile = await transaction.customerProfile.create({
+            data: { userId: user.id, displayName: needoId }
+          });
+          await transaction.userIdentity.create({
+            data: {
+              userId: user.id,
+              type: "customer",
+              scopeType: "customer_profile",
+              scopeId: customerProfile.id,
+              displayName: needoId,
+              isDefault: true,
+              isActive: true
+            }
+          });
+          await transaction.userRole.create({
+            data: {
+              userId: user.id,
+              roleId: customerRole.id,
+              scopeType: "customer_profile",
+              scopeId: customerProfile.id
+            }
+          });
+          if (input.googleIdentity) {
+            await this.createOrRestoreGoogleBindingInTransaction(transaction, {
+              userId: user.id,
+              googleIdentity: input.googleIdentity
+            });
+          }
+          await transaction.auditLog.create({
+            data: {
+              action: "auth.register",
+              targetType: "User",
+              targetId: user.id,
+              ip: input.context.ip,
+              userAgent: input.context.userAgent ?? null,
+              metadata: { accountType: "customer", verified: true }
+            }
+          });
+
+          const registered = await transaction.user.findUniqueOrThrow({
+            where: { id: user.id },
+            include: authUserInclude
+          });
+          return toAuthUserRecord(registered);
         });
-        return registered;
-      })
-    );
+      } catch (error) {
+        if (this.isExternalAuthSubjectCollision(error)) {
+          throw new ExternalAuthAccountConflictError();
+        }
+        throw error;
+      }
+    });
   }
 
   public createOrRestoreGoogleBinding(
     input: CreateOrRestoreGoogleBindingInput
   ): Promise<GoogleBindingRecord> {
-    return this.client.$transaction((transaction) =>
-      this.createOrRestoreGoogleBindingInTransaction(transaction, input)
-    );
+    return this.createOrRestoreGoogleBindingWithRetry(input);
   }
 
   public async getGoogleBindingStatus(userId: number): Promise<GoogleBindingStatus> {
@@ -529,28 +561,110 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       throw new ExternalAuthAccountConflictError();
     }
 
-    const binding = existing
-      ? await transaction.externalAuthAccount.update({
-          where: { id: existing.id },
-          data: {
-            userId: user.id,
-            providerEmail,
-            providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
-            lastUsedAt: new Date(),
-            deletedAt: null
-          }
-        })
-      : await transaction.externalAuthAccount.create({
-          data: {
-            userId: user.id,
-            provider: "google",
-            providerSubject,
-            providerEmail,
-            providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
-            lastUsedAt: new Date()
-          }
-        });
+    if (!existing) {
+      const binding = await transaction.externalAuthAccount.create({
+        data: {
+          userId: user.id,
+          provider: "google",
+          providerSubject,
+          providerEmail,
+          providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
+          lastUsedAt: new Date()
+        }
+      });
+      return { ...binding, provider: "google", user: toAuthUserRecord(user) };
+    }
 
-    return { ...binding, provider: "google", user };
+    if (!existing.deletedAt) {
+      if (existing.userId !== user.id) throw new ExternalAuthAccountConflictError();
+      const binding = await transaction.externalAuthAccount.update({
+        where: { id: existing.id },
+        data: {
+          providerEmail,
+          providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
+          lastUsedAt: new Date()
+        }
+      });
+      return { ...binding, provider: "google", user: toAuthUserRecord(user) };
+    }
+
+    const restoredAt = new Date();
+    const restored = await transaction.externalAuthAccount.updateMany({
+      where: { id: existing.id, deletedAt: existing.deletedAt },
+      data: {
+        userId: user.id,
+        providerEmail,
+        providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
+        lastUsedAt: restoredAt,
+        deletedAt: null
+      }
+    });
+    if (restored.count === 1) {
+      return {
+        ...existing,
+        userId: user.id,
+        providerEmail,
+        providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
+        lastUsedAt: restoredAt,
+        deletedAt: null,
+        user: toAuthUserRecord(user)
+      };
+    }
+
+    const retainedBySameUser = await transaction.externalAuthAccount.updateMany({
+      where: { id: existing.id, userId: user.id, deletedAt: null },
+      data: { lastUsedAt: restoredAt }
+    });
+    if (retainedBySameUser.count !== 1) throw new ExternalAuthAccountConflictError();
+
+    return {
+      ...existing,
+      userId: user.id,
+      providerEmail,
+      providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
+      lastUsedAt: restoredAt,
+      deletedAt: null,
+      user: toAuthUserRecord(user)
+    };
+  }
+
+  private async createOrRestoreGoogleBindingWithRetry(
+    input: CreateOrRestoreGoogleBindingInput
+  ): Promise<GoogleBindingRecord> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.client.$transaction((transaction) =>
+          this.createOrRestoreGoogleBindingInTransaction(transaction, input)
+        );
+      } catch (error) {
+        if (!this.isExternalAuthSubjectCollision(error)) throw error;
+      }
+    }
+    throw new ExternalAuthAccountConflictError();
+  }
+
+  private isExternalAuthSubjectCollision(error: unknown): boolean {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") {
+      return false;
+    }
+    const record = error as {
+      meta?: {
+        target?: unknown;
+        driverAdapterError?: { cause?: { constraint?: { index?: unknown; fields?: unknown } } };
+      };
+    };
+    return [
+      record.meta?.target,
+      record.meta?.driverAdapterError?.cause?.constraint?.index,
+      record.meta?.driverAdapterError?.cause?.constraint?.fields
+    ]
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .some((value) => {
+        const target = String(value ?? "");
+        return (
+          target.includes("external_auth_provider_subject") ||
+          target.includes("provider_subject")
+        );
+      });
   }
 }
