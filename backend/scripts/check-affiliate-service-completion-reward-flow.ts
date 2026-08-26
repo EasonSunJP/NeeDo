@@ -2,33 +2,15 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
+import { assertSafeAffiliateCompletionDatabase } from "./lib/assert-safe-affiliate-completion-database";
 
 const REWARD_NDP = 1_000;
+const BOOKING_FEE_NDP = 100;
 const SERVICE_PRICE_JPY = 8_800;
-const TOTAL_FROZEN_NDP = 6_000;
+const TOTAL_FROZEN_NDP = 8_000;
 
 const assert = (condition: unknown, message: string): asserts condition => {
   if (!condition) throw new Error(message);
-};
-
-const assertSafeLocalDatabase = (): string => {
-  assert(process.env.NODE_ENV !== "production", "completion check rejects production");
-  assert(
-    !["staging", "prod"].includes(process.env.DEPLOY_ENV || ""),
-    "completion check rejects staging and production deploy environments"
-  );
-  const databaseUrl = new URL(process.env.DATABASE_URL || "");
-  assert(
-    ["localhost", "127.0.0.1", "[::1]"].includes(databaseUrl.hostname),
-    "completion check only accepts a local MySQL host"
-  );
-  const databaseName = databaseUrl.pathname.replace(/^\//, "");
-  assert(databaseName.length > 0, "DATABASE_URL must include a database name");
-  assert(
-    !/(^|[_-])(prod|production|staging)([_-]|$)/i.test(databaseName),
-    "completion check rejects production-looking database names"
-  );
-  return databaseName;
 };
 
 const main = async (): Promise<void> => {
@@ -36,13 +18,15 @@ const main = async (): Promise<void> => {
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
-  const databaseName = assertSafeLocalDatabase();
+  const databaseName = assertSafeAffiliateCompletionDatabase();
   const [
     { AffiliateCheckoutRepository },
     { AffiliateCheckoutService },
     { AffiliateLinkTokenService },
     { BookingRepository },
     { BookingService },
+    { FeeRuleRepository },
+    { FeeCalculationService },
     { LedgerRepository },
     { LedgerService },
     { prisma, disconnectPrisma }
@@ -52,6 +36,8 @@ const main = async (): Promise<void> => {
     import("../src/services/affiliate-link-token.service"),
     import("../src/repositories/booking.repository"),
     import("../src/services/booking.service"),
+    import("../src/repositories/fee-rule.repository"),
+    import("../src/services/fee-calculation.service"),
     import("../src/repositories/ledger.repository"),
     import("../src/services/ledger.service"),
     import("../src/prisma/client")
@@ -69,6 +55,7 @@ const main = async (): Promise<void> => {
   let categoryId: number | null = null;
   let shopId: number | null = null;
   let serviceId: number | null = null;
+  let feeRuleSetId: number | null = null;
 
   try {
     const passwordHash = await hash("AffiliateCompletionFlow.2026!", 12);
@@ -124,7 +111,7 @@ const main = async (): Promise<void> => {
       data: {
         ownerType: "SHOP",
         ownerId: shop.id,
-        availableBalance: 0,
+        availableBalance: 10_000,
         frozenBalance: TOTAL_FROZEN_NDP
       }
     });
@@ -134,24 +121,78 @@ const main = async (): Promise<void> => {
       secret: process.env.AFFILIATE_LINK_SECRET || "",
       publicBaseUrl: process.env.AFFILIATE_PUBLIC_BASE_URL || ""
     });
-    const rewardLedger = new LedgerService(new LedgerRepository(prisma));
+    const now = new Date();
+    const feeRuleSet = await prisma.platformFeeRuleSet.create({
+      data: {
+        name: `${marker} booking fee`,
+        status: "active",
+        priority: 1,
+        effectiveFrom: new Date(now.getTime() - 24 * 60 * 60 * 1_000),
+        createdById: publisher.id,
+        updatedById: publisher.id,
+        rules: {
+          create: {
+            feeType: "b_platform_fee",
+            orderType: "booking",
+            payerType: "shop",
+            baseAmountNdp: BOOKING_FEE_NDP,
+            priority: 1,
+            status: "active",
+            createdById: publisher.id,
+            updatedById: publisher.id
+          }
+        }
+      }
+    });
+    feeRuleSetId = feeRuleSet.id;
+    const ledger = new LedgerService(
+      new LedgerRepository(prisma),
+      new FeeCalculationService(new FeeRuleRepository(prisma))
+    );
     const affiliateCheckout = new AffiliateCheckoutService(
       new AffiliateCheckoutRepository(prisma),
       linkTokens,
-      { rewardLedger }
+      { rewardLedger: ledger }
     );
     const booking = new BookingService(
       new BookingRepository(prisma),
-      undefined,
+      ledger,
       undefined,
       undefined,
       affiliateCheckout
     );
     const actor = (userId: number) => ({ userId, roles: ["customer"] });
-    const now = new Date();
     const taskStartsAt = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
     const taskEndsAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1_000);
     let slotOffsetHours = 2;
+
+    const createClaim = async (input: {
+      taskId: number;
+      claimantUserId: number;
+      label: string;
+      completedOrderCount?: number;
+    }) => {
+      const issued = linkTokens.issue({
+        taskId: input.taskId,
+        userId: input.claimantUserId,
+        expiresAt: taskEndsAt
+      });
+      const claim = await prisma.affiliateClaim.create({
+        data: {
+          taskId: input.taskId,
+          userId: input.claimantUserId,
+          activeKey: `${input.taskId}:${input.claimantUserId}`,
+          publicCode: `NDO-${input.label}-${input.taskId}`.slice(0, 40).toUpperCase(),
+          publicTokenId: issued.publicTokenId,
+          tokenHash: issued.tokenHash,
+          status: "ACTIVE",
+          expiresAt: taskEndsAt,
+          completedOrderCount: input.completedOrderCount ?? 0
+        }
+      });
+      claimIds.push(claim.id);
+      return claim;
+    };
 
     const createTaskAndClaim = async (input: {
       label: string;
@@ -204,25 +245,12 @@ const main = async (): Promise<void> => {
         }
       });
       taskIds.push(task.id);
-      const issued = linkTokens.issue({
+      const claim = await createClaim({
         taskId: task.id,
-        userId: input.claimantUserId,
-        expiresAt: taskEndsAt
+        claimantUserId: input.claimantUserId,
+        label: input.label,
+        completedOrderCount: input.completedOrderCount
       });
-      const claim = await prisma.affiliateClaim.create({
-        data: {
-          taskId: task.id,
-          userId: input.claimantUserId,
-          activeKey: `${task.id}:${input.claimantUserId}`,
-          publicCode: `NDO-${input.label}-${task.id}`.slice(0, 40).toUpperCase(),
-          publicTokenId: issued.publicTokenId,
-          tokenHash: issued.tokenHash,
-          status: "ACTIVE",
-          expiresAt: taskEndsAt,
-          completedOrderCount: input.completedOrderCount ?? 0
-        }
-      });
-      claimIds.push(claim.id);
       return { task, claim };
     };
 
@@ -301,6 +329,18 @@ const main = async (): Promise<void> => {
       include: { entries: true, reconciliation: true }
     });
     ledgerTransactionIds.push(normalLedger.id);
+    const normalBookingLedger = await prisma.ledgerTransaction.findFirstOrThrow({
+      where: {
+        type: "BOOKING_COMPLETE_SETTLEMENT",
+        referenceType: "booking_order",
+        referenceId: normalOrder.id,
+        deletedAt: null
+      }
+    });
+    ledgerTransactionIds.push(normalBookingLedger.id);
+    const normalOrderFinancial = await prisma.orderFinancial.findUniqueOrThrow({
+      where: { bookingOrderId: normalOrder.id }
+    });
     const normalReservation = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
       where: { taskId: normal.task.id }
     });
@@ -335,7 +375,9 @@ const main = async (): Promise<void> => {
         normalTask.allocatedBudgetNdp === 0 &&
         normalTask.settledBudgetNdp === REWARD_NDP &&
         normalClaim.completedOrderCount === 1 &&
-        normalClaim.settledRewardNdp === REWARD_NDP,
+        normalClaim.settledRewardNdp === REWARD_NDP &&
+        normalOrderFinancial.settlementStatus === "settled" &&
+        normalOrderFinancial.bPlatformFeeActualNdp === BOOKING_FEE_NDP,
       "service completion did not settle exact reward state"
     );
     assert(
@@ -357,7 +399,7 @@ const main = async (): Promise<void> => {
         })) === 1,
       "affiliate_reward_settlement finance evidence is incomplete"
     );
-    console.log("PASS service completion settles exact reward and finance evidence");
+    console.log("PASS service completion settles booking finance and exact affiliate reward");
 
     const repeatSettlement = () =>
       prisma.$transaction((transaction) =>
@@ -445,6 +487,82 @@ const main = async (): Promise<void> => {
     );
     console.log("PASS claim and customer completion limits release without reward");
 
+    const customerLimitRace = await createTaskAndClaim({
+      label: "customer-limit-race",
+      claimantUserId: claimantRace.id,
+      totalBudgetNdp: 2_000,
+      maxCompletedOrdersPerCustomer: 1
+    });
+    const customerLimitRaceSecondClaim = await createClaim({
+      taskId: customerLimitRace.task.id,
+      claimantUserId: claimantLimit.id,
+      label: "customer-limit-race-second"
+    });
+    const customerLimitRaceOrders = [
+      await createAttributedOrder({
+        customerUserId: customerRace.id,
+        publicCode: customerLimitRace.claim.publicCode
+      }),
+      await createAttributedOrder({
+        customerUserId: customerRace.id,
+        publicCode: customerLimitRaceSecondClaim.publicCode
+      })
+    ];
+    for (const order of customerLimitRaceOrders) {
+      await advanceToInService(customerRace.id, order.id);
+    }
+    const customerCompletionRace = await Promise.allSettled(
+      customerLimitRaceOrders.map((order) =>
+        booking.transitionOrder(actor(customerRace.id), order.id, "complete")
+      )
+    );
+    assert(
+      customerCompletionRace.every((result) => result.status === "fulfilled"),
+      "concurrent customer-limit completions did not both finish the service orders"
+    );
+    const customerLimitRaceAttributions = await prisma.affiliateAttribution.findMany({
+      where: {
+        bookingOrderId: { in: customerLimitRaceOrders.map((order) => order.id) },
+        deletedAt: null
+      }
+    });
+    const customerLimitRaceReward = await prisma.affiliateReward.findFirstOrThrow({
+      where: { taskId: customerLimitRace.task.id, deletedAt: null }
+    });
+    rewardIds.push(customerLimitRaceReward.id);
+    const customerLimitRaceLedger = await prisma.ledgerTransaction.findFirstOrThrow({
+      where: {
+        type: "AFFILIATE_REWARD_SETTLEMENT",
+        referenceType: "affiliate_reward",
+        referenceId: customerLimitRaceReward.id,
+        deletedAt: null
+      }
+    });
+    ledgerTransactionIds.push(customerLimitRaceLedger.id);
+    const customerLimitRaceTask = await prisma.affiliateTask.findUniqueOrThrow({
+      where: { id: customerLimitRace.task.id }
+    });
+    const customerLimitRaceReservation = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
+      where: { taskId: customerLimitRace.task.id }
+    });
+    assert(
+      customerLimitRaceAttributions.filter((row) => row.status === "SETTLED").length === 1 &&
+        customerLimitRaceAttributions.filter(
+          (row) =>
+            row.status === "INVALIDATED" &&
+            row.invalidationReason === "customer_completed_order_limit_reached"
+        ).length === 1 &&
+        (await prisma.affiliateReward.count({
+          where: { taskId: customerLimitRace.task.id, deletedAt: null }
+        })) === 1 &&
+        customerLimitRaceTask.status === "ACTIVE" &&
+        customerLimitRaceReservation.status === "ACTIVE" &&
+        customerLimitRaceReservation.allocatedNdp === 0 &&
+        customerLimitRaceReservation.capturedNdp === REWARD_NDP,
+      "concurrent customer limit did not settle exactly one reward and release the other"
+    );
+    console.log("PASS concurrent different claims enforce one customer reward");
+
     const race = await createTaskAndClaim({
       label: "completion-race",
       claimantUserId: claimantRace.id,
@@ -506,7 +624,7 @@ const main = async (): Promise<void> => {
     });
     await prisma.wallet.update({
       where: { id: publisherWallet.id },
-      data: { frozenBalance: 0 }
+      data: { frozenBalance: BOOKING_FEE_NDP }
     });
     try {
       await booking.transitionOrder(actor(customerFailure.id), failureOrder.id, "complete");
@@ -526,10 +644,27 @@ const main = async (): Promise<void> => {
     const failureReservationAfter = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
       where: { taskId: failure.task.id }
     });
+    const failureFinancialAfter = await prisma.orderFinancial.findUniqueOrThrow({
+      where: { bookingOrderId: failureOrder.id }
+    });
+    const publisherAfterFailure = await prisma.wallet.findUniqueOrThrow({
+      where: { id: publisherWallet.id }
+    });
     assert(
       failureOrderAfter.status === "IN_SERVICE" &&
         failureAttributionAfter.status === "ATTRIBUTED" &&
         failureReservationAfter.allocatedNdp === failureReservationBefore.allocatedNdp &&
+        failureFinancialAfter.settlementStatus === "holding" &&
+        failureFinancialAfter.bPlatformFeeActualNdp === 0 &&
+        publisherAfterFailure.frozenBalance === BOOKING_FEE_NDP &&
+        (await prisma.ledgerTransaction.count({
+          where: {
+            type: "BOOKING_COMPLETE_SETTLEMENT",
+            referenceType: "booking_order",
+            referenceId: failureOrder.id,
+            deletedAt: null
+          }
+        })) === 0 &&
         (await prisma.affiliateReward.count({
           where: { attributionId: failureAttributionBefore.id, deletedAt: null }
         })) === 0,
@@ -544,15 +679,15 @@ const main = async (): Promise<void> => {
         deletedAt: null
       }
     });
-    assert(rewardAudits === 2, "reward settlement audit count is incorrect");
+    assert(rewardAudits === 3, "reward settlement audit count is incorrect");
     console.log(
       JSON.stringify(
         {
           database: databaseName,
           marker,
           settlement: { exact: true, idempotent: true, concurrent: true },
-          limits: { claim: true, customer: true },
-          rollback: { insufficientFrozen: true },
+          limits: { claim: true, customer: true, customerConcurrent: true },
+          rollback: { insufficientFrozen: true, bookingFinanceAtomic: true },
           finance: { rewards: rewardIds.length, reconciled: true, audited: true },
           status: "ok"
         },
@@ -573,11 +708,19 @@ const main = async (): Promise<void> => {
         if (!rewardIds.includes(reward.id)) rewardIds.push(reward.id);
       }
       const ledgerRows =
-        rewardIds.length > 0
+        rewardIds.length > 0 || bookingIds.length > 0
           ? await transaction.ledgerTransaction.findMany({
               where: {
-                referenceType: "affiliate_reward",
-                referenceId: { in: rewardIds }
+                OR: [
+                  {
+                    referenceType: "affiliate_reward",
+                    referenceId: { in: rewardIds }
+                  },
+                  {
+                    referenceType: "booking_order",
+                    referenceId: { in: bookingIds }
+                  }
+                ]
               },
               select: { id: true }
             })
@@ -613,6 +756,15 @@ const main = async (): Promise<void> => {
         });
       }
       if (bookingIds.length > 0) {
+        await transaction.walletHold.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
+        await transaction.orderFinancial.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
+        await transaction.feeCalculationLog.deleteMany({
+          where: { bookingOrderId: { in: bookingIds } }
+        });
         await transaction.auditLog.deleteMany({
           where: { targetType: "booking_order", targetId: { in: bookingIds } }
         });
@@ -674,6 +826,10 @@ const main = async (): Promise<void> => {
       if (serviceId) await transaction.service.deleteMany({ where: { id: serviceId } });
       if (shopId) await transaction.shop.deleteMany({ where: { id: shopId } });
       if (categoryId) await transaction.category.deleteMany({ where: { id: categoryId } });
+      if (feeRuleSetId) {
+        await transaction.platformFeeRule.deleteMany({ where: { ruleSetId: feeRuleSetId } });
+        await transaction.platformFeeRuleSet.deleteMany({ where: { id: feeRuleSetId } });
+      }
       if (userIds.length > 0) {
         await transaction.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });

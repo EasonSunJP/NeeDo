@@ -341,6 +341,15 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("BookingOrder");
     expect(response.body.components.schemas).toHaveProperty("Wallet");
     expect(response.body.components.schemas).toHaveProperty("LedgerTransaction");
+    expect(response.body.components.schemas.LedgerTransaction.properties.type.enum).toEqual(
+      expect.arrayContaining([
+        "manual_topup_approved",
+        "manual_withdrawal_approved",
+        "affiliate_task_budget_freeze",
+        "affiliate_task_budget_release",
+        "affiliate_reward_settlement"
+      ])
+    );
     expect(response.body.components.schemas).toHaveProperty("FinanceReconciliation");
     expect(response.body.components.schemas).toHaveProperty("AffiliateMarketplaceTask");
     expect(response.body.components.schemas).toHaveProperty("AffiliateClaim");

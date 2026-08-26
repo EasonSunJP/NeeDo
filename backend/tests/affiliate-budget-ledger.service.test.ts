@@ -376,9 +376,7 @@ describe("LedgerService affiliate reward settlement", () => {
     expect(repository.transactionClient).toBe(transactionClient);
     expect(repeated.transaction.id).toBe(first.transaction.id);
     expect(first.publisherWalletId).toBe(publisherWallet.id);
-    expect(first.claimantWalletId).toBe(
-      repository.wallets.get("user:51:NDP")?.id
-    );
+    expect(first.claimantWalletId).toBe(repository.wallets.get("user:51:NDP")?.id);
     expect(repository.wallets.get("merchant_account:41:NDP")).toMatchObject({
       availableBalance: 500_000,
       frozenBalance: 1_999_000
@@ -468,6 +466,46 @@ describe("LedgerService affiliate reward settlement", () => {
     expect(repository.reconciliationRows).toHaveLength(0);
     expect(repository.auditRows).toHaveLength(0);
   });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid reward amount %s before any wallet mutation",
+    async (amountNdp) => {
+      const repository = new AffiliateBudgetLedgerRepository();
+      const publisherWallet = repository.seedWallet({
+        ownerType: "shop",
+        ownerId: 15,
+        availableBalance: 500,
+        frozenBalance: 2_000
+      });
+      const service = new LedgerService(repository);
+
+      await expect(
+        service.settleAffiliateReward({
+          taskId: 93,
+          attributionId: 193,
+          rewardId: 293,
+          bookingOrderId: 393,
+          publisherOwnerType: "shop",
+          publisherOwnerId: 15,
+          publisherWalletId: publisherWallet.id,
+          claimantUserId: 53,
+          amountNdp,
+          idempotencyKey: "affiliate:task:93:booking:393:reward:settlement",
+          actorUserId: 8
+        })
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.WALLET_MUTATION_FAILED,
+        message: "error.wallet.mutation_failed"
+      });
+      expect(repository.wallets.get("shop:15:NDP")).toMatchObject({
+        availableBalance: 500,
+        frozenBalance: 2_000
+      });
+      expect(repository.wallets.has("user:53:NDP")).toBe(false);
+      expect(repository.transactions.size).toBe(0);
+      expect(repository.entries).toHaveLength(0);
+    }
+  );
 });
 
 describe("affiliate ledger finance filters", () => {
@@ -475,10 +513,7 @@ describe("affiliate ledger finance filters", () => {
     "affiliate_task_budget_freeze",
     "affiliate_task_budget_release",
     "affiliate_reward_settlement"
-  ])(
-    "accepts %s as a formal transaction type",
-    (type) => {
-      expect(ledgerTransactionListQuerySchema.parse({ type })).toMatchObject({ type });
-    }
-  );
+  ])("accepts %s as a formal transaction type", (type) => {
+    expect(ledgerTransactionListQuerySchema.parse({ type })).toMatchObject({ type });
+  });
 });

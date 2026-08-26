@@ -18,7 +18,7 @@ describe("affiliate service completion reward acceptance script", () => {
     );
 
     const source = readFileSync(scriptPath, "utf8");
-    expect(source).toContain("assertSafeLocalDatabase");
+    expect(source).toContain("assertSafeAffiliateCompletionDatabase");
     expect(source).toContain("affiliate-service-completion-${Date.now()}");
     expect(source).toContain("reward was created before service completion");
     expect(source).toContain("affiliate_reward_settlement");

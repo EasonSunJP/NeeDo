@@ -607,10 +607,14 @@ export class LedgerService
     }, context.transactionClient);
   }
 
-  public settleAffiliateReward(
+  public async settleAffiliateReward(
     input: SettleAffiliateRewardInput,
     context: LedgerMutationContext = {}
   ): Promise<AffiliateRewardLedgerResult> {
+    if (!Number.isSafeInteger(input.amountNdp) || input.amountNdp <= 0) {
+      throw this.walletMutationError();
+    }
+
     return this.repository.runInTransaction(async (repository) => {
       const existing = await repository.findTransactionByIdempotencyKey(
         input.idempotencyKey

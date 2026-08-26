@@ -230,8 +230,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     const reservationUpdated = await this.client.$executeRaw(
       Prisma.sql`
         UPDATE affiliate_budget_reservations
-        SET allocated_ndp = allocated_ndp + ${input.rewardNdp},
-            status = CASE
+        SET status = CASE
               WHEN total_frozen_ndp
                 - (allocated_ndp + ${input.rewardNdp})
                 - captured_ndp
@@ -239,6 +238,7 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
               THEN 'exhausted'
               ELSE status
             END,
+            allocated_ndp = allocated_ndp + ${input.rewardNdp},
             updated_at = CURRENT_TIMESTAMP(3)
         WHERE task_id = ${input.taskId}
           AND deleted_at IS NULL
@@ -458,7 +458,6 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
          AND reward_transaction.deleted_at IS NULL
         LEFT JOIN technician_services AS booked_technician_service
           ON booked_technician_service.id = booking.technician_service_id
-         AND booked_technician_service.deleted_at IS NULL
         WHERE attribution.booking_order_id = ${bookingOrderId}
           AND attribution.deleted_at IS NULL
           AND task.deleted_at IS NULL
@@ -542,18 +541,23 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
     };
   }
 
-  public countSettledCustomerOrders(input: {
+  public async countSettledCustomerOrders(input: {
     taskId: number;
     customerUserId: number;
   }): Promise<number> {
-    return this.client.affiliateAttribution.count({
-      where: {
-        taskId: input.taskId,
-        customerUserId: input.customerUserId,
-        status: "SETTLED",
-        deletedAt: null
-      }
-    });
+    const rows = await this.client.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`
+        SELECT id
+        FROM affiliate_attributions
+        WHERE task_id = ${input.taskId}
+          AND customer_user_id = ${input.customerUserId}
+          AND status = 'settled'
+          AND deleted_at IS NULL
+        FOR UPDATE
+      `
+    );
+
+    return rows.length;
   }
 
   public async qualifyAttributionAndCreateReward(
