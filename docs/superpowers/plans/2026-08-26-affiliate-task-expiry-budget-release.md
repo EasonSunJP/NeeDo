@@ -506,6 +506,13 @@ Review the complete microstep against the approved design, focusing on:
 
 Fix every valid task-scoped finding and repeat the affected checks.
 
+Final whole-branch review hardening additionally requires:
+
+- an independent bounded revisit cursor so a lower-ID ended task that becomes eligible after cancellation cannot starve behind continuously full higher-ID pages, while the forward cursor still advances;
+- a shared bounded production transaction-conflict retry for expiry and formal Booking transitions (`P2034`, MySQL `1213`, SQLSTATE `40001`), with non-transient errors propagated immediately;
+- acceptance races that invoke production behavior once and fail after exhausted production retries, never an acceptance-only replay helper;
+- focused regression tests for dynamic lower-ID eligibility, forward progress, repository retry wiring, retry classification and the three-attempt bound.
+
 - [ ] **Step 6: Commit documentation/final fixes**
 
 ```bash

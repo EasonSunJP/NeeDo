@@ -708,6 +708,23 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       throw new Error("error.affiliate.reward_settlement_conflict");
     }
 
+    await this.client.$executeRaw(
+      Prisma.sql`
+        UPDATE affiliate_budget_reservations AS reservation
+        INNER JOIN affiliate_tasks AS task ON task.id = reservation.task_id
+        SET reservation.status = 'released',
+            reservation.released_at = COALESCE(reservation.released_at, ${input.settledAt}),
+            reservation.updated_at = CURRENT_TIMESTAMP(3)
+        WHERE reservation.id = ${input.reservationId}
+          AND reservation.task_id = ${input.taskId}
+          AND reservation.deleted_at IS NULL
+          AND task.deleted_at IS NULL
+          AND task.status = 'ended'
+          AND reservation.allocated_ndp = 0
+          AND reservation.total_frozen_ndp = reservation.captured_ndp + reservation.released_ndp
+      `
+    );
+
     await this.client.affiliateBudgetTransaction.create({
       data: {
         budgetReservationId: input.reservationId,

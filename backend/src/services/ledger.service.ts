@@ -380,7 +380,7 @@ export interface FreezeAffiliateTaskBudgetInput {
   ownerId: number;
   amountNdp: number;
   idempotencyKey: string;
-  actorUserId: number;
+  actorUserId: number | null;
 }
 
 export interface ReleaseAffiliateTaskBudgetInput extends FreezeAffiliateTaskBudgetInput {
@@ -531,16 +531,17 @@ export class LedgerService
     input: ReleaseAffiliateTaskBudgetInput,
     context: LedgerMutationContext = {}
   ): Promise<AffiliateBudgetLedgerResult> {
+    if (!Number.isSafeInteger(input.amountNdp) || input.amountNdp <= 0) {
+      throw this.walletMutationError();
+    }
+
     return this.repository.runInTransaction(async (repository) => {
       const existing = await repository.findTransactionByIdempotencyKey(
         input.idempotencyKey
       );
 
       if (existing) {
-        return {
-          transaction: existing,
-          walletId: await this.resolveAffiliateWalletId(repository, existing, input)
-        };
+        return this.resolveExistingAffiliateTaskBudgetRelease(existing, input);
       }
 
       const wallet = await repository.getOrCreateWallet({
@@ -1854,6 +1855,65 @@ export class LedgerService
     });
 
     return wallet.id;
+  }
+
+  private resolveExistingAffiliateTaskBudgetRelease(
+    transaction: LedgerTransactionPayload,
+    input: ReleaseAffiliateTaskBudgetInput
+  ): AffiliateBudgetLedgerResult {
+    const metadata = transaction.metadata;
+
+    if (!this.isPlainObject(metadata)) {
+      throw this.walletMutationError();
+    }
+    const metadataKeys = Reflect.ownKeys(metadata);
+
+    if (
+      transaction.type !== "affiliate_task_budget_release" ||
+      transaction.status !== "applied" ||
+      transaction.referenceType !== "affiliate_task" ||
+      transaction.referenceId !== input.taskId ||
+      transaction.actorUserId !== input.actorUserId ||
+      transaction.amount !== input.amountNdp ||
+      transaction.currency !== CURRENCY ||
+      metadata.taskId !== input.taskId ||
+      metadata.ownerType !== input.ownerType ||
+      metadata.ownerId !== input.ownerId ||
+      metadata.walletId !== input.walletId ||
+      metadataKeys.length !== 4 ||
+      !["taskId", "ownerType", "ownerId", "walletId"].every((key) =>
+        Object.prototype.hasOwnProperty.call(metadata, key)
+      ) ||
+      transaction.entries.length !== 1
+    ) {
+      throw this.walletMutationError();
+    }
+
+    const entry = transaction.entries[0];
+
+    if (
+      !entry ||
+      entry.transactionId !== transaction.id ||
+      entry.walletId !== input.walletId ||
+      entry.direction !== "unfreeze" ||
+      entry.amount !== input.amountNdp ||
+      entry.availableDelta !== input.amountNdp ||
+      entry.frozenDelta !== -input.amountNdp ||
+      entry.reason !== "affiliate_task_budget_release"
+    ) {
+      throw this.walletMutationError();
+    }
+
+    return { transaction, walletId: input.walletId };
+  }
+
+  private isPlainObject(value: unknown): value is Record<string, unknown> {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return false;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
   }
 
   private async resolveAffiliateRewardLedgerResult(

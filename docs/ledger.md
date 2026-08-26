@@ -144,4 +144,35 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
 
 The script refuses production flags and remote database hosts, creates uniquely identified formal rows, validates draft/no-freeze, shop and multi-shop merchant submission, insufficient-funds rollback, membership isolation, approve/reject, full release, idempotency, reconciliation, and audit evidence, then removes only those rows.
 
-Claiming, codes and signed URLs, Booking attribution, completion reward settlement, refund reversal, task-ending release, and affiliate UI are outside this microstep. The reserved reward settlement/reversal/recovery ledger vocabulary remains unused until those later transaction plans pass acceptance.
+## Affiliate Task Expiry Budget Release
+
+The backend starts the expiry worker with one immediate scan and repeats it at the configured interval. When `now >= taskEndsAt`, it may end an eligible `scheduled`, `active`, `paused`, or `budget_exhausted` task. The expiry transaction locks the task and its budget reservation, revalidates their aggregate snapshot, records `ended`, and releases only the current unallocated amount:
+
+```text
+releaseAmount = totalFrozenNdp - allocatedNdp - capturedNdp - releasedNdp
+```
+
+For a positive release, the publisher wallet moves that amount from frozen to available NDP through `LedgerService`. The task and reservation each accumulate the released amount but retain their historical total/reserved values. The associated immutable ledger transaction, wallet ledger, finance reconciliation, affiliate budget transaction, and system audit share the task transaction. A zero release still ends an eligible task but creates no empty ledger transaction.
+
+The release idempotency key records the cumulative released total, so repeated scans of the same state are no-ops while a later valid release uses a new key:
+
+```text
+affiliate-task:<taskId>:expiry-release:to:<releasedAfterNdp>
+```
+
+Pre-expiry valid Attribution remains allocated after task end and can still be captured by the existing service-completion settlement. If a later cancellation or completion-limit invalidation removes such an allocation, the task remains ended but the worker rescans it once it has unallocated NDP, releasing only that later increment. Forward scanning and a separately bounded revisit cursor prevent lower-ID tasks from starving without letting a persistent low-ID failure block higher IDs. Expiry and formal Booking transitions retry `P2034`, MySQL `1213`, or SQLSTATE `40001` transaction conflicts at most three times; other failures are propagated without retry. A reservation becomes `released` only when no allocated or unallocated frozen budget remains; otherwise it retains its active/exhausted state while the task remains ended and accepts no new allocation.
+
+Expiry worker configuration:
+
+- `AFFILIATE_TASK_EXPIRY_INTERVAL_MS`: default `300000` (5 minutes), minimum `60000`.
+- `AFFILIATE_TASK_EXPIRY_BATCH_SIZE`: default `100`, integer range `1..500`.
+
+Local MySQL verification:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-expiry-flow
+```
+
+The guarded check refuses production/staging targets, remote MySQL hosts, and production-looking database names; it creates uniquely marked rows and precisely removes only those fixtures. It verifies full and partial release, preserved allocations, later incremental release from an ended task, zero-release expiry, concurrent idempotency, wallet conservation, ledger/reconciliation/audit evidence, and cleanup.
+
+Completed-order refund reversal/recovery, new affiliate APIs, aggregate/export operations, and merchant/shop/marketplace/Afirieito UI remain unstarted and capability-gated. The expiry release introduces no schema, API, permission, or UI change.

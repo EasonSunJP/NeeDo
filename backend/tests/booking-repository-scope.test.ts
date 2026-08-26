@@ -53,4 +53,38 @@ describe("BookingRepository order list scope", () => {
       }
     });
   });
+
+  it("retries a formal order transition after a Prisma deadlock conflict", async () => {
+    const deadlock = Object.assign(new Error("Transaction failed due to a write conflict"), {
+      code: "P2034"
+    });
+    const transaction = jest.fn().mockRejectedValueOnce(deadlock).mockResolvedValueOnce(null);
+    const repository = new BookingRepository({ $transaction: transaction } as never);
+
+    await expect(
+      repository.transitionOrder({
+        id: 1,
+        actorUserId: 7,
+        fromStatus: "inService",
+        toStatus: "completed"
+      })
+    ).resolves.toBeNull();
+    expect(transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a formal order transition after a non-transient failure", async () => {
+    const failure = new Error("validation failed");
+    const transaction = jest.fn().mockRejectedValue(failure);
+    const repository = new BookingRepository({ $transaction: transaction } as never);
+
+    await expect(
+      repository.transitionOrder({
+        id: 1,
+        actorUserId: 7,
+        fromStatus: "confirmed",
+        toStatus: "cancelled"
+      })
+    ).rejects.toBe(failure);
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
 });

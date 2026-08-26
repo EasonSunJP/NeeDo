@@ -228,7 +228,7 @@ The operations travel-settings route is an explicit external-provider capability
 
 The operations demand and information routes are explicit production exchange capability gates. They do not assemble records, publisher identities, contacts, interactions, payment, or fulfillment data from the mobile demo feed. Activation requires persisted exchange posts, demands, offers, and replies; audited moderation and publication state machines; scoped identity/contact privacy; and matching, booking, payment, pagination, and export contracts.
 
-The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks; the formal affiliate marketplace can issue one stable promotion code and signed URL per task/user; Booking Checkout persists validated attribution, allocation, and customer-discount price snapshots; and service completion now settles fixed NDP rewards through the formal wallet ledger. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires task-end release, reversal, fraud, aggregate, export, and UI microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
+The operations Afirieito route remains an explicit UI capability gate. Formal operations APIs can list, inspect, approve, and reject persisted affiliate tasks; the formal affiliate marketplace can issue one stable promotion code and signed URL per task/user; Booking Checkout persists validated attribution, allocation, and customer-discount price snapshots; service completion settles fixed NDP rewards; and the backend automatically ends due tasks and releases only their unallocated frozen budget. The route still does not mount the browser-local CPS workspace or expose unverified GMV, ROI, promoter, risk, reward, or settlement metrics. Activating the complete Afirieito UI still requires completed-order reversal, fraud, aggregate, export, and UI microsteps. The independent business CPS compatibility portal remains isolated and is not presented as formal operations data.
 
 ### Formal Affiliate Task Publishing and Review
 
@@ -257,7 +257,7 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-publishing-flow
 
 The check refuses production flags and remote database hosts, verifies draft/no-freeze, shop and merchant-account freezes, refreshed snapshots, insufficient-funds rollback, membership isolation, review state, full rejection release, idempotency, ledger/reconciliation/audit evidence, and removes only its uniquely identified rows.
 
-This task-publishing microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Checkout attribution/discount application and service-completion reward settlement are now implemented in later formal microsteps; pause/resume/end, reversal, dashboards, metrics, exports, and complete UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
+This task-publishing microstep does not activate `/admin/afirieito` or any merchant/shop affiliate UI. Checkout attribution/discount application, service-completion reward settlement, and automatic task-end release are implemented in later formal microsteps; manual pause/resume or early-end controls, completed-order reversal, dashboards, metrics, exports, and complete UI remain capability-gated. No formal affiliate task or metric is seeded into production data.
 
 ### Formal Affiliate Marketplace Claims And Signed Links
 
@@ -309,7 +309,7 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-checkout-attribution-
 
 The guarded check verifies fixed, capped-percent, and no-discount snapshots; explicit-code priority; self-attribution, scope, minimum, task-state, and budget rejection; concurrent last-budget and last-slot safety; cancellation invalidation and exact allocation release; unchanged wallet balances; zero pre-completion Rewards; token-free audits; and marker-owned cleanup.
 
-Checkout itself still does not move reward wallet balances. The following service-completion microstep now performs that settlement. Ending tasks and unfreezing unused budget, reversing completed-order rewards, computing dashboard aggregates, and activating the merchant, shop, marketplace, or Afirieito UI remain subsequent microsteps.
+Checkout itself still does not move reward wallet balances. The following service-completion microstep now performs that settlement. Automatic task-end unfreezing is a separate completed backend microstep; completed-order reward reversal, dashboard aggregates, and the merchant, shop, marketplace, or Afirieito UI remain subsequent capability-gated microsteps.
 
 ### Formal Affiliate Service-Completion Rewards
 
@@ -327,7 +327,30 @@ Verify the full transaction contract against a local non-production MySQL databa
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-service-completion-reward-flow
 ```
 
-The guarded check verifies zero Reward before completion, exact publisher/claimant wallet deltas, allocated-to-captured conservation, Reward and ledger/reconciliation/audit links, repeated and concurrent idempotency, claim/customer limit release, frozen-shortage rollback, and exact marker cleanup. Task-end budget release, completed-order reversal/recovery, aggregate APIs, exports, and complete affiliate UI remain capability-gated.
+The guarded check verifies zero Reward before completion, exact publisher/claimant wallet deltas, allocated-to-captured conservation, Reward and ledger/reconciliation/audit links, repeated and concurrent idempotency, claim/customer limit release, frozen-shortage rollback, and exact marker cleanup. Completed-order reversal/recovery, aggregate APIs, exports, and complete affiliate UI remain capability-gated.
+
+### Formal Affiliate Task Expiry Budget Release
+
+The formal backend runs the affiliate-task expiry worker immediately at startup and then at a configured interval. At `now >= taskEndsAt`, it moves eligible `scheduled`, `active`, `paused`, or `budget_exhausted` tasks to `ended`, preventing new claims and attribution while releasing only the currently unallocated frozen NDP to the original publisher wallet. Each task is independently transactionally processed; multi-instance correctness relies on task/reservation row locks, guarded aggregate updates, and ledger idempotency rather than one process timer.
+
+Attributions that were valid before expiry retain their `allocatedNdp`: a later service completion can still capture and settle that allocation. If a later cancellation or limit invalidation releases an allocation after the task has ended, the worker deliberately rescans ended tasks with newly unallocated NDP and returns the new increment on a later run. The scanner keeps forward and bounded revisit cursors, so newly eligible lower IDs cannot starve behind full higher-ID pages. Expiry and formal booking-transition repositories retry retryable transaction conflicts at most three times; the guarded acceptance does not replay race losers itself. The release idempotency key is cumulative rather than per-worker-run:
+
+```text
+affiliate-task:<taskId>:expiry-release:to:<releasedAfterNdp>
+```
+
+Runtime configuration is validated at startup:
+
+- `AFFILIATE_TASK_EXPIRY_INTERVAL_MS`: default `300000` (5 minutes); minimum `60000`.
+- `AFFILIATE_TASK_EXPIRY_BATCH_SIZE`: default `100`; integer range `1..500`.
+
+Verify expiry, preserved allocations, later incremental release, concurrency idempotency, ledger/reconciliation/audit evidence, and exact marker cleanup against a local non-production MySQL database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-expiry-flow
+```
+
+The guarded check rejects production/staging targets, remote MySQL hosts, and production-looking database names. It creates only uniquely marked fixtures and removes only those fixtures after the check. This backend microstep adds no public API, schema, permission, merchant/shop/marketplace/Afirieito UI, aggregate/export, fraud operation, manual early-end control, or completed-order refund reversal; those capabilities remain separately gated.
 
 The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 
