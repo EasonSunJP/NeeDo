@@ -1,7 +1,15 @@
 import type { PortalScope } from "./demoAccount";
 import type { IdentityAvailability, IdentityKind } from "../features/identity-applications/model";
 
-export type LoginMethod = "frontend-bypass" | "gmail" | "password" | "qr" | "verification-code";
+export const authSessionVersion = 6;
+
+export type LoginMethod = "frontend-bypass" | "google" | "password";
+
+const loginMethods = new Set<LoginMethod>(["frontend-bypass", "google", "password"]);
+
+export function isLoginMethod(value: unknown): value is LoginMethod {
+  return typeof value === "string" && loginMethods.has(value as LoginMethod);
+}
 
 export type AuthIdentityPayload = {
   id: number;
@@ -12,7 +20,10 @@ export type AuthIdentityPayload = {
 
 export type AuthMePayload = {
   id: number;
+  needoId: string;
   email: string;
+  emailVerifiedAt: string | null;
+  hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
@@ -27,8 +38,11 @@ export type AuthMePayload = {
 export type AuthSession = {
   authVersion: number;
   id: number;
+  needoId: string;
   username: string;
   email: string;
+  emailVerifiedAt: string | null;
+  hasPassword: boolean;
   avatarUrl: string | null;
   portal: PortalScope;
   allowedPortals: PortalScope[];
@@ -176,13 +190,16 @@ export function normalizeAuthSessionEntityIds(session: AuthSession): AuthSession
 
 export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: PortalScope, loginMethod: LoginMethod): AuthSession {
   const allowedPortals = resolveAllowedPortals(me);
-  const portal = allowedPortals.includes(requestedPortal) ? requestedPortal : allowedPortals[0] ?? requestedPortal;
+  const portal = allowedPortals.includes(requestedPortal) ? requestedPortal : (allowedPortals[0] ?? requestedPortal);
 
   return normalizeAuthSessionEntityIds({
-    authVersion: 5,
+    authVersion: authSessionVersion,
     id: me.id,
+    needoId: me.needoId,
     username: me.username,
     email: me.email,
+    emailVerifiedAt: me.emailVerifiedAt,
+    hasPassword: me.hasPassword,
     avatarUrl: me.avatarUrl,
     portal,
     allowedPortals,
@@ -224,13 +241,9 @@ export function canAccessFeatureFromSession(
   permission: string,
   isPortalFeaturePermission: boolean
 ) {
-  const canEnterFeaturePortal =
-    canAccessPortalFromSession(session, portal) || canUseUserSessionForClientPortal(session, portal);
+  const canEnterFeaturePortal = canAccessPortalFromSession(session, portal) || canUseUserSessionForClientPortal(session, portal);
 
-  return Boolean(
-    canEnterFeaturePortal &&
-      (hasPermissionInSession(session, permission) || isPortalFeaturePermission)
-  );
+  return Boolean(canEnterFeaturePortal && (hasPermissionInSession(session, permission) || isPortalFeaturePermission));
 }
 
 export function canAccessMenuFromSession(session: AuthSession | null, menuPermission: string) {

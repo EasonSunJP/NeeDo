@@ -953,7 +953,10 @@ let staticUsers: UserPayload[] = [
 
 const staticAuthMe: AuthMePayload = {
   id: 1,
+  needoId: "n0000000001",
   email: demoAuthAccount.adminEmail,
+  emailVerifiedAt: staticTimestamp,
+  hasPassword: true,
   username: demoAuthAccount.username,
   avatarUrl: customers[0]?.avatar ?? null,
   isActive: true,

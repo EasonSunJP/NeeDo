@@ -12,10 +12,8 @@ type AdminAccountMenuProps = {
 
 const loginMethodLabels = {
   "frontend-bypass": "前台临时",
-  password: "账号密码",
-  "verification-code": "验证码",
-  gmail: "Gmail",
-  qr: "扫码"
+  google: "Google",
+  password: "账号密码"
 } as const;
 
 function GearIcon() {
@@ -32,7 +30,13 @@ function GearIcon() {
   );
 }
 
-export function AdminAccountMenu({ accountName, fallbackEmail = "admin@example.com", loginPath, portal, roleLabel }: AdminAccountMenuProps) {
+export function AdminAccountMenu({
+  accountName,
+  fallbackEmail = "admin@example.com",
+  loginPath,
+  portal,
+  roleLabel
+}: AdminAccountMenuProps) {
   const { logout, session } = useAuth();
   const navigate = useNavigate();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -112,7 +116,9 @@ export function AdminAccountMenu({ accountName, fallbackEmail = "admin@example.c
             </div>
           </div>
 
-          {passwordNoticeVisible ? <p className="admin-account-password-note">演示环境暂不保存新密码，正式环境将在账号安全中完成修改。</p> : null}
+          {passwordNoticeVisible ? (
+            <p className="admin-account-password-note">演示环境暂不保存新密码，正式环境将在账号安全中完成修改。</p>
+          ) : null}
 
           <div className="mt-3 grid gap-2">
             <button className="admin-account-action" onClick={() => setPasswordNoticeVisible(true)} type="button">
