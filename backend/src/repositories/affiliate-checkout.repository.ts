@@ -563,20 +563,35 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
   public async qualifyAttributionAndCreateReward(
     input: AffiliateRewardQualificationInput
   ): Promise<AffiliateRewardQualificationResult> {
-    const claimantWallet = await this.client.wallet.upsert({
+    await this.client.$executeRaw(
+      Prisma.sql`
+        INSERT INTO wallets (
+          owner_type,
+          owner_id,
+          currency,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          'user',
+          ${input.claimantUserId},
+          'NDP',
+          CURRENT_TIMESTAMP(3),
+          NULL
+        )
+        ON DUPLICATE KEY UPDATE
+          deleted_at = NULL,
+          updated_at = CURRENT_TIMESTAMP(3)
+      `
+    );
+    const claimantWallet = await this.client.wallet.findUniqueOrThrow({
       where: {
         ownerType_ownerId_currency: {
           ownerType: "USER",
           ownerId: input.claimantUserId,
           currency: "NDP"
         }
-      },
-      create: {
-        ownerType: "USER",
-        ownerId: input.claimantUserId,
-        currency: "NDP"
-      },
-      update: { deletedAt: null }
+      }
     });
     const attribution = await this.client.affiliateAttribution.updateMany({
       where: {

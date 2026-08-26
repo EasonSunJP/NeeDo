@@ -7,7 +7,7 @@ import { assertSafeAffiliateCompletionDatabase } from "./lib/assert-safe-affilia
 const REWARD_NDP = 1_000;
 const BOOKING_FEE_NDP = 100;
 const SERVICE_PRICE_JPY = 8_800;
-const TOTAL_FROZEN_NDP = 8_000;
+const TOTAL_FROZEN_NDP = 10_000;
 
 const assert = (condition: unknown, message: string): asserts condition => {
   if (!condition) throw new Error(message);
@@ -75,6 +75,7 @@ const main = async (): Promise<void> => {
     const claimantRace = await createUser("claimant-race");
     const claimantLimit = await createUser("claimant-limit");
     const claimantFailure = await createUser("claimant-failure");
+    const claimantWalletRace = await createUser("claimant-wallet-race");
     const customerNormal = await createUser("customer-normal");
     const customerRace = await createUser("customer-race");
     const customerClaimLimit = await createUser("customer-claim-limit");
@@ -563,6 +564,71 @@ const main = async (): Promise<void> => {
     );
     console.log("PASS concurrent different claims enforce one customer reward");
 
+    const walletRaceFirst = await createTaskAndClaim({
+      label: "claimant-wallet-race-first",
+      claimantUserId: claimantWalletRace.id,
+      totalBudgetNdp: 1_000
+    });
+    const walletRaceSecond = await createTaskAndClaim({
+      label: "claimant-wallet-race-second",
+      claimantUserId: claimantWalletRace.id,
+      totalBudgetNdp: 1_000
+    });
+    const walletRaceOrders = [
+      await createAttributedOrder({
+        customerUserId: customerNormal.id,
+        publicCode: walletRaceFirst.claim.publicCode
+      }),
+      await createAttributedOrder({
+        customerUserId: customerRace.id,
+        publicCode: walletRaceSecond.claim.publicCode
+      })
+    ];
+    await advanceToInService(customerNormal.id, walletRaceOrders[0].id);
+    await advanceToInService(customerRace.id, walletRaceOrders[1].id);
+    const claimantWalletCompletionRace = await Promise.allSettled([
+      booking.transitionOrder(actor(customerNormal.id), walletRaceOrders[0].id, "complete"),
+      booking.transitionOrder(actor(customerRace.id), walletRaceOrders[1].id, "complete")
+    ]);
+    assert(
+      claimantWalletCompletionRace.every((result) => result.status === "fulfilled"),
+      "concurrent first claimant-wallet creation did not settle both rewards"
+    );
+    const walletRaceRewards = await prisma.affiliateReward.findMany({
+      where: {
+        taskId: { in: [walletRaceFirst.task.id, walletRaceSecond.task.id] },
+        status: "SETTLED",
+        deletedAt: null
+      }
+    });
+    for (const reward of walletRaceRewards) rewardIds.push(reward.id);
+    const walletRaceLedgers = await prisma.ledgerTransaction.findMany({
+      where: {
+        type: "AFFILIATE_REWARD_SETTLEMENT",
+        referenceType: "affiliate_reward",
+        referenceId: { in: walletRaceRewards.map((reward) => reward.id) },
+        deletedAt: null
+      }
+    });
+    for (const transaction of walletRaceLedgers) ledgerTransactionIds.push(transaction.id);
+    const claimantWalletAfterRace = await prisma.wallet.findUniqueOrThrow({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "USER",
+          ownerId: claimantWalletRace.id,
+          currency: "NDP"
+        }
+      }
+    });
+    walletIds.push(claimantWalletAfterRace.id);
+    assert(
+      walletRaceRewards.length === 2 &&
+        walletRaceLedgers.length === 2 &&
+        claimantWalletAfterRace.availableBalance === 2 * REWARD_NDP,
+      "concurrent first claimant-wallet creation lost or duplicated reward finance"
+    );
+    console.log("PASS concurrent tasks create one claimant wallet and settle both rewards");
+
     const race = await createTaskAndClaim({
       label: "completion-race",
       claimantUserId: claimantRace.id,
@@ -679,13 +745,18 @@ const main = async (): Promise<void> => {
         deletedAt: null
       }
     });
-    assert(rewardAudits === 3, "reward settlement audit count is incorrect");
+    assert(rewardAudits === 5, "reward settlement audit count is incorrect");
     console.log(
       JSON.stringify(
         {
           database: databaseName,
           marker,
-          settlement: { exact: true, idempotent: true, concurrent: true },
+          settlement: {
+            exact: true,
+            idempotent: true,
+            concurrent: true,
+            claimantWalletConcurrent: true
+          },
           limits: { claim: true, customer: true, customerConcurrent: true },
           rollback: { insufficientFrozen: true, bookingFinanceAtomic: true },
           finance: { rewards: rewardIds.length, reconciled: true, audited: true },

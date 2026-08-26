@@ -25,6 +25,7 @@ describe("affiliate service completion reward acceptance script", () => {
     expect(source).toContain("Promise.allSettled");
     expect(source).toContain("claim_completed_order_limit_reached");
     expect(source).toContain("customer_completed_order_limit_reached");
+    expect(source).toContain("claimant-wallet-race");
     expect(source).toContain("error.wallet.insufficient_frozen");
     expect(source).toContain("completion rollback did not preserve order state");
     expect(source).toContain("marker cleanup left reward settlement rows behind");

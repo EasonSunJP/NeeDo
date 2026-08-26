@@ -55,6 +55,49 @@ describe("AffiliateCheckoutRepository contract", () => {
     expect(transactionClient.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
+  it("uses an atomic idempotent insert for the first claimant wallet", async () => {
+    const transactionClient = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
+      wallet: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 91 })
+      },
+      affiliateAttribution: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      affiliateReward: {
+        create: jest.fn().mockResolvedValue({ id: 81 })
+      }
+    };
+    const repository = new AffiliateCheckoutRepository(transactionClient as never);
+
+    await expect(
+      repository.qualifyAttributionAndCreateReward({
+        attributionId: 71,
+        taskId: 31,
+        claimId: 41,
+        bookingOrderId: 401,
+        claimantUserId: 601,
+        publisherWalletId: 92,
+        rewardNdp: 1_000,
+        qualifiedAt: new Date("2026-08-26T00:00:00.000Z")
+      })
+    ).resolves.toEqual({
+      rewardId: 81,
+      publisherWalletId: 92,
+      claimantWalletId: 91
+    });
+    expect(transactionClient.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(transactionClient.wallet.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "USER",
+          ownerId: 601,
+          currency: "NDP"
+        }
+      }
+    });
+  });
+
   it("keeps a technician-priced booking settleable from its attribution snapshot", async () => {
     const transactionClient = {
       $queryRaw: jest.fn().mockResolvedValue([
