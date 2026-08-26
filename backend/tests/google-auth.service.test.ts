@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import { GoogleLoginStateError } from "../src/repositories/auth.repository";
 import type {
   AuthRepositoryPort,
   AuthUserRecord,
@@ -137,11 +138,21 @@ class InMemoryChallengeStore {
 
 class InMemorySessionStore {
   public readonly refresh = new Set<string>();
+  public failNextStore = false;
+  public failNextRevoke = false;
 
   public async storeRefreshToken(userId: number, jti: string) {
+    if (this.failNextStore) {
+      this.failNextStore = false;
+      throw new Error("refresh store failed");
+    }
     this.refresh.add(`${userId}:${jti}`);
   }
   public async revokeRefreshToken(userId: number, jti: string) {
+    if (this.failNextRevoke) {
+      this.failNextRevoke = false;
+      throw new Error("refresh revoke failed");
+    }
     this.refresh.delete(`${userId}:${jti}`);
   }
   public async hasRefreshToken(userId: number, jti: string) {
@@ -308,7 +319,8 @@ const createFixture = () => {
     loginLogs,
     auditLogs,
     users,
-    bindings
+    bindings,
+    sessionStore
   };
 };
 
@@ -450,6 +462,72 @@ describe("formal Google sign-in service", () => {
     expect(results.filter((result) => result.status === "rejected")[0]).toMatchObject({
       reason: { code: ERROR_CODES.INVALID_CREDENTIALS }
     });
+  });
+
+  it.each([
+    ["missing", "error.auth.google_credential_invalid", 401],
+    ["disabled", "error.auth.account_disabled", 403],
+    ["restricted", "error.auth.account_restricted", 403]
+  ])(
+    "revokes the exact refresh when the Google fact transaction reports %s",
+    async (_reason, message, statusCode) => {
+      const fixture = createFixture();
+      fixture.bindings.set("google-subject-1", {
+        id: 1,
+        userId: 1,
+        provider: "google",
+        providerSubject: "google-subject-1",
+        providerEmail: "existing@example.com",
+        providerEmailVerifiedAt: new Date(),
+        lastUsedAt: null,
+        deletedAt: null,
+        user: fixture.users[0]
+      });
+      fixture.repository.completeSuccessfulGoogleLogin.mockRejectedValueOnce(
+        new GoogleLoginStateError(_reason as "missing" | "disabled" | "restricted")
+      );
+      const init = await fixture.service.initializeGoogleLogin();
+      await expect(
+        fixture.service.submitGoogleCredential(
+          { credential: "credential", nonceChallengeId: init.nonceChallengeId },
+          context
+        )
+      ).rejects.toMatchObject({ message, statusCode });
+      expect(fixture.sessionStore.refresh.size).toBe(0);
+      expect(fixture.repository.completeSuccessfulGoogleLogin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedUserId: 1,
+          expectedIdentityId: 10,
+          providerSubject: "google-subject-1"
+        })
+      );
+    }
+  );
+
+  it("preserves a Google fact transaction error when exact refresh revoke also fails", async () => {
+    const fixture = createFixture();
+    fixture.bindings.set("google-subject-1", {
+      id: 1,
+      userId: 1,
+      provider: "google",
+      providerSubject: "google-subject-1",
+      providerEmail: "existing@example.com",
+      providerEmailVerifiedAt: new Date(),
+      lastUsedAt: null,
+      deletedAt: null,
+      user: fixture.users[0]
+    });
+    fixture.repository.completeSuccessfulGoogleLogin.mockRejectedValueOnce(
+      new Error("fact transaction failed")
+    );
+    fixture.sessionStore.failNextRevoke = true;
+    const init = await fixture.service.initializeGoogleLogin();
+    await expect(
+      fixture.service.submitGoogleCredential(
+        { credential: "credential", nonceChallengeId: init.nonceChallengeId },
+        context
+      )
+    ).rejects.toThrow("fact transaction failed");
   });
 
   it("returns a stable Google conflict when a concurrent subject resolves to another account", async () => {
