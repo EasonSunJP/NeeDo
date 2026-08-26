@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createLegacyAuthProxyConfig,
@@ -60,6 +61,12 @@ describe("Needo API proxy config", () => {
 });
 
 describe("NeeDo portal entry fallback", () => {
+  it("loads the admin bootstrap from the origin root after a nested route rewrite", () => {
+    const adminEntry = readFileSync(new URL("./pf-admin.html", import.meta.url), "utf8");
+
+    expect(adminEntry).toContain('<script type="module" src="/portal-entry.js"></script>');
+  });
+
   it("does not rewrite JavaScript requests for an admin route to an HTML entry", () => {
     const request = {
       headers: {

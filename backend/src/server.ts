@@ -3,8 +3,20 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { disconnectRedis } from "./config/redis";
 import { disconnectPrisma } from "./prisma/client";
+import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
+import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
+import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
+import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 
 const app = createApp(env);
+const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
+  new IdentityApplicationPurgeService(
+    new IdentityApplicationPurgeRepository(),
+    new IdentityApplicationMediaFileStorage(env.IDENTITY_APPLICATION_MEDIA_STORAGE_DIR)
+  ),
+  logger,
+  env.IDENTITY_APPLICATION_PURGE_INTERVAL_MS
+);
 
 const server = app.listen(env.PORT, () => {
   logger.info(
@@ -16,8 +28,10 @@ const server = app.listen(env.PORT, () => {
     "NeeDo backend started"
   );
 });
+identityApplicationPurgeWorker.start();
 
 const shutdown = (signal: NodeJS.Signals): void => {
+  identityApplicationPurgeWorker.stop();
   logger.info({ signal }, "NeeDo backend shutdown requested");
   server.close((error) => {
     if (error) {

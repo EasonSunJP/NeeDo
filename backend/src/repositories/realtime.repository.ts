@@ -9,6 +9,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import type { EnsureTechnicianApplicationContactInput } from "../services/technician-application-review.service";
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
@@ -245,6 +246,9 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ContactPayload>>;
+  ensureDirectContactConversation: (
+    input: EnsureTechnicianApplicationContactInput
+  ) => Promise<{ conversationId: number }>;
   createFriendRequest: (input: CreateFriendRequestInput) => Promise<FriendRequestPayload>;
   listFriendRequests: (
     userId: number,
@@ -716,6 +720,71 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
   }
 
+  public ensureDirectContactConversation(
+    input: EnsureTechnicianApplicationContactInput
+  ): Promise<{ conversationId: number }> {
+    return this.client.$transaction(async (transaction) => {
+      await Promise.all([
+        this.upsertTechnicianApplicationContact(
+          transaction,
+          input.serviceUserId,
+          input.applicantUserId
+        ),
+        this.upsertTechnicianApplicationContact(
+          transaction,
+          input.applicantUserId,
+          input.serviceUserId
+        )
+      ]);
+
+      const candidates = await transaction.conversation.findMany({
+        where: {
+          type: ConversationType.DIRECT,
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: { in: [input.serviceUserId, input.applicantUserId] },
+              deletedAt: null
+            }
+          }
+        },
+        select: {
+          id: true,
+          participants: {
+            where: { deletedAt: null },
+            select: { userId: true }
+          }
+        }
+      });
+      const exact = candidates.find((conversation) => {
+        const participants = new Set(conversation.participants.map((item) => item.userId));
+        return (
+          participants.size === 2 &&
+          participants.has(input.serviceUserId) &&
+          participants.has(input.applicantUserId)
+        );
+      });
+      if (exact) {
+        return { conversationId: exact.id };
+      }
+
+      const created = await transaction.conversation.create({
+        data: {
+          type: ConversationType.DIRECT,
+          createdByUserId: input.createdByUserId,
+          participants: {
+            create: [
+              { userId: input.serviceUserId, role: "member" },
+              { userId: input.applicantUserId, role: "member" }
+            ]
+          }
+        },
+        select: { id: true }
+      });
+      return { conversationId: created.id };
+    });
+  }
+
   public async createFriendRequest(input: CreateFriendRequestInput): Promise<FriendRequestPayload> {
     return this.client.$transaction(async (tx) => {
       const friendRequest = await tx.friendRequest.create({
@@ -1177,6 +1246,27 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       },
       update: {
         source: "friend_request",
+        deletedAt: null
+      }
+    });
+  }
+
+  private upsertTechnicianApplicationContact(
+    transaction: Prisma.TransactionClient,
+    ownerUserId: number,
+    contactUserId: number
+  ) {
+    return transaction.contact.upsert({
+      where: {
+        ownerUserId_contactUserId: { ownerUserId, contactUserId }
+      },
+      create: {
+        ownerUserId,
+        contactUserId,
+        source: "technician_application"
+      },
+      update: {
+        source: "technician_application",
         deletedAt: null
       }
     });

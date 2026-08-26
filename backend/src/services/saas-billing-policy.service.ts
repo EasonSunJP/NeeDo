@@ -8,7 +8,7 @@ export interface InitialTrialResult {
   startsAt: Date;
   endsAt: Date;
   paidFrom: Date;
-  automaticBonusDays: 0 | 15;
+  automaticBonusDays: number;
 }
 
 export interface BillingProfileSnapshot {
@@ -153,8 +153,8 @@ export class SaasBillingPolicyService {
     const startsAt = fromTokyoCivilDate(startedCivil);
     const remainingDays =
       daysInCivilMonth(startedCivil.year, startedCivil.month) - startedCivil.day + 1;
-    const automaticBonusDays = remainingDays < 15 ? 15 : 0;
-    const paidMonthOffset = automaticBonusDays === 15 ? 4 : 3;
+    const automaticBonusDays = remainingDays < 15 ? remainingDays : 0;
+    const paidMonthOffset = automaticBonusDays > 0 ? 4 : 3;
     const paidMonth = normalizeCivilMonth(startedCivil.year, startedCivil.month + paidMonthOffset);
     const paidFrom = fromTokyoCivilDate({ ...paidMonth, day: 1 });
 
@@ -196,11 +196,12 @@ export class SaasBillingPolicyService {
     if (trial.automaticBonusDays === 0) {
       return [{ periodType: "initial_trial", startsAt: trial.startsAt, endsAt: trial.endsAt }];
     }
-    const overallEnd = toTokyoCivilDate(trial.endsAt);
-    const baseEnd = fromTokyoCivilDate(addCivilMonths(overallEnd, -1));
+    const startsCivil = toTokyoCivilDate(trial.startsAt);
+    const nextMonth = normalizeCivilMonth(startsCivil.year, startsCivil.month + 1);
+    const initialTrialStartsAt = fromTokyoCivilDate({ ...nextMonth, day: 1 });
     return [
-      { periodType: "initial_trial", startsAt: trial.startsAt, endsAt: baseEnd },
-      { periodType: "late_month_bonus", startsAt: baseEnd, endsAt: trial.endsAt }
+      { periodType: "late_month_bonus", startsAt: trial.startsAt, endsAt: initialTrialStartsAt },
+      { periodType: "initial_trial", startsAt: initialTrialStartsAt, endsAt: trial.endsAt }
     ];
   }
 

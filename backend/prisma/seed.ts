@@ -21,6 +21,7 @@ import {
 } from "../src/constants/permissions.constants";
 import {
   TEST_USER_ACCOUNTS,
+  getTestAccountSwitchIdentityTypes,
   type TestUserAccountDefinition
 } from "../src/constants/test-login.constants";
 
@@ -71,6 +72,7 @@ interface SeedIdentityInput {
   scopeId: number | null;
   displayName: string;
   isDefault?: boolean;
+  activeKey?: string;
 }
 
 interface SeedCoreReadOptions {
@@ -1140,7 +1142,8 @@ const upsertSeedIdentity = async (
         displayName: input.displayName,
         isDefault: input.isDefault ?? true,
         isActive: true,
-        deletedAt: null
+        deletedAt: null,
+        ...(input.activeKey ? { activeKey: input.activeKey } : {})
       }
     });
     return;
@@ -1150,6 +1153,7 @@ const upsertSeedIdentity = async (
     data: {
       userId: input.userId,
       type: input.type,
+      activeKey: input.activeKey,
       scopeType: input.scopeType,
       scopeId: input.scopeId,
       displayName: input.displayName,
@@ -1316,13 +1320,14 @@ const seedRequiredTestAccounts = async (
       shopId: input.shopId
     });
 
+    const switchable = getTestAccountSwitchIdentityTypes(account.identityType).length > 1;
     await upsertSeedIdentity(tx, {
       userId: user.id,
       type: account.identityType,
       scopeType: identity.scopeType,
       scopeId: identity.scopeId,
       displayName: identity.displayName,
-      isDefault: true
+      isDefault: !switchable
     });
     await assignSeedRole(tx, {
       userId: user.id,
@@ -1330,6 +1335,102 @@ const seedRequiredTestAccounts = async (
       scopeType: identity.scopeType,
       scopeId: identity.scopeId
     });
+
+    if (switchable) {
+      const customerProfile = await tx.customerProfile.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          displayName: account.username,
+          bio: "Identity-switch acceptance profile for formal local and test accounts.",
+          city: "Tokyo",
+          membershipLevel: "standard",
+          isPublic: true
+        },
+        update: {
+          displayName: account.username,
+          bio: "Identity-switch acceptance profile for formal local and test accounts.",
+          city: "Tokyo",
+          membershipLevel: "standard",
+          isPublic: true,
+          deletedAt: null
+        }
+      });
+      await upsertSeedIdentity(tx, {
+        userId: user.id,
+        type: "customer",
+        scopeType: "customer_profile",
+        scopeId: customerProfile.id,
+        displayName: account.username,
+        isDefault: true,
+        activeKey: `test-account-identity:${user.id}:customer:${customerProfile.id}`
+      });
+      await assignSeedRole(tx, {
+        userId: user.id,
+        roleId: getRequiredRole(input.roleByCode, "customer").id,
+        scopeType: "customer_profile",
+        scopeId: customerProfile.id
+      });
+
+      const technicianProfile =
+        account.identityType === "technician"
+          ? await tx.technicianProfile.findUniqueOrThrow({ where: { userId: user.id } })
+          : await tx.technicianProfile.upsert({
+              where: { userId: user.id },
+              create: {
+                userId: user.id,
+                shopId: input.shopId,
+                displayName: account.username,
+                bio: "Identity-switch technician profile for the formal merchant test account.",
+                city: "Tokyo",
+                serviceArea: "Tokyo",
+                yearsExperience: 0,
+                status: "private",
+                isRecommended: false
+              },
+              update: {
+                shopId: input.shopId,
+                displayName: account.username,
+                bio: "Identity-switch technician profile for the formal merchant test account.",
+                city: "Tokyo",
+                serviceArea: "Tokyo",
+                yearsExperience: 0,
+                status: "private",
+                isRecommended: false,
+                deletedAt: null
+              }
+            });
+      await upsertSeedIdentity(tx, {
+        userId: user.id,
+        type: "technician",
+        scopeType: "technician_profile",
+        scopeId: technicianProfile.id,
+        displayName: account.username,
+        isDefault: false,
+        activeKey: `test-account-identity:${user.id}:technician:${technicianProfile.id}`
+      });
+      await assignSeedRole(tx, {
+        userId: user.id,
+        roleId: getRequiredRole(input.roleByCode, "technician").id,
+        scopeType: "technician_profile",
+        scopeId: technicianProfile.id
+      });
+      await upsertSeedIdentity(tx, {
+        userId: user.id,
+        type: "scout",
+        scopeType: "global",
+        scopeId: null,
+        displayName: account.username,
+        isDefault: false,
+        activeKey: `test-account-identity:${user.id}:scout:global`
+      });
+      await assignSeedRole(tx, {
+        userId: user.id,
+        roleId: getRequiredRole(input.roleByCode, "scout").id,
+        scopeType: "global",
+        scopeId: null
+      });
+    }
 
     const requestDispatchSeedAmount = getRequestDispatchWalletSeedAmount(account);
 

@@ -140,6 +140,7 @@ const createAuthFixture = async () => {
         deletedAt: null
       }
     ],
+    identityApplications: [],
     userRoles: [
       {
         role: {
@@ -180,6 +181,26 @@ const createAuthFixture = async () => {
         displayName: "NeeDo Customer",
         isDefault: true,
         isActive: true,
+        deletedAt: null
+      }
+    ],
+    identityApplications: [
+      {
+        id: 201,
+        type: "technician",
+        status: "draft",
+        rejectionReason: null,
+        version: 2,
+        updatedAt: new Date("2026-08-26T01:00:00.000Z"),
+        deletedAt: null
+      },
+      {
+        id: 202,
+        type: "merchant",
+        status: "rejected",
+        rejectionReason: "法人资料无法确认",
+        version: 3,
+        updatedAt: new Date("2026-08-26T02:00:00.000Z"),
         deletedAt: null
       }
     ],
@@ -272,6 +293,17 @@ const createAuthFixture = async () => {
         displayName: "Multi Technician",
         isDefault: false,
         isActive: true,
+        deletedAt: null
+      }
+    ],
+    identityApplications: [
+      {
+        id: 203,
+        type: "merchant",
+        status: "submitted",
+        rejectionReason: null,
+        version: 4,
+        updatedAt: new Date("2026-08-26T03:00:00.000Z"),
         deletedAt: null
       }
     ],
@@ -790,6 +822,44 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       .expect(401)
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.TOKEN_BLACKLISTED);
+      });
+  });
+
+  it("returns server-computed identity availability for active, draft, pending, rejected, and contract activation states", async () => {
+    const fixture = await createAuthFixture();
+    const customerLogin = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ email: "customer@example.com", password: "Abcd@1234" })
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${customerLogin.body.data.accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.identityAvailability).toEqual([
+          { kind: "customer", state: "active", identityId: 20, applicationId: null, rejectionReason: null },
+          { kind: "technician", state: "draft", identityId: null, applicationId: 201, rejectionReason: null },
+          { kind: "merchant", state: "rejected", identityId: null, applicationId: 202, rejectionReason: "法人资料无法确认" },
+          { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
+        ]);
+      });
+
+    const multiLogin = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ email: "multi@example.com", password: "Abcd@1234" })
+      .expect(200);
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${multiLogin.body.data.accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.identityAvailability).toEqual([
+          { kind: "customer", state: "active", identityId: 50, applicationId: null, rejectionReason: null },
+          { kind: "technician", state: "active", identityId: 51, applicationId: null, rejectionReason: null },
+          { kind: "merchant", state: "pending", identityId: null, applicationId: 203, rejectionReason: null },
+          { kind: "affiliate", state: "available_to_apply", identityId: null, applicationId: null, rejectionReason: null }
+        ]);
       });
   });
 

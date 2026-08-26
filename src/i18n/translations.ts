@@ -1,3 +1,5 @@
+import { identityApplicationTranslations } from "../features/identity-applications/i18n";
+
 export type Language = "zh" | "zh-Hant" | "ja" | "en" | "ko";
 export type TargetLanguage = Exclude<Language, "zh">;
 export type TranslationEntry = Partial<Record<TargetLanguage, string>>;
@@ -33,6 +35,7 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 type TranslationMap = Record<string, TranslationEntry>;
 
 export const translations: TranslationMap = {
+  ...identityApplicationTranslations,
   "平均客单价": { "zh-Hant": "平均客單價", ja: "平均注文単価", en: "Average order value", ko: "평균 주문 금액" },
   "已完成订单服务金额 ÷ 已完成订单数": { "zh-Hant": "已完成訂單服務金額 ÷ 已完成訂單數", ja: "完了注文のサービス金額 ÷ 完了注文数", en: "Completed-order service amount ÷ completed orders", ko: "완료 주문 서비스 금액 ÷ 완료 주문 수" },
   "榜单读取失败": { "zh-Hant": "榜單讀取失敗", ja: "ランキングを読み込めませんでした", en: "Couldn't load ranking", ko: "순위를 불러오지 못했습니다" },

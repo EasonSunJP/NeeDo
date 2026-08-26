@@ -7,6 +7,7 @@ import {
   getAccessToken,
   getStoredRefreshToken,
   httpClient,
+  refreshStoredAccessToken,
   setAuthTokens
 } from "./httpClient";
 import type { AuthMePayload } from "../auth/rbac";
@@ -140,6 +141,41 @@ describe("httpClient auth tokens", () => {
     expect(getAccessToken()).toBe("fresh-access-token");
   });
 
+  it("coalesces explicit session restoration and unauthorized retries into one refresh request", async () => {
+    setAuthTokens({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token"
+    });
+    let resolveRefresh: ((response: Response) => void) | undefined;
+    const fetchMock = vi.mocked(fetch).mockImplementationOnce(
+      () => new Promise<Response>((resolve) => {
+        resolveRefresh = resolve;
+      })
+    );
+
+    const firstRefresh = refreshStoredAccessToken();
+    const secondRefresh = refreshStoredAccessToken();
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveRefresh?.(jsonResponse({
+      code: 0,
+      message: "success",
+      data: {
+        accessToken: "fresh-access-token",
+        expiresIn: 900
+      }
+    }));
+
+    await expect(Promise.all([firstRefresh, secondRefresh])).resolves.toEqual([
+      { accessToken: "fresh-access-token", expiresIn: 900 },
+      { accessToken: "fresh-access-token", expiresIn: 900 }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getAccessToken()).toBe("fresh-access-token");
+  });
+
   it("aborts hung API requests instead of leaving login actions stuck", async () => {
     vi.useFakeTimers();
     const fetchMock = vi.mocked(fetch);
@@ -183,6 +219,29 @@ describe("httpClient auth tokens", () => {
       message: "error.resource_not_found",
       status: 404
     });
+  });
+
+  it("sends protected application images as raw binary without a JSON content type", async () => {
+    setAuthTokens({ accessToken: "applicant-access-token" });
+    const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], "portrait.jpg", { type: "image/jpeg" });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ code: 0, message: "success", data: { id: 7 } }));
+
+    await httpClient.request("/identity-applications/3/media", {
+      body: file,
+      headers: { "Content-Type": file.type },
+      method: "POST"
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/identity-applications/3/media",
+      expect.objectContaining({
+        body: file,
+        headers: expect.objectContaining({
+          Authorization: "Bearer applicant-access-token",
+          "Content-Type": "image/jpeg"
+        })
+      })
+    );
   });
 
   it("reads formal CSV export responses as a download envelope", async () => {

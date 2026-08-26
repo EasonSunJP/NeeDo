@@ -51,6 +51,8 @@ type PaginationState = Record<
   }
 >;
 
+const emptyConversationMessages: ConversationMessage[] = [];
+
 type ImSnapshot = {
   status: StoreStatus;
   error?: string;
@@ -991,7 +993,7 @@ export function getCurrentUser(snapshotData: ImSnapshot) {
 }
 
 export function getConversationMessages(snapshotData: ImSnapshot, conversationId: string) {
-  return snapshotData.messagesByConversation[conversationId] ?? [];
+  return snapshotData.messagesByConversation[conversationId] ?? emptyConversationMessages;
 }
 
 export function getQuotedMessage(snapshotData: ImSnapshot, conversationId: string, quotedMessageId?: string) {

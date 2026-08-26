@@ -19,6 +19,7 @@ describe("production safety", () => {
       AUTH_ACCESS_TOKEN_SECRET: "production-access-secret-with-32-characters",
       AUTH_REFRESH_TOKEN_SECRET: "production-refresh-secret-with-32-characters",
       AFFILIATE_LINK_SECRET: "production-affiliate-link-secret-with-32-characters",
+      SENSITIVE_DATA_ENCRYPTION_KEY: "production-sensitive-data-key-with-32-characters",
       AFFILIATE_PUBLIC_BASE_URL: "https://needo.dackou.com/afirieito",
       CUSTOMER_AVATAR_PUBLIC_BASE_URL: "https://needo.dackou.com/media/customer-avatars"
     };
@@ -105,6 +106,10 @@ describe("production safety", () => {
     ["placeholder affiliate secret", { AFFILIATE_LINK_SECRET: "replace-with-prod-affiliate-link-secret-32chars-min" }, "AFFILIATE_LINK_SECRET"],
     ["affiliate/access secret reuse", { AFFILIATE_LINK_SECRET: "production-access-secret-with-32-characters" }, "AFFILIATE_LINK_SECRET"],
     ["affiliate/refresh secret reuse", { AFFILIATE_LINK_SECRET: "production-refresh-secret-with-32-characters" }, "AFFILIATE_LINK_SECRET"],
+    ["placeholder sensitive-data secret", { SENSITIVE_DATA_ENCRYPTION_KEY: "replace-with-prod-sensitive-data-key-32chars-min" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
+    ["sensitive/access secret reuse", { SENSITIVE_DATA_ENCRYPTION_KEY: "production-access-secret-with-32-characters" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
+    ["sensitive/refresh secret reuse", { SENSITIVE_DATA_ENCRYPTION_KEY: "production-refresh-secret-with-32-characters" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
+    ["sensitive/affiliate secret reuse", { SENSITIVE_DATA_ENCRYPTION_KEY: "production-affiliate-link-secret-with-32-characters" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
     ["placeholder database credentials", { DATABASE_URL: "mysql://needo_prod:replace-with-password@mysql:3306/needo_prod" }, "DATABASE_URL"],
     ["unauthenticated Redis", { REDIS_URL: "redis://redis:6379" }, "REDIS_URL"]
   ])("rejects %s", async (_label, overrides, expectedField) => {

@@ -1,4 +1,4 @@
-import { clearAuthTokens, getStoredRefreshToken, httpClient, setAccessToken, setAuthTokens } from "./httpClient";
+import { clearAuthTokens, getStoredRefreshToken, httpClient, refreshStoredAccessToken, setAuthTokens } from "./httpClient";
 import type { AuthMePayload } from "../auth/rbac";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
 
@@ -273,20 +273,7 @@ export const authApi = {
   },
 
   async refresh() {
-    const refreshToken = getStoredRefreshToken();
-    if (!refreshToken) {
-      throw new Error("error.auth.refresh_missing");
-    }
-
-    const tokens = await httpClient.request<RefreshPayload>(authEndpointPaths.refresh, {
-      auth: false,
-      body: { refreshToken },
-      method: "POST",
-      retryOnUnauthorized: false
-    });
-    setAccessToken(tokens.accessToken);
-
-    return tokens;
+    return refreshStoredAccessToken();
   },
 
   async switchIdentity(identityId: number) {

@@ -82,19 +82,27 @@ describe("UnifiedSettingsPortalPage", () => {
   it("moves portal helper captions behind inline info triggers", () => {
     expect(source).toContain("function SettingsPortalActionRow");
     expect(source).toContain('className="h-4 w-4 text-[10px]"');
-    expect(portalPageSource).toContain("info={t(compactPortalLabels[item].caption)}");
+    expect(portalPageSource).toContain("t(compactPortalLabels[row.portal].caption)");
     expect(portalPageSource).toContain("info={t(entry.subtitle)}");
     expect(portalPageSource).toContain("trailing={<SettingsArrow />}");
     expect(portalPageSource).not.toContain("{t(compactPortalLabels[item].caption)}</p>");
     expect(portalPageSource).not.toContain("subtitle={t(entry.subtitle)}");
   });
 
-  it("does not block frontend identity navigation on portal authorization sync", () => {
-    expect(portalPageSource).toContain("const selectPortal = (nextPortal: SwitchableSettingsPortal) => {");
+  it("waits for a formal identity switch before navigating", () => {
+    expect(portalPageSource).toContain("const selectPortal = async (nextPortal: SwitchableSettingsPortal) => {");
     expect(portalPageSource).toContain("const nextEntry = getPortalEntry(nextPortal);");
-    expect(portalPageSource).toContain("void switchPortal(nextPortal);");
-    expect(portalPageSource).not.toContain("await switchPortal(nextPortal)");
+    expect(portalPageSource).toContain("const result = await switchPortal(nextPortal);");
+    expect(portalPageSource).toContain("if (!result.ok)");
     expect(portalPageSource).toContain("navigate(nextEntry");
+  });
+
+  it("renders inactive identities as applications instead of selectable radios", () => {
+    expect(portalPageSource).toContain("buildIdentityRows(session?.identityAvailability");
+    expect(portalPageSource).toContain('row.action === "pending"');
+    expect(portalPageSource).toContain('row.action === "retry"');
+    expect(portalPageSource).toContain("getIdentityApplicationPath(row.kind)");
+    expect(portalPageSource).toContain('t("申请")');
   });
 
   it("keeps merchant identity switching on the merchant app instead of technician", () => {

@@ -10,6 +10,11 @@ describe("formal realtime unread-count hook", () => {
     expect(source).toContain("setCounts");
   });
 
+  it("waits for access-token restoration before requesting protected counts", () => {
+    expect(source).toContain("const { isAuthenticated, isRestoring, session } = useAuth();");
+    expect(source).toContain("!isRestoring");
+  });
+
   it("does not call the backend for the explicit static demo bypass", () => {
     expect(source).toContain("isStaticDemoMode() && isFrontendBypassSession(session)");
     expect(source).not.toContain("localStorage");

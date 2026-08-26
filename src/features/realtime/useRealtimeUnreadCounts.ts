@@ -14,9 +14,9 @@ const emptyCounts: RealtimeUnreadCounts = {
 const RealtimeUnreadCountsContext = createContext<RealtimeUnreadCounts>(emptyCounts);
 
 export function RealtimeUnreadCountsProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, session } = useAuth();
+  const { isAuthenticated, isRestoring, session } = useAuth();
   const isStaticBypass = isStaticDemoMode() && isFrontendBypassSession(session);
-  const enabled = isAuthenticated && Boolean(session) && !isStaticBypass;
+  const enabled = isAuthenticated && Boolean(session) && !isRestoring && !isStaticBypass;
   const [counts, setCounts] = useState<RealtimeUnreadCounts>(emptyCounts);
 
   const refresh = useCallback(async () => {

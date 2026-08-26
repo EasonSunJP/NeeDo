@@ -247,12 +247,13 @@ export function MerchantsPage() {
           </section>
         ) : null}
 
-        {active === "入驻审核" ? <div className="mt-4"><DataTable columns={[
-          { key: "name", title: "店铺", render: (row: BackofficeShopPayload) => row.name },
-          { key: "owner", title: "负责人账号", render: (row: BackofficeShopPayload) => row.ownerEmail ?? "未绑定" },
-          { key: "city", title: "城市", render: (row: BackofficeShopPayload) => row.city },
-          { key: "status", title: "审核状态", render: (row: BackofficeShopPayload) => <Badge tone={row.status === "published" ? "green" : "yellow"}>{row.status}</Badge> }
-        ]} footerPlacement="inline" onView={openShop} rows={shops.filter((shop) => shop.status !== "archived")} /></div> : null}
+        {active === "入驻审核" ? (
+          <div className="mt-4 rounded-2xl border border-line bg-paper p-5">
+            <p className="text-sm font-black text-ink">店铺身份正式申请</p>
+            <p className="mt-2 text-sm leading-6 text-ink/60">查看法人或个人名义、eKYC、银行名义校验、服务展示、证件资料与合同回执。</p>
+            <Button className="mt-4" onClick={() => navigate("/admin/merchant-applications")}>打开申请审核</Button>
+          </div>
+        ) : null}
 
         {active === "服务项目" ? <div className="mt-4 space-y-4"><div className="flex justify-end"><Button onClick={() => setCreateServiceOpen(true)} variant="secondary">新增服务项目</Button></div><DataTable columns={[
           { key: "name", title: "服务项目", render: (row: BackofficeServicePayload) => row.name },

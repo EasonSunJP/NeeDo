@@ -63,7 +63,11 @@ export const apiRequestTimeoutMs = Number.isFinite(configuredApiRequestTimeoutMs
 const refreshTokenStorageKey = "needo.auth.refresh-token";
 const legacyAccessTokenStorageKey = "needo.auth.access-token";
 let accessToken: string | null = null;
-let refreshRequest: Promise<string> | null = null;
+type RefreshedAccessToken = {
+  accessToken: string;
+  expiresIn: number;
+};
+let refreshRequest: Promise<RefreshedAccessToken> | null = null;
 let authExpiredHandler: (() => void) | null = null;
 
 function trimTrailingSlash(value: string) {
@@ -150,7 +154,7 @@ function createRequestBody(body: unknown) {
     return undefined;
   }
 
-  if (body instanceof FormData || body instanceof URLSearchParams) {
+  if (body instanceof FormData || body instanceof URLSearchParams || body instanceof Blob || body instanceof ArrayBuffer) {
     return body;
   }
 
@@ -165,7 +169,9 @@ async function createRequestHeaders(options: HttpClientRequestOptions, previewSh
   const hasJsonBody =
     options.body !== undefined &&
     !(options.body instanceof FormData) &&
-    !(options.body instanceof URLSearchParams);
+    !(options.body instanceof URLSearchParams) &&
+    !(options.body instanceof Blob) &&
+    !(options.body instanceof ArrayBuffer);
 
   if (hasJsonBody && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
@@ -238,7 +244,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Pr
   }
 }
 
-async function refreshAccessToken(): Promise<string> {
+export async function refreshStoredAccessToken(): Promise<RefreshedAccessToken> {
   if (refreshRequest) {
     return refreshRequest;
   }
@@ -255,11 +261,11 @@ async function refreshAccessToken(): Promise<string> {
       headers: await createRequestHeaders({ auth: false, body }),
       method: "POST"
     });
-    const envelope = await parseEnvelope<{ accessToken: string; expiresIn: number }>(response);
+    const envelope = await parseEnvelope<RefreshedAccessToken>(response);
     const data = assertSuccess(envelope, response.status);
 
     accessToken = data.accessToken;
-    return data.accessToken;
+    return data;
   })();
 
   try {
@@ -298,7 +304,7 @@ async function sendRequest<TData>(
     getStoredRefreshToken()
   ) {
     try {
-      await refreshAccessToken();
+      await refreshStoredAccessToken();
       return sendRequest(path, options, false);
     } catch (error) {
       clearAuthTokens();
@@ -365,7 +371,7 @@ async function sendCsvExportRequest(
     getStoredRefreshToken()
   ) {
     try {
-      await refreshAccessToken();
+      await refreshStoredAccessToken();
       return sendCsvExportRequest(path, options, false);
     } catch (error) {
       clearAuthTokens();

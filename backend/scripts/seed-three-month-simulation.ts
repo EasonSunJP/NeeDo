@@ -25,6 +25,7 @@ import { dirname, resolve } from "node:path";
 
 import {
   SIMULATION_END_AT,
+  SIMULATION_AS_OF_AT,
   SIMULATION_NAMESPACE,
   SIMULATION_ORDER_PREFIX,
   SIMULATION_START_AT,
@@ -38,6 +39,10 @@ import {
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
+import {
+  buildSimulationIdentityGrants,
+  simulationIdentityActiveKey
+} from "../src/simulation/simulation-identity-matrix";
 import {
   getSimulationSeedConfig
 } from "../src/simulation/simulation-seed-config";
@@ -115,13 +120,13 @@ const main = async (): Promise<void> => {
       async (tx) => {
         const roles = await tx.role.findMany({
           where: {
-            code: { in: ["merchant_owner", "technician", "customer"] },
+            code: { in: ["merchant_owner", "technician", "customer", "scout"] },
             deletedAt: null
           },
           select: { id: true, code: true }
         });
         const roleIds = new Map(roles.map((role) => [role.code, role.id]));
-        assert(roleIds.size === 3, "Run the formal User Management seed before simulation data.");
+        assert(roleIds.size === 4, "Run the formal User Management seed before simulation data.");
         const category = await tx.category.upsert({
           where: { code: "sim3m-wellness" },
           create: {
@@ -283,6 +288,7 @@ const main = async (): Promise<void> => {
         }
 
         const customerProfileIds = new Map<string, number>();
+        const switchingCustomerProfileIds = new Map<number, number>();
         for (const customer of plan.customers) {
           const userId = getRequiredId(customerUserIds, customer.key, "customer user");
           const record = await tx.customerProfile.upsert({
@@ -306,13 +312,89 @@ const main = async (): Promise<void> => {
             }
           });
           customerProfileIds.set(customer.key, record.id);
+          switchingCustomerProfileIds.set(userId, record.id);
+        }
+
+        for (const technician of plan.technicians) {
+          const userId = getRequiredId(technicianUserIds, technician.key, "technician user");
+          const profile = await tx.customerProfile.upsert({
+            where: { userId },
+            create: {
+              userId,
+              displayName: technician.displayName,
+              bio: `${SIMULATION_NAMESPACE} の技師兼顧客プロフィールです。`,
+              city: technician.city,
+              membershipLevel: "standard",
+              isPublic: true
+            },
+            update: {
+              displayName: technician.displayName,
+              bio: `${SIMULATION_NAMESPACE} の技師兼顧客プロフィールです。`,
+              city: technician.city,
+              membershipLevel: "standard",
+              isPublic: true,
+              deletedAt: null
+            }
+          });
+          switchingCustomerProfileIds.set(userId, profile.id);
+        }
+
+        const ownerTechnicianProfileIds = new Map<string, number>();
+        for (const shop of plan.shops) {
+          const userId = getRequiredId(ownerUserIds, shop.key, "shop owner");
+          const customerProfile = await tx.customerProfile.upsert({
+            where: { userId },
+            create: {
+              userId,
+              displayName: shop.ownerUsername,
+              bio: `${SIMULATION_NAMESPACE} の店舗運営者兼顧客プロフィールです。`,
+              city: shop.city,
+              membershipLevel: "standard",
+              isPublic: true
+            },
+            update: {
+              displayName: shop.ownerUsername,
+              bio: `${SIMULATION_NAMESPACE} の店舗運営者兼顧客プロフィールです。`,
+              city: shop.city,
+              membershipLevel: "standard",
+              isPublic: true,
+              deletedAt: null
+            }
+          });
+          switchingCustomerProfileIds.set(userId, customerProfile.id);
+          const technicianProfile = await tx.technicianProfile.upsert({
+            where: { userId },
+            create: {
+              userId,
+              shopId: getRequiredId(shopIds, shop.key, "shop"),
+              displayName: shop.ownerUsername,
+              bio: `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。`,
+              city: shop.city,
+              serviceArea: shop.city,
+              yearsExperience: 0,
+              status: "private",
+              verifiedAt: new Date("2026-05-25T00:00:00.000Z")
+            },
+            update: {
+              shopId: getRequiredId(shopIds, shop.key, "shop"),
+              displayName: shop.ownerUsername,
+              bio: `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。`,
+              city: shop.city,
+              serviceArea: shop.city,
+              yearsExperience: 0,
+              status: "private",
+              verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
+              deletedAt: null
+            }
+          });
+          ownerTechnicianProfileIds.set(shop.key, technicianProfile.id);
         }
 
         const ensureRole = async (
           userId: number,
-          roleCode: "merchant_owner" | "technician" | "customer",
+          roleCode: "merchant_owner" | "technician" | "customer" | "scout",
           scopeType: string,
-          scopeId: number
+          scopeId: number | null
         ): Promise<void> => {
           const roleId = getRequiredId(roleIds, roleCode, "role");
           const existing = await tx.userRole.findFirst({
@@ -329,8 +411,10 @@ const main = async (): Promise<void> => {
           userId: number,
           type: string,
           scopeType: string,
-          scopeId: number,
-          displayName: string
+          scopeId: number | null,
+          displayName: string,
+          isDefault = true,
+          activeKey?: string
         ): Promise<void> => {
           const existing = await tx.userIdentity.findFirst({
             where: { userId, type, scopeType, scopeId }
@@ -338,17 +422,24 @@ const main = async (): Promise<void> => {
           if (existing) {
             await tx.userIdentity.update({
               where: { id: existing.id },
-              data: { displayName, isDefault: true, isActive: true, deletedAt: null }
+              data: {
+                displayName,
+                isDefault,
+                isActive: true,
+                deletedAt: null,
+                ...(activeKey ? { activeKey } : {})
+              }
             });
           } else {
             await tx.userIdentity.create({
               data: {
                 userId,
                 type,
+                activeKey,
                 scopeType,
                 scopeId,
                 displayName,
-                isDefault: true,
+                isDefault,
                 isActive: true
               }
             });
@@ -376,6 +467,104 @@ const main = async (): Promise<void> => {
             technicianProfileId,
             technician.displayName
           );
+        }
+
+        const applyIdentityMatrix = async (input: {
+          userId: number;
+          accountKind: "customer" | "technician" | "merchant";
+          displayName: string;
+          customerProfileId: number;
+          technicianProfileId?: number;
+          shopId?: number;
+        }): Promise<void> => {
+          const grants = buildSimulationIdentityGrants(input);
+          for (const grant of grants) {
+            await ensureRole(
+              input.userId,
+              grant.roleCode,
+              grant.scopeType,
+              grant.scopeId
+            );
+            await ensureIdentity(
+              input.userId,
+              grant.identityType,
+              grant.scopeType,
+              grant.scopeId,
+              grant.displayName,
+              grant.isDefault,
+              simulationIdentityActiveKey(input.userId, grant)
+            );
+          }
+        };
+
+        for (const technician of plan.technicians) {
+          const userId = getRequiredId(technicianUserIds, technician.key, "technician user");
+          await applyIdentityMatrix({
+            userId,
+            accountKind: "technician",
+            displayName: technician.displayName,
+            customerProfileId: getRequiredId(
+              switchingCustomerProfileIds,
+              userId,
+              "technician customer profile"
+            ),
+            technicianProfileId: getRequiredId(
+              technicianProfileIds,
+              technician.key,
+              "technician profile"
+            )
+          });
+        }
+        for (const shop of plan.shops) {
+          const userId = getRequiredId(ownerUserIds, shop.key, "shop owner");
+          await applyIdentityMatrix({
+            userId,
+            accountKind: "merchant",
+            displayName: shop.ownerUsername,
+            customerProfileId: getRequiredId(
+              switchingCustomerProfileIds,
+              userId,
+              "merchant customer profile"
+            ),
+            technicianProfileId: getRequiredId(
+              ownerTechnicianProfileIds,
+              shop.key,
+              "merchant technician profile"
+            ),
+            shopId: getRequiredId(shopIds, shop.key, "shop")
+          });
+        }
+
+        const ordinaryCustomerUserIds = [...customerUserIds.values()];
+        const nonCustomerRoleIds = ["merchant_owner", "technician", "scout"].map((roleCode) =>
+          getRequiredId(roleIds, roleCode, "role")
+        );
+        await tx.userIdentity.updateMany({
+          where: {
+            userId: { in: ordinaryCustomerUserIds },
+            type: { in: ["merchant_owner", "technician", "scout"] }
+          },
+          data: { activeKey: null, isActive: false, deletedAt: new Date(SIMULATION_AS_OF_AT) }
+        });
+        await tx.userRole.updateMany({
+          where: {
+            userId: { in: ordinaryCustomerUserIds },
+            roleId: { in: nonCustomerRoleIds }
+          },
+          data: { deletedAt: new Date(SIMULATION_AS_OF_AT) }
+        });
+        for (const customer of plan.customers) {
+          const userId = getRequiredId(customerUserIds, customer.key, "customer user");
+          await applyIdentityMatrix({
+            userId,
+            accountKind: "customer",
+            displayName: customer.displayName,
+            customerProfileId: getRequiredId(
+              switchingCustomerProfileIds,
+              userId,
+              "customer profile"
+            )
+          });
         }
 
         const customerWalletIds = new Map<string, number>();
@@ -954,6 +1143,38 @@ const main = async (): Promise<void> => {
         });
         const existingOrderIds = existingOrders.map((order) => order.id);
         if (existingOrderIds.length > 0) {
+          const orderReviews = await tx.orderReview.findMany({
+            where: { bookingOrderId: { in: existingOrderIds } },
+            select: { id: true }
+          });
+          const orderReviewIds = orderReviews.map((review) => review.id);
+          if (orderReviewIds.length > 0) {
+            await tx.orderReviewTag.deleteMany({
+              where: { orderReviewId: { in: orderReviewIds } }
+            });
+            await tx.orderReview.deleteMany({
+              where: { id: { in: orderReviewIds } }
+            });
+          }
+          await tx.orderTimelineComment.deleteMany({
+            where: { bookingOrderId: { in: existingOrderIds } }
+          });
+          const affiliateRewards = await tx.affiliateReward.findMany({
+            where: { bookingOrderId: { in: existingOrderIds } },
+            select: { id: true }
+          });
+          const affiliateRewardIds = affiliateRewards.map((reward) => reward.id);
+          if (affiliateRewardIds.length > 0) {
+            await tx.affiliateRewardTransaction.deleteMany({
+              where: { rewardId: { in: affiliateRewardIds } }
+            });
+            await tx.affiliateReward.deleteMany({
+              where: { id: { in: affiliateRewardIds } }
+            });
+          }
+          await tx.affiliateAttribution.deleteMany({
+            where: { bookingOrderId: { in: existingOrderIds } }
+          });
           await tx.orderFinancial.deleteMany({
             where: { bookingOrderId: { in: existingOrderIds } }
           });
@@ -968,20 +1189,31 @@ const main = async (): Promise<void> => {
         }
 
         const technicianIds = [...technicianProfileIds.values()];
-        await tx.scheduleSlot.deleteMany({
+        const retiredAt = new Date(SIMULATION_AS_OF_AT);
+        await tx.scheduleSlot.updateMany({
           where: {
             technicianProfileId: { in: technicianIds },
-            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) }
-          }
+            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
+            deletedAt: null
+          },
+          data: { deletedAt: retiredAt }
         });
-        await tx.availability.deleteMany({
+        await tx.availability.updateMany({
           where: {
             technicianProfileId: { in: technicianIds },
-            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) }
-          }
+            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
+            deletedAt: null
+          },
+          data: { deletedAt: retiredAt }
         });
-        await tx.technicianService.deleteMany({ where: { technicianId: { in: technicianIds } } });
-        await tx.service.deleteMany({ where: { shopId: { in: [...shopIds.values()] } } });
+        await tx.technicianService.updateMany({
+          where: { technicianId: { in: technicianIds }, deletedAt: null },
+          data: { deletedAt: retiredAt }
+        });
+        await tx.service.updateMany({
+          where: { shopId: { in: [...shopIds.values()] }, deletedAt: null },
+          data: { deletedAt: retiredAt }
+        });
 
         const serviceIds = new Map<string, number>();
         for (const service of plan.services) {

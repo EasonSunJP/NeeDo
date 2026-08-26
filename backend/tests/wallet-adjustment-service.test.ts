@@ -27,6 +27,18 @@ const operator: AuthenticatedAccessContext = {
   currentIdentityScopeType: "global",
   currentIdentityScopeId: null
 };
+const affiliate: AuthenticatedAccessContext = {
+  userId: 30,
+  email: "affiliate@example.com",
+  accessTokenJti: "affiliate-jti",
+  accessTokenExpiresAt: Math.floor(now.getTime() / 1000) + 900,
+  roles: ["customer", "scout"],
+  permissions: ["wallet:adjustment:create"],
+  currentIdentityId: 30,
+  currentIdentityType: "customer",
+  currentIdentityScopeType: "global",
+  currentIdentityScopeId: null
+};
 
 const createRepository = (availableBalance = 1000) => {
   let wallet = {
@@ -110,6 +122,55 @@ const createRepository = (availableBalance = 1000) => {
 };
 
 describe("LedgerService wallet adjustment requests", () => {
+  it("guards affiliate withdrawal creation even when the user is switched to customer identity", async () => {
+    const repository = createRepository();
+    const eligibility = {
+      assertEligible: jest.fn(async () => ({ eKycVerificationId: 11, bankAccountId: 21 }))
+    };
+    const service = new LedgerService(
+      repository as never,
+      undefined,
+      eligibility,
+      () => now
+    );
+
+    const requestInput = {
+      type: "withdrawal" as const,
+      amountNdp: 500,
+      idempotencyKey: "affiliate-withdrawal-20260826-1"
+    };
+    await service.createWalletAdjustmentRequest(affiliate, requestInput);
+    await service.createWalletAdjustmentRequest(affiliate, requestInput);
+
+    expect(eligibility.assertEligible).toHaveBeenCalledTimes(1);
+    expect(eligibility.assertEligible).toHaveBeenCalledWith(30, now);
+    expect(repository.createWalletAdjustmentRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create an affiliate withdrawal when eligibility rejects", async () => {
+    const repository = createRepository();
+    const eligibility = {
+      assertEligible: jest.fn(async () => {
+        throw new Error("error.affiliate_withdrawal.ekyc_required");
+      })
+    };
+    const service = new LedgerService(
+      repository as never,
+      undefined,
+      eligibility,
+      () => now
+    );
+
+    await expect(
+      service.createWalletAdjustmentRequest(affiliate, {
+        type: "withdrawal",
+        amountNdp: 500,
+        idempotencyKey: "affiliate-withdrawal-20260826-2"
+      })
+    ).rejects.toThrow("error.affiliate_withdrawal.ekyc_required");
+    expect(repository.createWalletAdjustmentRequest).not.toHaveBeenCalled();
+  });
+
   it("creates an idempotent merchant shop top-up request and lists only that owner scope", async () => {
     const repository = createRepository();
     const service = new LedgerService(repository as never);

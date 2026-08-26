@@ -7,6 +7,13 @@ describe("AuthProvider legacy login bridge", () => {
     expect(authProviderSource).toContain('completeAuthenticatedSession(portal, "password", loginPayload.me)');
   });
 
+  it("switches to the requested formal identity before completing login", () => {
+    expect(authProviderSource).toContain("let me = providedMe ?? (await authApi.me())");
+    expect(authProviderSource).toContain("findIdentityForPortal(me.identities, requestedPortal)");
+    expect(authProviderSource).toContain("authApi.switchIdentity(portalIdentity.id)");
+    expect(authProviderSource).toContain("buildAuthSessionFromMe(me, requestedPortal, loginMethod)");
+  });
+
   it("persists the completed session before handing off to a portal entry page", () => {
     expect(authProviderSource).toContain("readStoredAuthSession");
     expect(authProviderSource).toContain("JSON.stringify(nextSession)");
@@ -34,7 +41,14 @@ describe("AuthProvider legacy login bridge", () => {
   });
 
   it("ignores older stored sessions so a previous user-only legacy session cannot block portal switching", () => {
-    expect(authProviderSource).toContain("session.authVersion === 4");
+    expect(authProviderSource).toContain("session.authVersion === 5");
+  });
+
+  it("can refresh identity availability after an application or contract activation", () => {
+    expect(authProviderSource).toContain("refreshSession: (requestedPortal?: PortalScope) => Promise<AuthActionResult>");
+    expect(authProviderSource).toContain("const refreshSession = useCallback");
+    expect(authProviderSource).toContain("const me = await authApi.me()");
+    expect(authProviderSource).toContain("authApi.switchIdentity(portalIdentity.id)");
   });
 
   it("switches the backend identity when a portal has a matching formal identity", () => {

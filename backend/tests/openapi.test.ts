@@ -17,6 +17,41 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/auth/refresh");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+    [
+      "/api/v1/identity-applications/mine",
+      "/api/v1/merchants/search",
+      "/api/v1/identity-applications/technician",
+      "/api/v1/identity-applications/{id}/technician-profile",
+      "/api/v1/identity-applications/merchant",
+      "/api/v1/identity-applications/{id}/merchant-showcase",
+      "/api/v1/identity-applications/{id}/merchant-bank-account",
+      "/api/v1/identity-applications/{id}/merchant-contract-acceptance",
+      "/api/v1/identity-applications/{id}/media",
+      "/api/v1/identity-applications/{id}/media/{mediaId}",
+      "/api/v1/identity-applications/{id}/submit",
+      "/api/v1/identity-applications/{id}/withdraw",
+      "/api/v1/contracts/affiliate/current",
+      "/api/v1/contracts/merchant/current",
+      "/api/v1/contracts/acceptances/{receiptId}/receipt",
+      "/api/v1/identity-activations/affiliate",
+      "/api/v1/bank-accounts/affiliate-withdrawal",
+      "/api/v1/merchant/technician-applications",
+      "/api/v1/merchant/technician-applications/{id}",
+      "/api/v1/merchant/technician-applications/{id}/approve",
+      "/api/v1/merchant/technician-applications/{id}/reject",
+      "/api/v1/merchant/technician-applications/{id}/contact",
+      "/api/v1/merchant/technician-applications/{id}/resume.xlsx",
+      "/api/v1/ops/merchant-applications",
+      "/api/v1/ops/merchant-applications/{id}",
+      "/api/v1/ops/merchant-applications/{id}/approve",
+      "/api/v1/ops/merchant-applications/{id}/reject"
+    ].forEach((path) => expect(response.body.paths[path]).toBeDefined());
+    expect(
+      response.body.paths["/api/v1/identity-applications/{id}/media"].post.requestBody.content
+    ).toHaveProperty("image/jpeg");
+    expect(
+      response.body.paths["/api/v1/contracts/acceptances/{receiptId}/receipt"].get.security
+    ).toEqual([{ bearerAuth: [] }]);
     expect(response.body.paths).toHaveProperty("/api/v1/permissions");
     expect(response.body.paths).toHaveProperty("/api/v1/permissions/tree");
     expect(response.body.paths).toHaveProperty("/api/v1/permissions/{id}");

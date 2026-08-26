@@ -35,6 +35,16 @@ export interface AuthUserRoleRecord {
   role: AuthRoleRecord;
 }
 
+export interface AuthIdentityApplicationRecord {
+  id: number;
+  type: string;
+  status: string;
+  rejectionReason: string | null;
+  version: number;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
 export interface AuthUserRecord {
   id: number;
   email: string;
@@ -47,6 +57,7 @@ export interface AuthUserRecord {
   deletedAt: Date | null;
   identities: AuthIdentityRecord[];
   userRoles: AuthUserRoleRecord[];
+  identityApplications?: AuthIdentityApplicationRecord[];
 }
 
 export interface CreateLoginLogInput {
@@ -107,6 +118,22 @@ const authUserInclude = {
       deletedAt: null
     },
     orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
+  },
+  identityApplications: {
+    where: {
+      status: { in: ["draft", "submitted", "under_review", "rejected"] },
+      deletedAt: null
+    },
+    orderBy: [{ updatedAt: "desc" as const }, { id: "desc" as const }],
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      rejectionReason: true,
+      version: true,
+      updatedAt: true,
+      deletedAt: true
+    }
   },
   userRoles: {
     where: {

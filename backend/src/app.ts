@@ -33,6 +33,31 @@ import type { CoreReadRepositoryPort } from "./repositories/core-read.repository
 import type { CustomerProfileRepositoryPort } from "./repositories/customer-profile.repository";
 import type { FeeRuleRepositoryPort } from "./services/fee-calculation.service";
 import type { LedgerRepositoryPort } from "./services/ledger.service";
+import type { IdentityApplicationRepositoryPort } from "./services/identity-application.service";
+import type { IdentityApplicationService } from "./services/identity-application.service";
+import type { IdentityApplicationMediaRepositoryPort } from "./services/identity-application-media.service";
+import type { IdentityApplicationMediaService } from "./services/identity-application-media.service";
+import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
+import type { AffiliateIdentityActivationRepositoryPort } from "./services/affiliate-identity-activation.service";
+import type { AffiliateIdentityActivationService } from "./services/affiliate-identity-activation.service";
+import type { AffiliateWithdrawalEligibilityRepositoryPort } from "./services/affiliate-withdrawal-eligibility.service";
+import type { AffiliateWithdrawalEligibilityService } from "./services/affiliate-withdrawal-eligibility.service";
+import type { AffiliateBankAccountRepositoryPort } from "./services/affiliate-bank-account.service";
+import type { AffiliateBankAccountService } from "./services/affiliate-bank-account.service";
+import type { MerchantContractAcceptanceRepositoryPort } from "./services/merchant-contract-acceptance.service";
+import type { MerchantContractAcceptanceService } from "./services/merchant-contract-acceptance.service";
+import type {
+  ContractReceiptRepositoryPort,
+  ContractReceiptService
+} from "./services/contract-receipt.service";
+import type { ProtectedBankAccountRepositoryPort } from "./services/protected-bank-account.service";
+import type { ProtectedBankAccountService } from "./services/protected-bank-account.service";
+import type { TechnicianApplicationReviewRepositoryPort } from "./services/technician-application-review.service";
+import type { TechnicianApplicationReviewService } from "./services/technician-application-review.service";
+import type { TechnicianResumeExportService } from "./services/technician-resume-export.service";
+import type { TechnicianResumeRepository } from "./repositories/technician-resume.repository";
+import type { MerchantApplicationReviewRepositoryPort } from "./services/merchant-application-review.service";
+import type { MerchantApplicationReviewService } from "./services/merchant-application-review.service";
 import type { MerchantFinanceRulesRepositoryPort } from "./services/merchant-finance-rules.service";
 import type {
   MerchantSaasBillingRepositoryPort,
@@ -59,6 +84,11 @@ import { createCustomerProfileRoutes } from "./routes/customer-profile.routes";
 import { createFeeRuleRoutes } from "./routes/fee-rule.routes";
 import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
+import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
+import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
+import { createIdentityActivationRoutes } from "./routes/identity-activation.routes";
+import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
+import { createOperationsMerchantApplicationRoutes } from "./routes/operations-merchant-application.routes";
 import { createMerchantFinanceRulesRoutes } from "./routes/merchant-finance-rules.routes";
 import { createMerchantSaasBillingRoutes } from "./routes/merchant-saas-billing.routes";
 import { createObservabilityRoutes } from "./routes/observability.routes";
@@ -106,6 +136,29 @@ export interface AppDependencies {
   compensationProfileRepository?: CompensationProfileRepositoryPort;
   bookingRepository?: BookingRepositoryPort;
   ledgerRepository?: LedgerRepositoryPort;
+  identityApplicationRepository?: IdentityApplicationRepositoryPort;
+  identityApplicationService?: IdentityApplicationService;
+  identityApplicationMediaRepository?: IdentityApplicationMediaRepositoryPort;
+  identityApplicationMediaService?: IdentityApplicationMediaService;
+  identityApplicationMediaStorage?: IdentityApplicationMediaStoragePort;
+  affiliateIdentityActivationRepository?: AffiliateIdentityActivationRepositoryPort;
+  affiliateIdentityActivationService?: AffiliateIdentityActivationService;
+  affiliateWithdrawalEligibilityRepository?: AffiliateWithdrawalEligibilityRepositoryPort;
+  affiliateWithdrawalEligibilityService?: AffiliateWithdrawalEligibilityService;
+  affiliateBankAccountRepository?: AffiliateBankAccountRepositoryPort;
+  affiliateBankAccountService?: AffiliateBankAccountService;
+  merchantContractAcceptanceRepository?: MerchantContractAcceptanceRepositoryPort;
+  merchantContractAcceptanceService?: MerchantContractAcceptanceService;
+  contractReceiptRepository?: ContractReceiptRepositoryPort;
+  contractReceiptService?: ContractReceiptService;
+  protectedBankAccountRepository?: ProtectedBankAccountRepositoryPort;
+  protectedBankAccountService?: ProtectedBankAccountService;
+  technicianApplicationReviewRepository?: TechnicianApplicationReviewRepositoryPort;
+  technicianApplicationReviewService?: TechnicianApplicationReviewService;
+  technicianResumeRepository?: TechnicianResumeRepository;
+  technicianResumeExportService?: TechnicianResumeExportService;
+  merchantApplicationReviewRepository?: MerchantApplicationReviewRepositoryPort;
+  merchantApplicationReviewService?: MerchantApplicationReviewService;
   backofficeRepository?: BackofficeRepositoryPort;
   affiliateTaskRepository?: AffiliateTaskRepositoryPort;
   affiliateTaskService?: AffiliateTaskService;
@@ -173,6 +226,11 @@ export const createApp = (
   apiRouter.use(createPayrollRoutes(config, resolvedDependencies));
   apiRouter.use(createCompensationProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
+  apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
+  apiRouter.use(createIdentityApplicationMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createIdentityActivationRoutes(config, resolvedDependencies));
+  apiRouter.use(createMerchantTechnicianApplicationRoutes(config, resolvedDependencies));
+  apiRouter.use(createOperationsMerchantApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateTaskRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateMarketplaceRoutes(config, resolvedDependencies));
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));

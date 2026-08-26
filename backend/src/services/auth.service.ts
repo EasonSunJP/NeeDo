@@ -63,6 +63,26 @@ export interface AuthIdentityPayload {
   scopeId: number | null;
 }
 
+export type AuthIdentityAvailabilityKind =
+  | "customer"
+  | "technician"
+  | "merchant"
+  | "affiliate";
+export type AuthIdentityAvailabilityState =
+  | "active"
+  | "available_to_apply"
+  | "draft"
+  | "pending"
+  | "rejected";
+
+export interface AuthIdentityAvailabilityPayload {
+  kind: AuthIdentityAvailabilityKind;
+  state: AuthIdentityAvailabilityState;
+  identityId: number | null;
+  applicationId: number | null;
+  rejectionReason: string | null;
+}
+
 export interface AuthMePayload {
   id: number;
   email: string;
@@ -71,6 +91,7 @@ export interface AuthMePayload {
   isActive: boolean;
   currentIdentity: AuthIdentityPayload;
   identities: AuthIdentityPayload[];
+  identityAvailability: AuthIdentityAvailabilityPayload[];
   roles: string[];
   permissions: string[];
   menus: string[];
@@ -588,10 +609,75 @@ export class AuthService {
       isActive: user.isActive,
       currentIdentity,
       identities,
+      identityAvailability: this.buildIdentityAvailability(user, identities),
       roles: Array.from(roles),
       permissions: permissionCodes,
       menus: permissionCodes.filter((code) => permissions.get(code) === "menu")
     };
+  }
+
+  private buildIdentityAvailability(
+    user: AuthUserRecord,
+    identities: AuthIdentityPayload[]
+  ): AuthIdentityAvailabilityPayload[] {
+    const identityTypes: Readonly<Record<AuthIdentityAvailabilityKind, readonly string[]>> = {
+      customer: ["customer"],
+      technician: ["technician"],
+      merchant: ["merchant", "merchant_owner", "merchant_staff"],
+      affiliate: ["affiliate", "scout"]
+    };
+    const customerIdentity = identities.find((identity) =>
+      identityTypes.customer.includes(identity.type)
+    );
+    if (!customerIdentity) {
+      return [];
+    }
+
+    const applications = user.identityApplications ?? [];
+    return (["customer", "technician", "merchant", "affiliate"] as const).map((kind) => {
+      const identity = identities.find((candidate) =>
+        identityTypes[kind].includes(candidate.type)
+      );
+      if (identity) {
+        return {
+          kind,
+          state: "active" as const,
+          identityId: identity.id,
+          applicationId: null,
+          rejectionReason: null
+        };
+      }
+
+      const application =
+        kind === "technician" || kind === "merchant"
+          ? applications.find(
+              (candidate) => candidate.type === kind && candidate.deletedAt === null
+            )
+          : undefined;
+      if (!application) {
+        return {
+          kind,
+          state: "available_to_apply" as const,
+          identityId: null,
+          applicationId: null,
+          rejectionReason: null
+        };
+      }
+
+      const state: AuthIdentityAvailabilityState =
+        application.status === "draft"
+          ? "draft"
+          : application.status === "rejected"
+            ? "rejected"
+            : "pending";
+      return {
+        kind,
+        state,
+        identityId: null,
+        applicationId: application.id,
+        rejectionReason: state === "rejected" ? application.rejectionReason : null
+      };
+    });
   }
 
   private assertActiveUser(user: AuthUserRecord | null): asserts user is AuthUserRecord {

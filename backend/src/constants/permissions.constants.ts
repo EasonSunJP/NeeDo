@@ -123,6 +123,84 @@ export const SYSTEM_PERMISSIONS = [
     "customer-profile",
     "更新当前客户个人资料"
   ),
+  createPermission(
+    "identity-application:own",
+    "本人身份申请",
+    "api",
+    "identity-application",
+    "创建、查看、更新、提交和撤回本人的身份申请"
+  ),
+  createPermission(
+    "merchant:technician-application:read",
+    "查看本店技师申请",
+    "api",
+    "identity-application",
+    "查看申请加入当前店铺的技师资料"
+  ),
+  createPermission(
+    "merchant:technician-application:review",
+    "审核本店技师申请",
+    "api",
+    "identity-application",
+    "批准或拒绝申请加入当前店铺的技师"
+  ),
+  createPermission(
+    "merchant:technician-application:contact",
+    "联系技师申请人",
+    "api",
+    "identity-application",
+    "通过店铺服务账号联系技师申请人"
+  ),
+  createPermission(
+    "merchant:technician-application:export",
+    "导出技师申请简历",
+    "api",
+    "identity-application",
+    "导出当前店铺收到的单份技师申请简历"
+  ),
+  createPermission(
+    "ops:merchant-application:read",
+    "查看店铺身份申请",
+    "api",
+    "identity-application",
+    "查看运营范围内的店铺身份申请"
+  ),
+  createPermission(
+    "ops:merchant-application:review",
+    "审核店铺身份申请",
+    "api",
+    "identity-application",
+    "批准或拒绝店铺身份申请"
+  ),
+  createPermission("contract:read", "查看身份合同", "api", "contract", "读取当前身份合同与规则"),
+  createPermission(
+    "contract:accept",
+    "接受身份合同",
+    "api",
+    "contract",
+    "记录当前用户对身份合同的确认与接受"
+  ),
+  createPermission(
+    "bank-account:own",
+    "本人受保护银行账户",
+    "api",
+    "bank-account",
+    "写入并查看掩码化的本人银行账户"
+  ),
+  createPermission(
+    "identity-application-media:sensitive-read",
+    "查看身份申请敏感资料",
+    "api",
+    "identity-application",
+    "在审核范围内查看身份申请证件与照片"
+  ),
+  createPermission(
+    "identity-application:purge",
+    "执行身份申请数据清理",
+    "api",
+    "identity-application",
+    "执行并审计到期身份申请敏感数据清理"
+  ),
 
   createPermission("user:list", "用户列表", "api", "user", "分页查看用户列表"),
   createPermission("user:create", "创建用户", "api", "user", "创建后台或业务用户"),
@@ -968,6 +1046,27 @@ const REALTIME_USER_PERMISSION_CODES = [
   "realtime:events"
 ] as const satisfies readonly SystemPermissionCode[];
 
+const IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES = [
+  "identity-application:own",
+  "contract:read",
+  "contract:accept",
+  "bank-account:own"
+] as const satisfies readonly SystemPermissionCode[];
+
+const MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES = [
+  "merchant:technician-application:read",
+  "merchant:technician-application:review",
+  "merchant:technician-application:contact",
+  "merchant:technician-application:export",
+  "identity-application-media:sensitive-read"
+] as const satisfies readonly SystemPermissionCode[];
+
+const OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES = [
+  "ops:merchant-application:read",
+  "ops:merchant-application:review",
+  "identity-application-media:sensitive-read"
+] as const satisfies readonly SystemPermissionCode[];
+
 const FINANCE_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "wallet:read",
@@ -1099,6 +1198,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...BACKOFFICE_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
     ...BACKOFFICE_AFFILIATE_OPERATOR_PERMISSION_CODES,
+    ...OPERATIONS_MERCHANT_APPLICATION_PERMISSION_CODES,
     "finance:fee-rule:list",
     "finance:fee-rule:preview",
     "finance:calculation-log:list",
@@ -1128,6 +1228,8 @@ export const buildRolePermissionAssignments = (): Record<
   support: [
     ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
     ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    "ops:merchant-application:read",
+    "identity-application-media:sensitive-read",
     "menu:user-management",
     "page:user-management",
     "user:list",
@@ -1140,14 +1242,18 @@ export const buildRolePermissionAssignments = (): Record<
     ...REALTIME_USER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
-    ...MERCHANT_AFFILIATE_PERMISSION_CODES
+    ...MERCHANT_AFFILIATE_PERMISSION_CODES,
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
   ],
   merchant_staff: [
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES,
     ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
-    ...MERCHANT_AFFILIATE_PERMISSION_CODES
+    ...MERCHANT_AFFILIATE_PERMISSION_CODES,
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
+    ...MERCHANT_TECHNICIAN_APPLICATION_PERMISSION_CODES
   ],
   technician: [
     "menu:technician-app",
@@ -1155,6 +1261,7 @@ export const buildRolePermissionAssignments = (): Record<
     ...SERVICE_PROVIDER_ORDER_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
     ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES,
     "technician:services:list",
     "technician:services:write",
     "technician:payslip:read",
@@ -1165,10 +1272,19 @@ export const buildRolePermissionAssignments = (): Record<
   customer: [
     ...CUSTOMER_BOOKING_PERMISSION_CODES,
     ...REALTIME_USER_PERMISSION_CODES,
-    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
   ],
-  broker: [...AUTH_AND_DASHBOARD_PERMISSION_CODES, ...AFFILIATE_MARKETPLACE_PERMISSION_CODES],
-  scout: [...AUTH_AND_DASHBOARD_PERMISSION_CODES, ...AFFILIATE_MARKETPLACE_PERMISSION_CODES],
+  broker: [
+    ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
+  ],
+  scout: [
+    ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
+    ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,
+    ...IDENTITY_APPLICATION_APPLICANT_PERMISSION_CODES
+  ],
   viewer: [
     ...READ_ONLY_BACKOFFICE_PERMISSION_CODES,
     ...AFFILIATE_MARKETPLACE_PERMISSION_CODES,

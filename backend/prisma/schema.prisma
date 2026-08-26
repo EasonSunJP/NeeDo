@@ -23,6 +23,28 @@ enum BookingOrderStatus {
   @@map("booking_order_status")
 }
 
+enum OrderReviewTargetType {
+  CUSTOMER   @map("customer")
+  TECHNICIAN @map("technician")
+
+  @@map("order_review_target_type")
+}
+
+enum BackofficeTagSentiment {
+  POSITIVE @map("positive")
+  NEGATIVE @map("negative")
+
+  @@map("backoffice_tag_sentiment")
+}
+
+enum BackofficeTagSource {
+  SYSTEM          @map("system")
+  MANUAL          @map("manual")
+  SIMULATION_SEED @map("simulation_seed")
+
+  @@map("backoffice_tag_source")
+}
+
 enum ServicePaymentMethod {
   ONSITE        @map("onsite")
   BANK_TRANSFER @map("bank_transfer")
@@ -305,6 +327,9 @@ model User {
   customerProfile                 CustomerProfile?
   bookingOrders                   BookingOrder[]             @relation("BookingOrderCustomer")
   orderHistories                  OrderStatusHistory[]       @relation("OrderStatusHistoryActor")
+  orderReviewsGiven               OrderReview[]              @relation("OrderReviewReviewer")
+  assignedBackofficeTags          BackofficeProfileTag[]     @relation("BackofficeProfileTagAssigner")
+  orderTimelineComments           OrderTimelineComment[]     @relation("OrderTimelineCommentActor")
   pricingModeUpdates              Shop[]                     @relation("ShopPricingModeUpdatedBy")
   createdTechnicianServices       TechnicianService[]        @relation("TechnicianServiceCreatedBy")
   updatedTechnicianServices       TechnicianService[]        @relation("TechnicianServiceUpdatedBy")
@@ -346,6 +371,12 @@ model User {
   affiliateAttributionsClaimed    AffiliateAttribution[]     @relation("AffiliateAttributionClaimant")
   affiliateAttributionsAsCustomer AffiliateAttribution[]     @relation("AffiliateAttributionCustomer")
   reviewedAffiliateRisks          AffiliateRiskEvent[]       @relation("AffiliateRiskReviewer")
+  identityApplications            IdentityApplication[]      @relation("IdentityApplicationApplicant")
+  reviewedIdentityApplications    IdentityApplication[]      @relation("IdentityApplicationReviewer")
+  protectedBankAccounts           ProtectedBankAccount[]
+  contractAcceptances             ContractAcceptance[]
+  applicationMediaAssets          MediaAsset[]               @relation("ApplicationMediaOwner")
+  ekycVerifications               EkycVerification[]
 
   @@index([email])
   @@index([phone])
@@ -427,6 +458,7 @@ model Shop {
   affiliateServiceScopes  AffiliateTaskService[]
   affiliateTouches        AffiliateTouch[]
   affiliateAttributions   AffiliateAttribution[]
+  technicianApplications  TechnicianApplicationDetail[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -534,19 +566,21 @@ model TechnicianProfile {
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  user                 User                            @relation(fields: [userId], references: [id], onDelete: Restrict)
-  shop                 Shop?                           @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  services             Service[]
-  technicianServices   TechnicianService[]
-  mediaAssets          MediaAsset[]
-  reviewSummary        ReviewSummary?
-  availabilities       Availability[]
-  scheduleSlots        ScheduleSlot[]
-  bookingOrders        BookingOrder[]
-  compensationProfiles TechnicianCompensationProfile[]
-  payslips             Payslip[]
-  payoutRecords        PayoutRecord[]
-  payrollAdjustments   PayrollAdjustmentRequest[]
+  user                  User                            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shop                  Shop?                           @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  services              Service[]
+  technicianServices    TechnicianService[]
+  mediaAssets           MediaAsset[]
+  reviewSummary         ReviewSummary?
+  availabilities        Availability[]
+  scheduleSlots         ScheduleSlot[]
+  bookingOrders         BookingOrder[]
+  compensationProfiles  TechnicianCompensationProfile[]
+  payslips              Payslip[]
+  payoutRecords         PayoutRecord[]
+  payrollAdjustments    PayrollAdjustmentRequest[]
+  receivedOrderReviews  OrderReview[]                   @relation("OrderReviewTechnician")
+  backofficeProfileTags BackofficeProfileTag[]          @relation("BackofficeProfileTagTechnician")
 
   @@index([shopId])
   @@index([city])
@@ -573,9 +607,11 @@ model CustomerProfile {
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  mediaAssets   MediaAsset[]
-  reviewSummary ReviewSummary?
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  mediaAssets           MediaAsset[]
+  reviewSummary         ReviewSummary?
+  receivedOrderReviews  OrderReview[]          @relation("OrderReviewCustomer")
+  backofficeProfileTags BackofficeProfileTag[] @relation("BackofficeProfileTagCustomer")
 
   @@index([city])
   @@index([isPublic])
@@ -683,6 +719,7 @@ model MediaAsset {
   shopId              Int?      @map("shop_id")
   technicianProfileId Int?      @map("technician_profile_id")
   customerProfileId   Int?      @map("customer_profile_id")
+  ownerUserId         Int?      @map("owner_user_id")
   url                 String    @db.VarChar(500)
   mimeType            String    @default("image/jpeg") @map("mime_type") @db.VarChar(100)
   usageType           String    @default("gallery") @map("usage_type") @db.VarChar(50)
@@ -691,16 +728,21 @@ model MediaAsset {
   altText             String?   @map("alt_text") @db.VarChar(255)
   sortOrder           Int       @default(0) @map("sort_order")
   isActive            Boolean   @default(true) @map("is_active")
+  checksumSha256      String?   @map("checksum_sha256") @db.Char(64)
+  purgeAt             DateTime? @map("purge_at")
+  purgedAt            DateTime? @map("purged_at")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  category            Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  service             Service?           @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  shop                Shop?              @relation(fields: [shopId], references: [id], onDelete: SetNull)
-  technicianProfile   TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
-  customerProfile     CustomerProfile?   @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
-  affiliateTaskCovers AffiliateTask[]    @relation("AffiliateTaskCover")
+  category             Category?                  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  service              Service?                   @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  shop                 Shop?                      @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  technicianProfile    TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
+  customerProfile      CustomerProfile?           @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
+  ownerUser            User?                      @relation("ApplicationMediaOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  affiliateTaskCovers  AffiliateTask[]            @relation("AffiliateTaskCover")
+  identityApplications IdentityApplicationMedia[]
 
   @@index([entityType, entityId])
   @@index([categoryId])
@@ -708,7 +750,9 @@ model MediaAsset {
   @@index([shopId])
   @@index([technicianProfileId])
   @@index([customerProfileId])
+  @@index([ownerUserId])
   @@index([usageType])
+  @@index([purgeAt])
   @@index([deletedAt])
   @@map("media_assets")
 }
@@ -849,6 +893,8 @@ model BookingOrder {
   technicianProfile     TechnicianProfile?     @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
   scheduleSlot          ScheduleSlot           @relation(fields: [scheduleSlotId], references: [id], onDelete: Restrict)
   statusHistory         OrderStatusHistory[]
+  reviews               OrderReview[]
+  timelineComments      OrderTimelineComment[]
   feeCalculationLogs    FeeCalculationLog[]
   walletHolds           WalletHold[]
   financial             OrderFinancial?
@@ -874,6 +920,111 @@ model BookingOrder {
   @@index([paymentRefundedById])
   @@index([deletedAt])
   @@map("booking_orders")
+}
+
+model OrderReview {
+  id                  Int                   @id @default(autoincrement())
+  bookingOrderId      Int                   @map("booking_order_id")
+  reviewerUserId      Int                   @map("reviewer_user_id")
+  targetType          OrderReviewTargetType @map("target_type")
+  customerProfileId   Int?                  @map("customer_profile_id")
+  technicianProfileId Int?                  @map("technician_profile_id")
+  rating              Int
+  comment             String?               @db.Text
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+  deletedAt           DateTime?             @map("deleted_at")
+
+  bookingOrder      BookingOrder       @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  reviewer          User               @relation("OrderReviewReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  customerProfile   CustomerProfile?   @relation("OrderReviewCustomer", fields: [customerProfileId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile? @relation("OrderReviewTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  tags              OrderReviewTag[]
+
+  @@unique([bookingOrderId, reviewerUserId, targetType])
+  @@index([bookingOrderId])
+  @@index([reviewerUserId])
+  @@index([targetType])
+  @@index([customerProfileId])
+  @@index([technicianProfileId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("order_reviews")
+}
+
+model OrderReviewTag {
+  id            Int       @id @default(autoincrement())
+  orderReviewId Int       @map("order_review_id")
+  label         String    @db.VarChar(40)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  orderReview OrderReview @relation(fields: [orderReviewId], references: [id], onDelete: Restrict)
+
+  @@unique([orderReviewId, label])
+  @@index([orderReviewId])
+  @@index([label])
+  @@index([deletedAt])
+  @@map("order_review_tags")
+}
+
+model BackofficeProfileTag {
+  id                  Int                    @id @default(autoincrement())
+  targetType          OrderReviewTargetType  @map("target_type")
+  customerProfileId   Int?                   @map("customer_profile_id")
+  technicianProfileId Int?                   @map("technician_profile_id")
+  activeKey           String?                @unique @map("active_key") @db.VarChar(191)
+  code                String                 @db.VarChar(80)
+  label               String                 @db.VarChar(80)
+  sentiment           BackofficeTagSentiment
+  source              BackofficeTagSource
+  ruleVersion         String?                @map("rule_version") @db.VarChar(40)
+  evidence            Json?                  @map("evidence_json")
+  assignedByUserId    Int?                   @map("assigned_by_user_id")
+  reason              String?                @db.VarChar(500)
+  assignedAt          DateTime               @default(now()) @map("assigned_at")
+  expiresAt           DateTime?              @map("expires_at")
+  isActive            Boolean                @default(true) @map("is_active")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  deletedAt           DateTime?              @map("deleted_at")
+
+  customerProfile   CustomerProfile?   @relation("BackofficeProfileTagCustomer", fields: [customerProfileId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile? @relation("BackofficeProfileTagTechnician", fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  assignedBy        User?              @relation("BackofficeProfileTagAssigner", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([targetType])
+  @@index([customerProfileId])
+  @@index([technicianProfileId])
+  @@index([code])
+  @@index([sentiment])
+  @@index([source])
+  @@index([assignedByUserId])
+  @@index([isActive, expiresAt])
+  @@index([deletedAt])
+  @@map("backoffice_profile_tags")
+}
+
+model OrderTimelineComment {
+  id             Int       @id @default(autoincrement())
+  bookingOrderId Int       @map("booking_order_id")
+  actorUserId    Int       @map("actor_user_id")
+  body           String    @db.Text
+  visibility     String    @default("backoffice") @db.VarChar(40)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  bookingOrder BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Restrict)
+  actor        User         @relation("OrderTimelineCommentActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([bookingOrderId])
+  @@index([actorUserId])
+  @@index([visibility])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("order_timeline_comments")
 }
 
 model OrderStatusHistory {
@@ -1098,6 +1249,7 @@ model UserIdentity {
   id          Int       @id @default(autoincrement())
   userId      Int       @map("user_id")
   type        String    @db.VarChar(50)
+  activeKey   String?   @unique @map("active_key") @db.VarChar(191)
   scopeType   String?   @map("scope_type") @db.VarChar(50)
   scopeId     Int?      @map("scope_id")
   displayName String?   @map("display_name") @db.VarChar(100)
@@ -1115,6 +1267,204 @@ model UserIdentity {
   @@index([isActive])
   @@index([deletedAt])
   @@map("user_identities")
+}
+
+model IdentityApplication {
+  id                    Int       @id @default(autoincrement())
+  userId                Int       @map("user_id")
+  type                  String    @db.VarChar(40)
+  status                String    @default("draft") @db.VarChar(40)
+  activeKey             String?   @unique @map("active_key") @db.VarChar(191)
+  version               Int       @default(1)
+  submittedSnapshotHash String?   @map("submitted_snapshot_hash") @db.Char(64)
+  submittedAt           DateTime? @map("submitted_at")
+  reviewedAt            DateTime? @map("reviewed_at")
+  reviewerUserId        Int?      @map("reviewer_user_id")
+  rejectionReason       String?   @map("rejection_reason") @db.VarChar(1000)
+  closedAt              DateTime? @map("closed_at")
+  purgeAt               DateTime? @map("purge_at")
+  purgeStartedAt        DateTime? @map("purge_started_at")
+  purgedAt              DateTime? @map("purged_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  applicant           User                         @relation("IdentityApplicationApplicant", fields: [userId], references: [id], onDelete: Restrict)
+  reviewer            User?                        @relation("IdentityApplicationReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  technicianDetail    TechnicianApplicationDetail?
+  merchantDetail      MerchantApplicationDetail?
+  contractAcceptances ContractAcceptance[]
+  media               IdentityApplicationMedia[]
+
+  @@index([userId, type, status])
+  @@index([reviewerUserId])
+  @@index([status, submittedAt])
+  @@index([purgeAt, purgedAt])
+  @@index([purgeStartedAt])
+  @@index([deletedAt])
+  @@map("identity_applications")
+}
+
+model TechnicianApplicationDetail {
+  id                Int       @id @default(autoincrement())
+  applicationId     Int       @unique @map("application_id")
+  targetShopId      Int       @map("target_shop_id")
+  applicantName     String    @map("applicant_name") @db.VarChar(120)
+  phone             String?   @db.VarChar(32)
+  city              String?   @db.VarChar(100)
+  serviceAreas      Json?     @map("service_areas")
+  skills            Json?
+  yearsExperience   Int?      @map("years_experience")
+  bio               String?   @db.Text
+  gender            String?   @db.VarChar(32)
+  birthDate         DateTime? @map("birth_date") @db.Date
+  submittedSnapshot Json?     @map("submitted_snapshot")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  application IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  targetShop  Shop                @relation(fields: [targetShopId], references: [id], onDelete: Restrict)
+
+  @@index([targetShopId])
+  @@index([deletedAt])
+  @@map("technician_application_details")
+}
+
+model MerchantApplicationDetail {
+  id                     Int       @id @default(autoincrement())
+  applicationId          Int       @unique @map("application_id")
+  applicantKind          String    @map("applicant_kind") @db.VarChar(40)
+  corporateLegalName     String?   @map("corporate_legal_name") @db.VarChar(191)
+  corporateLegalNameKana String?   @map("corporate_legal_name_kana") @db.VarChar(191)
+  representativeName     String    @map("representative_name") @db.VarChar(120)
+  representativeNameKana String    @map("representative_name_kana") @db.VarChar(191)
+  shopName               String    @map("shop_name") @db.VarChar(160)
+  businessAddress        String    @map("business_address") @db.VarChar(255)
+  contactPhone           String    @map("contact_phone") @db.VarChar(32)
+  responsiblePersonName  String    @map("responsible_person_name") @db.VarChar(120)
+  showcaseDraft          Json?     @map("showcase_draft")
+  submittedSnapshot      Json?     @map("submitted_snapshot")
+  bankAccountId          Int?      @map("bank_account_id")
+  contractAcceptanceId   Int?      @unique @map("contract_acceptance_id")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  deletedAt              DateTime? @map("deleted_at")
+
+  application        IdentityApplication   @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  bankAccount        ProtectedBankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  contractAcceptance ContractAcceptance?   @relation(fields: [contractAcceptanceId], references: [id], onDelete: SetNull)
+
+  @@index([bankAccountId])
+  @@index([applicantKind])
+  @@index([deletedAt])
+  @@map("merchant_application_details")
+}
+
+model ProtectedBankAccount {
+  id                               Int       @id @default(autoincrement())
+  ownerUserId                      Int       @map("owner_user_id")
+  purpose                          String    @db.VarChar(40)
+  bankCode                         String    @map("bank_code") @db.VarChar(16)
+  bankName                         String    @map("bank_name") @db.VarChar(120)
+  branchCode                       String    @map("branch_code") @db.VarChar(16)
+  branchName                       String    @map("branch_name") @db.VarChar(120)
+  accountType                      String    @map("account_type") @db.VarChar(32)
+  accountNumberEncrypted           String    @map("account_number_encrypted") @db.Text
+  accountHolderEncrypted           String    @map("account_holder_encrypted") @db.Text
+  accountHolderNormalizedEncrypted String    @map("account_holder_normalized_encrypted") @db.Text
+  holderMatchHash                  String    @map("holder_match_hash") @db.Char(64)
+  verificationSource               String    @map("verification_source") @db.VarChar(40)
+  verificationStatus               String    @map("verification_status") @db.VarChar(40)
+  verifiedAt                       DateTime? @map("verified_at")
+  createdAt                        DateTime  @default(now()) @map("created_at")
+  updatedAt                        DateTime  @updatedAt @map("updated_at")
+  deletedAt                        DateTime? @map("deleted_at")
+
+  owner                      User                        @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  merchantApplications       MerchantApplicationDetail[]
+  settlementMerchantAccounts MerchantAccount[]           @relation("MerchantSettlementBank")
+
+  @@index([ownerUserId, purpose])
+  @@index([verificationStatus])
+  @@index([holderMatchHash])
+  @@index([deletedAt])
+  @@map("protected_bank_accounts")
+}
+
+model EkycVerification {
+  id                        Int       @id @default(autoincrement())
+  userId                    Int       @map("user_id")
+  provider                  String    @db.VarChar(80)
+  providerReference         String    @unique @map("provider_reference") @db.VarChar(191)
+  status                    String    @db.VarChar(40)
+  verifiedNameEncrypted     String    @map("verified_name_encrypted") @db.Text
+  verifiedNameKanaEncrypted String    @map("verified_name_kana_encrypted") @db.Text
+  nameMatchHash             String    @map("name_match_hash") @db.Char(64)
+  resultHash                String    @map("result_hash") @db.Char(64)
+  verifiedAt                DateTime? @map("verified_at")
+  expiresAt                 DateTime? @map("expires_at")
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  deletedAt                 DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([nameMatchHash])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@map("ekyc_verifications")
+}
+
+model ContractAcceptance {
+  id                    Int       @id @default(autoincrement())
+  acceptedByUserId      Int       @map("accepted_by_user_id")
+  identityApplicationId Int?      @map("identity_application_id")
+  contractType          String    @map("contract_type") @db.VarChar(40)
+  contractVersion       String    @map("contract_version") @db.VarChar(80)
+  effectiveAt           DateTime  @map("effective_at")
+  acceptedTextSnapshot  String    @map("accepted_text_snapshot") @db.LongText
+  contentHash           String    @map("content_hash") @db.Char(64)
+  acceptedAt            DateTime  @map("accepted_at")
+  language              String    @db.VarChar(16)
+  sessionId             String    @map("session_id") @db.VarChar(191)
+  receiptId             String    @unique @map("receipt_id") @db.VarChar(191)
+  acceptanceKey         String    @unique @map("acceptance_key") @db.VarChar(191)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  acceptedBy          User                       @relation(fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  identityApplication IdentityApplication?       @relation(fields: [identityApplicationId], references: [id], onDelete: Restrict)
+  merchantDetail      MerchantApplicationDetail?
+
+  @@index([acceptedByUserId, contractType])
+  @@index([identityApplicationId])
+  @@index([contractType, contractVersion])
+  @@index([acceptedAt])
+  @@index([deletedAt])
+  @@map("contract_acceptances")
+}
+
+model IdentityApplicationMedia {
+  id            Int       @id @default(autoincrement())
+  applicationId Int       @map("application_id")
+  mediaAssetId  Int       @map("media_asset_id")
+  purpose       String    @db.VarChar(50)
+  sortOrder     Int       @default(0) @map("sort_order")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  application IdentityApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  mediaAsset  MediaAsset          @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([applicationId, mediaAssetId])
+  @@index([mediaAssetId])
+  @@index([applicationId, purpose])
+  @@index([deletedAt])
+  @@map("identity_application_media")
 }
 
 model Role {
@@ -1855,17 +2205,19 @@ model PayoutRecord {
 }
 
 model MerchantAccount {
-  id                    Int       @id @default(autoincrement())
-  code                  String    @unique @db.VarChar(100)
-  ownerUserId           Int?      @map("owner_user_id")
-  name                  String    @db.VarChar(160)
-  status                String    @default("active") @db.VarChar(40)
-  paymentResponsibility String    @default("group_consolidated") @map("payment_responsibility") @db.VarChar(40)
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
-  deletedAt             DateTime? @map("deleted_at")
+  id                      Int       @id @default(autoincrement())
+  code                    String    @unique @db.VarChar(100)
+  ownerUserId             Int?      @map("owner_user_id")
+  settlementBankAccountId Int?      @map("settlement_bank_account_id")
+  name                    String    @db.VarChar(160)
+  status                  String    @default("active") @db.VarChar(40)
+  paymentResponsibility   String    @default("group_consolidated") @map("payment_responsibility") @db.VarChar(40)
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+  deletedAt               DateTime? @map("deleted_at")
 
   owner                   User?                    @relation("MerchantAccountOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  settlementBankAccount   ProtectedBankAccount?    @relation("MerchantSettlementBank", fields: [settlementBankAccountId], references: [id], onDelete: SetNull)
   memberships             MerchantShopMembership[]
   billingProfiles         SaasBillingProfile[]
   payerInvoices           SaasInvoice[]
@@ -1874,6 +2226,7 @@ model MerchantAccount {
   publishedAffiliateTasks AffiliateTask[]          @relation("AffiliateMerchantPublisher")
 
   @@index([ownerUserId])
+  @@index([settlementBankAccountId])
   @@index([status])
   @@index([paymentResponsibility])
   @@index([deletedAt])

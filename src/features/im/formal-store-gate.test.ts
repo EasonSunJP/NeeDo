@@ -12,4 +12,9 @@ describe("formal IM legacy-store gate", () => {
     expect(source).toContain("installMockServer: legacyEnabled");
     expect(source).not.toContain("formalImMutationUnavailable");
   });
+
+  it("returns a stable empty message list while a conversation is loading", () => {
+    expect(source).toContain("const emptyConversationMessages: ConversationMessage[] = [];");
+    expect(source).toContain("snapshotData.messagesByConversation[conversationId] ?? emptyConversationMessages");
+  });
 });

@@ -1,4 +1,5 @@
 import type { PortalScope } from "./demoAccount";
+import type { IdentityAvailability, IdentityKind } from "../features/identity-applications/model";
 
 export type LoginMethod = "frontend-bypass" | "gmail" | "password" | "qr" | "verification-code";
 
@@ -20,6 +21,7 @@ export type AuthMePayload = {
   roles: string[];
   permissions: string[];
   menus: string[];
+  identityAvailability?: IdentityAvailability[];
 };
 
 export type AuthSession = {
@@ -40,12 +42,12 @@ export type AuthSession = {
   menus: string[];
   currentIdentity: AuthIdentityPayload;
   identities: AuthIdentityPayload[];
+  identityAvailability: IdentityAvailability[];
 };
 
 const adminRoles = new Set(["admin", "operator", "finance", "support", "viewer"]);
 const merchantRoles = new Set(["merchant_owner", "merchant_staff"]);
 const businessRoles = new Set(["broker", "scout"]);
-const userSessionClientPortals = new Set<PortalScope>(["merchant", "technician", "business"]);
 const scopedIdentityLocalIdPrefix: Record<string, string> = {
   customer: "cus",
   merchant: "store",
@@ -128,6 +130,27 @@ export function resolveAllowedPortals(me: AuthMePayload): PortalScope[] {
   return uniquePortals([...identityPortals, ...rolePortals]);
 }
 
+const identityTypesByKind: Record<IdentityKind, string[]> = {
+  customer: ["customer", "user"],
+  technician: ["technician"],
+  merchant: ["merchant", "merchant_owner", "merchant_staff"],
+  affiliate: ["affiliate", "broker", "scout", "business"]
+};
+
+function deriveIdentityAvailability(me: AuthMePayload): IdentityAvailability[] {
+  return (Object.keys(identityTypesByKind) as IdentityKind[]).map((kind) => {
+    const identity = me.identities.find((item) => identityTypesByKind[kind].includes(item.type));
+
+    return {
+      kind,
+      state: identity ? "active" : "available_to_apply",
+      identityId: identity?.id ?? null,
+      applicationId: null,
+      rejectionReason: null
+    };
+  });
+}
+
 function getScopedIdentityId(me: AuthMePayload, type: string | string[]) {
   const types = Array.isArray(type) ? type : [type];
   const identity = me.identities.find((item) => types.includes(item.type));
@@ -156,7 +179,7 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
   const portal = allowedPortals.includes(requestedPortal) ? requestedPortal : allowedPortals[0] ?? requestedPortal;
 
   return normalizeAuthSessionEntityIds({
-    authVersion: 4,
+    authVersion: 5,
     id: me.id,
     username: me.username,
     email: me.email,
@@ -172,7 +195,8 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     permissions: me.permissions,
     menus: me.menus,
     currentIdentity: me.currentIdentity,
-    identities: me.identities
+    identities: me.identities,
+    identityAvailability: me.identityAvailability ?? deriveIdentityAvailability(me)
   });
 }
 
@@ -189,7 +213,9 @@ export function canAccessPortalFromSession(session: AuthSession | null, portal: 
 }
 
 export function canUseUserSessionForClientPortal(session: AuthSession | null, portal: PortalScope) {
-  return Boolean(session?.allowedPortals.includes("user") && userSessionClientPortals.has(portal));
+  void session;
+  void portal;
+  return false;
 }
 
 export function canAccessFeatureFromSession(

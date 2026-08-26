@@ -199,26 +199,18 @@ export class MerchantSaasBillingRepository implements MerchantSaasBillingReposit
         }
       });
 
-      await tx.saasFreePeriod.create({
-        data: {
-          billingProfileId: profile.id,
-          periodType: "initial_trial",
-          startsAt: input.trialStartsAt,
-          endsAt: input.baseTrialEndsAt,
-          reason: "First three natural-month free trial",
-          idempotencyKey: `merchant:${merchant.id}:initial-trial`,
-          createdById: input.actorUserId
-        }
-      });
-      if (input.automaticBonusDays === 15) {
+      for (const period of input.freePeriods) {
         await tx.saasFreePeriod.create({
           data: {
             billingProfileId: profile.id,
-            periodType: "late_month_bonus",
-            startsAt: input.baseTrialEndsAt,
-            endsAt: input.trialEndsAt,
-            reason: "Automatic late-month trial allowance",
-            idempotencyKey: `merchant:${merchant.id}:late-month-bonus`,
+            periodType: period.periodType,
+            startsAt: period.startsAt,
+            endsAt: period.endsAt,
+            reason:
+              period.periodType === "late_month_bonus"
+                ? `Automatic ${input.automaticBonusDays}-day late-month trial allowance`
+                : "First three natural-month free trial",
+            idempotencyKey: `merchant:${merchant.id}:${period.periodType.replaceAll("_", "-")}`,
             createdById: input.actorUserId
           }
         });

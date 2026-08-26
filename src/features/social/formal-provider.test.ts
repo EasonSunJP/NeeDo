@@ -17,4 +17,9 @@ describe("formal social provider gate", () => {
     expect(source).not.toContain("formalSocialUnavailableState");
     expect(source).not.toContain("FormalSocialCompatibilityProvider");
   });
+
+  it("waits for access-token restoration before loading protected social data", () => {
+    expect(source).toContain("const { isRestoring, session } = useAuth();");
+    expect(source).toContain("if (!session || isRestoring) return;");
+  });
 });

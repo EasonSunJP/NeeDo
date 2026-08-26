@@ -40,7 +40,14 @@ const main = async (): Promise<void> => {
     const [owners, technicianUsers, customerUsers] = await Promise.all([
       prisma.user.findMany({
         where: { email: { in: ownerEmails }, isActive: true, deletedAt: null },
-        select: { id: true, email: true, passwordHash: true, avatarUrl: true }
+        select: {
+          id: true,
+          email: true,
+          passwordHash: true,
+          avatarUrl: true,
+          customerProfile: { select: { id: true } },
+          technicianProfile: { select: { id: true, shopId: true, status: true } }
+        }
       }),
       prisma.user.findMany({
         where: { email: { in: technicianEmails }, isActive: true, deletedAt: null },
@@ -49,7 +56,8 @@ const main = async (): Promise<void> => {
           email: true,
           passwordHash: true,
           avatarUrl: true,
-          technicianProfile: { select: { id: true, shopId: true, status: true } }
+          technicianProfile: { select: { id: true, shopId: true, status: true } },
+          customerProfile: { select: { id: true } }
         }
       }),
       prisma.user.findMany({
@@ -89,6 +97,7 @@ const main = async (): Promise<void> => {
       ...plan.customers.map((customer) => [customer.email, customer.avatarUrl] as const)
     ]);
     const simulationUsers = [...owners, ...technicianUsers, ...customerUsers];
+    const simulationUserIds = simulationUsers.map((user) => user.id);
     assert(
       simulationUsers.every((user) => user.avatarUrl === plannedAvatarByEmail.get(user.email)),
       "every simulation account must use its deterministic generated avatar"
@@ -109,6 +118,104 @@ const main = async (): Promise<void> => {
       shops.every((shop) => shop.status === "published"),
       "all simulation shops must publish"
     );
+
+    const [activeIdentities, activeRoles] = await Promise.all([
+      prisma.userIdentity.findMany({
+        where: {
+          userId: { in: simulationUserIds },
+          isActive: true,
+          deletedAt: null
+        },
+        select: { userId: true, type: true, scopeType: true, scopeId: true, activeKey: true }
+      }),
+      prisma.userRole.findMany({
+        where: { userId: { in: simulationUserIds }, deletedAt: null },
+        select: { userId: true, role: { select: { code: true } } }
+      })
+    ]);
+    const identitiesByUser = new Map<number, typeof activeIdentities>();
+    for (const identity of activeIdentities) {
+      identitiesByUser.set(identity.userId, [
+        ...(identitiesByUser.get(identity.userId) ?? []),
+        identity
+      ]);
+    }
+    const roleCodesByUser = new Map<number, Set<string>>();
+    for (const role of activeRoles) {
+      const codes = roleCodesByUser.get(role.userId) ?? new Set<string>();
+      codes.add(role.role.code);
+      roleCodesByUser.set(role.userId, codes);
+    }
+    const assertIdentityMatrix = (
+      user: (typeof simulationUsers)[number],
+      expectedTypes: string[],
+      expectedRoleCodes: string[]
+    ): void => {
+      const identities = identitiesByUser.get(user.id) ?? [];
+      const types = new Set(identities.map((identity) => identity.type));
+      assert(
+        expectedTypes.every((type) => types.has(type)),
+        `${user.email} is missing identities: ${expectedTypes.filter((type) => !types.has(type)).join(", ")}`
+      );
+      assert(
+        identities.every((identity) => identity.activeKey),
+        `${user.email} has an active identity without an idempotency key`
+      );
+      const roleCodes = roleCodesByUser.get(user.id) ?? new Set<string>();
+      assert(
+        expectedRoleCodes.every((code) => roleCodes.has(code)),
+        `${user.email} is missing roles: ${expectedRoleCodes.filter((code) => !roleCodes.has(code)).join(", ")}`
+      );
+    };
+    const shopByOwnerUserId = new Map(shops.map((shop) => [shop.ownerUserId, shop]));
+    for (const owner of owners) {
+      assert(owner.customerProfile, `${owner.email} is missing a customer profile`);
+      assert(owner.technicianProfile, `${owner.email} is missing a technician profile`);
+      const ownerShop = shopByOwnerUserId.get(owner.id);
+      assert(ownerShop, `${owner.email} is missing an owned shop`);
+      assertIdentityMatrix(
+        owner,
+        ["customer", "technician", "merchant_owner", "scout"],
+        ["customer", "technician", "merchant_owner", "scout"]
+      );
+      const identities = identitiesByUser.get(owner.id) ?? [];
+      assert(
+        identities.some(
+          (identity) =>
+            identity.type === "customer" && identity.scopeId === owner.customerProfile?.id
+        ),
+        `${owner.email} customer identity scope is invalid`
+      );
+      assert(
+        identities.some(
+          (identity) =>
+            identity.type === "technician" && identity.scopeId === owner.technicianProfile?.id
+        ),
+        `${owner.email} technician identity scope is invalid`
+      );
+      assert(
+        identities.some(
+          (identity) => identity.type === "merchant_owner" && identity.scopeId === ownerShop.id
+        ),
+        `${owner.email} merchant identity scope is invalid`
+      );
+    }
+    for (const technician of technicianUsers) {
+      assert(technician.customerProfile, `${technician.email} is missing a customer profile`);
+      assertIdentityMatrix(
+        technician,
+        ["customer", "technician", "scout"],
+        ["customer", "technician", "scout"]
+      );
+    }
+    for (const customer of customerUsers) {
+      const identities = identitiesByUser.get(customer.id) ?? [];
+      assert(
+        identities.length === 1 && identities[0]?.type === "customer",
+        `${customer.email} must keep the customer identity only`
+      );
+      assertIdentityMatrix(customer, ["customer"], ["customer"]);
+    }
 
     const shopIds = shops.map((shop) => shop.id);
     const technicianProfileIds = technicianUsers.flatMap((user) =>
