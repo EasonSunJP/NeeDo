@@ -408,7 +408,11 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return globalThis.btoa(binary);
 }
 
-async function sendDataUrlRequest(path: string, options: HttpClientRequestOptions): Promise<string> {
+async function sendDataUrlRequest(
+  path: string,
+  options: HttpClientRequestOptions,
+  canRetry: boolean
+): Promise<string> {
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
@@ -424,6 +428,23 @@ async function sendDataUrlRequest(path: string, options: HttpClientRequestOption
     method
   });
   const contentType = response.headers.get("content-type") ?? "";
+
+  if (
+    response.status === 401 &&
+    canRetry &&
+    options.auth !== false &&
+    options.retryOnUnauthorized !== false &&
+    getStoredRefreshToken()
+  ) {
+    try {
+      await refreshStoredAccessToken();
+      return sendDataUrlRequest(path, options, false);
+    } catch (error) {
+      clearAuthTokens();
+      authExpiredHandler?.();
+      throw error;
+    }
+  }
 
   if (!response.ok || isJsonContentType(contentType)) {
     const envelope = await parseEnvelope<string>(response);
@@ -488,6 +509,6 @@ export const httpClient = {
     return sendCsvExportRequest(path, options, true);
   },
   requestDataUrl(path: string, options: HttpClientRequestOptions = {}) {
-    return sendDataUrlRequest(path, options);
+    return sendDataUrlRequest(path, options, true);
   }
 };

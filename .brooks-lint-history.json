@@ -1,0 +1,13 @@
+[
+  {
+    "date": "2026-08-26",
+    "mode": "Full Sweep",
+    "score": 49,
+    "findings": {
+      "critical": 2,
+      "warning": 4,
+      "suggestion": 1
+    },
+    "scope": "non-affiliate frontend/backend (891 TypeScript files)"
+  }
+]

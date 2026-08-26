@@ -393,6 +393,59 @@ describe("httpClient auth tokens", () => {
     );
   });
 
+  it("refreshes once after a 401 response and retries a protected data URL request", async () => {
+    setAuthTokens({
+      accessToken: "expired-access-token",
+      refreshToken: "refresh-token"
+    });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ code: 40003, message: "error.auth.token_invalid", data: null }, 401))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: {
+            accessToken: "fresh-access-token",
+            expiresIn: 900
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "content-type": "image/png" },
+          status: 200
+        })
+      );
+
+    await expect(httpClient.requestDataUrl("/identity-applications/3/media/4")).resolves.toBe(
+      "data:image/png;base64,AQID"
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/identity-applications/3/media/4",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer expired-access-token" })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/auth/refresh",
+      expect.objectContaining({
+        body: JSON.stringify({ refreshToken: "refresh-token" }),
+        method: "POST"
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/identity-applications/3/media/4",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer fresh-access-token" })
+      })
+    );
+  });
+
   it("can route legacy captcha requests through a dedicated local proxy base", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
       code: 0,

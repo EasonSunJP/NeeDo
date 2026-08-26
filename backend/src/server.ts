@@ -6,6 +6,7 @@ import { disconnectPrisma } from "./prisma/client";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
+import { createShutdownHandler } from "./server-shutdown";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 
 const app = createApp(env);
@@ -30,26 +31,15 @@ const server = app.listen(env.PORT, () => {
 });
 identityApplicationPurgeWorker.start();
 
-const shutdown = (signal: NodeJS.Signals): void => {
-  identityApplicationPurgeWorker.stop();
-  logger.info({ signal }, "NeeDo backend shutdown requested");
-  server.close((error) => {
-    if (error) {
-      logger.error({ error }, "NeeDo backend shutdown failed");
-      process.exit(1);
-    }
-
-    Promise.all([disconnectPrisma(), disconnectRedis()])
-      .then(() => {
-        logger.info("NeeDo backend stopped");
-        process.exit(0);
-      })
-      .catch((disconnectError) => {
-        logger.error({ error: disconnectError }, "NeeDo backend dependency shutdown failed");
-        process.exit(1);
-      });
-  });
-};
+const shutdown = createShutdownHandler({
+  closeServer: (callback) => server.close(callback),
+  disconnect: async () => {
+    await Promise.all([disconnectPrisma(), disconnectRedis()]);
+  },
+  exit: (code) => process.exit(code),
+  logger,
+  stopWorker: () => identityApplicationPurgeWorker.stop()
+});
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
