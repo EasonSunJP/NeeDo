@@ -4,6 +4,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
+import { AppError } from "../src/utils/app-error";
 import type {
   ConsumeVerificationChallengeInput,
   CreateVerificationChallengeInput,
@@ -22,6 +23,9 @@ class InMemoryAuthSessionStore {
   private readonly failureCounts = new Map<string, number>();
   private readonly accountFailureCounts = new Map<number, number>();
   public failNextRefreshStore = false;
+  public failNextRefreshRevoke = false;
+  public readonly storedRefreshTokens: Array<{ userId: number; jti: string }> = [];
+  public readonly revokedRefreshTokens: Array<{ userId: number; jti: string }> = [];
 
   public async getLoginLock(email: string): Promise<boolean> {
     return this.getValue(`login:lock:${email}`) !== null;
@@ -105,6 +109,7 @@ class InMemoryAuthSessionStore {
       this.failNextRefreshStore = false;
       throw new Error("simulated session store failure");
     }
+    this.storedRefreshTokens.push({ userId, jti });
     this.refreshTokens.add(`${userId}:${jti}`);
     this.setValue(`refresh:${userId}:${jti}`, "1", ttlSeconds);
   }
@@ -114,6 +119,11 @@ class InMemoryAuthSessionStore {
   }
 
   public async revokeRefreshToken(userId: number, jti: string): Promise<void> {
+    this.revokedRefreshTokens.push({ userId, jti });
+    if (this.failNextRefreshRevoke) {
+      this.failNextRefreshRevoke = false;
+      throw new Error("simulated refresh revoke failure");
+    }
     this.refreshTokens.delete(`${userId}:${jti}`);
     this.values.delete(`refresh:${userId}:${jti}`);
   }
@@ -156,6 +166,10 @@ class InMemoryVerificationChallengeStore {
       reservationToken?: string;
     }
   >();
+  public failNextFinalize = false;
+  public returnFalseNextFinalize = false;
+  public failNextRelease = false;
+  public readonly releasedChallenges: Array<{ challengeId: string; reservationToken: string }> = [];
 
   public async createEmailChallenge(input: CreateVerificationChallengeInput) {
     const challengeId = randomUUID();
@@ -199,6 +213,14 @@ class InMemoryVerificationChallengeStore {
   }
 
   public async finalizeEmailChallenge(input: { challengeId: string; reservationToken: string }) {
+    if (this.failNextFinalize) {
+      this.failNextFinalize = false;
+      throw new Error("simulated finalize failure");
+    }
+    if (this.returnFalseNextFinalize) {
+      this.returnFalseNextFinalize = false;
+      return false;
+    }
     const challenge = this.challenges.get(input.challengeId);
     if (!challenge || challenge.reservationToken !== input.reservationToken) return false;
     this.challenges.delete(input.challengeId);
@@ -206,6 +228,11 @@ class InMemoryVerificationChallengeStore {
   }
 
   public async releaseEmailChallenge(input: { challengeId: string; reservationToken: string }) {
+    this.releasedChallenges.push(input);
+    if (this.failNextRelease) {
+      this.failNextRelease = false;
+      throw new Error("simulated release failure");
+    }
     const challenge = this.challenges.get(input.challengeId);
     if (!challenge || challenge.reservationToken !== input.reservationToken) return false;
     delete challenge.reservationToken;
@@ -726,6 +753,191 @@ describe("verified email registration and formal password authentication", () =>
       "session-recovery@example.com"
     );
   });
+
+  it.each(["updateLastLoginAt", "createLoginLog"] as const)(
+    "revokes the exact stored refresh session when %s fails during registration login",
+    async (failingOperation) => {
+      const fixture = await createAuthFixture();
+      fixture.repository[failingOperation].mockRejectedValueOnce(
+        new Error(`simulated ${failingOperation} failure`)
+      );
+      const started = await request(fixture.app)
+        .post("/api/v1/auth/register")
+        .send({
+          email: `${failingOperation}@example.com`,
+          password: "Customer.2026!"
+        });
+
+      await request(fixture.app)
+        .post("/api/v1/auth/register/verify")
+        .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+        .expect(500);
+
+      expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+      expect(fixture.sessionStore.revokedRefreshTokens).toEqual([
+        fixture.sessionStore.storedRefreshTokens[0]
+      ]);
+      expect(fixture.challengeStore.releasedChallenges).toHaveLength(1);
+    }
+  );
+
+  it("revokes the exact stored refresh session when registration finalization returns false", async () => {
+    const fixture = await createAuthFixture();
+    fixture.challengeStore.returnFalseNextFinalize = true;
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "finalize-false@example.com",
+      password: "Customer.2026!"
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+      .expect(503)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+          message: "error.dependency.redis_unavailable"
+        });
+      });
+
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+    expect(fixture.sessionStore.revokedRefreshTokens).toEqual([
+      fixture.sessionStore.storedRefreshTokens[0]
+    ]);
+    expect(fixture.challengeStore.releasedChallenges).toHaveLength(1);
+  });
+
+  it("keeps the finalization dependency error when release also fails", async () => {
+    const fixture = await createAuthFixture();
+    fixture.challengeStore.returnFalseNextFinalize = true;
+    fixture.challengeStore.failNextRelease = true;
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "finalize-release-failure@example.com",
+      password: "Customer.2026!"
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+      .expect(503)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+          message: "error.dependency.redis_unavailable"
+        });
+      });
+
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+    expect(fixture.challengeStore.releasedChallenges).toHaveLength(1);
+  });
+
+  it("keeps a thrown finalization AppError when release also fails", async () => {
+    const fixture = await createAuthFixture();
+    jest.spyOn(fixture.challengeStore, "finalizeEmailChallenge").mockRejectedValueOnce(
+      new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.redis_unavailable",
+        statusCode: 503
+      })
+    );
+    fixture.challengeStore.failNextRelease = true;
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "finalize-throw-release-failure@example.com",
+      password: "Customer.2026!"
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+      .expect(503)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.dependency.redis_unavailable");
+      });
+
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+  });
+
+  it("does not let a refresh revoke failure obscure the original finalization error", async () => {
+    const fixture = await createAuthFixture();
+    fixture.challengeStore.returnFalseNextFinalize = true;
+    fixture.sessionStore.failNextRefreshRevoke = true;
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "revoke-failure@example.com",
+      password: "Customer.2026!"
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+      .expect(503)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.dependency.redis_unavailable");
+      });
+
+    expect(fixture.sessionStore.revokedRefreshTokens).toEqual([
+      fixture.sessionStore.storedRefreshTokens[0]
+    ]);
+    expect(fixture.sessionStore.refreshTokens.size).toBe(1);
+    expect(fixture.challengeStore.releasedChallenges).toHaveLength(1);
+  });
+
+  it.each([
+    {
+      name: "Needo ID allocation error",
+      originalError: new NeedoIdAllocationExhaustedError(),
+      expectedStatus: 503,
+      expectedCode: ERROR_CODES.NEEDO_ID_ALLOCATION_UNAVAILABLE,
+      expectedMessage: "error.auth.needo_id_allocation_unavailable"
+    },
+    {
+      name: "unique-email P2002 error",
+      originalError: { code: "P2002" },
+      expectedStatus: 409,
+      expectedCode: ERROR_CODES.EMAIL_ALREADY_EXISTS,
+      expectedMessage: "error.user.email_exists"
+    },
+    {
+      name: "AppError",
+      originalError: new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.redis_unavailable",
+        statusCode: 503
+      }),
+      expectedStatus: 503,
+      expectedCode: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+      expectedMessage: "error.dependency.redis_unavailable"
+    },
+    {
+      name: "ordinary error",
+      originalError: new Error("simulated ordinary registration failure"),
+      expectedStatus: 500,
+      expectedCode: ERROR_CODES.INTERNAL,
+      expectedMessage: "error.internal_server_error"
+    }
+  ])(
+    "preserves the original $name mapping when challenge release fails",
+    async ({ originalError, expectedStatus, expectedCode, expectedMessage }) => {
+      const fixture = await createAuthFixture();
+      fixture.repository.createVerifiedBaselineCustomer.mockRejectedValueOnce(originalError);
+      fixture.challengeStore.failNextRelease = true;
+      const started = await request(fixture.app)
+        .post("/api/v1/auth/register")
+        .send({
+          email: `release-${expectedStatus}@example.com`,
+          password: "Customer.2026!"
+        });
+
+      await request(fixture.app)
+        .post("/api/v1/auth/register/verify")
+        .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+        .expect(expectedStatus)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code: expectedCode, message: expectedMessage });
+        });
+
+      expect(fixture.challengeStore.releasedChallenges).toHaveLength(1);
+    }
+  );
 
   it("recovers the same registration after a unique-email race when its audit evidence committed", async () => {
     const fixture = await createAuthFixture();

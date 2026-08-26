@@ -310,20 +310,32 @@ export class AuthService {
       }
       return { ...tokens, needoId: user.needoId };
     } catch (error) {
-      if (loginReceipt) {
-        await this.revokeRefreshTokenAfterFailedLogin(loginReceipt.userId, loginReceipt.refreshJti);
+      const originalError = error;
+      try {
+        if (loginReceipt) {
+          await this.revokeRefreshTokenAfterFailedLogin(
+            loginReceipt.userId,
+            loginReceipt.refreshJti
+          );
+        }
+      } catch {
+        // The original failure remains authoritative; no credential is logged here.
       }
-      await this.verificationChallengeStore.releaseEmailChallenge({
-        challengeId,
-        reservationToken: reserved.reservationToken
-      });
-      if (error instanceof NeedoIdAllocationExhaustedError) {
+      try {
+        await this.verificationChallengeStore.releaseEmailChallenge({
+          challengeId,
+          reservationToken: reserved.reservationToken
+        });
+      } catch {
+        // The original failure remains authoritative; no challenge data is logged here.
+      }
+      if (originalError instanceof NeedoIdAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
-      if (this.isUniqueConstraintError(error)) {
+      if (this.isUniqueConstraintError(originalError)) {
         throw this.emailAlreadyExistsError();
       }
-      throw error;
+      throw originalError;
     }
   }
 
