@@ -427,9 +427,17 @@ const main = async (): Promise<void> => {
     const claimLimitAttribution = await prisma.affiliateAttribution.findFirstOrThrow({
       where: { bookingOrderId: claimLimitOrder.id, deletedAt: null }
     });
+    const claimLimitTask = await prisma.affiliateTask.findUniqueOrThrow({
+      where: { id: claimLimit.task.id }
+    });
+    const claimLimitReservation = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
+      where: { taskId: claimLimit.task.id }
+    });
     assert(
       claimLimitAttribution.status === "INVALIDATED" &&
         claimLimitAttribution.invalidationReason === "claim_completed_order_limit_reached" &&
+        claimLimitTask.status === "ACTIVE" &&
+        claimLimitReservation.status === "ACTIVE" &&
         (await prisma.affiliateReward.count({
           where: { attributionId: claimLimitAttribution.id, deletedAt: null }
         })) === 0,

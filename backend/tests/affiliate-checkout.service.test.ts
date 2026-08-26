@@ -100,6 +100,9 @@ const createCompletionRecord = (
   shopId: 8,
   serviceId: 88,
   rewardAllocatedNdp: 1_000,
+  taskStatus: "active",
+  taskStartsAt: new Date("2026-08-01T00:00:00.000Z"),
+  taskEndsAt: new Date("2026-10-01T00:00:00.000Z"),
   maxCompletedOrdersPerClaim: 3,
   maxCompletedOrdersPerCustomer: 2,
   claimCompletedOrderCount: 0,
@@ -771,7 +774,10 @@ describe("AffiliateCheckoutService", () => {
     const repository = createRepository();
     const rewardLedger = createRewardLedger();
     repository.lockAttributionForCompletion.mockResolvedValue(
-      createCompletionRecord({ claimCompletedOrderCount: 3 })
+      createCompletionRecord({
+        taskStatus: "budget_exhausted",
+        claimCompletedOrderCount: 3
+      })
     );
     const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
       now: () => NOW,
@@ -799,7 +805,7 @@ describe("AffiliateCheckoutService", () => {
       rewardNdp: 1_000,
       invalidatedAt: NOW,
       reason: "claim_completed_order_limit_reached",
-      restoreTaskStatus: null
+      restoreTaskStatus: "active"
     });
     expect(rewardLedger.settleAffiliateReward).not.toHaveBeenCalled();
   });
@@ -874,6 +880,32 @@ describe("AffiliateCheckoutService", () => {
       claimantWalletId: 291
     });
     repository.settleRewardAndCaptureBudget.mockRejectedValue(
+      new Error("error.affiliate.reward_settlement_conflict")
+    );
+    const service = new AffiliateCheckoutService(repository, createLinkTokens(), {
+      now: () => NOW,
+      rewardLedger: createRewardLedger()
+    });
+
+    await expect(
+      service.settleCompletedBooking({
+        bookingOrderId: 9001,
+        customerUserId: 501,
+        shopId: 8,
+        serviceId: 88,
+        actorUserId: 7,
+        transactionClient: TRANSACTION_CLIENT
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.AFFILIATE_REWARD_SETTLEMENT_CONFLICT,
+      message: "error.affiliate.reward_settlement_conflict",
+      statusCode: 409
+    });
+  });
+
+  it("translates a locked completion snapshot conflict into the stable domain error", async () => {
+    const repository = createRepository();
+    repository.lockAttributionForCompletion.mockRejectedValue(
       new Error("error.affiliate.reward_settlement_conflict")
     );
     const service = new AffiliateCheckoutService(repository, createLinkTokens(), {

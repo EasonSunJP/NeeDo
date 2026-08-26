@@ -194,6 +194,9 @@ export interface AffiliateCompletionRecord {
   shopId: number;
   serviceId: number;
   rewardAllocatedNdp: number;
+  taskStatus: AffiliateCheckoutTaskStatus;
+  taskStartsAt: Date;
+  taskEndsAt: Date;
   maxCompletedOrdersPerClaim: number | null;
   maxCompletedOrdersPerCustomer: number | null;
   claimCompletedOrderCount: number;
@@ -562,9 +565,17 @@ export class AffiliateCheckoutService {
     input: AffiliateCompletionInput
   ): Promise<AffiliateCompletionResult> {
     const repository = this.repository.forTransaction(input.transactionClient);
-    const attribution = await repository.lockAttributionForCompletion(
-      input.bookingOrderId
-    );
+    let attribution: AffiliateCompletionRecord | null;
+    try {
+      attribution = await repository.lockAttributionForCompletion(
+        input.bookingOrderId
+      );
+    } catch (error) {
+      if (this.isRewardSettlementConflict(error)) {
+        throw this.rewardSettlementConflictError();
+      }
+      throw error;
+    }
 
     if (!attribution) {
       return { status: "no_op", reason: "no_attribution" };
@@ -707,6 +718,10 @@ export class AffiliateCheckoutService {
     >
   ): Promise<AffiliateCompletionResult> {
     const invalidatedAt = this.now();
+    const restoreTaskStatus = this.resolveCancellationRestoreStatus(
+      attribution,
+      invalidatedAt
+    );
     try {
       await repository.invalidateAttributionAndRelease({
         attributionId: attribution.attributionId,
@@ -714,7 +729,7 @@ export class AffiliateCheckoutService {
         rewardNdp: attribution.rewardAllocatedNdp,
         invalidatedAt,
         reason,
-        restoreTaskStatus: null
+        restoreTaskStatus
       });
       await repository.createInvalidationAudit({
         actorUserId: input.actorUserId,
@@ -967,6 +982,13 @@ export class AffiliateCheckoutService {
       message: "error.affiliate.reward_settlement_conflict",
       statusCode: 409
     });
+  }
+
+  private isRewardSettlementConflict(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      error.message === "error.affiliate.reward_settlement_conflict"
+    );
   }
 }
 

@@ -385,6 +385,9 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
         shopId: number;
         serviceId: number;
         rewardAllocatedNdp: number;
+        taskStatus: string;
+        taskStartsAt: Date;
+        taskEndsAt: Date;
         maxCompletedOrdersPerClaim: number | null;
         maxCompletedOrdersPerCustomer: number | null;
         claimCompletedOrderCount: number;
@@ -414,6 +417,9 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
                attribution.shop_id AS shopId,
                attribution.service_id AS serviceId,
                attribution.reward_allocated_ndp AS rewardAllocatedNdp,
+               task.status AS taskStatus,
+               task.task_starts_at AS taskStartsAt,
+               task.task_ends_at AS taskEndsAt,
                task.max_completed_orders_per_claim AS maxCompletedOrdersPerClaim,
                task.max_completed_orders_per_customer AS maxCompletedOrdersPerCustomer,
                claim.completed_order_count AS claimCompletedOrderCount,
@@ -499,6 +505,9 @@ export class AffiliateCheckoutRepository implements AffiliateCheckoutRepositoryP
       shopId: Number(row.shopId),
       serviceId: Number(row.serviceId),
       rewardAllocatedNdp: Number(row.rewardAllocatedNdp),
+      taskStatus: row.taskStatus.toLowerCase() as AffiliateCheckoutTaskStatus,
+      taskStartsAt: row.taskStartsAt,
+      taskEndsAt: row.taskEndsAt,
       maxCompletedOrdersPerClaim:
         row.maxCompletedOrdersPerClaim === null
           ? null
