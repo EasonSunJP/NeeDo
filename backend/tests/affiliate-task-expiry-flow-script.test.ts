@@ -215,6 +215,9 @@ const callbackShadowsIdentifier = (
   callback: ts.ArrowFunction | ts.FunctionExpression,
   identifier: string
 ): boolean => {
+  if (ts.isFunctionExpression(callback) && callback.name?.text === identifier) {
+    return true;
+  }
   if (callback.parameters.some((parameter) => bindingNameIncludes(parameter.name, identifier))) {
     return true;
   }
@@ -256,7 +259,16 @@ const callbackShadowsIdentifier = (
       shadowed = node.name.text === identifier;
       return;
     }
-    if (ts.isFunctionExpression(node) || ts.isArrowFunction(node)) return;
+    if (
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node) ||
+      ts.isConstructorDeclaration(node)
+    ) {
+      return;
+    }
     ts.forEachChild(node, visit);
   };
   visit(callback.body);
@@ -758,5 +770,71 @@ describe("affiliate expiry AST contract helpers", () => {
         stringBindings: { flow: "completion" }
       })
     ).toThrow("completionExpiryResolution verifyRollback shadows assertExpiryVictimRollback");
+  });
+
+  it("rejects a named rollback function expression that shadows the assertion", () => {
+    const fixture = parseFixture(`
+      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+        verifyRollback: async function assertExpiryVictimRollback() {
+          await assertExpiryVictimRollback({
+            flow: "completion",
+            baseline: completionPreRaceSnapshot,
+            snapshotInput: completionSnapshotInput,
+            raceStartedAt: completionRaceStartedAt,
+            raceSettledAt: completionRaceSettledAt
+          });
+        }
+      });
+    `);
+
+    expect(() =>
+      assertExactRollbackBinding(fixture, {
+        resolution: "completionExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        },
+        stringBindings: { flow: "completion" }
+      })
+    ).toThrow("completionExpiryResolution verifyRollback shadows assertExpiryVictimRollback");
+  });
+
+  it("allows assertion-name bindings confined to an unrelated nested object method", () => {
+    const fixture = parseFixture(`
+      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+        verifyRollback: async () => {
+          ({
+            helper() {
+              const assertExpiryVictimRollback = () => undefined;
+              return assertExpiryVictimRollback();
+            }
+          });
+          await assertExpiryVictimRollback({
+            flow: "completion",
+            baseline: completionPreRaceSnapshot,
+            snapshotInput: completionSnapshotInput,
+            raceStartedAt: completionRaceStartedAt,
+            raceSettledAt: completionRaceSettledAt
+          });
+        }
+      });
+    `);
+
+    expect(() =>
+      assertExactRollbackBinding(fixture, {
+        resolution: "completionExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        },
+        stringBindings: { flow: "completion" }
+      })
+    ).not.toThrow();
   });
 });
