@@ -5,6 +5,7 @@ import { env } from "../src/config/env";
 import { createRedisClient, type RedisClient } from "../src/config/redis";
 import { AuthRepository } from "../src/repositories/auth.repository";
 import { RedisAuthSessionStore } from "../src/services/auth-session.store";
+import type { AuthSessionStore } from "../src/services/auth-session.store";
 import { AuthService } from "../src/services/auth.service";
 import { RedisVerificationChallengeStore } from "../src/services/auth-verification-challenge.store";
 
@@ -138,6 +139,105 @@ describeIntegration("formal Google recovery integration", () => {
           action: "auth.google.link",
           targetId: existing.id,
           metadata: { path: "$.challengeId", equals: pending.challengeId }
+        }
+      })
+    ).toBe(1);
+    await expect(
+      service.verifyGoogleRegistrationOrLink(pending.challengeId, delivered[0], { ip: "127.0.0.1" })
+    ).rejects.toBeDefined();
+  });
+
+  it("recovers a committed Google-only customer after refresh storage failure without duplicating it", async () => {
+    assertNeedoTest();
+    if (!prisma) {
+      const module = await import("../src/prisma/client");
+      prisma = module.prisma;
+      redis = createRedisClient();
+      await redis.connect();
+    }
+    const googleOnlyEmail = `${marker}-google-only@needo.test`;
+    const googleOnlySubject = `${marker}-google-only-subject`;
+    const challengeStore = new RedisVerificationChallengeStore(() => redis);
+    const baseSessionStore = new RedisAuthSessionStore(() => redis);
+    let failFirstStore = true;
+    const sessionStore = new Proxy(baseSessionStore, {
+      get(target, property, receiver) {
+        if (property === "storeRefreshToken") {
+          return async (...args: Parameters<AuthSessionStore["storeRefreshToken"]>) => {
+            if (failFirstStore) {
+              failFirstStore = false;
+              throw new Error("injected Google refresh storage failure");
+            }
+            return target.storeRefreshToken(...args);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as AuthSessionStore;
+    const delivered: string[] = [];
+    const repository = new AuthRepository(prisma);
+    const verifier = {
+      verify: async () => ({
+        subject: googleOnlySubject,
+        email: googleOnlyEmail,
+        emailVerifiedAt: new Date(),
+        name: "Untrusted Google Name",
+        pictureUrl: "https://example.test/untrusted.png"
+      })
+    };
+    const service = new AuthService(
+      env,
+      repository,
+      sessionStore,
+      { sendOtp: async (_email, otp) => void delivered.push(otp) },
+      challengeStore,
+      false,
+      verifier
+    );
+    const init = await service.initializeGoogleLogin();
+    const pending = await service.submitGoogleCredential(
+      { credential: "google-only-credential", nonceChallengeId: init.nonceChallengeId },
+      { ip: "127.0.0.1" }
+    );
+    if (pending.status !== "verification_required")
+      throw new Error("expected Google-only challenge");
+    challengeIds.push(pending.challengeId);
+    await expect(
+      service.verifyGoogleRegistrationOrLink(pending.challengeId, delivered[0], { ip: "127.0.0.1" })
+    ).rejects.toThrow("injected Google refresh storage failure");
+    const committed = await prisma.user.findUniqueOrThrow({
+      where: { email: googleOnlyEmail },
+      include: { customerProfile: true, identities: { where: { deletedAt: null } } }
+    });
+    userIds.push(committed.id);
+    expect(committed.passwordHash).toBeNull();
+    expect(committed.username).toBe(committed.needoId);
+    expect(committed.customerProfile?.displayName).toBe(committed.needoId);
+    expect(committed.identities.find((item) => item.isDefault)?.displayName).toBe(
+      committed.needoId
+    );
+    const recovered = await service.verifyGoogleRegistrationOrLink(
+      pending.challengeId,
+      delivered[0],
+      { ip: "127.0.0.1" }
+    );
+    const refreshPayload = new (
+      await import("../src/services/auth-token.service")
+    ).AuthTokenService(env).verifyRefreshToken(recovered.refreshToken);
+    refreshes.push({ userId: committed.id, jti: refreshPayload.jti });
+    expect(await prisma.user.count({ where: { email: googleOnlyEmail } })).toBe(1);
+    expect(
+      await prisma.externalAuthAccount.count({
+        where: { providerSubject: googleOnlySubject, deletedAt: null }
+      })
+    ).toBe(1);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          action: "auth.register",
+          targetId: committed.id,
+          metadata: { path: "$.registrationChallengeId", equals: pending.challengeId }
         }
       })
     ).toBe(1);
