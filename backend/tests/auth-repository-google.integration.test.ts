@@ -192,7 +192,9 @@ describeIntegration("AuthRepository verified account and Google binding integrat
       ])
     );
     expect(stored.userRoles).toEqual(
-      expect.arrayContaining([expect.objectContaining({ role: { code: "customer" } })])
+      expect.arrayContaining([
+        expect.objectContaining({ role: expect.objectContaining({ code: "customer" }) })
+      ])
     );
     expect(stored.externalAccounts).toEqual(
       expect.arrayContaining([
