@@ -170,6 +170,11 @@ const main = async (): Promise<void> => {
       new AffiliateTaskExpiryRepository(prisma),
       new LedgerService(new LedgerRepository(prisma))
     );
+    const walletBeforeExpiry = await prisma.wallet.findUniqueOrThrow({ where: { id: wallet.id } });
+    assert(
+      walletBeforeExpiry.availableBalance === 600 && walletBeforeExpiry.frozenBalance === 3_800,
+      "expiry fixture wallet snapshot is incorrect"
+    );
     const initialSummary = await expiry.expireDue({ now, batchSize: 10 });
     assert(
       initialSummary.scanned === 3 &&
@@ -189,10 +194,23 @@ const main = async (): Promise<void> => {
         prisma.affiliateTask.findUniqueOrThrow({ where: { id: zeroUnallocated.id } }),
         prisma.affiliateBudgetReservation.findUniqueOrThrow({ where: { taskId: zeroUnallocated.id } })
       ]);
+    const walletAfterInitialExpiry = await prisma.wallet.findUniqueOrThrow({
+      where: { id: wallet.id }
+    });
+    assert(
+      walletAfterInitialExpiry.availableBalance - walletBeforeExpiry.availableBalance === 1_800 &&
+        walletAfterInitialExpiry.frozenBalance - walletBeforeExpiry.frozenBalance === -1_800 &&
+        walletAfterInitialExpiry.availableBalance === 2_400 &&
+        walletAfterInitialExpiry.frozenBalance === 2_000,
+      "initial expiry wallet delta is incorrect"
+    );
     assert(
       fullTask.status === "ENDED" &&
         fullTask.endedAt !== null &&
+        fullTask.totalBudgetNdp === 1_000 &&
+        fullTask.reservedBudgetNdp === 1_000 &&
         fullTask.releasedBudgetNdp === 1_000 &&
+        fullReservation.totalFrozenNdp === 1_000 &&
         fullReservation.allocatedNdp === 0 &&
         fullReservation.capturedNdp === 0 &&
         fullReservation.releasedNdp === 1_000 &&
@@ -202,9 +220,12 @@ const main = async (): Promise<void> => {
     assert(
       partialTask.status === "ENDED" &&
         partialTask.endedAt !== null &&
+        partialTask.totalBudgetNdp === 2_000 &&
+        partialTask.reservedBudgetNdp === 2_000 &&
         partialTask.allocatedBudgetNdp === 500 &&
         partialTask.settledBudgetNdp === 700 &&
         partialTask.releasedBudgetNdp === 800 &&
+        partialReservation.totalFrozenNdp === 2_000 &&
         partialReservation.allocatedNdp === 500 &&
         partialReservation.capturedNdp === 700 &&
         partialReservation.releasedNdp === 800 &&
@@ -214,7 +235,10 @@ const main = async (): Promise<void> => {
     assert(
       zeroTask.status === "ENDED" &&
         zeroTask.endedAt !== null &&
+        zeroTask.totalBudgetNdp === 1_000 &&
+        zeroTask.reservedBudgetNdp === 1_000 &&
         zeroTask.releasedBudgetNdp === 0 &&
+        zeroReservation.totalFrozenNdp === 1_000 &&
         zeroReservation.releasedNdp === 0 &&
         zeroReservation.status === "RELEASED" &&
         zeroReservation.releasedAt !== null &&
@@ -239,11 +263,27 @@ const main = async (): Promise<void> => {
         data: { allocatedNdp: 0 }
       });
     });
+    const walletBeforeIncrementalExpiry = await prisma.wallet.findUniqueOrThrow({
+      where: { id: wallet.id }
+    });
     const incrementalSummary = await expiry.expireDue({ now, batchSize: 10 });
     const [incrementalTask, incrementalReservation] = await Promise.all([
       prisma.affiliateTask.findUniqueOrThrow({ where: { id: laterIncremental.id } }),
       prisma.affiliateBudgetReservation.findUniqueOrThrow({ where: { taskId: laterIncremental.id } })
     ]);
+    const walletAfterIncrementalExpiry = await prisma.wallet.findUniqueOrThrow({
+      where: { id: wallet.id }
+    });
+    assert(
+      walletAfterIncrementalExpiry.availableBalance -
+        walletBeforeIncrementalExpiry.availableBalance ===
+        500 &&
+        walletAfterIncrementalExpiry.frozenBalance - walletBeforeIncrementalExpiry.frozenBalance ===
+          -500 &&
+        walletAfterIncrementalExpiry.availableBalance === 2_900 &&
+        walletAfterIncrementalExpiry.frozenBalance === 1_500,
+      "incremental expiry wallet delta is incorrect"
+    );
     assert(
       incrementalSummary.scanned === 1 &&
         incrementalSummary.ended === 0 &&
@@ -252,9 +292,12 @@ const main = async (): Promise<void> => {
         incrementalSummary.releasedNdp === 500 &&
         incrementalTask.status === "ENDED" &&
         incrementalTask.endedAt !== null &&
+        incrementalTask.totalBudgetNdp === 1_200 &&
+        incrementalTask.reservedBudgetNdp === 1_200 &&
         incrementalTask.allocatedBudgetNdp === 0 &&
         incrementalTask.settledBudgetNdp === 400 &&
         incrementalTask.releasedBudgetNdp === 800 &&
+        incrementalReservation.totalFrozenNdp === 1_200 &&
         incrementalReservation.allocatedNdp === 0 &&
         incrementalReservation.capturedNdp === 400 &&
         incrementalReservation.releasedNdp === 800 &&
@@ -265,6 +308,9 @@ const main = async (): Promise<void> => {
     await prisma.affiliateTask.update({
       where: { id: concurrent.id },
       data: { taskEndsAt: dueAt, claimEndsAt: dueAt }
+    });
+    const walletBeforeConcurrentExpiry = await prisma.wallet.findUniqueOrThrow({
+      where: { id: wallet.id }
     });
     const concurrentRuns = await Promise.allSettled([
       expiry.expireDue({ now, batchSize: 10 }),
@@ -281,6 +327,35 @@ const main = async (): Promise<void> => {
           0
         ) === 1_000,
       "concurrent expireDue calls did not produce exactly one release"
+    );
+    const [concurrentTask, concurrentReservation, walletAfterConcurrentExpiry] = await Promise.all([
+      prisma.affiliateTask.findUniqueOrThrow({ where: { id: concurrent.id } }),
+      prisma.affiliateBudgetReservation.findUniqueOrThrow({ where: { taskId: concurrent.id } }),
+      prisma.wallet.findUniqueOrThrow({ where: { id: wallet.id } })
+    ]);
+    assert(
+      walletAfterConcurrentExpiry.availableBalance - walletBeforeConcurrentExpiry.availableBalance ===
+        1_000 &&
+        walletAfterConcurrentExpiry.frozenBalance - walletBeforeConcurrentExpiry.frozenBalance ===
+          -1_000 &&
+        walletAfterConcurrentExpiry.availableBalance === 3_900 &&
+        walletAfterConcurrentExpiry.frozenBalance === 500,
+      "concurrent expiry wallet delta is incorrect"
+    );
+    assert(
+      concurrentTask.status === "ENDED" &&
+        concurrentTask.endedAt !== null &&
+        concurrentTask.totalBudgetNdp === 1_000 &&
+        concurrentTask.reservedBudgetNdp === 1_000 &&
+        concurrentTask.allocatedBudgetNdp === 0 &&
+        concurrentTask.settledBudgetNdp === 0 &&
+        concurrentTask.releasedBudgetNdp === 1_000 &&
+        concurrentReservation.totalFrozenNdp === 1_000 &&
+        concurrentReservation.allocatedNdp === 0 &&
+        concurrentReservation.capturedNdp === 0 &&
+        concurrentReservation.releasedNdp === 1_000 &&
+        concurrentReservation.status === "RELEASED",
+      "concurrent expiry did not preserve task and reservation budget totals"
     );
 
     const releaseTransactions = await prisma.ledgerTransaction.findMany({
