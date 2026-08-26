@@ -245,4 +245,73 @@ describeIntegration("formal Google recovery integration", () => {
       service.verifyGoogleRegistrationOrLink(pending.challengeId, delivered[0], { ip: "127.0.0.1" })
     ).rejects.toBeDefined();
   });
+
+  it("persists repeat Google login facts atomically and rejects a disabled account without a session", async () => {
+    assertNeedoTest();
+    const repeatEmail = `${marker}-repeat@needo.test`;
+    const repeatSubject = `${marker}-repeat-subject`;
+    const repository = new AuthRepository(prisma);
+    const account = await repository.createVerifiedBaselineCustomer({
+      email: repeatEmail,
+      passwordHash: null,
+      emailVerifiedAt: new Date(),
+      context: { ip: "127.0.0.1" },
+      googleIdentity: { subject: repeatSubject, email: repeatEmail, emailVerifiedAt: new Date() }
+    });
+    userIds.push(account.id);
+    const sessionStore = new RedisAuthSessionStore(() => redis);
+    const challengeStore = new RedisVerificationChallengeStore(() => redis);
+    const service = new AuthService(
+      env,
+      repository,
+      sessionStore,
+      { sendOtp: async () => {} },
+      challengeStore,
+      false,
+      {
+        verify: async () => ({
+          subject: repeatSubject,
+          email: repeatEmail,
+          emailVerifiedAt: new Date(),
+          name: null,
+          pictureUrl: null
+        })
+      }
+    );
+    const beforeBinding = await prisma.externalAuthAccount.findFirstOrThrow({
+      where: { providerSubject: repeatSubject }
+    });
+    const init = await service.initializeGoogleLogin();
+    const result = await service.submitGoogleCredential(
+      { credential: "repeat-credential", nonceChallengeId: init.nonceChallengeId },
+      { ip: "127.0.0.1" }
+    );
+    if (result.status !== "authenticated") throw new Error("expected repeat authentication");
+    const token = new (await import("../src/services/auth-token.service")).AuthTokenService(
+      env
+    ).verifyRefreshToken(result.refreshToken);
+    refreshes.push({ userId: account.id, jti: token.jti });
+    const afterBinding = await prisma.externalAuthAccount.findFirstOrThrow({
+      where: { id: beforeBinding.id }
+    });
+    const afterUser = await prisma.user.findUniqueOrThrow({ where: { id: account.id } });
+    expect(afterBinding.lastUsedAt).not.toBeNull();
+    expect(afterUser.lastLoginAt).not.toBeNull();
+    expect(await prisma.loginLog.count({ where: { userId: account.id, status: "success" } })).toBe(
+      1
+    );
+    expect(await sessionStore.hasRefreshToken(account.id, token.jti)).toBe(true);
+
+    await prisma.user.update({ where: { id: account.id }, data: { isActive: false } });
+    const disabledInit = await service.initializeGoogleLogin();
+    await expect(
+      service.submitGoogleCredential(
+        { credential: "disabled-repeat", nonceChallengeId: disabledInit.nonceChallengeId },
+        { ip: "127.0.0.1" }
+      )
+    ).rejects.toMatchObject({ message: "error.auth.account_disabled" });
+    expect(await prisma.loginLog.count({ where: { userId: account.id, status: "success" } })).toBe(
+      1
+    );
+  });
 });
