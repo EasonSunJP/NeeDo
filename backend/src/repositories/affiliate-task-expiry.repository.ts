@@ -64,6 +64,7 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
   public async listExpiryCandidateTaskIds(input: {
     now: Date;
     batchSize: number;
+    afterTaskId: number;
   }): Promise<number[]> {
     const rows = await this.client.$queryRaw<Array<{ id: number }>>(
       Prisma.sql`
@@ -73,6 +74,7 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
           ON reservation.task_id = task.id
         WHERE task.deleted_at IS NULL
           AND reservation.deleted_at IS NULL
+          AND task.id > ${input.afterTaskId}
           AND (
             (
               task.status IN ('scheduled', 'active', 'paused', 'budget_exhausted')

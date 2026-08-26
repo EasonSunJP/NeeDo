@@ -80,7 +80,7 @@ describe("AffiliateTaskExpiryRepository", () => {
     const repository = new AffiliateTaskExpiryRepository({ $queryRaw: queryRaw } as never);
 
     await expect(
-      repository.listExpiryCandidateTaskIds({ now, batchSize: 25 })
+      repository.listExpiryCandidateTaskIds({ now, batchSize: 25, afterTaskId: 70 })
     ).resolves.toEqual([71, 72]);
 
     const query = sqlText(queryRaw.mock.calls[0][0]);
@@ -88,6 +88,7 @@ describe("AffiliateTaskExpiryRepository", () => {
     expect(query).toContain("affiliate_budget_reservations AS reservation");
     expect(query).toContain("task.deleted_at IS NULL");
     expect(query).toContain("reservation.deleted_at IS NULL");
+    expect(query).toContain("task.id >");
     expect(query).toMatch(/task\.status IN \('scheduled', 'active', 'paused', 'budget_exhausted'\)/);
     expect(query).toContain("task.status = 'ended'");
     expect(query).toContain(
@@ -95,6 +96,7 @@ describe("AffiliateTaskExpiryRepository", () => {
     );
     expect(query).toContain("ORDER BY task.id ASC");
     expect(query).toContain("LIMIT");
+    expect(queryRaw.mock.calls[0][0].values).toEqual([70, now, 25]);
     expect(query).not.toMatch(/'draft'|'pending_review'|'rejected'|'cancelled'/);
   });
 

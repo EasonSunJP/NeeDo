@@ -10,6 +10,8 @@ import type {
   AffiliatePublisherType
 } from "./affiliate-task.service";
 import type { ReleaseAffiliateTaskBudgetInput } from "./ledger.service";
+import { ERROR_CODES } from "../constants/error-codes";
+import { AppError } from "../utils/app-error";
 
 export type AffiliateTaskExpiryTransactionClient = unknown;
 
@@ -31,7 +33,11 @@ export interface AffiliateTaskExpiryTaskRecord {
 }
 
 export interface AffiliateTaskExpiryRepositoryPort {
-  listExpiryCandidateTaskIds: (input: { now: Date; batchSize: number }) => Promise<number[]>;
+  listExpiryCandidateTaskIds: (input: {
+    now: Date;
+    batchSize: number;
+    afterTaskId: number;
+  }) => Promise<number[]>;
   runInTransaction: <T>(
     handler: (
       repository: AffiliateTaskExpiryRepositoryPort,
@@ -85,6 +91,16 @@ export interface AffiliateTaskExpiryOutcome {
   releasedNdp: number;
 }
 
+export interface AffiliateTaskExpiryCandidateFailure {
+  taskId: number;
+  code: number;
+  message: string;
+}
+
+export type AffiliateTaskExpiryFailureReporter = (
+  failure: AffiliateTaskExpiryCandidateFailure
+) => void | Promise<void>;
+
 type ExpirableAffiliateTaskStatus = "scheduled" | "active" | "paused" | "budget_exhausted";
 
 const EXPIRABLE_STATUSES: ExpirableAffiliateTaskStatus[] = [
@@ -101,19 +117,20 @@ const isExpirableStatus = (status: AffiliateTaskStatus): status is ExpirableAffi
   EXPIRABLE_STATUSES.includes(status as ExpirableAffiliateTaskStatus);
 
 export class AffiliateTaskExpiryService {
+  private afterTaskId = 0;
+
   public constructor(
     private readonly repository: AffiliateTaskExpiryRepositoryPort,
-    private readonly ledger: AffiliateBudgetLedgerPort
+    private readonly ledger: AffiliateBudgetLedgerPort,
+    private readonly reportFailure?: AffiliateTaskExpiryFailureReporter
   ) {}
 
   public async expireDue(input: AffiliateTaskExpiryInput): Promise<AffiliateTaskExpiryBatchSummary> {
     this.validateInput(input);
-    const candidateIds = (
-      await this.repository.listExpiryCandidateTaskIds({
-        now: input.now,
-        batchSize: input.batchSize
-      })
-    ).slice(0, input.batchSize);
+    const candidateIds = await this.listCandidateIds(input);
+    if (candidateIds.length > 0) {
+      this.afterTaskId = candidateIds[candidateIds.length - 1];
+    }
     const summary: AffiliateTaskExpiryBatchSummary = {
       scanned: candidateIds.length,
       ended: 0,
@@ -128,12 +145,55 @@ export class AffiliateTaskExpiryService {
         summary.ended += outcome.ended ? 1 : 0;
         summary.released += outcome.released ? 1 : 0;
         summary.releasedNdp += outcome.releasedNdp;
-      } catch {
+      } catch (error) {
         summary.failed += 1;
+        await this.reportCandidateFailure(taskId, error);
       }
     }
 
     return summary;
+  }
+
+  private async listCandidateIds(input: AffiliateTaskExpiryInput): Promise<number[]> {
+    let candidateIds = (
+      await this.repository.listExpiryCandidateTaskIds({
+        now: input.now,
+        batchSize: input.batchSize,
+        afterTaskId: this.afterTaskId
+      })
+    ).slice(0, input.batchSize);
+
+    if (candidateIds.length === 0 && this.afterTaskId !== 0) {
+      this.afterTaskId = 0;
+      candidateIds = (
+        await this.repository.listExpiryCandidateTaskIds({
+          now: input.now,
+          batchSize: input.batchSize,
+          afterTaskId: 0
+        })
+      ).slice(0, input.batchSize);
+    }
+
+    return candidateIds;
+  }
+
+  private async reportCandidateFailure(taskId: number, error: unknown): Promise<void> {
+    if (!this.reportFailure) {
+      return;
+    }
+    const failure: AffiliateTaskExpiryCandidateFailure =
+      error instanceof AppError
+        ? { taskId, code: error.code, message: error.message }
+        : {
+            taskId,
+            code: ERROR_CODES.INTERNAL,
+            message: "error.internal_server_error"
+          };
+    try {
+      await this.reportFailure(failure);
+    } catch {
+      return;
+    }
   }
 
   private expireCandidate(taskId: number, now: Date): Promise<AffiliateTaskExpiryOutcome> {

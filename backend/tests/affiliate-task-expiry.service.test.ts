@@ -10,6 +10,8 @@ import type {
   ReleaseAffiliateTaskBudgetInput
 } from "../src/services/ledger.service";
 import type { AffiliateBudgetLedgerPort } from "../src/services/affiliate-task.service";
+import { ERROR_CODES } from "../src/constants/error-codes";
+import { AppError } from "../src/utils/app-error";
 
 const now = new Date("2026-10-01T00:00:00.000Z");
 const endedAt = new Date("2026-09-30T00:00:00.000Z");
@@ -67,7 +69,7 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
     metadata?: unknown;
   }> = [];
   public candidateIds: number[] = [];
-  public candidateInputs: Array<{ now: Date; batchSize: number }> = [];
+  public candidateInputs: Array<{ now: Date; batchSize: number; afterTaskId: number }> = [];
   public afterCandidateScan: (() => void) | undefined;
 
   public seed(inputTask: AffiliateTaskExpiryTaskRecord, inputReservation: AffiliateBudgetReservationRecord) {
@@ -79,10 +81,14 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
   public async listExpiryCandidateTaskIds(input: {
     now: Date;
     batchSize: number;
+    afterTaskId: number;
   }): Promise<number[]> {
     this.candidateInputs.push(input);
     this.afterCandidateScan?.();
-    return this.candidateIds;
+    return this.candidateIds
+      .filter((taskId) => taskId > input.afterTaskId)
+      .sort((left, right) => left - right)
+      .slice(0, input.batchSize);
   }
 
   public async runInTransaction<T>(
@@ -170,6 +176,7 @@ class TransactionalExpiryRepository implements AffiliateTaskExpiryRepositoryPort
 class AffiliateBudgetLedgerSpy implements AffiliateBudgetLedgerPort {
   public calls: ReleaseAffiliateTaskBudgetInput[] = [];
   public failTaskIds = new Set<number>();
+  public failures = new Map<number, unknown>();
   private nextTransactionId = 1;
 
   public async freezeAffiliateTaskBudget(): Promise<AffiliateBudgetLedgerResult> {
@@ -180,6 +187,9 @@ class AffiliateBudgetLedgerSpy implements AffiliateBudgetLedgerPort {
     input: ReleaseAffiliateTaskBudgetInput
   ): Promise<AffiliateBudgetLedgerResult> {
     this.calls.push(input);
+    if (this.failures.has(input.taskId)) {
+      throw this.failures.get(input.taskId);
+    }
     if (this.failTaskIds.has(input.taskId)) {
       throw new Error(`ledger failure for ${input.taskId}`);
     }
@@ -192,10 +202,12 @@ class AffiliateBudgetLedgerSpy implements AffiliateBudgetLedgerPort {
   }
 }
 
-const createFixture = () => {
+const createFixture = (
+  reportFailure?: ConstructorParameters<typeof AffiliateTaskExpiryService>[2]
+) => {
   const repository = new TransactionalExpiryRepository();
   const ledger = new AffiliateBudgetLedgerSpy();
-  const service = new AffiliateTaskExpiryService(repository, ledger);
+  const service = new AffiliateTaskExpiryService(repository, ledger, reportFailure);
   return { repository, ledger, service };
 };
 
@@ -407,8 +419,118 @@ describe("AffiliateTaskExpiryService", () => {
 
     await service.expireDue({ now, batchSize: 1 });
 
-    expect(repository.candidateInputs).toEqual([{ now, batchSize: 1 }]);
+    expect(repository.candidateInputs).toEqual([{ now, batchSize: 1, afterTaskId: 0 }]);
     expect(repository.tasks.get(71)?.status).toBe("ended");
     expect(repository.tasks.get(72)?.status).toBe("active");
+  });
+
+  it("advances past a full poisoned page and wraps later so failures remain retryable", async () => {
+    const { repository, ledger, service } = createFixture();
+    for (const taskId of [71, 72, 73, 74]) {
+      repository.seed(
+        task({ id: taskId }),
+        reservation({ id: taskId - 58, taskId })
+      );
+    }
+    ledger.failTaskIds.add(71);
+    ledger.failTaskIds.add(72);
+
+    await expect(service.expireDue({ now, batchSize: 2 })).resolves.toMatchObject({
+      scanned: 2,
+      ended: 0,
+      released: 0,
+      failed: 2
+    });
+    await expect(service.expireDue({ now, batchSize: 2 })).resolves.toEqual({
+      scanned: 2,
+      ended: 2,
+      released: 2,
+      failed: 0,
+      releasedNdp: 2_000
+    });
+    await expect(service.expireDue({ now, batchSize: 2 })).resolves.toMatchObject({
+      scanned: 2,
+      failed: 2
+    });
+
+    expect(repository.candidateInputs.map(({ afterTaskId }) => afterTaskId)).toEqual([
+      0,
+      72,
+      74,
+      0
+    ]);
+    expect(repository.tasks.get(73)?.status).toBe("ended");
+    expect(repository.tasks.get(74)?.status).toBe("ended");
+    expect(ledger.calls.map(({ taskId }) => taskId)).toEqual([71, 72, 73, 74, 71, 72]);
+  });
+
+  it("reports stable AppError fields for one failed candidate", async () => {
+    const reportFailure = jest.fn();
+    const { repository, ledger, service } = createFixture(reportFailure);
+    repository.seed(task(), reservation());
+    ledger.failures.set(
+      71,
+      new AppError({
+        code: ERROR_CODES.WALLET_INSUFFICIENT_FROZEN,
+        message: "error.wallet.insufficient_frozen",
+        statusCode: 409,
+        cause: new Error("sensitive database detail")
+      })
+    );
+
+    await expire(service);
+
+    expect(reportFailure).toHaveBeenCalledWith({
+      taskId: 71,
+      code: ERROR_CODES.WALLET_INSUFFICIENT_FROZEN,
+      message: "error.wallet.insufficient_frozen"
+    });
+  });
+
+  it("maps unknown failures to stable internal fields without exposing the raw error", async () => {
+    const reportFailure = jest.fn();
+    const { repository, ledger, service } = createFixture(reportFailure);
+    const rawFailure = Object.assign(new Error("database password leaked"), {
+      cause: { password: "secret" },
+      query: "SELECT sensitive"
+    });
+    repository.seed(task(), reservation());
+    ledger.failures.set(71, rawFailure);
+
+    await expect(expire(service)).resolves.toEqual({
+      scanned: 1,
+      ended: 0,
+      released: 0,
+      failed: 1,
+      releasedNdp: 0
+    });
+
+    expect(reportFailure).toHaveBeenCalledTimes(1);
+    expect(reportFailure.mock.calls[0][0]).toEqual({
+      taskId: 71,
+      code: ERROR_CODES.INTERNAL,
+      message: "error.internal_server_error"
+    });
+    expect(reportFailure.mock.calls[0][0]).not.toBe(rawFailure);
+  });
+
+  it("continues the batch when the candidate failure reporter throws", async () => {
+    const reportFailure = jest.fn(() => {
+      throw new Error("logger unavailable");
+    });
+    const { repository, ledger, service } = createFixture(reportFailure);
+    repository.seed(task({ id: 71 }), reservation({ taskId: 71 }));
+    repository.seed(task({ id: 72 }), reservation({ id: 14, taskId: 72 }));
+    ledger.failTaskIds.add(71);
+
+    await expect(expire(service)).resolves.toEqual({
+      scanned: 2,
+      ended: 1,
+      released: 1,
+      failed: 1,
+      releasedNdp: 1_000
+    });
+    expect(reportFailure).toHaveBeenCalledTimes(1);
+    expect(repository.tasks.get(72)?.status).toBe("ended");
   });
 });

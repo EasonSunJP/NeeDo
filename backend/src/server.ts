@@ -25,7 +25,13 @@ const identityApplicationPurgeWorker = new IdentityApplicationPurgeWorker(
 const affiliateTaskExpiryWorker = new AffiliateTaskExpiryWorker(
   new AffiliateTaskExpiryService(
     new AffiliateTaskExpiryRepository(),
-    new LedgerService(new LedgerRepository())
+    new LedgerService(new LedgerRepository()),
+    ({ taskId, code, message }) => {
+      logger.error(
+        { taskId, code, message },
+        "Affiliate task expiry candidate failed"
+      );
+    }
   ),
   logger,
   env.AFFILIATE_TASK_EXPIRY_INTERVAL_MS,
