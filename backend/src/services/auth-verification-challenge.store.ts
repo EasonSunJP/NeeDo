@@ -1,4 +1,11 @@
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createHmac,
+  randomBytes,
+  randomUUID
+} from "node:crypto";
 import type { RedisClient } from "../config/redis";
 import { getRedisClient } from "../config/redis";
 import { env } from "../config/env";
@@ -23,6 +30,7 @@ export interface PasswordChallengeMetadata {
 export interface GoogleChallengeMetadata {
   providerSubject: string;
   providerEmail: string;
+  providerEmailVerifiedAt: string;
 }
 
 export type VerificationChallengeMetadata =
@@ -100,6 +108,7 @@ export interface VerificationChallengeStore {
   }): Promise<boolean>;
   consumeEmailChallenge(input: ConsumeVerificationChallengeInput): Promise<ConsumeChallengeResult>;
   createGoogleNonce(input: { userId?: number }): Promise<CreatedGoogleNonce>;
+  readGoogleNonce(input: { challengeId: string; userId?: number }): Promise<string | null>;
   consumeGoogleNonce(input: {
     challengeId: string;
     expectedNonce: string;
@@ -274,7 +283,8 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
       this.googleNonceKey(challengeId),
       JSON.stringify({
         userId: input.userId ?? null,
-        digest: this.createDigest(challengeId, "google_nonce", nonce)
+        digest: this.createDigest(challengeId, "google_nonce", nonce),
+        encryptedNonce: this.encryptNonce(nonce)
       }),
       env.AUTH_GOOGLE_NONCE_TTL_SECONDS
     );
@@ -284,6 +294,28 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
       nonce,
       expiresInSeconds: env.AUTH_GOOGLE_NONCE_TTL_SECONDS
     };
+  }
+
+  public async readGoogleNonce(input: {
+    challengeId: string;
+    userId?: number;
+  }): Promise<string | null> {
+    const client = await this.connect();
+    const serialized = await this.withRedisUnavailableGuard(() =>
+      client.get(this.googleNonceKey(input.challengeId))
+    );
+    if (!serialized) return null;
+    try {
+      const parsed = JSON.parse(serialized) as {
+        userId?: number | null;
+        encryptedNonce?: string;
+      };
+      const storedUserId = parsed.userId ?? undefined;
+      if (storedUserId !== input.userId || !parsed.encryptedNonce) return null;
+      return this.decryptNonce(parsed.encryptedNonce);
+    } catch {
+      return null;
+    }
   }
 
   public async consumeGoogleNonce(input: {
@@ -337,6 +369,32 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
     return randomBytes(32).toString("base64url");
   }
 
+  private encryptNonce(nonce: string): string {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", this.nonceEncryptionKey(), iv);
+    const ciphertext = Buffer.concat([cipher.update(nonce, "utf8"), cipher.final()]);
+    return `${iv.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}.${ciphertext.toString("base64url")}`;
+  }
+
+  private decryptNonce(serialized: string): string {
+    const [iv, tag, ciphertext] = serialized.split(".");
+    if (!iv || !tag || !ciphertext) throw new Error("Invalid encrypted Google nonce");
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      this.nonceEncryptionKey(),
+      Buffer.from(iv, "base64url")
+    );
+    decipher.setAuthTag(Buffer.from(tag, "base64url"));
+    return Buffer.concat([
+      decipher.update(Buffer.from(ciphertext, "base64url")),
+      decipher.final()
+    ]).toString("utf8");
+  }
+
+  private nonceEncryptionKey(): Buffer {
+    return createHash("sha256").update(env.AUTH_VERIFICATION_SECRET).digest();
+  }
+
   private parseConsumedChallenge(serialized: string | undefined): {
     email: string;
     metadata: VerificationChallengeMetadata;
@@ -386,20 +444,28 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
     }
     if (purpose === "google_registration_or_link" || purpose === "google_authenticated_link") {
       if (
-        fieldNames.length !== 2 ||
+        fieldNames.length !== 3 ||
         fieldNames[0] !== "providerEmail" ||
-        fieldNames[1] !== "providerSubject" ||
+        fieldNames[1] !== "providerEmailVerifiedAt" ||
+        fieldNames[2] !== "providerSubject" ||
         typeof candidate.providerSubject !== "string" ||
-        typeof candidate.providerEmail !== "string"
+        typeof candidate.providerEmail !== "string" ||
+        typeof candidate.providerEmailVerifiedAt !== "string"
       ) {
         throw new Error("Verification challenge metadata is not allowed for this purpose");
       }
       const providerSubject = candidate.providerSubject.trim();
       const providerEmail = candidate.providerEmail.trim().toLowerCase();
-      if (!providerSubject || providerSubject.length > 255 || !this.isEmail(providerEmail)) {
+      const providerEmailVerifiedAt = candidate.providerEmailVerifiedAt.trim();
+      if (
+        !providerSubject ||
+        providerSubject.length > 255 ||
+        !this.isEmail(providerEmail) ||
+        Number.isNaN(new Date(providerEmailVerifiedAt).getTime())
+      ) {
         throw new Error("Verification challenge metadata is not allowed for this purpose");
       }
-      return { providerSubject, providerEmail };
+      return { providerSubject, providerEmail, providerEmailVerifiedAt };
     }
     if (fieldNames.length > 0) {
       throw new Error("Verification challenge metadata is not allowed for this purpose");

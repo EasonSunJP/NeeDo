@@ -238,7 +238,11 @@ describe("RedisVerificationChallengeStore", () => {
             ? { passwordHash: await hash("Abcd@1234", 12) }
             : purpose === "google_unlink"
               ? undefined
-              : { providerSubject: "subject-7", providerEmail: "verified@example.com" }
+              : {
+                  providerSubject: "subject-7",
+                  providerEmail: "verified@example.com",
+                  providerEmailVerifiedAt: "2026-08-26T00:00:00.000Z"
+                }
       });
 
       expect(created).toMatchObject({ expiresInSeconds: 600, maskedEmail: "c******r@example.com" });
@@ -360,6 +364,12 @@ describe("RedisVerificationChallengeStore", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
     expect([...client.values.values()][0].value).not.toContain(nonce.nonce);
+    await expect(
+      store.readGoogleNonce({ challengeId: nonce.challengeId, userId: 7 })
+    ).resolves.toBe(nonce.nonce);
+    await expect(
+      store.readGoogleNonce({ challengeId: nonce.challengeId, userId: 8 })
+    ).resolves.toBeNull();
     await expect(
       store.consumeGoogleNonce({
         challengeId: nonce.challengeId,
@@ -519,7 +529,11 @@ describe("RedisVerificationChallengeStore", () => {
       email: "google@example.com",
       otp: "123456",
       purpose: "google_authenticated_link",
-      metadata: { providerSubject: "subject-7", providerEmail: "VERIFIED@EXAMPLE.COM" }
+      metadata: {
+        providerSubject: "subject-7",
+        providerEmail: "VERIFIED@EXAMPLE.COM",
+        providerEmailVerifiedAt: "2026-08-26T00:00:00.000Z"
+      }
     });
     expect(
       [...client.values.keys()].some((key) => key.endsWith(validGoogleChallenge.challengeId))
@@ -533,7 +547,11 @@ describe("RedisVerificationChallengeStore", () => {
     ).resolves.toEqual({
       ok: true,
       email: "google@example.com",
-      metadata: { providerSubject: "subject-7", providerEmail: "verified@example.com" }
+      metadata: {
+        providerSubject: "subject-7",
+        providerEmail: "verified@example.com",
+        providerEmailVerifiedAt: "2026-08-26T00:00:00.000Z"
+      }
     });
   });
 

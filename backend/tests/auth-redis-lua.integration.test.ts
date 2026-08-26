@@ -93,6 +93,9 @@ describeRedis("Redis auth-store Lua integration", () => {
     const nonce = await challengeStore.createGoogleNonce({ userId });
     nonceIds.push(nonce.challengeId);
     await expect(
+      challengeStore.readGoogleNonce({ challengeId: nonce.challengeId, userId })
+    ).resolves.toBe(nonce.nonce);
+    await expect(
       challengeStore.consumeGoogleNonce({
         challengeId: nonce.challengeId,
         expectedNonce: nonce.nonce,
