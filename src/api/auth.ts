@@ -1,11 +1,21 @@
-import { clearAuthTokens, getStoredRefreshToken, httpClient, refreshStoredAccessToken, setAuthTokens } from "./httpClient";
 import type { AuthMePayload } from "../auth/rbac";
 import { getDeviceFingerprint } from "../lib/deviceFingerprint";
+import {
+  clearAuthTokens,
+  getStoredRefreshToken,
+  httpClient,
+  refreshStoredAccessToken,
+  setAuthTokens,
+} from "./httpClient";
 
 export type TokenPairPayload = {
   accessToken: string;
-  refreshToken: string | null;
+  refreshToken: string;
   expiresIn: number;
+};
+
+export type AuthLoginPayload = TokenPairPayload & {
+  me?: AuthMePayload;
 };
 
 export type RefreshPayload = {
@@ -13,22 +23,90 @@ export type RefreshPayload = {
   expiresIn: number;
 };
 
-export type OtpSendPayload = {
+export type VerificationChallengePayload = {
+  challengeId: string;
+  maskedEmail: string;
   expiresIn: number;
   cooldownSeconds: number;
 };
 
+export type VerificationChallengeInput = {
+  challengeId: string;
+  otp: string;
+};
+
+export type RegistrationStartInput = {
+  email: string;
+  password: string;
+};
+
+export type VerifiedRegistrationPayload = TokenPairPayload & {
+  needoId: string;
+};
+
+export type VerifiedGoogleRegistrationPayload = TokenPairPayload & {
+  needoId?: string;
+};
+
+export type GoogleAuthInitialization = {
+  clientId: string;
+  nonce: string;
+  nonceChallengeId: string;
+  expiresIn: number;
+};
+
+export type GoogleCredentialInput = {
+  credential: string;
+  nonceChallengeId: string;
+};
+
+export type GoogleCredentialResult =
+  | ({ status: "authenticated" } & AuthLoginPayload)
+  | ({ status: "verification_required" } & VerificationChallengePayload);
+
+export type GoogleLinkStatus = {
+  linked: boolean;
+  maskedEmail: string | null;
+  hasPassword: boolean;
+  canUnlink: boolean;
+};
+
+export type GoogleLinkVerifiedPayload = {
+  linked: true;
+};
+
+export type GoogleUnlinkVerifiedPayload = {
+  signedOut: true;
+};
+
+export type PasswordSetupVerifiedPayload = {
+  hasPassword: true;
+};
+
+export type PasswordSetupInput = {
+  password: string;
+};
+
+type SwitchIdentityPayload = TokenPairPayload & {
+  me: AuthMePayload;
+};
+
+// Transitional types used only by the untouched pre-verification registration page.
+// Tasks 10 and 11 remove these consumers; the compatibility calls below fail closed.
 export type RegistrationAccountType = "customer" | "technician";
 
-type RegisterAccountBaseInput = {
+type LegacyRegisterAccountBaseInput = {
   email: string;
   password: string;
   username: string;
 };
 
 export type RegisterAccountInput =
-  | (RegisterAccountBaseInput & { accountType: "customer" })
-  | (RegisterAccountBaseInput & { accountType: "technician"; city: string });
+  | (LegacyRegisterAccountBaseInput & { accountType: "customer" })
+  | (LegacyRegisterAccountBaseInput & {
+      accountType: "technician";
+      city: string;
+    });
 
 export type RegisteredAccountPayload = {
   id: number;
@@ -39,34 +117,26 @@ export type RegisteredAccountPayload = {
   isActive: boolean;
 };
 
-type LegacyLoginPayload = {
-  expire_time?: string;
-  face?: string;
-  mobile?: string;
-  nickname?: string;
-  token?: string;
-  uid?: number | string;
-};
-
-type AuthLoginPayload = TokenPairPayload & {
-  me?: AuthMePayload;
-};
-
-type SwitchIdentityPayload = TokenPairPayload & {
-  me: AuthMePayload;
-};
-
 export const authEndpointPaths = {
   captcha: "/captcha",
-  login: "/login",
-  formalLogin: "/auth/login",
+  login: "/auth/login",
   register: "/auth/register",
+  registerVerify: "/auth/register/verify",
+  googleInit: "/auth/google/init",
+  googleCredential: "/auth/google",
+  googleVerify: "/auth/google/verify",
+  googleLinkStatus: "/auth/google/link",
+  googleLinkInit: "/auth/google/link/init",
+  googleLinkCredential: "/auth/google/link",
+  googleLinkVerify: "/auth/google/link/verify",
+  googleUnlinkStart: "/auth/google/unlink",
+  googleUnlinkVerify: "/auth/google/unlink/verify",
+  passwordSetupStart: "/auth/password/setup",
+  passwordSetupVerify: "/auth/password/setup/verify",
   refresh: "/auth/refresh",
   switchIdentity: "/auth/switch-identity",
   logout: "/auth/logout",
   me: "/auth/me",
-  otpSend: "/auth/otp/send",
-  otpVerify: "/auth/otp/verify"
 } as const;
 
 function createCaptchaRequestId() {
@@ -96,92 +166,236 @@ function createLegacyAuthHeaders(headers?: Record<string, string>) {
 
   return {
     ...(authorization ? { Authorization: authorization } : {}),
-    ...(headers ?? {})
+    ...(headers ?? {}),
   };
 }
 
-function stripBearerPrefix(token: string) {
-  return token.replace(/^Bearer\s+/i, "").trim();
+function persistTokenPair(tokens: TokenPairPayload) {
+  setAuthTokens({
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+  });
 }
 
-function isFormalTokenPair(payload: TokenPairPayload | LegacyLoginPayload): payload is TokenPairPayload {
-  return typeof (payload as TokenPairPayload).accessToken === "string";
+function rejectLegacyOtp(): Promise<never> {
+  return Promise.reject(new Error("error.auth.legacy_otp_unavailable"));
 }
 
-function parseLegacyUserId(uid: LegacyLoginPayload["uid"]) {
-  const numericUid = Number(uid);
-
-  return Number.isFinite(numericUid) && numericUid > 0 ? numericUid : 0;
-}
-
-function createLegacyAuthMe(payload: LegacyLoginPayload, fallbackUsername: string): AuthMePayload {
-  const userId = parseLegacyUserId(payload.uid);
-  const username = payload.nickname?.trim() || fallbackUsername.trim() || (userId ? `user-${userId}` : "legacy-user");
-  const currentIdentity = {
-    id: userId,
-    scopeId: userId,
-    scopeType: "customer_profile",
-    type: "customer"
-  };
-  const merchantIdentity = {
-    id: userId,
-    scopeId: userId,
-    scopeType: "store",
-    type: "merchant_owner"
-  };
-  const technicianIdentity = {
-    id: userId,
-    scopeId: userId,
-    scopeType: "technician_profile",
-    type: "technician"
-  };
-  const businessIdentity = {
-    id: userId,
-    scopeId: null,
-    scopeType: "global",
-    type: "scout"
-  };
-
-  return {
-    id: userId,
-    email: fallbackUsername.includes("@") ? fallbackUsername : username,
-    username,
-    avatarUrl: payload.face?.trim() || null,
-    isActive: true,
-    currentIdentity,
-    identities: [currentIdentity, merchantIdentity, technicianIdentity, businessIdentity],
-    roles: ["customer", "merchant_owner", "technician", "scout"],
-    permissions: ["page:client-app", "page:merchant-app", "page:technician-app", "page:business-app"],
-    menus: ["menu:client-app", "menu:merchant-app", "menu:technician-app", "menu:business-app"]
-  };
-}
-
-function normalizeLoginPayload(payload: TokenPairPayload | LegacyLoginPayload, fallbackUsername: string): AuthLoginPayload {
-  if (isFormalTokenPair(payload)) {
-    return payload;
+function assertGoogleInitialization(payload: GoogleAuthInitialization) {
+  if (
+    !payload ||
+    typeof payload.clientId !== "string" ||
+    !payload.clientId.trim() ||
+    typeof payload.nonce !== "string" ||
+    !payload.nonce.trim() ||
+    typeof payload.nonceChallengeId !== "string" ||
+    !payload.nonceChallengeId.trim() ||
+    !Number.isFinite(payload.expiresIn) ||
+    payload.expiresIn <= 0
+  ) {
+    throw new Error("error.auth.google_api_unavailable");
   }
 
-  const accessToken = payload.token ? stripBearerPrefix(payload.token) : "";
-  if (!accessToken) {
-    throw new Error("error.auth.token_missing");
-  }
-
-  return {
-    accessToken,
-    expiresIn: 900,
-    refreshToken: null,
-    me: createLegacyAuthMe(payload, fallbackUsername)
-  };
+  return payload;
 }
 
 export const authApi = {
-  async register(input: RegisterAccountInput) {
-    return httpClient.request<RegisteredAccountPayload>(authEndpointPaths.register, {
-      auth: false,
-      body: input,
-      method: "POST",
-      retryOnUnauthorized: false
-    });
+  async login(
+    loginIdentifier: string,
+    password: string,
+    _legacyCaptchaCode?: string,
+  ) {
+    const tokens = await httpClient.request<AuthLoginPayload>(
+      authEndpointPaths.login,
+      {
+        auth: false,
+        body: { loginIdentifier, password },
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+    persistTokenPair(tokens);
+
+    return tokens;
+  },
+
+  // Kept until Task 10 removes the duplicate consumer name. It is the same formal flow.
+  async loginFormal(loginIdentifier: string, password: string) {
+    return authApi.login(loginIdentifier, password);
+  },
+
+  async startRegistration(input: RegistrationStartInput) {
+    return httpClient.request<VerificationChallengePayload>(
+      authEndpointPaths.register,
+      {
+        auth: false,
+        body: { email: input.email, password: input.password },
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+  },
+
+  async verifyRegistration(input: VerificationChallengeInput) {
+    const tokens = await httpClient.request<VerifiedRegistrationPayload>(
+      authEndpointPaths.registerVerify,
+      {
+        auth: false,
+        body: input,
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+    persistTokenPair(tokens);
+
+    return tokens;
+  },
+
+  async initializeGoogleLogin() {
+    const initialization = await httpClient.request<GoogleAuthInitialization>(
+      authEndpointPaths.googleInit,
+      {
+        auth: false,
+        body: {},
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+
+    return assertGoogleInitialization(initialization);
+  },
+
+  async submitGoogleCredential(input: GoogleCredentialInput) {
+    const result = await httpClient.request<GoogleCredentialResult>(
+      authEndpointPaths.googleCredential,
+      {
+        auth: false,
+        body: input,
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+
+    if (result.status === "authenticated") {
+      persistTokenPair(result);
+    }
+
+    return result;
+  },
+
+  async verifyGoogleRegistrationOrLink(input: VerificationChallengeInput) {
+    const tokens = await httpClient.request<VerifiedGoogleRegistrationPayload>(
+      authEndpointPaths.googleVerify,
+      {
+        auth: false,
+        body: input,
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+    persistTokenPair(tokens);
+
+    return tokens;
+  },
+
+  async getGoogleLinkStatus() {
+    return httpClient.request<GoogleLinkStatus>(
+      authEndpointPaths.googleLinkStatus,
+      {
+        auth: true,
+        method: "GET",
+        retryOnUnauthorized: true,
+      },
+    );
+  },
+
+  async initializeGoogleLink() {
+    const initialization = await httpClient.request<GoogleAuthInitialization>(
+      authEndpointPaths.googleLinkInit,
+      {
+        auth: true,
+        body: {},
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+
+    return assertGoogleInitialization(initialization);
+  },
+
+  async submitGoogleLinkCredential(input: GoogleCredentialInput) {
+    return httpClient.request<VerificationChallengePayload>(
+      authEndpointPaths.googleLinkCredential,
+      {
+        auth: true,
+        body: input,
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+  },
+
+  async verifyGoogleLink(input: VerificationChallengeInput) {
+    return httpClient.request<GoogleLinkVerifiedPayload>(
+      authEndpointPaths.googleLinkVerify,
+      {
+        auth: true,
+        body: input,
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+  },
+
+  async startGoogleUnlink() {
+    return httpClient.request<VerificationChallengePayload>(
+      authEndpointPaths.googleUnlinkStart,
+      {
+        auth: true,
+        body: {},
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+  },
+
+  async verifyGoogleUnlink(input: VerificationChallengeInput) {
+    const result = await httpClient.request<GoogleUnlinkVerifiedPayload>(
+      authEndpointPaths.googleUnlinkVerify,
+      {
+        auth: true,
+        body: input,
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+    clearAuthTokens();
+
+    return result;
+  },
+
+  async startPasswordSetup(input: PasswordSetupInput) {
+    return httpClient.request<VerificationChallengePayload>(
+      authEndpointPaths.passwordSetupStart,
+      {
+        auth: true,
+        body: { password: input.password },
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+  },
+
+  async verifyPasswordSetup(input: VerificationChallengeInput) {
+    return httpClient.request<PasswordSetupVerifiedPayload>(
+      authEndpointPaths.passwordSetupVerify,
+      {
+        auth: true,
+        body: input,
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
   },
 
   async fetchCaptcha() {
@@ -194,82 +408,27 @@ export const authApi = {
       method: "GET",
       query: {
         token: deviceToken,
-        r: createCaptchaRequestId()
+        r: createCaptchaRequestId(),
       },
-      retryOnUnauthorized: false
+      retryOnUnauthorized: false,
     });
   },
 
-  async login(email: string, password: string, captchaCode?: string) {
-    if (import.meta.env.PROD) {
-      return authApi.loginFormal(email, password);
-    }
-
-    const normalizedCaptchaCode = captchaCode?.trim();
-    const deviceToken = await getDeviceFingerprint();
-    const body = new FormData();
-    body.set("username", email);
-    body.set("password", password);
-    body.set("type", "username");
-
-    if (normalizedCaptchaCode) {
-      body.set("numcode", normalizedCaptchaCode);
-    }
-
-    const payload = await httpClient.request<TokenPairPayload | LegacyLoginPayload>(authEndpointPaths.login, {
-      auth: false,
-      ...createLegacyAuthRequestOptions(),
-      body,
-      headers: createLegacyAuthHeaders(deviceToken ? { token: deviceToken } : undefined),
-      method: "POST",
-      retryOnUnauthorized: false
-    });
-    const tokens = normalizeLoginPayload(payload, email);
-    setAuthTokens({
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken
-    });
-
-    return tokens;
+  /** @deprecated Task 11 replaces the pre-verification registration page. */
+  async register(
+    _input: RegisterAccountInput,
+  ): Promise<RegisteredAccountPayload> {
+    throw new Error("error.auth.registration_verification_required");
   },
 
-  async loginFormal(username: string, password: string) {
-    const tokens = await httpClient.request<AuthLoginPayload>(authEndpointPaths.formalLogin, {
-      auth: false,
-      body: {
-        username,
-        password
-      },
-      method: "POST",
-      retryOnUnauthorized: false
-    });
-    setAuthTokens({
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken
-    });
-
-    return tokens;
+  /** @deprecated Task 10 removes the obsolete generic OTP consumer. */
+  async sendOtp(_email: string) {
+    return rejectLegacyOtp();
   },
 
-  async sendOtp(email: string) {
-    return httpClient.request<OtpSendPayload>(authEndpointPaths.otpSend, {
-      auth: false,
-      body: { email },
-      method: "POST",
-      retryOnUnauthorized: false
-    });
-  },
-
-  async verifyOtp(email: string, otp: string) {
-    const tokens = await httpClient.request<TokenPairPayload>(authEndpointPaths.otpVerify, {
-      auth: false,
-      body: { email, otp },
-      method: "POST",
-      retryOnUnauthorized: false
-    });
-    setAuthTokens(tokens);
-
-    return tokens;
+  /** @deprecated Task 10 removes the obsolete generic OTP consumer. */
+  async verifyOtp(_email: string, _otp: string) {
+    return rejectLegacyOtp();
   },
 
   async refresh() {
@@ -282,15 +441,16 @@ export const authApi = {
       throw new Error("error.auth.refresh_missing");
     }
 
-    const tokens = await httpClient.request<SwitchIdentityPayload>(authEndpointPaths.switchIdentity, {
-      body: { refreshToken, identityId },
-      method: "POST",
-      retryOnUnauthorized: false
-    });
-    setAuthTokens({
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken
-    });
+    const tokens = await httpClient.request<SwitchIdentityPayload>(
+      authEndpointPaths.switchIdentity,
+      {
+        auth: true,
+        body: { refreshToken, identityId },
+        method: "POST",
+        retryOnUnauthorized: false,
+      },
+    );
+    persistTokenPair(tokens);
 
     return tokens;
   },
@@ -303,17 +463,25 @@ export const authApi = {
     }
 
     try {
-      return await httpClient.request<Record<string, never>>(authEndpointPaths.logout, {
-        body: { refreshToken },
-        method: "POST",
-        retryOnUnauthorized: false
-      });
+      return await httpClient.request<Record<string, never>>(
+        authEndpointPaths.logout,
+        {
+          auth: true,
+          body: { refreshToken },
+          method: "POST",
+          retryOnUnauthorized: false,
+        },
+      );
     } finally {
       clearAuthTokens();
     }
   },
 
   async me() {
-    return httpClient.request<AuthMePayload>(authEndpointPaths.me);
-  }
+    return httpClient.request<AuthMePayload>(authEndpointPaths.me, {
+      auth: true,
+      method: "GET",
+      retryOnUnauthorized: true,
+    });
+  },
 };
