@@ -358,6 +358,52 @@ describe("formal Google sign-in service", () => {
     expect(fixture.deliveredOtps).toHaveLength(0);
   });
 
+  it.each(["completeSuccessfulGoogleLogin", "completeGoogleFirstUseLink"] as const)(
+    "fails closed with dependency_unavailable when Google repository capability %s is absent",
+    async (capability) => {
+      const fixture = createFixture();
+      delete (fixture.repository as Record<string, unknown>)[capability];
+
+      if (capability === "completeSuccessfulGoogleLogin") {
+        fixture.bindings.set("google-subject-1", {
+          id: 1,
+          userId: 1,
+          provider: "google",
+          providerSubject: "google-subject-1",
+          providerEmail: "existing@example.com",
+          providerEmailVerifiedAt: new Date(),
+          lastUsedAt: null,
+          deletedAt: null,
+          user: fixture.users[0]
+        });
+        const init = await fixture.service.initializeGoogleLogin();
+        await expect(
+          fixture.service.submitGoogleCredential(
+            { credential: "provider-credential", nonceChallengeId: init.nonceChallengeId },
+            context
+          )
+        ).rejects.toMatchObject({
+          code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+          statusCode: 503,
+          message: "error.dependency.google_auth_unavailable"
+        });
+        return;
+      }
+
+      const init = await fixture.service.initializeGoogleLogin();
+      await expect(
+        fixture.service.submitGoogleCredential(
+          { credential: "provider-credential", nonceChallengeId: init.nonceChallengeId },
+          context
+        )
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        statusCode: 503,
+        message: "error.dependency.google_auth_unavailable"
+      });
+    }
+  );
+
   it("requires verified NeeDo email ownership before first use and links the matching account", async () => {
     const fixture = createFixture();
     const init = await fixture.service.initializeGoogleLogin();

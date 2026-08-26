@@ -440,54 +440,63 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
     input: CompleteGoogleFirstUseLinkInput
   ): Promise<AuthUserRecord> {
     const email = input.googleIdentity.email.trim().toLowerCase();
-    return this.client.$transaction(async (transaction) => {
-      const user = await transaction.user.findFirst({
-        where: { email, deletedAt: null },
-        include: authUserInclude
-      });
-      if (!user) throw new ExternalAuthAccountConflictError();
-      const subject = input.googleIdentity.subject.trim();
-      const existing = await transaction.externalAuthAccount.findFirst({
-        where: { provider: "google", providerSubject: subject }
-      });
-      if (existing && !existing.deletedAt && existing.userId !== user.id) {
-        throw new ExternalAuthAccountConflictError();
-      }
-      if (!existing || existing.deletedAt) {
-        await this.createOrRestoreGoogleBindingInTransaction(transaction, {
-          userId: user.id,
-          googleIdentity: input.googleIdentity
-        });
-      }
-      const audit = await transaction.auditLog.findFirst({
-        where: {
-          action: "auth.google.link",
-          targetType: "User",
-          targetId: user.id,
-          deletedAt: null,
-          metadata: { path: "$.challengeId", equals: input.challengeId }
-        },
-        select: { id: true }
-      });
-      if (!audit) {
-        await transaction.auditLog.create({
-          data: {
-            actorId: user.id,
-            action: "auth.google.link",
-            targetType: "User",
-            targetId: user.id,
-            ip: input.context.ip,
-            userAgent: input.context.userAgent ?? null,
-            metadata: { challengeId: input.challengeId }
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.client.$transaction(async (transaction) => {
+          const user = await transaction.user.findFirst({
+            where: { email, deletedAt: null },
+            include: authUserInclude
+          });
+          if (!user) throw new ExternalAuthAccountConflictError();
+          const subject = input.googleIdentity.subject.trim();
+          const existing = await transaction.externalAuthAccount.findFirst({
+            where: { provider: "google", providerSubject: subject }
+          });
+          if (existing && !existing.deletedAt && existing.userId !== user.id) {
+            throw new ExternalAuthAccountConflictError();
           }
+          if (!existing || existing.deletedAt) {
+            // Keep the create in this transaction so an audit failure rolls the binding back.
+            // A provider-subject P2002 is retried above, where this binding is reread.
+            await this.createOrRestoreGoogleBindingInTransaction(transaction, {
+              userId: user.id,
+              googleIdentity: input.googleIdentity
+            });
+          }
+          const audit = await transaction.auditLog.findFirst({
+            where: {
+              action: "auth.google.link",
+              targetType: "User",
+              targetId: user.id,
+              deletedAt: null,
+              metadata: { path: "$.challengeId", equals: input.challengeId }
+            },
+            select: { id: true }
+          });
+          if (!audit) {
+            await transaction.auditLog.create({
+              data: {
+                actorId: user.id,
+                action: "auth.google.link",
+                targetType: "User",
+                targetId: user.id,
+                ip: input.context.ip,
+                userAgent: input.context.userAgent ?? null,
+                metadata: { challengeId: input.challengeId }
+              }
+            });
+          }
+          const refreshed = await transaction.user.findUniqueOrThrow({
+            where: { id: user.id },
+            include: authUserInclude
+          });
+          return toAuthUserRecord(refreshed);
         });
+      } catch (error) {
+        if (!this.isExternalAuthSubjectCollision(error)) throw error;
       }
-      const refreshed = await transaction.user.findUniqueOrThrow({
-        where: { id: user.id },
-        include: authUserInclude
-      });
-      return toAuthUserRecord(refreshed);
-    });
+    }
+    throw new ExternalAuthAccountConflictError();
   }
 
   public async completeSuccessfulGoogleLogin(

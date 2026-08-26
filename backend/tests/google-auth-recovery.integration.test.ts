@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { config as loadDotenv } from "dotenv";
 import type { PrismaClient } from "@prisma/client";
 import { env } from "../src/config/env";
@@ -33,6 +33,8 @@ describeIntegration("formal Google recovery integration", () => {
   let redis: RedisClient;
   const userIds: number[] = [];
   const challengeIds: string[] = [];
+  const nonceChallengeIds: string[] = [];
+  const challengeEmails: string[] = [];
   const refreshes: Array<{ userId: number; jti: string }> = [];
 
   afterAll(async () => {
@@ -58,7 +60,26 @@ describeIntegration("formal Google recovery integration", () => {
     if (redis) {
       const store = new RedisAuthSessionStore(() => redis);
       for (const refresh of refreshes) await store.revokeRefreshToken(refresh.userId, refresh.jti);
-      await redis.del(challengeIds.map((id) => `auth:verification:email:${id}`));
+      const verificationKeys = [
+        ...challengeIds.map((id) => `auth:verification:email:${id}`),
+        ...nonceChallengeIds.map((id) => `auth:verification:google-nonce:${id}`),
+        ...challengeEmails.map(
+          (challengeEmail) =>
+            `auth:verification:cooldown:${createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
+              .update("email")
+              .update("\u0000")
+              .update("google_registration_or_link")
+              .update("\u0000")
+              .update(challengeEmail.trim().toLowerCase())
+              .digest("base64url")}`
+        )
+      ];
+      if (verificationKeys.length) await redis.del(verificationKeys);
+      if (verificationKeys.length) expect(await redis.exists(verificationKeys)).toBe(0);
+      const markerKeys: string[] = [];
+      for await (const keys of redis.scanIterator({ MATCH: `*${marker}*` }))
+        markerKeys.push(...keys);
+      expect(markerKeys).toEqual([]);
       await redis.quit();
     }
     if (prisma) {
@@ -103,12 +124,14 @@ describeIntegration("formal Google recovery integration", () => {
       verifier
     );
     const init = await service.initializeGoogleLogin();
+    nonceChallengeIds.push(init.nonceChallengeId);
     const pending = await service.submitGoogleCredential(
       { credential: "integration-credential", nonceChallengeId: init.nonceChallengeId },
       { ip: "127.0.0.1" }
     );
     if (pending.status !== "verification_required") throw new Error("expected first-use challenge");
     challengeIds.push(pending.challengeId);
+    challengeEmails.push(email);
     const original = repository.completeGoogleFirstUseLink.bind(repository);
     (
       repository as unknown as { completeGoogleFirstUseLink: typeof original }
@@ -196,6 +219,7 @@ describeIntegration("formal Google recovery integration", () => {
       verifier
     );
     const init = await service.initializeGoogleLogin();
+    nonceChallengeIds.push(init.nonceChallengeId);
     const pending = await service.submitGoogleCredential(
       { credential: "google-only-credential", nonceChallengeId: init.nonceChallengeId },
       { ip: "127.0.0.1" }
@@ -203,6 +227,7 @@ describeIntegration("formal Google recovery integration", () => {
     if (pending.status !== "verification_required")
       throw new Error("expected Google-only challenge");
     challengeIds.push(pending.challengeId);
+    challengeEmails.push(googleOnlyEmail);
     await expect(
       service.verifyGoogleRegistrationOrLink(pending.challengeId, delivered[0], { ip: "127.0.0.1" })
     ).rejects.toThrow("injected Google refresh storage failure");
@@ -286,6 +311,7 @@ describeIntegration("formal Google recovery integration", () => {
       where: { providerSubject: repeatSubject }
     });
     const init = await service.initializeGoogleLogin();
+    nonceChallengeIds.push(init.nonceChallengeId);
     const result = await service.submitGoogleCredential(
       { credential: "repeat-credential", nonceChallengeId: init.nonceChallengeId },
       { ip: "127.0.0.1" }
@@ -308,6 +334,7 @@ describeIntegration("formal Google recovery integration", () => {
 
     await prisma.user.update({ where: { id: account.id }, data: { isActive: false } });
     const disabledInit = await service.initializeGoogleLogin();
+    nonceChallengeIds.push(disabledInit.nonceChallengeId);
     await expect(
       service.submitGoogleCredential(
         { credential: "disabled-repeat", nonceChallengeId: disabledInit.nonceChallengeId },

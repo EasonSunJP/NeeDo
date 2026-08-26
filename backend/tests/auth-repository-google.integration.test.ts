@@ -367,6 +367,84 @@ describeIntegration("AuthRepository verified account and Google binding integrat
     ).resolves.toBe(1);
   });
 
+  it("re-reads a provider-subject collision for one target and rejects another target", async () => {
+    const verifiedAt = new Date("2026-08-27T02:03:04.000Z");
+    const subject = `${marker}-complete-link-race-subject`;
+    const sameTargetEmail = `${marker}-complete-link-race@needo.test`;
+    const otherTargetEmail = `${marker}-complete-link-other@needo.test`;
+    const sameTarget = await repository.createVerifiedBaselineCustomer({
+      email: sameTargetEmail,
+      emailVerifiedAt: verifiedAt,
+      passwordHash: null,
+      context: { ip: "127.0.0.1" }
+    });
+    const otherTarget = await repository.createVerifiedBaselineCustomer({
+      email: otherTargetEmail,
+      emailVerifiedAt: verifiedAt,
+      passwordHash: null,
+      context: { ip: "127.0.0.1" }
+    });
+    createdUserIds.push(sameTarget.id, otherTarget.id);
+    const firstChallengeId = randomUUID();
+    const secondChallengeId = randomUUID();
+    const identity = { subject, email: sameTargetEmail, emailVerifiedAt: verifiedAt };
+
+    const sameTargetResults = await Promise.allSettled([
+      repository.completeGoogleFirstUseLink({
+        challengeId: firstChallengeId,
+        googleIdentity: identity,
+        context: { ip: "127.0.0.1" }
+      }),
+      repository.completeGoogleFirstUseLink({
+        challengeId: secondChallengeId,
+        googleIdentity: identity,
+        context: { ip: "127.0.0.1" }
+      })
+    ]);
+    expect(sameTargetResults).toEqual([
+      expect.objectContaining({
+        status: "fulfilled",
+        value: expect.objectContaining({ id: sameTarget.id })
+      }),
+      expect.objectContaining({
+        status: "fulfilled",
+        value: expect.objectContaining({ id: sameTarget.id })
+      })
+    ]);
+    await expect(repository.findGoogleBindingBySubject(subject)).resolves.toMatchObject({
+      userId: sameTarget.id
+    });
+    const firstAuditCount = await prisma.auditLog.count({
+      where: {
+        action: "auth.google.link",
+        targetId: sameTarget.id,
+        metadata: { path: "$.challengeId", equals: firstChallengeId }
+      }
+    });
+    const secondAuditCount = await prisma.auditLog.count({
+      where: {
+        action: "auth.google.link",
+        targetId: sameTarget.id,
+        metadata: { path: "$.challengeId", equals: secondChallengeId }
+      }
+    });
+    expect(firstAuditCount + secondAuditCount).toBeGreaterThanOrEqual(1);
+    expect(firstAuditCount + secondAuditCount).toBeLessThanOrEqual(2);
+
+    await expect(
+      repository.completeGoogleFirstUseLink({
+        challengeId: randomUUID(),
+        googleIdentity: { subject, email: otherTargetEmail, emailVerifiedAt: verifiedAt },
+        context: { ip: "127.0.0.1" }
+      })
+    ).rejects.toMatchObject({ name: "ExternalAuthAccountConflictError" });
+    expect(
+      await prisma.auditLog.count({
+        where: { action: "auth.google.link", targetId: otherTarget.id }
+      })
+    ).toBe(0);
+  });
+
   it("rolls every baseline-account write back when the aggregate audit write fails", async () => {
     const failedEmail = `${marker}-rollback@needo.test`;
 

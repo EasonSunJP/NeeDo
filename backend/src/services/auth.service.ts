@@ -803,7 +803,9 @@ export class AuthService {
     if (
       !repository.findGoogleBindingBySubject ||
       !repository.createOrRestoreGoogleBinding ||
-      !repository.updateGoogleBindingLastUsedAt
+      !repository.updateGoogleBindingLastUsedAt ||
+      !repository.completeGoogleFirstUseLink ||
+      !repository.completeSuccessfulGoogleLogin
     ) {
       throw new AppError({
         code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
