@@ -449,7 +449,8 @@ const main = async (): Promise<void> => {
       bounds: RaceBounds,
       label: string
     ): void => {
-      const baselineRows = Array.isArray(baselineTimeline) ? baselineTimeline : [];
+      assert(Array.isArray(baselineTimeline), `${label} baseline timeline is not an array`);
+      const baselineRows = baselineTimeline;
       assert(Array.isArray(actualTimeline), `${label} timeline is not an array`);
       assertExactBaselinePrefix(baselineRows, actualTimeline, `${label} timeline`);
       assert(actualTimeline.length === baselineRows.length + 1, `${label} timeline count changed`);
@@ -540,7 +541,7 @@ const main = async (): Promise<void> => {
         feeCalculationLogs,
         affiliateTask,
         budgetReservation,
-        publisherWalletState,
+        publisherWallet,
         claimantWallet,
         customerWallet,
         affiliateClaim,
@@ -659,7 +660,7 @@ const main = async (): Promise<void> => {
         bookingLedgers,
         affiliateTask,
         budgetReservation,
-        publisherWallet: publisherWalletState,
+        publisherWallet,
         claimantWallet,
         customerWallet,
         affiliateClaim,

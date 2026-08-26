@@ -55,6 +55,12 @@ describe("affiliate expiry race evidence", () => {
     ).toThrow("replaced baseline prefix changed");
   });
 
+  it("rejects a malformed baseline before comparing an exact prefix", () => {
+    expect(() =>
+      assertExactBaselinePrefix(null as unknown as readonly { id: number }[], [], "timeline")
+    ).toThrow("timeline baseline is not an array");
+  });
+
   it("includes a reward-only risk event in the database snapshot scope", () => {
     expect(
       affiliateRiskEventWhere({

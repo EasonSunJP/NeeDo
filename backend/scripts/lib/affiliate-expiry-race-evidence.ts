@@ -36,6 +36,8 @@ export const assertExactBaselinePrefix = <T>(
   actual: readonly T[],
   label: string
 ): void => {
+  if (!Array.isArray(baseline)) throw new Error(`${label} baseline is not an array`);
+  if (!Array.isArray(actual)) throw new Error(`${label} actual is not an array`);
   const actualPrefix = actual.slice(0, baseline.length);
   if (
     actual.length < baseline.length ||

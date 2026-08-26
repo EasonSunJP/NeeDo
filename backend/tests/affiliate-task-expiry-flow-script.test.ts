@@ -2,50 +2,258 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 
-const sourceTextForVariable = (sourceFile: ts.SourceFile, variableName: string): string => {
-  let result = "";
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === variableName &&
-      node.initializer
-    ) {
-      result = node.initializer.getText(sourceFile);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  if (!result) throw new Error(`missing variable ${variableName}`);
-  return result;
+type RollbackBindingExpectation = {
+  resolution: string;
+  assertion: string;
+  identifierBindings: Record<string, string>;
+  stringBindings?: Record<string, string>;
 };
 
-const captureReturnFields = (sourceFile: ts.SourceFile): string[] => {
-  let result: string[] = [];
-  const visit = (node: ts.Node): void => {
+const assertExactSnapshotReturnBindings = (
+  sourceFile: ts.SourceFile,
+  requiredFields: readonly string[]
+): void => {
+  const declaration = findNamedVariable(sourceFile, "captureRaceSnapshot");
+  const initializer = declaration.initializer;
+  if (
+    !initializer ||
+    (!ts.isArrowFunction(initializer) && !ts.isFunctionExpression(initializer)) ||
+    !ts.isBlock(initializer.body)
+  ) {
+    throw new Error("captureRaceSnapshot must be a function with a block body");
+  }
+  const returns = initializer.body.statements.filter(ts.isReturnStatement);
+  if (returns.length !== 1 || !returns[0].expression) {
+    throw new Error("captureRaceSnapshot must have exactly one top-level return");
+  }
+  const returned = returns[0].expression;
+  if (!ts.isObjectLiteralExpression(returned)) {
+    throw new Error("captureRaceSnapshot must return an object literal");
+  }
+  if (returned.properties.length !== requiredFields.length) {
+    throw new Error("captureRaceSnapshot return fields do not match the required snapshot");
+  }
+  const required = new Set(requiredFields);
+  const seen = new Set<string>();
+  for (const property of returned.properties) {
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === "captureRaceSnapshot" &&
-      node.initializer
+      (!ts.isShorthandPropertyAssignment(property) && !ts.isPropertyAssignment(property)) ||
+      !property.name ||
+      !ts.isIdentifier(property.name) ||
+      !required.has(property.name.text) ||
+      seen.has(property.name.text)
     ) {
-      let returnNode: ts.ReturnStatement | undefined;
-      const findReturn = (child: ts.Node): void => {
-        if (!returnNode && ts.isReturnStatement(child)) returnNode = child;
-        if (!returnNode) ts.forEachChild(child, findReturn);
-      };
-      findReturn(node.initializer);
-      if (returnNode?.expression && ts.isObjectLiteralExpression(returnNode.expression)) {
-        result = returnNode.expression.properties
-          .map((property) => property.name?.getText(sourceFile) ?? "")
-          .filter(Boolean);
+      throw new Error("captureRaceSnapshot return contains a non-direct or unexpected property");
+    }
+    const field = property.name.text;
+    seen.add(field);
+    if (
+      ts.isPropertyAssignment(property) &&
+      (!ts.isIdentifier(property.initializer) || property.initializer.text !== field)
+    ) {
+      throw new Error(`captureRaceSnapshot must bind ${field} to the same-named identifier`);
+    }
+  }
+  if (requiredFields.some((field) => !seen.has(field))) {
+    throw new Error("captureRaceSnapshot return is missing a required field");
+  }
+};
+
+const assertExactRollbackBinding = (
+  sourceFile: ts.SourceFile,
+  expectation: RollbackBindingExpectation
+): void => {
+  const declaration = findNamedVariable(sourceFile, expectation.resolution);
+  let initializer = declaration.initializer;
+  if (!initializer) throw new Error(`${expectation.resolution} initializer is missing`);
+  if (ts.isAwaitExpression(initializer)) initializer = initializer.expression;
+  if (
+    !ts.isCallExpression(initializer) ||
+    !ts.isIdentifier(initializer.expression) ||
+    initializer.expression.text !== "resolveVerifiedDeadlockVictim" ||
+    initializer.arguments.length !== 1 ||
+    !ts.isObjectLiteralExpression(initializer.arguments[0])
+  ) {
+    throw new Error(
+      `${expectation.resolution} must directly call resolveVerifiedDeadlockVictim with an object literal`
+    );
+  }
+  const resolutionInput = initializer.arguments[0];
+  const resolutionFields = new Set<string>();
+  for (const property of resolutionInput.properties) {
+    if (
+      (!ts.isShorthandPropertyAssignment(property) && !ts.isPropertyAssignment(property)) ||
+      !property.name ||
+      !ts.isIdentifier(property.name) ||
+      resolutionFields.has(property.name.text)
+    ) {
+      throw new Error(`${expectation.resolution} resolution input has an indirect property`);
+    }
+    resolutionFields.add(property.name.text);
+  }
+  const rollbackProperties = resolutionInput.properties.filter(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      ts.isIdentifier(property.name) &&
+      property.name.text === "verifyRollback"
+  );
+  if (rollbackProperties.length !== 1) {
+    throw new Error(`${expectation.resolution} must define one direct verifyRollback property`);
+  }
+  const rollback = rollbackProperties[0].initializer;
+  if (
+    (!ts.isArrowFunction(rollback) && !ts.isFunctionExpression(rollback)) ||
+    !rollback.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword) ||
+    !ts.isBlock(rollback.body)
+  ) {
+    throw new Error(`${expectation.resolution} verifyRollback must be an async function block`);
+  }
+  const directCalls = rollback.body.statements.filter(
+    (statement): statement is ts.ExpressionStatement => {
+      if (!ts.isExpressionStatement(statement) || !ts.isAwaitExpression(statement.expression)) {
+        return false;
       }
+      const awaited = statement.expression.expression;
+      return (
+        ts.isCallExpression(awaited) &&
+        ts.isIdentifier(awaited.expression) &&
+        awaited.expression.text === expectation.assertion
+      );
+    }
+  );
+  if (directCalls.length !== 1) {
+    throw new Error(
+      `${expectation.resolution} verifyRollback must directly await ${expectation.assertion} exactly once`
+    );
+  }
+  const awaited = directCalls[0].expression;
+  if (!ts.isAwaitExpression(awaited) || !ts.isCallExpression(awaited.expression)) {
+    throw new Error(`${expectation.resolution} rollback assertion is not directly awaited`);
+  }
+  const call = awaited.expression;
+  if (call.arguments.length !== 1 || !ts.isObjectLiteralExpression(call.arguments[0])) {
+    throw new Error(`${expectation.resolution} rollback assertion requires an object literal`);
+  }
+  const argument = call.arguments[0];
+  const expectedFields = {
+    ...expectation.identifierBindings,
+    ...(expectation.stringBindings ?? {})
+  };
+  if (argument.properties.length !== Object.keys(expectedFields).length) {
+    throw new Error(`${expectation.resolution} rollback assertion fields are not exact`);
+  }
+  const properties = new Map<string, ts.ShorthandPropertyAssignment | ts.PropertyAssignment>();
+  for (const property of argument.properties) {
+    if (
+      (!ts.isShorthandPropertyAssignment(property) && !ts.isPropertyAssignment(property)) ||
+      !property.name ||
+      !ts.isIdentifier(property.name) ||
+      properties.has(property.name.text)
+    ) {
+      throw new Error(`${expectation.resolution} rollback assertion has a non-direct property`);
+    }
+    properties.set(property.name.text, property);
+  }
+  for (const [field, expectedIdentifier] of Object.entries(expectation.identifierBindings)) {
+    const property = properties.get(field);
+    const actualIdentifier = property && identifierBoundBy(property);
+    if (actualIdentifier !== expectedIdentifier) {
+      throw new Error(`${expectation.resolution} ${field} must bind ${expectedIdentifier}`);
+    }
+  }
+  for (const [field, expectedValue] of Object.entries(expectation.stringBindings ?? {})) {
+    const property = properties.get(field);
+    if (
+      !property ||
+      !ts.isPropertyAssignment(property) ||
+      !ts.isStringLiteral(property.initializer) ||
+      property.initializer.text !== expectedValue
+    ) {
+      throw new Error(`${expectation.resolution} ${field} must equal ${expectedValue}`);
+    }
+  }
+};
+
+const findNamedVariable = (sourceFile: ts.SourceFile, name: string): ts.VariableDeclaration => {
+  const matches: ts.VariableDeclaration[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+      matches.push(node);
     }
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  return result;
+  if (matches.length !== 1) throw new Error(`expected exactly one variable named ${name}`);
+  return matches[0];
 };
+
+const identifierBoundBy = (
+  property: ts.ShorthandPropertyAssignment | ts.PropertyAssignment
+): string | null => {
+  if (ts.isShorthandPropertyAssignment(property)) return property.name.text;
+  return ts.isIdentifier(property.initializer) ? property.initializer.text : null;
+};
+
+const assertBaselineTimelineArrayGuard = (sourceFile: ts.SourceFile): void => {
+  const declaration = findNamedVariable(sourceFile, "assertTimelineAppend");
+  const initializer = declaration.initializer;
+  if (!initializer || !ts.isArrowFunction(initializer) || !ts.isBlock(initializer.body)) {
+    throw new Error("assertTimelineAppend must be an arrow function block");
+  }
+  const guardIndexes = initializer.body.statements.flatMap((statement, index) => {
+    if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) {
+      return [];
+    }
+    const call = statement.expression;
+    if (
+      !ts.isIdentifier(call.expression) ||
+      call.expression.text !== "assert" ||
+      call.arguments.length !== 2
+    ) {
+      return [];
+    }
+    const condition = call.arguments[0];
+    const message = call.arguments[1];
+    const exactCondition =
+      ts.isCallExpression(condition) &&
+      ts.isPropertyAccessExpression(condition.expression) &&
+      ts.isIdentifier(condition.expression.expression) &&
+      condition.expression.expression.text === "Array" &&
+      condition.expression.name.text === "isArray" &&
+      condition.arguments.length === 1 &&
+      ts.isIdentifier(condition.arguments[0]) &&
+      condition.arguments[0].text === "baselineTimeline";
+    const exactMessage =
+      ts.isTemplateExpression(message) &&
+      message.head.text === "" &&
+      message.templateSpans.length === 1 &&
+      ts.isIdentifier(message.templateSpans[0].expression) &&
+      message.templateSpans[0].expression.text === "label" &&
+      message.templateSpans[0].literal.text === " baseline timeline is not an array";
+    return exactCondition && exactMessage ? [index] : [];
+  });
+  if (guardIndexes.length !== 1) {
+    throw new Error("assertTimelineAppend must directly guard baselineTimeline as an array once");
+  }
+  const baselineRowsDeclarations = initializer.body.statements.flatMap((statement, index) => {
+    if (!ts.isVariableStatement(statement)) return [];
+    return statement.declarationList.declarations.flatMap((row) =>
+      ts.isIdentifier(row.name) && row.name.text === "baselineRows" ? [{ row, index }] : []
+    );
+  });
+  if (
+    baselineRowsDeclarations.length !== 1 ||
+    !baselineRowsDeclarations[0].row.initializer ||
+    !ts.isIdentifier(baselineRowsDeclarations[0].row.initializer) ||
+    baselineRowsDeclarations[0].row.initializer.text !== "baselineTimeline" ||
+    baselineRowsDeclarations[0].index <= guardIndexes[0]
+  ) {
+    throw new Error("baselineRows must directly use guarded baselineTimeline");
+  }
+};
+
+const parseFixture = (source: string): ts.SourceFile =>
+  ts.createSourceFile("fixture.ts", source, ts.ScriptTarget.Latest, true);
 
 describe("affiliate task expiry local MySQL acceptance script", () => {
   it("is registered, guarded, marker-owned, and covers expiry release invariants", () => {
@@ -125,10 +333,8 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("assertBookingVictimRollback");
     expect(source).toContain("completionPreRaceSnapshot");
     expect(source).toContain("cancellationPreRaceSnapshot");
-    expect(source.match(/await assertExpiryVictimRollback\(/g)).toHaveLength(2);
-    expect(source.match(/await assertBookingVictimRollback\(/g)).toHaveLength(2);
     const sourceFile = ts.createSourceFile(scriptPath, source, ts.ScriptTarget.Latest, true);
-    expect(captureReturnFields(sourceFile)).toEqual([
+    assertExactSnapshotReturnBindings(sourceFile, [
       "bookingOrder",
       "statusHistory",
       "scheduleSlot",
@@ -148,6 +354,7 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
       "riskEvents",
       "auditLogs"
     ]);
+    assertBaselineTimelineArrayGuard(sourceFile);
     expect(source).toContain("expiry winner was not fully committed");
     expect(source).toContain("formal completion winner was not fully committed");
     expect(source).toContain("formal cancellation winner was not fully committed");
@@ -233,47 +440,183 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     const scriptPath = join(__dirname, "..", "scripts/check-affiliate-task-expiry-flow.ts");
     const source = readFileSync(scriptPath, "utf8");
     const sourceFile = ts.createSourceFile(scriptPath, source, ts.ScriptTarget.Latest, true);
-    const expectations = [
+    const expectations: RollbackBindingExpectation[] = [
       {
         resolution: "completionExpiryResolution",
         assertion: "assertExpiryVictimRollback",
-        snapshot: "completionPreRaceSnapshot",
-        startedAt: "completionRaceStartedAt",
-        settledAt: "completionRaceSettledAt"
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        },
+        stringBindings: { flow: "completion" }
       },
       {
         resolution: "completionFormalResolution",
         assertion: "assertBookingVictimRollback",
-        snapshot: "completionPreRaceSnapshot",
-        startedAt: "completionRaceStartedAt",
-        settledAt: "completionRaceSettledAt"
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        }
       },
       {
         resolution: "cancellationExpiryResolution",
         assertion: "assertExpiryVictimRollback",
-        snapshot: "cancellationPreRaceSnapshot",
-        startedAt: "cancellationRaceStartedAt",
-        settledAt: "cancellationRaceSettledAt"
+        identifierBindings: {
+          baseline: "cancellationPreRaceSnapshot",
+          snapshotInput: "cancellationSnapshotInput",
+          raceStartedAt: "cancellationRaceStartedAt",
+          raceSettledAt: "cancellationRaceSettledAt"
+        },
+        stringBindings: { flow: "cancellation" }
       },
       {
         resolution: "cancellationFormalResolution",
         assertion: "assertBookingVictimRollback",
-        snapshot: "cancellationPreRaceSnapshot",
-        startedAt: "cancellationRaceStartedAt",
-        settledAt: "cancellationRaceSettledAt"
+        identifierBindings: {
+          baseline: "cancellationPreRaceSnapshot",
+          snapshotInput: "cancellationSnapshotInput",
+          raceStartedAt: "cancellationRaceStartedAt",
+          raceSettledAt: "cancellationRaceSettledAt"
+        }
       }
     ];
 
     for (const expected of expectations) {
-      const resolution = sourceTextForVariable(sourceFile, expected.resolution);
-      const verifyRollback = resolution.match(
-        /verifyRollback\s*:\s*async\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\},?\n\s*(?:validateFulfilled|\})/
-      )?.[1];
-      expect(verifyRollback).toBeDefined();
-      expect(verifyRollback).toContain(`await ${expected.assertion}({`);
-      expect(verifyRollback).toContain(`baseline: ${expected.snapshot}`);
-      expect(verifyRollback).toContain(`raceStartedAt: ${expected.startedAt}`);
-      expect(verifyRollback).toContain(`raceSettledAt: ${expected.settledAt}`);
+      assertExactRollbackBinding(sourceFile, expected);
     }
+  });
+});
+
+describe("affiliate expiry AST contract helpers", () => {
+  it.each([
+    "return { ...snapshot };",
+    'return { "riskEvents": riskEvents };',
+    "return { [field]: riskEvents };",
+    "return { riskEvents() { return []; } };"
+  ])("rejects a non-direct capture snapshot property: %s", (returned) => {
+    const fixture = parseFixture(`
+      const captureRaceSnapshot = async () => {
+        const field = "riskEvents";
+        const riskEvents = [];
+        const snapshot = { riskEvents };
+        ${returned}
+      };
+    `);
+
+    expect(() => assertExactSnapshotReturnBindings(fixture, ["riskEvents"])).toThrow();
+  });
+
+  it("rejects a capture snapshot field aliased to the wrong identifier", () => {
+    const fixture = parseFixture(`
+      const captureRaceSnapshot = async () => {
+        const riskEvents = [];
+        const auditLogs = [];
+        return { riskEvents: auditLogs };
+      };
+    `);
+
+    expect(() => assertExactSnapshotReturnBindings(fixture, ["riskEvents"])).toThrow(
+      "captureRaceSnapshot must bind riskEvents to the same-named identifier"
+    );
+  });
+
+  it("rejects the wrong snapshot identifier in a rollback assertion", () => {
+    const fixture = parseFixture(`
+      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+        verifyRollback: async () => {
+          await assertExpiryVictimRollback({
+            flow: "completion",
+            baseline: cancellationPreRaceSnapshot,
+            snapshotInput: completionSnapshotInput,
+            raceStartedAt: completionRaceStartedAt,
+            raceSettledAt: completionRaceSettledAt
+          });
+        }
+      });
+    `);
+
+    expect(() =>
+      assertExactRollbackBinding(fixture, {
+        resolution: "completionExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        },
+        stringBindings: { flow: "completion" }
+      })
+    ).toThrow("completionExpiryResolution baseline must bind completionPreRaceSnapshot");
+  });
+
+  it("rejects a rollback assertion hidden in a nested dead branch", () => {
+    const fixture = parseFixture(`
+      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+        verifyRollback: async () => {
+          if (false) {
+            await assertExpiryVictimRollback({
+              flow: "completion",
+              baseline: completionPreRaceSnapshot,
+              snapshotInput: completionSnapshotInput,
+              raceStartedAt: completionRaceStartedAt,
+              raceSettledAt: completionRaceSettledAt
+            });
+          }
+        }
+      });
+    `);
+
+    expect(() =>
+      assertExactRollbackBinding(fixture, {
+        resolution: "completionExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        },
+        stringBindings: { flow: "completion" }
+      })
+    ).toThrow(
+      "completionExpiryResolution verifyRollback must directly await assertExpiryVictimRollback exactly once"
+    );
+  });
+
+  it("rejects a spread that can override the direct rollback callback", () => {
+    const fixture = parseFixture(`
+      const override = { verifyRollback: async () => undefined };
+      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+        verifyRollback: async () => {
+          await assertExpiryVictimRollback({
+            flow: "completion",
+            baseline: completionPreRaceSnapshot,
+            snapshotInput: completionSnapshotInput,
+            raceStartedAt: completionRaceStartedAt,
+            raceSettledAt: completionRaceSettledAt
+          });
+        },
+        ...override
+      });
+    `);
+
+    expect(() =>
+      assertExactRollbackBinding(fixture, {
+        resolution: "completionExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        },
+        stringBindings: { flow: "completion" }
+      })
+    ).toThrow("completionExpiryResolution resolution input has an indirect property");
   });
 });
