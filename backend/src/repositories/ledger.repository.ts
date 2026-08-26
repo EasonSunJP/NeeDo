@@ -732,7 +732,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
       referenceId: transaction.referenceId,
       actorUserId: transaction.actorUserId,
       amount: transaction.amount,
-      currency: "NDP",
+      currency: transaction.currency as LedgerCurrency,
       metadata: transaction.metadata ?? null,
       createdAt: transaction.createdAt,
       updatedAt: transaction.updatedAt,

@@ -1866,6 +1866,8 @@ export class LedgerService
     if (!this.isPlainObject(metadata)) {
       throw this.walletMutationError();
     }
+    const metadataKeys = Reflect.ownKeys(metadata);
+
     if (
       transaction.type !== "affiliate_task_budget_release" ||
       transaction.status !== "applied" ||
@@ -1878,6 +1880,10 @@ export class LedgerService
       metadata.ownerType !== input.ownerType ||
       metadata.ownerId !== input.ownerId ||
       metadata.walletId !== input.walletId ||
+      metadataKeys.length !== 4 ||
+      !["taskId", "ownerType", "ownerId", "walletId"].every((key) =>
+        Object.prototype.hasOwnProperty.call(metadata, key)
+      ) ||
       transaction.entries.length !== 1
     ) {
       throw this.walletMutationError();

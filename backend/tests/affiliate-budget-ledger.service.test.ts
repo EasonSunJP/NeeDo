@@ -490,6 +490,28 @@ describe("LedgerService affiliate task budget operations", () => {
       }
     },
     {
+      description: "metadata with an extra key",
+      mutate: (transaction) => {
+        (transaction.metadata as Record<string, unknown>).unexpected = true;
+      }
+    },
+    {
+      description: "metadata without a required key",
+      mutate: (transaction) => {
+        delete (transaction.metadata as Record<string, unknown>).taskId;
+      }
+    },
+    {
+      description: "metadata with a custom prototype",
+      mutate: (transaction) => {
+        const metadata = Object.assign(
+          Object.create({ inherited: true }),
+          transaction.metadata
+        );
+        transaction.metadata = metadata;
+      }
+    },
+    {
       description: "a missing ledger entry",
       mutate: (transaction) => {
         transaction.entries = [];
