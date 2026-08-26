@@ -74,8 +74,40 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("cancellationHold");
     expect(source).toContain("cancellationFinancial");
     expect(source).toContain("cancellationBookingLedgers");
-    expect(source).toContain("completion outer booking deadlock victim did not roll back");
-    expect(source).toContain("cancellation outer booking deadlock victim did not roll back");
+    expect(source).toContain("captureRaceSnapshot");
+    expect(source).toContain("assertExpiryVictimRollback");
+    expect(source).toContain("assertBookingVictimRollback");
+    expect(source).toContain("completionPreRaceSnapshot");
+    expect(source).toContain("cancellationPreRaceSnapshot");
+    expect(source.match(/await assertExpiryVictimRollback\(/g)).toHaveLength(2);
+    expect(source.match(/await assertBookingVictimRollback\(/g)).toHaveLength(2);
+    for (const requiredSnapshotState of [
+      "bookingOrder",
+      "statusHistory",
+      "scheduleSlot",
+      "walletHolds",
+      "orderFinancial",
+      "feeCalculationLogs",
+      "bookingLedgers",
+      "affiliateTask",
+      "budgetReservation",
+      "publisherWallet",
+      "claimantWallet",
+      "customerWallet",
+      "affiliateClaim",
+      "attribution",
+      "affiliateRewards",
+      "affiliateLedgers",
+      "riskEvents",
+      "auditLogs"
+    ]) {
+      expect(source).toContain(requiredSnapshotState);
+    }
+    expect(source).toContain("expiry winner was not fully committed");
+    expect(source).toContain("formal completion winner was not fully committed");
+    expect(source).toContain("formal cancellation winner was not fully committed");
+    expect(source).toContain("expiry victim left partial artifacts");
+    expect(source).toContain("booking victim left partial artifacts");
     expect(source).toContain("completionReleaseLedgers");
     expect(source).toContain('completionState.reservation.status === "RELEASED"');
     expect(source).toContain('cancellationState.reservation.status === "RELEASED"');
@@ -131,6 +163,17 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("walletHold.deleteMany");
     expect(source).toContain("orderFinancial.deleteMany");
     expect(source).toContain("feeCalculationLog.deleteMany");
+    expect(source).toContain("prisma.wallet.count");
+    expect(source).toContain("prisma.affiliateRiskEvent.count");
+    expect(source).toContain("prisma.affiliateTaskService.count");
+    expect(source).toContain("prisma.affiliateTaskShop.count");
+    const cleanupCountSource = source.slice(source.indexOf("const cleanupCounts"));
+    const deletedModels = new Set(
+      [...source.matchAll(/transaction\.(\w+)\.deleteMany\(/g)].map((match) => match[1])
+    );
+    for (const deletedModel of deletedModels) {
+      expect(cleanupCountSource).toContain(`prisma.${deletedModel}.count`);
+    }
     expect(source).toContain("platformFeeRule.deleteMany");
     expect(source).toContain("platformFeeRuleSet.deleteMany");
     expect(source).toContain("finally");

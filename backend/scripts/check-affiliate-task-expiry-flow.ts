@@ -207,9 +207,7 @@ const main = async (): Promise<void> => {
       if (summary.failed !== 0) {
         const raceErrors = guardedRepository.transactionErrors.slice(transactionErrorStart);
         assert(
-          summary.failed === 1 &&
-            failures.length - failureStart === 1 &&
-            raceErrors.length === 1,
+          summary.failed === 1 && failures.length - failureStart === 1 && raceErrors.length === 1,
           "expiry race did not expose exactly one rejected transaction"
         );
         throw raceErrors[0];
@@ -375,6 +373,1059 @@ const main = async (): Promise<void> => {
         "Task/Reservation equality is incorrect"
       );
       return { task, reservation };
+    };
+    const exactJson = (value: unknown): string => JSON.stringify(value);
+    const assertExact = (actual: unknown, expected: unknown, message: string): void => {
+      assert(exactJson(actual) === exactJson(expected), message);
+    };
+    const assertRowChanges = (
+      baseline: object,
+      actual: object,
+      changes: Record<string, unknown>,
+      message: string
+    ): void => {
+      assertExact(actual, { ...baseline, ...changes }, message);
+    };
+    const captureRaceSnapshot = async (input: {
+      taskId: number;
+      bookingOrderId: number;
+      scheduleSlotId: number;
+      claimId: number;
+      attributionId: number;
+      publisherWalletId: number;
+      claimantUserId: number;
+      customerUserId: number;
+    }) => {
+      const [
+        bookingOrder,
+        statusHistory,
+        scheduleSlot,
+        walletHolds,
+        orderFinancial,
+        feeCalculationLogs,
+        affiliateTask,
+        budgetReservation,
+        publisherWalletState,
+        claimantWallet,
+        customerWallet,
+        affiliateClaim,
+        attribution,
+        affiliateRewards,
+        riskEvents
+      ] = await Promise.all([
+        prisma.bookingOrder.findUniqueOrThrow({ where: { id: input.bookingOrderId } }),
+        prisma.orderStatusHistory.findMany({
+          where: { bookingOrderId: input.bookingOrderId },
+          orderBy: { id: "asc" }
+        }),
+        prisma.scheduleSlot.findUniqueOrThrow({ where: { id: input.scheduleSlotId } }),
+        prisma.walletHold.findMany({
+          where: { bookingOrderId: input.bookingOrderId },
+          orderBy: { id: "asc" }
+        }),
+        prisma.orderFinancial.findUniqueOrThrow({
+          where: { bookingOrderId: input.bookingOrderId }
+        }),
+        prisma.feeCalculationLog.findMany({
+          where: { bookingOrderId: input.bookingOrderId },
+          orderBy: { id: "asc" }
+        }),
+        prisma.affiliateTask.findUniqueOrThrow({ where: { id: input.taskId } }),
+        prisma.affiliateBudgetReservation.findUniqueOrThrow({ where: { taskId: input.taskId } }),
+        prisma.wallet.findUniqueOrThrow({ where: { id: input.publisherWalletId } }),
+        prisma.wallet.findUnique({
+          where: {
+            ownerType_ownerId_currency: {
+              ownerType: "USER",
+              ownerId: input.claimantUserId,
+              currency: "NDP"
+            }
+          }
+        }),
+        prisma.wallet.findUnique({
+          where: {
+            ownerType_ownerId_currency: {
+              ownerType: "USER",
+              ownerId: input.customerUserId,
+              currency: "NDP"
+            }
+          }
+        }),
+        prisma.affiliateClaim.findUniqueOrThrow({ where: { id: input.claimId } }),
+        prisma.affiliateAttribution.findUniqueOrThrow({ where: { id: input.attributionId } }),
+        prisma.affiliateReward.findMany({
+          where: { attributionId: input.attributionId },
+          include: { transactions: { orderBy: { id: "asc" } } },
+          orderBy: { id: "asc" }
+        }),
+        prisma.affiliateRiskEvent.findMany({
+          where: {
+            OR: [
+              { taskId: input.taskId },
+              { attributionId: input.attributionId },
+              { claimId: input.claimId }
+            ]
+          },
+          orderBy: { id: "asc" }
+        })
+      ]);
+      const rewardIds = affiliateRewards.map((reward) => reward.id);
+      const [bookingLedgers, affiliateLedgers] = await Promise.all([
+        prisma.ledgerTransaction.findMany({
+          where: {
+            referenceType: "booking_order",
+            referenceId: input.bookingOrderId
+          },
+          include: {
+            entries: { orderBy: { id: "asc" } },
+            reconciliation: true,
+            affiliateBudgetTransactions: { orderBy: { id: "asc" } },
+            affiliateRewardTransactions: { orderBy: { id: "asc" } }
+          },
+          orderBy: { id: "asc" }
+        }),
+        prisma.ledgerTransaction.findMany({
+          where: {
+            OR: [
+              { referenceType: "affiliate_task", referenceId: input.taskId },
+              ...(rewardIds.length === 0
+                ? []
+                : [{ referenceType: "affiliate_reward", referenceId: { in: rewardIds } }])
+            ]
+          },
+          include: {
+            entries: { orderBy: { id: "asc" } },
+            reconciliation: true,
+            affiliateBudgetTransactions: { orderBy: { id: "asc" } },
+            affiliateRewardTransactions: { orderBy: { id: "asc" } }
+          },
+          orderBy: { id: "asc" }
+        })
+      ]);
+      const ledgerIds = [...bookingLedgers, ...affiliateLedgers].map((ledgerRow) => ledgerRow.id);
+      const auditLogs = await prisma.auditLog.findMany({
+        where: {
+          OR: [
+            { actorId: input.customerUserId },
+            { targetType: "affiliate_task", targetId: input.taskId },
+            { targetType: "booking_order", targetId: input.bookingOrderId },
+            ...(ledgerIds.length === 0
+              ? []
+              : [{ targetType: "ledger_transaction", targetId: { in: ledgerIds } }])
+          ]
+        },
+        orderBy: { id: "asc" }
+      });
+      return {
+        bookingOrder,
+        statusHistory,
+        scheduleSlot,
+        walletHolds,
+        orderFinancial,
+        feeCalculationLogs,
+        bookingLedgers,
+        affiliateTask,
+        budgetReservation,
+        publisherWallet: publisherWalletState,
+        claimantWallet,
+        customerWallet,
+        affiliateClaim,
+        attribution,
+        affiliateRewards,
+        affiliateLedgers,
+        riskEvents,
+        auditLogs
+      };
+    };
+    type RaceSnapshot = Awaited<ReturnType<typeof captureRaceSnapshot>>;
+    type RaceSnapshotInput = Parameters<typeof captureRaceSnapshot>[0];
+    const assertBaselineAuditRowsPreserved = (
+      baseline: RaceSnapshot,
+      actual: RaceSnapshot,
+      message: string
+    ): void => {
+      const baselineIds = new Set(baseline.auditLogs.map((audit) => audit.id));
+      assertExact(
+        actual.auditLogs.filter((audit) => baselineIds.has(audit.id)),
+        baseline.auditLogs,
+        message
+      );
+    };
+    const assertCreatedWallet = (
+      wallet: RaceSnapshot["claimantWallet"],
+      ownerId: number,
+      availableBalance: number,
+      message: string
+    ): void => {
+      assert(
+        wallet !== null &&
+          wallet.ownerType === "USER" &&
+          wallet.ownerId === ownerId &&
+          wallet.currency === "NDP" &&
+          wallet.availableBalance === availableBalance &&
+          wallet.frozenBalance === 0 &&
+          wallet.deletedAt === null,
+        message
+      );
+    };
+    const assertExpiryWinner = (
+      baseline: RaceSnapshot,
+      actual: RaceSnapshot,
+      input: RaceSnapshotInput
+    ): void => {
+      const releaseAmount =
+        baseline.budgetReservation.totalFrozenNdp -
+        baseline.budgetReservation.allocatedNdp -
+        baseline.budgetReservation.capturedNdp -
+        baseline.budgetReservation.releasedNdp;
+      assert(releaseAmount > 0, "expiry race baseline had no releasable budget");
+      assertRowChanges(
+        baseline.affiliateTask,
+        actual.affiliateTask,
+        {
+          status: "ENDED",
+          endedAt: now,
+          lockVersion: baseline.affiliateTask.lockVersion + 1,
+          releasedBudgetNdp: baseline.affiliateTask.releasedBudgetNdp + releaseAmount,
+          updatedAt: actual.affiliateTask.updatedAt
+        },
+        "expiry winner was not fully committed: task"
+      );
+      assertRowChanges(
+        baseline.budgetReservation,
+        actual.budgetReservation,
+        {
+          releasedNdp: baseline.budgetReservation.releasedNdp + releaseAmount,
+          status: baseline.budgetReservation.allocatedNdp === 0 ? "RELEASED" : "ACTIVE",
+          releasedAt:
+            baseline.budgetReservation.allocatedNdp === 0
+              ? now
+              : baseline.budgetReservation.releasedAt,
+          updatedAt: actual.budgetReservation.updatedAt
+        },
+        "expiry winner was not fully committed: reservation"
+      );
+      assertRowChanges(
+        baseline.publisherWallet,
+        actual.publisherWallet,
+        {
+          availableBalance: baseline.publisherWallet.availableBalance + releaseAmount,
+          frozenBalance: baseline.publisherWallet.frozenBalance - releaseAmount,
+          updatedAt: actual.publisherWallet.updatedAt
+        },
+        "expiry winner was not fully committed: publisher wallet"
+      );
+      assert(
+        actual.affiliateLedgers.length === baseline.affiliateLedgers.length + 1,
+        "expiry winner was not fully committed: ledger count"
+      );
+      const releaseLedger = actual.affiliateLedgers.at(-1);
+      assert(
+        releaseLedger !== undefined &&
+          releaseLedger.type === "AFFILIATE_TASK_BUDGET_RELEASE" &&
+          releaseLedger.status === "APPLIED" &&
+          releaseLedger.transactionNo.length > 0 &&
+          releaseLedger.referenceType === "affiliate_task" &&
+          releaseLedger.referenceId === input.taskId &&
+          releaseLedger.actorUserId === null &&
+          releaseLedger.amount === releaseAmount &&
+          releaseLedger.currency === "NDP" &&
+          releaseLedger.deletedAt === null &&
+          exactJson(releaseLedger.metadata) ===
+            exactJson({
+              taskId: input.taskId,
+              ownerType: "shop",
+              ownerId: shop.id,
+              walletId: input.publisherWalletId
+            }) &&
+          releaseLedger.idempotencyKey ===
+            `affiliate-task:${input.taskId}:expiry-release:to:${actual.budgetReservation.releasedNdp}` &&
+          releaseLedger.entries.length === 1 &&
+          releaseLedger.entries[0].walletId === input.publisherWalletId &&
+          releaseLedger.entries[0].transactionId === releaseLedger.id &&
+          releaseLedger.entries[0].direction === "UNFREEZE" &&
+          releaseLedger.entries[0].amount === releaseAmount &&
+          releaseLedger.entries[0].availableDelta === releaseAmount &&
+          releaseLedger.entries[0].frozenDelta === -releaseAmount &&
+          releaseLedger.entries[0].availableBalanceAfter ===
+            actual.publisherWallet.availableBalance &&
+          releaseLedger.entries[0].frozenBalanceAfter === actual.publisherWallet.frozenBalance &&
+          releaseLedger.entries[0].reason === "affiliate_task_budget_release" &&
+          releaseLedger.entries[0].deletedAt === null &&
+          releaseLedger.reconciliation !== null &&
+          releaseLedger.reconciliation.transactionId === releaseLedger.id &&
+          releaseLedger.reconciliation.referenceType === "affiliate_task" &&
+          releaseLedger.reconciliation.referenceId === input.taskId &&
+          releaseLedger.reconciliation.expectedAmount === releaseAmount &&
+          releaseLedger.reconciliation.actualAmount === releaseAmount &&
+          releaseLedger.reconciliation.differenceAmount === 0 &&
+          releaseLedger.reconciliation.status === "PENDING" &&
+          releaseLedger.reconciliation.currency === "NDP" &&
+          releaseLedger.reconciliation.deletedAt === null &&
+          releaseLedger.affiliateBudgetTransactions.length === 1 &&
+          releaseLedger.affiliateBudgetTransactions[0].budgetReservationId ===
+            actual.budgetReservation.id &&
+          releaseLedger.affiliateBudgetTransactions[0].kind === "RELEASE" &&
+          releaseLedger.affiliateBudgetTransactions[0].amountNdp === releaseAmount &&
+          releaseLedger.affiliateBudgetTransactions[0].ledgerTransactionId === releaseLedger.id &&
+          releaseLedger.affiliateBudgetTransactions[0].deletedAt === null &&
+          releaseLedger.affiliateRewardTransactions.length === 0,
+        "expiry winner was not fully committed: finance evidence"
+      );
+      const baselineAuditIds = new Set(baseline.auditLogs.map((audit) => audit.id));
+      const newAudits = actual.auditLogs.filter((audit) => !baselineAuditIds.has(audit.id));
+      assert(
+        newAudits.length === 3 &&
+          newAudits.every((audit) => audit.actorId === null) &&
+          new Set(newAudits.map((audit) => audit.action)).size === 3 &&
+          newAudits.some(
+            (audit) =>
+              audit.action === "affiliate.task.expired" &&
+              audit.targetType === "affiliate_task" &&
+              audit.targetId === input.taskId &&
+              exactJson(audit.metadata) ===
+                exactJson({ taskId: input.taskId, reservationId: actual.budgetReservation.id })
+          ) &&
+          newAudits.some(
+            (audit) =>
+              audit.action === "affiliate.task.expiry_budget_released" &&
+              audit.targetType === "affiliate_task" &&
+              audit.targetId === input.taskId &&
+              exactJson(audit.metadata) ===
+                exactJson({
+                  taskId: input.taskId,
+                  reservationId: actual.budgetReservation.id,
+                  releaseAmountNdp: releaseAmount,
+                  releasedBeforeNdp: baseline.budgetReservation.releasedNdp,
+                  releasedAfterNdp: actual.budgetReservation.releasedNdp,
+                  allocatedNdp: baseline.budgetReservation.allocatedNdp,
+                  capturedNdp: baseline.budgetReservation.capturedNdp,
+                  ledgerTransactionId: releaseLedger.id
+                })
+          ) &&
+          newAudits.some(
+            (audit) =>
+              audit.action === "ledger.affiliate_task_budget.release" &&
+              audit.targetType === "ledger_transaction" &&
+              audit.targetId === releaseLedger.id &&
+              exactJson(audit.metadata) ===
+                exactJson({
+                  referenceType: "affiliate_task",
+                  referenceId: input.taskId,
+                  amount: releaseAmount,
+                  currency: "NDP"
+                })
+          ),
+        "expiry winner was not fully committed: audit evidence"
+      );
+      assertBaselineAuditRowsPreserved(baseline, actual, "expiry winner rewrote baseline audits");
+    };
+    const assertBookingLedgerWinner = (
+      baseline: RaceSnapshot,
+      actual: RaceSnapshot,
+      input: RaceSnapshotInput,
+      type: "BOOKING_COMPLETE_SETTLEMENT" | "BOOKING_CANCEL_UNFREEZE",
+      availableDelta: number,
+      frozenDelta: number
+    ): void => {
+      assertExact(
+        actual.bookingLedgers.slice(0, baseline.bookingLedgers.length),
+        baseline.bookingLedgers,
+        "formal booking winner rewrote ordinary booking finance baseline"
+      );
+      assert(
+        actual.bookingLedgers.length === baseline.bookingLedgers.length + 1,
+        "formal booking winner ledger count is incorrect"
+      );
+      const winnerLedger = actual.bookingLedgers.at(-1);
+      assert(
+        winnerLedger !== undefined &&
+          winnerLedger.type === type &&
+          winnerLedger.status === "APPLIED" &&
+          winnerLedger.transactionNo.length > 0 &&
+          winnerLedger.referenceType === "booking_order" &&
+          winnerLedger.referenceId === input.bookingOrderId &&
+          winnerLedger.actorUserId === input.customerUserId &&
+          winnerLedger.amount === BOOKING_FEE_NDP &&
+          winnerLedger.currency === "NDP" &&
+          winnerLedger.deletedAt === null &&
+          winnerLedger.idempotencyKey ===
+            `booking:${input.bookingOrderId}:${
+              type === "BOOKING_COMPLETE_SETTLEMENT" ? "complete:settlement" : "cancel:unfreeze"
+            }` &&
+          winnerLedger.entries.length === 1 &&
+          winnerLedger.entries[0].walletId === input.publisherWalletId &&
+          winnerLedger.entries[0].transactionId === winnerLedger.id &&
+          winnerLedger.entries[0].direction ===
+            (type === "BOOKING_COMPLETE_SETTLEMENT" ? "FROZEN_DEBIT" : "UNFREEZE") &&
+          winnerLedger.entries[0].amount === BOOKING_FEE_NDP &&
+          winnerLedger.entries[0].availableDelta === availableDelta &&
+          winnerLedger.entries[0].frozenDelta === frozenDelta &&
+          winnerLedger.entries[0].availableBalanceAfter ===
+            baseline.publisherWallet.availableBalance + availableDelta &&
+          winnerLedger.entries[0].frozenBalanceAfter ===
+            baseline.publisherWallet.frozenBalance + frozenDelta &&
+          winnerLedger.entries[0].reason ===
+            (type === "BOOKING_COMPLETE_SETTLEMENT"
+              ? "booking_complete_merchant_debit"
+              : "booking_cancel_unfreeze") &&
+          winnerLedger.entries[0].deletedAt === null &&
+          winnerLedger.reconciliation !== null &&
+          winnerLedger.reconciliation.transactionId === winnerLedger.id &&
+          winnerLedger.reconciliation.referenceType === "booking_order" &&
+          winnerLedger.reconciliation.referenceId === input.bookingOrderId &&
+          winnerLedger.reconciliation.expectedAmount === BOOKING_FEE_NDP &&
+          winnerLedger.reconciliation.actualAmount === BOOKING_FEE_NDP &&
+          winnerLedger.reconciliation.differenceAmount === 0 &&
+          winnerLedger.reconciliation.status === "PENDING" &&
+          winnerLedger.reconciliation.currency === "NDP" &&
+          winnerLedger.reconciliation.deletedAt === null &&
+          winnerLedger.affiliateBudgetTransactions.length === 0 &&
+          winnerLedger.affiliateRewardTransactions.length === 0,
+        "formal booking winner ordinary ledger evidence is incomplete"
+      );
+    };
+    const assertNoExpiryPartialArtifacts = (baseline: RaceSnapshot, actual: RaceSnapshot): void => {
+      const expiryActions = new Set([
+        "affiliate.task.expired",
+        "affiliate.task.expiry_budget_released",
+        "ledger.affiliate_task_budget.release"
+      ]);
+      assert(
+        actual.affiliateLedgers.every(
+          (transaction) => transaction.type !== "AFFILIATE_TASK_BUDGET_RELEASE"
+        ) &&
+          actual.auditLogs.every((audit) => !expiryActions.has(audit.action)) &&
+          actual.affiliateTask.status === baseline.affiliateTask.status &&
+          sameDate(actual.affiliateTask.endedAt, baseline.affiliateTask.endedAt) &&
+          actual.affiliateTask.lockVersion === baseline.affiliateTask.lockVersion &&
+          actual.affiliateTask.releasedBudgetNdp === baseline.affiliateTask.releasedBudgetNdp &&
+          actual.budgetReservation.releasedNdp === baseline.budgetReservation.releasedNdp &&
+          sameDate(actual.budgetReservation.releasedAt, baseline.budgetReservation.releasedAt),
+        "expiry victim left partial artifacts"
+      );
+    };
+    const assertFormalCompletionWinner = (
+      baseline: RaceSnapshot,
+      actual: RaceSnapshot,
+      input: RaceSnapshotInput
+    ): void => {
+      const hold = actual.walletHolds[0];
+      const baselineHold = baseline.walletHolds[0];
+      assert(
+        baselineHold !== undefined && hold !== undefined,
+        "completion hold fixture is missing"
+      );
+      assertRowChanges(
+        baseline.bookingOrder,
+        actual.bookingOrder,
+        { status: "COMPLETED", updatedAt: actual.bookingOrder.updatedAt },
+        "formal completion winner was not fully committed: booking"
+      );
+      assertExact(
+        actual.statusHistory.slice(0, baseline.statusHistory.length),
+        baseline.statusHistory,
+        "formal completion winner rewrote status history baseline"
+      );
+      const completedHistory = actual.statusHistory.at(-1);
+      assert(
+        actual.statusHistory.length === baseline.statusHistory.length + 1 &&
+          completedHistory?.bookingOrderId === input.bookingOrderId &&
+          completedHistory.fromStatus === "IN_SERVICE" &&
+          completedHistory.toStatus === "COMPLETED" &&
+          completedHistory.actorUserId === input.customerUserId &&
+          completedHistory.reason === null &&
+          completedHistory.deletedAt === null,
+        "formal completion winner was not fully committed: status history"
+      );
+      assertExact(
+        actual.scheduleSlot,
+        baseline.scheduleSlot,
+        "formal completion winner changed schedule slot state"
+      );
+      assertRowChanges(
+        baselineHold,
+        hold,
+        {
+          capturedAmountNdp: BOOKING_FEE_NDP,
+          status: "captured",
+          capturedAt: hold.capturedAt,
+          metadata: hold.metadata,
+          updatedAt: hold.updatedAt
+        },
+        "formal completion winner was not fully committed: wallet hold"
+      );
+      assert(
+        hold.capturedAt !== null && hold.releasedAt === null,
+        "formal completion winner hold timestamps are incorrect"
+      );
+      assertRowChanges(
+        baseline.orderFinancial,
+        actual.orderFinancial,
+        {
+          bPlatformFeeActualNdp: BOOKING_FEE_NDP,
+          completedOrderOrdinalInPeriod: actual.orderFinancial.completedOrderOrdinalInPeriod,
+          appliedFeeRuleIdsJson: actual.orderFinancial.appliedFeeRuleIdsJson,
+          moneyTimelineJson: actual.orderFinancial.moneyTimelineJson,
+          settlementStatus: "settled",
+          updatedAt: actual.orderFinancial.updatedAt
+        },
+        "formal completion winner was not fully committed: order financial"
+      );
+      assert(
+        actual.feeCalculationLogs.length === baseline.feeCalculationLogs.length + 2 &&
+          new Set(actual.feeCalculationLogs.map((row) => row.id)).size ===
+            actual.feeCalculationLogs.length &&
+          actual.feeCalculationLogs
+            .slice(0, baseline.feeCalculationLogs.length)
+            .every(
+              (row, index) => exactJson(row) === exactJson(baseline.feeCalculationLogs[index])
+            ) &&
+          actual.feeCalculationLogs
+            .slice(-2)
+            .every(
+              (row) =>
+                row.bookingOrderId === input.bookingOrderId && row.calculationStage === "capture"
+            ) &&
+          actual.feeCalculationLogs.some(
+            (row) =>
+              row.calculationStage === "capture" &&
+              row.feeType === "b_platform_fee" &&
+              row.baseFeeNdp === BOOKING_FEE_NDP &&
+              row.tierAdjustmentNdp === 0 &&
+              row.timeAdjustmentNdp === 0 &&
+              row.campaignDiscountNdp === 0 &&
+              row.finalFeeNdp === BOOKING_FEE_NDP &&
+              row.holdAmountNdp === BOOKING_FEE_NDP &&
+              row.deletedAt === null
+          ) &&
+          actual.feeCalculationLogs.some(
+            (row) =>
+              row.calculationStage === "capture" &&
+              row.feeType === "user_reward" &&
+              row.baseFeeNdp === 0 &&
+              row.tierAdjustmentNdp === 0 &&
+              row.timeAdjustmentNdp === 0 &&
+              row.campaignDiscountNdp === 0 &&
+              row.finalFeeNdp === 0 &&
+              row.holdAmountNdp === 0 &&
+              row.deletedAt === null
+          ),
+        "formal completion winner was not fully committed: fee calculation logs"
+      );
+      assertBookingLedgerWinner(
+        baseline,
+        actual,
+        input,
+        "BOOKING_COMPLETE_SETTLEMENT",
+        0,
+        -BOOKING_FEE_NDP
+      );
+      assertRowChanges(
+        baseline.affiliateTask,
+        actual.affiliateTask,
+        {
+          allocatedBudgetNdp: baseline.affiliateTask.allocatedBudgetNdp - REWARD_NDP,
+          settledBudgetNdp: baseline.affiliateTask.settledBudgetNdp + REWARD_NDP,
+          updatedAt: actual.affiliateTask.updatedAt
+        },
+        "formal completion winner was not fully committed: task counters"
+      );
+      assertRowChanges(
+        baseline.budgetReservation,
+        actual.budgetReservation,
+        {
+          allocatedNdp: baseline.budgetReservation.allocatedNdp - REWARD_NDP,
+          capturedNdp: baseline.budgetReservation.capturedNdp + REWARD_NDP,
+          updatedAt: actual.budgetReservation.updatedAt
+        },
+        "formal completion winner was not fully committed: reservation counters"
+      );
+      assertRowChanges(
+        baseline.publisherWallet,
+        actual.publisherWallet,
+        {
+          frozenBalance: baseline.publisherWallet.frozenBalance - REWARD_NDP - BOOKING_FEE_NDP,
+          updatedAt: actual.publisherWallet.updatedAt
+        },
+        "formal completion winner was not fully committed: publisher wallet"
+      );
+      assertCreatedWallet(
+        actual.claimantWallet,
+        input.claimantUserId,
+        REWARD_NDP,
+        "formal completion winner claimant wallet is incomplete"
+      );
+      assertCreatedWallet(
+        actual.customerWallet,
+        input.customerUserId,
+        0,
+        "formal completion winner customer wallet is incomplete"
+      );
+      assertRowChanges(
+        baseline.affiliateClaim,
+        actual.affiliateClaim,
+        {
+          completedOrderCount: baseline.affiliateClaim.completedOrderCount + 1,
+          settledRewardNdp: baseline.affiliateClaim.settledRewardNdp + REWARD_NDP,
+          updatedAt: actual.affiliateClaim.updatedAt
+        },
+        "formal completion winner was not fully committed: claim counters"
+      );
+      assertRowChanges(
+        baseline.attribution,
+        actual.attribution,
+        {
+          status: "SETTLED",
+          qualifiedAt: actual.attribution.qualifiedAt,
+          settledAt: actual.attribution.settledAt,
+          updatedAt: actual.attribution.updatedAt
+        },
+        "formal completion winner was not fully committed: attribution"
+      );
+      assert(
+        actual.attribution.activeKey === baseline.attribution.activeKey &&
+          actual.attribution.qualifiedAt !== null &&
+          actual.attribution.settledAt !== null &&
+          actual.attribution.invalidatedAt === null &&
+          actual.attribution.invalidationReason === null &&
+          actual.affiliateRewards.length === 1,
+        "formal completion winner attribution timestamps or reward count are incorrect"
+      );
+      const reward = actual.affiliateRewards[0];
+      assert(
+        reward.attributionId === input.attributionId &&
+          reward.taskId === input.taskId &&
+          reward.claimId === input.claimId &&
+          reward.bookingOrderId === input.bookingOrderId &&
+          reward.publisherWalletId === input.publisherWalletId &&
+          reward.claimantWalletId === actual.claimantWallet?.id &&
+          reward.rewardNdp === REWARD_NDP &&
+          reward.reversalRequiredNdp === 0 &&
+          reward.reversedNdp === 0 &&
+          reward.outstandingRecoveryNdp === 0 &&
+          reward.status === "SETTLED" &&
+          reward.settledAt !== null &&
+          reward.reversedAt === null &&
+          reward.reversalReason === null &&
+          reward.deletedAt === null &&
+          reward.transactions.length === 1 &&
+          reward.transactions[0].rewardId === reward.id &&
+          reward.transactions[0].kind === "SETTLEMENT" &&
+          reward.transactions[0].amountNdp === REWARD_NDP &&
+          reward.transactions[0].deletedAt === null,
+        "formal completion winner reward/link evidence is incomplete"
+      );
+      const settlementLedger = actual.affiliateLedgers.find(
+        (transaction) => transaction.type === "AFFILIATE_REWARD_SETTLEMENT"
+      );
+      assert(
+        actual.affiliateLedgers.length === baseline.affiliateLedgers.length + 1 &&
+          settlementLedger !== undefined &&
+          settlementLedger.status === "APPLIED" &&
+          settlementLedger.transactionNo.length > 0 &&
+          settlementLedger.idempotencyKey ===
+            `affiliate:task:${input.taskId}:booking:${input.bookingOrderId}:reward:settlement` &&
+          settlementLedger.referenceType === "affiliate_reward" &&
+          settlementLedger.referenceId === reward.id &&
+          settlementLedger.actorUserId === input.customerUserId &&
+          settlementLedger.amount === REWARD_NDP &&
+          settlementLedger.currency === "NDP" &&
+          settlementLedger.deletedAt === null &&
+          settlementLedger.entries.length === 2 &&
+          settlementLedger.entries.some(
+            (entry) =>
+              entry.transactionId === settlementLedger.id &&
+              entry.walletId === input.publisherWalletId &&
+              entry.direction === "FROZEN_DEBIT" &&
+              entry.amount === REWARD_NDP &&
+              entry.availableDelta === 0 &&
+              entry.frozenDelta === -REWARD_NDP &&
+              entry.availableBalanceAfter === actual.publisherWallet.availableBalance &&
+              entry.frozenBalanceAfter === actual.publisherWallet.frozenBalance &&
+              entry.reason === "affiliate_reward_publisher_frozen_debit" &&
+              entry.deletedAt === null
+          ) &&
+          settlementLedger.entries.some(
+            (entry) =>
+              entry.transactionId === settlementLedger.id &&
+              entry.walletId === actual.claimantWallet?.id &&
+              entry.direction === "AVAILABLE_CREDIT" &&
+              entry.amount === REWARD_NDP &&
+              entry.availableDelta === REWARD_NDP &&
+              entry.frozenDelta === 0 &&
+              entry.availableBalanceAfter === REWARD_NDP &&
+              entry.frozenBalanceAfter === 0 &&
+              entry.reason === "affiliate_reward_claimant_available_credit" &&
+              entry.deletedAt === null
+          ) &&
+          settlementLedger.reconciliation !== null &&
+          settlementLedger.reconciliation.transactionId === settlementLedger.id &&
+          settlementLedger.reconciliation.referenceType === "affiliate_reward" &&
+          settlementLedger.reconciliation.referenceId === reward.id &&
+          settlementLedger.reconciliation.status === "PENDING" &&
+          settlementLedger.reconciliation.expectedAmount === REWARD_NDP &&
+          settlementLedger.reconciliation.actualAmount === REWARD_NDP &&
+          settlementLedger.reconciliation.differenceAmount === 0 &&
+          settlementLedger.reconciliation.currency === "NDP" &&
+          settlementLedger.reconciliation.deletedAt === null &&
+          settlementLedger.affiliateBudgetTransactions.length === 1 &&
+          settlementLedger.affiliateBudgetTransactions[0].budgetReservationId ===
+            actual.budgetReservation.id &&
+          settlementLedger.affiliateBudgetTransactions[0].kind === "SETTLEMENT" &&
+          settlementLedger.affiliateBudgetTransactions[0].amountNdp === REWARD_NDP &&
+          settlementLedger.affiliateBudgetTransactions[0].ledgerTransactionId ===
+            settlementLedger.id &&
+          settlementLedger.affiliateBudgetTransactions[0].deletedAt === null &&
+          settlementLedger.affiliateRewardTransactions.length === 1 &&
+          settlementLedger.affiliateRewardTransactions[0].rewardId === reward.id &&
+          settlementLedger.affiliateRewardTransactions[0].kind === "SETTLEMENT" &&
+          settlementLedger.affiliateRewardTransactions[0].amountNdp === REWARD_NDP &&
+          settlementLedger.affiliateRewardTransactions[0].ledgerTransactionId ===
+            settlementLedger.id &&
+          settlementLedger.affiliateRewardTransactions[0].deletedAt === null,
+        "formal completion winner affiliate ledger evidence is incomplete"
+      );
+      assertExact(
+        actual.riskEvents,
+        baseline.riskEvents,
+        "formal completion winner changed risk events"
+      );
+      assertBaselineAuditRowsPreserved(
+        baseline,
+        actual,
+        "formal completion winner rewrote baseline audits"
+      );
+      const baselineAuditIds = new Set(baseline.auditLogs.map((audit) => audit.id));
+      const newAudits = actual.auditLogs.filter((audit) => !baselineAuditIds.has(audit.id));
+      const actions = newAudits.map((audit) => audit.action);
+      const bookingLedger = actual.bookingLedgers.at(-1);
+      assert(
+        actions.length === 3 &&
+          new Set(actions).size === 3 &&
+          newAudits.some(
+            (audit) =>
+              audit.actorId === input.customerUserId &&
+              audit.action === "ledger.booking_complete.settlement" &&
+              audit.targetType === "ledger_transaction" &&
+              audit.targetId === bookingLedger?.id &&
+              exactJson(audit.metadata) ===
+                exactJson({
+                  referenceType: "booking_order",
+                  referenceId: input.bookingOrderId,
+                  amount: BOOKING_FEE_NDP,
+                  currency: "NDP"
+                })
+          ) &&
+          newAudits.some(
+            (audit) =>
+              audit.actorId === input.customerUserId &&
+              audit.action === "ledger.affiliate_reward.settlement" &&
+              audit.targetType === "ledger_transaction" &&
+              audit.targetId === settlementLedger.id &&
+              exactJson(audit.metadata) ===
+                exactJson({
+                  referenceType: "affiliate_reward",
+                  referenceId: reward.id,
+                  amount: REWARD_NDP,
+                  currency: "NDP"
+                })
+          ) &&
+          newAudits.some(
+            (audit) =>
+              audit.actorId === input.customerUserId &&
+              audit.action === "affiliate.reward.settled" &&
+              audit.targetType === "booking_order" &&
+              audit.targetId === input.bookingOrderId &&
+              exactJson(audit.metadata) ===
+                exactJson({
+                  attributionId: input.attributionId,
+                  taskId: input.taskId,
+                  claimId: input.claimId,
+                  rewardId: reward.id,
+                  ledgerTransactionId: settlementLedger.id,
+                  rewardSettledNdp: REWARD_NDP
+                })
+          ),
+        "formal completion winner audit evidence is incomplete"
+      );
+      assertNoExpiryPartialArtifacts(baseline, actual);
+    };
+    const assertFormalCancellationWinner = (
+      baseline: RaceSnapshot,
+      actual: RaceSnapshot,
+      input: RaceSnapshotInput
+    ): void => {
+      const reason = "expiry acceptance cancellation race";
+      const hold = actual.walletHolds[0];
+      const baselineHold = baseline.walletHolds[0];
+      assert(
+        baselineHold !== undefined && hold !== undefined,
+        "cancellation hold fixture is missing"
+      );
+      assertRowChanges(
+        baseline.bookingOrder,
+        actual.bookingOrder,
+        { status: "CANCELLED", cancelReason: reason, updatedAt: actual.bookingOrder.updatedAt },
+        "formal cancellation winner was not fully committed: booking"
+      );
+      assertExact(
+        actual.statusHistory.slice(0, baseline.statusHistory.length),
+        baseline.statusHistory,
+        "formal cancellation winner rewrote status history baseline"
+      );
+      const cancelledHistory = actual.statusHistory.at(-1);
+      assert(
+        actual.statusHistory.length === baseline.statusHistory.length + 1 &&
+          cancelledHistory?.bookingOrderId === input.bookingOrderId &&
+          cancelledHistory.fromStatus === "CONFIRMED" &&
+          cancelledHistory.toStatus === "CANCELLED" &&
+          cancelledHistory.actorUserId === input.customerUserId &&
+          cancelledHistory.reason === reason &&
+          cancelledHistory.deletedAt === null,
+        "formal cancellation winner was not fully committed: status history"
+      );
+      assertRowChanges(
+        baseline.scheduleSlot,
+        actual.scheduleSlot,
+        { status: "AVAILABLE", bookedCount: 0, updatedAt: actual.scheduleSlot.updatedAt },
+        "formal cancellation winner was not fully committed: schedule slot"
+      );
+      assertRowChanges(
+        baselineHold,
+        hold,
+        {
+          releasedAmountNdp: BOOKING_FEE_NDP,
+          status: "released",
+          releasedAt: hold.releasedAt,
+          updatedAt: hold.updatedAt
+        },
+        "formal cancellation winner was not fully committed: wallet hold"
+      );
+      assert(
+        hold.releasedAt !== null && hold.capturedAt === null,
+        "formal cancellation winner hold timestamps are incorrect"
+      );
+      assertRowChanges(
+        baseline.orderFinancial,
+        actual.orderFinancial,
+        {
+          releasedNdp: BOOKING_FEE_NDP,
+          moneyTimelineJson: actual.orderFinancial.moneyTimelineJson,
+          settlementStatus: "cancelled",
+          updatedAt: actual.orderFinancial.updatedAt
+        },
+        "formal cancellation winner was not fully committed: order financial"
+      );
+      assertExact(
+        actual.feeCalculationLogs,
+        baseline.feeCalculationLogs,
+        "formal cancellation winner changed fee calculation logs"
+      );
+      assertBookingLedgerWinner(
+        baseline,
+        actual,
+        input,
+        "BOOKING_CANCEL_UNFREEZE",
+        BOOKING_FEE_NDP,
+        -BOOKING_FEE_NDP
+      );
+      assertRowChanges(
+        baseline.affiliateTask,
+        actual.affiliateTask,
+        {
+          allocatedBudgetNdp: baseline.affiliateTask.allocatedBudgetNdp - REWARD_NDP,
+          updatedAt: actual.affiliateTask.updatedAt
+        },
+        "formal cancellation winner was not fully committed: task counters"
+      );
+      assertRowChanges(
+        baseline.budgetReservation,
+        actual.budgetReservation,
+        {
+          allocatedNdp: baseline.budgetReservation.allocatedNdp - REWARD_NDP,
+          updatedAt: actual.budgetReservation.updatedAt
+        },
+        "formal cancellation winner was not fully committed: reservation counters"
+      );
+      assertRowChanges(
+        baseline.publisherWallet,
+        actual.publisherWallet,
+        {
+          availableBalance: baseline.publisherWallet.availableBalance + BOOKING_FEE_NDP,
+          frozenBalance: baseline.publisherWallet.frozenBalance - BOOKING_FEE_NDP,
+          updatedAt: actual.publisherWallet.updatedAt
+        },
+        "formal cancellation winner was not fully committed: publisher wallet"
+      );
+      assertExact(
+        actual.claimantWallet,
+        baseline.claimantWallet,
+        "formal cancellation winner created claimant wallet"
+      );
+      assertExact(
+        actual.customerWallet,
+        baseline.customerWallet,
+        "formal cancellation winner created customer wallet"
+      );
+      assertExact(
+        actual.affiliateClaim,
+        baseline.affiliateClaim,
+        "formal cancellation winner changed claim counters"
+      );
+      assertRowChanges(
+        baseline.attribution,
+        actual.attribution,
+        {
+          status: "INVALIDATED",
+          activeKey: null,
+          invalidatedAt: actual.attribution.invalidatedAt,
+          invalidationReason: "booking_cancelled",
+          updatedAt: actual.attribution.updatedAt
+        },
+        "formal cancellation winner was not fully committed: attribution"
+      );
+      assert(
+        actual.attribution.invalidatedAt !== null &&
+          actual.attribution.qualifiedAt === null &&
+          actual.attribution.settledAt === null &&
+          actual.affiliateRewards.length === 0 &&
+          actual.affiliateLedgers.length === baseline.affiliateLedgers.length,
+        "formal cancellation winner left reward or affiliate ledger artifacts"
+      );
+      assertExact(
+        actual.riskEvents,
+        baseline.riskEvents,
+        "formal cancellation winner changed risk events"
+      );
+      assertBaselineAuditRowsPreserved(
+        baseline,
+        actual,
+        "formal cancellation winner rewrote baseline audits"
+      );
+      const baselineAuditIds = new Set(baseline.auditLogs.map((audit) => audit.id));
+      const newAudits = actual.auditLogs.filter((audit) => !baselineAuditIds.has(audit.id));
+      const actions = newAudits.map((audit) => audit.action);
+      const cancellationLedger = actual.bookingLedgers.at(-1);
+      assert(
+        actions.length === 2 &&
+          new Set(actions).size === 2 &&
+          newAudits.some(
+            (audit) =>
+              audit.actorId === input.customerUserId &&
+              audit.action === "ledger.booking_cancel.unfreeze" &&
+              audit.targetType === "ledger_transaction" &&
+              audit.targetId === cancellationLedger?.id &&
+              exactJson(audit.metadata) ===
+                exactJson({
+                  referenceType: "booking_order",
+                  referenceId: input.bookingOrderId,
+                  amount: BOOKING_FEE_NDP,
+                  currency: "NDP"
+                })
+          ) &&
+          newAudits.some(
+            (audit) =>
+              audit.actorId === input.customerUserId &&
+              audit.action === "affiliate.attribution.invalidated" &&
+              audit.targetType === "booking_order" &&
+              audit.targetId === input.bookingOrderId &&
+              exactJson(audit.metadata) ===
+                exactJson({
+                  attributionId: input.attributionId,
+                  taskId: input.taskId,
+                  claimId: input.claimId,
+                  rewardReleasedNdp: REWARD_NDP,
+                  reason: "booking_cancelled"
+                })
+          ),
+        "formal cancellation winner audit evidence is incomplete"
+      );
+      assertNoExpiryPartialArtifacts(baseline, actual);
+    };
+    const assertExpiryVictimRollback = async (input: {
+      flow: "completion" | "cancellation";
+      baseline: RaceSnapshot;
+      snapshotInput: RaceSnapshotInput;
+    }): Promise<void> => {
+      const actual = await captureRaceSnapshot(input.snapshotInput);
+      if (input.flow === "completion") {
+        assertFormalCompletionWinner(input.baseline, actual, input.snapshotInput);
+      } else {
+        assertFormalCancellationWinner(input.baseline, actual, input.snapshotInput);
+      }
+    };
+    const assertBookingVictimRollback = async (input: {
+      baseline: RaceSnapshot;
+      snapshotInput: RaceSnapshotInput;
+    }): Promise<void> => {
+      const actual = await captureRaceSnapshot(input.snapshotInput);
+      assertExact(
+        actual.bookingOrder,
+        input.baseline.bookingOrder,
+        "booking victim left partial artifacts: booking"
+      );
+      assertExact(
+        actual.statusHistory,
+        input.baseline.statusHistory,
+        "booking victim left partial artifacts: status history"
+      );
+      assertExact(
+        actual.scheduleSlot,
+        input.baseline.scheduleSlot,
+        "booking victim left partial artifacts: schedule slot"
+      );
+      assertExact(
+        actual.walletHolds,
+        input.baseline.walletHolds,
+        "booking victim left partial artifacts: wallet holds"
+      );
+      assertExact(
+        actual.orderFinancial,
+        input.baseline.orderFinancial,
+        "booking victim left partial artifacts: order financial"
+      );
+      assertExact(
+        actual.feeCalculationLogs,
+        input.baseline.feeCalculationLogs,
+        "booking victim left partial artifacts: fee logs"
+      );
+      assertExact(
+        actual.bookingLedgers,
+        input.baseline.bookingLedgers,
+        "booking victim left partial artifacts: ordinary booking ledgers"
+      );
+      assertExact(
+        actual.claimantWallet,
+        input.baseline.claimantWallet,
+        "booking victim left partial artifacts: claimant wallet"
+      );
+      assertExact(
+        actual.customerWallet,
+        input.baseline.customerWallet,
+        "booking victim left partial artifacts: customer wallet"
+      );
+      assertExact(
+        actual.affiliateClaim,
+        input.baseline.affiliateClaim,
+        "booking victim left partial artifacts: claim"
+      );
+      assertExact(
+        actual.attribution,
+        input.baseline.attribution,
+        "booking victim left partial artifacts: attribution"
+      );
+      assertExact(
+        actual.affiliateRewards,
+        input.baseline.affiliateRewards,
+        "booking victim left partial artifacts: rewards"
+      );
+      assertExact(
+        actual.riskEvents,
+        input.baseline.riskEvents,
+        "booking victim left partial artifacts: risk events"
+      );
+      assertExpiryWinner(input.baseline, actual, input.snapshotInput);
     };
     const drainExpiry = async (batchSize = 2) => {
       const expiry = createExpiry();
@@ -684,6 +1735,18 @@ const main = async (): Promise<void> => {
     );
     await advanceToInService(customerCompletionRace.id, completionRaceOrder.order.id);
     await makeDue(completionRaceFixture.task.id);
+    assert(completionRaceFixture.claim !== null, "completion race claim fixture is missing");
+    const completionSnapshotInput = {
+      taskId: completionRaceFixture.task.id,
+      bookingOrderId: completionRaceOrder.order.id,
+      scheduleSlotId: completionRaceOrder.order.scheduleSlotId,
+      claimId: completionRaceFixture.claim.id,
+      attributionId: completionRaceOrder.attribution.id,
+      publisherWalletId: publisherWallet.id,
+      claimantUserId: claimantCompletionRace.id,
+      customerUserId: customerCompletionRace.id
+    };
+    const completionPreRaceSnapshot = await captureRaceSnapshot(completionSnapshotInput);
     const completionPublisherBefore = await prisma.wallet.findUniqueOrThrow({
       where: { id: publisherWallet.id }
     });
@@ -708,27 +1771,11 @@ const main = async (): Promise<void> => {
           completionExpiryFailures.length === 1,
           "completion expiry race did not report its deadlock victim"
         );
-        const rollbackTask = await prisma.affiliateTask.findUniqueOrThrow({
-          where: { id: completionRaceFixture.task.id }
+        await assertExpiryVictimRollback({
+          flow: "completion",
+          baseline: completionPreRaceSnapshot,
+          snapshotInput: completionSnapshotInput
         });
-        assert(
-          rollbackTask.endedAt === null &&
-            (await prisma.ledgerTransaction.count({
-              where: {
-                type: "AFFILIATE_TASK_BUDGET_RELEASE",
-                referenceType: "affiliate_task",
-                referenceId: completionRaceFixture.task.id
-              }
-            })) === 0 &&
-            (await prisma.auditLog.count({
-              where: {
-                targetType: "affiliate_task",
-                targetId: completionRaceFixture.task.id,
-                action: "affiliate.task.expired"
-              }
-            })) === 0,
-          "completion expiry deadlock victim did not roll back"
-        );
       },
       validateFulfilled: requireSuccessfulExpirySummary
     });
@@ -741,91 +1788,10 @@ const main = async (): Promise<void> => {
           "complete"
         ),
       verifyRollback: async () => {
-        const [
-          rollbackBooking,
-          rollbackHistory,
-          rollbackSlot,
-          rollbackHold,
-          rollbackFinancial,
-          rollbackAttribution,
-          rollbackCompletionLedgerCount,
-          rollbackCaptureLogCount,
-          rollbackCompletionAuditCount
-        ] = await Promise.all([
-          prisma.bookingOrder.findUniqueOrThrow({ where: { id: completionRaceOrder.order.id } }),
-          prisma.orderStatusHistory.findMany({
-            where: { bookingOrderId: completionRaceOrder.order.id },
-            orderBy: { id: "asc" }
-          }),
-          prisma.scheduleSlot.findUniqueOrThrow({
-            where: { id: completionRaceOrder.order.scheduleSlotId }
-          }),
-          prisma.walletHold.findFirstOrThrow({
-            where: { bookingOrderId: completionRaceOrder.order.id, deletedAt: null }
-          }),
-          prisma.orderFinancial.findUniqueOrThrow({
-            where: { bookingOrderId: completionRaceOrder.order.id }
-          }),
-          prisma.affiliateAttribution.findUniqueOrThrow({
-            where: { id: completionRaceOrder.attribution.id }
-          }),
-          prisma.ledgerTransaction.count({
-            where: {
-              type: "BOOKING_COMPLETE_SETTLEMENT",
-              referenceType: "booking_order",
-              referenceId: completionRaceOrder.order.id,
-              deletedAt: null
-            }
-          }),
-          prisma.feeCalculationLog.count({
-            where: {
-              bookingOrderId: completionRaceOrder.order.id,
-              calculationStage: "capture",
-              deletedAt: null
-            }
-          }),
-          prisma.auditLog.count({
-            where: {
-              actorId: customerCompletionRace.id,
-              action: {
-                in: [
-                  "ledger.booking_complete.settlement",
-                  "ledger.affiliate_reward.settlement",
-                  "affiliate.reward.settled"
-                ]
-              },
-              deletedAt: null
-            }
-          })
-        ]);
-        assert(
-          rollbackBooking.status === "IN_SERVICE" &&
-            rollbackHistory.length === 3 &&
-            rollbackHistory[2].toStatus === "IN_SERVICE" &&
-            rollbackSlot.status === "BOOKED" &&
-            rollbackSlot.bookedCount === 1 &&
-            rollbackHold.status === "active" &&
-            rollbackHold.capturedAmountNdp === 0 &&
-            rollbackHold.releasedAmountNdp === 0 &&
-            rollbackFinancial.settlementStatus === "holding" &&
-            rollbackFinancial.bPlatformFeeActualNdp === 0 &&
-            rollbackFinancial.releasedNdp === 0 &&
-            rollbackAttribution.status === "ATTRIBUTED" &&
-            (await prisma.affiliateReward.count({
-              where: { attributionId: completionRaceOrder.attribution.id, deletedAt: null }
-            })) === 0 &&
-            (await prisma.wallet.count({
-              where: {
-                ownerType: "USER",
-                ownerId: claimantCompletionRace.id,
-                currency: "NDP"
-              }
-            })) === 0 &&
-            rollbackCompletionLedgerCount === 0 &&
-            rollbackCaptureLogCount === 0 &&
-            rollbackCompletionAuditCount === 0,
-          "completion outer booking deadlock victim did not roll back"
-        );
+        await assertBookingVictimRollback({
+          baseline: completionPreRaceSnapshot,
+          snapshotInput: completionSnapshotInput
+        });
       }
     });
     const completionExpirySummary = completionExpiryResolution.value;
@@ -1037,6 +2003,18 @@ const main = async (): Promise<void> => {
       "confirm"
     );
     await makeDue(cancellationRaceFixture.task.id);
+    assert(cancellationRaceFixture.claim !== null, "cancellation race claim fixture is missing");
+    const cancellationSnapshotInput = {
+      taskId: cancellationRaceFixture.task.id,
+      bookingOrderId: cancellationRaceOrder.order.id,
+      scheduleSlotId: cancellationRaceOrder.order.scheduleSlotId,
+      claimId: cancellationRaceFixture.claim.id,
+      attributionId: cancellationRaceOrder.attribution.id,
+      publisherWalletId: publisherWallet.id,
+      claimantUserId: claimantCancellationRace.id,
+      customerUserId: customerCancellationRace.id
+    };
+    const cancellationPreRaceSnapshot = await captureRaceSnapshot(cancellationSnapshotInput);
     const cancellationWalletBefore = await prisma.wallet.findUniqueOrThrow({
       where: { id: publisherWallet.id }
     });
@@ -1062,20 +2040,11 @@ const main = async (): Promise<void> => {
           cancellationExpiryFailures.length === 1,
           "cancellation expiry race did not report its deadlock victim"
         );
-        const rollbackTask = await prisma.affiliateTask.findUniqueOrThrow({
-          where: { id: cancellationRaceFixture.task.id }
+        await assertExpiryVictimRollback({
+          flow: "cancellation",
+          baseline: cancellationPreRaceSnapshot,
+          snapshotInput: cancellationSnapshotInput
         });
-        assert(
-          rollbackTask.endedAt === null &&
-            (await prisma.ledgerTransaction.count({
-              where: {
-                type: "AFFILIATE_TASK_BUDGET_RELEASE",
-                referenceType: "affiliate_task",
-                referenceId: cancellationRaceFixture.task.id
-              }
-            })) === 0,
-          "cancellation expiry deadlock victim did not roll back"
-        );
       },
       validateFulfilled: requireSuccessfulExpirySummary
     });
@@ -1089,75 +2058,15 @@ const main = async (): Promise<void> => {
           "expiry acceptance cancellation race"
         ),
       verifyRollback: async () => {
-        const [
-          rollbackBooking,
-          rollbackHistory,
-          rollbackSlot,
-          rollbackHold,
-          rollbackFinancial,
-          rollbackAttribution,
-          rollbackCancellationLedgerCount,
-          rollbackCancellationAuditCount
-        ] = await Promise.all([
-          prisma.bookingOrder.findUniqueOrThrow({ where: { id: cancellationRaceOrder.order.id } }),
-          prisma.orderStatusHistory.findMany({
-            where: { bookingOrderId: cancellationRaceOrder.order.id },
-            orderBy: { id: "asc" }
-          }),
-          prisma.scheduleSlot.findUniqueOrThrow({
-            where: { id: cancellationRaceOrder.order.scheduleSlotId }
-          }),
-          prisma.walletHold.findFirstOrThrow({
-            where: { bookingOrderId: cancellationRaceOrder.order.id, deletedAt: null }
-          }),
-          prisma.orderFinancial.findUniqueOrThrow({
-            where: { bookingOrderId: cancellationRaceOrder.order.id }
-          }),
-          prisma.affiliateAttribution.findUniqueOrThrow({
-            where: { id: cancellationRaceOrder.attribution.id }
-          }),
-          prisma.ledgerTransaction.count({
-            where: {
-              type: "BOOKING_CANCEL_UNFREEZE",
-              referenceType: "booking_order",
-              referenceId: cancellationRaceOrder.order.id,
-              deletedAt: null
-            }
-          }),
-          prisma.auditLog.count({
-            where: {
-              actorId: customerCancellationRace.id,
-              action: {
-                in: ["ledger.booking_cancel.unfreeze", "affiliate.attribution.invalidated"]
-              },
-              deletedAt: null
-            }
-          })
-        ]);
-        assert(
-          rollbackBooking.status === "CONFIRMED" &&
-            rollbackHistory.length === 2 &&
-            rollbackHistory[1].toStatus === "CONFIRMED" &&
-            rollbackSlot.status === "BOOKED" &&
-            rollbackSlot.bookedCount === 1 &&
-            rollbackHold.status === "active" &&
-            rollbackHold.capturedAmountNdp === 0 &&
-            rollbackHold.releasedAmountNdp === 0 &&
-            rollbackFinancial.settlementStatus === "holding" &&
-            rollbackFinancial.bPlatformFeeActualNdp === 0 &&
-            rollbackFinancial.releasedNdp === 0 &&
-            rollbackAttribution.status === "ATTRIBUTED" &&
-            rollbackAttribution.activeKey !== null &&
-            rollbackCancellationLedgerCount === 0 &&
-            rollbackCancellationAuditCount === 0,
-          "cancellation outer booking deadlock victim did not roll back"
-        );
+        await assertBookingVictimRollback({
+          baseline: cancellationPreRaceSnapshot,
+          snapshotInput: cancellationSnapshotInput
+        });
       }
     });
     const cancellationExpirySummary = cancellationExpiryResolution.value;
     const cancellationDeadlockRetries =
-      Number(cancellationExpiryResolution.retried) +
-      Number(cancellationFormalResolution.retried);
+      Number(cancellationExpiryResolution.retried) + Number(cancellationFormalResolution.retried);
     assert(
       cancellationExpirySummary.failed === 0 &&
         cancellationFormalResolution.value.status === "cancelled",
@@ -1518,8 +2427,7 @@ const main = async (): Promise<void> => {
       finance: {
         releaseTransactions: releaseTransactions.length,
         settlementTransactions: settlementTransactions.length,
-        bookingTransactions:
-          completionBookingLedgers.length + cancellationBookingLedgers.length,
+        bookingTransactions: completionBookingLedgers.length + cancellationBookingLedgers.length,
         reconciled: true,
         audited: true
       },
@@ -1675,10 +2583,13 @@ const main = async (): Promise<void> => {
       prisma.category.count({ where: { code: { startsWith: marker } } }),
       prisma.service.count({ where: { name: { startsWith: marker } } }),
       prisma.affiliateTask.count({ where: { taskCode: { startsWith: marker } } }),
+      prisma.affiliateTaskShop.count({ where: { taskId: { in: taskIds } } }),
+      prisma.affiliateTaskService.count({ where: { taskId: { in: taskIds } } }),
       prisma.affiliateClaim.count({ where: { id: { in: claimIds } } }),
       prisma.affiliateTouch.count({ where: { taskId: { in: taskIds } } }),
       prisma.affiliateAttribution.count({ where: { taskId: { in: taskIds } } }),
       prisma.affiliateReward.count({ where: { taskId: { in: taskIds } } }),
+      prisma.affiliateRiskEvent.count({ where: { taskId: { in: taskIds } } }),
       prisma.bookingOrder.count({ where: { id: { in: bookingIds } } }),
       prisma.walletHold.count({ where: { bookingOrderId: { in: bookingIds } } }),
       prisma.orderFinancial.count({ where: { bookingOrderId: { in: bookingIds } } }),
@@ -1697,6 +2608,15 @@ const main = async (): Promise<void> => {
         where: { transactionId: { in: ledgerTransactionIds } }
       }),
       prisma.ledgerTransaction.count({ where: { id: { in: ledgerTransactionIds } } }),
+      prisma.wallet.count({
+        where: {
+          OR: [
+            { id: { in: walletIds } },
+            { ownerType: "USER", ownerId: { in: userIds } },
+            ...(shopId === null ? [] : [{ ownerType: "SHOP" as const, ownerId: shopId }])
+          ]
+        }
+      }),
       prisma.auditLog.count({
         where: {
           OR: [
