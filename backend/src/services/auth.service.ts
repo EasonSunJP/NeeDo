@@ -144,6 +144,27 @@ export interface VerifiedGoogleRegistrationPayload extends TokenPairPayload {
   needoId?: string;
 }
 
+export interface GoogleLinkStatusPayload {
+  linked: boolean;
+  maskedEmail: string | null;
+  hasPassword: boolean;
+  canUnlink: boolean;
+}
+
+export type GoogleAccountSecurityChallengePayload = RegistrationChallengePayload;
+
+export interface AuthenticatedGoogleLinkVerificationPayload {
+  linked: true;
+}
+
+export interface PasswordSetupVerificationPayload {
+  hasPassword: true;
+}
+
+export interface GoogleUnlinkVerificationPayload {
+  signedOut: true;
+}
+
 const BCRYPT_ROUNDS = 12;
 const DUMMY_PASSWORD_HASH = "$2b$12$yeZHxRVngWt4QQuvHslkk.koIBff/rgsnD5/NITKu8U9cL.3.XfUS";
 
@@ -173,6 +194,241 @@ export class AuthService {
       nonceChallengeId: nonce.challengeId,
       expiresIn: nonce.expiresInSeconds
     };
+  }
+
+  public async getGoogleLinkStatus(
+    auth: AuthenticatedAccessContext
+  ): Promise<GoogleLinkStatusPayload> {
+    const user = await this.getActiveAccountSecurityUser(auth);
+    const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
+    return {
+      linked: status.linked,
+      maskedEmail: status.providerEmail ? this.maskEmail(status.providerEmail) : null,
+      hasPassword: Boolean(user.passwordHash),
+      canUnlink: status.linked && Boolean(user.passwordHash)
+    };
+  }
+
+  public async initializeAuthenticatedGoogleLink(
+    auth: AuthenticatedAccessContext
+  ): Promise<GoogleLoginInitializationPayload> {
+    await this.getActiveAccountSecurityUser(auth);
+    const nonce = await this.verificationChallengeStore.createGoogleNonce({ userId: auth.userId });
+    return {
+      clientId: this.config.GOOGLE_AUTH_CLIENT_ID,
+      nonce: nonce.nonce,
+      nonceChallengeId: nonce.challengeId,
+      expiresIn: nonce.expiresInSeconds
+    };
+  }
+
+  public async submitAuthenticatedGoogleLink(
+    input: { credential: string; nonceChallengeId: string },
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<GoogleAccountSecurityChallengePayload> {
+    void context;
+    const user = await this.getActiveAccountSecurityUser(auth);
+    const nonce = await this.verificationChallengeStore.readGoogleNonce({
+      challengeId: input.nonceChallengeId,
+      userId: user.id
+    });
+    if (!nonce) throw this.invalidGoogleCredentialError();
+    const googleIdentity = await this.googleCredentialVerifier.verify({
+      credential: input.credential,
+      expectedNonce: nonce
+    });
+    if (
+      !(await this.verificationChallengeStore.consumeGoogleNonce({
+        challengeId: input.nonceChallengeId,
+        expectedNonce: nonce,
+        userId: user.id
+      }))
+    ) {
+      throw this.invalidGoogleCredentialError();
+    }
+    const binding = await this.accountSecurityRepository().findGoogleBindingBySubject(
+      googleIdentity.subject
+    );
+    if (binding && binding.userId !== user.id) throw this.googleConflictError();
+    if (binding) this.assertGoogleBindingUser(binding);
+    return this.createAndDeliverAccountSecurityChallenge({
+      email: user.email,
+      purpose: "google_authenticated_link",
+      userId: user.id,
+      metadata: {
+        providerSubject: googleIdentity.subject,
+        providerEmail: googleIdentity.email,
+        providerEmailVerifiedAt: googleIdentity.emailVerifiedAt.toISOString()
+      }
+    });
+  }
+
+  public async verifyAuthenticatedGoogleLink(
+    challengeId: string,
+    otp: string,
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<AuthenticatedGoogleLinkVerificationPayload> {
+    const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
+      challengeId,
+      otp,
+      purpose: "google_authenticated_link",
+      userId: auth.userId
+    });
+    if (!reserved.ok) this.throwVerificationChallengeError(reserved.reason);
+    try {
+      const user = await this.getActiveAccountSecurityUser(auth);
+      if (reserved.email !== user.email) this.throwVerificationChallengeError("missing");
+      const googleIdentity = this.googleIdentityFromChallenge(
+        reserved.metadata as {
+          providerSubject?: unknown;
+          providerEmail?: unknown;
+          providerEmailVerifiedAt?: unknown;
+        }
+      );
+      if (!googleIdentity) this.throwVerificationChallengeError("missing");
+      await this.accountSecurityRepository().completeAuthenticatedGoogleLink({
+        challengeId,
+        userId: user.id,
+        googleIdentity,
+        context: { ip: context.ip, userAgent: context.userAgent }
+      });
+      if (
+        !(await this.verificationChallengeStore.finalizeEmailChallenge({
+          challengeId,
+          reservationToken: reserved.reservationToken
+        }))
+      ) {
+        throw this.redisUnavailableError();
+      }
+      return { linked: true };
+    } catch (error) {
+      return this.releaseAccountSecurityChallengeAndThrow(
+        challengeId,
+        reserved.reservationToken,
+        error
+      );
+    }
+  }
+
+  public async startPasswordSetup(
+    password: string,
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<GoogleAccountSecurityChallengePayload> {
+    void context;
+    const user = await this.getActiveAccountSecurityUser(auth);
+    if (user.passwordHash) throw this.googleConflictError();
+    this.assertStrongPassword(password);
+    return this.createAndDeliverAccountSecurityChallenge({
+      email: user.email,
+      purpose: "password_setup",
+      userId: user.id,
+      metadata: { passwordHash: await hash(password, BCRYPT_ROUNDS) }
+    });
+  }
+
+  public async verifyPasswordSetup(
+    challengeId: string,
+    otp: string,
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<PasswordSetupVerificationPayload> {
+    const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
+      challengeId,
+      otp,
+      purpose: "password_setup",
+      userId: auth.userId
+    });
+    if (!reserved.ok) this.throwVerificationChallengeError(reserved.reason);
+    try {
+      const user = await this.getActiveAccountSecurityUser(auth);
+      if (reserved.email !== user.email) this.throwVerificationChallengeError("missing");
+      const passwordHash =
+        "passwordHash" in reserved.metadata ? reserved.metadata.passwordHash : undefined;
+      if (typeof passwordHash !== "string") this.throwVerificationChallengeError("missing");
+      await this.accountSecurityRepository().completePasswordSetup({
+        challengeId,
+        userId: user.id,
+        passwordHash,
+        context: { ip: context.ip, userAgent: context.userAgent }
+      });
+      if (
+        !(await this.verificationChallengeStore.finalizeEmailChallenge({
+          challengeId,
+          reservationToken: reserved.reservationToken
+        }))
+      ) {
+        throw this.redisUnavailableError();
+      }
+      return { hasPassword: true };
+    } catch (error) {
+      return this.releaseAccountSecurityChallengeAndThrow(
+        challengeId,
+        reserved.reservationToken,
+        error
+      );
+    }
+  }
+
+  public async startGoogleUnlink(
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<GoogleAccountSecurityChallengePayload> {
+    void context;
+    const user = await this.getActiveAccountSecurityUser(auth);
+    const status = await this.accountSecurityRepository().getGoogleBindingStatus(user.id);
+    if (!status.linked || !user.passwordHash) throw this.googleConflictError();
+    return this.createAndDeliverAccountSecurityChallenge({
+      email: user.email,
+      purpose: "google_unlink",
+      userId: user.id
+    });
+  }
+
+  public async verifyGoogleUnlink(
+    challengeId: string,
+    otp: string,
+    auth: AuthenticatedAccessContext,
+    context: AuthRequestContext
+  ): Promise<GoogleUnlinkVerificationPayload> {
+    const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
+      challengeId,
+      otp,
+      purpose: "google_unlink",
+      userId: auth.userId
+    });
+    if (!reserved.ok) this.throwVerificationChallengeError(reserved.reason);
+    try {
+      const user = await this.getActiveAccountSecurityUser(auth);
+      if (reserved.email !== user.email) this.throwVerificationChallengeError("missing");
+      await this.accountSecurityRepository().completeGoogleUnlink({
+        challengeId,
+        userId: user.id,
+        context: { ip: context.ip, userAgent: context.userAgent }
+      });
+      await this.sessionStore.revokeAllRefreshTokens(user.id);
+      await this.sessionStore.blacklistAccessToken(
+        auth.accessTokenJti,
+        Math.max(0, auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000))
+      );
+      if (
+        !(await this.verificationChallengeStore.finalizeEmailChallenge({
+          challengeId,
+          reservationToken: reserved.reservationToken
+        }))
+      ) {
+        throw this.redisUnavailableError();
+      }
+      return { signedOut: true };
+    } catch (error) {
+      return this.releaseAccountSecurityChallengeAndThrow(
+        challengeId,
+        reserved.reservationToken,
+        error
+      );
+    }
   }
 
   public async submitGoogleCredential(
@@ -796,6 +1052,147 @@ export class AuthService {
   ): Promise<TokenPairPayload> {
     return (await this.completeSuccessfulLoginWithReceipt(user, context, currentIdentityId))
       .payload;
+  }
+
+  private accountSecurityRepository(): AuthRepositoryPort & GoogleAuthRepositoryPort {
+    const repository = this.repository as AuthRepositoryPort & Partial<GoogleAuthRepositoryPort>;
+    if (
+      !repository.findGoogleBindingBySubject ||
+      !repository.getGoogleBindingStatus ||
+      !repository.completeAuthenticatedGoogleLink ||
+      !repository.completePasswordSetup ||
+      !repository.completeGoogleUnlink
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.google_auth_unavailable",
+        statusCode: 503
+      });
+    }
+    return repository as AuthRepositoryPort & GoogleAuthRepositoryPort;
+  }
+
+  private async getActiveAccountSecurityUser(
+    auth: AuthenticatedAccessContext
+  ): Promise<AuthUserRecord> {
+    const user = await this.repository.findUserById(auth.userId);
+    this.assertActiveUser(user);
+    return user;
+  }
+
+  private async createAndDeliverAccountSecurityChallenge(input: {
+    email: string;
+    purpose: "google_authenticated_link" | "google_unlink" | "password_setup";
+    userId: number;
+    metadata?: Record<string, unknown>;
+  }): Promise<GoogleAccountSecurityChallengePayload> {
+    try {
+      const otp = String(randomInt(0, 1_000_000)).padStart(6, "0");
+      const challenge = await this.verificationChallengeStore.createEmailChallenge({
+        email: input.email,
+        otp,
+        purpose: input.purpose,
+        userId: input.userId,
+        metadata: input.metadata
+      });
+      try {
+        await this.otpDeliveryClient.sendOtp(input.email, otp);
+      } catch (error) {
+        try {
+          await this.verificationChallengeStore.cancelEmailChallenge({
+            challengeId: challenge.challengeId,
+            email: input.email,
+            purpose: input.purpose
+          });
+        } catch {
+          // Preserve the delivery failure without recording challenge or credential data.
+        }
+        throw error;
+      }
+      return {
+        challengeId: challenge.challengeId,
+        maskedEmail: challenge.maskedEmail,
+        expiresIn: challenge.expiresInSeconds,
+        cooldownSeconds: 60
+      };
+    } catch (error) {
+      if (error instanceof VerificationChallengeCooldownError) {
+        throw new AppError({
+          code: ERROR_CODES.OTP_COOLDOWN,
+          message: "error.auth.otp_cooldown",
+          statusCode: 429
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async releaseAccountSecurityChallengeAndThrow<T>(
+    challengeId: string,
+    reservationToken: string,
+    error: unknown
+  ): Promise<T> {
+    const originalError = error;
+    try {
+      await this.verificationChallengeStore.releaseEmailChallenge({
+        challengeId,
+        reservationToken
+      });
+    } catch {
+      // The operation error is authoritative; retry remains available when Redis permits it.
+    }
+    if (originalError instanceof ExternalAuthAccountConflictError) throw this.googleConflictError();
+    if (originalError instanceof GoogleLoginStateError) {
+      if (originalError.reason === "disabled") {
+        throw new AppError({
+          code: ERROR_CODES.ACCOUNT_DISABLED,
+          message: "error.auth.account_disabled",
+          statusCode: 403
+        });
+      }
+      if (originalError.reason === "restricted") {
+        throw new AppError({
+          code: ERROR_CODES.ACCOUNT_RESTRICTED,
+          message: "error.auth.account_restricted",
+          statusCode: 403
+        });
+      }
+      throw this.googleConflictError();
+    }
+    throw originalError;
+  }
+
+  private redisUnavailableError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+      message: "error.dependency.redis_unavailable",
+      statusCode: 503
+    });
+  }
+
+  private assertStrongPassword(password: string): void {
+    if (
+      password.length < 8 ||
+      password.length > 128 ||
+      !/[a-z]/.test(password) ||
+      !/[A-Z]/.test(password) ||
+      !/[0-9]/.test(password) ||
+      !/[^A-Za-z0-9]/.test(password)
+    ) {
+      throw new AppError({
+        code: ERROR_CODES.VALIDATION,
+        message: "error.auth.password_weak",
+        statusCode: 400
+      });
+    }
+  }
+
+  private maskEmail(email: string): string {
+    const [localPart, domain = ""] = email.trim().split("@");
+    if (!localPart) return `***@${domain}`;
+    if (localPart.length === 1) return `*@${domain}`;
+    if (localPart.length === 2) return `${localPart[0]}*@${domain}`;
+    return `${localPart[0]}${"*".repeat(localPart.length - 2)}${localPart.at(-1)}@${domain}`;
   }
 
   private googleRepository(): AuthRepositoryPort & GoogleAuthRepositoryPort {

@@ -168,6 +168,27 @@ export class GoogleLoginStateError extends Error {
 export interface GoogleBindingStatus {
   linked: boolean;
   bindingId: number | null;
+  providerEmail: string | null;
+}
+
+export interface CompleteAuthenticatedGoogleLinkInput {
+  challengeId: string;
+  userId: number;
+  googleIdentity: GoogleAuthPersistenceInput;
+  context: { ip: string; userAgent?: string | null };
+}
+
+export interface CompletePasswordSetupInput {
+  challengeId: string;
+  userId: number;
+  passwordHash: string;
+  context: { ip: string; userAgent?: string | null };
+}
+
+export interface CompleteGoogleUnlinkInput {
+  challengeId: string;
+  userId: number;
+  context: { ip: string; userAgent?: string | null };
 }
 
 export class ExternalAuthAccountConflictError extends Error {
@@ -202,6 +223,11 @@ export interface GoogleAuthRepositoryPort {
     input: CreateOrRestoreGoogleBindingInput
   ) => Promise<GoogleBindingRecord>;
   getGoogleBindingStatus: (userId: number) => Promise<GoogleBindingStatus>;
+  completeAuthenticatedGoogleLink: (
+    input: CompleteAuthenticatedGoogleLinkInput
+  ) => Promise<AuthUserRecord>;
+  completePasswordSetup: (input: CompletePasswordSetupInput) => Promise<AuthUserRecord>;
+  completeGoogleUnlink: (input: CompleteGoogleUnlinkInput) => Promise<AuthUserRecord>;
   updatePasswordHash: (userId: number, passwordHash: string) => Promise<boolean>;
   softUnlinkGoogleBinding: (userId: number) => Promise<boolean>;
   updateGoogleBindingLastUsedAt: (providerSubject: string, lastUsedAt: Date) => Promise<boolean>;
@@ -556,10 +582,133 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         deletedAt: null,
         user: { deletedAt: null }
       },
-      select: { id: true }
+      select: { id: true, providerEmail: true }
     });
 
-    return { linked: Boolean(binding), bindingId: binding?.id ?? null };
+    return {
+      linked: Boolean(binding),
+      bindingId: binding?.id ?? null,
+      providerEmail: binding?.providerEmail ?? null
+    };
+  }
+
+  public async completeAuthenticatedGoogleLink(
+    input: CompleteAuthenticatedGoogleLinkInput
+  ): Promise<AuthUserRecord> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.client.$transaction(
+          async (transaction) => {
+            const user = await transaction.user.findFirst({
+              where: { id: input.userId, deletedAt: null },
+              include: authUserInclude
+            });
+            if (!user) throw new GoogleLoginStateError("missing");
+            const account = toAuthUserRecord(user);
+            if (!account.isActive || account.accessState.disabled)
+              throw new GoogleLoginStateError("disabled");
+            if (account.accessState.restricted) throw new GoogleLoginStateError("restricted");
+
+            await this.createOrRestoreGoogleBindingInTransaction(transaction, {
+              userId: account.id,
+              googleIdentity: input.googleIdentity
+            });
+            await this.createAccountSecurityAuditInTransaction(transaction, {
+              action: "auth.google.link",
+              challengeId: input.challengeId,
+              userId: account.id,
+              context: input.context
+            });
+            const fresh = await transaction.user.findUniqueOrThrow({
+              where: { id: account.id },
+              include: authUserInclude
+            });
+            return toAuthUserRecord(fresh);
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+        );
+      } catch (error) {
+        if (!this.isExternalAuthSubjectCollision(error)) throw error;
+      }
+    }
+    throw new ExternalAuthAccountConflictError();
+  }
+
+  public async completePasswordSetup(input: CompletePasswordSetupInput): Promise<AuthUserRecord> {
+    return this.client.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: { id: input.userId, deletedAt: null },
+        include: authUserInclude
+      });
+      if (!user) throw new GoogleLoginStateError("missing");
+      const account = toAuthUserRecord(user);
+      if (!account.isActive || account.accessState.disabled)
+        throw new GoogleLoginStateError("disabled");
+      if (account.accessState.restricted) throw new GoogleLoginStateError("restricted");
+
+      const auditExists = await this.hasAccountSecurityAuditInTransaction(
+        transaction,
+        "auth.password.setup",
+        input.challengeId,
+        account.id
+      );
+      if (!auditExists) {
+        await transaction.user.update({
+          where: { id: account.id },
+          data: { passwordHash: input.passwordHash }
+        });
+        await this.createAccountSecurityAuditInTransaction(transaction, {
+          action: "auth.password.setup",
+          challengeId: input.challengeId,
+          userId: account.id,
+          context: input.context
+        });
+      }
+      const fresh = await transaction.user.findUniqueOrThrow({
+        where: { id: account.id },
+        include: authUserInclude
+      });
+      return toAuthUserRecord(fresh);
+    });
+  }
+
+  public async completeGoogleUnlink(input: CompleteGoogleUnlinkInput): Promise<AuthUserRecord> {
+    return this.client.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: { id: input.userId, deletedAt: null },
+        include: authUserInclude
+      });
+      if (!user) throw new GoogleLoginStateError("missing");
+      const account = toAuthUserRecord(user);
+      if (!account.isActive || account.accessState.disabled)
+        throw new GoogleLoginStateError("disabled");
+      if (account.accessState.restricted) throw new GoogleLoginStateError("restricted");
+      const auditExists = await this.hasAccountSecurityAuditInTransaction(
+        transaction,
+        "auth.google.unlink",
+        input.challengeId,
+        account.id
+      );
+      if (!auditExists) {
+        if (!account.passwordHash) throw new GoogleLoginStateError("conflict");
+        const unlinked = await transaction.externalAuthAccount.updateMany({
+          where: { userId: account.id, provider: "google", deletedAt: null },
+          data: { deletedAt: new Date() }
+        });
+        if (unlinked.count !== 1) throw new GoogleLoginStateError("missing");
+        await this.createAccountSecurityAuditInTransaction(transaction, {
+          action: "auth.google.unlink",
+          challengeId: input.challengeId,
+          userId: account.id,
+          context: input.context
+        });
+      }
+      const fresh = await transaction.user.findUniqueOrThrow({
+        where: { id: account.id },
+        include: authUserInclude
+      });
+      return toAuthUserRecord(fresh);
+    });
   }
 
   public async updatePasswordHash(userId: number, passwordHash: string): Promise<boolean> {
@@ -800,6 +949,58 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       provider: "google",
       user: toAuthUserRecord(retainedUser)
     };
+  }
+
+  private async hasAccountSecurityAuditInTransaction(
+    transaction: Prisma.TransactionClient,
+    action: "auth.google.link" | "auth.google.unlink" | "auth.password.setup",
+    challengeId: string,
+    userId: number
+  ): Promise<boolean> {
+    return Boolean(
+      await transaction.auditLog.findFirst({
+        where: {
+          action,
+          targetType: "User",
+          targetId: userId,
+          deletedAt: null,
+          metadata: { path: "$.challengeId", equals: challengeId }
+        },
+        select: { id: true }
+      })
+    );
+  }
+
+  private async createAccountSecurityAuditInTransaction(
+    transaction: Prisma.TransactionClient,
+    input: {
+      action: "auth.google.link" | "auth.google.unlink" | "auth.password.setup";
+      challengeId: string;
+      userId: number;
+      context: { ip: string; userAgent?: string | null };
+    }
+  ): Promise<void> {
+    if (
+      await this.hasAccountSecurityAuditInTransaction(
+        transaction,
+        input.action,
+        input.challengeId,
+        input.userId
+      )
+    ) {
+      return;
+    }
+    await transaction.auditLog.create({
+      data: {
+        actorId: input.userId,
+        action: input.action,
+        targetType: "User",
+        targetId: input.userId,
+        ip: input.context.ip,
+        userAgent: input.context.userAgent ?? null,
+        metadata: { challengeId: input.challengeId }
+      }
+    });
   }
 
   private async createOrRestoreGoogleBindingWithRetry(

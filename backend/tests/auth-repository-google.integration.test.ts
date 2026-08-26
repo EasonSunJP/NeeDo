@@ -285,13 +285,15 @@ describeIntegration("AuthRepository verified account and Google binding integrat
     });
     await expect(repository.getGoogleBindingStatus(mismatch.id)).resolves.toEqual({
       linked: false,
-      bindingId: null
+      bindingId: null,
+      providerEmail: null
     });
 
     await expect(repository.softUnlinkGoogleBinding(existing.id)).resolves.toBe(true);
     await expect(repository.getGoogleBindingStatus(existing.id)).resolves.toEqual({
       linked: false,
-      bindingId: null
+      bindingId: null,
+      providerEmail: null
     });
     const restored = await repository.createOrRestoreGoogleBinding({
       userId: existing.id,
