@@ -503,6 +503,61 @@ describe("AffiliateTaskExpiryService", () => {
     expect(ledger.calls.map(({ taskId }) => taskId)).toContain(71);
   });
 
+  it("advances a batch-size-one revisit past a poisoned lower id while higher ids stay full", async () => {
+    const { repository, ledger, service } = createFixture();
+    for (const taskId of [71, 72]) {
+      repository.seed(
+        task({ id: taskId, status: "ended", allocatedBudgetNdp: 1_000, endedAt }),
+        reservation({ id: taskId - 58, taskId, allocatedNdp: 1_000 })
+      );
+    }
+    for (const taskId of [73, 74, 75, 76, 77, 78]) {
+      repository.seed(task({ id: taskId }), reservation({ id: taskId - 58, taskId }));
+    }
+
+    await service.expireDue({ now, batchSize: 1 });
+    await service.expireDue({ now, batchSize: 1 });
+    for (const taskId of [71, 72]) {
+      repository.tasks.get(taskId)!.allocatedBudgetNdp = 0;
+      repository.reservations.get(taskId)!.allocatedNdp = 0;
+    }
+    ledger.failTaskIds.add(71);
+
+    await service.expireDue({ now, batchSize: 1 });
+    await expect(service.expireDue({ now, batchSize: 1 })).resolves.toMatchObject({
+      scanned: 1,
+      failed: 1,
+      released: 0
+    });
+    await service.expireDue({ now, batchSize: 1 });
+    await service.expireDue({ now, batchSize: 1 });
+    await service.expireDue({ now, batchSize: 1 });
+    await expect(service.expireDue({ now, batchSize: 1 })).resolves.toMatchObject({
+      scanned: 1,
+      failed: 0,
+      released: 1,
+      releasedNdp: 1_000
+    });
+    await service.expireDue({ now, batchSize: 1 });
+
+    expect(repository.candidateInputs.map(({ afterTaskId }) => afterTaskId)).toEqual([
+      0,
+      71,
+      72,
+      0,
+      73,
+      74,
+      75,
+      71,
+      76
+    ]);
+    expect(repository.reservations.get(72)).toMatchObject({
+      releasedNdp: 1_000,
+      status: "released"
+    });
+    expect(repository.tasks.get(77)?.status).toBe("ended");
+  });
+
   it("reports stable AppError fields for one failed candidate", async () => {
     const reportFailure = jest.fn();
     const { repository, ledger, service } = createFixture(reportFailure);
