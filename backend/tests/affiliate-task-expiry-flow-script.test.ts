@@ -1,5 +1,51 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
+
+const sourceTextForVariable = (sourceFile: ts.SourceFile, variableName: string): string => {
+  let result = "";
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === variableName &&
+      node.initializer
+    ) {
+      result = node.initializer.getText(sourceFile);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  if (!result) throw new Error(`missing variable ${variableName}`);
+  return result;
+};
+
+const captureReturnFields = (sourceFile: ts.SourceFile): string[] => {
+  let result: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === "captureRaceSnapshot" &&
+      node.initializer
+    ) {
+      let returnNode: ts.ReturnStatement | undefined;
+      const findReturn = (child: ts.Node): void => {
+        if (!returnNode && ts.isReturnStatement(child)) returnNode = child;
+        if (!returnNode) ts.forEachChild(child, findReturn);
+      };
+      findReturn(node.initializer);
+      if (returnNode?.expression && ts.isObjectLiteralExpression(returnNode.expression)) {
+        result = returnNode.expression.properties
+          .map((property) => property.name?.getText(sourceFile) ?? "")
+          .filter(Boolean);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return result;
+};
 
 describe("affiliate task expiry local MySQL acceptance script", () => {
   it("is registered, guarded, marker-owned, and covers expiry release invariants", () => {
@@ -81,7 +127,8 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("cancellationPreRaceSnapshot");
     expect(source.match(/await assertExpiryVictimRollback\(/g)).toHaveLength(2);
     expect(source.match(/await assertBookingVictimRollback\(/g)).toHaveLength(2);
-    for (const requiredSnapshotState of [
+    const sourceFile = ts.createSourceFile(scriptPath, source, ts.ScriptTarget.Latest, true);
+    expect(captureReturnFields(sourceFile)).toEqual([
       "bookingOrder",
       "statusHistory",
       "scheduleSlot",
@@ -100,9 +147,7 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
       "affiliateLedgers",
       "riskEvents",
       "auditLogs"
-    ]) {
-      expect(source).toContain(requiredSnapshotState);
-    }
+    ]);
     expect(source).toContain("expiry winner was not fully committed");
     expect(source).toContain("formal completion winner was not fully committed");
     expect(source).toContain("formal cancellation winner was not fully committed");
@@ -182,5 +227,53 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
       /affiliateBudgetReservation\.update\([\s\S]{0,300}allocatedNdp:\s*0/
     );
     expect(source).not.toContain("deleteMany({})");
+  });
+
+  it("binds every deadlock callback to its exact snapshot and race time bounds", () => {
+    const scriptPath = join(__dirname, "..", "scripts/check-affiliate-task-expiry-flow.ts");
+    const source = readFileSync(scriptPath, "utf8");
+    const sourceFile = ts.createSourceFile(scriptPath, source, ts.ScriptTarget.Latest, true);
+    const expectations = [
+      {
+        resolution: "completionExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        snapshot: "completionPreRaceSnapshot",
+        startedAt: "completionRaceStartedAt",
+        settledAt: "completionRaceSettledAt"
+      },
+      {
+        resolution: "completionFormalResolution",
+        assertion: "assertBookingVictimRollback",
+        snapshot: "completionPreRaceSnapshot",
+        startedAt: "completionRaceStartedAt",
+        settledAt: "completionRaceSettledAt"
+      },
+      {
+        resolution: "cancellationExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        snapshot: "cancellationPreRaceSnapshot",
+        startedAt: "cancellationRaceStartedAt",
+        settledAt: "cancellationRaceSettledAt"
+      },
+      {
+        resolution: "cancellationFormalResolution",
+        assertion: "assertBookingVictimRollback",
+        snapshot: "cancellationPreRaceSnapshot",
+        startedAt: "cancellationRaceStartedAt",
+        settledAt: "cancellationRaceSettledAt"
+      }
+    ];
+
+    for (const expected of expectations) {
+      const resolution = sourceTextForVariable(sourceFile, expected.resolution);
+      const verifyRollback = resolution.match(
+        /verifyRollback\s*:\s*async\s*\(\)\s*=>\s*\{([\s\S]*?)\n\s*\},?\n\s*(?:validateFulfilled|\})/
+      )?.[1];
+      expect(verifyRollback).toBeDefined();
+      expect(verifyRollback).toContain(`await ${expected.assertion}({`);
+      expect(verifyRollback).toContain(`baseline: ${expected.snapshot}`);
+      expect(verifyRollback).toContain(`raceStartedAt: ${expected.startedAt}`);
+      expect(verifyRollback).toContain(`raceSettledAt: ${expected.settledAt}`);
+    }
   });
 });

@@ -8,6 +8,13 @@ import {
   requireSuccessfulExpirySummary,
   resolveVerifiedDeadlockVictim
 } from "./lib/affiliate-expiry-acceptance-guard";
+import {
+  affiliateRiskEventWhere,
+  assertExactBaselinePrefix,
+  assertTimestampOrder,
+  assertTimestampWithinRace,
+  type RaceTimestamp
+} from "./lib/affiliate-expiry-race-evidence";
 
 const REWARD_NDP = 500;
 const BOOKING_FEE_NDP = 100;
@@ -170,9 +177,16 @@ const main = async (): Promise<void> => {
             }
           ]
         }
-      }
+      },
+      include: { rules: { orderBy: { id: "asc" } } }
     });
     feeRuleSetId = feeRuleSet.id;
+    const bookingFeeRule = feeRuleSet.rules.find((rule) => rule.feeType === "b_platform_fee");
+    const userRewardRule = feeRuleSet.rules.find((rule) => rule.feeType === "user_reward");
+    assert(bookingFeeRule !== undefined, "marker booking fee rule was not created");
+    assert(userRewardRule !== undefined, "marker user reward rule was not created");
+    const bookingFeeRuleKey = `rule_set:${feeRuleSet.id}:rule:${bookingFeeRule.id}`;
+    const userRewardRuleKey = `rule_set:${feeRuleSet.id}:rule:${userRewardRule.id}`;
     const ledger = new LedgerService(
       new LedgerRepository(prisma),
       new FeeCalculationService(new FeeRuleRepository(prisma))
@@ -196,12 +210,13 @@ const main = async (): Promise<void> => {
     const createExpiry = (reportFailure?: AffiliateTaskExpiryFailureReporter) =>
       new AffiliateTaskExpiryService(guardedRepository, ledger, reportFailure);
     const runRaceExpiry = async (
-      failures: Array<{ taskId: number; code: number; message: string }>
+      failures: Array<{ taskId: number; code: number; message: string }>,
+      expiryNow = now
     ) => {
       const transactionErrorStart = guardedRepository.transactionErrors.length;
       const failureStart = failures.length;
       const summary = await createExpiry((failure) => failures.push(failure)).expireDue({
-        now,
+        now: expiryNow,
         batchSize: 500
       });
       if (summary.failed !== 0) {
@@ -378,14 +393,134 @@ const main = async (): Promise<void> => {
     const assertExact = (actual: unknown, expected: unknown, message: string): void => {
       assert(exactJson(actual) === exactJson(expected), message);
     };
-    const assertRowChanges = (
+    type RaceBounds = { raceStartedAt: Date; raceSettledAt: Date };
+    const withoutFields = (value: object, fields: readonly string[]): Record<string, unknown> => {
+      const omitted = new Set(fields);
+      return Object.fromEntries(Object.entries(value).filter(([field]) => !omitted.has(field)));
+    };
+    const assertBoundedRowChanges = (
       baseline: object,
       actual: object,
       changes: Record<string, unknown>,
+      timestampFields: readonly string[],
+      separatelyAssertedFields: readonly string[],
+      bounds: RaceBounds,
       message: string
     ): void => {
-      assertExact(actual, { ...baseline, ...changes }, message);
+      const ignoredFields = [...timestampFields, ...separatelyAssertedFields];
+      assertExact(
+        withoutFields(actual, ignoredFields),
+        withoutFields({ ...baseline, ...changes }, ignoredFields),
+        message
+      );
+      const actualRecord = actual as Record<string, RaceTimestamp>;
+      for (const timestampField of timestampFields) {
+        assertTimestampWithinRace(
+          actualRecord[timestampField],
+          bounds.raceStartedAt,
+          bounds.raceSettledAt,
+          `${message} ${timestampField}`
+        );
+      }
     };
+    const assertCreatedTimestamps = (
+      row: { createdAt: Date; updatedAt: Date },
+      bounds: RaceBounds,
+      label: string
+    ): void => {
+      assertTimestampWithinRace(
+        row.createdAt,
+        bounds.raceStartedAt,
+        bounds.raceSettledAt,
+        `${label} createdAt`
+      );
+      assertTimestampWithinRace(
+        row.updatedAt,
+        bounds.raceStartedAt,
+        bounds.raceSettledAt,
+        `${label} updatedAt`
+      );
+      assertTimestampOrder(row.createdAt, row.updatedAt, label);
+    };
+    const assertTimelineAppend = (
+      baselineTimeline: unknown,
+      actualTimeline: unknown,
+      expectedEvent: Record<string, unknown>,
+      bounds: RaceBounds,
+      label: string
+    ): void => {
+      const baselineRows = Array.isArray(baselineTimeline) ? baselineTimeline : [];
+      assert(Array.isArray(actualTimeline), `${label} timeline is not an array`);
+      assertExactBaselinePrefix(baselineRows, actualTimeline, `${label} timeline`);
+      assert(actualTimeline.length === baselineRows.length + 1, `${label} timeline count changed`);
+      const newEvent = actualTimeline[baselineRows.length];
+      assert(
+        typeof newEvent === "object" && newEvent !== null,
+        `${label} timeline event is missing`
+      );
+      const { recordedAt, ...eventFields } = newEvent as Record<string, unknown>;
+      assertExact(eventFields, expectedEvent, `${label} timeline event changed`);
+      assertTimestampWithinRace(
+        typeof recordedAt === "string" ? recordedAt : null,
+        bounds.raceStartedAt,
+        bounds.raceSettledAt,
+        `${label} timeline recordedAt`
+      );
+    };
+    const expectedFeeEvidence = (input: {
+      feeType: "b_platform_fee" | "user_reward";
+      stage: "capture";
+      calculationLogId: number;
+      bookingOrderId: number;
+    }) => {
+      const isBookingFee = input.feeType === "b_platform_fee";
+      const amount = isBookingFee ? BOOKING_FEE_NDP : 0;
+      const ruleKey = isBookingFee ? bookingFeeRuleKey : userRewardRuleKey;
+      const payerType = isBookingFee ? "shop" : "platform";
+      const payerId = isBookingFee ? shop.id : null;
+      const explanation = [
+        `Matched rule set: ${marker} booking fee`,
+        `Base fee: ${amount} NDP`,
+        `Final fee: ${amount} NDP`,
+        `Hold amount: ${amount} NDP`
+      ];
+      return {
+        bookingOrderId: input.bookingOrderId,
+        orderType: "booking",
+        stage: input.stage,
+        feeType: input.feeType,
+        payerType,
+        payerId,
+        baseFeeNdp: amount,
+        tierAdjustmentNdp: 0,
+        timeAdjustmentNdp: 0,
+        campaignDiscountNdp: 0,
+        finalFeeNdp: amount,
+        holdAmountNdp: amount,
+        completedOrderOrdinalInPeriod: null,
+        appliedRuleIds: [ruleKey],
+        explanation,
+        calculationLogId: input.calculationLogId
+      };
+    };
+    const expectedFeeMetadata = (
+      evidence: ReturnType<typeof expectedFeeEvidence>
+    ): Record<string, unknown> => ({
+      feeType: evidence.feeType,
+      stage: evidence.stage,
+      payerType: evidence.payerType,
+      payerId: evidence.payerId,
+      baseFeeNdp: evidence.baseFeeNdp,
+      tierAdjustmentNdp: evidence.tierAdjustmentNdp,
+      timeAdjustmentNdp: evidence.timeAdjustmentNdp,
+      campaignDiscountNdp: evidence.campaignDiscountNdp,
+      finalFeeNdp: evidence.finalFeeNdp,
+      holdAmountNdp: evidence.holdAmountNdp,
+      completedOrderOrdinalInPeriod: evidence.completedOrderOrdinalInPeriod,
+      appliedRuleIds: evidence.appliedRuleIds,
+      explanation: evidence.explanation,
+      calculationLogId: evidence.calculationLogId
+    });
     const captureRaceSnapshot = async (input: {
       taskId: number;
       bookingOrderId: number;
@@ -410,8 +545,7 @@ const main = async (): Promise<void> => {
         customerWallet,
         affiliateClaim,
         attribution,
-        affiliateRewards,
-        riskEvents
+        affiliateRewards
       ] = await Promise.all([
         prisma.bookingOrder.findUniqueOrThrow({ where: { id: input.bookingOrderId } }),
         prisma.orderStatusHistory.findMany({
@@ -457,20 +591,10 @@ const main = async (): Promise<void> => {
           where: { attributionId: input.attributionId },
           include: { transactions: { orderBy: { id: "asc" } } },
           orderBy: { id: "asc" }
-        }),
-        prisma.affiliateRiskEvent.findMany({
-          where: {
-            OR: [
-              { taskId: input.taskId },
-              { attributionId: input.attributionId },
-              { claimId: input.claimId }
-            ]
-          },
-          orderBy: { id: "asc" }
         })
       ]);
       const rewardIds = affiliateRewards.map((reward) => reward.id);
-      const [bookingLedgers, affiliateLedgers] = await Promise.all([
+      const [bookingLedgers, affiliateLedgers, riskEvents] = await Promise.all([
         prisma.ledgerTransaction.findMany({
           where: {
             referenceType: "booking_order",
@@ -499,6 +623,15 @@ const main = async (): Promise<void> => {
             affiliateBudgetTransactions: { orderBy: { id: "asc" } },
             affiliateRewardTransactions: { orderBy: { id: "asc" } }
           },
+          orderBy: { id: "asc" }
+        }),
+        prisma.affiliateRiskEvent.findMany({
+          where: affiliateRiskEventWhere({
+            taskId: input.taskId,
+            claimId: input.claimId,
+            attributionId: input.attributionId,
+            rewardIds
+          }),
           orderBy: { id: "asc" }
         })
       ]);
@@ -544,34 +677,35 @@ const main = async (): Promise<void> => {
       actual: RaceSnapshot,
       message: string
     ): void => {
-      const baselineIds = new Set(baseline.auditLogs.map((audit) => audit.id));
-      assertExact(
-        actual.auditLogs.filter((audit) => baselineIds.has(audit.id)),
-        baseline.auditLogs,
-        message
-      );
+      assertExactBaselinePrefix(baseline.auditLogs, actual.auditLogs, message);
     };
     const assertCreatedWallet = (
+      baselineWallet: RaceSnapshot["claimantWallet"],
       wallet: RaceSnapshot["claimantWallet"],
       ownerId: number,
       availableBalance: number,
+      bounds: RaceBounds,
       message: string
     ): void => {
       assert(
-        wallet !== null &&
+        baselineWallet === null &&
+          wallet !== null &&
           wallet.ownerType === "USER" &&
           wallet.ownerId === ownerId &&
           wallet.currency === "NDP" &&
+          wallet.id > 0 &&
           wallet.availableBalance === availableBalance &&
           wallet.frozenBalance === 0 &&
           wallet.deletedAt === null,
         message
       );
+      assertCreatedTimestamps(wallet, bounds, message);
     };
     const assertExpiryWinner = (
       baseline: RaceSnapshot,
       actual: RaceSnapshot,
-      input: RaceSnapshotInput
+      input: RaceSnapshotInput,
+      bounds: RaceBounds
     ): void => {
       const releaseAmount =
         baseline.budgetReservation.totalFrozenNdp -
@@ -579,19 +713,29 @@ const main = async (): Promise<void> => {
         baseline.budgetReservation.capturedNdp -
         baseline.budgetReservation.releasedNdp;
       assert(releaseAmount > 0, "expiry race baseline had no releasable budget");
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.affiliateTask,
         actual.affiliateTask,
         {
           status: "ENDED",
-          endedAt: now,
           lockVersion: baseline.affiliateTask.lockVersion + 1,
-          releasedBudgetNdp: baseline.affiliateTask.releasedBudgetNdp + releaseAmount,
-          updatedAt: actual.affiliateTask.updatedAt
+          releasedBudgetNdp: baseline.affiliateTask.releasedBudgetNdp + releaseAmount
         },
+        ["endedAt", "updatedAt"],
+        [],
+        bounds,
         "expiry winner was not fully committed: task"
       );
-      assertRowChanges(
+      assertTimestampOrder(
+        actual.affiliateTask.endedAt,
+        actual.affiliateTask.updatedAt,
+        "expiry winner task"
+      );
+      const reservationTimestampFields = [
+        "updatedAt",
+        ...(baseline.budgetReservation.allocatedNdp === 0 ? ["releasedAt"] : [])
+      ];
+      assertBoundedRowChanges(
         baseline.budgetReservation,
         actual.budgetReservation,
         {
@@ -599,29 +743,46 @@ const main = async (): Promise<void> => {
           status: baseline.budgetReservation.allocatedNdp === 0 ? "RELEASED" : "ACTIVE",
           releasedAt:
             baseline.budgetReservation.allocatedNdp === 0
-              ? now
-              : baseline.budgetReservation.releasedAt,
-          updatedAt: actual.budgetReservation.updatedAt
+              ? baseline.budgetReservation.releasedAt
+              : baseline.budgetReservation.releasedAt
         },
+        reservationTimestampFields,
+        [],
+        bounds,
         "expiry winner was not fully committed: reservation"
       );
-      assertRowChanges(
+      if (baseline.budgetReservation.allocatedNdp === 0) {
+        assertTimestampOrder(
+          actual.budgetReservation.releasedAt,
+          actual.budgetReservation.updatedAt,
+          "expiry winner reservation"
+        );
+      }
+      assertBoundedRowChanges(
         baseline.publisherWallet,
         actual.publisherWallet,
         {
           availableBalance: baseline.publisherWallet.availableBalance + releaseAmount,
-          frozenBalance: baseline.publisherWallet.frozenBalance - releaseAmount,
-          updatedAt: actual.publisherWallet.updatedAt
+          frozenBalance: baseline.publisherWallet.frozenBalance - releaseAmount
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "expiry winner was not fully committed: publisher wallet"
+      );
+      assertExactBaselinePrefix(
+        baseline.affiliateLedgers,
+        actual.affiliateLedgers,
+        "expiry winner affiliate finance"
       );
       assert(
         actual.affiliateLedgers.length === baseline.affiliateLedgers.length + 1,
         "expiry winner was not fully committed: ledger count"
       );
-      const releaseLedger = actual.affiliateLedgers.at(-1);
+      const [releaseLedger] = actual.affiliateLedgers.slice(baseline.affiliateLedgers.length);
       assert(
         releaseLedger !== undefined &&
+          releaseLedger.id > 0 &&
           releaseLedger.type === "AFFILIATE_TASK_BUDGET_RELEASE" &&
           releaseLedger.status === "APPLIED" &&
           releaseLedger.transactionNo.length > 0 &&
@@ -662,6 +823,7 @@ const main = async (): Promise<void> => {
           releaseLedger.reconciliation.status === "PENDING" &&
           releaseLedger.reconciliation.currency === "NDP" &&
           releaseLedger.reconciliation.deletedAt === null &&
+          releaseLedger.reconciliation.exportedAt === null &&
           releaseLedger.affiliateBudgetTransactions.length === 1 &&
           releaseLedger.affiliateBudgetTransactions[0].budgetReservationId ===
             actual.budgetReservation.id &&
@@ -672,11 +834,40 @@ const main = async (): Promise<void> => {
           releaseLedger.affiliateRewardTransactions.length === 0,
         "expiry winner was not fully committed: finance evidence"
       );
-      const baselineAuditIds = new Set(baseline.auditLogs.map((audit) => audit.id));
-      const newAudits = actual.auditLogs.filter((audit) => !baselineAuditIds.has(audit.id));
+      assertCreatedTimestamps(releaseLedger, bounds, "expiry release ledger");
+      assertCreatedTimestamps(releaseLedger.entries[0], bounds, "expiry release entry");
+      assertCreatedTimestamps(
+        releaseLedger.reconciliation,
+        bounds,
+        "expiry release reconciliation"
+      );
+      assertCreatedTimestamps(
+        releaseLedger.affiliateBudgetTransactions[0],
+        bounds,
+        "expiry budget link"
+      );
+      assertTimestampOrder(
+        releaseLedger.createdAt,
+        releaseLedger.entries[0].createdAt,
+        "expiry ledger to entry"
+      );
+      assertTimestampOrder(
+        releaseLedger.createdAt,
+        releaseLedger.reconciliation.createdAt,
+        "expiry ledger to reconciliation"
+      );
+      assertTimestampOrder(
+        releaseLedger.createdAt,
+        releaseLedger.affiliateBudgetTransactions[0].createdAt,
+        "expiry ledger to budget link"
+      );
+      assertBaselineAuditRowsPreserved(baseline, actual, "expiry winner rewrote baseline audits");
+      const newAudits = actual.auditLogs.slice(baseline.auditLogs.length);
       assert(
         newAudits.length === 3 &&
+          new Set(newAudits.map((audit) => audit.id)).size === newAudits.length &&
           newAudits.every((audit) => audit.actorId === null) &&
+          newAudits.every((audit) => audit.id > 0 && audit.deletedAt === null) &&
           new Set(newAudits.map((audit) => audit.action)).size === 3 &&
           newAudits.some(
             (audit) =>
@@ -718,7 +909,51 @@ const main = async (): Promise<void> => {
           ),
         "expiry winner was not fully committed: audit evidence"
       );
-      assertBaselineAuditRowsPreserved(baseline, actual, "expiry winner rewrote baseline audits");
+      for (const audit of newAudits) {
+        assertCreatedTimestamps(audit, bounds, `expiry audit ${audit.action}`);
+      }
+      const expiredAudit = newAudits.find((audit) => audit.action === "affiliate.task.expired");
+      const releaseLedgerAudit = newAudits.find(
+        (audit) => audit.action === "ledger.affiliate_task_budget.release"
+      );
+      const releasedBudgetAudit = newAudits.find(
+        (audit) => audit.action === "affiliate.task.expiry_budget_released"
+      );
+      assert(
+        expiredAudit !== undefined &&
+          releaseLedgerAudit !== undefined &&
+          releasedBudgetAudit !== undefined,
+        "expiry winner audit ordering evidence is incomplete"
+      );
+      assertTimestampOrder(
+        actual.affiliateTask.endedAt,
+        expiredAudit.createdAt,
+        "expiry task to expired audit"
+      );
+      assertTimestampOrder(
+        expiredAudit.createdAt,
+        releaseLedger.createdAt,
+        "expired audit to release ledger"
+      );
+      assertTimestampOrder(
+        releaseLedger.createdAt,
+        releaseLedgerAudit.createdAt,
+        "release ledger to ledger audit"
+      );
+      assertTimestampOrder(
+        releaseLedger.affiliateBudgetTransactions[0].createdAt,
+        releasedBudgetAudit.createdAt,
+        "expiry budget link to release audit"
+      );
+      assertExactBaselinePrefix(
+        baseline.riskEvents,
+        actual.riskEvents,
+        "expiry winner risk events"
+      );
+      assert(
+        actual.riskEvents.length === baseline.riskEvents.length,
+        "expiry winner created unexpected risk events"
+      );
     };
     const assertBookingLedgerWinner = (
       baseline: RaceSnapshot,
@@ -726,20 +961,22 @@ const main = async (): Promise<void> => {
       input: RaceSnapshotInput,
       type: "BOOKING_COMPLETE_SETTLEMENT" | "BOOKING_CANCEL_UNFREEZE",
       availableDelta: number,
-      frozenDelta: number
+      frozenDelta: number,
+      bounds: RaceBounds
     ): void => {
-      assertExact(
-        actual.bookingLedgers.slice(0, baseline.bookingLedgers.length),
+      assertExactBaselinePrefix(
         baseline.bookingLedgers,
+        actual.bookingLedgers,
         "formal booking winner rewrote ordinary booking finance baseline"
       );
       assert(
         actual.bookingLedgers.length === baseline.bookingLedgers.length + 1,
         "formal booking winner ledger count is incorrect"
       );
-      const winnerLedger = actual.bookingLedgers.at(-1);
+      const [winnerLedger] = actual.bookingLedgers.slice(baseline.bookingLedgers.length);
       assert(
         winnerLedger !== undefined &&
+          winnerLedger.id > 0 &&
           winnerLedger.type === type &&
           winnerLedger.status === "APPLIED" &&
           winnerLedger.transactionNo.length > 0 &&
@@ -780,9 +1017,27 @@ const main = async (): Promise<void> => {
           winnerLedger.reconciliation.status === "PENDING" &&
           winnerLedger.reconciliation.currency === "NDP" &&
           winnerLedger.reconciliation.deletedAt === null &&
+          winnerLedger.reconciliation.exportedAt === null &&
           winnerLedger.affiliateBudgetTransactions.length === 0 &&
           winnerLedger.affiliateRewardTransactions.length === 0,
         "formal booking winner ordinary ledger evidence is incomplete"
+      );
+      assertCreatedTimestamps(winnerLedger, bounds, `formal booking ${type} ledger`);
+      assertCreatedTimestamps(winnerLedger.entries[0], bounds, `formal booking ${type} entry`);
+      assertCreatedTimestamps(
+        winnerLedger.reconciliation,
+        bounds,
+        `formal booking ${type} reconciliation`
+      );
+      assertTimestampOrder(
+        winnerLedger.createdAt,
+        winnerLedger.entries[0].createdAt,
+        `formal booking ${type} ledger to entry`
+      );
+      assertTimestampOrder(
+        winnerLedger.createdAt,
+        winnerLedger.reconciliation.createdAt,
+        `formal booking ${type} ledger to reconciliation`
       );
     };
     const assertNoExpiryPartialArtifacts = (baseline: RaceSnapshot, actual: RaceSnapshot): void => {
@@ -808,7 +1063,8 @@ const main = async (): Promise<void> => {
     const assertFormalCompletionWinner = (
       baseline: RaceSnapshot,
       actual: RaceSnapshot,
-      input: RaceSnapshotInput
+      input: RaceSnapshotInput,
+      bounds: RaceBounds
     ): void => {
       const hold = actual.walletHolds[0];
       const baselineHold = baseline.walletHolds[0];
@@ -816,102 +1072,160 @@ const main = async (): Promise<void> => {
         baselineHold !== undefined && hold !== undefined,
         "completion hold fixture is missing"
       );
-      assertRowChanges(
+      assertExactBaselinePrefix(
+        baseline.feeCalculationLogs,
+        actual.feeCalculationLogs,
+        "formal completion fee calculation logs"
+      );
+      const completionFeeLogs = actual.feeCalculationLogs.slice(baseline.feeCalculationLogs.length);
+      assert(completionFeeLogs.length === 2, "formal completion winner fee log count is incorrect");
+      const completionBookingFeeLog = completionFeeLogs.find(
+        (row) => row.feeType === "b_platform_fee"
+      );
+      const completionRewardFeeLog = completionFeeLogs.find((row) => row.feeType === "user_reward");
+      assert(
+        completionBookingFeeLog !== undefined && completionRewardFeeLog !== undefined,
+        "formal completion winner fee logs are incomplete"
+      );
+      const completionBookingFee = expectedFeeEvidence({
+        bookingOrderId: input.bookingOrderId,
+        feeType: "b_platform_fee",
+        stage: "capture",
+        calculationLogId: completionBookingFeeLog.id
+      });
+      const completionRewardFee = expectedFeeEvidence({
+        bookingOrderId: input.bookingOrderId,
+        feeType: "user_reward",
+        stage: "capture",
+        calculationLogId: completionRewardFeeLog.id
+      });
+      const assertFeeLog = (
+        row: typeof completionBookingFeeLog,
+        evidence: ReturnType<typeof expectedFeeEvidence>,
+        label: string
+      ): void => {
+        assert(
+          row.id > 0 &&
+            row.bookingOrderId === evidence.bookingOrderId &&
+            row.calculationStage === evidence.stage &&
+            row.feeType === evidence.feeType &&
+            row.payerType === evidence.payerType &&
+            row.payerId === evidence.payerId &&
+            row.baseFeeNdp === evidence.baseFeeNdp &&
+            row.tierAdjustmentNdp === evidence.tierAdjustmentNdp &&
+            row.timeAdjustmentNdp === evidence.timeAdjustmentNdp &&
+            row.campaignDiscountNdp === evidence.campaignDiscountNdp &&
+            row.finalFeeNdp === evidence.finalFeeNdp &&
+            row.holdAmountNdp === evidence.holdAmountNdp &&
+            exactJson(row.appliedRuleIdsJson) === exactJson(evidence.appliedRuleIds) &&
+            exactJson(row.explanationJson) === exactJson(evidence.explanation) &&
+            row.deletedAt === null,
+          `${label} fields are incorrect`
+        );
+        assertTimestampWithinRace(
+          row.calculatedAt,
+          bounds.raceStartedAt,
+          bounds.raceSettledAt,
+          `${label} calculatedAt`
+        );
+        assertCreatedTimestamps(row, bounds, label);
+        assertTimestampOrder(row.calculatedAt, row.createdAt, `${label} calculation to creation`);
+      };
+      assertFeeLog(completionBookingFeeLog, completionBookingFee, "completion booking fee log");
+      assertFeeLog(completionRewardFeeLog, completionRewardFee, "completion reward fee log");
+      assert(
+        new Set(actual.feeCalculationLogs.map((row) => row.id)).size ===
+          actual.feeCalculationLogs.length,
+        "formal completion fee log IDs are not unique"
+      );
+      assertBoundedRowChanges(
         baseline.bookingOrder,
         actual.bookingOrder,
-        { status: "COMPLETED", updatedAt: actual.bookingOrder.updatedAt },
+        { status: "COMPLETED" },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal completion winner was not fully committed: booking"
       );
-      assertExact(
-        actual.statusHistory.slice(0, baseline.statusHistory.length),
+      assertExactBaselinePrefix(
         baseline.statusHistory,
+        actual.statusHistory,
         "formal completion winner rewrote status history baseline"
       );
-      const completedHistory = actual.statusHistory.at(-1);
+      const [completedHistory] = actual.statusHistory.slice(baseline.statusHistory.length);
       assert(
         actual.statusHistory.length === baseline.statusHistory.length + 1 &&
           completedHistory?.bookingOrderId === input.bookingOrderId &&
+          completedHistory.id > 0 &&
           completedHistory.fromStatus === "IN_SERVICE" &&
           completedHistory.toStatus === "COMPLETED" &&
           completedHistory.actorUserId === input.customerUserId &&
           completedHistory.reason === null &&
+          completedHistory.metadata === null &&
           completedHistory.deletedAt === null,
         "formal completion winner was not fully committed: status history"
+      );
+      assertCreatedTimestamps(completedHistory, bounds, "completion status history");
+      assertTimestampOrder(
+        actual.bookingOrder.updatedAt,
+        completedHistory.createdAt,
+        "completion booking to status history"
       );
       assertExact(
         actual.scheduleSlot,
         baseline.scheduleSlot,
         "formal completion winner changed schedule slot state"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baselineHold,
         hold,
         {
           capturedAmountNdp: BOOKING_FEE_NDP,
-          status: "captured",
-          capturedAt: hold.capturedAt,
-          metadata: hold.metadata,
-          updatedAt: hold.updatedAt
+          status: "captured"
         },
+        ["capturedAt", "updatedAt"],
+        ["metadata"],
+        bounds,
         "formal completion winner was not fully committed: wallet hold"
       );
       assert(
-        hold.capturedAt !== null && hold.releasedAt === null,
+        hold.releasedAt === null &&
+          exactJson(hold.metadata) ===
+            exactJson({
+              holdMetadata: baselineHold.metadata,
+              captureFee: expectedFeeMetadata(completionBookingFee),
+              rewardFee: expectedFeeMetadata(completionRewardFee)
+            }),
         "formal completion winner hold timestamps are incorrect"
       );
-      assertRowChanges(
+      assertTimestampOrder(hold.capturedAt, hold.updatedAt, "completion wallet hold");
+      assertBoundedRowChanges(
         baseline.orderFinancial,
         actual.orderFinancial,
         {
           bPlatformFeeActualNdp: BOOKING_FEE_NDP,
-          completedOrderOrdinalInPeriod: actual.orderFinancial.completedOrderOrdinalInPeriod,
-          appliedFeeRuleIdsJson: actual.orderFinancial.appliedFeeRuleIdsJson,
-          moneyTimelineJson: actual.orderFinancial.moneyTimelineJson,
-          settlementStatus: "settled",
-          updatedAt: actual.orderFinancial.updatedAt
+          completedOrderOrdinalInPeriod: null,
+          appliedFeeRuleIdsJson: [bookingFeeRuleKey, userRewardRuleKey],
+          settlementStatus: "settled"
         },
+        ["updatedAt"],
+        ["moneyTimelineJson"],
+        bounds,
         "formal completion winner was not fully committed: order financial"
       );
-      assert(
-        actual.feeCalculationLogs.length === baseline.feeCalculationLogs.length + 2 &&
-          new Set(actual.feeCalculationLogs.map((row) => row.id)).size ===
-            actual.feeCalculationLogs.length &&
-          actual.feeCalculationLogs
-            .slice(0, baseline.feeCalculationLogs.length)
-            .every(
-              (row, index) => exactJson(row) === exactJson(baseline.feeCalculationLogs[index])
-            ) &&
-          actual.feeCalculationLogs
-            .slice(-2)
-            .every(
-              (row) =>
-                row.bookingOrderId === input.bookingOrderId && row.calculationStage === "capture"
-            ) &&
-          actual.feeCalculationLogs.some(
-            (row) =>
-              row.calculationStage === "capture" &&
-              row.feeType === "b_platform_fee" &&
-              row.baseFeeNdp === BOOKING_FEE_NDP &&
-              row.tierAdjustmentNdp === 0 &&
-              row.timeAdjustmentNdp === 0 &&
-              row.campaignDiscountNdp === 0 &&
-              row.finalFeeNdp === BOOKING_FEE_NDP &&
-              row.holdAmountNdp === BOOKING_FEE_NDP &&
-              row.deletedAt === null
-          ) &&
-          actual.feeCalculationLogs.some(
-            (row) =>
-              row.calculationStage === "capture" &&
-              row.feeType === "user_reward" &&
-              row.baseFeeNdp === 0 &&
-              row.tierAdjustmentNdp === 0 &&
-              row.timeAdjustmentNdp === 0 &&
-              row.campaignDiscountNdp === 0 &&
-              row.finalFeeNdp === 0 &&
-              row.holdAmountNdp === 0 &&
-              row.deletedAt === null
-          ),
-        "formal completion winner was not fully committed: fee calculation logs"
+      assertTimelineAppend(
+        baseline.orderFinancial.moneyTimelineJson,
+        actual.orderFinancial.moneyTimelineJson,
+        {
+          action: "booking_complete_settlement",
+          platformFeeNdp: BOOKING_FEE_NDP,
+          releasedNdp: 0,
+          userRewardNdp: 0,
+          fee: completionBookingFee,
+          reward: completionRewardFee
+        },
+        bounds,
+        "formal completion order financial"
       );
       assertBookingLedgerWinner(
         baseline,
@@ -919,68 +1233,96 @@ const main = async (): Promise<void> => {
         input,
         "BOOKING_COMPLETE_SETTLEMENT",
         0,
-        -BOOKING_FEE_NDP
+        -BOOKING_FEE_NDP,
+        bounds
       );
-      assertRowChanges(
+      const completionBookingLedger = actual.bookingLedgers[baseline.bookingLedgers.length];
+      assert(completionBookingLedger !== undefined, "completion booking ledger is missing");
+      assertExact(
+        completionBookingLedger.metadata,
+        {
+          shopId: shop.id,
+          customerUserId: input.customerUserId,
+          merchantDebitAmount: BOOKING_FEE_NDP,
+          merchantReleaseAmount: 0,
+          customerRewardAmount: 0,
+          fee: completionBookingFee,
+          reward: completionRewardFee
+        },
+        "formal completion booking ledger metadata is incorrect"
+      );
+      assertBoundedRowChanges(
         baseline.affiliateTask,
         actual.affiliateTask,
         {
           allocatedBudgetNdp: baseline.affiliateTask.allocatedBudgetNdp - REWARD_NDP,
-          settledBudgetNdp: baseline.affiliateTask.settledBudgetNdp + REWARD_NDP,
-          updatedAt: actual.affiliateTask.updatedAt
+          settledBudgetNdp: baseline.affiliateTask.settledBudgetNdp + REWARD_NDP
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal completion winner was not fully committed: task counters"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.budgetReservation,
         actual.budgetReservation,
         {
           allocatedNdp: baseline.budgetReservation.allocatedNdp - REWARD_NDP,
-          capturedNdp: baseline.budgetReservation.capturedNdp + REWARD_NDP,
-          updatedAt: actual.budgetReservation.updatedAt
+          capturedNdp: baseline.budgetReservation.capturedNdp + REWARD_NDP
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal completion winner was not fully committed: reservation counters"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.publisherWallet,
         actual.publisherWallet,
         {
-          frozenBalance: baseline.publisherWallet.frozenBalance - REWARD_NDP - BOOKING_FEE_NDP,
-          updatedAt: actual.publisherWallet.updatedAt
+          frozenBalance: baseline.publisherWallet.frozenBalance - REWARD_NDP - BOOKING_FEE_NDP
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal completion winner was not fully committed: publisher wallet"
       );
       assertCreatedWallet(
+        baseline.claimantWallet,
         actual.claimantWallet,
         input.claimantUserId,
         REWARD_NDP,
+        bounds,
         "formal completion winner claimant wallet is incomplete"
       );
       assertCreatedWallet(
+        baseline.customerWallet,
         actual.customerWallet,
         input.customerUserId,
         0,
+        bounds,
         "formal completion winner customer wallet is incomplete"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.affiliateClaim,
         actual.affiliateClaim,
         {
           completedOrderCount: baseline.affiliateClaim.completedOrderCount + 1,
-          settledRewardNdp: baseline.affiliateClaim.settledRewardNdp + REWARD_NDP,
-          updatedAt: actual.affiliateClaim.updatedAt
+          settledRewardNdp: baseline.affiliateClaim.settledRewardNdp + REWARD_NDP
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal completion winner was not fully committed: claim counters"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.attribution,
         actual.attribution,
         {
-          status: "SETTLED",
-          qualifiedAt: actual.attribution.qualifiedAt,
-          settledAt: actual.attribution.settledAt,
-          updatedAt: actual.attribution.updatedAt
+          status: "SETTLED"
         },
+        ["qualifiedAt", "settledAt", "updatedAt"],
+        [],
+        bounds,
         "formal completion winner was not fully committed: attribution"
       );
       assert(
@@ -989,12 +1331,28 @@ const main = async (): Promise<void> => {
           actual.attribution.settledAt !== null &&
           actual.attribution.invalidatedAt === null &&
           actual.attribution.invalidationReason === null &&
-          actual.affiliateRewards.length === 1,
+          actual.affiliateRewards.length === baseline.affiliateRewards.length + 1,
         "formal completion winner attribution timestamps or reward count are incorrect"
       );
-      const reward = actual.affiliateRewards[0];
+      assertTimestampOrder(
+        actual.attribution.qualifiedAt,
+        actual.attribution.settledAt,
+        "completion attribution qualification to settlement"
+      );
+      assertTimestampOrder(
+        actual.attribution.settledAt,
+        actual.attribution.updatedAt,
+        "completion attribution settlement to update"
+      );
+      assertExactBaselinePrefix(
+        baseline.affiliateRewards,
+        actual.affiliateRewards,
+        "formal completion affiliate rewards"
+      );
+      const [reward] = actual.affiliateRewards.slice(baseline.affiliateRewards.length);
       assert(
-        reward.attributionId === input.attributionId &&
+        reward.id > 0 &&
+          reward.attributionId === input.attributionId &&
           reward.taskId === input.taskId &&
           reward.claimId === input.claimId &&
           reward.bookingOrderId === input.bookingOrderId &&
@@ -1011,17 +1369,43 @@ const main = async (): Promise<void> => {
           reward.deletedAt === null &&
           reward.transactions.length === 1 &&
           reward.transactions[0].rewardId === reward.id &&
+          reward.transactions[0].ledgerTransactionId > 0 &&
           reward.transactions[0].kind === "SETTLEMENT" &&
           reward.transactions[0].amountNdp === REWARD_NDP &&
           reward.transactions[0].deletedAt === null,
         "formal completion winner reward/link evidence is incomplete"
       );
-      const settlementLedger = actual.affiliateLedgers.find(
+      assertCreatedTimestamps(reward, bounds, "completion affiliate reward");
+      assertTimestampWithinRace(
+        reward.settledAt,
+        bounds.raceStartedAt,
+        bounds.raceSettledAt,
+        "completion reward settledAt"
+      );
+      assertTimestampOrder(
+        reward.createdAt,
+        reward.settledAt,
+        "completion reward creation to settlement"
+      );
+      assertTimestampOrder(
+        reward.settledAt,
+        reward.updatedAt,
+        "completion reward settlement to update"
+      );
+      assertCreatedTimestamps(reward.transactions[0], bounds, "completion reward transaction link");
+      assertExactBaselinePrefix(
+        baseline.affiliateLedgers,
+        actual.affiliateLedgers,
+        "formal completion affiliate ledgers"
+      );
+      const newAffiliateLedgers = actual.affiliateLedgers.slice(baseline.affiliateLedgers.length);
+      const settlementLedger = newAffiliateLedgers.find(
         (transaction) => transaction.type === "AFFILIATE_REWARD_SETTLEMENT"
       );
       assert(
-        actual.affiliateLedgers.length === baseline.affiliateLedgers.length + 1 &&
+        newAffiliateLedgers.length === 1 &&
           settlementLedger !== undefined &&
+          settlementLedger.id > 0 &&
           settlementLedger.status === "APPLIED" &&
           settlementLedger.transactionNo.length > 0 &&
           settlementLedger.idempotencyKey ===
@@ -1032,6 +1416,17 @@ const main = async (): Promise<void> => {
           settlementLedger.amount === REWARD_NDP &&
           settlementLedger.currency === "NDP" &&
           settlementLedger.deletedAt === null &&
+          exactJson(settlementLedger.metadata) ===
+            exactJson({
+              taskId: input.taskId,
+              attributionId: input.attributionId,
+              bookingOrderId: input.bookingOrderId,
+              publisherOwnerType: "shop",
+              publisherOwnerId: shop.id,
+              publisherWalletId: input.publisherWalletId,
+              claimantUserId: input.claimantUserId,
+              claimantWalletId: actual.claimantWallet?.id
+            }) &&
           settlementLedger.entries.length === 2 &&
           settlementLedger.entries.some(
             (entry) =>
@@ -1069,6 +1464,7 @@ const main = async (): Promise<void> => {
           settlementLedger.reconciliation.differenceAmount === 0 &&
           settlementLedger.reconciliation.currency === "NDP" &&
           settlementLedger.reconciliation.deletedAt === null &&
+          settlementLedger.reconciliation.exportedAt === null &&
           settlementLedger.affiliateBudgetTransactions.length === 1 &&
           settlementLedger.affiliateBudgetTransactions[0].budgetReservationId ===
             actual.budgetReservation.id &&
@@ -1086,23 +1482,66 @@ const main = async (): Promise<void> => {
           settlementLedger.affiliateRewardTransactions[0].deletedAt === null,
         "formal completion winner affiliate ledger evidence is incomplete"
       );
-      assertExact(
-        actual.riskEvents,
+      assertCreatedTimestamps(settlementLedger, bounds, "completion affiliate ledger");
+      for (const entry of settlementLedger.entries) {
+        assertCreatedTimestamps(entry, bounds, "completion affiliate ledger entry");
+        assertTimestampOrder(
+          settlementLedger.createdAt,
+          entry.createdAt,
+          "completion affiliate ledger to entry"
+        );
+      }
+      assertCreatedTimestamps(
+        settlementLedger.reconciliation,
+        bounds,
+        "completion affiliate reconciliation"
+      );
+      assertCreatedTimestamps(
+        settlementLedger.affiliateBudgetTransactions[0],
+        bounds,
+        "completion affiliate budget link"
+      );
+      assertCreatedTimestamps(
+        settlementLedger.affiliateRewardTransactions[0],
+        bounds,
+        "completion affiliate reward link"
+      );
+      assertTimestampOrder(
+        settlementLedger.createdAt,
+        settlementLedger.reconciliation.createdAt,
+        "completion affiliate ledger to reconciliation"
+      );
+      assertTimestampOrder(
+        settlementLedger.createdAt,
+        settlementLedger.affiliateBudgetTransactions[0].createdAt,
+        "completion affiliate ledger to budget link"
+      );
+      assertTimestampOrder(
+        settlementLedger.createdAt,
+        settlementLedger.affiliateRewardTransactions[0].createdAt,
+        "completion affiliate ledger to reward link"
+      );
+      assertExactBaselinePrefix(
         baseline.riskEvents,
-        "formal completion winner changed risk events"
+        actual.riskEvents,
+        "formal completion risk events"
+      );
+      assert(
+        actual.riskEvents.length === baseline.riskEvents.length,
+        "formal completion winner created unexpected risk events"
       );
       assertBaselineAuditRowsPreserved(
         baseline,
         actual,
         "formal completion winner rewrote baseline audits"
       );
-      const baselineAuditIds = new Set(baseline.auditLogs.map((audit) => audit.id));
-      const newAudits = actual.auditLogs.filter((audit) => !baselineAuditIds.has(audit.id));
+      const newAudits = actual.auditLogs.slice(baseline.auditLogs.length);
       const actions = newAudits.map((audit) => audit.action);
       const bookingLedger = actual.bookingLedgers.at(-1);
       assert(
         actions.length === 3 &&
           new Set(actions).size === 3 &&
+          newAudits.every((audit) => audit.id > 0 && audit.deletedAt === null) &&
           newAudits.some(
             (audit) =>
               audit.actorId === input.customerUserId &&
@@ -1149,12 +1588,44 @@ const main = async (): Promise<void> => {
           ),
         "formal completion winner audit evidence is incomplete"
       );
+      for (const audit of newAudits) {
+        assertCreatedTimestamps(audit, bounds, `completion audit ${audit.action}`);
+      }
+      const bookingAudit = newAudits.find(
+        (audit) => audit.action === "ledger.booking_complete.settlement"
+      );
+      const affiliateLedgerAudit = newAudits.find(
+        (audit) => audit.action === "ledger.affiliate_reward.settlement"
+      );
+      const rewardAudit = newAudits.find((audit) => audit.action === "affiliate.reward.settled");
+      assert(
+        bookingAudit !== undefined &&
+          affiliateLedgerAudit !== undefined &&
+          rewardAudit !== undefined,
+        "formal completion winner audit ordering evidence is incomplete"
+      );
+      assertTimestampOrder(
+        completionBookingLedger.createdAt,
+        bookingAudit.createdAt,
+        "completion booking ledger to audit"
+      );
+      assertTimestampOrder(
+        settlementLedger.createdAt,
+        affiliateLedgerAudit.createdAt,
+        "completion affiliate ledger to audit"
+      );
+      assertTimestampOrder(
+        settlementLedger.affiliateRewardTransactions[0].createdAt,
+        rewardAudit.createdAt,
+        "completion reward link to audit"
+      );
       assertNoExpiryPartialArtifacts(baseline, actual);
     };
     const assertFormalCancellationWinner = (
       baseline: RaceSnapshot,
       actual: RaceSnapshot,
-      input: RaceSnapshotInput
+      input: RaceSnapshotInput,
+      bounds: RaceBounds
     ): void => {
       const reason = "expiry acceptance cancellation race";
       const hold = actual.walletHolds[0];
@@ -1163,64 +1634,89 @@ const main = async (): Promise<void> => {
         baselineHold !== undefined && hold !== undefined,
         "cancellation hold fixture is missing"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.bookingOrder,
         actual.bookingOrder,
-        { status: "CANCELLED", cancelReason: reason, updatedAt: actual.bookingOrder.updatedAt },
+        { status: "CANCELLED", cancelReason: reason },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal cancellation winner was not fully committed: booking"
       );
-      assertExact(
-        actual.statusHistory.slice(0, baseline.statusHistory.length),
+      assertExactBaselinePrefix(
         baseline.statusHistory,
+        actual.statusHistory,
         "formal cancellation winner rewrote status history baseline"
       );
-      const cancelledHistory = actual.statusHistory.at(-1);
+      const [cancelledHistory] = actual.statusHistory.slice(baseline.statusHistory.length);
       assert(
         actual.statusHistory.length === baseline.statusHistory.length + 1 &&
           cancelledHistory?.bookingOrderId === input.bookingOrderId &&
+          cancelledHistory.id > 0 &&
           cancelledHistory.fromStatus === "CONFIRMED" &&
           cancelledHistory.toStatus === "CANCELLED" &&
           cancelledHistory.actorUserId === input.customerUserId &&
           cancelledHistory.reason === reason &&
+          cancelledHistory.metadata === null &&
           cancelledHistory.deletedAt === null,
         "formal cancellation winner was not fully committed: status history"
       );
-      assertRowChanges(
+      assertCreatedTimestamps(cancelledHistory, bounds, "cancellation status history");
+      assertTimestampOrder(
+        actual.bookingOrder.updatedAt,
+        cancelledHistory.createdAt,
+        "cancellation booking to status history"
+      );
+      assertBoundedRowChanges(
         baseline.scheduleSlot,
         actual.scheduleSlot,
-        { status: "AVAILABLE", bookedCount: 0, updatedAt: actual.scheduleSlot.updatedAt },
+        { status: "AVAILABLE", bookedCount: 0 },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal cancellation winner was not fully committed: schedule slot"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baselineHold,
         hold,
         {
           releasedAmountNdp: BOOKING_FEE_NDP,
-          status: "released",
-          releasedAt: hold.releasedAt,
-          updatedAt: hold.updatedAt
+          status: "released"
         },
+        ["releasedAt", "updatedAt"],
+        [],
+        bounds,
         "formal cancellation winner was not fully committed: wallet hold"
       );
-      assert(
-        hold.releasedAt !== null && hold.capturedAt === null,
-        "formal cancellation winner hold timestamps are incorrect"
-      );
-      assertRowChanges(
+      assert(hold.capturedAt === null, "formal cancellation winner hold timestamps are incorrect");
+      assertTimestampOrder(hold.releasedAt, hold.updatedAt, "cancellation wallet hold");
+      assertBoundedRowChanges(
         baseline.orderFinancial,
         actual.orderFinancial,
         {
           releasedNdp: BOOKING_FEE_NDP,
-          moneyTimelineJson: actual.orderFinancial.moneyTimelineJson,
-          settlementStatus: "cancelled",
-          updatedAt: actual.orderFinancial.updatedAt
+          settlementStatus: "cancelled"
         },
+        ["updatedAt"],
+        ["moneyTimelineJson"],
+        bounds,
         "formal cancellation winner was not fully committed: order financial"
       );
-      assertExact(
-        actual.feeCalculationLogs,
+      assertTimelineAppend(
+        baseline.orderFinancial.moneyTimelineJson,
+        actual.orderFinancial.moneyTimelineJson,
+        { action: "booking_cancel_release", amountNdp: BOOKING_FEE_NDP },
+        bounds,
+        "formal cancellation order financial"
+      );
+      assertExactBaselinePrefix(
         baseline.feeCalculationLogs,
+        actual.feeCalculationLogs,
         "formal cancellation winner changed fee calculation logs"
+      );
+      assert(
+        actual.feeCalculationLogs.length === baseline.feeCalculationLogs.length,
+        "formal cancellation winner created fee calculation logs"
       );
       assertBookingLedgerWinner(
         baseline,
@@ -1228,35 +1724,53 @@ const main = async (): Promise<void> => {
         input,
         "BOOKING_CANCEL_UNFREEZE",
         BOOKING_FEE_NDP,
-        -BOOKING_FEE_NDP
+        -BOOKING_FEE_NDP,
+        bounds
       );
-      assertRowChanges(
+      const cancellationBookingLedger = actual.bookingLedgers[baseline.bookingLedgers.length];
+      assert(cancellationBookingLedger !== undefined, "cancellation booking ledger is missing");
+      assertExact(
+        cancellationBookingLedger.metadata,
+        { shopId: shop.id, holdId: hold.id },
+        "formal cancellation booking ledger metadata is incorrect"
+      );
+      assertBoundedRowChanges(
         baseline.affiliateTask,
         actual.affiliateTask,
         {
-          allocatedBudgetNdp: baseline.affiliateTask.allocatedBudgetNdp - REWARD_NDP,
-          updatedAt: actual.affiliateTask.updatedAt
+          allocatedBudgetNdp: baseline.affiliateTask.allocatedBudgetNdp - REWARD_NDP
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal cancellation winner was not fully committed: task counters"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.budgetReservation,
         actual.budgetReservation,
         {
-          allocatedNdp: baseline.budgetReservation.allocatedNdp - REWARD_NDP,
-          updatedAt: actual.budgetReservation.updatedAt
+          allocatedNdp: baseline.budgetReservation.allocatedNdp - REWARD_NDP
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal cancellation winner was not fully committed: reservation counters"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.publisherWallet,
         actual.publisherWallet,
         {
           availableBalance: baseline.publisherWallet.availableBalance + BOOKING_FEE_NDP,
-          frozenBalance: baseline.publisherWallet.frozenBalance - BOOKING_FEE_NDP,
-          updatedAt: actual.publisherWallet.updatedAt
+          frozenBalance: baseline.publisherWallet.frozenBalance - BOOKING_FEE_NDP
         },
+        ["updatedAt"],
+        [],
+        bounds,
         "formal cancellation winner was not fully committed: publisher wallet"
+      );
+      assert(
+        baseline.claimantWallet === null && baseline.customerWallet === null,
+        "formal cancellation wallet baseline unexpectedly existed"
       );
       assertExact(
         actual.claimantWallet,
@@ -1273,16 +1787,17 @@ const main = async (): Promise<void> => {
         baseline.affiliateClaim,
         "formal cancellation winner changed claim counters"
       );
-      assertRowChanges(
+      assertBoundedRowChanges(
         baseline.attribution,
         actual.attribution,
         {
           status: "INVALIDATED",
           activeKey: null,
-          invalidatedAt: actual.attribution.invalidatedAt,
-          invalidationReason: "booking_cancelled",
-          updatedAt: actual.attribution.updatedAt
+          invalidationReason: "booking_cancelled"
         },
+        ["invalidatedAt", "updatedAt"],
+        [],
+        bounds,
         "formal cancellation winner was not fully committed: attribution"
       );
       assert(
@@ -1293,23 +1808,46 @@ const main = async (): Promise<void> => {
           actual.affiliateLedgers.length === baseline.affiliateLedgers.length,
         "formal cancellation winner left reward or affiliate ledger artifacts"
       );
-      assertExact(
-        actual.riskEvents,
+      assertTimestampOrder(
+        actual.attribution.invalidatedAt,
+        actual.attribution.updatedAt,
+        "cancellation attribution invalidation to update"
+      );
+      assertExactBaselinePrefix(
+        baseline.affiliateRewards,
+        actual.affiliateRewards,
+        "formal cancellation affiliate rewards"
+      );
+      assert(
+        actual.affiliateRewards.length === baseline.affiliateRewards.length,
+        "formal cancellation winner created affiliate rewards"
+      );
+      assertExactBaselinePrefix(
+        baseline.affiliateLedgers,
+        actual.affiliateLedgers,
+        "formal cancellation affiliate ledgers"
+      );
+      assertExactBaselinePrefix(
         baseline.riskEvents,
+        actual.riskEvents,
         "formal cancellation winner changed risk events"
+      );
+      assert(
+        actual.riskEvents.length === baseline.riskEvents.length,
+        "formal cancellation winner created risk events"
       );
       assertBaselineAuditRowsPreserved(
         baseline,
         actual,
         "formal cancellation winner rewrote baseline audits"
       );
-      const baselineAuditIds = new Set(baseline.auditLogs.map((audit) => audit.id));
-      const newAudits = actual.auditLogs.filter((audit) => !baselineAuditIds.has(audit.id));
+      const newAudits = actual.auditLogs.slice(baseline.auditLogs.length);
       const actions = newAudits.map((audit) => audit.action);
       const cancellationLedger = actual.bookingLedgers.at(-1);
       assert(
         actions.length === 2 &&
           new Set(actions).size === 2 &&
+          newAudits.every((audit) => audit.id > 0 && audit.deletedAt === null) &&
           newAudits.some(
             (audit) =>
               audit.actorId === input.customerUserId &&
@@ -1341,23 +1879,54 @@ const main = async (): Promise<void> => {
           ),
         "formal cancellation winner audit evidence is incomplete"
       );
+      for (const audit of newAudits) {
+        assertCreatedTimestamps(audit, bounds, `cancellation audit ${audit.action}`);
+      }
+      const cancellationLedgerAudit = newAudits.find(
+        (audit) => audit.action === "ledger.booking_cancel.unfreeze"
+      );
+      const invalidationAudit = newAudits.find(
+        (audit) => audit.action === "affiliate.attribution.invalidated"
+      );
+      assert(
+        cancellationLedgerAudit !== undefined && invalidationAudit !== undefined,
+        "formal cancellation winner audit ordering evidence is incomplete"
+      );
+      assertTimestampOrder(
+        cancellationBookingLedger.createdAt,
+        cancellationLedgerAudit.createdAt,
+        "cancellation ledger to audit"
+      );
+      assertTimestampOrder(
+        actual.attribution.invalidatedAt,
+        invalidationAudit.createdAt,
+        "cancellation attribution to audit"
+      );
       assertNoExpiryPartialArtifacts(baseline, actual);
     };
     const assertExpiryVictimRollback = async (input: {
       flow: "completion" | "cancellation";
       baseline: RaceSnapshot;
       snapshotInput: RaceSnapshotInput;
+      raceStartedAt: Date;
+      raceSettledAt: Date;
     }): Promise<void> => {
       const actual = await captureRaceSnapshot(input.snapshotInput);
+      const bounds = {
+        raceStartedAt: input.raceStartedAt,
+        raceSettledAt: input.raceSettledAt
+      };
       if (input.flow === "completion") {
-        assertFormalCompletionWinner(input.baseline, actual, input.snapshotInput);
+        assertFormalCompletionWinner(input.baseline, actual, input.snapshotInput, bounds);
       } else {
-        assertFormalCancellationWinner(input.baseline, actual, input.snapshotInput);
+        assertFormalCancellationWinner(input.baseline, actual, input.snapshotInput, bounds);
       }
     };
     const assertBookingVictimRollback = async (input: {
       baseline: RaceSnapshot;
       snapshotInput: RaceSnapshotInput;
+      raceStartedAt: Date;
+      raceSettledAt: Date;
     }): Promise<void> => {
       const actual = await captureRaceSnapshot(input.snapshotInput);
       assertExact(
@@ -1395,6 +1964,10 @@ const main = async (): Promise<void> => {
         input.baseline.bookingLedgers,
         "booking victim left partial artifacts: ordinary booking ledgers"
       );
+      assert(
+        input.baseline.claimantWallet === null && input.baseline.customerWallet === null,
+        "booking victim wallet baseline unexpectedly existed"
+      );
       assertExact(
         actual.claimantWallet,
         input.baseline.claimantWallet,
@@ -1425,7 +1998,10 @@ const main = async (): Promise<void> => {
         input.baseline.riskEvents,
         "booking victim left partial artifacts: risk events"
       );
-      assertExpiryWinner(input.baseline, actual, input.snapshotInput);
+      assertExpiryWinner(input.baseline, actual, input.snapshotInput, {
+        raceStartedAt: input.raceStartedAt,
+        raceSettledAt: input.raceSettledAt
+      });
     };
     const drainExpiry = async (batchSize = 2) => {
       const expiry = createExpiry();
@@ -1751,21 +2327,23 @@ const main = async (): Promise<void> => {
       where: { id: publisherWallet.id }
     });
     const completionExpiryFailures: Array<{ taskId: number; code: number; message: string }> = [];
+    const completionRaceStartedAt = new Date();
     const completionRuns = await Promise.allSettled([
-      runRaceExpiry(completionExpiryFailures),
+      runRaceExpiry(completionExpiryFailures, completionRaceStartedAt),
       booking.transitionOrder(
         actor(customerCompletionRace.id),
         completionRaceOrder.order.id,
         "complete"
       )
     ]);
+    const completionRaceSettledAt = new Date();
     assert(
       !(completionRuns[0].status === "rejected" && completionRuns[1].status === "rejected"),
       "completion expiry race lost both operations"
     );
     const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
       initial: completionRuns[0],
-      retry: () => runRaceExpiry([]),
+      retry: () => runRaceExpiry([], completionRaceStartedAt),
       verifyRollback: async () => {
         assert(
           completionExpiryFailures.length === 1,
@@ -1774,7 +2352,9 @@ const main = async (): Promise<void> => {
         await assertExpiryVictimRollback({
           flow: "completion",
           baseline: completionPreRaceSnapshot,
-          snapshotInput: completionSnapshotInput
+          snapshotInput: completionSnapshotInput,
+          raceStartedAt: completionRaceStartedAt,
+          raceSettledAt: completionRaceSettledAt
         });
       },
       validateFulfilled: requireSuccessfulExpirySummary
@@ -1790,7 +2370,9 @@ const main = async (): Promise<void> => {
       verifyRollback: async () => {
         await assertBookingVictimRollback({
           baseline: completionPreRaceSnapshot,
-          snapshotInput: completionSnapshotInput
+          snapshotInput: completionSnapshotInput,
+          raceStartedAt: completionRaceStartedAt,
+          raceSettledAt: completionRaceSettledAt
         });
       }
     });
@@ -2019,8 +2601,9 @@ const main = async (): Promise<void> => {
       where: { id: publisherWallet.id }
     });
     const cancellationExpiryFailures: Array<{ taskId: number; code: number; message: string }> = [];
+    const cancellationRaceStartedAt = new Date();
     const cancellationRuns = await Promise.allSettled([
-      runRaceExpiry(cancellationExpiryFailures),
+      runRaceExpiry(cancellationExpiryFailures, cancellationRaceStartedAt),
       booking.transitionOrder(
         actor(customerCancellationRace.id),
         cancellationRaceOrder.order.id,
@@ -2028,13 +2611,14 @@ const main = async (): Promise<void> => {
         "expiry acceptance cancellation race"
       )
     ]);
+    const cancellationRaceSettledAt = new Date();
     assert(
       !(cancellationRuns[0].status === "rejected" && cancellationRuns[1].status === "rejected"),
       "cancellation expiry race lost both operations"
     );
     const cancellationExpiryResolution = await resolveVerifiedDeadlockVictim({
       initial: cancellationRuns[0],
-      retry: () => runRaceExpiry([]),
+      retry: () => runRaceExpiry([], cancellationRaceStartedAt),
       verifyRollback: async () => {
         assert(
           cancellationExpiryFailures.length === 1,
@@ -2043,7 +2627,9 @@ const main = async (): Promise<void> => {
         await assertExpiryVictimRollback({
           flow: "cancellation",
           baseline: cancellationPreRaceSnapshot,
-          snapshotInput: cancellationSnapshotInput
+          snapshotInput: cancellationSnapshotInput,
+          raceStartedAt: cancellationRaceStartedAt,
+          raceSettledAt: cancellationRaceSettledAt
         });
       },
       validateFulfilled: requireSuccessfulExpirySummary
@@ -2060,7 +2646,9 @@ const main = async (): Promise<void> => {
       verifyRollback: async () => {
         await assertBookingVictimRollback({
           baseline: cancellationPreRaceSnapshot,
-          snapshotInput: cancellationSnapshotInput
+          snapshotInput: cancellationSnapshotInput,
+          raceStartedAt: cancellationRaceStartedAt,
+          raceSettledAt: cancellationRaceSettledAt
         });
       }
     });
