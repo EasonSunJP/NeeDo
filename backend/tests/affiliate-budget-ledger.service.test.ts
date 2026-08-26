@@ -4,6 +4,7 @@ import {
   type LedgerRepositoryPort,
   type LedgerTransactionClient,
   type LedgerTransactionPayload,
+  type ReleaseAffiliateTaskBudgetInput,
   type WalletLedgerPayload,
   type WalletOwnerType,
   type WalletPayload
@@ -191,6 +192,56 @@ class AffiliateBudgetLedgerRepository implements LedgerRepositoryPort {
   }
 }
 
+const createExistingAffiliateReleaseTransaction = (
+  input: ReleaseAffiliateTaskBudgetInput
+): LedgerTransactionPayload => {
+  const transactionId = 901;
+
+  return {
+    id: transactionId,
+    transactionNo: "AFF-LT-901",
+    idempotencyKey: input.idempotencyKey,
+    type: "affiliate_task_budget_release",
+    status: "applied",
+    referenceType: "affiliate_task",
+    referenceId: input.taskId,
+    actorUserId: input.actorUserId,
+    amount: input.amountNdp,
+    currency: "NDP",
+    metadata: {
+      taskId: input.taskId,
+      ownerType: input.ownerType,
+      ownerId: input.ownerId,
+      walletId: input.walletId
+    },
+    createdAt: now,
+    updatedAt: now,
+    entries: [
+      {
+        id: 902,
+        transactionId,
+        walletId: input.walletId,
+        direction: "unfreeze",
+        amount: input.amountNdp,
+        availableDelta: input.amountNdp,
+        frozenDelta: -input.amountNdp,
+        availableBalanceAfter: 2_300,
+        frozenBalanceAfter: 0,
+        reason: "affiliate_task_budget_release",
+        createdAt: now
+      }
+    ]
+  };
+};
+
+interface ExistingAffiliateReleaseMismatch {
+  description: string;
+  mutate: (
+    transaction: LedgerTransactionPayload,
+    input: ReleaseAffiliateTaskBudgetInput
+  ) => void;
+}
+
 describe("LedgerService affiliate task budget operations", () => {
   it("freezes the complete task budget once and records immutable finance evidence", async () => {
     const repository = new AffiliateBudgetLedgerRepository();
@@ -351,6 +402,178 @@ describe("LedgerService affiliate task budget operations", () => {
         actorUserId: null
       })
     ]);
+  });
+
+  it.each<ExistingAffiliateReleaseMismatch>([
+    {
+      description: "a different transaction type",
+      mutate: (transaction) => {
+        transaction.type = "affiliate_task_budget_freeze";
+      }
+    },
+    {
+      description: "a non-applied transaction status",
+      mutate: (transaction) => {
+        (transaction as unknown as { status: string }).status = "rejected";
+      }
+    },
+    {
+      description: "a different reference type",
+      mutate: (transaction) => {
+        transaction.referenceType = "affiliate_reward";
+      }
+    },
+    {
+      description: "a different reference id",
+      mutate: (transaction) => {
+        transaction.referenceId += 1;
+      }
+    },
+    {
+      description: "a different actor",
+      mutate: (transaction) => {
+        transaction.actorUserId = 10;
+      }
+    },
+    {
+      description: "a different transaction amount",
+      mutate: (transaction) => {
+        transaction.amount -= 1;
+      }
+    },
+    {
+      description: "a different currency",
+      mutate: (transaction) => {
+        (transaction as unknown as { currency: string }).currency = "JPY";
+      }
+    },
+    {
+      description: "missing metadata",
+      mutate: (transaction) => {
+        transaction.metadata = null;
+      }
+    },
+    {
+      description: "non-object metadata",
+      mutate: (transaction) => {
+        transaction.metadata = "affiliate_task";
+      }
+    },
+    {
+      description: "non-plain array metadata",
+      mutate: (transaction) => {
+        transaction.metadata = [];
+      }
+    },
+    {
+      description: "metadata with a different task id",
+      mutate: (transaction, input) => {
+        (transaction.metadata as Record<string, unknown>).taskId = input.taskId + 1;
+      }
+    },
+    {
+      description: "metadata with a different owner type",
+      mutate: (transaction) => {
+        (transaction.metadata as Record<string, unknown>).ownerType = "merchant_account";
+      }
+    },
+    {
+      description: "metadata with a different owner id",
+      mutate: (transaction, input) => {
+        (transaction.metadata as Record<string, unknown>).ownerId = input.ownerId + 1;
+      }
+    },
+    {
+      description: "metadata with a different wallet id",
+      mutate: (transaction, input) => {
+        (transaction.metadata as Record<string, unknown>).walletId = input.walletId + 1;
+      }
+    },
+    {
+      description: "a missing ledger entry",
+      mutate: (transaction) => {
+        transaction.entries = [];
+      }
+    },
+    {
+      description: "an extra ledger entry",
+      mutate: (transaction) => {
+        transaction.entries.push({ ...transaction.entries[0], id: 903 });
+      }
+    },
+    {
+      description: "a ledger entry for a different transaction",
+      mutate: (transaction) => {
+        transaction.entries[0].transactionId = transaction.id + 1;
+      }
+    },
+    {
+      description: "a ledger entry for a different wallet",
+      mutate: (transaction, input) => {
+        transaction.entries[0].walletId = input.walletId + 1;
+      }
+    },
+    {
+      description: "a ledger entry with a different direction",
+      mutate: (transaction) => {
+        transaction.entries[0].direction = "frozen_debit";
+      }
+    },
+    {
+      description: "a ledger entry with a different amount",
+      mutate: (transaction) => {
+        transaction.entries[0].amount -= 1;
+      }
+    },
+    {
+      description: "a ledger entry with a different available delta",
+      mutate: (transaction) => {
+        transaction.entries[0].availableDelta -= 1;
+      }
+    },
+    {
+      description: "a ledger entry with a different frozen delta",
+      mutate: (transaction) => {
+        transaction.entries[0].frozenDelta += 1;
+      }
+    },
+    {
+      description: "a ledger entry with a different reason",
+      mutate: (transaction) => {
+        transaction.entries[0].reason = "affiliate_task_budget_freeze";
+      }
+    }
+  ])("rejects an existing release transaction with $description", async ({ mutate }) => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const service = new LedgerService(repository);
+    const input: ReleaseAffiliateTaskBudgetInput = {
+      taskId: 87,
+      walletId: 41,
+      ownerType: "shop",
+      ownerId: 16,
+      amountNdp: 2_000,
+      idempotencyKey: "affiliate-task:87:v1:release",
+      actorUserId: 9
+    };
+    const transaction = createExistingAffiliateReleaseTransaction(input);
+    mutate(transaction, input);
+    repository.transactions.set(input.idempotencyKey, transaction);
+    const mutationMethods = [
+      jest.spyOn(repository, "getOrCreateWallet"),
+      jest.spyOn(repository, "applyWalletDelta"),
+      jest.spyOn(repository, "createTransaction"),
+      jest.spyOn(repository, "createLedgerEntry"),
+      jest.spyOn(repository, "createFinanceReconciliation"),
+      jest.spyOn(repository, "createAuditLog")
+    ];
+
+    await expect(service.releaseAffiliateTaskBudget(input)).rejects.toMatchObject({
+      code: ERROR_CODES.WALLET_MUTATION_FAILED,
+      message: "error.wallet.mutation_failed"
+    });
+    for (const method of mutationMethods) {
+      expect(method).not.toHaveBeenCalled();
+    }
   });
 
   it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])(
