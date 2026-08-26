@@ -209,6 +209,8 @@ const main = async (): Promise<void> => {
         fullTask.endedAt !== null &&
         fullTask.totalBudgetNdp === 1_000 &&
         fullTask.reservedBudgetNdp === 1_000 &&
+        fullTask.allocatedBudgetNdp === 0 &&
+        fullTask.settledBudgetNdp === 0 &&
         fullTask.releasedBudgetNdp === 1_000 &&
         fullReservation.totalFrozenNdp === 1_000 &&
         fullReservation.allocatedNdp === 0 &&
@@ -237,8 +239,12 @@ const main = async (): Promise<void> => {
         zeroTask.endedAt !== null &&
         zeroTask.totalBudgetNdp === 1_000 &&
         zeroTask.reservedBudgetNdp === 1_000 &&
+        zeroTask.allocatedBudgetNdp === 0 &&
+        zeroTask.settledBudgetNdp === 1_000 &&
         zeroTask.releasedBudgetNdp === 0 &&
         zeroReservation.totalFrozenNdp === 1_000 &&
+        zeroReservation.allocatedNdp === 0 &&
+        zeroReservation.capturedNdp === 1_000 &&
         zeroReservation.releasedNdp === 0 &&
         zeroReservation.status === "RELEASED" &&
         zeroReservation.releasedAt !== null &&
