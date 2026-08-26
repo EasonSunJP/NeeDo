@@ -8,43 +8,56 @@ import { RedisVerificationChallengeStore } from "../src/services/auth-verificati
 const runRedisAuthStoreIntegration = process.env.RUN_REDIS_AUTH_STORE_INTEGRATION === "true";
 const describeRedis = runRedisAuthStoreIntegration ? describe : describe.skip;
 
+const numericUserIdFromMarker = (marker: string): number =>
+  Number((BigInt(`0x${marker.replaceAll("-", "")}`) % 1_000_000_000n) + 1_000_000_000n);
+
 describeRedis("Redis auth-store Lua integration", () => {
   const marker = randomUUID();
-  const userId = 900_000_000;
+  const userId = numericUserIdFromMarker(marker);
   const email = `task2-${marker}@needo.local`;
-  const jtis = [`${marker}-a`, `${marker}-b`];
-  let client: RedisClient;
+  const jtis = [`${marker}-single`, `${marker}-all-a`, `${marker}-all-b`];
+  const challengeIds: string[] = [];
+  const nonceIds: string[] = [];
+  let client: RedisClient | undefined;
   let challengeStore: RedisVerificationChallengeStore;
   let sessionStore: RedisAuthSessionStore;
+
+  const emailCooldownKey = (): string =>
+    `auth:verification:cooldown:${createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
+      .update("email")
+      .update("\u0000")
+      .update("password_setup")
+      .update("\u0000")
+      .update(email)
+      .digest("base64url")}`;
+
+  const createdKeys = (): string[] => [
+    emailCooldownKey(),
+    ...challengeIds.map((challengeId) => `auth:verification:email:${challengeId}`),
+    ...nonceIds.map((challengeId) => `auth:verification:google-nonce:${challengeId}`),
+    `auth:v2:refresh:user:${userId}`,
+    ...jtis.map((jti) => `auth:v2:refresh:${userId}:${jti}`)
+  ];
 
   beforeAll(async () => {
     client = createRedisClient();
     await client.connect();
-    challengeStore = new RedisVerificationChallengeStore(() => client);
-    sessionStore = new RedisAuthSessionStore(() => client);
+    challengeStore = new RedisVerificationChallengeStore(() => client!);
+    sessionStore = new RedisAuthSessionStore(() => client!);
   });
 
   afterAll(async () => {
     if (!client) return;
-    const cooldownKey = `auth:verification:cooldown:${createHmac(
-      "sha256",
-      env.AUTH_VERIFICATION_SECRET
-    )
-      .update("email")
-      .update("\u0000")
-      .update("email_registration")
-      .update("\u0000")
-      .update(email)
-      .digest("base64url")}`;
-    await client.del([
-      cooldownKey,
-      `refresh:user:${userId}`,
-      ...jtis.map((jti) => `refresh:${userId}:${jti}`)
-    ]);
-    await client.quit();
+    const keys = createdKeys();
+    try {
+      await client.del(keys);
+      expect(await client.exists(keys)).toBe(0);
+    } finally {
+      await client.quit();
+    }
   });
 
-  it("executes challenge and refresh-session Lua transactions against Redis", async () => {
+  it("executes every auth-store Lua transaction against isolated Redis keys", async () => {
     const challenge = await challengeStore.createEmailChallenge({
       email,
       otp: "123456",
@@ -52,6 +65,7 @@ describeRedis("Redis auth-store Lua integration", () => {
       userId,
       metadata: { passwordHash: await hash("Abcd@1234", 12) }
     });
+    challengeIds.push(challenge.challengeId);
 
     await expect(
       challengeStore.consumeEmailChallenge({
@@ -62,12 +76,25 @@ describeRedis("Redis auth-store Lua integration", () => {
       })
     ).resolves.toMatchObject({ ok: true });
 
-    await sessionStore.storeRefreshToken(userId, jtis[0], 600);
-    await sessionStore.storeRefreshToken(userId, jtis[1], 60);
-    expect(await client.ttl(`refresh:user:${userId}`)).toBeGreaterThanOrEqual(599);
+    const nonce = await challengeStore.createGoogleNonce({ userId });
+    nonceIds.push(nonce.challengeId);
+    await expect(
+      challengeStore.consumeGoogleNonce({
+        challengeId: nonce.challengeId,
+        expectedNonce: nonce.nonce,
+        userId
+      })
+    ).resolves.toBe(true);
 
-    await sessionStore.revokeAllRefreshTokens(userId);
+    await sessionStore.storeRefreshToken(userId, jtis[0], 600);
+    await sessionStore.revokeRefreshToken(userId, jtis[0]);
     await expect(sessionStore.hasRefreshToken(userId, jtis[0])).resolves.toBe(false);
+
+    await sessionStore.storeRefreshToken(userId, jtis[1], 600);
+    await sessionStore.storeRefreshToken(userId, jtis[2], 60);
+    expect(await client!.ttl(`auth:v2:refresh:user:${userId}`)).toBeGreaterThanOrEqual(599);
+    await sessionStore.revokeAllRefreshTokens(userId);
     await expect(sessionStore.hasRefreshToken(userId, jtis[1])).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(userId, jtis[2])).resolves.toBe(false);
   });
 });

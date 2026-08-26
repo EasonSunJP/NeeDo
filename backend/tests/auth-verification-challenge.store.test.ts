@@ -283,6 +283,9 @@ describe("RedisVerificationChallengeStore", () => {
     const nonce = await store.createGoogleNonce({ userId: 7 });
 
     expect(nonce.expiresInSeconds).toBeLessThanOrEqual(600);
+    expect(nonce.challengeId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
     expect([...client.values.values()][0].value).not.toContain(nonce.nonce);
     await expect(
       store.consumeGoogleNonce({
@@ -333,6 +336,14 @@ describe("RedisVerificationChallengeStore", () => {
     expect(validPasswordChallenge.challengeId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
+    await expect(
+      store.createEmailChallenge({
+        email: "max-cost@example.com",
+        otp: "123456",
+        purpose: "password_setup",
+        metadata: { passwordHash: `$2b$31$${"A".repeat(53)}` }
+      })
+    ).resolves.toMatchObject({ expiresInSeconds: 600 });
 
     await expect(
       store.createEmailChallenge({
@@ -340,6 +351,22 @@ describe("RedisVerificationChallengeStore", () => {
         otp: "123456",
         purpose: "email_registration",
         metadata: { passwordHash: "Abcd@1234" }
+      })
+    ).rejects.toThrow("passwordHash");
+    await expect(
+      store.createEmailChallenge({
+        email: "cost-32@example.com",
+        otp: "123456",
+        purpose: "password_setup",
+        metadata: { passwordHash: `$2b$32$${"A".repeat(53)}` }
+      })
+    ).rejects.toThrow("passwordHash");
+    await expect(
+      store.createEmailChallenge({
+        email: "cost-99@example.com",
+        otp: "123456",
+        purpose: "password_setup",
+        metadata: { passwordHash: `$2b$99$${"A".repeat(53)}` }
       })
     ).rejects.toThrow("passwordHash");
     await expect(

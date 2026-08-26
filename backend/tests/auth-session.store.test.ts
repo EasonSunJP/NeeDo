@@ -87,7 +87,7 @@ class FakeRedis {
       const [userIndexKey] = options.keys;
       const [userId] = options.arguments;
       const jtis = await this.sMembers(userIndexKey);
-      await this.del(userIndexKey, ...jtis.map((jti) => `refresh:${userId}:${jti}`));
+      await this.del(userIndexKey, ...jtis.map((jti) => `auth:v2:refresh:${userId}:${jti}`));
       return ["ok"];
     }
     throw new Error("unexpected Redis Lua script");
@@ -103,13 +103,13 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     await store.storeRefreshToken(7, "session-b", 600);
     await store.storeRefreshToken(8, "session-c", 600);
     expect(client.evalCalls).toHaveLength(3);
-    expect(await client.sMembers("refresh:user:7")).toEqual(["session-a", "session-b"]);
-    expect(client.expiries.get("refresh:user:7")).toBe(600);
+    expect(await client.sMembers("auth:v2:refresh:user:7")).toEqual(["session-a", "session-b"]);
+    expect(client.expiries.get("auth:v2:refresh:user:7")).toBe(600);
 
     await store.revokeRefreshToken(7, "session-a");
     expect(client.evalCalls).toHaveLength(4);
     expect(await store.hasRefreshToken(7, "session-a")).toBe(false);
-    expect(await client.sMembers("refresh:user:7")).toEqual(["session-b"]);
+    expect(await client.sMembers("auth:v2:refresh:user:7")).toEqual(["session-b"]);
 
     await expect(store.revokeAllRefreshTokens(7)).resolves.toBeUndefined();
     expect(client.evalCalls).toHaveLength(5);
@@ -125,7 +125,18 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     await store.storeRefreshToken(7, "long-session", 600);
     await store.storeRefreshToken(7, "short-session", 60);
 
-    expect(await client.ttl("refresh:user:7")).toBe(600);
+    expect(await client.ttl("auth:v2:refresh:user:7")).toBe(600);
+  });
+
+  it("ignores legacy unindexed refresh keys and uses the v2 session namespace", async () => {
+    const client = new FakeRedis();
+    client.values.set("refresh:7:legacy-session", "1");
+    const store = new RedisAuthSessionStore(() => client as never);
+
+    await expect(store.hasRefreshToken(7, "legacy-session")).resolves.toBe(false);
+    await store.storeRefreshToken(7, "v2-session", 600);
+    expect(client.values.has("auth:v2:refresh:7:v2-session")).toBe(true);
+    expect(await client.sMembers("auth:v2:refresh:user:7")).toEqual(["v2-session"]);
   });
 
   it("fails without partial refresh/index writes when its single Redis transaction fails", async () => {

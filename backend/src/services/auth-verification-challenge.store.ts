@@ -173,7 +173,7 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
   }
 
   public async createGoogleNonce(input: { userId?: number }): Promise<CreatedGoogleNonce> {
-    const challengeId = this.createRandomValue();
+    const challengeId = randomUUID();
     const nonce = this.createRandomValue();
     await this.setValue(
       this.googleNonceKey(challengeId),
@@ -301,7 +301,7 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
 
   private isPreparedBcryptHash(value: string): boolean {
     const match = /^\$2[aby]\$(\d{2})\$[./A-Za-z0-9]{53}$/.exec(value);
-    return match !== null && Number(match[1]) >= 12;
+    return match !== null && Number(match[1]) >= 12 && Number(match[1]) <= 31;
   }
 
   private isEmail(value: string): boolean {

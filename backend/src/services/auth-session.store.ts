@@ -229,11 +229,11 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   }
 
   private refreshKey(userId: number, jti: string): string {
-    return `refresh:${userId}:${jti}`;
+    return `auth:v2:refresh:${userId}:${jti}`;
   }
 
   private refreshUserKey(userId: number): string {
-    return `refresh:user:${userId}`;
+    return `auth:v2:refresh:user:${userId}`;
   }
 
   private accessBlacklistKey(jti: string): string {
@@ -262,6 +262,6 @@ const REFRESH_REVOKE_ALL_LUA = `
 -- auth-refresh-revoke-all
 local jtis = redis.call('SMEMBERS', KEYS[1])
 redis.call('DEL', KEYS[1])
-for _, jti in ipairs(jtis) do redis.call('DEL', 'refresh:' .. ARGV[1] .. ':' .. jti) end
+for _, jti in ipairs(jtis) do redis.call('DEL', 'auth:v2:refresh:' .. ARGV[1] .. ':' .. jti) end
 return {'ok'}
 `;
