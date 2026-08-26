@@ -4,9 +4,9 @@ import { join } from "node:path";
 describe("affiliate service completion reward acceptance script", () => {
   it("is registered, local-only, marker-owned, and verifies settlement invariants", () => {
     const backendRoot = join(__dirname, "..");
-    const packageJson = JSON.parse(
-      readFileSync(join(backendRoot, "package.json"), "utf8")
-    ) as { scripts: Record<string, string> };
+    const packageJson = JSON.parse(readFileSync(join(backendRoot, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
     const scriptPath = join(
       backendRoot,
       "scripts/check-affiliate-service-completion-reward-flow.ts"

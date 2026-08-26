@@ -226,10 +226,7 @@ const main = async (): Promise<void> => {
       return { task, claim };
     };
 
-    const createAttributedOrder = async (input: {
-      customerUserId: number;
-      publicCode: string;
-    }) => {
+    const createAttributedOrder = async (input: { customerUserId: number; publicCode: string }) => {
       const startsAt = new Date(now.getTime() + slotOffsetHours * 60 * 60 * 1_000);
       slotOffsetHours += 2;
       const slot = await prisma.scheduleSlot.create({
@@ -375,9 +372,7 @@ const main = async (): Promise<void> => {
       );
     const repeated = await Promise.allSettled([repeatSettlement(), repeatSettlement()]);
     assert(
-      repeated.every(
-        (result) => result.status === "fulfilled" && result.value.idempotent
-      ),
+      repeated.every((result) => result.status === "fulfilled" && result.value.idempotent),
       "concurrent settled reward retry was not idempotent"
     );
     assert(
@@ -409,8 +404,7 @@ const main = async (): Promise<void> => {
     assert(
       customerLimitCompleted.status === "completed" &&
         customerLimitAttribution.status === "INVALIDATED" &&
-        customerLimitAttribution.invalidationReason ===
-          "customer_completed_order_limit_reached" &&
+        customerLimitAttribution.invalidationReason === "customer_completed_order_limit_reached" &&
         (await prisma.affiliateReward.count({
           where: { attributionId: customerLimitAttribution.id, deletedAt: null }
         })) === 0,
@@ -435,8 +429,7 @@ const main = async (): Promise<void> => {
     });
     assert(
       claimLimitAttribution.status === "INVALIDATED" &&
-        claimLimitAttribution.invalidationReason ===
-          "claim_completed_order_limit_reached" &&
+        claimLimitAttribution.invalidationReason === "claim_completed_order_limit_reached" &&
         (await prisma.affiliateReward.count({
           where: { attributionId: claimLimitAttribution.id, deletedAt: null }
         })) === 0,
@@ -500,10 +493,9 @@ const main = async (): Promise<void> => {
     const failureAttributionBefore = await prisma.affiliateAttribution.findFirstOrThrow({
       where: { bookingOrderId: failureOrder.id, deletedAt: null }
     });
-    const failureReservationBefore =
-      await prisma.affiliateBudgetReservation.findUniqueOrThrow({
-        where: { taskId: failure.task.id }
-      });
+    const failureReservationBefore = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
+      where: { taskId: failure.task.id }
+    });
     await prisma.wallet.update({
       where: { id: publisherWallet.id },
       data: { frozenBalance: 0 }
@@ -513,8 +505,7 @@ const main = async (): Promise<void> => {
       throw new Error("expected error.wallet.insufficient_frozen");
     } catch (error) {
       assert(
-        error instanceof AppError &&
-          error.message === "error.wallet.insufficient_frozen",
+        error instanceof AppError && error.message === "error.wallet.insufficient_frozen",
         "expected error.wallet.insufficient_frozen"
       );
     }
@@ -524,10 +515,9 @@ const main = async (): Promise<void> => {
     const failureAttributionAfter = await prisma.affiliateAttribution.findUniqueOrThrow({
       where: { id: failureAttributionBefore.id }
     });
-    const failureReservationAfter =
-      await prisma.affiliateBudgetReservation.findUniqueOrThrow({
-        where: { taskId: failure.task.id }
-      });
+    const failureReservationAfter = await prisma.affiliateBudgetReservation.findUniqueOrThrow({
+      where: { taskId: failure.task.id }
+    });
     assert(
       failureOrderAfter.status === "IN_SERVICE" &&
         failureAttributionAfter.status === "ATTRIBUTED" &&
