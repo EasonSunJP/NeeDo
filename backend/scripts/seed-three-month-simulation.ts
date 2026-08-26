@@ -34,8 +34,7 @@ import {
 } from "../src/simulation/three-month-simulation-plan";
 import {
   buildFormalTestAccountExportRow,
-  orderFormalTestAccountExports,
-  resolveFormalNeeDoSequence
+  orderFormalTestAccountExports
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
@@ -1570,11 +1569,8 @@ const main = async (): Promise<void> => {
       where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
       select: {
         id: true,
+        needoId: true,
         email: true,
-        identities: {
-          where: { isActive: true, deletedAt: null },
-          select: { scopeId: true, scopeType: true }
-        }
       }
     });
     const exportedUserByEmail = new Map(exportedUsers.map((user) => [user.email, user]));
@@ -1584,13 +1580,7 @@ const main = async (): Promise<void> => {
         return buildFormalTestAccountExportRow(
           {
             ...account,
-            identityScopeId: resolveFormalNeeDoSequence(
-              account.accountType,
-              account.socialType,
-              user.id,
-              user.identities
-            ),
-            userId: user.id
+            needoId: user.needoId
           },
           getRequiredId(accountPasswords, account.email, "account password")
         );

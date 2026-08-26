@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
 
 interface StoredValue {
   value: string;
@@ -119,6 +120,7 @@ const createAuthFixture = async () => {
 
   const passwordUser = {
     id: 1,
+    needoId: "n0000000001",
     email: "admin@example.com",
     phone: null,
     passwordHash,
@@ -169,6 +171,7 @@ const createAuthFixture = async () => {
   const customerUser = {
     ...passwordUser,
     id: 2,
+    needoId: "n0000000002",
     email: "customer@example.com",
     username: "NeeDo Customer",
     identities: [
@@ -234,6 +237,7 @@ const createAuthFixture = async () => {
   const disabledUser = {
     ...passwordUser,
     id: 3,
+    needoId: "n0000000003",
     email: "disabled@example.com",
     username: "Disabled User",
     isActive: false
@@ -241,6 +245,7 @@ const createAuthFixture = async () => {
   const noPermissionUser = {
     ...passwordUser,
     id: 4,
+    needoId: "n0000000004",
     email: "noperms@example.com",
     username: "No Permissions",
     identities: [
@@ -270,6 +275,7 @@ const createAuthFixture = async () => {
   const multiPortalUser = {
     ...passwordUser,
     id: 5,
+    needoId: "n0000000005",
     email: "multi@example.com",
     username: "Multi Portal User",
     identities: [
@@ -341,7 +347,7 @@ const createAuthFixture = async () => {
     findUserByLoginIdentifier: jest.fn(
       async (identifier: string) =>
         users.find(
-          (item) => (item.email === identifier || item.username === identifier) && !item.deletedAt
+          (item) => (item.email === identifier || item.needoId === identifier) && !item.deletedAt
         ) ?? null
     ),
     findUserById: jest.fn(
@@ -463,6 +469,27 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
     });
   });
 
+  it("maps exhausted NeeDo ID allocation to a stable registration error", async () => {
+    const fixture = await createAuthFixture();
+    fixture.repository.registerUser.mockRejectedValueOnce(new NeedoIdAllocationExhaustedError());
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register")
+      .send({
+        accountType: "customer",
+        email: "allocation-failure@example.com",
+        username: "Allocation Failure",
+        password: "Abcd@1234"
+      })
+      .expect(503)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.NEEDO_ID_ALLOCATION_UNAVAILABLE,
+          message: "error.auth.needo_id_allocation_unavailable"
+        });
+      });
+  });
+
   it("rejects duplicate registration emails", async () => {
     const fixture = await createAuthFixture();
 
@@ -549,17 +576,32 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
     expect(response.body.data.refreshToken).toEqual(expect.any(String));
   });
 
-  it("logs in with the issued admin username and password", async () => {
+  it("logs in with the issued immutable NeeDo ID and password", async () => {
     const fixture = await createAuthFixture();
 
     const response = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ username: "admin", password: "Abcd@1234", type: "username" })
+      .send({ username: "n0000000001", password: "Abcd@1234", type: "username" })
       .expect(200);
 
     expect(response.body.data.accessToken).toEqual(expect.any(String));
     expect(response.body.data.refreshToken).toEqual(expect.any(String));
-    expect(fixture.repository.findUserByLoginIdentifier).toHaveBeenCalledWith("admin");
+    expect(fixture.repository.findUserByLoginIdentifier).toHaveBeenCalledWith("n0000000001");
+  });
+
+  it("rejects a mutable nickname with the generic invalid-credentials response", async () => {
+    const fixture = await createAuthFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ username: "admin", password: "Abcd@1234", type: "username" })
+      .expect(401)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.INVALID_CREDENTIALS,
+          message: "error.auth.invalid_credentials"
+        });
+      });
   });
 
   it("accepts the Apifox password-login form shape on the deployed /login URI", async () => {

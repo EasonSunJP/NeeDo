@@ -48,6 +48,7 @@ export interface AuthIdentityApplicationRecord {
 
 export interface AuthUserRecord {
   id: number;
+  needoId: string;
   email: string;
   phone: string | null;
   passwordHash: string | null;
@@ -176,7 +177,7 @@ export class AuthRepository implements AuthRepositoryPort {
   public async findUserByLoginIdentifier(identifier: string): Promise<AuthUserRecord | null> {
     return this.client.user.findFirst({
       where: {
-        OR: [{ email: identifier }, { username: identifier }],
+        OR: [{ email: identifier }, { needoId: identifier }],
         deletedAt: null
       },
       include: authUserInclude

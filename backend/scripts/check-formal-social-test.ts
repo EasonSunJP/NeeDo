@@ -2,10 +2,6 @@ import { compare } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 
-import {
-  formatFormalNeeDoId,
-  resolveFormalNeeDoSequence
-} from "../src/simulation/formal-test-account-export";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
 import { SIMULATION_NAMESPACE } from "../src/simulation/three-month-simulation-plan";
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
@@ -34,14 +30,11 @@ const main = async (): Promise<void> => {
       where: { email: { in: plan.accounts.map((account) => account.email) }, deletedAt: null },
       select: {
         id: true,
+        needoId: true,
         email: true,
         username: true,
         avatarUrl: true,
         passwordHash: true,
-        identities: {
-          where: { isActive: true, deletedAt: null },
-          select: { scopeId: true, scopeType: true }
-        }
       }
     });
     assert(users.length === plan.accounts.length, `Expected ${plan.accounts.length} users.`);
@@ -111,13 +104,8 @@ const main = async (): Promise<void> => {
     const needoIds = plan.accounts.map((account) => {
       const user = userByEmail.get(account.email);
       assert(user, `User is missing for ${account.email}.`);
-      const sequence = resolveFormalNeeDoSequence(
-        account.accountType,
-        account.socialType,
-        user.id,
-        user.identities
-      );
-      return formatFormalNeeDoId(account.socialType, sequence);
+      assert(/^n\d{10}$/.test(user.needoId), `NeeDo ID format mismatch for ${account.email}.`);
+      return user.needoId;
     });
     const uniqueNeeDoIds = new Set(needoIds);
     assert(

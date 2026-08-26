@@ -136,6 +136,7 @@ const createFixture = async () => {
   };
   const customer = {
     id: 11,
+    needoId: "n0000000011",
     email: "customer@example.com",
     phone: null,
     passwordHash,
@@ -164,6 +165,7 @@ const createFixture = async () => {
   const technician = {
     ...customer,
     id: 12,
+    needoId: "n0000000012",
     email: "technician@example.com",
     username: "Tomo Technician",
     identities: [
@@ -184,6 +186,7 @@ const createFixture = async () => {
   const wrongIdentity = {
     ...technician,
     id: 13,
+    needoId: "n0000000013",
     email: "wrong-identity@example.com",
     username: "Mika Wrong Identity",
     identities: [
@@ -210,7 +213,7 @@ const createFixture = async () => {
     ),
     findUserByLoginIdentifier: jest.fn(
       async (identifier: string) =>
-        users.find((user) => user.email === identifier || user.username === identifier) ?? null
+        users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
     ),
     findUserById: jest.fn(
       async (id: number) => users.find((user) => user.id === id) ?? null

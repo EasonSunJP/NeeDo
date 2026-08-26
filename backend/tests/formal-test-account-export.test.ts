@@ -1,7 +1,6 @@
 import {
   buildFormalTestAccountExportRow,
-  orderFormalTestAccountExports,
-  resolveFormalNeeDoSequence
+  orderFormalTestAccountExports
 } from "../src/simulation/formal-test-account-export";
 
 describe("formal test account export", () => {
@@ -10,47 +9,52 @@ describe("formal test account export", () => {
       accountType: "customer",
       displayName: "望月 結菜",
       email: "customer@example.com",
-      socialType: "user" as const,
-      identityScopeId: 3,
-      userId: 24
+      needoId: "n0000000024"
     },
     {
       accountType: "admin",
       displayName: "神谷 俊介",
       email: "admin@example.com",
-      socialType: "user" as const,
-      userId: 1
+      needoId: "n0000000001"
     },
     {
       accountType: "technician",
       displayName: "橘 ひかり",
       email: "technician@example.com",
-      socialType: "technician" as const,
-      identityScopeId: 8,
-      userId: 18
+      needoId: "n0000000018"
     },
     {
       accountType: "merchant_owner",
       displayName: "青山プライベートケア Lino 公式受付",
       email: "merchant@example.com",
-      socialType: "shop" as const,
-      identityScopeId: 4,
-      userId: 12
+      needoId: "n0000000012"
     }
   ];
 
-  it("uses the canonical lowercase prefix plus ten-digit NeeDoID format", () => {
+  it("exports the persisted immutable NeeDo ID", () => {
     const rows = accounts.map((account) =>
       buildFormalTestAccountExportRow(account, "needotest")
     );
 
     expect(rows.map((row) => row.needoId)).toEqual([
-      "u0000000003",
-      "u0000000001",
-      "b0000000008",
-      "s0000000004"
+      "n0000000024",
+      "n0000000001",
+      "n0000000018",
+      "n0000000012"
     ]);
-    expect(rows.every((row) => /^[ubs]\d{10}$/.test(row.needoId))).toBe(true);
+    expect(rows.every((row) => /^n\d{10}$/.test(row.needoId))).toBe(true);
+  });
+
+  it("rejects a non-immutable NeeDo ID instead of exporting a legacy formatter value", () => {
+    expect(() =>
+      buildFormalTestAccountExportRow(
+        {
+          ...accounts[0],
+          needoId: "u0000000003"
+        },
+        "needotest"
+      )
+    ).toThrow("NeeDo ID must match n plus ten digits");
   });
 
   it("labels and places the operations super administrator first", () => {
@@ -65,14 +69,5 @@ describe("formal test account export", () => {
         password: "needotest"
       })
     );
-  });
-
-  it("uses a customer-profile identity for every account participating as a social user", () => {
-    expect(
-      resolveFormalNeeDoSequence("operator", "user", 33, [
-        { scopeId: 112, scopeType: "customer_profile" },
-        { scopeId: null, scopeType: "global" }
-      ])
-    ).toBe(112);
   });
 });

@@ -1,6 +1,7 @@
 import request from "supertest";
 import { compare } from "bcryptjs";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
 import { createStep06Fixture } from "./helpers/step06-fixture";
 
 describe("Step 06 User API", () => {
@@ -103,6 +104,29 @@ describe("Step 06 User API", () => {
       .set("Authorization", `Bearer ${accessToken}`)
       .expect(200);
     expect(fixture.users[1].deletedAt).toEqual(expect.any(Date));
+  });
+
+  it("maps exhausted NeeDo ID allocation to a stable protected-create error", async () => {
+    const fixture = await createStep06Fixture();
+    const accessToken = await fixture.loginAsAdmin();
+    fixture.userRepository.create.mockRejectedValueOnce(new NeedoIdAllocationExhaustedError());
+
+    await request(fixture.app)
+      .post("/api/v1/users")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        email: "allocation-failure@example.com",
+        username: "Allocation Failure",
+        password: "Abcd@1234",
+        isActive: true
+      })
+      .expect(503)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: ERROR_CODES.NEEDO_ID_ALLOCATION_UNAVAILABLE,
+          message: "error.auth.needo_id_allocation_unavailable"
+        });
+      });
   });
 
   it("assigns user roles without allowing the current admin to remove their final admin role", async () => {

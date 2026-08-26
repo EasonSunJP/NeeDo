@@ -3,6 +3,13 @@ import { Prisma } from "@prisma/client";
 
 const formatNeedoId = (value: number) => `n${value.toString().padStart(10, "0")}`;
 
+export class NeedoIdAllocationExhaustedError extends Error {
+  public constructor() {
+    super("NeeDo ID allocation exhausted");
+    this.name = "NeedoIdAllocationExhaustedError";
+  }
+}
+
 export class NeedoIdAllocator {
   public constructor(
     private readonly nextCandidate: () => unknown = () => randomInt(0, 10_000_000_000),
@@ -20,6 +27,6 @@ export class NeedoIdAllocator {
         if (!this.isNeedoIdCollision(error)) throw error;
       }
     }
-    throw new Error("NeeDo ID allocation exhausted");
+    throw new NeedoIdAllocationExhaustedError();
   }
 }
