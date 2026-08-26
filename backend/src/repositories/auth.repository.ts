@@ -151,6 +151,19 @@ export interface CompleteGoogleFirstUseLinkInput {
   googleIdentity: GoogleAuthPersistenceInput;
   context: { ip: string; userAgent?: string | null };
 }
+export interface CompleteSuccessfulGoogleLoginInput {
+  providerSubject: string;
+  expectedUserId: number;
+  expectedIdentityId: number;
+  loggedInAt: Date;
+  context: { ip: string; userAgent?: string | null };
+}
+export class GoogleLoginStateError extends Error {
+  public constructor(public readonly reason: "missing" | "disabled" | "restricted" | "conflict") {
+    super("Google login state is no longer eligible");
+    this.name = "GoogleLoginStateError";
+  }
+}
 
 export interface GoogleBindingStatus {
   linked: boolean;
@@ -193,6 +206,9 @@ export interface GoogleAuthRepositoryPort {
   softUnlinkGoogleBinding: (userId: number) => Promise<boolean>;
   updateGoogleBindingLastUsedAt: (providerSubject: string, lastUsedAt: Date) => Promise<boolean>;
   completeGoogleFirstUseLink: (input: CompleteGoogleFirstUseLinkInput) => Promise<AuthUserRecord>;
+  completeSuccessfulGoogleLogin: (
+    input: CompleteSuccessfulGoogleLoginInput
+  ) => Promise<AuthUserRecord>;
 }
 
 const authUserInclude = {
@@ -471,6 +487,52 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         include: authUserInclude
       });
       return toAuthUserRecord(refreshed);
+    });
+  }
+
+  public async completeSuccessfulGoogleLogin(
+    input: CompleteSuccessfulGoogleLoginInput
+  ): Promise<AuthUserRecord> {
+    return this.client.$transaction(async (transaction) => {
+      const binding = await transaction.externalAuthAccount.findFirst({
+        where: { provider: "google", providerSubject: input.providerSubject, deletedAt: null },
+        include: { user: { include: authUserInclude } }
+      });
+      if (!binding || binding.userId !== input.expectedUserId || binding.user.deletedAt) {
+        throw new GoogleLoginStateError(binding ? "conflict" : "missing");
+      }
+      const user = toAuthUserRecord(binding.user);
+      if (!user.isActive || user.accessState.disabled) throw new GoogleLoginStateError("disabled");
+      if (
+        user.accessState.restricted ||
+        !user.identities.some(
+          (identity) => identity.id === input.expectedIdentityId && identity.isActive
+        )
+      ) {
+        throw new GoogleLoginStateError("restricted");
+      }
+      await transaction.externalAuthAccount.update({
+        where: { id: binding.id },
+        data: { lastUsedAt: input.loggedInAt }
+      });
+      await transaction.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: input.loggedInAt }
+      });
+      await transaction.loginLog.create({
+        data: {
+          userId: user.id,
+          email: user.email,
+          ip: input.context.ip,
+          userAgent: input.context.userAgent ?? null,
+          status: "success"
+        }
+      });
+      const fresh = await transaction.user.findUniqueOrThrow({
+        where: { id: user.id },
+        include: authUserInclude
+      });
+      return toAuthUserRecord(fresh);
     });
   }
 

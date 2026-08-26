@@ -262,6 +262,16 @@ const createFixture = () => {
       });
       return user;
     }),
+    completeSuccessfulGoogleLogin: jest.fn(async (input) => {
+      const binding = bindings.get(input.providerSubject);
+      if (!binding || binding.userId !== input.expectedUserId)
+        throw new Error("missing Google login binding");
+      binding.lastUsedAt = input.loggedInAt;
+      const user = users.find((candidate) => candidate.id === input.expectedUserId)!;
+      user.lastLoginAt = input.loggedInAt;
+      loginLogs.push({ userId: user.id, status: "success" });
+      return user;
+    }),
     updateGoogleBindingLastUsedAt: jest.fn(async (subject: string, lastUsedAt: Date) => {
       const binding = bindings.get(subject);
       if (!binding) return false;
@@ -330,9 +340,8 @@ describe("formal Google sign-in service", () => {
       expiresIn: 300
     });
     expect(result).toMatchObject({ status: "authenticated", accessToken: expect.any(String) });
-    expect(fixture.repository.updateGoogleBindingLastUsedAt).toHaveBeenCalledWith(
-      "google-subject-1",
-      expect.any(Date)
+    expect(fixture.repository.completeSuccessfulGoogleLogin).toHaveBeenCalledWith(
+      expect.objectContaining({ providerSubject: "google-subject-1", expectedUserId: 1 })
     );
     expect(fixture.deliveredOtps).toHaveLength(0);
   });

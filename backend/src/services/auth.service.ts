@@ -5,6 +5,7 @@ import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
 import {
   ExternalAuthAccountConflictError,
+  GoogleLoginStateError,
   type AuthRepositoryPort,
   type AuthUserRecord,
   type GoogleAuthRepositoryPort,
@@ -200,23 +201,9 @@ export class AuthService {
     const binding = await googleRepository.findGoogleBindingBySubject(googleIdentity.subject);
     if (binding) {
       this.assertGoogleBindingUser(binding);
-      if (
-        !(await googleRepository.updateGoogleBindingLastUsedAt(googleIdentity.subject, new Date()))
-      ) {
-        throw new AppError({
-          code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
-          message: "error.dependency.google_binding_unavailable",
-          statusCode: 503
-        });
-      }
-      const refreshedBinding = await googleRepository.findGoogleBindingBySubject(
-        googleIdentity.subject
-      );
-      if (!refreshedBinding) throw this.invalidGoogleCredentialError();
-      this.assertGoogleBindingUser(refreshedBinding);
       return {
         status: "authenticated",
-        ...(await this.completeSuccessfulLogin(refreshedBinding.user, context))
+        ...(await this.completeSuccessfulGoogleLogin(binding.user, googleIdentity.subject, context))
       };
     }
 
@@ -295,7 +282,11 @@ export class AuthService {
         context
       );
       this.assertActiveUser(user);
-      loginReceipt = await this.completeSuccessfulLoginWithReceipt(user, context);
+      loginReceipt = await this.completeSuccessfulGoogleLoginWithReceipt(
+        user,
+        googleIdentity.subject,
+        context
+      );
       if (
         !(await this.verificationChallengeStore.finalizeEmailChallenge({
           challengeId,
@@ -967,6 +958,76 @@ export class AuthService {
       throw error;
     }
 
+    return {
+      payload: {
+        accessToken: accessToken.token,
+        refreshToken: refreshToken.token,
+        expiresIn: accessToken.expiresIn
+      },
+      refreshJti: refreshToken.jti,
+      userId: user.id
+    };
+  }
+
+  private async completeSuccessfulGoogleLogin(
+    user: AuthUserRecord,
+    providerSubject: string,
+    context: AuthRequestContext
+  ): Promise<TokenPairPayload> {
+    return (await this.completeSuccessfulGoogleLoginWithReceipt(user, providerSubject, context))
+      .payload;
+  }
+
+  private async completeSuccessfulGoogleLoginWithReceipt(
+    user: AuthUserRecord,
+    providerSubject: string,
+    context: AuthRequestContext
+  ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
+    const me = this.buildMePayload(user);
+    const subject: AuthTokenSubject = {
+      id: user.id,
+      email: user.email,
+      currentIdentityId: me.currentIdentity.id
+    };
+    const accessToken = this.tokenService.issueAccessToken(subject);
+    const refreshToken = this.tokenService.issueRefreshToken(subject);
+    let refreshStored = false;
+    try {
+      await this.sessionStore.storeRefreshToken(
+        user.id,
+        refreshToken.jti,
+        this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+      );
+      refreshStored = true;
+      const fresh = await this.googleRepository().completeSuccessfulGoogleLogin({
+        providerSubject,
+        expectedUserId: user.id,
+        expectedIdentityId: me.currentIdentity.id,
+        loggedInAt: new Date(),
+        context: { ip: context.ip, userAgent: context.userAgent }
+      });
+      this.assertActiveUser(fresh);
+    } catch (error) {
+      if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
+      if (error instanceof GoogleLoginStateError) {
+        if (error.reason === "disabled") {
+          throw new AppError({
+            code: ERROR_CODES.ACCOUNT_DISABLED,
+            message: "error.auth.account_disabled",
+            statusCode: 403
+          });
+        }
+        if (error.reason === "restricted") {
+          throw new AppError({
+            code: ERROR_CODES.ACCOUNT_RESTRICTED,
+            message: "error.auth.account_restricted",
+            statusCode: 403
+          });
+        }
+        throw this.invalidGoogleCredentialError();
+      }
+      throw error;
+    }
     return {
       payload: {
         accessToken: accessToken.token,
