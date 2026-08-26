@@ -276,6 +276,7 @@ export class AuthService {
       this.throwVerificationChallengeError("missing");
     }
 
+    let loginReceipt: { payload: TokenPairPayload; refreshJti: string; userId: number } | undefined;
     try {
       let user = await this.repository.findVerifiedRegistrationByChallenge(
         challengeId,
@@ -300,7 +301,8 @@ export class AuthService {
         }
       }
       this.assertActiveUser(user);
-      const tokens = await this.completeSuccessfulLogin(user, context);
+      loginReceipt = await this.completeSuccessfulLoginWithReceipt(user, context);
+      const tokens = loginReceipt.payload;
       if (
         !(await this.verificationChallengeStore.finalizeEmailChallenge({
           challengeId,
@@ -315,6 +317,9 @@ export class AuthService {
       }
       return { ...tokens, needoId: user.needoId };
     } catch (error) {
+      if (loginReceipt) {
+        await this.revokeRefreshTokenAfterFailedLogin(loginReceipt.userId, loginReceipt.refreshJti);
+      }
       await this.verificationChallengeStore.releaseEmailChallenge({
         challengeId,
         reservationToken: reserved.reservationToken
@@ -587,6 +592,14 @@ export class AuthService {
     context: AuthRequestContext,
     currentIdentityId?: number
   ): Promise<TokenPairPayload> {
+    return (await this.completeSuccessfulLoginWithReceipt(user, context, currentIdentityId)).payload;
+  }
+
+  private async completeSuccessfulLoginWithReceipt(
+    user: AuthUserRecord,
+    context: AuthRequestContext,
+    currentIdentityId?: number
+  ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const loggedInAt = new Date();
     const me = this.buildMePayload(user, currentIdentityId);
     const subject: AuthTokenSubject = {
@@ -597,25 +610,45 @@ export class AuthService {
     const accessToken = this.tokenService.issueAccessToken(subject);
     const refreshToken = this.tokenService.issueRefreshToken(subject);
 
-    await this.sessionStore.storeRefreshToken(
-      user.id,
-      refreshToken.jti,
-      this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
-    );
-    await this.repository.updateLastLoginAt(user.id, loggedInAt);
-    await this.repository.createLoginLog({
-      userId: user.id,
-      email: user.email,
-      ip: context.ip,
-      userAgent: context.userAgent,
-      status: "success"
-    });
+    let refreshStored = false;
+    try {
+      await this.sessionStore.storeRefreshToken(
+        user.id,
+        refreshToken.jti,
+        this.config.AUTH_REFRESH_TOKEN_TTL_SECONDS
+      );
+      refreshStored = true;
+      await this.repository.updateLastLoginAt(user.id, loggedInAt);
+      await this.repository.createLoginLog({
+        userId: user.id,
+        email: user.email,
+        ip: context.ip,
+        userAgent: context.userAgent,
+        status: "success"
+      });
+    } catch (error) {
+      if (refreshStored) await this.revokeRefreshTokenAfterFailedLogin(user.id, refreshToken.jti);
+      throw error;
+    }
 
     return {
-      accessToken: accessToken.token,
-      refreshToken: refreshToken.token,
-      expiresIn: accessToken.expiresIn
+      payload: {
+        accessToken: accessToken.token,
+        refreshToken: refreshToken.token,
+        expiresIn: accessToken.expiresIn
+      },
+      refreshJti: refreshToken.jti,
+      userId: user.id
     };
+  }
+
+  private async revokeRefreshTokenAfterFailedLogin(userId: number | undefined, jti: string): Promise<void> {
+    if (!userId) return;
+    try {
+      await this.sessionStore.revokeRefreshToken(userId, jti);
+    } catch {
+      // The original failure remains authoritative; no credential is logged here.
+    }
   }
 
   private async assertNotLoginLocked(email: string, context: AuthRequestContext): Promise<void> {

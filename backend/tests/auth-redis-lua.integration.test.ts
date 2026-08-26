@@ -128,6 +128,27 @@ describeRedis("Redis auth-store Lua integration", () => {
     expect(first).toMatchObject({ ok: true, reservationToken: expect.any(String) });
     if (!first.ok) throw new Error("reservation did not succeed");
     await expect(
+      Promise.all(
+        Array.from({ length: 5 }, () =>
+          challengeStore.reserveEmailChallenge({
+            challengeId: challenge.challengeId,
+            otp: "000000",
+            purpose: "email_registration"
+          })
+        )
+      )
+    ).resolves.toEqual(Array.from({ length: 5 }, () => ({ ok: false, reason: "reserved" })));
+    const realDateNow = Date.now;
+    jest.spyOn(Date, "now").mockReturnValue(realDateNow() + 60_000);
+    await expect(
+      challengeStore.reserveEmailChallenge({
+        challengeId: challenge.challengeId,
+        otp: "123456",
+        purpose: "email_registration"
+      })
+    ).resolves.toEqual({ ok: false, reason: "reserved" });
+    jest.restoreAllMocks();
+    await expect(
       challengeStore.finalizeEmailChallenge({
         challengeId: challenge.challengeId,
         reservationToken: "not-the-owner"

@@ -83,8 +83,7 @@ class FakeRedis {
     }
     if (script.includes("auth-verification-email-reserve")) {
       const [key] = options.keys;
-      const [purpose, suppliedUserId, digest, maxAttempts, reservationToken, now, leaseMs] =
-        options.arguments;
+      const [purpose, suppliedUserId, digest, maxAttempts, reservationToken] = options.arguments;
       const stored = await this.get(key);
       if (!stored) return ["missing"];
       const challenge = JSON.parse(stored) as {
@@ -100,6 +99,10 @@ class FakeRedis {
       if (challenge.purpose !== purpose) return ["purpose_mismatch"];
       const userId = suppliedUserId === "" ? undefined : Number(suppliedUserId);
       if ((challenge.userId ?? undefined) !== userId) return ["user_mismatch"];
+      const now = Date.now();
+      if (challenge.reservationToken && (challenge.reservationExpiresAt ?? 0) > now) {
+        return ["reserved"];
+      }
       if (challenge.digest !== digest) {
         const attempts = (challenge.attempts ?? 0) + 1;
         if (attempts >= Number(maxAttempts)) {
@@ -110,11 +113,8 @@ class FakeRedis {
         await this.set(key, JSON.stringify(challenge), { EX: await this.ttl(key) });
         return ["invalid_otp", String(attempts)];
       }
-      if (challenge.reservationToken && (challenge.reservationExpiresAt ?? 0) > Number(now)) {
-        return ["reserved"];
-      }
       challenge.reservationToken = reservationToken;
-      challenge.reservationExpiresAt = Number(now) + Number(leaseMs);
+      challenge.reservationExpiresAt = now + 30_000;
       await this.set(key, JSON.stringify(challenge), { EX: await this.ttl(key) });
       return ["ok", JSON.stringify({ email: challenge.email, metadata: challenge.metadata ?? {} })];
     }
@@ -622,6 +622,39 @@ describe("RedisVerificationChallengeStore", () => {
       })
     ).resolves.toMatchObject({ ok: true });
     jest.useRealTimers();
+  });
+
+  it("does not increment or exhaust a challenge while another reservation lease is active", async () => {
+    const client = new FakeRedis();
+    const store = new RedisVerificationChallengeStore(() => client as never);
+    const challenge = await store.createEmailChallenge({
+      email: "leased-wrong-otp@example.com",
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    const owner = await store.reserveEmailChallenge({
+      challengeId: challenge.challengeId,
+      otp: "123456",
+      purpose: "email_registration"
+    });
+    if (!owner.ok) throw new Error("owner reservation did not succeed");
+    await expect(
+      Promise.all(
+        Array.from({ length: 5 }, () =>
+          store.reserveEmailChallenge({
+            challengeId: challenge.challengeId,
+            otp: "000000",
+            purpose: "email_registration"
+          })
+        )
+      )
+    ).resolves.toEqual(Array.from({ length: 5 }, () => ({ ok: false, reason: "reserved" })));
+    await expect(
+      store.finalizeEmailChallenge({
+        challengeId: challenge.challengeId,
+        reservationToken: owner.reservationToken
+      })
+    ).resolves.toBe(true);
   });
 
   it("cancels only the failed-delivery challenge and its matching cooldown", async () => {

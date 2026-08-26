@@ -204,9 +204,7 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
         input.userId === undefined ? "" : String(input.userId),
         this.createDigest(input.challengeId, input.purpose, input.otp),
         String(env.AUTH_VERIFICATION_MAX_ATTEMPTS),
-        reservationToken,
-        String(Date.now()),
-        String(EMAIL_CHALLENGE_RESERVATION_SECONDS * 1000)
+        reservationToken
       ]
     );
     const [result, detail] = response;
@@ -490,6 +488,10 @@ if challenge.userId == nil or challenge.userId == cjson.null then
 elseif ARGV[2] == '' or tostring(challenge.userId) ~= ARGV[2] then
   return {'user_mismatch'}
 end
+local redisTime = redis.call('TIME')
+local now = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
+local reservationExpiresAt = tonumber(challenge.reservationExpiresAt) or 0
+if challenge.reservationToken ~= nil and reservationExpiresAt > now then return {'reserved'} end
 if challenge.digest ~= ARGV[3] then
   local attempts = (tonumber(challenge.attempts) or 0) + 1
   if attempts >= tonumber(ARGV[4]) then
@@ -506,11 +508,8 @@ if challenge.digest ~= ARGV[3] then
   end
   return {'invalid_otp', tostring(attempts)}
 end
-local now = tonumber(ARGV[6])
-local reservationExpiresAt = tonumber(challenge.reservationExpiresAt) or 0
-if challenge.reservationToken ~= nil and reservationExpiresAt > now then return {'reserved'} end
 challenge.reservationToken = ARGV[5]
-challenge.reservationExpiresAt = now + tonumber(ARGV[7])
+challenge.reservationExpiresAt = now + ${EMAIL_CHALLENGE_RESERVATION_SECONDS * 1000}
 local ttl = redis.call('TTL', KEYS[1])
 if ttl <= 0 then
   redis.call('DEL', KEYS[1])
