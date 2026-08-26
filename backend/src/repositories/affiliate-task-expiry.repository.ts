@@ -16,6 +16,7 @@ import type {
   AffiliatePublisherType
 } from "../services/affiliate-task.service";
 import type { AffiliateTaskStatus } from "../services/affiliate-state-machine.service";
+import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
 
 type AffiliateTaskExpiryPrismaClient = PrismaClient | Prisma.TransactionClient;
 
@@ -99,8 +100,10 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
     ) => Promise<T>
   ): Promise<T> {
     if (this.canStartTransaction(this.client)) {
-      return this.client.$transaction((transactionClient) =>
-        handler(new AffiliateTaskExpiryRepository(transactionClient), transactionClient)
+      return runWithTransactionConflictRetry(() =>
+        this.client.$transaction((transactionClient) =>
+          handler(new AffiliateTaskExpiryRepository(transactionClient), transactionClient)
+        )
       );
     }
     return handler(new AffiliateTaskExpiryRepository(this.client), this.client);
@@ -267,9 +270,7 @@ export class AffiliateTaskExpiryRepository implements AffiliateTaskExpiryReposit
     });
   }
 
-  private canStartTransaction(
-    client: AffiliateTaskExpiryPrismaClient
-  ): client is PrismaClient {
+  private canStartTransaction(client: AffiliateTaskExpiryPrismaClient): client is PrismaClient {
     return "$transaction" in client && typeof client.$transaction === "function";
   }
 

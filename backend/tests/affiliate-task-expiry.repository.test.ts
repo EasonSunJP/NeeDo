@@ -75,6 +75,28 @@ describe("AffiliateTaskExpiryRepository", () => {
     ).resolves.toBe("reused");
   });
 
+  it("retries a root expiry transaction after a Prisma deadlock conflict", async () => {
+    const deadlock = Object.assign(new Error("Transaction failed due to a write conflict"), {
+      code: "P2034"
+    });
+    const transactionClient = { affiliateTask: { findFirst: jest.fn() } };
+    const transaction = jest
+      .fn()
+      .mockRejectedValueOnce(deadlock)
+      .mockImplementationOnce(async (handler: (client: unknown) => Promise<unknown>) =>
+        handler(transactionClient)
+      );
+    const repository = new AffiliateTaskExpiryRepository({ $transaction: transaction } as never);
+
+    await expect(
+      repository.runInTransaction(async (_scopedRepository, scopedClient) => {
+        expect(scopedClient).toBe(transactionClient);
+        return "retried";
+      })
+    ).resolves.toBe("retried");
+    expect(transaction).toHaveBeenCalledTimes(2);
+  });
+
   it("selects only due eligible tasks or ended tasks with positive unallocated NDP in bounded ID order", async () => {
     const queryRaw = jest.fn().mockResolvedValue([{ id: 71 }, { id: 72 }]);
     const repository = new AffiliateTaskExpiryRepository({ $queryRaw: queryRaw } as never);

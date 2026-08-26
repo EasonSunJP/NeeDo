@@ -6,9 +6,7 @@ import type {
 } from "../../src/services/affiliate-task-expiry.service";
 import type { AffiliateBudgetReservationRecord } from "../../src/services/affiliate-task.service";
 
-export class FixtureOwnedAffiliateTaskExpiryRepository
-  implements AffiliateTaskExpiryRepositoryPort
-{
+export class FixtureOwnedAffiliateTaskExpiryRepository implements AffiliateTaskExpiryRepositoryPort {
   public readonly listInputs: Array<{ now: Date; batchSize: number; afterTaskId: number }> = [];
   public lastRejectedTaskIds: number[] = [];
   public readonly transactionErrors: unknown[] = [];
@@ -83,22 +81,9 @@ export class FixtureOwnedAffiliateTaskExpiryRepository
   }
 }
 
-export const isRetryableDeadlock = (error: unknown): boolean => {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    code?: unknown;
-    message?: unknown;
-    meta?: { code?: unknown; message?: unknown };
-  };
-  const code = typeof candidate.code === "string" ? candidate.code : "";
-  const metaCode = typeof candidate.meta?.code === "string" ? candidate.meta.code : "";
-  const message = [candidate.message, candidate.meta?.message]
-    .filter((value): value is string => typeof value === "string")
-    .join(" ");
-  return code === "P2034" || metaCode === "1213" || /deadlock|1213|40001/i.test(message);
-};
-
-export const requireSuccessfulExpirySummary = <T extends Pick<AffiliateTaskExpiryBatchSummary, "failed">>(
+export const requireSuccessfulExpirySummary = <
+  T extends Pick<AffiliateTaskExpiryBatchSummary, "failed">
+>(
   summary: T
 ): T => {
   if (summary.failed !== 0) {
@@ -107,19 +92,15 @@ export const requireSuccessfulExpirySummary = <T extends Pick<AffiliateTaskExpir
   return summary;
 };
 
-export const resolveVerifiedDeadlockVictim = async <T>(input: {
+export const resolveProductionRaceOutcome = async <T>(input: {
   initial: PromiseSettledResult<T>;
-  retry: () => Promise<T>;
   verifyRollback: () => void | Promise<void>;
   validateFulfilled?: (value: T) => T;
-}): Promise<{ value: T; retried: boolean }> => {
+}): Promise<T> => {
   const validate = input.validateFulfilled ?? ((value: T) => value);
   if (input.initial.status === "fulfilled") {
-    return { value: validate(input.initial.value), retried: false };
-  }
-  if (!isRetryableDeadlock(input.initial.reason)) {
-    throw input.initial.reason;
+    return validate(input.initial.value);
   }
   await input.verifyRollback();
-  return { value: validate(await input.retry()), retried: true };
+  throw input.initial.reason;
 };

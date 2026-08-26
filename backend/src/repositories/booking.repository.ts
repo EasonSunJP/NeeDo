@@ -7,6 +7,7 @@ import type {
 } from "../services/affiliate-checkout.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-retry";
 
 export type BookingOrderStatusPayload =
   | "pending"
@@ -753,7 +754,7 @@ export class BookingRepository implements BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
   ): Promise<BookingOrderPayload | null> {
-    return this.client.$transaction(async (tx) => {
+    return runWithTransactionConflictRetry(() => this.client.$transaction(async (tx) => {
       const current = await tx.bookingOrder.findFirst({
         where: {
           id: input.id,
@@ -825,7 +826,7 @@ export class BookingRepository implements BookingRepositoryPort {
       });
 
       return next ? this.mapOrder(next) : null;
-    });
+    }));
   }
 
   public confirmManualPayment(

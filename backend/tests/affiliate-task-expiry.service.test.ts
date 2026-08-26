@@ -464,6 +464,45 @@ describe("AffiliateTaskExpiryService", () => {
     expect(ledger.calls.map(({ taskId }) => taskId)).toEqual([71, 72, 73, 74, 71, 72]);
   });
 
+  it("periodically revisits passed lower ids without abandoning forward progress", async () => {
+    const { repository, ledger, service } = createFixture();
+    repository.seed(
+      task({ id: 71, status: "ended", endedAt }),
+      reservation({ taskId: 71, allocatedNdp: 1_000 })
+    );
+    for (const taskId of [72, 73, 74, 75, 76, 77, 78]) {
+      repository.seed(task({ id: taskId }), reservation({ id: taskId - 58, taskId }));
+    }
+
+    await service.expireDue({ now, batchSize: 2 });
+    repository.reservations.get(71)!.allocatedNdp = 0;
+    repository.candidateIds = [71, 73, 74, 75, 76, 77, 78];
+
+    await service.expireDue({ now, batchSize: 2 });
+    await service.expireDue({ now, batchSize: 2 });
+    await expect(service.expireDue({ now, batchSize: 2 })).resolves.toMatchObject({
+      scanned: 2,
+      released: 1,
+      releasedNdp: 1_000
+    });
+    await service.expireDue({ now, batchSize: 2 });
+
+    expect(repository.candidateInputs.map(({ afterTaskId }) => afterTaskId)).toEqual([
+      0,
+      72,
+      74,
+      0,
+      76
+    ]);
+    expect(repository.reservations.get(71)).toMatchObject({
+      releasedNdp: 1_000,
+      status: "released"
+    });
+    expect(repository.tasks.get(77)?.status).toBe("ended");
+    expect(repository.tasks.get(78)?.status).toBe("ended");
+    expect(ledger.calls.map(({ taskId }) => taskId)).toContain(71);
+  });
+
   it("reports stable AppError fields for one failed candidate", async () => {
     const reportFailure = jest.fn();
     const { repository, ledger, service } = createFixture(reportFailure);

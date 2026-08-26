@@ -66,7 +66,7 @@ totalFrozenNdp = allocatedNdp + capturedNdp + releasedNdp + unallocatedNdp
 
 职责：
 
-1. 分页读取候选任务 ID。
+1. 通过向前游标分页读取候选任务 ID，并定期用独立重访游标扫描已越过的有限 ID 区间。
 2. 对每个任务调用一次独立事务处理。
 3. 锁定 Task 和 BudgetReservation 后重新判断状态、到期时间和预算。
 4. 首次到期时通过现有状态机执行 `expire`，把任务转为 `ended`。
@@ -75,6 +75,8 @@ totalFrozenNdp = allocatedNdp + capturedNdp + releasedNdp + unallocatedNdp
 7. 返回 `scanned`、`ended`、`released`、`failed` 和 `releasedNdp` 统计。
 
 一个任务失败时记录失败并继续其他任务；失败任务的事务整体回滚，下一轮重新尝试。
+
+向前游标连续执行三轮后安排一轮低 ID 重访；重访区间上限固定为开始该轮扫描时的向前游标，并使用独立游标继续分页。这样即使高 ID 页面持续满载，较小 ID 的 ended 任务在后续取消后重新产生 unallocated，也不会长期饥饿；同时低 ID 中的持续失败任务不会阻断向前游标处理更高 ID。
 
 ### AffiliateTaskRepository
 
@@ -98,6 +100,7 @@ totalFrozenNdp = allocatedNdp + capturedNdp + releasedNdp + unallocatedNdp
 - 单进程内使用 `running` 标志防止上一轮未完成时重入。
 - backend 关闭时停止 Worker timer；正在执行的数据库事务由正常服务关闭流程完成或回滚。
 - 多实例可以同时扫描；正确性由任务/预算行锁、条件更新和 Ledger 幂等键保证，而不是依赖单实例 timer。
+- 向前扫描与低 ID 重访分别维护游标；重访不会回退向前游标，服务进程重启后两个游标都从安全的零值重新开始。
 
 ## 7. 幂等与并发
 
@@ -115,6 +118,7 @@ affiliate-task:<taskId>:expiry-release:to:<releasedAfterNdp>
 - 到期与服务完成同时发生：完成事务捕获 allocated；到期事务只释放当时 unallocated，两者总和保持守恒。
 - 到期与订单取消同时发生：取消减少 allocated；本轮或下一轮 Worker 释放新产生的 unallocated，不重复释放。
 - 钱包冻结不足、账本链接冲突或聚合条件更新失败：任务状态、钱包、Ledger 和领域记录全部回滚。
+- 到期事务与正式 Booking 完成/取消事务都对 Prisma `P2034`、MySQL `1213` 和 SQLSTATE `40001` 冲突做最多三次的生产级整事务重试；非瞬态错误不重试。验收脚本不再在事务外手动重放失败操作。
 
 ## 8. 状态与审计
 
@@ -153,6 +157,8 @@ Worker 日志只记录批次统计和稳定错误信息，不记录钱包余额�
 - 无可释放金额时只结束任务，不创建零金额 Ledger。
 - 同一 Worker 重复执行和两个 Worker 并发执行均幂等。
 - 到期与服务完成、到期与取消并发时预算守恒。
+- 高 ID 候选页持续满载时，已经越过的较小 ID 后续重新产生 unallocated 仍会被周期重访，并且向前扫描继续推进。
+- Booking 完成/取消与到期释放发生瞬态死锁时，由正式 Repository 的有限事务重试完成，而不是验收脚本代为重试。
 - 钱包冻结不足或领域条件更新失败时整笔回滚。
 - Worker 防重入、错误隔离、启动和停止行为。
 - 环境变量默认值、边界和非法值拒绝。

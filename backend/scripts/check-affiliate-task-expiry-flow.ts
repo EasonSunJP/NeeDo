@@ -6,7 +6,7 @@ import { assertSafeAffiliateCompletionDatabase } from "./lib/assert-safe-affilia
 import {
   FixtureOwnedAffiliateTaskExpiryRepository,
   requireSuccessfulExpirySummary,
-  resolveVerifiedDeadlockVictim
+  resolveProductionRaceOutcome
 } from "./lib/affiliate-expiry-acceptance-guard";
 import {
   affiliateRiskEventWhere,
@@ -2342,13 +2342,12 @@ const main = async (): Promise<void> => {
       !(completionRuns[0].status === "rejected" && completionRuns[1].status === "rejected"),
       "completion expiry race lost both operations"
     );
-    const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+    const completionExpirySummary = await resolveProductionRaceOutcome({
       initial: completionRuns[0],
-      retry: () => runRaceExpiry([], completionRaceStartedAt),
       verifyRollback: async () => {
         assert(
           completionExpiryFailures.length === 1,
-          "completion expiry race did not report its deadlock victim"
+          "completion expiry race did not report its exhausted transaction failure"
         );
         await assertExpiryVictimRollback({
           flow: "completion",
@@ -2360,14 +2359,8 @@ const main = async (): Promise<void> => {
       },
       validateFulfilled: requireSuccessfulExpirySummary
     });
-    const completionFormalResolution = await resolveVerifiedDeadlockVictim({
+    const completionFormalResult = await resolveProductionRaceOutcome({
       initial: completionRuns[1],
-      retry: () =>
-        booking.transitionOrder(
-          actor(customerCompletionRace.id),
-          completionRaceOrder.order.id,
-          "complete"
-        ),
       verifyRollback: async () => {
         await assertBookingVictimRollback({
           baseline: completionPreRaceSnapshot,
@@ -2377,12 +2370,10 @@ const main = async (): Promise<void> => {
         });
       }
     });
-    const completionExpirySummary = completionExpiryResolution.value;
-    const completionFormalResult = completionFormalResolution.value;
-    const completionDeadlockRetries =
-      Number(completionExpiryResolution.retried) + Number(completionFormalResolution.retried);
     assert(
-      completionExpirySummary.failed === 0 && completionFormalResult.status === "completed",
+      completionExpiryFailures.length === 0 &&
+        completionExpirySummary.failed === 0 &&
+        completionFormalResult.status === "completed",
       "completion expiry race did not finish both formal operations"
     );
     const completionState = await budgetState(completionRaceFixture.task.id);
@@ -2617,13 +2608,12 @@ const main = async (): Promise<void> => {
       !(cancellationRuns[0].status === "rejected" && cancellationRuns[1].status === "rejected"),
       "cancellation expiry race lost both operations"
     );
-    const cancellationExpiryResolution = await resolveVerifiedDeadlockVictim({
+    const cancellationExpirySummary = await resolveProductionRaceOutcome({
       initial: cancellationRuns[0],
-      retry: () => runRaceExpiry([], cancellationRaceStartedAt),
       verifyRollback: async () => {
         assert(
           cancellationExpiryFailures.length === 1,
-          "cancellation expiry race did not report its deadlock victim"
+          "cancellation expiry race did not report its exhausted transaction failure"
         );
         await assertExpiryVictimRollback({
           flow: "cancellation",
@@ -2635,15 +2625,8 @@ const main = async (): Promise<void> => {
       },
       validateFulfilled: requireSuccessfulExpirySummary
     });
-    const cancellationFormalResolution = await resolveVerifiedDeadlockVictim({
+    const cancellationFormalResult = await resolveProductionRaceOutcome({
       initial: cancellationRuns[1],
-      retry: () =>
-        booking.transitionOrder(
-          actor(customerCancellationRace.id),
-          cancellationRaceOrder.order.id,
-          "cancel",
-          "expiry acceptance cancellation race"
-        ),
       verifyRollback: async () => {
         await assertBookingVictimRollback({
           baseline: cancellationPreRaceSnapshot,
@@ -2653,12 +2636,10 @@ const main = async (): Promise<void> => {
         });
       }
     });
-    const cancellationExpirySummary = cancellationExpiryResolution.value;
-    const cancellationDeadlockRetries =
-      Number(cancellationExpiryResolution.retried) + Number(cancellationFormalResolution.retried);
     assert(
-      cancellationExpirySummary.failed === 0 &&
-        cancellationFormalResolution.value.status === "cancelled",
+      cancellationExpiryFailures.length === 0 &&
+        cancellationExpirySummary.failed === 0 &&
+        cancellationFormalResult.status === "cancelled",
       "cancellation expiry race did not finish both formal operations"
     );
     const cancellationEndedState = await budgetState(cancellationRaceFixture.task.id);
@@ -2995,15 +2976,13 @@ const main = async (): Promise<void> => {
       completionRace: {
         bookingCompleted: completionBooking.status === "COMPLETED",
         settled: completionAttribution.status === "SETTLED",
-        outerFinance: completionFinancial.settlementStatus === "settled",
-        deadlockRetries: completionDeadlockRetries
+        outerFinance: completionFinancial.settlementStatus === "settled"
       },
       cancellationRace: {
         bookingCancelled: cancellationBooking.status === "CANCELLED",
         invalidated: cancellationAttribution.status === "INVALIDATED",
         outerFinance: cancellationFinancial.settlementStatus === "cancelled",
-        releaseTransactions: cancellationReleaseLedgers.length,
-        deadlockRetries: cancellationDeadlockRetries
+        releaseTransactions: cancellationReleaseLedgers.length
       },
       expiry: {
         full: true,

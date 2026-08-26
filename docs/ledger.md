@@ -160,7 +160,7 @@ The release idempotency key records the cumulative released total, so repeated s
 affiliate-task:<taskId>:expiry-release:to:<releasedAfterNdp>
 ```
 
-Pre-expiry valid Attribution remains allocated after task end and can still be captured by the existing service-completion settlement. If a later cancellation or completion-limit invalidation removes such an allocation, the task remains ended but the worker rescans it once it has unallocated NDP, releasing only that later increment. A reservation becomes `released` only when no allocated or unallocated frozen budget remains; otherwise it retains its active/exhausted state while the task remains ended and accepts no new allocation.
+Pre-expiry valid Attribution remains allocated after task end and can still be captured by the existing service-completion settlement. If a later cancellation or completion-limit invalidation removes such an allocation, the task remains ended but the worker rescans it once it has unallocated NDP, releasing only that later increment. Forward scanning and a separately bounded revisit cursor prevent lower-ID tasks from starving without letting a persistent low-ID failure block higher IDs. Expiry and formal Booking transitions retry `P2034`, MySQL `1213`, or SQLSTATE `40001` transaction conflicts at most three times; other failures are propagated without retry. A reservation becomes `released` only when no allocated or unallocated frozen budget remains; otherwise it retains its active/exhausted state while the task remains ended and accepts no new allocation.
 
 Expiry worker configuration:
 

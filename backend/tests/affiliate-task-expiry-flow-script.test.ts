@@ -70,12 +70,12 @@ const assertExactRollbackBinding = (
   if (
     !ts.isCallExpression(initializer) ||
     !ts.isIdentifier(initializer.expression) ||
-    initializer.expression.text !== "resolveVerifiedDeadlockVictim" ||
+    initializer.expression.text !== "resolveProductionRaceOutcome" ||
     initializer.arguments.length !== 1 ||
     !ts.isObjectLiteralExpression(initializer.arguments[0])
   ) {
     throw new Error(
-      `${expectation.resolution} must directly call resolveVerifiedDeadlockVictim with an object literal`
+      `${expectation.resolution} must directly call resolveProductionRaceOutcome with an object literal`
     );
   }
   const resolutionInput = initializer.arguments[0];
@@ -355,7 +355,7 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("AffiliateTaskExpiryService");
     expect(source).toContain("affiliate-expiry-acceptance-guard");
     expect(source).toContain("FixtureOwnedAffiliateTaskExpiryRepository");
-    expect(source).toContain("resolveVerifiedDeadlockVictim");
+    expect(source).toContain("resolveProductionRaceOutcome");
     expect(source).toContain("requireSuccessfulExpirySummary");
     expect(source).toContain("allowedTaskIds");
     expect(source).toContain("LedgerRepository");
@@ -444,7 +444,7 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).toContain("completionReleaseLedgers");
     expect(source).toContain('completionState.reservation.status === "RELEASED"');
     expect(source).toContain('cancellationState.reservation.status === "RELEASED"');
-    expect(source).toContain("deadlock");
+    expect(source).not.toContain("resolveVerifiedDeadlockVictim");
     expect(source).toContain("immutable endedAt");
     expect(source).toContain("activeKey === null");
     expect(source).toContain("affiliate.reward.settled");
@@ -517,13 +517,13 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
     expect(source).not.toContain("deleteMany({})");
   });
 
-  it("binds every deadlock callback to its exact snapshot and race time bounds", () => {
+  it("binds every exhausted production race callback to its exact rollback evidence", () => {
     const scriptPath = join(__dirname, "..", "scripts/check-affiliate-task-expiry-flow.ts");
     const source = readFileSync(scriptPath, "utf8");
     const sourceFile = ts.createSourceFile(scriptPath, source, ts.ScriptTarget.Latest, true);
     const expectations: RollbackBindingExpectation[] = [
       {
-        resolution: "completionExpiryResolution",
+        resolution: "completionExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",
@@ -534,7 +534,7 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
         stringBindings: { flow: "completion" }
       },
       {
-        resolution: "completionFormalResolution",
+        resolution: "completionFormalResult",
         assertion: "assertBookingVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",
@@ -544,7 +544,7 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
         }
       },
       {
-        resolution: "cancellationExpiryResolution",
+        resolution: "cancellationExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "cancellationPreRaceSnapshot",
@@ -555,7 +555,7 @@ describe("affiliate task expiry local MySQL acceptance script", () => {
         stringBindings: { flow: "cancellation" }
       },
       {
-        resolution: "cancellationFormalResolution",
+        resolution: "cancellationFormalResult",
         assertion: "assertBookingVictimRollback",
         identifierBindings: {
           baseline: "cancellationPreRaceSnapshot",
@@ -607,7 +607,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
   it("rejects the wrong snapshot identifier in a rollback assertion", () => {
     const fixture = parseFixture(`
-      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+      const completionExpirySummary = await resolveProductionRaceOutcome({
         verifyRollback: async () => {
           await assertExpiryVictimRollback({
             flow: "completion",
@@ -622,7 +622,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
     expect(() =>
       assertExactRollbackBinding(fixture, {
-        resolution: "completionExpiryResolution",
+        resolution: "completionExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",
@@ -632,12 +632,12 @@ describe("affiliate expiry AST contract helpers", () => {
         },
         stringBindings: { flow: "completion" }
       })
-    ).toThrow("completionExpiryResolution baseline must bind completionPreRaceSnapshot");
+    ).toThrow("completionExpirySummary baseline must bind completionPreRaceSnapshot");
   });
 
   it("rejects a rollback assertion hidden in a nested dead branch", () => {
     const fixture = parseFixture(`
-      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+      const completionExpirySummary = await resolveProductionRaceOutcome({
         verifyRollback: async () => {
           if (false) {
             await assertExpiryVictimRollback({
@@ -654,7 +654,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
     expect(() =>
       assertExactRollbackBinding(fixture, {
-        resolution: "completionExpiryResolution",
+        resolution: "completionExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",
@@ -665,14 +665,14 @@ describe("affiliate expiry AST contract helpers", () => {
         stringBindings: { flow: "completion" }
       })
     ).toThrow(
-      "completionExpiryResolution verifyRollback must directly await assertExpiryVictimRollback exactly once"
+      "completionExpirySummary verifyRollback must directly await assertExpiryVictimRollback exactly once"
     );
   });
 
   it("rejects a spread that can override the direct rollback callback", () => {
     const fixture = parseFixture(`
       const override = { verifyRollback: async () => undefined };
-      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+      const completionExpirySummary = await resolveProductionRaceOutcome({
         verifyRollback: async () => {
           await assertExpiryVictimRollback({
             flow: "completion",
@@ -688,7 +688,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
     expect(() =>
       assertExactRollbackBinding(fixture, {
-        resolution: "completionExpiryResolution",
+        resolution: "completionExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",
@@ -698,14 +698,14 @@ describe("affiliate expiry AST contract helpers", () => {
         },
         stringBindings: { flow: "completion" }
       })
-    ).toThrow("completionExpiryResolution resolution input has an indirect property");
+    ).toThrow("completionExpirySummary resolution input has an indirect property");
   });
 
   it.each(["return;", 'throw new Error("stop");'])(
     "rejects an assertion made unreachable by a preceding %s",
     (terminator) => {
       const fixture = parseFixture(`
-        const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+        const completionExpirySummary = await resolveProductionRaceOutcome({
           verifyRollback: async () => {
             ${terminator}
             await assertExpiryVictimRollback({
@@ -721,7 +721,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
       expect(() =>
         assertExactRollbackBinding(fixture, {
-          resolution: "completionExpiryResolution",
+          resolution: "completionExpirySummary",
           assertion: "assertExpiryVictimRollback",
           identifierBindings: {
             baseline: "completionPreRaceSnapshot",
@@ -732,7 +732,7 @@ describe("affiliate expiry AST contract helpers", () => {
           stringBindings: { flow: "completion" }
         })
       ).toThrow(
-        "completionExpiryResolution verifyRollback must not return or throw before assertExpiryVictimRollback"
+        "completionExpirySummary verifyRollback must not return or throw before assertExpiryVictimRollback"
       );
     }
   );
@@ -743,7 +743,7 @@ describe("affiliate expiry AST contract helpers", () => {
     "const { assertExpiryVictimRollback } = helpers;"
   ])("rejects a callback-local assertion shadow: %s", (shadow) => {
     const fixture = parseFixture(`
-      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+      const completionExpirySummary = await resolveProductionRaceOutcome({
         verifyRollback: async () => {
           ${shadow}
           await assertExpiryVictimRollback({
@@ -759,7 +759,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
     expect(() =>
       assertExactRollbackBinding(fixture, {
-        resolution: "completionExpiryResolution",
+        resolution: "completionExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",
@@ -769,12 +769,12 @@ describe("affiliate expiry AST contract helpers", () => {
         },
         stringBindings: { flow: "completion" }
       })
-    ).toThrow("completionExpiryResolution verifyRollback shadows assertExpiryVictimRollback");
+    ).toThrow("completionExpirySummary verifyRollback shadows assertExpiryVictimRollback");
   });
 
   it("rejects a named rollback function expression that shadows the assertion", () => {
     const fixture = parseFixture(`
-      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+      const completionExpirySummary = await resolveProductionRaceOutcome({
         verifyRollback: async function assertExpiryVictimRollback() {
           await assertExpiryVictimRollback({
             flow: "completion",
@@ -789,7 +789,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
     expect(() =>
       assertExactRollbackBinding(fixture, {
-        resolution: "completionExpiryResolution",
+        resolution: "completionExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",
@@ -799,12 +799,12 @@ describe("affiliate expiry AST contract helpers", () => {
         },
         stringBindings: { flow: "completion" }
       })
-    ).toThrow("completionExpiryResolution verifyRollback shadows assertExpiryVictimRollback");
+    ).toThrow("completionExpirySummary verifyRollback shadows assertExpiryVictimRollback");
   });
 
   it("allows assertion-name bindings confined to an unrelated nested object method", () => {
     const fixture = parseFixture(`
-      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+      const completionExpirySummary = await resolveProductionRaceOutcome({
         verifyRollback: async () => {
           ({
             helper() {
@@ -825,7 +825,7 @@ describe("affiliate expiry AST contract helpers", () => {
 
     expect(() =>
       assertExactRollbackBinding(fixture, {
-        resolution: "completionExpiryResolution",
+        resolution: "completionExpirySummary",
         assertion: "assertExpiryVictimRollback",
         identifierBindings: {
           baseline: "completionPreRaceSnapshot",

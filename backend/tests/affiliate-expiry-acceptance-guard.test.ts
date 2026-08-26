@@ -6,7 +6,7 @@ import type { AffiliateBudgetLedgerPort } from "../src/services/affiliate-task.s
 import {
   FixtureOwnedAffiliateTaskExpiryRepository,
   requireSuccessfulExpirySummary,
-  resolveVerifiedDeadlockVictim
+  resolveProductionRaceOutcome
 } from "../scripts/lib/affiliate-expiry-acceptance-guard";
 
 const createDelegate = (candidateIds: number[]) => {
@@ -38,10 +38,7 @@ describe("affiliate expiry acceptance guard", () => {
     };
     const candidateIds = [11, 12];
     const delegate = createDelegate(candidateIds);
-    const repository = new FixtureOwnedAffiliateTaskExpiryRepository(
-      delegate,
-      new Set([11, 12])
-    );
+    const repository = new FixtureOwnedAffiliateTaskExpiryRepository(delegate, new Set([11, 12]));
 
     await expect(repository.listExpiryCandidateTaskIds(input)).resolves.toBe(candidateIds);
     expect(delegate.listExpiryCandidateTaskIds).toHaveBeenCalledTimes(1);
@@ -81,87 +78,60 @@ describe("affiliate expiry acceptance guard", () => {
     expect(delegate.createAuditLog).not.toHaveBeenCalled();
   });
 
-  it("retries only the rejected verified-deadlock victim after rollback verification", async () => {
-    const committedRetry = jest.fn();
+  it("accepts a fulfilled production race without running rollback verification", async () => {
     const committedRollback = jest.fn();
-    const victimOrder: string[] = [];
-    const victimRollback = jest.fn(async () => {
-      victimOrder.push("rollback");
-    });
-    const victimRetry = jest.fn(async () => {
-      victimOrder.push("retry");
-      return "retried";
-    });
-    const deadlock = Object.assign(new Error("MySQL deadlock 1213"), { code: "P2034" });
 
     await expect(
-      resolveVerifiedDeadlockVictim({
+      resolveProductionRaceOutcome({
         initial: { status: "fulfilled", value: "committed" },
-        retry: committedRetry,
         verifyRollback: committedRollback
       })
-    ).resolves.toEqual({ value: "committed", retried: false });
-    await expect(
-      resolveVerifiedDeadlockVictim({
-        initial: { status: "rejected", reason: deadlock },
-        retry: victimRetry,
-        verifyRollback: victimRollback
-      })
-    ).resolves.toEqual({ value: "retried", retried: true });
+    ).resolves.toBe("committed");
 
-    expect(committedRetry).not.toHaveBeenCalled();
     expect(committedRollback).not.toHaveBeenCalled();
-    expect(victimRetry).toHaveBeenCalledTimes(1);
-    expect(victimRollback).toHaveBeenCalledTimes(1);
-    expect(victimOrder).toEqual(["rollback", "retry"]);
   });
 
-  it("propagates a non-deadlock rejection without rollback verification or retry", async () => {
-    const retry = jest.fn();
-    const verifyRollback = jest.fn();
-    const rejection = new Error("validation conflict");
+  it("verifies rollback and propagates a rejected production race without retrying it", async () => {
+    const events: string[] = [];
+    const verifyRollback = jest.fn(async () => {
+      events.push("rollback");
+    });
+    const rejection = new Error("MySQL deadlock 1213 after production retries");
 
     await expect(
-      resolveVerifiedDeadlockVictim({
+      resolveProductionRaceOutcome({
         initial: { status: "rejected", reason: rejection },
-        retry,
         verifyRollback
       })
     ).rejects.toBe(rejection);
-    expect(retry).not.toHaveBeenCalled();
-    expect(verifyRollback).not.toHaveBeenCalled();
+    expect(verifyRollback).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["rollback"]);
   });
 
-  it("does not retry when rollback verification detects a partial outer transaction", async () => {
-    const retry = jest.fn();
+  it("surfaces rollback verification failure before the rejected race error", async () => {
     const rollbackFailure = new Error("outer booking finance partially committed");
     const verifyRollback = jest.fn().mockRejectedValue(rollbackFailure);
     const deadlock = Object.assign(new Error("MySQL deadlock 1213"), { code: "P2034" });
 
     await expect(
-      resolveVerifiedDeadlockVictim({
+      resolveProductionRaceOutcome({
         initial: { status: "rejected", reason: deadlock },
-        retry,
         verifyRollback
       })
     ).rejects.toBe(rollbackFailure);
     expect(verifyRollback).toHaveBeenCalledTimes(1);
-    expect(retry).not.toHaveBeenCalled();
   });
 
   it("never accepts or retries a fulfilled expiry summary that reports candidate failure", async () => {
-    const retry = jest.fn();
     const verifyRollback = jest.fn();
 
     await expect(
-      resolveVerifiedDeadlockVictim({
+      resolveProductionRaceOutcome({
         initial: { status: "fulfilled", value: { failed: 1, releasedNdp: 0 } },
-        retry,
         verifyRollback,
         validateFulfilled: requireSuccessfulExpirySummary
       })
     ).rejects.toThrow("fulfilled expireDue summary reported candidate failure");
-    expect(retry).not.toHaveBeenCalled();
     expect(verifyRollback).not.toHaveBeenCalled();
   });
 });

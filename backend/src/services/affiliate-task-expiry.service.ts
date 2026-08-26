@@ -110,6 +110,8 @@ const EXPIRABLE_STATUSES: ExpirableAffiliateTaskStatus[] = [
   "budget_exhausted"
 ];
 
+const FORWARD_RUNS_PER_REVISIT = 3;
+
 const isNonNegativeSafeInteger = (value: number): boolean =>
   Number.isSafeInteger(value) && value >= 0;
 
@@ -118,6 +120,9 @@ const isExpirableStatus = (status: AffiliateTaskStatus): status is ExpirableAffi
 
 export class AffiliateTaskExpiryService {
   private afterTaskId = 0;
+  private forwardRunsSinceRevisit = 0;
+  private revisitAfterTaskId = 0;
+  private revisitUpperBound = 0;
 
   public constructor(
     private readonly repository: AffiliateTaskExpiryRepositoryPort,
@@ -125,10 +130,13 @@ export class AffiliateTaskExpiryService {
     private readonly reportFailure?: AffiliateTaskExpiryFailureReporter
   ) {}
 
-  public async expireDue(input: AffiliateTaskExpiryInput): Promise<AffiliateTaskExpiryBatchSummary> {
+  public async expireDue(
+    input: AffiliateTaskExpiryInput
+  ): Promise<AffiliateTaskExpiryBatchSummary> {
     this.validateInput(input);
-    const candidateIds = await this.listCandidateIds(input);
-    if (candidateIds.length > 0) {
+    const candidatePage = await this.listCandidateIds(input);
+    const candidateIds = candidatePage.taskIds;
+    if (candidatePage.advanceForwardCursor && candidateIds.length > 0) {
       this.afterTaskId = candidateIds[candidateIds.length - 1];
     }
     const summary: AffiliateTaskExpiryBatchSummary = {
@@ -154,7 +162,15 @@ export class AffiliateTaskExpiryService {
     return summary;
   }
 
-  private async listCandidateIds(input: AffiliateTaskExpiryInput): Promise<number[]> {
+  private async listCandidateIds(input: AffiliateTaskExpiryInput): Promise<{
+    taskIds: number[];
+    advanceForwardCursor: boolean;
+  }> {
+    if (this.afterTaskId !== 0 && this.forwardRunsSinceRevisit >= FORWARD_RUNS_PER_REVISIT) {
+      this.forwardRunsSinceRevisit = 0;
+      return this.listRevisitCandidateIds(input);
+    }
+
     let candidateIds = (
       await this.repository.listExpiryCandidateTaskIds({
         now: input.now,
@@ -165,6 +181,8 @@ export class AffiliateTaskExpiryService {
 
     if (candidateIds.length === 0 && this.afterTaskId !== 0) {
       this.afterTaskId = 0;
+      this.forwardRunsSinceRevisit = 0;
+      this.resetRevisitSweep();
       candidateIds = (
         await this.repository.listExpiryCandidateTaskIds({
           now: input.now,
@@ -174,7 +192,43 @@ export class AffiliateTaskExpiryService {
       ).slice(0, input.batchSize);
     }
 
-    return candidateIds;
+    this.forwardRunsSinceRevisit += 1;
+    return { taskIds: candidateIds, advanceForwardCursor: true };
+  }
+
+  private async listRevisitCandidateIds(input: AffiliateTaskExpiryInput): Promise<{
+    taskIds: number[];
+    advanceForwardCursor: false;
+  }> {
+    if (this.revisitUpperBound === 0) {
+      this.revisitUpperBound = this.afterTaskId;
+    }
+    const candidateIds = (
+      await this.repository.listExpiryCandidateTaskIds({
+        now: input.now,
+        batchSize: input.batchSize,
+        afterTaskId: this.revisitAfterTaskId
+      })
+    ).slice(0, input.batchSize);
+    const boundedCandidateIds = candidateIds.filter((taskId) => taskId <= this.revisitUpperBound);
+
+    if (boundedCandidateIds.length > 0) {
+      this.revisitAfterTaskId = boundedCandidateIds[boundedCandidateIds.length - 1];
+    }
+    if (
+      candidateIds.length < input.batchSize ||
+      boundedCandidateIds.length !== candidateIds.length ||
+      this.revisitAfterTaskId >= this.revisitUpperBound
+    ) {
+      this.resetRevisitSweep();
+    }
+
+    return { taskIds: boundedCandidateIds, advanceForwardCursor: false };
+  }
+
+  private resetRevisitSweep(): void {
+    this.revisitAfterTaskId = 0;
+    this.revisitUpperBound = 0;
   }
 
   private async reportCandidateFailure(taskId: number, error: unknown): Promise<void> {
@@ -236,7 +290,12 @@ export class AffiliateTaskExpiryService {
         return { ended: transitioned, released: false, releasedNdp: 0 };
       }
 
-      const ledgerInput = this.releaseLedgerInput(task, reservation, releaseAmount, releasedAfterNdp);
+      const ledgerInput = this.releaseLedgerInput(
+        task,
+        reservation,
+        releaseAmount,
+        releasedAfterNdp
+      );
       const ledgerResult = await this.ledger.releaseAffiliateTaskBudget(ledgerInput, {
         transactionClient
       });
