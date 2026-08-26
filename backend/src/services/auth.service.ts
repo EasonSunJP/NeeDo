@@ -5,12 +5,15 @@ import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   AuthRepositoryPort,
-  AuthUserRecord,
-  RegisteredAccountRecord
+  AuthUserRecord
 } from "../repositories/auth.repository";
 import { AppError } from "../utils/app-error";
 import type { OtpDeliveryClient } from "./auth-otp-delivery.service";
 import type { AuthSessionStore } from "./auth-session.store";
+import {
+  type VerificationChallengeStore,
+  VerificationChallengeCooldownError
+} from "./auth-verification-challenge.store";
 import {
   AuthTokenService,
   type AuthTokenPayload,
@@ -105,17 +108,24 @@ interface LoginFailureInput {
   context: AuthRequestContext;
 }
 
-interface RegisterAccountBaseInput {
+interface RegistrationInput {
   email: string;
   password: string;
-  username: string;
 }
 
-export type RegisterAccountInput =
-  | (RegisterAccountBaseInput & { accountType: "customer" })
-  | (RegisterAccountBaseInput & { accountType: "technician"; city: string });
+export interface RegistrationChallengePayload {
+  challengeId: string;
+  maskedEmail: string;
+  expiresIn: number;
+  cooldownSeconds: number;
+}
+
+export interface VerifiedRegistrationPayload extends TokenPairPayload {
+  needoId: string;
+}
 
 const BCRYPT_ROUNDS = 12;
+const DUMMY_PASSWORD_HASH = "$2b$12$yeZHxRVngWt4QQuvHslkk.koIBff/rgsnD5/NITKu8U9cL.3.XfUS";
 
 export class AuthService {
   private readonly tokenService: AuthTokenService;
@@ -124,7 +134,8 @@ export class AuthService {
     private readonly config: AppConfig,
     private readonly repository: AuthRepositoryPort,
     private readonly sessionStore: AuthSessionStore,
-    private readonly otpDeliveryClient: OtpDeliveryClient
+    private readonly otpDeliveryClient: OtpDeliveryClient,
+    private readonly verificationChallengeStore: VerificationChallengeStore
   ) {
     this.tokenService = new AuthTokenService(config);
   }
@@ -139,10 +150,10 @@ export class AuthService {
     await this.assertNotLoginLocked(loginIdentifier, context);
 
     const user = await this.repository.findUserByLoginIdentifier(loginIdentifier);
-    const passwordMatches = user?.passwordHash ? await compare(password, user.passwordHash) : false;
+    const passwordMatches = await compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
 
-    if (!user || !passwordMatches) {
-      await this.rejectFailedLogin({
+    if (!user || !user.passwordHash || !passwordMatches) {
+      return this.rejectFailedLogin({
         userId: user?.id,
         email: loginIdentifier,
         reason: "invalid_credentials",
@@ -150,7 +161,8 @@ export class AuthService {
       });
     }
 
-    if (user && !user.isActive) {
+    const accessState = this.getAccessState(user);
+    if (!user.isActive || accessState.disabled) {
       await this.repository.createLoginLog({
         userId: user.id,
         email: user.email,
@@ -166,35 +178,90 @@ export class AuthService {
       });
     }
 
+    if (accessState.restricted) {
+      await this.repository.createLoginLog({
+        userId: user.id,
+        email: user.email,
+        ip: context.ip,
+        userAgent: context.userAgent,
+        status: "failed",
+        failReason: "account_restricted"
+      });
+      throw new AppError({
+        code: ERROR_CODES.ACCOUNT_RESTRICTED,
+        message: "error.auth.account_restricted",
+        statusCode: 403
+      });
+    }
+
     this.assertActiveUser(user);
     await this.sessionStore.clearFailedLogin(context.ip, loginIdentifier);
 
     return this.completeSuccessfulLogin(user, context);
   }
 
-  public async register(
-    input: RegisterAccountInput,
-    context: AuthRequestContext
-  ): Promise<RegisteredAccountRecord> {
+  public async startRegistration(input: RegistrationInput): Promise<RegistrationChallengePayload> {
     const email = this.normalizeEmail(input.email);
     if (await this.repository.findUserByEmail(email)) {
       throw this.emailAlreadyExistsError();
     }
 
     try {
-      const registrationData = {
+      const otp = String(randomInt(0, 1_000_000)).padStart(6, "0");
+      const challenge = await this.verificationChallengeStore.createEmailChallenge({
         email,
-        ip: context.ip,
-        passwordHash: await hash(input.password, BCRYPT_ROUNDS),
-        userAgent: context.userAgent,
-        username: input.username.trim()
+        otp,
+        purpose: "email_registration",
+        metadata: { passwordHash: await hash(input.password, BCRYPT_ROUNDS) }
+      });
+      await this.otpDeliveryClient.sendOtp(email, otp);
+      return {
+        challengeId: challenge.challengeId,
+        maskedEmail: challenge.maskedEmail,
+        expiresIn: challenge.expiresInSeconds,
+        cooldownSeconds: 60
       };
+    } catch (error) {
+      if (error instanceof VerificationChallengeCooldownError) {
+        throw new AppError({
+          code: ERROR_CODES.OTP_COOLDOWN,
+          message: "error.auth.otp_cooldown",
+          statusCode: 429
+        });
+      }
+      throw error;
+    }
+  }
 
-      return await this.repository.registerUser(
-        input.accountType === "technician"
-          ? { ...registrationData, accountType: "technician", city: input.city }
-          : { ...registrationData, accountType: "customer" }
-      );
+  public async verifyRegistration(
+    challengeId: string,
+    otp: string,
+    context: AuthRequestContext
+  ): Promise<VerifiedRegistrationPayload> {
+    const consumed = await this.verificationChallengeStore.consumeEmailChallenge({
+      challengeId,
+      otp,
+      purpose: "email_registration"
+    });
+    if (!consumed.ok) {
+      this.throwVerificationChallengeError(consumed.reason);
+    }
+    const passwordHash =
+      "passwordHash" in consumed.metadata ? consumed.metadata.passwordHash : undefined;
+    if (typeof passwordHash !== "string") {
+      this.throwVerificationChallengeError("missing");
+    }
+
+    try {
+      const user = await this.repository.createVerifiedBaselineCustomer({
+        email: consumed.email,
+        passwordHash,
+        emailVerifiedAt: new Date(),
+        context: { ip: context.ip, userAgent: context.userAgent }
+      });
+      this.assertActiveUser(user);
+      const tokens = await this.completeSuccessfulLogin(user, context);
+      return { ...tokens, needoId: user.needoId };
     } catch (error) {
       if (error instanceof NeedoIdAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
@@ -202,7 +269,6 @@ export class AuthService {
       if (this.isUniqueConstraintError(error)) {
         throw this.emailAlreadyExistsError();
       }
-
       throw error;
     }
   }
@@ -693,10 +759,19 @@ export class AuthService {
       });
     }
 
-    if (!user.isActive) {
+    const accessState = this.getAccessState(user);
+    if (!user.isActive || accessState.disabled) {
       throw new AppError({
         code: ERROR_CODES.ACCOUNT_DISABLED,
         message: "error.auth.account_disabled",
+        statusCode: 403
+      });
+    }
+
+    if (accessState.restricted) {
+      throw new AppError({
+        code: ERROR_CODES.ACCOUNT_RESTRICTED,
+        message: "error.auth.account_restricted",
         statusCode: 403
       });
     }
@@ -724,6 +799,44 @@ export class AuthService {
       message: "error.auth.needo_id_allocation_unavailable",
       statusCode: 503
     });
+  }
+
+  private throwVerificationChallengeError(
+    reason: "missing" | "purpose_mismatch" | "user_mismatch" | "invalid_otp" | "attempts_exhausted"
+  ): never {
+    if (reason === "invalid_otp") {
+      throw new AppError({
+        code: ERROR_CODES.VERIFICATION_CODE_INVALID,
+        message: "error.auth.verification_code_invalid",
+        statusCode: 401
+      });
+    }
+    if (reason === "attempts_exhausted") {
+      throw new AppError({
+        code: ERROR_CODES.VERIFICATION_ATTEMPTS_EXHAUSTED,
+        message: "error.auth.verification_attempts_exhausted",
+        statusCode: 429
+      });
+    }
+    throw new AppError({
+      code: ERROR_CODES.VERIFICATION_CHALLENGE_EXPIRED,
+      message: "error.auth.verification_challenge_expired",
+      statusCode: 401
+    });
+  }
+
+  private getAccessState(user: AuthUserRecord): {
+    disabled: boolean;
+    restricted: boolean;
+  } {
+    return (
+      user.accessState ?? {
+        disabled: !user.isActive,
+        restricted: !user.identities.some(
+          (identity) => identity.deletedAt === null && identity.isActive
+        )
+      }
+    );
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

@@ -152,6 +152,7 @@ const createFixture = async () => {
     username: "Aya Customer",
     avatarUrl: null,
     isActive: true,
+    accessState: { disabled: false, restricted: false },
     lastLoginAt: null,
     createdAt: now,
     updatedAt: now,
@@ -224,10 +225,10 @@ const createFixture = async () => {
       async (identifier: string) =>
         users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
     ),
-    findUserById: jest.fn(
-      async (id: number) => users.find((user) => user.id === id) ?? null
-    ),
-    registerUser: jest.fn(),
+    findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
+    createVerifiedBaselineCustomer: jest.fn(async () => {
+      throw new Error("unexpected verified registration");
+    }),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
     createAuditLog: jest.fn(async (entry: unknown) => {
@@ -383,9 +384,7 @@ describe("customer profile current-user API", () => {
       await request(fixture.app)
         .get(`/media/customer-avatars/${avatarHash}.png/not-an-avatar`)
         .expect(404);
-      await request(fixture.app)
-        .get(`/media/customer-avatars/${avatarHash}.png.json`)
-        .expect(404);
+      await request(fixture.app).get(`/media/customer-avatars/${avatarHash}.png.json`).expect(404);
     } finally {
       await rm(fixture.avatarDirectory, { recursive: true, force: true });
     }

@@ -90,6 +90,7 @@ class FakeRedis {
       userId?: number | null;
       digest: string;
       attempts?: number;
+      email?: string;
       metadata?: Record<string, unknown>;
     };
 
@@ -114,7 +115,7 @@ class FakeRedis {
         return ["invalid_otp", String(attempts)];
       }
       await this.del(key);
-      return ["ok", JSON.stringify(parsed.metadata ?? {})];
+      return ["ok", JSON.stringify({ email: parsed.email, metadata: parsed.metadata ?? {} })];
     }
 
     const userId = second === "" ? undefined : Number(second);
@@ -459,6 +460,7 @@ describe("RedisVerificationChallengeStore", () => {
       })
     ).resolves.toEqual({
       ok: true,
+      email: "google@example.com",
       metadata: { providerSubject: "subject-7", providerEmail: "verified@example.com" }
     });
   });

@@ -56,7 +56,7 @@ export interface AuthUserRecord {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
-  accessState?: AuthAccountAccessState;
+  accessState: AuthAccountAccessState;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
   identities: AuthIdentityRecord[];
@@ -161,7 +161,9 @@ export interface AuthRepositoryPort {
   findUserByEmail: (email: string) => Promise<AuthUserRecord | null>;
   findUserByLoginIdentifier: (identifier: string) => Promise<AuthUserRecord | null>;
   findUserById: (id: number) => Promise<AuthUserRecord | null>;
-  registerUser: (input: RegisterUserData) => Promise<RegisteredAccountRecord>;
+  createVerifiedBaselineCustomer: (
+    input: CreateVerifiedBaselineCustomerInput
+  ) => Promise<AuthUserRecord>;
   updateLastLoginAt: (id: number, loggedInAt: Date) => Promise<void>;
   createLoginLog: (input: CreateLoginLogInput) => Promise<void>;
   createAuditLog: (input: CreateAuditLogInput) => Promise<void>;
@@ -448,7 +450,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       });
       const profile = isCustomer
         ? await transaction.customerProfile.create({
-            data: {
+          data: {
               userId: user.id,
               displayName: needoId
             }

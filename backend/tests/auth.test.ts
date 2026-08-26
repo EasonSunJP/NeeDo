@@ -1,8 +1,14 @@
-import { hash } from "bcryptjs";
+import { compare, hash } from "bcryptjs";
+import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
+import type {
+  ConsumeVerificationChallengeInput,
+  CreateVerificationChallengeInput,
+  VerificationPurpose
+} from "../src/services/auth-verification-challenge.store";
 
 interface StoredValue {
   value: string;
@@ -111,6 +117,67 @@ class InMemoryAuthSessionStore {
   }
 }
 
+class InMemoryVerificationChallengeStore {
+  private readonly challenges = new Map<
+    string,
+    CreateVerificationChallengeInput & { attempts: number; expired: boolean }
+  >();
+
+  public async createEmailChallenge(input: CreateVerificationChallengeInput) {
+    const challengeId = randomUUID();
+    this.challenges.set(challengeId, { ...input, attempts: 0, expired: false });
+    return {
+      challengeId,
+      expiresInSeconds: 600,
+      maskedEmail: `${input.email[0]}***@${input.email.split("@")[1]}`
+    };
+  }
+
+  public async consumeEmailChallenge(input: ConsumeVerificationChallengeInput) {
+    const challenge = this.challenges.get(input.challengeId);
+    if (!challenge || challenge.expired) return { ok: false as const, reason: "missing" as const };
+    if (challenge.purpose !== input.purpose) {
+      return { ok: false as const, reason: "purpose_mismatch" as const };
+    }
+    if ((challenge.userId ?? undefined) !== (input.userId ?? undefined)) {
+      return { ok: false as const, reason: "user_mismatch" as const };
+    }
+    if (challenge.otp !== input.otp) {
+      challenge.attempts += 1;
+      if (challenge.attempts >= 5) {
+        this.challenges.delete(input.challengeId);
+        return { ok: false as const, reason: "attempts_exhausted" as const };
+      }
+      return { ok: false as const, reason: "invalid_otp" as const, attempts: challenge.attempts };
+    }
+
+    this.challenges.delete(input.challengeId);
+    return { ok: true as const, email: challenge.email, metadata: challenge.metadata ?? {} };
+  }
+
+  public async createGoogleNonce() {
+    return { challengeId: randomUUID(), nonce: "unused", expiresInSeconds: 600 };
+  }
+
+  public async consumeGoogleNonce(): Promise<boolean> {
+    return false;
+  }
+
+  public expire(challengeId: string): void {
+    const challenge = this.challenges.get(challengeId);
+    if (challenge) challenge.expired = true;
+  }
+
+  public async createChallengeForTest(input: {
+    email: string;
+    otp: string;
+    purpose: VerificationPurpose;
+    metadata?: Record<string, unknown>;
+  }) {
+    return this.createEmailChallenge(input);
+  }
+}
+
 const createAuthFixture = async () => {
   const sessionStore = new InMemoryAuthSessionStore();
   const deliveredOtps: Array<{ email: string; otp: string }> = [];
@@ -127,6 +194,7 @@ const createAuthFixture = async () => {
     username: "admin",
     avatarUrl: null,
     isActive: true,
+    accessState: { disabled: false, restricted: false },
     lastLoginAt: null as Date | null,
     deletedAt: null,
     identities: [
@@ -240,7 +308,8 @@ const createAuthFixture = async () => {
     needoId: "n0000000003",
     email: "disabled@example.com",
     username: "Disabled User",
-    isActive: false
+    isActive: false,
+    accessState: { disabled: true, restricted: false }
   };
   const noPermissionUser = {
     ...passwordUser,
@@ -271,6 +340,23 @@ const createAuthFixture = async () => {
         deletedAt: null
       }
     ]
+  };
+  const restrictedUser = {
+    ...passwordUser,
+    id: 6,
+    needoId: "n0000000006",
+    email: "restricted@example.com",
+    username: "Restricted User",
+    accessState: { disabled: false, restricted: true },
+    identities: []
+  };
+  const googleOnlyUser = {
+    ...customerUser,
+    id: 7,
+    needoId: "n0000000007",
+    email: "google-only@example.com",
+    username: "Google Only User",
+    passwordHash: null
   };
   const multiPortalUser = {
     ...passwordUser,
@@ -337,8 +423,17 @@ const createAuthFixture = async () => {
       }
     ]
   };
-  const users = [passwordUser, customerUser, disabledUser, noPermissionUser, multiPortalUser];
+  const users = [
+    passwordUser,
+    customerUser,
+    disabledUser,
+    noPermissionUser,
+    multiPortalUser,
+    restrictedUser,
+    googleOnlyUser
+  ];
   const registrations: Array<Record<string, unknown>> = [];
+  const challengeStore = new InMemoryVerificationChallengeStore();
 
   const repository = {
     findUserByEmail: jest.fn(
@@ -366,6 +461,29 @@ const createAuthFixture = async () => {
         isActive: accountType === "customer"
       };
     }),
+    createVerifiedBaselineCustomer: jest.fn(async (input: Record<string, unknown>) => {
+      const id = 100 + registrations.length + 1;
+      const needoId = `n${String(id).padStart(10, "0")}`;
+      const createdUser = {
+        ...customerUser,
+        id,
+        needoId,
+        email: input.email as string,
+        emailVerifiedAt: input.emailVerifiedAt as Date,
+        passwordHash: input.passwordHash as string,
+        username: needoId,
+        identities: customerUser.identities.map((identity) => ({
+          ...identity,
+          id: id * 10,
+          userId: id,
+          scopeId: id,
+          displayName: needoId
+        }))
+      };
+      users.push(createdUser);
+      registrations.push(input);
+      return createdUser;
+    }),
     updateLastLoginAt: jest.fn(async (id: number, loggedInAt: Date) => {
       const user = users.find((item) => item.id === id);
       if (user) {
@@ -390,7 +508,8 @@ const createAuthFixture = async () => {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: repository,
     authSessionStore: sessionStore,
-    otpDeliveryClient
+    otpDeliveryClient,
+    verificationChallengeStore: challengeStore
   } as never);
 
   return {
@@ -401,6 +520,7 @@ const createAuthFixture = async () => {
     loginLogs,
     auditLogs,
     registrations,
+    challengeStore,
     user: passwordUser,
     customerUser,
     disabledUser,
@@ -409,78 +529,158 @@ const createAuthFixture = async () => {
   };
 };
 
-describe("Step 05 Auth / OTP / Token / Session", () => {
-  it("registers a customer with a hashed password and no sensitive response fields", async () => {
+describe("verified email registration and formal password authentication", () => {
+  it("starts a verified email registration without creating a user", async () => {
     const fixture = await createAuthFixture();
 
     const response = await request(fixture.app).post("/api/v1/auth/register").send({
-      accountType: "customer",
       email: "New.Customer@Example.com",
-      password: "Customer.2026!",
-      username: "New Customer"
+      password: "Customer.2026!"
     });
 
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(200);
     expect(response.body).toEqual({
       code: 0,
       message: "success",
       data: {
-        id: 101,
-        email: "new.customer@example.com",
-        username: "New Customer",
-        accountType: "customer",
-        approvalStatus: "approved",
-        isActive: true
+        challengeId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+        maskedEmail: expect.any(String),
+        expiresIn: 600,
+        cooldownSeconds: 60
       }
     });
-    expect(response.body.data).not.toHaveProperty("password");
-    expect(response.body.data).not.toHaveProperty("passwordHash");
-    expect(fixture.registrations).toHaveLength(1);
-    expect(fixture.registrations[0]).toMatchObject({
-      accountType: "customer",
-      email: "new.customer@example.com",
-      username: "New Customer",
-      ip: expect.any(String)
-    });
-    expect(fixture.registrations[0]?.passwordHash).not.toBe("Customer.2026!");
+    expect(fixture.repository.createVerifiedBaselineCustomer).not.toHaveBeenCalled();
+    expect(fixture.registrations).toHaveLength(0);
+    expect(fixture.deliveredOtps).toEqual([
+      { email: "new.customer@example.com", otp: expect.stringMatching(/^\d{6}$/) }
+    ]);
   });
 
-  it("registers a technician as inactive and pending review", async () => {
+  it("creates exactly one verified baseline customer and tokens after the correct code", async () => {
     const fixture = await createAuthFixture();
-
-    const response = await request(fixture.app).post("/api/v1/auth/register").send({
-      accountType: "technician",
-      city: "Tokyo",
-      email: "technician.application@example.com",
-      password: "Technician.2026!",
-      username: "Technician Applicant"
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "verified.customer@example.com",
+      password: "Customer.2026!"
     });
 
-    expect(response.status).toBe(201);
-    expect(response.body.data).toMatchObject({
-      accountType: "technician",
-      approvalStatus: "pending_review",
-      email: "technician.application@example.com",
-      isActive: false
-    });
-    expect(fixture.registrations[0]).toMatchObject({
-      accountType: "technician",
-      city: "Tokyo"
-    });
-  });
+    const response = await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+      .expect(200);
 
-  it("maps exhausted NeeDo ID allocation to a stable registration error", async () => {
-    const fixture = await createAuthFixture();
-    fixture.repository.registerUser.mockRejectedValueOnce(new NeedoIdAllocationExhaustedError());
+    expect(response.body.data).toEqual({
+      accessToken: expect.any(String),
+      refreshToken: expect.any(String),
+      expiresIn: 900,
+      needoId: "n0000000101"
+    });
+    expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(1);
+    const creation = fixture.repository.createVerifiedBaselineCustomer.mock.calls[0][0] as {
+      email: string;
+      passwordHash: string;
+      emailVerifiedAt: Date;
+    };
+    expect(creation).toMatchObject({
+      email: "verified.customer@example.com",
+      passwordHash: expect.any(String)
+    });
+    expect(creation.passwordHash).not.toBe("Customer.2026!");
+    await expect(compare("Customer.2026!", creation.passwordHash)).resolves.toBe(true);
+    expect(creation).toHaveProperty("emailVerifiedAt");
 
     await request(fixture.app)
-      .post("/api/v1/auth/register")
-      .send({
-        accountType: "customer",
-        email: "allocation-failure@example.com",
-        username: "Allocation Failure",
-        password: "Abcd@1234"
-      })
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+      .expect(401)
+      .expect((replay) => {
+        expect(replay.body.message).toBe("error.auth.verification_challenge_expired");
+      });
+    expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows only one concurrent successful verification to create an account", async () => {
+    const fixture = await createAuthFixture();
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "concurrent.customer@example.com",
+      password: "Customer.2026!"
+    });
+    const input = { challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp };
+
+    const responses = await Promise.all([
+      request(fixture.app).post("/api/v1/auth/register/verify").send(input),
+      request(fixture.app).post("/api/v1/auth/register/verify").send(input)
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 401]);
+    expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects expired, wrong-purpose, and exhausted registration challenges", async () => {
+    const fixture = await createAuthFixture();
+    const expired = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "expired.customer@example.com",
+      password: "Customer.2026!"
+    });
+    fixture.challengeStore.expire(expired.body.data.challengeId);
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: expired.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
+      .expect(401)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.verification_challenge_expired");
+      });
+
+    const wrongPurpose = await fixture.challengeStore.createChallengeForTest({
+      email: "wrong-purpose@example.com",
+      otp: "123456",
+      purpose: "google_unlink"
+    });
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: wrongPurpose.challengeId, otp: "123456" })
+      .expect(401)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.verification_challenge_expired");
+      });
+
+    const exhausted = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "exhausted.customer@example.com",
+      password: "Customer.2026!"
+    });
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      await request(fixture.app)
+        .post("/api/v1/auth/register/verify")
+        .send({ challengeId: exhausted.body.data.challengeId, otp: "000000" })
+        .expect(401)
+        .expect((response) => {
+          expect(response.body.message).toBe("error.auth.verification_code_invalid");
+        });
+    }
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: exhausted.body.data.challengeId, otp: "000000" })
+      .expect(429)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.verification_attempts_exhausted");
+      });
+
+    expect(fixture.repository.createVerifiedBaselineCustomer).not.toHaveBeenCalled();
+  });
+
+  it("maps exhausted NeeDo ID allocation to a stable verified-registration error", async () => {
+    const fixture = await createAuthFixture();
+    fixture.repository.createVerifiedBaselineCustomer.mockRejectedValueOnce(
+      new NeedoIdAllocationExhaustedError()
+    );
+    const started = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "allocation-failure@example.com",
+      password: "Abcd@1234"
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register/verify")
+      .send({ challengeId: started.body.data.challengeId, otp: fixture.deliveredOtps[0].otp })
       .expect(503)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -490,46 +690,31 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
       });
   });
 
-  it("rejects duplicate registration emails", async () => {
+  it("rejects duplicate email, weak passwords, and public technician registration fields", async () => {
     const fixture = await createAuthFixture();
-
-    const response = await request(fixture.app).post("/api/v1/auth/register").send({
-      accountType: "customer",
+    const duplicate = await request(fixture.app).post("/api/v1/auth/register").send({
       email: "customer@example.com",
-      password: "Customer.2026!",
-      username: "Duplicate Customer"
+      password: "Customer.2026!"
+    });
+    const weakPassword = await request(fixture.app).post("/api/v1/auth/register").send({
+      email: "weak@example.com",
+      password: "password"
+    });
+    const technicianFields = await request(fixture.app).post("/api/v1/auth/register").send({
+      accountType: "technician",
+      city: "Tokyo",
+      email: "technician.application@example.com",
+      password: "Technician.2026!"
     });
 
-    expect(response.status).toBe(409);
-    expect(response.body).toEqual({
+    expect(duplicate.body).toEqual({
       code: ERROR_CODES.EMAIL_ALREADY_EXISTS,
       message: "error.user.email_exists",
       data: null
     });
-    expect(fixture.repository.registerUser).not.toHaveBeenCalled();
-  });
-
-  it("rejects weak registration passwords and missing technician cities", async () => {
-    const fixture = await createAuthFixture();
-
-    const weakPasswordResponse = await request(fixture.app).post("/api/v1/auth/register").send({
-      accountType: "customer",
-      email: "weak@example.com",
-      password: "password",
-      username: "Weak Password"
-    });
-    const missingCityResponse = await request(fixture.app).post("/api/v1/auth/register").send({
-      accountType: "technician",
-      email: "missing.city@example.com",
-      password: "Technician.2026!",
-      username: "Missing City"
-    });
-
-    expect(weakPasswordResponse.status).toBe(400);
-    expect(weakPasswordResponse.body.code).toBe(ERROR_CODES.VALIDATION);
-    expect(missingCityResponse.status).toBe(400);
-    expect(missingCityResponse.body.code).toBe(ERROR_CODES.VALIDATION);
-    expect(fixture.repository.registerUser).not.toHaveBeenCalled();
+    expect(weakPassword.body.code).toBe(ERROR_CODES.VALIDATION);
+    expect(technicianFields.body.code).toBe(ERROR_CODES.VALIDATION);
+    expect(fixture.repository.createVerifiedBaselineCustomer).not.toHaveBeenCalled();
   });
 
   it("does not expose a passwordless test-login endpoint", async () => {
@@ -543,12 +728,12 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
     expect(fixture.sessionStore.refreshTokens.size).toBe(0);
   });
 
-  it("logs in admin@example.com with email and password", async () => {
+  it("logs in with a normalized email loginIdentifier and password", async () => {
     const fixture = await createAuthFixture();
 
     const response = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: " ADMIN@EXAMPLE.COM ", password: "Abcd@1234" })
       .expect(200);
 
     await request(fixture.app)
@@ -581,7 +766,7 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
 
     const response = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ username: "n0000000001", password: "Abcd@1234", type: "username" })
+      .send({ loginIdentifier: "N0000000001", password: "Abcd@1234" })
       .expect(200);
 
     expect(response.body.data.accessToken).toEqual(expect.any(String));
@@ -594,7 +779,7 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
 
     await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ username: "admin", password: "Abcd@1234", type: "username" })
+      .send({ loginIdentifier: "admin", password: "Abcd@1234" })
       .expect(401)
       .expect((response) => {
         expect(response.body).toMatchObject({
@@ -602,6 +787,29 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
           message: "error.auth.invalid_credentials"
         });
       });
+  });
+
+  it("uses one public invalid-credentials response for nickname, unknown, Google-only, and bad password", async () => {
+    const fixture = await createAuthFixture();
+    const requests = [
+      { loginIdentifier: "NeeDo Customer", password: "Abcd@1234" },
+      { loginIdentifier: "unknown@example.com", password: "Abcd@1234" },
+      { loginIdentifier: "google-only@example.com", password: "Abcd@1234" },
+      { loginIdentifier: "admin@example.com", password: "wrong-password" }
+    ];
+
+    const responses = await Promise.all(
+      requests.map((body) => request(fixture.app).post("/api/v1/auth/login").send(body))
+    );
+
+    responses.forEach((response) => {
+      expect(response.status).toBe(401);
+      expect(response.body).toEqual({
+        code: ERROR_CODES.INVALID_CREDENTIALS,
+        message: "error.auth.invalid_credentials",
+        data: null
+      });
+    });
   });
 
   it("accepts the Apifox password-login form shape on the deployed /login URI", async () => {
@@ -734,6 +942,33 @@ describe("Step 05 Auth / OTP / Token / Session", () => {
         })
       ])
     );
+  });
+
+  it("rejects restricted users before issuing tokens", async () => {
+    const fixture = await createAuthFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "restricted@example.com", password: "Abcd@1234" })
+      .expect(403)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.account_restricted");
+      });
+
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+  });
+
+  it("derives the formal account state when a stale repository adapter omits it", async () => {
+    const fixture = await createAuthFixture();
+    fixture.repository.findUserByLoginIdentifier.mockResolvedValueOnce({
+      ...fixture.user,
+      accessState: undefined
+    } as never);
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
   });
 
   it("sends, verifies, and invalidates a six-digit email OTP", async () => {

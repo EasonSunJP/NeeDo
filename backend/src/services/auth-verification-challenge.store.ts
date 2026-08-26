@@ -57,7 +57,7 @@ export interface CreatedGoogleNonce {
 }
 
 export type ConsumeChallengeResult =
-  | { ok: true; metadata: VerificationChallengeMetadata }
+  | { ok: true; email: string; metadata: VerificationChallengeMetadata }
   | {
       ok: false;
       reason:
@@ -113,6 +113,7 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
       [
         String(EMAIL_CHALLENGE_COOLDOWN_SECONDS),
         JSON.stringify({
+          email: input.email.trim().toLowerCase(),
           purpose: input.purpose,
           userId: input.userId ?? null,
           metadata,
@@ -155,7 +156,7 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
     );
     const [result, detail] = response;
     if (result === "ok") {
-      return { ok: true, metadata: this.parseMetadata(detail) };
+      return { ok: true, ...this.parseConsumedChallenge(detail) };
     }
     if (result === "invalid_otp") {
       return { ok: false, reason: result, attempts: Number(detail) };
@@ -242,17 +243,30 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
     return randomBytes(32).toString("base64url");
   }
 
-  private parseMetadata(serialized: string | undefined): VerificationChallengeMetadata {
+  private parseConsumedChallenge(serialized: string | undefined): {
+    email: string;
+    metadata: VerificationChallengeMetadata;
+  } {
     if (!serialized) {
-      return {};
+      return { email: "", metadata: {} };
     }
     try {
       const parsed: unknown = JSON.parse(serialized);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as VerificationChallengeMetadata)
-        : {};
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return { email: "", metadata: {} };
+      }
+      const payload = parsed as { email?: unknown; metadata?: unknown };
+      return {
+        email: typeof payload.email === "string" ? payload.email : "",
+        metadata:
+          payload.metadata &&
+          typeof payload.metadata === "object" &&
+          !Array.isArray(payload.metadata)
+            ? (payload.metadata as VerificationChallengeMetadata)
+            : {}
+      };
     } catch {
-      return {};
+      return { email: "", metadata: {} };
     }
   }
 
@@ -396,7 +410,7 @@ if challenge.digest ~= ARGV[3] then
   return {'invalid_otp', tostring(attempts)}
 end
 redis.call('DEL', KEYS[1])
-return {'ok', cjson.encode(challenge.metadata or {})}
+ return {'ok', cjson.encode({email = challenge.email, metadata = challenge.metadata or {}})}
 `;
 
 const GOOGLE_NONCE_CONSUME_LUA = `

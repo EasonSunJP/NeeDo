@@ -11,6 +11,7 @@ import {
   otpSendBodySchema,
   otpVerifyBodySchema,
   registerBodySchema,
+  registerVerifyBodySchema,
   refreshBodySchema,
   switchIdentityBodySchema
 } from "../validators/auth.validator";
@@ -31,6 +32,11 @@ export const createAuthRoutes = (config: AppConfig, dependencies: AppDependencie
   router.post("/login", validateRequest({ body: loginBodySchema }), controller.login);
   router.post("/auth/login", validateRequest({ body: loginBodySchema }), controller.login);
   router.post("/auth/register", validateRequest({ body: registerBodySchema }), controller.register);
+  router.post(
+    "/auth/register/verify",
+    validateRequest({ body: registerVerifyBodySchema }),
+    controller.verifyRegistration
+  );
   router.post("/auth/otp/send", validateRequest({ body: otpSendBodySchema }), controller.sendOtp);
   router.post(
     "/auth/otp/verify",
