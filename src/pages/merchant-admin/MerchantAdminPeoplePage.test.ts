@@ -76,9 +76,9 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
 const expectedFormalDetailCopy: Record<Language, [string, string, string, string, string]> = {
   zh: ["正在读取技师正式详情...", "正在读取客户正式详情...", "技师正式详情读取失败", "客户正式详情读取失败", "重试"],
   "zh-Hant": ["正在讀取技師正式詳情...", "正在讀取客戶正式詳情...", "技師正式詳情讀取失敗", "客戶正式詳情讀取失敗", "重試"],
-  ja: ["技術者の正式詳細を読み込み中...", "顧客の正式詳細を読み込み中...", "技術者の正式詳細を読み込めませんでした", "顧客の正式詳細を読み込めませんでした", "再試行"],
+  ja: ["スタッフの正式詳細を読み込み中...", "顧客の正式詳細を読み込み中...", "スタッフの正式詳細を読み込めませんでした", "顧客の正式詳細を読み込めませんでした", "再試行"],
   en: ["Loading technician production details...", "Loading customer production details...", "Technician production details failed to load", "Customer production details failed to load", "Retry"],
-  ko: ["기술자 정식 상세 정보를 불러오는 중...", "고객 정식 상세 정보를 불러오는 중...", "기술자 정식 상세 정보를 불러오지 못했습니다", "고객 정식 상세 정보를 불러오지 못했습니다", "다시 시도"]
+  ko: ["기사 정식 상세 정보를 불러오는 중...", "고객 정식 상세 정보를 불러오는 중...", "기사 정식 상세 정보를 불러오지 못했습니다", "고객 정식 상세 정보를 불러오지 못했습니다", "다시 시도"]
 };
 
 describe("formal people drawer translations", () => {

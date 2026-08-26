@@ -11,14 +11,14 @@ import {
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { FormalTechnicianDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { ModuleShell } from "../../components/admin/ModuleShell";
-import { TechnicianRankingModule } from "../../components/admin/TechnicianRankingModule";
+import { TechnicianRankingModule, type TechnicianRankingSelection } from "../../components/admin/TechnicianRankingModule";
 import { TechnicianListModule } from "../../components/admin/TechnicianListModule";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { languageLocales, translateText } from "../../i18n/translations";
 import type { Technician } from "../../types/domain";
 import {
   createFormalDetailRequestCoordinator,
@@ -30,6 +30,7 @@ const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 
 
 export function TechniciansPage() {
   const { language } = useOptionalI18n();
+  const translate = useCallback((text: string) => translateText(text, language), [language]);
   const [searchParams] = useSearchParams();
   const isReviewMode = searchParams.get("module") === "review";
   const isRankingMode = searchParams.get("module") === "ranking";
@@ -38,6 +39,7 @@ export function TechniciansPage() {
   const [technicians, setTechnicians] = useState<BackofficeTechnicianPayload[]>([]);
   const [shops, setShops] = useState<BackofficeShopPayload[]>([]);
   const [selectedTechnicianId, setSelectedTechnicianId] = useState<number | null>(null);
+  const [selectedRanking, setSelectedRanking] = useState<TechnicianRankingSelection | null>(null);
   const [technicianDetail, setTechnicianDetail] = useState<BackofficeTechnicianDetailPayload | null>(null);
   const [technicianDetailLoading, setTechnicianDetailLoading] = useState(false);
   const [technicianDetailError, setTechnicianDetailError] = useState("");
@@ -109,6 +111,7 @@ export function TechniciansPage() {
   const closeTechnician = useCallback(() => {
     technicianDetailRequest.invalidate();
     setSelectedTechnicianId(null);
+    setSelectedRanking(null);
     setTechnicianDetail(null);
     setTechnicianDetailLoading(false);
     setTechnicianDetailError("");
@@ -129,11 +132,21 @@ export function TechniciansPage() {
     void technicianDetailRequest.load(record.id);
   };
 
-  const openRankingTechnician = (technicianProfileId: number) => {
-    setSelectedTechnicianId(technicianProfileId);
+  const openRankingTechnician = (selection: TechnicianRankingSelection) => {
+    setSelectedRanking(selection);
+    setSelectedTechnicianId(selection.row.technicianProfileId);
     setDraft({ displayName: "", city: "", serviceArea: "", shopId: "" });
-    void technicianDetailRequest.load(technicianProfileId);
+    void technicianDetailRequest.load(selection.row.technicianProfileId);
   };
+
+  const selectedRankingAverageOrderValue = selectedRanking && selectedRanking.row.completedOrderCount > 0
+    ? selectedRanking.row.completedServiceAmountJpy / selectedRanking.row.completedOrderCount
+    : 0;
+  const rankingCurrencyFormatter = useMemo(
+    () => new Intl.NumberFormat(languageLocales[language], { currency: "JPY", maximumFractionDigits: 0, style: "currency" }),
+    [language]
+  );
+  const rankingNumberFormatter = useMemo(() => new Intl.NumberFormat(languageLocales[language]), [language]);
 
   const mutate = async (technicianId: number, action: () => Promise<unknown>) => {
     setSaving(true);
@@ -179,9 +192,9 @@ export function TechniciansPage() {
     <AdminLayout>
       <ModuleShell
         actions={isReviewMode || isRankingMode ? <></> : undefined}
-        title={isRankingMode ? "技师榜单" : isReviewMode ? "技师资料审核" : "技师管理"}
+        title={isRankingMode ? translate("技师榜单") : isReviewMode ? "技师资料审核" : "技师管理"}
         description={isRankingMode
-          ? "按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。"
+          ? translate("按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。")
           : isReviewMode
             ? "审核用户端提交的技师申请；这里只显示正式数据库中待审核的技师资料。"
             : "只展示数据库中的真实技师账号；待审核、店铺归属、资料更新和软删除均写入正式 API。"}
@@ -226,7 +239,16 @@ export function TechniciansPage() {
         )}
       </ModuleShell>
 
-      <Drawer open={selectedTechnicianId !== null} title="技师集中详情" onClose={closeTechnician}>
+      <Drawer open={selectedTechnicianId !== null} title={translate("技师集中详情")} onClose={closeTechnician}>
+        {selectedRanking ? (
+          <section className="mb-4 rounded-xl border border-line bg-paper p-4 shadow-panel">
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-moss">{translate("榜单期间")}</p>
+            <p className="mt-1 text-sm font-bold text-ink/55">{selectedRanking.period.from && selectedRanking.period.to ? `${selectedRanking.period.from} — ${selectedRanking.period.to}` : translate("历史累计")} · Asia/Tokyo</p>
+            <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {[["名次", `#${selectedRanking.row.rank}`], ["服务金额", rankingCurrencyFormatter.format(selectedRanking.row.completedServiceAmountJpy)], ["完成订单", rankingNumberFormatter.format(selectedRanking.row.completedOrderCount)], ["工作天数", rankingNumberFormatter.format(selectedRanking.row.workingDayCount)], ["平均客单价", rankingCurrencyFormatter.format(selectedRankingAverageOrderValue)]].map(([label, value]) => <div className="min-w-0" key={label}><dt className="text-xs font-black text-ink/45">{translate(label)}</dt><dd className="mt-1 truncate text-sm font-black text-ink">{value}</dd></div>)}
+            </dl>
+          </section>
+        ) : null}
         {technicianDetailLoading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">{translateText("正在读取技师正式详情...", language)}</p> : null}
         {!technicianDetailLoading && technicianDetailError ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
@@ -235,7 +257,8 @@ export function TechniciansPage() {
           </div>
         ) : null}
         {!technicianDetailLoading && !technicianDetailError && technicianDetail ? (
-          <FormalTechnicianDetailPanel
+          <>
+            <FormalTechnicianDetailPanel
             actionContent={<>
               {technicianDetail.status !== "published" ? <Button disabled={saving || !draft.shopId} onClick={() => void mutate(technicianDetail.id, () => backofficeRealDataApi.approveTechnician("backoffice", technicianDetail.id, { ...(draft.shopId ? { shopId: Number(draft.shopId) } : {}) }))} variant="secondary">审核通过</Button> : <Badge tone="green">已审核</Badge>}
               <Button disabled={saving} onClick={() => void deleteTechnician(technicianDetail.id)} variant="danger">软删除</Button>
@@ -247,6 +270,7 @@ export function TechniciansPage() {
               <Button disabled={saving} onClick={() => void mutate(technicianDetail.id, () => backofficeRealDataApi.updateTechnician("backoffice", technicianDetail.id, { displayName: draft.displayName, city: draft.city, serviceArea: draft.serviceArea || null, shopId: draft.shopId ? Number(draft.shopId) : null }))}>保存资料</Button>
             </div>}
           />
+          </>
         ) : null}
       </Drawer>
     </AdminLayout>

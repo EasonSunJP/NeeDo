@@ -339,6 +339,27 @@ Step 12E 不新建 Request 大厅、调度大厅、退款状态机或前端入�
 
 该脚本使用真实 `/api/v1`、真实登录账号、真实 `ScheduleSlot` 和真实 `Wallet` 数据，连续验证一单 Request 完单扣除和一单 Request 取消释放。输出只包含订单 ID、状态、金额断言和失败原因，不打印 access token、refresh token、密码或敏感字段。
 
+## 技师榜单正式数据
+
+运营后台的 `/admin/technicians?module=ranking` 使用正式聚合接口，不在浏览器内拼接订单或财务数据：
+
+- `GET /api/v1/backoffice/technician-rankings`：分页读取当前筛选、期间与排序下的榜单。
+- `GET /api/v1/backoffice/technician-rankings/export`：以相同筛选、期间和排序导出 CSV，最多 5,000 行。
+
+两个接口均要求 `backoffice:technicians:list`，并分别写入
+`backoffice.technician_rankings.list` 和
+`backoffice.technician_rankings.export` 审计记录。列表支持关键字、店铺、城市、统计期间、指标、排序方向和分页；导出不接受客户端汇总或浏览器补算。
+
+统计窗口以 `Asia/Tokyo` 日历解释：默认本月，也支持今日、近 7 天、近 30 天、自定义起止日（首尾均包含）与历史累计。仅统计未软删除、状态为 `completed` 且未退款的正式订单；服务金额读取 `OrderFinancial.serviceAmountJpy`，已入账的加钟金额计入原订单；每个 Booking 主订单只计一笔完成订单；完成时间转换为东京日期后，当天至少完成 1 单才计为 1 个工作日。
+
+CSV 为带 BOM 的 UTF-8 内容，并会中和可能被表格软件解释为公式的单元格前缀；服务端仍执行与列表相同的鉴权、查询校验、过滤和排序，不能用导出绕过 RBAC。独立实库 checker 只读取本地非生产 MySQL，启动前拒绝生产环境标志、远程主机和生产式数据库名，不写入或清理任何业务记录：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
+```
+
+本次只增加了现有 Booking、OrderFinancial、TechnicianProfile 与 Shop 的只读聚合合同，未新增 migration 或 mock 数据。浏览器验收（各期间、排序、筛选、分页、CSV、错误/空态和详情抽屉）仍由主代理在运行中的正式服务上执行；本文档与静态测试不替代该验收。
+
 ## 数据来源
 
 本次读取正式表：

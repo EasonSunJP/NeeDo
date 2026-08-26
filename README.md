@@ -150,6 +150,22 @@ completed orders count each booking once, and a Tokyo date with at least one
 completed order counts as one working day. CSV export uses the same filters and
 metric definitions as the visible ranking.
 
+The formal list and CSV endpoints both require `backoffice:technicians:list`
+and write separate ranking-list or ranking-export audit events. The CSV export
+uses the current server-side filters and sort order, is capped at 5,000 rows,
+and neutralizes spreadsheet formula prefixes before returning UTF-8 CSV content.
+Verify the aggregate independently against a local non-production MySQL
+database with the read-only checker below; it rejects production flags, remote
+hosts, and production-like database names before querying.
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:technician-ranking-flow
+```
+
+Browser acceptance remains a separate release gate: use the operations entry to
+exercise periods, filters, sorting, paging, CSV export, error/empty states, and
+the formal technician detail drawer against the running API.
+
 ## Formal Schedule Inventory
 
 Merchant and technician schedule portals now maintain customer-bookable inventory through identity-scoped `/api/v1/*/schedule/slots` APIs. The backend derives the shop or technician profile from the active authenticated identity, validates explicit-offset ISO timestamps, prevents overlapping technician slots, and updates matching availability records transactionally. Personal calendar notes remain a separate, non-bookable compatibility lane.

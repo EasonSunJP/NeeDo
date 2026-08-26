@@ -30,6 +30,43 @@ describe("translations", () => {
     expect(translateText(unknownText, "zh-Hant")).toBe(unknownText);
   });
 
+  it("localizes every technician-ranking metric, state, and drawer label", () => {
+    expect(translateText("平均客单价", "zh-Hant")).toBe("平均客單價");
+    expect(translateText("平均客单价", "ja")).toBe("平均注文単価");
+    expect(translateText("平均客单价", "en")).toBe("Average order value");
+    expect(translateText("平均客单价", "ko")).toBe("평균 주문 금액");
+    expect(translateText("已完成订单服务金额 ÷ 已完成订单数", "ja")).toBe("完了注文のサービス金額 ÷ 完了注文数");
+    expect(translateText("榜单读取失败", "en")).toBe("Couldn't load ranking");
+    expect(translateText("榜单读取失败", "ko")).toBe("순위를 불러오지 못했습니다");
+    expect(translateText("榜单期间", "zh-Hant")).toBe("榜單期間");
+    expect(translateText("榜单期间", "ja")).toBe("ランキング対象期間");
+    expect(translateText("榜单期间", "en")).toBe("Ranking period");
+    expect(translateText("榜单期间", "ko")).toBe("순위 집계 기간");
+    expect(translateText("服务金额", "ja")).toBe("サービス金額");
+    expect(translateText("完成订单", "en")).toBe("Completed orders");
+    expect(translations).toMatchObject({
+      "搜索技师、邮箱或店铺": { "zh-Hant": "搜尋技師、信箱或店鋪", ja: "スタッフ・メール・店舗を検索", en: "Search staff, email, or shop", ko: "기사, 이메일 또는 매장 검색" },
+      "技师": { "zh-Hant": "技師", ja: "スタッフ", en: "Technician", ko: "기사" },
+      "技师榜单": { "zh-Hant": "技師榜單", ja: "スタッフランキング", en: "Technician ranking", ko: "기사 순위" },
+      "技师业绩排行": { "zh-Hant": "技師業績排行", ja: "スタッフパフォーマンスランキング", en: "Technician performance ranking", ko: "기사 실적 순위" },
+      "位有完单技师": { "zh-Hant": "位有完單記錄的技師", ja: "名の完了実績があるスタッフ", en: "technicians with completed orders", ko: "명의 완료 실적이 있는 기사" },
+      "位技师": { "zh-Hant": "位技師", ja: "人のスタッフ", en: "staff", ko: "명의 기사" },
+      "个人技师": { "zh-Hant": "個人技師", ja: "個人スタッフ", en: "Personal staff", ko: "개인 기사" },
+      "正在读取技师正式详情...": { "zh-Hant": "正在讀取技師正式詳情...", ja: "スタッフの正式詳細を読み込み中...", en: "Loading technician production details...", ko: "기사 정식 상세 정보를 불러오는 중..." },
+      "技师正式详情读取失败": { "zh-Hant": "技師正式詳情讀取失敗", ja: "スタッフの正式詳細を読み込めませんでした", en: "Technician production details failed to load", ko: "기사 정식 상세 정보를 불러오지 못했습니다" },
+      "技师集中详情": { "zh-Hant": "技師集中詳情", ja: "スタッフ詳細", en: "Technician details", ko: "기사 상세" },
+      "近 30 天": { "zh-Hant": "近 30 天", ja: "直近 30 日間", en: "Last 30 days", ko: "최근 30일" },
+      "自定义": { "zh-Hant": "自訂", ja: "カスタム", en: "Custom", ko: "사용자 지정" },
+      "开始日期": { "zh-Hant": "開始日期", ja: "開始日", en: "Start date", ko: "시작일" },
+      "筛选店铺": { "zh-Hant": "篩選店鋪", ja: "店舗で絞り込み", en: "Filter by shop", ko: "매장 필터" },
+      "导出 CSV": { "zh-Hant": "匯出 CSV", ja: "CSVをエクスポート", en: "Export CSV", ko: "CSV 내보내기" },
+      "当前期间暂无已完成订单": { "zh-Hant": "目前期間暫無已完成訂單", ja: "この期間に完了注文はありません", en: "No completed orders in this period", ko: "현재 기간에 완료된 주문이 없습니다" },
+      "查看详情": { "zh-Hant": "看詳情", ja: "詳細を確認", en: "Check the details", ko: "상세 보기" }
+    });
+    expect(translateText("按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。", "ja")).toContain("スタッフの実績");
+    expect(translateText("按已完成订单核算技师业绩；服务金额包含已记账的加钟金额，同一订单只计一单，至少完成一单计为一个工作日。", "ko")).toContain("기사 실적");
+  });
+
   it("localizes the IM start-chat CTA", () => {
     expect(translateText("开始聊天", "zh-Hant")).toBe("開始聊天");
     expect(translateText("开始聊天", "ja")).toBe("チャットを開始");
