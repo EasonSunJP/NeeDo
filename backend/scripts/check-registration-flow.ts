@@ -13,15 +13,24 @@ const main = async (): Promise<void> => {
   assert(existsSync(envFile), `environment file was not found: ${envFile}`);
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
-  assert(process.env.NODE_ENV !== "production", "registration integration check cannot use NODE_ENV=production");
-  assert(process.env.DEPLOY_ENV !== "prod", "registration integration check cannot use DEPLOY_ENV=prod");
+  assert(
+    process.env.NODE_ENV !== "production",
+    "registration integration check cannot use NODE_ENV=production"
+  );
+  assert(
+    process.env.DEPLOY_ENV !== "prod",
+    "registration integration check cannot use DEPLOY_ENV=prod"
+  );
   const databaseUrl = new URL(process.env.DATABASE_URL || "");
   assert(
     databaseUrl.hostname === "localhost" || databaseUrl.hostname === "127.0.0.1",
     "registration integration check only accepts a local MySQL host"
   );
   const databaseName = databaseUrl.pathname.replace(/^\//, "");
-  assert(databaseName.length > 0, "DATABASE_URL must include a database name");
+  assert(
+    databaseName === "needo_test",
+    "registration integration check only accepts the needo_test database"
+  );
 
   const [{ AuthRepository }, { prisma, disconnectPrisma }] = await Promise.all([
     import("../src/repositories/auth.repository"),
@@ -29,75 +38,68 @@ const main = async (): Promise<void> => {
   ]);
   const marker = `${Date.now()}-${process.pid}`;
   const customerEmail = `registration-customer-${marker}@needo.test`;
-  const technicianEmail = `registration-technician-${marker}@needo.test`;
   const password = "Registration.2026!";
   const passwordHash = await hash(password, 12);
   const createdUserIds: number[] = [];
 
   try {
     const requiredRoles = await prisma.role.findMany({
-      where: { code: { in: ["customer", "technician"] }, deletedAt: null },
+      where: { code: "customer", deletedAt: null },
       select: { code: true }
     });
-    assert(requiredRoles.length === 2, "customer and technician roles must be seeded in needo_test");
+    assert(requiredRoles.length === 1, "customer role must be seeded in needo_test");
 
     const repository = new AuthRepository(prisma);
-    const customer = await repository.registerUser({
-      accountType: "customer",
+    const verifiedAt = new Date();
+    const customer = await repository.createVerifiedBaselineCustomer({
       email: customerEmail,
-      ip: "127.0.0.1",
+      emailVerifiedAt: verifiedAt,
       passwordHash,
-      username: "Registration Customer"
+      context: { ip: "127.0.0.1", userAgent: "registration-flow-check" }
     });
     createdUserIds.push(customer.id);
-    const technician = await repository.registerUser({
-      accountType: "technician",
-      city: "Tokyo",
-      email: technicianEmail,
-      ip: "127.0.0.1",
-      passwordHash,
-      username: "Registration Technician"
-    });
-    createdUserIds.push(technician.id);
-
-    assert(customer.approvalStatus === "approved", "customer registration must be approved");
-    assert(customer.isActive, "customer registration must be active");
-    assert(
-      technician.approvalStatus === "pending_review",
-      "technician registration must require review"
-    );
-    assert(!technician.isActive, "technician registration must remain inactive before review");
 
     const users = await prisma.user.findMany({
       where: { id: { in: createdUserIds } },
       include: {
         customerProfile: true,
-        technicianProfile: true,
         identities: { where: { deletedAt: null } },
         userRoles: { where: { deletedAt: null }, include: { role: true } }
       }
     });
     const storedCustomer = users.find((user) => user.id === customer.id);
-    const storedTechnician = users.find((user) => user.id === technician.id);
 
     assert(storedCustomer?.customerProfile, "customer profile was not persisted");
-    assert(!storedCustomer.technicianProfile, "customer must not have a technician profile");
+    assert(
+      storedCustomer.emailVerifiedAt?.getTime() === verifiedAt.getTime(),
+      "customer email must be verified"
+    );
+    assert(/^n\d{10}$/.test(storedCustomer.needoId), "customer must receive an immutable NeeDo ID");
+    assert(
+      storedCustomer.username === storedCustomer.needoId,
+      "customer username must equal the initial NeeDo ID"
+    );
+    assert(
+      storedCustomer.customerProfile.displayName === storedCustomer.needoId,
+      "customer profile display name must equal the initial NeeDo ID"
+    );
     assert(storedCustomer.identities[0]?.isActive, "customer identity must be active");
+    assert(
+      storedCustomer.identities[0]?.displayName === storedCustomer.needoId,
+      "customer identity display name must equal the initial NeeDo ID"
+    );
     assert(storedCustomer.userRoles[0]?.role.code === "customer", "customer role was not assigned");
-    assert(await compare(password, storedCustomer.passwordHash), "customer password hash is invalid");
-
-    assert(storedTechnician?.technicianProfile, "technician profile was not persisted");
+    assert(Boolean(storedCustomer.passwordHash), "customer password hash must be persisted");
     assert(
-      storedTechnician.technicianProfile.status === "pending_review",
-      "technician profile status must be pending_review"
+      await compare(password, storedCustomer.passwordHash as string),
+      "customer password hash is invalid"
     );
-    assert(storedTechnician.technicianProfile.city === "Tokyo", "technician city was not persisted");
-    assert(!storedTechnician.identities[0]?.isActive, "technician identity must remain inactive");
-    assert(
-      storedTechnician.userRoles[0]?.role.code === "technician",
-      "technician role was not assigned"
+    await expectTrustedLookup(
+      repository,
+      storedCustomer.email,
+      storedCustomer.needoId,
+      storedCustomer.id
     );
-    assert(await compare(password, storedTechnician.passwordHash), "technician password hash is invalid");
 
     const registrationAuditCount = await prisma.auditLog.count({
       where: {
@@ -106,19 +108,13 @@ const main = async (): Promise<void> => {
         targetId: { in: createdUserIds }
       }
     });
-    assert(registrationAuditCount === 2, "each registration must create an audit log");
+    assert(registrationAuditCount === 1, "verified baseline creation must create an audit log");
 
     console.log(
       JSON.stringify(
         {
           database: databaseName,
-          customer: { active: true, profile: true, role: "customer" },
-          technician: {
-            active: false,
-            city: "Tokyo",
-            profileStatus: "pending_review",
-            role: "technician"
-          },
+          customer: { active: true, profile: true, role: "customer", verified: true },
           auditLogs: registrationAuditCount,
           status: "ok"
         },
@@ -132,15 +128,39 @@ const main = async (): Promise<void> => {
         await transaction.auditLog.deleteMany({
           where: { targetType: "User", targetId: { in: createdUserIds } }
         });
+        await transaction.externalAuthAccount.deleteMany({
+          where: { userId: { in: createdUserIds } }
+        });
         await transaction.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
         await transaction.userIdentity.deleteMany({ where: { userId: { in: createdUserIds } } });
         await transaction.customerProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
-        await transaction.technicianProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
+        await transaction.technicianProfile.deleteMany({
+          where: { userId: { in: createdUserIds } }
+        });
         await transaction.user.deleteMany({ where: { id: { in: createdUserIds } } });
       });
     }
     await disconnectPrisma();
   }
+};
+
+const expectTrustedLookup = async (
+  repository: {
+    findUserByEmail(email: string): Promise<{ id: number } | null>;
+    findUserByLoginIdentifier(identifier: string): Promise<{ id: number } | null>;
+  },
+  email: string,
+  needoId: string,
+  userId: number
+): Promise<void> => {
+  assert(
+    (await repository.findUserByEmail(email))?.id === userId,
+    "email lookup must resolve the verified account"
+  );
+  assert(
+    (await repository.findUserByLoginIdentifier(needoId))?.id === userId,
+    "NeeDo ID lookup must resolve the verified account"
+  );
 };
 
 void main().catch((error: unknown) => {
