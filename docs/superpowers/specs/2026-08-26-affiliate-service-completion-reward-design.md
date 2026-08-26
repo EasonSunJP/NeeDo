@@ -118,3 +118,13 @@ POST /api/v1/orders/:id/complete
 4. 店铺端任务与返点 UI。
 5. 联盟营销前端收益 UI。
 6. 运营后台 Afirieito 归因、返点、预算、风控、审计与导出。
+
+## 11. 实施与验收状态
+
+截至 2026-08-26，本微步骤已按本设计实现。未新增公开路由、Prisma 模型或 migration；正式入口仍为 `POST /api/v1/orders/:id/complete`。本地非生产 MySQL 验收已通过精确钱包变动、预算 allocated 到 captured 守恒、Reward/账本/对账/审计关联、重复与并发幂等、领取者与顾客上限释放、冻结余额不足整单回滚及唯一 marker 清理。
+
+验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-service-completion-reward-flow
+```
