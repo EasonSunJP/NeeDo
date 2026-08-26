@@ -112,6 +112,10 @@ const envSchema = z
   REDIS_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
   AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
   AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
+  AUTH_VERIFICATION_SECRET: z.string().min(32),
+  AUTH_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5),
+  AUTH_GOOGLE_NONCE_TTL_SECONDS: z.coerce.number().int().positive().max(600),
+  GOOGLE_AUTH_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive(),
   AFFILIATE_LINK_SECRET: z.string().min(32),
   SENSITIVE_DATA_ENCRYPTION_KEY: z.string().min(32),
   AFFILIATE_PUBLIC_BASE_URL: z.string().url(),
@@ -201,6 +205,24 @@ const envSchema = z
         context,
         "AUTH_REFRESH_TOKEN_SECRET",
         "AUTH_REFRESH_TOKEN_SECRET must differ from AUTH_ACCESS_TOKEN_SECRET"
+      );
+    }
+
+    if (productionPlaceholderPattern.test(value.AUTH_VERIFICATION_SECRET)) {
+      addProductionIssue(
+        context,
+        "AUTH_VERIFICATION_SECRET",
+        "AUTH_VERIFICATION_SECRET must not use a placeholder value in production"
+      );
+    }
+    if (
+      value.AUTH_VERIFICATION_SECRET === value.AUTH_ACCESS_TOKEN_SECRET ||
+      value.AUTH_VERIFICATION_SECRET === value.AUTH_REFRESH_TOKEN_SECRET
+    ) {
+      addProductionIssue(
+        context,
+        "AUTH_VERIFICATION_SECRET",
+        "AUTH_VERIFICATION_SECRET must differ from Auth token secrets"
       );
     }
 

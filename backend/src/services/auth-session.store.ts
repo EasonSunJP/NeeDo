@@ -32,6 +32,7 @@ export interface AuthSessionStore {
   storeRefreshToken: (userId: number, jti: string, ttlSeconds: number) => Promise<void>;
   hasRefreshToken: (userId: number, jti: string) => Promise<boolean>;
   revokeRefreshToken: (userId: number, jti: string) => Promise<void>;
+  revokeAllRefreshTokens: (userId: number) => Promise<void>;
   blacklistAccessToken: (jti: string, ttlSeconds: number) => Promise<void>;
   isAccessTokenBlacklisted: (jti: string) => Promise<boolean>;
 }
@@ -108,7 +109,15 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   }
 
   public async storeRefreshToken(userId: number, jti: string, ttlSeconds: number): Promise<void> {
-    await this.setValue(this.refreshKey(userId, jti), "1", ttlSeconds);
+    const client = await this.connect();
+    await this.withRedisUnavailableGuard(async () => {
+      await client.set(this.refreshKey(userId, jti), "1", { EX: ttlSeconds });
+      const userIndexKey = this.refreshUserKey(userId);
+      await client.sAdd(userIndexKey, jti);
+      if ((await client.ttl(userIndexKey)) < ttlSeconds) {
+        await client.expire(userIndexKey, ttlSeconds);
+      }
+    });
   }
 
   public async hasRefreshToken(userId: number, jti: string): Promise<boolean> {
@@ -116,7 +125,20 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   }
 
   public async revokeRefreshToken(userId: number, jti: string): Promise<void> {
-    await this.deleteValue(this.refreshKey(userId, jti));
+    const client = await this.connect();
+    await this.withRedisUnavailableGuard(async () => {
+      await client.del(this.refreshKey(userId, jti));
+      await client.sRem(this.refreshUserKey(userId), jti);
+    });
+  }
+
+  public async revokeAllRefreshTokens(userId: number): Promise<void> {
+    const client = await this.connect();
+    await this.withRedisUnavailableGuard(async () => {
+      const indexKey = this.refreshUserKey(userId);
+      const jtis = await client.sMembers(indexKey);
+      await client.del([indexKey, ...jtis.map((jti) => this.refreshKey(userId, jti))]);
+    });
   }
 
   public async blacklistAccessToken(jti: string, ttlSeconds: number): Promise<void> {
@@ -212,6 +234,10 @@ export class RedisAuthSessionStore implements AuthSessionStore {
 
   private refreshKey(userId: number, jti: string): string {
     return `refresh:${userId}:${jti}`;
+  }
+
+  private refreshUserKey(userId: number): string {
+    return `refresh:user:${userId}`;
   }
 
   private accessBlacklistKey(jti: string): string {

@@ -64,6 +64,15 @@ class InMemoryAuthSessionStore {
     this.values.delete(`refresh:${userId}:${jti}`);
   }
 
+  public async revokeAllRefreshTokens(userId: number): Promise<void> {
+    const keyPrefix = `refresh:${userId}:`;
+    for (const key of this.values.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.values.delete(key);
+      }
+    }
+  }
+
   public async blacklistAccessToken(jti: string, ttlSeconds: number): Promise<void> {
     this.setValue(`token:blacklist:${jti}`, "1", ttlSeconds);
   }
@@ -277,6 +286,19 @@ const createFixture = async () => {
 };
 
 describe("customer profile current-user API", () => {
+  it("implements per-user refresh-session revocation in its auth store fixture", async () => {
+    const sessionStore = new InMemoryAuthSessionStore();
+    await sessionStore.storeRefreshToken(11, "customer-session-a", 600);
+    await sessionStore.storeRefreshToken(11, "customer-session-b", 600);
+    await sessionStore.storeRefreshToken(12, "other-user-session", 600);
+
+    await sessionStore.revokeAllRefreshTokens(11);
+
+    await expect(sessionStore.hasRefreshToken(11, "customer-session-a")).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(11, "customer-session-b")).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(12, "other-user-session")).resolves.toBe(true);
+  });
+
   it("reads and updates only the authenticated customer profile", async () => {
     const fixture = await createFixture();
 
