@@ -86,7 +86,10 @@ export class BookingService {
     private readonly auditLogService?: Pick<AuditLogService, "record">,
     private readonly affiliateCheckoutService?: Pick<
       AffiliateCheckoutService,
-      "prepareCheckout" | "persistAttribution" | "invalidateCancelledBooking"
+      | "prepareCheckout"
+      | "persistAttribution"
+      | "invalidateCancelledBooking"
+      | "settleCompletedBooking"
     >
   ) {}
 
@@ -489,6 +492,18 @@ export class BookingService {
           actorUserId: actor.userId,
           transactionClient: context.transactionClient
         })
+      );
+    }
+    if (action === "complete" && this.affiliateCheckoutService) {
+      actions.push((context) =>
+        this.affiliateCheckoutService!.settleCompletedBooking({
+          bookingOrderId: order.id,
+          customerUserId: order.customerUserId,
+          shopId: order.shopId,
+          serviceId: order.serviceId,
+          actorUserId: actor.userId,
+          transactionClient: context.transactionClient
+        }).then(() => undefined)
       );
     }
     return actions.length === 0

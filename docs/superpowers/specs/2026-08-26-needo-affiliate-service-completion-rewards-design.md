@@ -453,24 +453,28 @@ Route
 2. ✅ 任务发布、全额预算冻结和审核 API。
 3. ✅ 领取、优惠码、签名 URL 和任务大厅 API。
 4. ✅ Checkout 归因与顾客优惠价格快照。
-5. 服务完成返点、任务结束解冻和退款冲正。
-6. 商户 PC 完整任务 UI。
-7. 店铺端发布和管理 UI。
-8. 联盟营销前端完整 UI。
-9. 运营后台 Afirieito 完整 UI、聚合与导出。
-10. 本地正式 Seed、全量验证和逐页 UI 验收。
+5. ✅ 服务完成固定 NDP 返点。
+6. 任务结束解冻和完成后退款冲正。
+7. 商户 PC 完整任务 UI。
+8. 店铺端发布和管理 UI。
+9. 联盟营销前端完整 UI。
+10. 运营后台 Afirieito 完整 UI、聚合与导出。
+11. 本地正式 Seed、全量验证和逐页 UI 验收。
 
 每个微步骤必须先写失败测试，完成后通过对应单元测试、集成测试、lint 和 build，才能进入下一步。运营后台路由只在正式合同和完整 UI 通过验收后从能力门禁切换，避免半真半假的页面上线。
 
 截至 2026-08-26，第 4 个微步骤已接入正式 Booking 事务：优惠码优先于签名 URL，创建订单时同步验证 Claim、任务、店铺/服务范围、最低订单金额和未占用预算，保存原价/顾客优惠/实付价格快照及唯一 Attribution。并发最后一份预算和最后一个排班时段只能成功一笔；服务完成前取消会在同一订单状态事务内失效归因并释放占用额度。该微步骤不改变钱包余额，也不提前创建 `AffiliateReward`。
 
+同日第 5 个微步骤已完成：订单从 `IN_SERVICE` 进入 `COMPLETED` 时，在同一个订单事务中把 Attribution 固定返点快照从发布者 frozen NDP 捕获到领取者 User available NDP，写入 Reward、双边 WalletLedger、FinanceReconciliation、AffiliateBudgetTransaction、AffiliateRewardTransaction 和审计。重复与并发完成保持幂等；领取者/顾客完成上限只失效归因并释放额度；冻结余额不足会回滚订单完成和全部联盟写入。
+
 本地正式 MySQL 验收命令：
 
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-checkout-attribution-flow
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-service-completion-reward-flow
 ```
 
-第 5 个微步骤及后续 UI 仍未实现，继续保持能力门禁。
+第 6 个微步骤及后续 UI 仍未实现，继续保持能力门禁。
 
 ## 17. 验收标准
 

@@ -345,11 +345,175 @@ describe("LedgerService affiliate task budget operations", () => {
   });
 });
 
-describe("affiliate ledger finance filters", () => {
-  it.each(["affiliate_task_budget_freeze", "affiliate_task_budget_release"])(
-    "accepts %s as a formal transaction type",
-    (type) => {
-      expect(ledgerTransactionListQuerySchema.parse({ type })).toMatchObject({ type });
+describe("LedgerService affiliate reward settlement", () => {
+  it("captures publisher frozen NDP into the claimant wallet exactly once", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const publisherWallet = repository.seedWallet({
+      ownerType: "merchant_account",
+      ownerId: 41,
+      availableBalance: 500_000,
+      frozenBalance: 2_000_000
+    });
+    const service = new LedgerService(repository);
+    const transactionClient = { affiliateRewardTransaction: true };
+    const input = {
+      taskId: 91,
+      attributionId: 191,
+      rewardId: 291,
+      bookingOrderId: 391,
+      publisherOwnerType: "merchant_account" as const,
+      publisherOwnerId: 41,
+      publisherWalletId: publisherWallet.id,
+      claimantUserId: 51,
+      amountNdp: 1_000,
+      idempotencyKey: "affiliate:task:91:booking:391:reward:settlement",
+      actorUserId: 7
+    };
+
+    const first = await service.settleAffiliateReward(input, { transactionClient });
+    const repeated = await service.settleAffiliateReward(input, { transactionClient });
+
+    expect(repository.transactionClient).toBe(transactionClient);
+    expect(repeated.transaction.id).toBe(first.transaction.id);
+    expect(first.publisherWalletId).toBe(publisherWallet.id);
+    expect(first.claimantWalletId).toBe(repository.wallets.get("user:51:NDP")?.id);
+    expect(repository.wallets.get("merchant_account:41:NDP")).toMatchObject({
+      availableBalance: 500_000,
+      frozenBalance: 1_999_000
+    });
+    expect(repository.wallets.get("user:51:NDP")).toMatchObject({
+      availableBalance: 1_000,
+      frozenBalance: 0
+    });
+    expect(repository.entries).toEqual([
+      expect.objectContaining({
+        walletId: publisherWallet.id,
+        direction: "frozen_debit",
+        amount: 1_000,
+        availableDelta: 0,
+        frozenDelta: -1_000,
+        reason: "affiliate_reward_publisher_frozen_debit"
+      }),
+      expect.objectContaining({
+        walletId: first.claimantWalletId,
+        direction: "available_credit",
+        amount: 1_000,
+        availableDelta: 1_000,
+        frozenDelta: 0,
+        reason: "affiliate_reward_claimant_available_credit"
+      })
+    ]);
+    expect(first.transaction).toMatchObject({
+      type: "affiliate_reward_settlement",
+      referenceType: "affiliate_reward",
+      referenceId: 291,
+      amount: 1_000,
+      metadata: expect.objectContaining({
+        taskId: 91,
+        attributionId: 191,
+        bookingOrderId: 391,
+        publisherWalletId: publisherWallet.id,
+        claimantUserId: 51,
+        claimantWalletId: first.claimantWalletId
+      })
+    });
+    expect(repository.reconciliationRows).toEqual([
+      expect.objectContaining({ expectedAmount: 1_000, actualAmount: 1_000 })
+    ]);
+    expect(repository.auditRows).toEqual([
+      expect.objectContaining({
+        action: "ledger.affiliate_reward.settlement",
+        actorUserId: 7
+      })
+    ]);
+  });
+
+  it("rejects a reward that exceeds publisher frozen NDP without side effects", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const publisherWallet = repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 14,
+      availableBalance: 500,
+      frozenBalance: 999
+    });
+    const service = new LedgerService(repository);
+
+    await expect(
+      service.settleAffiliateReward({
+        taskId: 92,
+        attributionId: 192,
+        rewardId: 292,
+        bookingOrderId: 392,
+        publisherOwnerType: "shop",
+        publisherOwnerId: 14,
+        publisherWalletId: publisherWallet.id,
+        claimantUserId: 52,
+        amountNdp: 1_000,
+        idempotencyKey: "affiliate:task:92:booking:392:reward:settlement",
+        actorUserId: 8
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.WALLET_INSUFFICIENT_FROZEN,
+      message: "error.wallet.insufficient_frozen"
+    });
+    expect(repository.wallets.get("shop:14:NDP")).toMatchObject({
+      availableBalance: 500,
+      frozenBalance: 999
+    });
+    expect(repository.wallets.has("user:52:NDP")).toBe(false);
+    expect(repository.transactions.size).toBe(0);
+    expect(repository.entries).toHaveLength(0);
+    expect(repository.reconciliationRows).toHaveLength(0);
+    expect(repository.auditRows).toHaveLength(0);
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid reward amount %s before any wallet mutation",
+    async (amountNdp) => {
+      const repository = new AffiliateBudgetLedgerRepository();
+      const publisherWallet = repository.seedWallet({
+        ownerType: "shop",
+        ownerId: 15,
+        availableBalance: 500,
+        frozenBalance: 2_000
+      });
+      const service = new LedgerService(repository);
+
+      await expect(
+        service.settleAffiliateReward({
+          taskId: 93,
+          attributionId: 193,
+          rewardId: 293,
+          bookingOrderId: 393,
+          publisherOwnerType: "shop",
+          publisherOwnerId: 15,
+          publisherWalletId: publisherWallet.id,
+          claimantUserId: 53,
+          amountNdp,
+          idempotencyKey: "affiliate:task:93:booking:393:reward:settlement",
+          actorUserId: 8
+        })
+      ).rejects.toMatchObject({
+        code: ERROR_CODES.WALLET_MUTATION_FAILED,
+        message: "error.wallet.mutation_failed"
+      });
+      expect(repository.wallets.get("shop:15:NDP")).toMatchObject({
+        availableBalance: 500,
+        frozenBalance: 2_000
+      });
+      expect(repository.wallets.has("user:53:NDP")).toBe(false);
+      expect(repository.transactions.size).toBe(0);
+      expect(repository.entries).toHaveLength(0);
     }
   );
+});
+
+describe("affiliate ledger finance filters", () => {
+  it.each([
+    "affiliate_task_budget_freeze",
+    "affiliate_task_budget_release",
+    "affiliate_reward_settlement"
+  ])("accepts %s as a formal transaction type", (type) => {
+    expect(ledgerTransactionListQuerySchema.parse({ type })).toMatchObject({ type });
+  });
 });

@@ -1,6 +1,7 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { AffiliateLinkTokenService } from "./affiliate-link-token.service";
+import type { AffiliateRewardSettlementPort } from "./ledger.service";
 
 export type AffiliateCheckoutSource = "code" | "url";
 export type AffiliateCheckoutDiscountType = "none" | "fixed_jpy" | "percent";
@@ -47,7 +48,12 @@ export interface AffiliateCheckoutSummary extends AffiliatePriceSnapshot {
   publicCode: string;
   source: AffiliateCheckoutSource;
   rewardAllocatedNdp: number;
-  attributionStatus: "attributed" | "invalidated";
+  attributionStatus:
+    | "attributed"
+    | "qualified"
+    | "settled"
+    | "invalidated"
+    | "reversed";
 }
 
 export interface AffiliateCheckoutBudgetRecord {
@@ -142,13 +148,17 @@ export interface AffiliateCancellationRecord {
 }
 
 export type AffiliateCancellationRestoreStatus = "scheduled" | "active" | null;
+export type AffiliateInvalidationReason =
+  | "booking_cancelled"
+  | "claim_completed_order_limit_reached"
+  | "customer_completed_order_limit_reached";
 
 export interface AffiliateCancellationReleaseInput {
   attributionId: number;
   taskId: number;
   rewardNdp: number;
   invalidatedAt: Date;
-  reason: "booking_cancelled";
+  reason: AffiliateInvalidationReason;
   restoreTaskStatus: AffiliateCancellationRestoreStatus;
 }
 
@@ -159,7 +169,86 @@ export interface AffiliateCancellationAuditInput {
   taskId: number;
   claimId: number;
   rewardReleasedNdp: number;
-  reason: "booking_cancelled";
+  reason: AffiliateInvalidationReason;
+}
+
+export type AffiliateCompletionAttributionStatus =
+  | "attributed"
+  | "qualified"
+  | "settled"
+  | "invalidated"
+  | "reversed";
+export type AffiliateCompletionRewardStatus =
+  | "pending"
+  | "settled"
+  | "reversed"
+  | "reversal_pending";
+
+export interface AffiliateCompletionRecord {
+  attributionId: number;
+  attributionStatus: AffiliateCompletionAttributionStatus;
+  taskId: number;
+  claimId: number;
+  claimantUserId: number;
+  customerUserId: number;
+  shopId: number;
+  serviceId: number;
+  rewardAllocatedNdp: number;
+  taskStatus: AffiliateCheckoutTaskStatus;
+  taskStartsAt: Date;
+  taskEndsAt: Date;
+  maxCompletedOrdersPerClaim: number | null;
+  maxCompletedOrdersPerCustomer: number | null;
+  claimCompletedOrderCount: number;
+  reservationId: number;
+  publisherWalletId: number;
+  publisherOwnerType: "merchant_account" | "shop";
+  publisherOwnerId: number;
+  rewardId: number | null;
+  rewardStatus: AffiliateCompletionRewardStatus | null;
+  rewardNdp: number | null;
+  rewardLedgerTransactionId: number | null;
+  rewardPublisherWalletId: number | null;
+  rewardClaimantWalletId: number | null;
+}
+
+export interface AffiliateRewardQualificationInput {
+  attributionId: number;
+  taskId: number;
+  claimId: number;
+  bookingOrderId: number;
+  publisherWalletId: number;
+  claimantUserId: number;
+  rewardNdp: number;
+  qualifiedAt: Date;
+}
+
+export interface AffiliateRewardQualificationResult {
+  rewardId: number;
+  publisherWalletId: number;
+  claimantWalletId: number;
+}
+
+export interface AffiliateRewardCaptureInput {
+  attributionId: number;
+  taskId: number;
+  claimId: number;
+  reservationId: number;
+  rewardId: number;
+  rewardNdp: number;
+  ledgerTransactionId: number;
+  settledAt: Date;
+}
+
+export interface AffiliateRewardSettlementAuditInput {
+  actorUserId: number;
+  bookingOrderId: number;
+  attributionId: number;
+  taskId: number;
+  claimId: number;
+  rewardId: number;
+  ledgerTransactionId: number;
+  rewardSettledNdp: number;
 }
 
 export interface AffiliateValidationSlotRecord {
@@ -216,6 +305,20 @@ export interface AffiliateCheckoutRepositoryPort {
   lockActiveAttributionForCancellation(
     bookingOrderId: number
   ): Promise<AffiliateCancellationRecord | null>;
+  lockAttributionForCompletion(
+    bookingOrderId: number
+  ): Promise<AffiliateCompletionRecord | null>;
+  countSettledCustomerOrders(input: {
+    taskId: number;
+    customerUserId: number;
+  }): Promise<number>;
+  qualifyAttributionAndCreateReward(
+    input: AffiliateRewardQualificationInput
+  ): Promise<AffiliateRewardQualificationResult>;
+  settleRewardAndCaptureBudget(input: AffiliateRewardCaptureInput): Promise<void>;
+  createRewardSettlementAudit(
+    input: AffiliateRewardSettlementAuditInput
+  ): Promise<void>;
   invalidateAttributionAndRelease(
     input: AffiliateCancellationReleaseInput
   ): Promise<void>;
@@ -247,12 +350,47 @@ export interface AffiliateCancellationInput {
   transactionClient: AffiliateCheckoutTransactionClient;
 }
 
+export interface AffiliateCompletionInput {
+  bookingOrderId: number;
+  customerUserId: number;
+  shopId: number;
+  serviceId: number | null;
+  actorUserId: number;
+  transactionClient: AffiliateCheckoutTransactionClient;
+}
+
+export type AffiliateCompletionResult =
+  | {
+      status: "no_op";
+      reason: "no_attribution" | "invalidated" | "reversed";
+    }
+  | {
+      status: "limit_released";
+      attributionId: number;
+      reason: Extract<
+        AffiliateInvalidationReason,
+        | "claim_completed_order_limit_reached"
+        | "customer_completed_order_limit_reached"
+      >;
+      rewardReleasedNdp: number;
+    }
+  | {
+      status: "settled";
+      attributionId: number;
+      rewardId: number;
+      ledgerTransactionId: number;
+      rewardNdp: number;
+      idempotent: boolean;
+    };
+
 interface AffiliateCheckoutServiceOptions {
   now?: () => Date;
+  rewardLedger?: AffiliateRewardSettlementPort;
 }
 
 export class AffiliateCheckoutService {
   private readonly now: () => Date;
+  private readonly rewardLedger?: AffiliateRewardSettlementPort;
 
   public constructor(
     private readonly repository: AffiliateCheckoutRepositoryPort,
@@ -260,6 +398,7 @@ export class AffiliateCheckoutService {
     options: AffiliateCheckoutServiceOptions = {}
   ) {
     this.now = options.now ?? (() => new Date());
+    this.rewardLedger = options.rewardLedger;
   }
 
   public async prepareCheckout(
@@ -420,6 +559,240 @@ export class AffiliateCheckoutService {
       rewardReleasedNdp: attribution.rewardAllocatedNdp,
       reason: "booking_cancelled"
     });
+  }
+
+  public async settleCompletedBooking(
+    input: AffiliateCompletionInput
+  ): Promise<AffiliateCompletionResult> {
+    const repository = this.repository.forTransaction(input.transactionClient);
+    let attribution: AffiliateCompletionRecord | null;
+    try {
+      attribution = await repository.lockAttributionForCompletion(
+        input.bookingOrderId
+      );
+    } catch (error) {
+      if (this.isRewardSettlementConflict(error)) {
+        throw this.rewardSettlementConflictError();
+      }
+      throw error;
+    }
+
+    if (!attribution) {
+      return { status: "no_op", reason: "no_attribution" };
+    }
+
+    this.assertCompletionSnapshot(attribution, input);
+    if (
+      attribution.attributionStatus === "invalidated" ||
+      attribution.attributionStatus === "reversed"
+    ) {
+      return { status: "no_op", reason: attribution.attributionStatus };
+    }
+    if (attribution.attributionStatus === "settled") {
+      return this.existingCompletionResult(attribution);
+    }
+    if (attribution.attributionStatus !== "attributed") {
+      throw this.rewardSettlementConflictError();
+    }
+
+    const claimLimit = attribution.maxCompletedOrdersPerClaim;
+    if (
+      claimLimit !== null &&
+      attribution.claimCompletedOrderCount >= claimLimit
+    ) {
+      return this.releaseCompletionLimit(
+        repository,
+        attribution,
+        input,
+        "claim_completed_order_limit_reached"
+      );
+    }
+
+    if (attribution.maxCompletedOrdersPerCustomer !== null) {
+      const settledCustomerOrders = await repository.countSettledCustomerOrders({
+        taskId: attribution.taskId,
+        customerUserId: attribution.customerUserId
+      });
+      if (settledCustomerOrders >= attribution.maxCompletedOrdersPerCustomer) {
+        return this.releaseCompletionLimit(
+          repository,
+          attribution,
+          input,
+          "customer_completed_order_limit_reached"
+        );
+      }
+    }
+
+    if (!this.rewardLedger) {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.affiliate.reward_settlement_unavailable",
+        statusCode: 503
+      });
+    }
+
+    const settledAt = this.now();
+    try {
+      const reward = await repository.qualifyAttributionAndCreateReward({
+        attributionId: attribution.attributionId,
+        taskId: attribution.taskId,
+        claimId: attribution.claimId,
+        bookingOrderId: input.bookingOrderId,
+        publisherWalletId: attribution.publisherWalletId,
+        claimantUserId: attribution.claimantUserId,
+        rewardNdp: attribution.rewardAllocatedNdp,
+        qualifiedAt: settledAt
+      });
+      const ledger = await this.rewardLedger.settleAffiliateReward(
+        {
+          taskId: attribution.taskId,
+          attributionId: attribution.attributionId,
+          rewardId: reward.rewardId,
+          bookingOrderId: input.bookingOrderId,
+          publisherOwnerType: attribution.publisherOwnerType,
+          publisherOwnerId: attribution.publisherOwnerId,
+          publisherWalletId: attribution.publisherWalletId,
+          claimantUserId: attribution.claimantUserId,
+          amountNdp: attribution.rewardAllocatedNdp,
+          idempotencyKey: `affiliate:task:${attribution.taskId}:booking:${input.bookingOrderId}:reward:settlement`,
+          actorUserId: input.actorUserId
+        },
+        { transactionClient: input.transactionClient }
+      );
+
+      if (
+        reward.publisherWalletId !== ledger.publisherWalletId ||
+        reward.claimantWalletId !== ledger.claimantWalletId
+      ) {
+        throw this.rewardSettlementConflictError();
+      }
+
+      await repository.settleRewardAndCaptureBudget({
+        attributionId: attribution.attributionId,
+        taskId: attribution.taskId,
+        claimId: attribution.claimId,
+        reservationId: attribution.reservationId,
+        rewardId: reward.rewardId,
+        rewardNdp: attribution.rewardAllocatedNdp,
+        ledgerTransactionId: ledger.transaction.id,
+        settledAt
+      });
+      await repository.createRewardSettlementAudit({
+        actorUserId: input.actorUserId,
+        bookingOrderId: input.bookingOrderId,
+        attributionId: attribution.attributionId,
+        taskId: attribution.taskId,
+        claimId: attribution.claimId,
+        rewardId: reward.rewardId,
+        ledgerTransactionId: ledger.transaction.id,
+        rewardSettledNdp: attribution.rewardAllocatedNdp
+      });
+
+      return {
+        status: "settled",
+        attributionId: attribution.attributionId,
+        rewardId: reward.rewardId,
+        ledgerTransactionId: ledger.transaction.id,
+        rewardNdp: attribution.rewardAllocatedNdp,
+        idempotent: false
+      };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "error.affiliate.reward_settlement_conflict"
+      ) {
+        throw this.rewardSettlementConflictError();
+      }
+      throw error;
+    }
+  }
+
+  private async releaseCompletionLimit(
+    repository: AffiliateCheckoutRepositoryPort,
+    attribution: AffiliateCompletionRecord,
+    input: AffiliateCompletionInput,
+    reason: Extract<
+      AffiliateInvalidationReason,
+      | "claim_completed_order_limit_reached"
+      | "customer_completed_order_limit_reached"
+    >
+  ): Promise<AffiliateCompletionResult> {
+    const invalidatedAt = this.now();
+    const restoreTaskStatus = this.resolveCancellationRestoreStatus(
+      attribution,
+      invalidatedAt
+    );
+    try {
+      await repository.invalidateAttributionAndRelease({
+        attributionId: attribution.attributionId,
+        taskId: attribution.taskId,
+        rewardNdp: attribution.rewardAllocatedNdp,
+        invalidatedAt,
+        reason,
+        restoreTaskStatus
+      });
+      await repository.createInvalidationAudit({
+        actorUserId: input.actorUserId,
+        bookingOrderId: input.bookingOrderId,
+        attributionId: attribution.attributionId,
+        taskId: attribution.taskId,
+        claimId: attribution.claimId,
+        rewardReleasedNdp: attribution.rewardAllocatedNdp,
+        reason
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "error.affiliate.attribution_release_conflict"
+      ) {
+        throw this.rewardSettlementConflictError();
+      }
+      throw error;
+    }
+
+    return {
+      status: "limit_released",
+      attributionId: attribution.attributionId,
+      reason,
+      rewardReleasedNdp: attribution.rewardAllocatedNdp
+    };
+  }
+
+  private assertCompletionSnapshot(
+    attribution: AffiliateCompletionRecord,
+    input: AffiliateCompletionInput
+  ): void {
+    if (
+      attribution.customerUserId !== input.customerUserId ||
+      attribution.shopId !== input.shopId ||
+      (input.serviceId !== null && attribution.serviceId !== input.serviceId)
+    ) {
+      throw this.rewardSettlementConflictError();
+    }
+  }
+
+  private existingCompletionResult(
+    attribution: AffiliateCompletionRecord
+  ): AffiliateCompletionResult {
+    if (
+      attribution.rewardId === null ||
+      attribution.rewardStatus !== "settled" ||
+      attribution.rewardNdp !== attribution.rewardAllocatedNdp ||
+      attribution.rewardLedgerTransactionId === null ||
+      attribution.rewardPublisherWalletId !== attribution.publisherWalletId ||
+      attribution.rewardClaimantWalletId === null
+    ) {
+      throw this.rewardSettlementConflictError();
+    }
+
+    return {
+      status: "settled",
+      attributionId: attribution.attributionId,
+      rewardId: attribution.rewardId,
+      ledgerTransactionId: attribution.rewardLedgerTransactionId,
+      rewardNdp: attribution.rewardAllocatedNdp,
+      idempotent: true
+    };
   }
 
   private async prepareResolvedPromotion(
@@ -601,6 +974,21 @@ export class AffiliateCheckoutService {
       message: "error.affiliate.budget_unavailable",
       statusCode: 409
     });
+  }
+
+  private rewardSettlementConflictError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.AFFILIATE_REWARD_SETTLEMENT_CONFLICT,
+      message: "error.affiliate.reward_settlement_conflict",
+      statusCode: 409
+    });
+  }
+
+  private isRewardSettlementConflict(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      error.message === "error.affiliate.reward_settlement_conflict"
+    );
   }
 }
 

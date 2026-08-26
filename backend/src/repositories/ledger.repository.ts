@@ -96,20 +96,34 @@ export class LedgerRepository implements LedgerRepositoryPort {
     ownerId: number;
     currency: LedgerCurrency;
   }): Promise<WalletPayload> {
-    const wallet = await this.client.wallet.upsert({
-      where: {
-        ownerType_ownerId_currency: {
-          ownerType: this.ownerTypeToDb(input.ownerType),
-          ownerId: input.ownerId,
-          currency: input.currency
-        }
-      },
-      create: {
-        ownerType: this.ownerTypeToDb(input.ownerType),
-        ownerId: input.ownerId,
-        currency: input.currency
-      },
-      update: { deletedAt: null }
+    const walletKey = {
+      ownerType: this.ownerTypeToDb(input.ownerType),
+      ownerId: input.ownerId,
+      currency: input.currency
+    };
+    await this.client.$executeRaw(
+      Prisma.sql`
+        INSERT INTO wallets (
+          owner_type,
+          owner_id,
+          currency,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          ${input.ownerType},
+          ${input.ownerId},
+          ${input.currency},
+          CURRENT_TIMESTAMP(3),
+          NULL
+        )
+        ON DUPLICATE KEY UPDATE
+          deleted_at = NULL,
+          updated_at = CURRENT_TIMESTAMP(3)
+      `
+    );
+    const wallet = await this.client.wallet.findUniqueOrThrow({
+      where: { ownerType_ownerId_currency: walletKey }
     });
 
     return this.mapWallet(wallet);

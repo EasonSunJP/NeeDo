@@ -392,6 +392,33 @@ export interface AffiliateBudgetLedgerResult {
   walletId: number;
 }
 
+export interface SettleAffiliateRewardInput {
+  taskId: number;
+  attributionId: number;
+  rewardId: number;
+  bookingOrderId: number;
+  publisherOwnerType: Extract<WalletOwnerType, "merchant_account" | "shop">;
+  publisherOwnerId: number;
+  publisherWalletId: number;
+  claimantUserId: number;
+  amountNdp: number;
+  idempotencyKey: string;
+  actorUserId: number;
+}
+
+export interface AffiliateRewardLedgerResult {
+  transaction: LedgerTransactionPayload;
+  publisherWalletId: number;
+  claimantWalletId: number;
+}
+
+export interface AffiliateRewardSettlementPort {
+  settleAffiliateReward: (
+    input: SettleAffiliateRewardInput,
+    context?: LedgerMutationContext
+  ) => Promise<AffiliateRewardLedgerResult>;
+}
+
 export interface BookingLedgerSettlementPort {
   freezeBookingAcceptance: (
     input: BookingLedgerSettlementInput,
@@ -413,7 +440,9 @@ export interface BookingLedgerSettlementPort {
 
 const CURRENCY: LedgerCurrency = "NDP";
 
-export class LedgerService implements BookingLedgerSettlementPort {
+export class LedgerService
+  implements BookingLedgerSettlementPort, AffiliateRewardSettlementPort
+{
   public constructor(
     private readonly repository: LedgerRepositoryPort,
     private readonly feeCalculationService?: Pick<FeeCalculationService, "calculateFee">,
@@ -574,6 +603,118 @@ export class LedgerService implements BookingLedgerSettlementPort {
           (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ??
           transaction,
         walletId: wallet.id
+      };
+    }, context.transactionClient);
+  }
+
+  public async settleAffiliateReward(
+    input: SettleAffiliateRewardInput,
+    context: LedgerMutationContext = {}
+  ): Promise<AffiliateRewardLedgerResult> {
+    if (!Number.isSafeInteger(input.amountNdp) || input.amountNdp <= 0) {
+      throw this.walletMutationError();
+    }
+
+    return this.repository.runInTransaction(async (repository) => {
+      const existing = await repository.findTransactionByIdempotencyKey(
+        input.idempotencyKey
+      );
+
+      if (existing) {
+        return this.resolveAffiliateRewardLedgerResult(repository, existing, input);
+      }
+
+      const publisherWallet = await repository.getOrCreateWallet({
+        ownerType: input.publisherOwnerType,
+        ownerId: input.publisherOwnerId,
+        currency: CURRENCY
+      });
+
+      if (publisherWallet.id !== input.publisherWalletId) {
+        throw this.walletMutationError();
+      }
+      if (publisherWallet.frozenBalance < input.amountNdp) {
+        throw this.insufficientFrozenError();
+      }
+
+      const claimantWallet = await repository.getOrCreateWallet({
+        ownerType: "user",
+        ownerId: input.claimantUserId,
+        currency: CURRENCY
+      });
+      const updatedPublisherWallet = await repository.applyWalletDelta({
+        walletId: publisherWallet.id,
+        availableDelta: 0,
+        frozenDelta: -input.amountNdp,
+        requireFrozenAtLeast: input.amountNdp
+      });
+
+      if (!updatedPublisherWallet) {
+        throw this.insufficientFrozenError();
+      }
+
+      const updatedClaimantWallet = await repository.applyWalletDelta({
+        walletId: claimantWallet.id,
+        availableDelta: input.amountNdp,
+        frozenDelta: 0
+      });
+
+      if (!updatedClaimantWallet) {
+        throw this.walletMutationError();
+      }
+
+      const transaction = await repository.createTransaction({
+        idempotencyKey: input.idempotencyKey,
+        type: "affiliate_reward_settlement",
+        referenceType: "affiliate_reward",
+        referenceId: input.rewardId,
+        actorUserId: input.actorUserId,
+        amount: input.amountNdp,
+        metadata: {
+          taskId: input.taskId,
+          attributionId: input.attributionId,
+          bookingOrderId: input.bookingOrderId,
+          publisherOwnerType: input.publisherOwnerType,
+          publisherOwnerId: input.publisherOwnerId,
+          publisherWalletId: publisherWallet.id,
+          claimantUserId: input.claimantUserId,
+          claimantWalletId: claimantWallet.id
+        }
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: publisherWallet.id,
+        direction: "frozen_debit",
+        amount: input.amountNdp,
+        availableDelta: 0,
+        frozenDelta: -input.amountNdp,
+        availableBalanceAfter: updatedPublisherWallet.availableBalance,
+        frozenBalanceAfter: updatedPublisherWallet.frozenBalance,
+        reason: "affiliate_reward_publisher_frozen_debit"
+      });
+      await repository.createLedgerEntry({
+        transactionId: transaction.id,
+        walletId: claimantWallet.id,
+        direction: "available_credit",
+        amount: input.amountNdp,
+        availableDelta: input.amountNdp,
+        frozenDelta: 0,
+        availableBalanceAfter: updatedClaimantWallet.availableBalance,
+        frozenBalanceAfter: updatedClaimantWallet.frozenBalance,
+        reason: "affiliate_reward_claimant_available_credit"
+      });
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.affiliate_reward.settlement",
+        expectedAmount: input.amountNdp,
+        actualAmount: input.amountNdp
+      });
+
+      return {
+        transaction:
+          (await repository.findTransactionByIdempotencyKey(input.idempotencyKey)) ??
+          transaction,
+        publisherWalletId: publisherWallet.id,
+        claimantWalletId: claimantWallet.id
       };
     }, context.transactionClient);
   }
@@ -1713,6 +1854,52 @@ export class LedgerService implements BookingLedgerSettlementPort {
     });
 
     return wallet.id;
+  }
+
+  private async resolveAffiliateRewardLedgerResult(
+    repository: LedgerRepositoryPort,
+    transaction: LedgerTransactionPayload,
+    input: SettleAffiliateRewardInput
+  ): Promise<AffiliateRewardLedgerResult> {
+    if (
+      transaction.type !== "affiliate_reward_settlement" ||
+      transaction.referenceType !== "affiliate_reward" ||
+      transaction.referenceId !== input.rewardId ||
+      transaction.amount !== input.amountNdp
+    ) {
+      throw this.walletMutationError();
+    }
+
+    const publisherEntry = transaction.entries.find(
+      (entry) => entry.direction === "frozen_debit"
+    );
+    const claimantEntry = transaction.entries.find(
+      (entry) => entry.direction === "available_credit"
+    );
+    const publisherWallet = await repository.getOrCreateWallet({
+      ownerType: input.publisherOwnerType,
+      ownerId: input.publisherOwnerId,
+      currency: CURRENCY
+    });
+    const claimantWallet = await repository.getOrCreateWallet({
+      ownerType: "user",
+      ownerId: input.claimantUserId,
+      currency: CURRENCY
+    });
+
+    if (
+      publisherWallet.id !== input.publisherWalletId ||
+      publisherEntry?.walletId !== publisherWallet.id ||
+      claimantEntry?.walletId !== claimantWallet.id
+    ) {
+      throw this.walletMutationError();
+    }
+
+    return {
+      transaction,
+      publisherWalletId: publisherWallet.id,
+      claimantWalletId: claimantWallet.id
+    };
   }
 
   private assertWalletAdjustmentRepository(repository: LedgerRepositoryPort): void {

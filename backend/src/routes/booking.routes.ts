@@ -70,7 +70,8 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
         new AffiliateLinkTokenService({
           secret: config.AFFILIATE_LINK_SECRET,
           publicBaseUrl: config.AFFILIATE_PUBLIC_BASE_URL
-        })
+        }),
+        { rewardLedger: ledgerService }
       )
   );
   const controller = new BookingController(bookingService);

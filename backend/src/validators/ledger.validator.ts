@@ -77,7 +77,8 @@ export const ledgerTransactionListQuerySchema = withValidDateRange(
         "manual_withdrawal_approved",
         "seed_credit",
         "affiliate_task_budget_freeze",
-        "affiliate_task_budget_release"
+        "affiliate_task_budget_release",
+        "affiliate_reward_settlement"
       ])
       .optional()
   })

@@ -151,11 +151,13 @@
 2. 任务草稿、发布时全额冻结、运营审核与拒绝解冻 API：已完成，并通过本地 MySQL 事务验收。
 3. 任务大厅、领取、唯一优惠码与签名 URL API：已完成，并通过并发领取、篡改拒绝和隔离验收。
 4. Booking Checkout 归因、顾客优惠价格快照、奖励预算占用及完单前取消释放：已完成，并通过本地 MySQL 的最后预算/最后时段并发验收。
-5. 服务完成返点、任务结束解冻和退款冲正：未开始，继续保持能力门禁。
-6. 商户 PC、店铺端、联盟营销前端及运营后台 Afirieito 完整 UI：未开始，不能使用浏览器 mock 指标代替正式数据。
+5. 服务完成固定 NDP 返点：已完成，并通过本地 MySQL 的精确入账、重复/并发幂等、限额释放及冻结余额不足整单回滚验收。
+6. 任务结束解冻和完成后退款冲正：未开始，继续保持能力门禁。
+7. 商户 PC、店铺端、联盟营销前端及运营后台 Afirieito 完整 UI：未开始，不能使用浏览器 mock 指标代替正式数据。
 
 当前 Checkout 验收命令：
 
 ```bash
 ENV_FILE=.env.dev npm --prefix backend run check:affiliate-checkout-attribution-flow
+ENV_FILE=.env.dev npm --prefix backend run check:affiliate-service-completion-reward-flow
 ```

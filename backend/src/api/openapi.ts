@@ -1985,7 +1985,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               "booking_cancel_unfreeze",
               "booking_complete_settlement",
               "booking_merchant_cancel_compensation",
-              "seed_credit"
+              "manual_topup_approved",
+              "manual_withdrawal_approved",
+              "seed_credit",
+              "affiliate_task_budget_freeze",
+              "affiliate_task_budget_release",
+              "affiliate_reward_settlement"
             ]
           },
           status: { type: "string", enum: ["applied"] },
@@ -2929,7 +2934,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           rewardAllocatedNdp: { type: "integer", minimum: 1 },
           attributionStatus: {
             type: "string",
-            enum: ["attributed", "invalidated"]
+            enum: [
+              "attributed",
+              "qualified",
+              "settled",
+              "invalidated",
+              "reversed"
+            ]
           }
         }
       },
