@@ -445,6 +445,67 @@ describeIntegration("AuthRepository verified account and Google binding integrat
     ).toBe(0);
   });
 
+  it("converges two first-use challenges restoring one soft-deleted binding for its owner", async () => {
+    const verifiedAt = new Date("2026-08-27T02:13:14.000Z");
+    const email = `${marker}-complete-link-restore@needo.test`;
+    const subject = `${marker}-complete-link-restore-subject`;
+    const account = await repository.createVerifiedBaselineCustomer({
+      email,
+      emailVerifiedAt: verifiedAt,
+      passwordHash: null,
+      context: { ip: "127.0.0.1" }
+    });
+    createdUserIds.push(account.id);
+    await repository.createOrRestoreGoogleBinding({
+      userId: account.id,
+      googleIdentity: { subject, email, emailVerifiedAt: verifiedAt }
+    });
+    await expect(repository.softUnlinkGoogleBinding(account.id)).resolves.toBe(true);
+    const firstChallengeId = randomUUID();
+    const secondChallengeId = randomUUID();
+    const input = {
+      googleIdentity: { subject, email, emailVerifiedAt: verifiedAt },
+      context: { ip: "127.0.0.1" }
+    };
+
+    const results = await Promise.allSettled([
+      repository.completeGoogleFirstUseLink({ ...input, challengeId: firstChallengeId }),
+      repository.completeGoogleFirstUseLink({ ...input, challengeId: secondChallengeId })
+    ]);
+    expect(results).toEqual([
+      expect.objectContaining({
+        status: "fulfilled",
+        value: expect.objectContaining({ id: account.id })
+      }),
+      expect.objectContaining({
+        status: "fulfilled",
+        value: expect.objectContaining({ id: account.id })
+      })
+    ]);
+    const restored = await prisma.externalAuthAccount.findFirstOrThrow({
+      where: { provider: "google", providerSubject: subject }
+    });
+    expect(restored).toMatchObject({ userId: account.id, deletedAt: null, lastUsedAt: null });
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          action: "auth.google.link",
+          targetId: account.id,
+          metadata: { path: "$.challengeId", equals: firstChallengeId }
+        }
+      })
+    ).toBe(1);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          action: "auth.google.link",
+          targetId: account.id,
+          metadata: { path: "$.challengeId", equals: secondChallengeId }
+        }
+      })
+    ).toBe(1);
+  });
+
   it("rolls every baseline-account write back when the aggregate audit write fails", async () => {
     const failedEmail = `${marker}-rollback@needo.test`;
 
