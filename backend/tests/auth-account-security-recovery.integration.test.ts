@@ -54,10 +54,20 @@ describeIntegration("formal account-security recovery integration", () => {
           where: {
             targetType: "User",
             targetId: { in: userIds },
-            action: { in: ["auth.google.link", "auth.google.unlink", "auth.password.setup"] },
-            OR: challengeIds.map((challengeId) => ({
-              metadata: { path: "$.challengeId", equals: challengeId }
-            }))
+            OR: [
+              {
+                action: "auth.register",
+                actorId: { in: userIds },
+                targetId: { in: userIds }
+              },
+              {
+                action: { in: ["auth.google.link", "auth.google.unlink", "auth.password.setup"] },
+                targetId: { in: userIds },
+                OR: challengeIds.map((challengeId) => ({
+                  metadata: { path: "$.challengeId", equals: challengeId }
+                }))
+              }
+            ]
           }
         });
         await transaction.loginLog.deleteMany({ where: { userId: { in: userIds } } });
@@ -80,7 +90,10 @@ describeIntegration("formal account-security recovery integration", () => {
         await sessions.revokeRefreshToken(refresh.userId, refresh.jti);
       const keys = [
         ...challengeIds.map((id) => `auth:verification:email:${id}`),
+        ...challengeIds.map((id) => `auth:verification:unlink-complete:${id}`),
         ...nonceChallengeIds.map((id) => `auth:verification:google-nonce:${id}`),
+        ...userIds.map((id) => `auth:v2:session:generation:${id}`),
+        ...userIds.map((id) => `auth:v2:refresh:user:${id}`),
         ...emails.flatMap((email) => [
           cooldownKey(email, "google_authenticated_link"),
           cooldownKey(email, "google_unlink"),
@@ -290,6 +303,101 @@ describeIntegration("formal account-security recovery integration", () => {
     ).toBe(1);
   }, 15_000);
 
+  it("recovers a committed unlink after its Redis reply is lost without reviving the old token", async () => {
+    assertNeedoTest();
+    const email = `${marker}-lost-reply@needo.test`;
+    const subject = `${marker}-lost-reply-subject`;
+    emails.push(email);
+    const repository = new AuthRepository(prisma);
+    const account = await repository.createVerifiedBaselineCustomer({
+      email,
+      passwordHash: await hash("StrongPass1!", 12),
+      emailVerifiedAt: new Date(),
+      context: { ip: "127.0.0.1" },
+      googleIdentity: { subject, email, emailVerifiedAt: new Date() }
+    });
+    userIds.push(account.id);
+    const challenges = new RedisVerificationChallengeStore(() => redis);
+    const baseSessions = new RedisAuthSessionStore(() => redis);
+    const tokens = new AuthTokenService(env);
+    const access = tokens.issueAccessToken({
+      id: account.id,
+      email,
+      currentIdentityId: account.identities[0].id,
+      sessionGeneration: 0
+    });
+    const refresh = tokens.issueRefreshToken({
+      id: account.id,
+      email,
+      currentIdentityId: account.identities[0].id,
+      sessionGeneration: 0
+    });
+    refreshes.push({ userId: account.id, jti: refresh.jti });
+    await baseSessions.storeRefreshToken(account.id, refresh.jti, 300, 0);
+    let loseReply = true;
+    const sessions = new Proxy(baseSessions, {
+      get(target, property, receiver) {
+        if (property === "completeGoogleUnlink") {
+          return async (...args: Parameters<RedisAuthSessionStore["completeGoogleUnlink"]>) => {
+            const completed = await target.completeGoogleUnlink(...args);
+            if (loseReply) {
+              loseReply = false;
+              throw new Error("simulated Redis reply loss after Lua commit");
+            }
+            return completed;
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as AuthSessionStore;
+    const delivered: string[] = [];
+    const service = new AuthService(
+      env,
+      repository,
+      sessions,
+      { sendOtp: async (_email, otp) => void delivered.push(otp) },
+      challenges,
+      false
+    );
+    const auth: AuthenticatedAccessContext = {
+      userId: account.id,
+      email,
+      accessTokenJti: access.jti,
+      accessTokenExpiresAt: access.expiresAt,
+      sessionGeneration: 0,
+      roles: [],
+      permissions: []
+    };
+    const unlink = await service.startGoogleUnlink(auth, { ip: "127.0.0.1" });
+    challengeIds.push(unlink.challengeId);
+    await expect(
+      service.verifyGoogleUnlink(unlink.challengeId, delivered[0], auth, { ip: "127.0.0.1" })
+    ).rejects.toThrow("simulated Redis reply loss after Lua commit");
+    await expect(service.authenticateAccessToken(access.token)).rejects.toMatchObject({
+      statusCode: 401
+    });
+    await expect(service.refresh(refresh.token)).rejects.toMatchObject({ statusCode: 401 });
+    await redis.del(`auth:v2:session:generation:${account.id}`);
+    await expect(service.authenticateAccessToken(access.token)).rejects.toMatchObject({
+      statusCode: 401
+    });
+    await expect(service.refresh(refresh.token)).rejects.toMatchObject({ statusCode: 401 });
+    const recovery = await service.authenticateGoogleUnlinkRecovery(
+      access.token,
+      unlink.challengeId
+    );
+    expect(recovery).toMatchObject({
+      userId: account.id,
+      isGoogleUnlinkRecovery: true,
+      roles: [],
+      permissions: []
+    });
+    await expect(
+      service.verifyGoogleUnlink(unlink.challengeId, delivered[0], recovery, { ip: "127.0.0.1" })
+    ).resolves.toEqual({ signedOut: true });
+  }, 15_000);
+
   it("leaves no usable old-generation session when unlink races refresh rotation in real Redis", async () => {
     assertNeedoTest();
     const email = `${marker}-session-race@needo.test`;
@@ -357,7 +465,8 @@ describeIntegration("formal account-security recovery integration", () => {
         challengeId: challenge.challengeId,
         reservationToken: reserved.reservationToken,
         accessTokenJti: oldAccess.jti,
-        accessTokenTtlSeconds: oldAccess.expiresIn
+        accessTokenTtlSeconds: oldAccess.expiresIn,
+        sessionGeneration: 1
       })
     ]);
     expect(completion).toBe(true);

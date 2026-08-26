@@ -307,6 +307,7 @@ const createAuthFixture = async () => {
     username: "admin",
     avatarUrl: null,
     isActive: true,
+    sessionGeneration: 0,
     accessState: { disabled: false, restricted: false },
     lastLoginAt: null as Date | null,
     deletedAt: null,

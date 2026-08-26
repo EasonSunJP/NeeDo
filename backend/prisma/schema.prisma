@@ -312,6 +312,7 @@ model User {
   username        String    @db.VarChar(100)
   avatarUrl       String?   @map("avatar_url") @db.VarChar(500)
   isActive        Boolean   @default(true) @map("is_active")
+  sessionGeneration Int     @default(0) @map("session_generation")
   lastLoginAt     DateTime? @map("last_login_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -399,7 +400,7 @@ model ExternalAuthAccount {
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
   deletedAt               DateTime? @map("deleted_at")
-  activeUserProviderKey   String?   @unique(map: "external_auth_active_user_provider_key") @map("active_user_provider_key") @db.VarChar(300)
+  activeUserProviderKey   String?   @unique(map: "external_auth_active_user_provider_key") @default(dbgenerated()) @map("active_user_provider_key") @db.VarChar(300)
   user                    User      @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([provider, providerSubject], map: "external_auth_provider_subject_key")

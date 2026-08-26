@@ -35,6 +35,7 @@ const createUser = (overrides: Partial<AuthUserRecord> = {}): AuthUserRecord => 
   username: "n0000000007",
   avatarUrl: null,
   isActive: true,
+  sessionGeneration: 0,
   accessState: { disabled: false, restricted: false },
   lastLoginAt: null,
   deletedAt: null,
@@ -321,6 +322,7 @@ const createFixture = () => {
       );
       if (!binding) throw new Error("missing binding");
       binding.deletedAt = new Date();
+      users.get(input.userId)!.sessionGeneration += 1;
       if (
         !audits.some(
           (audit) =>
@@ -333,7 +335,15 @@ const createFixture = () => {
           userId: input.userId
         });
       return users.get(input.userId)!;
-    })
+    }),
+    hasGoogleUnlinkCompletion: jest.fn(async (input) =>
+      audits.some(
+        (audit) =>
+          audit.action === "auth.google.unlink" &&
+          audit.challengeId === input.challengeId &&
+          audit.userId === input.userId
+      )
+    )
   } satisfies Partial<AuthRepositoryPort> & Partial<GoogleAuthRepositoryPort>;
   const verifier: GoogleCredentialVerifierPort = {
     verify: jest.fn(async () => ({

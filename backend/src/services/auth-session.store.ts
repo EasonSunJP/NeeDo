@@ -55,6 +55,12 @@ export interface AuthSessionStore {
     reservationToken: string;
     accessTokenJti: string;
     accessTokenTtlSeconds: number;
+    sessionGeneration: number;
+  }) => Promise<boolean>;
+  getGoogleUnlinkCompletion?: (input: {
+    userId: number;
+    challengeId: string;
+    accessTokenJti: string;
   }) => Promise<boolean>;
   hasRefreshToken: (userId: number, jti: string) => Promise<boolean>;
   revokeRefreshToken: (userId: number, jti: string) => Promise<void>;
@@ -207,6 +213,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     reservationToken: string;
     accessTokenJti: string;
     accessTokenTtlSeconds: number;
+    sessionGeneration: number;
   }): Promise<boolean> {
     const [result] = await this.eval(
       GOOGLE_UNLINK_COMPLETE_LUA,
@@ -222,10 +229,23 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         input.reservationToken,
         this.refreshKey(input.userId, ""),
         String(Math.max(0, input.accessTokenTtlSeconds)),
-        "600"
+        "600",
+        String(input.sessionGeneration),
+        input.accessTokenJti
       ]
     );
     return result === "ok" || result === "already_completed";
+  }
+
+  public async getGoogleUnlinkCompletion(input: {
+    userId: number;
+    challengeId: string;
+    accessTokenJti: string;
+  }): Promise<boolean> {
+    return (
+      (await this.getValue(`auth:verification:unlink-complete:${input.challengeId}`)) ===
+      `${input.userId}:${input.accessTokenJti}`
+    );
   }
 
   public async hasRefreshToken(userId: number, jti: string): Promise<boolean> {
@@ -371,7 +391,7 @@ export class RedisAuthSessionStore implements AuthSessionStore {
 const REFRESH_STORE_LUA = `
 -- auth-refresh-store
 local generation = redis.call('GET', KEYS[3])
-if not generation then redis.call('SET', KEYS[3], '0'); generation = '0' end
+if not generation then redis.call('SET', KEYS[3], ARGV[3]); generation = ARGV[3] end
 if generation ~= ARGV[3] then return {'generation_mismatch'} end
 redis.call('SET', KEYS[1], '1', 'EX', ARGV[2])
 redis.call('SADD', KEYS[2], ARGV[1])
@@ -383,7 +403,7 @@ return {'ok'}
 const REFRESH_ROTATE_LUA = `
 -- auth-refresh-rotate
 local generation = redis.call('GET', KEYS[4])
-if not generation then redis.call('SET', KEYS[4], '0'); generation = '0' end
+if not generation then redis.call('SET', KEYS[4], ARGV[4]); generation = ARGV[4] end
 if generation ~= ARGV[4] then return {'generation_mismatch'} end
 if redis.call('EXISTS', KEYS[1]) == 0 then return {'missing'} end
 redis.call('DEL', KEYS[1])
@@ -398,7 +418,7 @@ return {'ok'}
 const GOOGLE_UNLINK_COMPLETE_LUA = `
 -- auth-google-unlink-complete
 local receipt = redis.call('GET', KEYS[5])
-if receipt == ARGV[1] then return {'already_completed'} end
+if receipt == ARGV[1] .. ':' .. ARGV[7] then return {'already_completed'} end
 local serialized = redis.call('GET', KEYS[1])
 if not serialized then return {'missing'} end
 local ok, challenge = pcall(cjson.decode, serialized)
@@ -406,12 +426,10 @@ if not ok or challenge.reservationToken ~= ARGV[2] then return {'reservation_mis
 local jtis = redis.call('SMEMBERS', KEYS[2])
 redis.call('DEL', KEYS[2])
 for _, jti in ipairs(jtis) do redis.call('DEL', ARGV[3] .. jti) end
-local generation = redis.call('GET', KEYS[3])
-if not generation then generation = '0' end
-redis.call('SET', KEYS[3], tostring(tonumber(generation) + 1))
+redis.call('SET', KEYS[3], ARGV[6])
 if tonumber(ARGV[4]) > 0 then redis.call('SET', KEYS[4], '1', 'EX', ARGV[4]) end
 redis.call('DEL', KEYS[1])
-redis.call('SET', KEYS[5], ARGV[1], 'EX', ARGV[5])
+redis.call('SET', KEYS[5], ARGV[1] .. ':' .. ARGV[7], 'EX', ARGV[5])
 return {'ok'}
 `;
 

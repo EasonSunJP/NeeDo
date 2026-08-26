@@ -56,6 +56,7 @@ export interface AuthUserRecord {
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
+  sessionGeneration: number;
   accessState: AuthAccountAccessState;
   lastLoginAt: Date | null;
   deletedAt: Date | null;
@@ -188,6 +189,7 @@ export interface CompletePasswordSetupInput {
 export interface CompleteGoogleUnlinkInput {
   challengeId: string;
   userId: number;
+  accessTokenJti: string;
   context: { ip: string; userAgent?: string | null };
 }
 
@@ -228,6 +230,11 @@ export interface GoogleAuthRepositoryPort {
   ) => Promise<AuthUserRecord>;
   completePasswordSetup: (input: CompletePasswordSetupInput) => Promise<AuthUserRecord>;
   completeGoogleUnlink: (input: CompleteGoogleUnlinkInput) => Promise<AuthUserRecord>;
+  hasGoogleUnlinkCompletion: (input: {
+    challengeId: string;
+    userId: number;
+    accessTokenJti: string;
+  }) => Promise<boolean>;
   updatePasswordHash: (userId: number, passwordHash: string) => Promise<boolean>;
   softUnlinkGoogleBinding: (userId: number) => Promise<boolean>;
   updateGoogleBindingLastUsedAt: (providerSubject: string, lastUsedAt: Date) => Promise<boolean>;
@@ -697,14 +704,19 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         if (!account.passwordHash) throw new GoogleLoginStateError("conflict");
         const unlinked = await transaction.externalAuthAccount.updateMany({
           where: { userId: account.id, provider: "google", deletedAt: null },
-          data: { deletedAt: new Date(), activeUserProviderKey: null }
+          data: { deletedAt: new Date() }
         });
         if (unlinked.count !== 1) throw new GoogleLoginStateError("missing");
+        await transaction.user.update({
+          where: { id: account.id },
+          data: { sessionGeneration: { increment: 1 } }
+        });
         await this.createAccountSecurityAuditInTransaction(transaction, {
           action: "auth.google.unlink",
           challengeId: input.challengeId,
           userId: account.id,
-          context: input.context
+          context: input.context,
+          accessTokenJti: input.accessTokenJti
         });
       }
       const fresh = await transaction.user.findUniqueOrThrow({
@@ -713,6 +725,33 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       });
       return toAuthUserRecord(fresh);
     });
+  }
+
+  public async hasGoogleUnlinkCompletion(input: {
+    challengeId: string;
+    userId: number;
+    accessTokenJti: string;
+  }): Promise<boolean> {
+    return Boolean(
+      await this.client.auditLog
+        .findFirst({
+          where: {
+            action: "auth.google.unlink",
+            targetType: "User",
+            targetId: input.userId,
+            metadata: {
+              path: "$.challengeId",
+              equals: input.challengeId
+            }
+          },
+          select: { metadata: true }
+        })
+        .then((audit) => {
+          if (!audit?.metadata || typeof audit.metadata !== "object") return null;
+          const metadata = audit.metadata as Record<string, unknown>;
+          return metadata.accessTokenJti === input.accessTokenJti ? audit : null;
+        })
+    );
   }
 
   public async updatePasswordHash(userId: number, passwordHash: string): Promise<boolean> {
@@ -726,7 +765,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   public async softUnlinkGoogleBinding(userId: number): Promise<boolean> {
     const result = await this.client.externalAuthAccount.updateMany({
       where: { userId, provider: "google", deletedAt: null, user: { deletedAt: null } },
-      data: { deletedAt: new Date(), activeUserProviderKey: null }
+      data: { deletedAt: new Date() }
     });
     return result.count === 1;
   }
@@ -902,7 +941,6 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         data: {
           userId: user.id,
           provider: "google",
-          activeUserProviderKey: `google:${user.id}`,
           providerSubject,
           providerEmail,
           providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt
@@ -916,7 +954,6 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       const binding = await transaction.externalAuthAccount.update({
         where: { id: existing.id },
         data: {
-          activeUserProviderKey: `google:${user.id}`,
           providerEmail,
           providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt
         }
@@ -928,7 +965,6 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       where: { id: existing.id, deletedAt: existing.deletedAt },
       data: {
         userId: user.id,
-        activeUserProviderKey: `google:${user.id}`,
         providerEmail,
         providerEmailVerifiedAt: input.googleIdentity.emailVerifiedAt,
         deletedAt: null
@@ -995,6 +1031,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       challengeId: string;
       userId: number;
       context: { ip: string; userAgent?: string | null };
+      accessTokenJti?: string;
     }
   ): Promise<void> {
     if (
@@ -1015,7 +1052,10 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
         targetId: input.userId,
         ip: input.context.ip,
         userAgent: input.context.userAgent ?? null,
-        metadata: { challengeId: input.challengeId }
+        metadata: {
+          challengeId: input.challengeId,
+          ...(input.accessTokenJti ? { accessTokenJti: input.accessTokenJti } : {})
+        }
       }
     });
   }

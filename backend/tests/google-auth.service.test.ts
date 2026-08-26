@@ -27,6 +27,7 @@ const createUser = (overrides: Partial<AuthUserRecord> = {}): AuthUserRecord => 
   username: "n0000000001",
   avatarUrl: null,
   isActive: true,
+  sessionGeneration: 0,
   accessState: { disabled: false, restricted: false },
   lastLoginAt: null,
   deletedAt: null,

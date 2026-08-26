@@ -68,6 +68,7 @@ export interface AuthenticatedAccessContext {
   permissions: string[];
   isReadOnlyMerchantPreview?: boolean;
   merchantPreviewShopId?: number;
+  isGoogleUnlinkRecovery?: boolean;
 }
 
 export interface AuthIdentityPayload {
@@ -394,6 +395,16 @@ export class AuthService {
     auth: AuthenticatedAccessContext,
     context: AuthRequestContext
   ): Promise<GoogleUnlinkVerificationPayload> {
+    if (
+      this.sessionStore.getGoogleUnlinkCompletion &&
+      (await this.sessionStore.getGoogleUnlinkCompletion({
+        userId: auth.userId,
+        challengeId,
+        accessTokenJti: auth.accessTokenJti
+      }))
+    ) {
+      return { signedOut: true };
+    }
     const reserved = await this.verificationChallengeStore.reserveEmailChallenge({
       challengeId,
       otp,
@@ -404,9 +415,10 @@ export class AuthService {
     try {
       const user = await this.getActiveAccountSecurityUser(auth);
       if (reserved.email !== user.email) this.throwVerificationChallengeError("missing");
-      await this.accountSecurityRepository().completeGoogleUnlink({
+      const completed = await this.accountSecurityRepository().completeGoogleUnlink({
         challengeId,
         userId: user.id,
+        accessTokenJti: auth.accessTokenJti,
         context: { ip: context.ip, userAgent: context.userAgent }
       });
       if (!this.sessionStore.completeGoogleUnlink) throw this.redisUnavailableError();
@@ -419,7 +431,8 @@ export class AuthService {
           accessTokenTtlSeconds: Math.max(
             0,
             auth.accessTokenExpiresAt - Math.floor(Date.now() / 1000)
-          )
+          ),
+          sessionGeneration: completed.sessionGeneration
         }))
       )
         throw this.redisUnavailableError();
@@ -876,13 +889,9 @@ export class AuthService {
     const payload = this.tokenService.verifyRefreshToken(refreshToken);
     const userId = this.getUserIdFromToken(payload);
 
-    if ((await this.getCurrentSessionGeneration(userId)) !== payload.sessionGeneration) {
-      throw new AppError({
-        code: ERROR_CODES.TOKEN_INVALID,
-        message: "error.auth.token_invalid",
-        statusCode: 401
-      });
-    }
+    const user = await this.repository.findUserById(userId);
+    this.assertActiveUser(user);
+    if (user.sessionGeneration !== payload.sessionGeneration) throw this.tokenInvalidError();
 
     if (!(await this.sessionStore.hasRefreshToken(userId, payload.jti))) {
       throw new AppError({
@@ -891,9 +900,6 @@ export class AuthService {
         statusCode: 401
       });
     }
-
-    const user = await this.repository.findUserById(userId);
-    this.assertActiveUser(user);
 
     const accessToken = this.tokenService.issueAccessToken({
       id: user.id,
@@ -905,6 +911,41 @@ export class AuthService {
     return {
       accessToken: accessToken.token,
       expiresIn: accessToken.expiresIn
+    };
+  }
+
+  /**
+   * This deliberately narrow capability exists only to finish an unlink whose
+   * database transaction already committed but whose Redis reply was lost.
+   * It never grants roles or permissions and callers must use it only for the
+   * matching unlink verification operation.
+   */
+  public async authenticateGoogleUnlinkRecovery(
+    token: string,
+    challengeId: string
+  ): Promise<AuthenticatedAccessContext> {
+    const payload = this.tokenService.verifyAccessToken(token);
+    const userId = this.getUserIdFromToken(payload);
+    const user = await this.repository.findUserById(userId);
+    if (!user) throw this.tokenInvalidError();
+    if (
+      !(await this.accountSecurityRepository().hasGoogleUnlinkCompletion({
+        userId,
+        challengeId,
+        accessTokenJti: payload.jti
+      }))
+    ) {
+      throw this.tokenInvalidError();
+    }
+    return {
+      userId,
+      email: payload.email,
+      accessTokenJti: payload.jti,
+      accessTokenExpiresAt: payload.exp,
+      sessionGeneration: payload.sessionGeneration,
+      roles: [],
+      permissions: [],
+      isGoogleUnlinkRecovery: true
     };
   }
 
@@ -925,22 +966,12 @@ export class AuthService {
       });
     }
 
-    if (
-      (await this.getCurrentSessionGeneration(refreshUserId)) !== refreshPayload.sessionGeneration
-    ) {
-      throw this.tokenInvalidError();
-    }
-
-    if (!(await this.sessionStore.hasRefreshToken(refreshUserId, refreshPayload.jti))) {
-      throw new AppError({
-        code: ERROR_CODES.TOKEN_INVALID,
-        message: "error.auth.token_invalid",
-        statusCode: 401
-      });
-    }
-
     const user = await this.repository.findUserById(refreshUserId);
     this.assertActiveUser(user);
+    if (user.sessionGeneration !== refreshPayload.sessionGeneration) throw this.tokenInvalidError();
+    if (!(await this.sessionStore.hasRefreshToken(refreshUserId, refreshPayload.jti))) {
+      throw this.tokenInvalidError();
+    }
     const me = this.buildMePayloadForIdentity(user, identityId);
     const subject: AuthTokenSubject = {
       id: user.id,
@@ -1043,15 +1074,9 @@ export class AuthService {
     }
 
     const userId = this.getUserIdFromToken(payload);
-    if ((await this.getCurrentSessionGeneration(userId)) !== payload.sessionGeneration) {
-      throw new AppError({
-        code: ERROR_CODES.TOKEN_INVALID,
-        message: "error.auth.token_invalid",
-        statusCode: 401
-      });
-    }
     const user = await this.repository.findUserById(userId);
     this.assertActiveUser(user);
+    if (user.sessionGeneration !== payload.sessionGeneration) throw this.tokenInvalidError();
     const me = this.buildMePayload(user, payload.currentIdentityId);
 
     if (requiredPermission && !me.permissions.includes(requiredPermission)) {
@@ -1093,7 +1118,8 @@ export class AuthService {
       !repository.getGoogleBindingStatus ||
       !repository.completeAuthenticatedGoogleLink ||
       !repository.completePasswordSetup ||
-      !repository.completeGoogleUnlink
+      !repository.completeGoogleUnlink ||
+      !repository.hasGoogleUnlinkCompletion
     ) {
       throw new AppError({
         code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
@@ -1110,18 +1136,6 @@ export class AuthService {
     const user = await this.repository.findUserById(auth.userId);
     this.assertActiveUser(user);
     return user;
-  }
-
-  private async getCurrentSessionGeneration(userId: number): Promise<number> {
-    if (this.sessionStore.getSessionGeneration) {
-      return this.sessionStore.getSessionGeneration(userId);
-    }
-    if (this.allowLegacyAuthAdaptersForTest) return 0;
-    throw new AppError({
-      code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
-      message: "error.dependency.redis_unavailable",
-      statusCode: 503
-    });
   }
 
   private tokenInvalidError(): AppError {
@@ -1389,7 +1403,7 @@ export class AuthService {
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const loggedInAt = new Date();
     const me = this.buildMePayload(user, currentIdentityId);
-    const sessionGeneration = await this.getCurrentSessionGeneration(user.id);
+    const sessionGeneration = user.sessionGeneration;
     const subject: AuthTokenSubject = {
       id: user.id,
       email: user.email,
@@ -1450,7 +1464,7 @@ export class AuthService {
     context: AuthRequestContext
   ): Promise<{ payload: TokenPairPayload; refreshJti: string; userId: number }> {
     const me = this.buildMePayload(user);
-    const sessionGeneration = await this.getCurrentSessionGeneration(user.id);
+    const sessionGeneration = user.sessionGeneration;
     const subject: AuthTokenSubject = {
       id: user.id,
       email: user.email,
