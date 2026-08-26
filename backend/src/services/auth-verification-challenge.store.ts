@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { RedisClient } from "../config/redis";
 import { getRedisClient } from "../config/redis";
 import { env } from "../config/env";
@@ -15,14 +15,26 @@ export type VerificationPurpose =
   | "google_unlink"
   | "password_setup";
 
-export type VerificationChallengeMetadata = Record<string, unknown>;
+export interface PasswordChallengeMetadata {
+  passwordHash: string;
+}
+
+export interface GoogleChallengeMetadata {
+  providerSubject: string;
+  providerEmail: string;
+}
+
+export type VerificationChallengeMetadata =
+  | PasswordChallengeMetadata
+  | GoogleChallengeMetadata
+  | Record<string, never>;
 
 export interface CreateVerificationChallengeInput {
   email: string;
   otp: string;
   purpose: VerificationPurpose;
   userId?: number;
-  metadata?: VerificationChallengeMetadata;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ConsumeVerificationChallengeInput {
@@ -93,29 +105,33 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
   public async createEmailChallenge(
     input: CreateVerificationChallengeInput
   ): Promise<CreatedChallenge> {
-    this.assertSafeMetadata(input.metadata);
-    const client = await this.connect();
-    const challengeId = this.createRandomValue();
-    const cooldownSet = await this.withRedisUnavailableGuard(() =>
-      client.set(this.emailCooldownKey(input.email, input.purpose), "1", {
-        EX: EMAIL_CHALLENGE_COOLDOWN_SECONDS,
-        NX: true
-      })
+    const metadata = this.normalizeMetadata(input.purpose, input.metadata);
+    const challengeId = randomUUID();
+    const result = await this.eval(
+      EMAIL_CREATE_LUA,
+      [this.emailCooldownKey(input.email, input.purpose), this.emailChallengeKey(challengeId)],
+      [
+        String(EMAIL_CHALLENGE_COOLDOWN_SECONDS),
+        JSON.stringify({
+          purpose: input.purpose,
+          userId: input.userId ?? null,
+          metadata,
+          digest: this.createDigest(challengeId, input.purpose, input.otp),
+          attempts: 0
+        }),
+        String(EMAIL_CHALLENGE_TTL_SECONDS)
+      ]
     );
-    if (cooldownSet === null) {
+    if (result[0] === "cooldown") {
       throw new VerificationChallengeCooldownError();
     }
-
-    const value = JSON.stringify({
-      purpose: input.purpose,
-      userId: input.userId ?? null,
-      metadata: input.metadata ?? {},
-      digest: this.createDigest(challengeId, input.purpose, input.otp),
-      attempts: 0
-    });
-    await this.withRedisUnavailableGuard(() =>
-      client.set(this.emailChallengeKey(challengeId), value, { EX: EMAIL_CHALLENGE_TTL_SECONDS })
-    );
+    if (result[0] !== "ok") {
+      throw new AppError({
+        code: ERROR_CODES.DEPENDENCY_UNAVAILABLE,
+        message: "error.dependency.redis_unavailable",
+        statusCode: 503
+      });
+    }
 
     return {
       challengeId,
@@ -240,32 +256,56 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
     }
   }
 
-  private assertSafeMetadata(metadata: VerificationChallengeMetadata | undefined): void {
-    if (!metadata) {
-      return;
+  private normalizeMetadata(
+    purpose: VerificationPurpose,
+    metadata: Record<string, unknown> | undefined
+  ): VerificationChallengeMetadata {
+    const candidate = metadata ?? {};
+    const fields = Object.entries(candidate);
+    const fieldNames = fields.map(([key]) => key).sort();
+    if (purpose === "email_registration" || purpose === "password_setup") {
+      if (fieldNames.length === 0) return {};
+      if (fieldNames.length !== 1 || fieldNames[0] !== "passwordHash") {
+        throw new Error("Verification challenge metadata is not allowed for this purpose");
+      }
+      const passwordHash = candidate.passwordHash;
+      if (typeof passwordHash !== "string" || !this.isPreparedBcryptHash(passwordHash)) {
+        throw new Error(
+          "Verification challenge passwordHash must be a bcrypt hash with cost >= 12"
+        );
+      }
+      return { passwordHash };
     }
-    if (this.hasUnsafeSecretMetadata(metadata)) {
-      throw new Error(
-        "Verification challenge metadata must not contain raw password or OTP values"
-      );
+    if (purpose === "google_registration_or_link" || purpose === "google_authenticated_link") {
+      if (
+        fieldNames.length !== 2 ||
+        fieldNames[0] !== "providerEmail" ||
+        fieldNames[1] !== "providerSubject" ||
+        typeof candidate.providerSubject !== "string" ||
+        typeof candidate.providerEmail !== "string"
+      ) {
+        throw new Error("Verification challenge metadata is not allowed for this purpose");
+      }
+      const providerSubject = candidate.providerSubject.trim();
+      const providerEmail = candidate.providerEmail.trim().toLowerCase();
+      if (!providerSubject || providerSubject.length > 255 || !this.isEmail(providerEmail)) {
+        throw new Error("Verification challenge metadata is not allowed for this purpose");
+      }
+      return { providerSubject, providerEmail };
     }
+    if (fieldNames.length > 0) {
+      throw new Error("Verification challenge metadata is not allowed for this purpose");
+    }
+    return {};
   }
 
-  private hasUnsafeSecretMetadata(value: unknown): boolean {
-    if (Array.isArray(value)) {
-      return value.some((item) => this.hasUnsafeSecretMetadata(item));
-    }
-    if (!value || typeof value !== "object") {
-      return false;
-    }
-    return Object.entries(value).some(([key, item]) => {
-      const normalizedKey = key.toLowerCase();
-      const namesSecret = normalizedKey.includes("password") || normalizedKey.includes("otp");
-      if (namesSecret && !normalizedKey.endsWith("hash")) {
-        return true;
-      }
-      return this.hasUnsafeSecretMetadata(item);
-    });
+  private isPreparedBcryptHash(value: string): boolean {
+    const match = /^\$2[aby]\$(\d{2})\$[./A-Za-z0-9]{53}$/.exec(value);
+    return match !== null && Number(match[1]) >= 12;
+  }
+
+  private isEmail(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   }
 
   private maskEmail(email: string): string {
@@ -317,6 +357,17 @@ export class RedisVerificationChallengeStore implements VerificationChallengeSto
     });
   }
 }
+
+const EMAIL_CREATE_LUA = `
+-- auth-verification-email-create
+if redis.call('EXISTS', KEYS[1]) == 1 then return {'cooldown'} end
+if not redis.call('SET', KEYS[2], ARGV[2], 'NX', 'EX', ARGV[3]) then return {'collision'} end
+if not redis.call('SET', KEYS[1], '1', 'NX', 'EX', ARGV[1]) then
+  redis.call('DEL', KEYS[2])
+  return {'cooldown'}
+end
+return {'ok'}
+`;
 
 const EMAIL_CONSUME_LUA = `
 local serialized = redis.call('GET', KEYS[1])

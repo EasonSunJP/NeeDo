@@ -109,15 +109,11 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   }
 
   public async storeRefreshToken(userId: number, jti: string, ttlSeconds: number): Promise<void> {
-    const client = await this.connect();
-    await this.withRedisUnavailableGuard(async () => {
-      await client.set(this.refreshKey(userId, jti), "1", { EX: ttlSeconds });
-      const userIndexKey = this.refreshUserKey(userId);
-      await client.sAdd(userIndexKey, jti);
-      if ((await client.ttl(userIndexKey)) < ttlSeconds) {
-        await client.expire(userIndexKey, ttlSeconds);
-      }
-    });
+    await this.eval(
+      REFRESH_STORE_LUA,
+      [this.refreshKey(userId, jti), this.refreshUserKey(userId)],
+      [jti, String(ttlSeconds)]
+    );
   }
 
   public async hasRefreshToken(userId: number, jti: string): Promise<boolean> {
@@ -125,20 +121,15 @@ export class RedisAuthSessionStore implements AuthSessionStore {
   }
 
   public async revokeRefreshToken(userId: number, jti: string): Promise<void> {
-    const client = await this.connect();
-    await this.withRedisUnavailableGuard(async () => {
-      await client.del(this.refreshKey(userId, jti));
-      await client.sRem(this.refreshUserKey(userId), jti);
-    });
+    await this.eval(
+      REFRESH_REVOKE_ONE_LUA,
+      [this.refreshKey(userId, jti), this.refreshUserKey(userId)],
+      [jti]
+    );
   }
 
   public async revokeAllRefreshTokens(userId: number): Promise<void> {
-    const client = await this.connect();
-    await this.withRedisUnavailableGuard(async () => {
-      const indexKey = this.refreshUserKey(userId);
-      const jtis = await client.sMembers(indexKey);
-      await client.del([indexKey, ...jtis.map((jti) => this.refreshKey(userId, jti))]);
-    });
+    await this.eval(REFRESH_REVOKE_ALL_LUA, [this.refreshUserKey(userId)], [String(userId)]);
   }
 
   public async blacklistAccessToken(jti: string, ttlSeconds: number): Promise<void> {
@@ -169,6 +160,11 @@ export class RedisAuthSessionStore implements AuthSessionStore {
         EX: ttlSeconds
       })
     );
+  }
+
+  private async eval(script: string, keys: string[], args: string[]): Promise<void> {
+    const client = await this.connect();
+    await this.withRedisUnavailableGuard(() => client.eval(script, { keys, arguments: args }));
   }
 
   private async getValue(key: string): Promise<string | null> {
@@ -244,3 +240,28 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     return `token:blacklist:${jti}`;
   }
 }
+
+const REFRESH_STORE_LUA = `
+-- auth-refresh-store
+redis.call('SET', KEYS[1], '1', 'EX', ARGV[2])
+redis.call('SADD', KEYS[2], ARGV[1])
+local indexTtl = redis.call('TTL', KEYS[2])
+if indexTtl < tonumber(ARGV[2]) then redis.call('EXPIRE', KEYS[2], ARGV[2]) end
+return {'ok'}
+`;
+
+const REFRESH_REVOKE_ONE_LUA = `
+-- auth-refresh-revoke-one
+redis.call('DEL', KEYS[1])
+redis.call('SREM', KEYS[2], ARGV[1])
+if redis.call('SCARD', KEYS[2]) == 0 then redis.call('DEL', KEYS[2]) end
+return {'ok'}
+`;
+
+const REFRESH_REVOKE_ALL_LUA = `
+-- auth-refresh-revoke-all
+local jtis = redis.call('SMEMBERS', KEYS[1])
+redis.call('DEL', KEYS[1])
+for _, jti in ipairs(jtis) do redis.call('DEL', 'refresh:' .. ARGV[1] .. ':' .. jti) end
+return {'ok'}
+`;
