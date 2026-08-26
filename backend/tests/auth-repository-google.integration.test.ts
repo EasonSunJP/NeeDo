@@ -472,4 +472,63 @@ describeIntegration("AuthRepository verified account and Google binding integrat
       userId: finalOwnerId
     });
   });
+
+  it("rolls every Google login fact back on LoginLog failure and returns state outcomes", async () => {
+    const verifiedAt = new Date("2026-08-27T03:04:05.000Z");
+    const account = await repository.createVerifiedBaselineCustomer({
+      email: `${marker}-complete-login@needo.test`,
+      emailVerifiedAt: verifiedAt,
+      passwordHash: null,
+      context: { ip: "127.0.0.1" },
+      googleIdentity: {
+        subject: `${marker}-complete-login-subject`,
+        email: `${marker}-complete-login@needo.test`,
+        emailVerifiedAt: verifiedAt
+      }
+    });
+    createdUserIds.push(account.id);
+    const identity = account.identities.find((item) => item.isDefault)!;
+    const binding = await prisma.externalAuthAccount.findFirstOrThrow({
+      where: { providerSubject: `${marker}-complete-login-subject` }
+    });
+    const beforeUser = await prisma.user.findUniqueOrThrow({ where: { id: account.id } });
+    const beforeLogs = await prisma.loginLog.count({
+      where: { userId: account.id, status: "success" }
+    });
+    const input = {
+      providerSubject: binding.providerSubject,
+      expectedUserId: account.id,
+      expectedIdentityId: identity.id,
+      loggedInAt: new Date("2026-08-27T04:05:06.000Z"),
+      context: { ip: "x".repeat(51) }
+    };
+    await expect(repository.completeSuccessfulGoogleLogin(input)).rejects.toMatchObject({
+      code: "P2000"
+    });
+    const afterFailureBinding = await prisma.externalAuthAccount.findUniqueOrThrow({
+      where: { id: binding.id }
+    });
+    const afterFailureUser = await prisma.user.findUniqueOrThrow({ where: { id: account.id } });
+    expect(afterFailureBinding.lastUsedAt).toEqual(binding.lastUsedAt);
+    expect(afterFailureUser.lastLoginAt).toEqual(beforeUser.lastLoginAt);
+    expect(await prisma.loginLog.count({ where: { userId: account.id, status: "success" } })).toBe(
+      beforeLogs
+    );
+
+    await prisma.userIdentity.update({ where: { id: identity.id }, data: { isActive: false } });
+    await expect(
+      repository.completeSuccessfulGoogleLogin({ ...input, context: { ip: "127.0.0.1" } })
+    ).rejects.toMatchObject({ reason: "restricted" });
+    await prisma.userIdentity.update({ where: { id: identity.id }, data: { isActive: true } });
+    await expect(
+      repository.completeSuccessfulGoogleLogin({
+        ...input,
+        expectedUserId: account.id + 999,
+        context: { ip: "127.0.0.1" }
+      })
+    ).rejects.toMatchObject({ reason: "conflict" });
+    expect(await prisma.loginLog.count({ where: { userId: account.id, status: "success" } })).toBe(
+      beforeLogs
+    );
+  });
 });
