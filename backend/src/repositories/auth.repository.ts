@@ -146,6 +146,12 @@ export interface CreateOrRestoreGoogleBindingInput {
   googleIdentity: GoogleAuthPersistenceInput;
 }
 
+export interface CompleteGoogleFirstUseLinkInput {
+  challengeId: string;
+  googleIdentity: GoogleAuthPersistenceInput;
+  context: { ip: string; userAgent?: string | null };
+}
+
 export interface GoogleBindingStatus {
   linked: boolean;
   bindingId: number | null;
@@ -186,6 +192,7 @@ export interface GoogleAuthRepositoryPort {
   updatePasswordHash: (userId: number, passwordHash: string) => Promise<boolean>;
   softUnlinkGoogleBinding: (userId: number) => Promise<boolean>;
   updateGoogleBindingLastUsedAt: (providerSubject: string, lastUsedAt: Date) => Promise<boolean>;
+  completeGoogleFirstUseLink: (input: CompleteGoogleFirstUseLinkInput) => Promise<AuthUserRecord>;
 }
 
 const authUserInclude = {
@@ -413,6 +420,60 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
     return this.createOrRestoreGoogleBindingWithRetry(input);
   }
 
+  public async completeGoogleFirstUseLink(
+    input: CompleteGoogleFirstUseLinkInput
+  ): Promise<AuthUserRecord> {
+    const email = input.googleIdentity.email.trim().toLowerCase();
+    return this.client.$transaction(async (transaction) => {
+      const user = await transaction.user.findFirst({
+        where: { email, deletedAt: null },
+        include: authUserInclude
+      });
+      if (!user) throw new ExternalAuthAccountConflictError();
+      const subject = input.googleIdentity.subject.trim();
+      const existing = await transaction.externalAuthAccount.findFirst({
+        where: { provider: "google", providerSubject: subject }
+      });
+      if (existing && !existing.deletedAt && existing.userId !== user.id) {
+        throw new ExternalAuthAccountConflictError();
+      }
+      if (!existing || existing.deletedAt) {
+        await this.createOrRestoreGoogleBindingInTransaction(transaction, {
+          userId: user.id,
+          googleIdentity: input.googleIdentity
+        });
+      }
+      const audit = await transaction.auditLog.findFirst({
+        where: {
+          action: "auth.google.link",
+          targetType: "User",
+          targetId: user.id,
+          deletedAt: null,
+          metadata: { path: "$.challengeId", equals: input.challengeId }
+        },
+        select: { id: true }
+      });
+      if (!audit) {
+        await transaction.auditLog.create({
+          data: {
+            actorId: user.id,
+            action: "auth.google.link",
+            targetType: "User",
+            targetId: user.id,
+            ip: input.context.ip,
+            userAgent: input.context.userAgent ?? null,
+            metadata: { challengeId: input.challengeId }
+          }
+        });
+      }
+      const refreshed = await transaction.user.findUniqueOrThrow({
+        where: { id: user.id },
+        include: authUserInclude
+      });
+      return toAuthUserRecord(refreshed);
+    });
+  }
+
   public async getGoogleBindingStatus(userId: number): Promise<GoogleBindingStatus> {
     const binding = await this.client.externalAuthAccount.findFirst({
       where: {
@@ -460,87 +521,89 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   }
 
   public registerUser(input: RegisterUserData): Promise<RegisteredAccountRecord> {
-    return this.needoIdAllocator.withNewId((needoId) => this.client.$transaction(async (transaction) => {
-      const role = await transaction.role.findFirst({
-        where: {
-          code: input.accountType,
-          deletedAt: null
-        }
-      });
+    return this.needoIdAllocator.withNewId((needoId) =>
+      this.client.$transaction(async (transaction) => {
+        const role = await transaction.role.findFirst({
+          where: {
+            code: input.accountType,
+            deletedAt: null
+          }
+        });
 
-      if (!role) {
-        throw new Error(`Registration role is missing: ${input.accountType}`);
-      }
-
-      const isCustomer = input.accountType === "customer";
-      const user = await transaction.user.create({
-        data: {
-          needoId,
-          email: input.email,
-          passwordHash: input.passwordHash,
-          username: needoId,
-          isActive: isCustomer
+        if (!role) {
+          throw new Error(`Registration role is missing: ${input.accountType}`);
         }
-      });
-      const profile = isCustomer
-        ? await transaction.customerProfile.create({
+
+        const isCustomer = input.accountType === "customer";
+        const user = await transaction.user.create({
           data: {
-              userId: user.id,
-              displayName: needoId
-            }
-          })
-        : await transaction.technicianProfile.create({
-            data: {
-              userId: user.id,
-              displayName: needoId,
-              city: input.city,
-              status: "pending_review"
-            }
-          });
-      const scopeType = isCustomer ? "customer_profile" : "technician_profile";
+            needoId,
+            email: input.email,
+            passwordHash: input.passwordHash,
+            username: needoId,
+            isActive: isCustomer
+          }
+        });
+        const profile = isCustomer
+          ? await transaction.customerProfile.create({
+              data: {
+                userId: user.id,
+                displayName: needoId
+              }
+            })
+          : await transaction.technicianProfile.create({
+              data: {
+                userId: user.id,
+                displayName: needoId,
+                city: input.city,
+                status: "pending_review"
+              }
+            });
+        const scopeType = isCustomer ? "customer_profile" : "technician_profile";
 
-      await transaction.userIdentity.create({
-        data: {
-          userId: user.id,
-          type: input.accountType,
+        await transaction.userIdentity.create({
+          data: {
+            userId: user.id,
+            type: input.accountType,
             scopeType,
             scopeId: profile.id,
             displayName: needoId,
-          isDefault: true,
-          isActive: isCustomer
-        }
-      });
-      await transaction.userRole.create({
-        data: {
-          userId: user.id,
-          roleId: role.id,
-          scopeType,
-          scopeId: profile.id
-        }
-      });
-      await transaction.auditLog.create({
-        data: {
-          action: "auth.register",
-          targetType: "User",
-          targetId: user.id,
-          ip: input.ip,
-          userAgent: input.userAgent ?? null,
-          metadata: {
-            accountType: input.accountType,
-            approvalStatus: isCustomer ? "approved" : "pending_review"
+            isDefault: true,
+            isActive: isCustomer
           }
-        }
-      });
+        });
+        await transaction.userRole.create({
+          data: {
+            userId: user.id,
+            roleId: role.id,
+            scopeType,
+            scopeId: profile.id
+          }
+        });
+        await transaction.auditLog.create({
+          data: {
+            action: "auth.register",
+            targetType: "User",
+            targetId: user.id,
+            ip: input.ip,
+            userAgent: input.userAgent ?? null,
+            metadata: {
+              accountType: input.accountType,
+              approvalStatus: isCustomer ? "approved" : "pending_review"
+            }
+          }
+        });
 
-      return {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        accountType: input.accountType,
-        approvalStatus: isCustomer ? "approved" : "pending_review",
-        isActive: user.isActive
-      };
-    }));
+        return {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          accountType: input.accountType,
+          approvalStatus: isCustomer ? "approved" : "pending_review",
+          isActive: user.isActive
+        };
+      })
+    );
   }
 
   public async updateLastLoginAt(id: number, loggedInAt: Date): Promise<void> {
@@ -698,8 +761,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       .some((value) => {
         const target = String(value ?? "");
         return (
-          target.includes("external_auth_provider_subject") ||
-          target.includes("provider_subject")
+          target.includes("external_auth_provider_subject") || target.includes("provider_subject")
         );
       });
   }

@@ -242,6 +242,26 @@ const createFixture = () => {
       bindings.set(binding.providerSubject, binding);
       return binding;
     }),
+    completeGoogleFirstUseLink: jest.fn(async (input) => {
+      const user = users.find((candidate) => candidate.email === input.googleIdentity.email);
+      if (!user) throw new Error("missing Google link target");
+      const existing = bindings.get(input.googleIdentity.subject);
+      if (existing && existing.userId !== user.id) {
+        throw new Error("Google identity is already linked to a different NeeDo account");
+      }
+      if (!existing) {
+        await repository.createOrRestoreGoogleBinding({
+          userId: user.id,
+          googleIdentity: input.googleIdentity
+        });
+      }
+      auditLogs.push({
+        action: "auth.google.link",
+        targetId: user.id,
+        metadata: { challengeId: input.challengeId }
+      });
+      return user;
+    }),
     updateGoogleBindingLastUsedAt: jest.fn(async (subject: string, lastUsedAt: Date) => {
       const binding = bindings.get(subject);
       if (!binding) return false;

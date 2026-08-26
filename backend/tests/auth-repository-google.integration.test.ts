@@ -316,6 +316,57 @@ describeIntegration("AuthRepository verified account and Google binding integrat
     });
   });
 
+  it("atomically links an existing email target and writes one challenge-id audit", async () => {
+    const verifiedAt = new Date("2026-08-27T01:02:03.000Z");
+    const email = `${marker}-atomic-link@needo.test`;
+    const subject = `${marker}-atomic-link-subject`;
+    const challengeId = randomUUID();
+    const account = await repository.createVerifiedBaselineCustomer({
+      email,
+      emailVerifiedAt: verifiedAt,
+      passwordHash: "prepared-password-hash",
+      context: { ip: "127.0.0.1" }
+    });
+    createdUserIds.push(account.id);
+    const input = {
+      challengeId,
+      googleIdentity: { subject, email, emailVerifiedAt: verifiedAt },
+      context: { ip: "127.0.0.1" }
+    };
+
+    await expect(
+      repository.completeGoogleFirstUseLink({ ...input, context: { ip: "x".repeat(51) } })
+    ).rejects.toBeDefined();
+    await expect(repository.findGoogleBindingBySubject(subject)).resolves.toBeNull();
+    await expect(
+      prisma.auditLog.count({
+        where: {
+          action: "auth.google.link",
+          metadata: { path: "$.challengeId", equals: challengeId }
+        }
+      })
+    ).resolves.toBe(0);
+
+    await expect(repository.completeGoogleFirstUseLink(input)).resolves.toMatchObject({
+      id: account.id
+    });
+    await expect(repository.completeGoogleFirstUseLink(input)).resolves.toMatchObject({
+      id: account.id
+    });
+    await expect(repository.findGoogleBindingBySubject(subject)).resolves.toMatchObject({
+      userId: account.id
+    });
+    await expect(
+      prisma.auditLog.count({
+        where: {
+          action: "auth.google.link",
+          targetId: account.id,
+          metadata: { path: "$.challengeId", equals: challengeId }
+        }
+      })
+    ).resolves.toBe(1);
+  });
+
   it("rolls every baseline-account write back when the aggregate audit write fails", async () => {
     const failedEmail = `${marker}-rollback@needo.test`;
 

@@ -209,9 +209,14 @@ export class AuthService {
           statusCode: 503
         });
       }
+      const refreshedBinding = await googleRepository.findGoogleBindingBySubject(
+        googleIdentity.subject
+      );
+      if (!refreshedBinding) throw this.invalidGoogleCredentialError();
+      this.assertGoogleBindingUser(refreshedBinding);
       return {
         status: "authenticated",
-        ...(await this.completeSuccessfulLogin(binding.user, context))
+        ...(await this.completeSuccessfulLogin(refreshedBinding.user, context))
       };
     }
 
@@ -858,25 +863,23 @@ export class AuthService {
     if (currentBinding) {
       if (!emailUser || currentBinding.userId !== emailUser.id) throw this.googleConflictError();
       this.assertGoogleBindingUser(currentBinding);
-      return { user: currentBinding.user, created: false };
+      const linked = await googleRepository.completeGoogleFirstUseLink({
+        challengeId,
+        googleIdentity,
+        context: { ip: context.ip, userAgent: context.userAgent }
+      });
+      this.assertActiveUser(linked);
+      return { user: linked, created: false };
     }
 
     if (emailUser) {
-      this.assertActiveUser(emailUser);
-      await googleRepository.createOrRestoreGoogleBinding({
-        userId: emailUser.id,
-        googleIdentity
+      const linked = await googleRepository.completeGoogleFirstUseLink({
+        challengeId,
+        googleIdentity,
+        context: { ip: context.ip, userAgent: context.userAgent }
       });
-      await this.repository.createAuditLog({
-        actorId: emailUser.id,
-        action: "auth.google.link",
-        targetType: "User",
-        targetId: emailUser.id,
-        ip: context.ip,
-        userAgent: context.userAgent,
-        metadata: { challengeId }
-      });
-      return { user: emailUser, created: false };
+      this.assertActiveUser(linked);
+      return { user: linked, created: false };
     }
 
     try {
@@ -887,15 +890,6 @@ export class AuthService {
         registrationChallengeId: challengeId,
         context: { ip: context.ip, userAgent: context.userAgent },
         googleIdentity
-      });
-      await this.repository.createAuditLog({
-        actorId: user.id,
-        action: "auth.google.register",
-        targetType: "User",
-        targetId: user.id,
-        ip: context.ip,
-        userAgent: context.userAgent,
-        metadata: { challengeId }
       });
       return { user, created: true };
     } catch (error) {
