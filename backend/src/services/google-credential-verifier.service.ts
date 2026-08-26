@@ -50,19 +50,20 @@ export class GoogleCredentialVerifierService implements GoogleCredentialVerifier
     credential: string;
     expectedNonce: string;
   }): Promise<VerifiedGoogleIdentity> {
-    let ticket: GoogleIdTokenTicket;
+    let payload: GoogleIdTokenPayload | undefined;
     try {
-      ticket = await this.withTimeout(
-        this.client.verifyIdToken({
-          idToken: input.credential,
-          audience: this.config.GOOGLE_AUTH_CLIENT_ID
-        })
+      payload = await this.withTimeout(
+        this.client
+          .verifyIdToken({
+            idToken: input.credential,
+            audience: this.config.GOOGLE_AUTH_CLIENT_ID
+          })
+          .then((ticket) => ticket.getPayload())
       );
     } catch {
       throw this.invalidCredential();
     }
 
-    const payload = ticket.getPayload();
     const subject = payload?.sub?.trim();
     const email = payload?.email?.trim().toLowerCase();
     if (!payload || !subject || !email || payload.email_verified !== true) {
@@ -88,7 +89,10 @@ export class GoogleCredentialVerifierService implements GoogleCredentialVerifier
       return await Promise.race([
         operation,
         new Promise<never>((_resolve, reject) => {
-          timeout = setTimeout(() => reject(new Error("Google credential verification timed out")), this.config.GOOGLE_AUTH_VERIFY_TIMEOUT_MS);
+          timeout = setTimeout(
+            () => reject(new Error("Google credential verification timed out")),
+            this.config.GOOGLE_AUTH_VERIFY_TIMEOUT_MS
+          );
         })
       ]);
     } finally {

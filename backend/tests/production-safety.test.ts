@@ -19,6 +19,7 @@ describe("production safety", () => {
       AUTH_ACCESS_TOKEN_SECRET: "production-access-secret-with-32-characters",
       AUTH_REFRESH_TOKEN_SECRET: "production-refresh-secret-with-32-characters",
       AUTH_VERIFICATION_SECRET: "production-verification-secret-with-32-characters",
+      GOOGLE_AUTH_CLIENT_ID: "123456789012-productiongoogleclientid.apps.googleusercontent.com",
       AFFILIATE_LINK_SECRET: "production-affiliate-link-secret-with-32-characters",
       SENSITIVE_DATA_ENCRYPTION_KEY: "production-sensitive-data-key-with-32-characters",
       AFFILIATE_PUBLIC_BASE_URL: "https://needo.dackou.com/afirieito",
@@ -83,9 +84,7 @@ describe("production safety", () => {
         [unsafeFlag]: "true"
       };
 
-      await expect(
-        importEnv()
-      ).rejects.toThrow(unsafeFlag);
+      await expect(importEnv()).rejects.toThrow(unsafeFlag);
     }
   );
 
@@ -95,26 +94,128 @@ describe("production safety", () => {
     await expect(importEnv()).resolves.toBeUndefined();
   });
 
+  it("rejects a missing Google Web OAuth client ID in production", async () => {
+    setValidProductionEnv();
+    delete process.env.GOOGLE_AUTH_CLIENT_ID;
+
+    await expect(importEnv()).rejects.toThrow("GOOGLE_AUTH_CLIENT_ID");
+  });
+
   it.each([
     ["local deploy target", { DEPLOY_ENV: "local" }, "DEPLOY_ENV"],
-    ["insecure CORS origin", { CORS_ALLOWED_ORIGINS: "http://needo.example" }, "CORS_ALLOWED_ORIGINS"],
-    ["placeholder CORS origin", { CORS_ALLOWED_ORIGINS: "https://needo.example" }, "CORS_ALLOWED_ORIGINS"],
+    [
+      "insecure CORS origin",
+      { CORS_ALLOWED_ORIGINS: "http://needo.example" },
+      "CORS_ALLOWED_ORIGINS"
+    ],
+    [
+      "placeholder CORS origin",
+      { CORS_ALLOWED_ORIGINS: "https://needo.example" },
+      "CORS_ALLOWED_ORIGINS"
+    ],
     ["missing metrics token", { METRICS_BEARER_TOKEN: "" }, "METRICS_BEARER_TOKEN"],
-    ["placeholder access secret", { AUTH_ACCESS_TOKEN_SECRET: "replace-with-prod-access-token-secret-32chars-min" }, "AUTH_ACCESS_TOKEN_SECRET"],
-    ["reused token secrets", { AUTH_REFRESH_TOKEN_SECRET: "production-access-secret-with-32-characters" }, "AUTH_REFRESH_TOKEN_SECRET"],
-    ["placeholder verification secret", { AUTH_VERIFICATION_SECRET: "replace-with-a-dedicated-32-character-secret" }, "AUTH_VERIFICATION_SECRET"],
-    ["verification/access secret reuse", { AUTH_VERIFICATION_SECRET: "production-access-secret-with-32-characters" }, "AUTH_VERIFICATION_SECRET"],
-    ["verification/refresh secret reuse", { AUTH_VERIFICATION_SECRET: "production-refresh-secret-with-32-characters" }, "AUTH_VERIFICATION_SECRET"],
-    ["insecure affiliate URL", { AFFILIATE_PUBLIC_BASE_URL: "http://needo.dackou.com/afirieito" }, "AFFILIATE_PUBLIC_BASE_URL"],
-    ["insecure customer avatar URL", { CUSTOMER_AVATAR_PUBLIC_BASE_URL: "http://needo.dackou.com/media/customer-avatars" }, "CUSTOMER_AVATAR_PUBLIC_BASE_URL"],
-    ["placeholder affiliate secret", { AFFILIATE_LINK_SECRET: "replace-with-prod-affiliate-link-secret-32chars-min" }, "AFFILIATE_LINK_SECRET"],
-    ["affiliate/access secret reuse", { AFFILIATE_LINK_SECRET: "production-access-secret-with-32-characters" }, "AFFILIATE_LINK_SECRET"],
-    ["affiliate/refresh secret reuse", { AFFILIATE_LINK_SECRET: "production-refresh-secret-with-32-characters" }, "AFFILIATE_LINK_SECRET"],
-    ["placeholder sensitive-data secret", { SENSITIVE_DATA_ENCRYPTION_KEY: "replace-with-prod-sensitive-data-key-32chars-min" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
-    ["sensitive/access secret reuse", { SENSITIVE_DATA_ENCRYPTION_KEY: "production-access-secret-with-32-characters" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
-    ["sensitive/refresh secret reuse", { SENSITIVE_DATA_ENCRYPTION_KEY: "production-refresh-secret-with-32-characters" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
-    ["sensitive/affiliate secret reuse", { SENSITIVE_DATA_ENCRYPTION_KEY: "production-affiliate-link-secret-with-32-characters" }, "SENSITIVE_DATA_ENCRYPTION_KEY"],
-    ["placeholder database credentials", { DATABASE_URL: "mysql://needo_prod:replace-with-password@mysql:3306/needo_prod" }, "DATABASE_URL"],
+    ["blank Google client ID", { GOOGLE_AUTH_CLIENT_ID: "" }, "GOOGLE_AUTH_CLIENT_ID"],
+    ["whitespace Google client ID", { GOOGLE_AUTH_CLIENT_ID: "   " }, "GOOGLE_AUTH_CLIENT_ID"],
+    [
+      "placeholder Google client ID",
+      { GOOGLE_AUTH_CLIENT_ID: "replace-with-prod-google-client-id" },
+      "GOOGLE_AUTH_CLIENT_ID"
+    ],
+    [
+      "test Google client ID",
+      { GOOGLE_AUTH_CLIENT_ID: "test-google-client-id.apps.googleusercontent.com" },
+      "GOOGLE_AUTH_CLIENT_ID"
+    ],
+    [
+      "local Google client ID",
+      { GOOGLE_AUTH_CLIENT_ID: "123456789012-local-google-client.apps.googleusercontent.com" },
+      "GOOGLE_AUTH_CLIENT_ID"
+    ],
+    [
+      "dummy Google client ID",
+      { GOOGLE_AUTH_CLIENT_ID: "123456789012-dummy-google-client.apps.googleusercontent.com" },
+      "GOOGLE_AUTH_CLIENT_ID"
+    ],
+    [
+      "malformed Google client ID domain",
+      { GOOGLE_AUTH_CLIENT_ID: "123456789012-google-client.example.com" },
+      "GOOGLE_AUTH_CLIENT_ID"
+    ],
+    [
+      "placeholder access secret",
+      { AUTH_ACCESS_TOKEN_SECRET: "replace-with-prod-access-token-secret-32chars-min" },
+      "AUTH_ACCESS_TOKEN_SECRET"
+    ],
+    [
+      "reused token secrets",
+      { AUTH_REFRESH_TOKEN_SECRET: "production-access-secret-with-32-characters" },
+      "AUTH_REFRESH_TOKEN_SECRET"
+    ],
+    [
+      "placeholder verification secret",
+      { AUTH_VERIFICATION_SECRET: "replace-with-a-dedicated-32-character-secret" },
+      "AUTH_VERIFICATION_SECRET"
+    ],
+    [
+      "verification/access secret reuse",
+      { AUTH_VERIFICATION_SECRET: "production-access-secret-with-32-characters" },
+      "AUTH_VERIFICATION_SECRET"
+    ],
+    [
+      "verification/refresh secret reuse",
+      { AUTH_VERIFICATION_SECRET: "production-refresh-secret-with-32-characters" },
+      "AUTH_VERIFICATION_SECRET"
+    ],
+    [
+      "insecure affiliate URL",
+      { AFFILIATE_PUBLIC_BASE_URL: "http://needo.dackou.com/afirieito" },
+      "AFFILIATE_PUBLIC_BASE_URL"
+    ],
+    [
+      "insecure customer avatar URL",
+      { CUSTOMER_AVATAR_PUBLIC_BASE_URL: "http://needo.dackou.com/media/customer-avatars" },
+      "CUSTOMER_AVATAR_PUBLIC_BASE_URL"
+    ],
+    [
+      "placeholder affiliate secret",
+      { AFFILIATE_LINK_SECRET: "replace-with-prod-affiliate-link-secret-32chars-min" },
+      "AFFILIATE_LINK_SECRET"
+    ],
+    [
+      "affiliate/access secret reuse",
+      { AFFILIATE_LINK_SECRET: "production-access-secret-with-32-characters" },
+      "AFFILIATE_LINK_SECRET"
+    ],
+    [
+      "affiliate/refresh secret reuse",
+      { AFFILIATE_LINK_SECRET: "production-refresh-secret-with-32-characters" },
+      "AFFILIATE_LINK_SECRET"
+    ],
+    [
+      "placeholder sensitive-data secret",
+      { SENSITIVE_DATA_ENCRYPTION_KEY: "replace-with-prod-sensitive-data-key-32chars-min" },
+      "SENSITIVE_DATA_ENCRYPTION_KEY"
+    ],
+    [
+      "sensitive/access secret reuse",
+      { SENSITIVE_DATA_ENCRYPTION_KEY: "production-access-secret-with-32-characters" },
+      "SENSITIVE_DATA_ENCRYPTION_KEY"
+    ],
+    [
+      "sensitive/refresh secret reuse",
+      { SENSITIVE_DATA_ENCRYPTION_KEY: "production-refresh-secret-with-32-characters" },
+      "SENSITIVE_DATA_ENCRYPTION_KEY"
+    ],
+    [
+      "sensitive/affiliate secret reuse",
+      { SENSITIVE_DATA_ENCRYPTION_KEY: "production-affiliate-link-secret-with-32-characters" },
+      "SENSITIVE_DATA_ENCRYPTION_KEY"
+    ],
+    [
+      "placeholder database credentials",
+      { DATABASE_URL: "mysql://needo_prod:replace-with-password@mysql:3306/needo_prod" },
+      "DATABASE_URL"
+    ],
     ["unauthenticated Redis", { REDIS_URL: "redis://redis:6379" }, "REDIS_URL"]
   ])("rejects %s", async (_label, overrides, expectedField) => {
     setValidProductionEnv();

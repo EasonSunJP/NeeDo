@@ -32,13 +32,20 @@ const createClient = (
   })
 });
 
-const createVerifier = (client: GoogleTicketClient): GoogleCredentialVerifierService =>
+const createVerifier = (
+  client: GoogleTicketClient,
+  verifyTimeoutMs = 100
+): GoogleCredentialVerifierService =>
   new GoogleCredentialVerifierService(client, {
     GOOGLE_AUTH_CLIENT_ID: "test-google-client-id.apps.googleusercontent.com",
-    GOOGLE_AUTH_VERIFY_TIMEOUT_MS: 100
+    GOOGLE_AUTH_VERIFY_TIMEOUT_MS: verifyTimeoutMs
   });
 
 describe("GoogleCredentialVerifierService", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it("verifies the configured audience and returns a normalized verified identity", async () => {
     const client = createClient();
 
@@ -61,6 +68,7 @@ describe("GoogleCredentialVerifierService", () => {
     ["missing subject", { ...validPayload, sub: undefined }],
     ["blank subject", { ...validPayload, sub: "   " }],
     ["missing email", { ...validPayload, email: undefined }],
+    ["blank email", { ...validPayload, email: "   " }],
     ["unverified email", { ...validPayload, email_verified: false }]
   ])("rejects a credential with %s", async (_label, payload) => {
     await expect(
@@ -84,6 +92,53 @@ describe("GoogleCredentialVerifierService", () => {
       message: "error.auth.google_credential_invalid",
       statusCode: 401
     });
+  });
+
+  it("sanitizes a ticket payload-access exception", async () => {
+    const client: GoogleTicketClient = {
+      verifyIdToken: jest.fn().mockResolvedValue({
+        getPayload: () => {
+          throw new Error("sensitive ticket payload failure");
+        }
+      })
+    };
+
+    const failure = await createVerifier(client)
+      .verify({ credential: "google-id-token", expectedNonce })
+      .then(
+        () => undefined,
+        (error: unknown) => error
+      );
+
+    expect(failure).toMatchObject({
+      code: ERROR_CODES.INVALID_CREDENTIALS,
+      message: "error.auth.google_credential_invalid",
+      statusCode: 401
+    });
+    expect(failure).toHaveProperty("cause", undefined);
+    expect(failure).not.toHaveProperty("credential");
+    expect(failure).not.toHaveProperty("subject");
+    expect(String(failure)).not.toContain("sensitive ticket payload failure");
+  });
+
+  it("maps a verification timeout to a stable credential error", async () => {
+    jest.useFakeTimers();
+    const neverSettlingClient: GoogleTicketClient = {
+      verifyIdToken: jest.fn(() => new Promise<never>(() => undefined))
+    };
+    const verification = expect(
+      createVerifier(neverSettlingClient, 1).verify({
+        credential: "google-id-token",
+        expectedNonce
+      })
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.INVALID_CREDENTIALS,
+      message: "error.auth.google_credential_invalid",
+      statusCode: 401
+    });
+
+    await jest.advanceTimersByTimeAsync(1);
+    await verification;
   });
 
   it.each([
