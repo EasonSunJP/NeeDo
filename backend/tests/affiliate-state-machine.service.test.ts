@@ -181,25 +181,35 @@ describe("affiliate task state machine", () => {
     });
   });
 
-  it("ends expired tasks and preserves terminal states", () => {
-    const expired = { ...activeWindow, now: activeWindow.endsAt };
-    expect(transitionAffiliateTask("active", "expire", expired)).toEqual({
-      ok: true,
-      status: "ended"
-    });
-    expect(transitionAffiliateTask("ended", "cancel", expired)).toEqual({
-      ok: false,
-      reason: "invalid_transition"
-    });
-    expect(transitionAffiliateTask("cancelled", "submit", expired)).toEqual({
-      ok: false,
-      reason: "invalid_transition"
-    });
-    expect(transitionAffiliateTask("rejected", "submit", expired)).toEqual({
-      ok: false,
-      reason: "invalid_transition"
-    });
-  });
+  it.each(["scheduled", "active", "paused", "budget_exhausted"] as const)(
+    "expires %s exactly at taskEndsAt but not one millisecond before",
+    (status) => {
+      expect(
+        transitionAffiliateTask(status, "expire", {
+          ...activeWindow,
+          now: activeWindow.endsAt
+        })
+      ).toEqual({ ok: true, status: "ended" });
+      expect(
+        transitionAffiliateTask(status, "expire", {
+          ...activeWindow,
+          now: new Date(activeWindow.endsAt.getTime() - 1)
+        })
+      ).toEqual({ ok: false, reason: "outside_task_window" });
+    }
+  );
+
+  it.each(["ended", "cancelled", "rejected", "draft", "pending_review"] as const)(
+    "keeps terminal or ineligible %s tasks ineligible for expiry",
+    (status) => {
+      expect(
+        transitionAffiliateTask(status, "expire", {
+          ...activeWindow,
+          now: activeWindow.endsAt
+        })
+      ).toEqual({ ok: false, reason: "invalid_transition" });
+    }
+  );
 
   it("rejects illegal transitions with a stable domain reason", () => {
     expect(transitionAffiliateTask("draft", "approve", activeWindow)).toEqual({
