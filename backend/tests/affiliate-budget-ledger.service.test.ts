@@ -312,6 +312,103 @@ describe("LedgerService affiliate task budget operations", () => {
     ]);
   });
 
+  it("releases frozen task budget once for a system actor", async () => {
+    const repository = new AffiliateBudgetLedgerRepository();
+    const wallet = repository.seedWallet({
+      ownerType: "shop",
+      ownerId: 14,
+      availableBalance: 300,
+      frozenBalance: 2_000
+    });
+    const service = new LedgerService(repository);
+
+    const result = await service.releaseAffiliateTaskBudget({
+      taskId: 85,
+      walletId: wallet.id,
+      ownerType: "shop",
+      ownerId: 14,
+      amountNdp: 2_000,
+      idempotencyKey: "affiliate-task:85:v1:release",
+      actorUserId: null
+    });
+
+    expect(result.transaction).toMatchObject({ actorUserId: null });
+    expect(repository.wallets.get("shop:14:NDP")).toMatchObject({
+      availableBalance: 2_300,
+      frozenBalance: 0
+    });
+    expect(repository.entries).toEqual([
+      expect.objectContaining({
+        direction: "unfreeze",
+        amount: 2_000,
+        availableDelta: 2_000,
+        frozenDelta: -2_000
+      })
+    ]);
+    expect(repository.auditRows).toEqual([
+      expect.objectContaining({
+        action: "ledger.affiliate_task_budget.release",
+        actorUserId: null
+      })
+    ]);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid release amount %p before repository access",
+    async (amountNdp) => {
+      const repository = new AffiliateBudgetLedgerRepository();
+      const wallet = repository.seedWallet({
+        ownerType: "shop",
+        ownerId: 15,
+        availableBalance: 300,
+        frozenBalance: 2_000
+      });
+      const service = new LedgerService(repository);
+      const repositoryMethods = [
+        jest.spyOn(repository, "runInTransaction"),
+        jest.spyOn(repository, "findTransactionByIdempotencyKey"),
+        jest.spyOn(repository, "getOrCreateWallet"),
+        jest.spyOn(repository, "applyWalletDelta"),
+        jest.spyOn(repository, "createTransaction"),
+        jest.spyOn(repository, "createLedgerEntry"),
+        jest.spyOn(repository, "createFinanceReconciliation"),
+        jest.spyOn(repository, "createAuditLog")
+      ];
+
+      let error: unknown;
+
+      try {
+        await service.releaseAffiliateTaskBudget({
+          taskId: 86,
+          walletId: wallet.id,
+          ownerType: "shop",
+          ownerId: 15,
+          amountNdp,
+          idempotencyKey: `affiliate-task:86:v1:release:${amountNdp}`,
+          actorUserId: 9
+        });
+      } catch (caughtError) {
+        error = caughtError;
+      }
+
+      expect(error).toMatchObject({
+        code: ERROR_CODES.WALLET_MUTATION_FAILED,
+        message: "error.wallet.mutation_failed"
+      });
+      for (const method of repositoryMethods) {
+        expect(method).not.toHaveBeenCalled();
+      }
+      expect(repository.wallets.get("shop:15:NDP")).toMatchObject({
+        availableBalance: 300,
+        frozenBalance: 2_000
+      });
+      expect(repository.transactions.size).toBe(0);
+      expect(repository.entries).toHaveLength(0);
+      expect(repository.reconciliationRows).toHaveLength(0);
+      expect(repository.auditRows).toHaveLength(0);
+    }
+  );
+
   it("rejects a release that exceeds frozen NDP without side effects", async () => {
     const repository = new AffiliateBudgetLedgerRepository();
     const wallet = repository.seedWallet({

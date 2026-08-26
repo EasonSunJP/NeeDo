@@ -380,7 +380,7 @@ export interface FreezeAffiliateTaskBudgetInput {
   ownerId: number;
   amountNdp: number;
   idempotencyKey: string;
-  actorUserId: number;
+  actorUserId: number | null;
 }
 
 export interface ReleaseAffiliateTaskBudgetInput extends FreezeAffiliateTaskBudgetInput {
@@ -531,6 +531,10 @@ export class LedgerService
     input: ReleaseAffiliateTaskBudgetInput,
     context: LedgerMutationContext = {}
   ): Promise<AffiliateBudgetLedgerResult> {
+    if (!Number.isSafeInteger(input.amountNdp) || input.amountNdp <= 0) {
+      throw this.walletMutationError();
+    }
+
     return this.repository.runInTransaction(async (repository) => {
       const existing = await repository.findTransactionByIdempotencyKey(
         input.idempotencyKey
