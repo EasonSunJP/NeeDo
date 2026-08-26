@@ -108,25 +108,35 @@ const assertExactRollbackBinding = (
   ) {
     throw new Error(`${expectation.resolution} verifyRollback must be an async function block`);
   }
-  const directCalls = rollback.body.statements.filter(
-    (statement): statement is ts.ExpressionStatement => {
-      if (!ts.isExpressionStatement(statement) || !ts.isAwaitExpression(statement.expression)) {
-        return false;
-      }
-      const awaited = statement.expression.expression;
-      return (
-        ts.isCallExpression(awaited) &&
-        ts.isIdentifier(awaited.expression) &&
-        awaited.expression.text === expectation.assertion
-      );
+  if (callbackShadowsIdentifier(rollback, expectation.assertion)) {
+    throw new Error(`${expectation.resolution} verifyRollback shadows ${expectation.assertion}`);
+  }
+  const directCalls = rollback.body.statements.flatMap((statement, index) => {
+    if (!ts.isExpressionStatement(statement) || !ts.isAwaitExpression(statement.expression)) {
+      return [];
     }
-  );
+    const awaited = statement.expression.expression;
+    const matches =
+      ts.isCallExpression(awaited) &&
+      ts.isIdentifier(awaited.expression) &&
+      awaited.expression.text === expectation.assertion;
+    return matches ? [{ statement, index }] : [];
+  });
   if (directCalls.length !== 1) {
     throw new Error(
       `${expectation.resolution} verifyRollback must directly await ${expectation.assertion} exactly once`
     );
   }
-  const awaited = directCalls[0].expression;
+  if (
+    rollback.body.statements
+      .slice(0, directCalls[0].index)
+      .some((statement) => ts.isReturnStatement(statement) || ts.isThrowStatement(statement))
+  ) {
+    throw new Error(
+      `${expectation.resolution} verifyRollback must not return or throw before ${expectation.assertion}`
+    );
+  }
+  const awaited = directCalls[0].statement.expression;
   if (!ts.isAwaitExpression(awaited) || !ts.isCallExpression(awaited.expression)) {
     throw new Error(`${expectation.resolution} rollback assertion is not directly awaited`);
   }
@@ -192,6 +202,65 @@ const identifierBoundBy = (
 ): string | null => {
   if (ts.isShorthandPropertyAssignment(property)) return property.name.text;
   return ts.isIdentifier(property.initializer) ? property.initializer.text : null;
+};
+
+const bindingNameIncludes = (binding: ts.BindingName, identifier: string): boolean => {
+  if (ts.isIdentifier(binding)) return binding.text === identifier;
+  return binding.elements.some(
+    (element) => !ts.isOmittedExpression(element) && bindingNameIncludes(element.name, identifier)
+  );
+};
+
+const callbackShadowsIdentifier = (
+  callback: ts.ArrowFunction | ts.FunctionExpression,
+  identifier: string
+): boolean => {
+  if (callback.parameters.some((parameter) => bindingNameIncludes(parameter.name, identifier))) {
+    return true;
+  }
+  let shadowed = false;
+  const visit = (node: ts.Node): void => {
+    if (shadowed) return;
+    if (ts.isVariableDeclaration(node)) {
+      shadowed = bindingNameIncludes(node.name, identifier);
+      return;
+    }
+    if (ts.isFunctionDeclaration(node)) {
+      shadowed = node.name?.text === identifier;
+      return;
+    }
+    if (ts.isClassDeclaration(node) || ts.isEnumDeclaration(node)) {
+      shadowed = node.name?.text === identifier;
+      return;
+    }
+    if (ts.isCatchClause(node)) {
+      shadowed =
+        node.variableDeclaration !== undefined &&
+        bindingNameIncludes(node.variableDeclaration.name, identifier);
+      if (!shadowed) ts.forEachChild(node.block, visit);
+      return;
+    }
+    if (ts.isImportDeclaration(node)) {
+      const importClause = node.importClause;
+      shadowed =
+        importClause?.name?.text === identifier ||
+        (importClause?.namedBindings !== undefined &&
+          (ts.isNamespaceImport(importClause.namedBindings)
+            ? importClause.namedBindings.name.text === identifier
+            : importClause.namedBindings.elements.some(
+                (element) => element.name.text === identifier
+              )));
+      return;
+    }
+    if (ts.isImportEqualsDeclaration(node)) {
+      shadowed = node.name.text === identifier;
+      return;
+    }
+    if (ts.isFunctionExpression(node) || ts.isArrowFunction(node)) return;
+    ts.forEachChild(node, visit);
+  };
+  visit(callback.body);
+  return shadowed;
 };
 
 const assertBaselineTimelineArrayGuard = (sourceFile: ts.SourceFile): void => {
@@ -618,5 +687,76 @@ describe("affiliate expiry AST contract helpers", () => {
         stringBindings: { flow: "completion" }
       })
     ).toThrow("completionExpiryResolution resolution input has an indirect property");
+  });
+
+  it.each(["return;", 'throw new Error("stop");'])(
+    "rejects an assertion made unreachable by a preceding %s",
+    (terminator) => {
+      const fixture = parseFixture(`
+        const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+          verifyRollback: async () => {
+            ${terminator}
+            await assertExpiryVictimRollback({
+              flow: "completion",
+              baseline: completionPreRaceSnapshot,
+              snapshotInput: completionSnapshotInput,
+              raceStartedAt: completionRaceStartedAt,
+              raceSettledAt: completionRaceSettledAt
+            });
+          }
+        });
+      `);
+
+      expect(() =>
+        assertExactRollbackBinding(fixture, {
+          resolution: "completionExpiryResolution",
+          assertion: "assertExpiryVictimRollback",
+          identifierBindings: {
+            baseline: "completionPreRaceSnapshot",
+            snapshotInput: "completionSnapshotInput",
+            raceStartedAt: "completionRaceStartedAt",
+            raceSettledAt: "completionRaceSettledAt"
+          },
+          stringBindings: { flow: "completion" }
+        })
+      ).toThrow(
+        "completionExpiryResolution verifyRollback must not return or throw before assertExpiryVictimRollback"
+      );
+    }
+  );
+
+  it.each([
+    "const assertExpiryVictimRollback = async () => undefined;",
+    "function assertExpiryVictimRollback() { return undefined; }",
+    "const { assertExpiryVictimRollback } = helpers;"
+  ])("rejects a callback-local assertion shadow: %s", (shadow) => {
+    const fixture = parseFixture(`
+      const completionExpiryResolution = await resolveVerifiedDeadlockVictim({
+        verifyRollback: async () => {
+          ${shadow}
+          await assertExpiryVictimRollback({
+            flow: "completion",
+            baseline: completionPreRaceSnapshot,
+            snapshotInput: completionSnapshotInput,
+            raceStartedAt: completionRaceStartedAt,
+            raceSettledAt: completionRaceSettledAt
+          });
+        }
+      });
+    `);
+
+    expect(() =>
+      assertExactRollbackBinding(fixture, {
+        resolution: "completionExpiryResolution",
+        assertion: "assertExpiryVictimRollback",
+        identifierBindings: {
+          baseline: "completionPreRaceSnapshot",
+          snapshotInput: "completionSnapshotInput",
+          raceStartedAt: "completionRaceStartedAt",
+          raceSettledAt: "completionRaceSettledAt"
+        },
+        stringBindings: { flow: "completion" }
+      })
+    ).toThrow("completionExpiryResolution verifyRollback shadows assertExpiryVictimRollback");
   });
 });
