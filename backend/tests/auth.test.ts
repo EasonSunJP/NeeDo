@@ -2,6 +2,7 @@ import { compare, hash } from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { createApp } from "../src/app";
+import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
 import { AppError } from "../src/utils/app-error";
@@ -291,7 +292,7 @@ class InMemoryVerificationChallengeStore {
   }
 }
 
-const createAuthFixture = async () => {
+const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const sessionStore = new InMemoryAuthSessionStore();
   const deliveredOtps: Array<{ email: string; otp: string }> = [];
   const loginLogs: unknown[] = [];
@@ -302,6 +303,7 @@ const createAuthFixture = async () => {
     id: 1,
     needoId: "n0000000001",
     email: "admin@example.com",
+    emailVerifiedAt: new Date("2026-08-26T00:00:00.000Z"),
     phone: null,
     passwordHash,
     username: "admin",
@@ -624,7 +626,7 @@ const createAuthFixture = async () => {
     })
   };
 
-  const app = createApp(undefined, {
+  const app = createApp(config, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository: repository,
     authSessionStore: sessionStore,
@@ -1098,6 +1100,125 @@ describe("verified email registration and formal password authentication", () =>
     expect(fixture.sessionStore.refreshTokens.size).toBe(0);
   });
 
+  it("does not expose generic OTP login routes", async () => {
+    const fixture = await createAuthFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/auth/otp/send")
+      .send({ email: "admin@example.com" })
+      .expect(404);
+    await request(fixture.app)
+      .post("/api/v1/auth/otp/verify")
+      .send({ email: "admin@example.com", otp: "123456" })
+      .expect(404);
+
+    expect(fixture.deliveredOtps).toHaveLength(0);
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+  });
+
+  it("keeps the formal login request strict and limited to loginIdentifier plus password", async () => {
+    const fixture = await createAuthFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .expect(400);
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({
+        loginIdentifier: "admin@example.com",
+        password: "Abcd@1234",
+        otp: "123456"
+      })
+      .expect(400);
+
+    expect(fixture.sessionStore.refreshTokens.size).toBe(0);
+  });
+
+  it("exposes strict Google initialization and action-bound verification contracts", async () => {
+    const fixture = await createAuthFixture();
+
+    await request(fixture.app)
+      .post("/api/v1/auth/google/init")
+      .send({})
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toEqual({
+          clientId: "test-google-client-id.apps.googleusercontent.com",
+          nonce: expect.any(String),
+          nonceChallengeId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+          expiresIn: 600
+        });
+      });
+
+    await request(fixture.app).post("/api/v1/auth/google/init").send({ userId: 1 }).expect(400);
+    await request(fixture.app)
+      .post("/api/v1/auth/google")
+      .send({ credential: "credential", nonceChallengeId: randomUUID(), userId: 1 })
+      .expect(400);
+    await request(fixture.app)
+      .post("/api/v1/auth/google/verify")
+      .send({ challengeId: randomUUID(), otp: "123456", email: "admin@example.com" })
+      .expect(400);
+  });
+
+  it("isolates named Auth action limits and returns a credential-free 429 body", async () => {
+    const fixture = await createAuthFixture({
+      ...env,
+      AUTH_ACTION_RATE_LIMIT_WINDOW_MS: 60_000,
+      AUTH_REGISTRATION_RATE_LIMIT_MAX: 1,
+      AUTH_GOOGLE_INIT_RATE_LIMIT_MAX: 1,
+      AUTH_GOOGLE_CREDENTIAL_RATE_LIMIT_MAX: 1,
+      AUTH_VERIFICATION_RATE_LIMIT_MAX: 1
+    } as Parameters<typeof createApp>[0]);
+
+    await request(fixture.app)
+      .post("/api/v1/auth/register")
+      .send({ email: "customer@example.com", password: "Customer.2026!" })
+      .expect(409);
+    const limited = await request(fixture.app)
+      .post("/api/v1/auth/register")
+      .send({ email: "rate-limit-secret@example.com", password: "Secret.2026!" })
+      .expect(429);
+
+    expect(limited.body).toEqual({
+      code: ERROR_CODES.RATE_LIMITED,
+      message: "error.rate_limited",
+      data: null
+    });
+    expect(JSON.stringify(limited.body)).not.toContain("rate-limit-secret@example.com");
+    expect(JSON.stringify(limited.body)).not.toContain("Secret.2026!");
+
+    await request(fixture.app).post("/api/v1/auth/google/init").send({}).expect(200);
+    await request(fixture.app).post("/api/v1/auth/google/init").send({}).expect(429);
+  });
+
+  it("rejects target-account identifiers from every protected account-security body", async () => {
+    const fixture = await createAuthFixture();
+    const protectedRequests = [
+      ["/api/v1/auth/google/link/init", { userId: 2 }],
+      [
+        "/api/v1/auth/google/link",
+        { credential: "credential", nonceChallengeId: randomUUID(), userId: 2 }
+      ],
+      ["/api/v1/auth/google/link/verify", { challengeId: randomUUID(), otp: "123456", userId: 2 }],
+      ["/api/v1/auth/google/unlink", { userId: 2 }],
+      [
+        "/api/v1/auth/google/unlink/verify",
+        { challengeId: randomUUID(), otp: "123456", userId: 2 }
+      ],
+      ["/api/v1/auth/password/setup", { password: "Stronger.2026!", userId: 2 }],
+      [
+        "/api/v1/auth/password/setup/verify",
+        { challengeId: randomUUID(), otp: "123456", userId: 2 }
+      ]
+    ] as const;
+
+    for (const [path, body] of protectedRequests) {
+      await request(fixture.app).post(path).send(body).expect(400);
+    }
+  });
+
   it("logs in with a normalized email loginIdentifier and password", async () => {
     const fixture = await createAuthFixture();
 
@@ -1124,7 +1245,11 @@ describe("verified email registration and formal password authentication", () =>
 
     const response = await request(fixture.app)
       .post("/api/v1/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({
+        email: "admin@example.com",
+        password: "Abcd@1234",
+        legacyClientHint: "preserved-by-zod-strip"
+      })
       .expect(200);
 
     expect(response.body.data.accessToken).toEqual(expect.any(String));
@@ -1205,7 +1330,7 @@ describe("verified email registration and formal password authentication", () =>
 
     const response = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "customer@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "customer@example.com", password: "Abcd@1234" })
       .expect(200);
 
     await request(fixture.app)
@@ -1226,7 +1351,7 @@ describe("verified email registration and formal password authentication", () =>
 
     const response = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
       .expect(200);
 
     expect(response.body).toEqual({
@@ -1258,7 +1383,7 @@ describe("verified email registration and formal password authentication", () =>
     for (let index = 0; index < 4; index += 1) {
       const response = await request(fixture.app)
         .post("/api/v1/auth/login")
-        .send({ email: "admin@example.com", password: "wrong-password" })
+        .send({ loginIdentifier: "admin@example.com", password: "wrong-password" })
         .expect(401);
 
       expect(response.body).toMatchObject({
@@ -1269,7 +1394,7 @@ describe("verified email registration and formal password authentication", () =>
 
     const lockedResponse = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "wrong-password" })
+      .send({ loginIdentifier: "admin@example.com", password: "wrong-password" })
       .expect(429);
 
     expect(lockedResponse.body).toMatchObject({
@@ -1279,7 +1404,7 @@ describe("verified email registration and formal password authentication", () =>
 
     await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
       .expect(429);
 
     expect(fixture.loginLogs).toEqual(
@@ -1358,7 +1483,7 @@ describe("verified email registration and formal password authentication", () =>
 
     await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "disabled@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "disabled@example.com", password: "Abcd@1234" })
       .expect(403)
       .expect((response) => {
         expect(response.body.code).toBe(ERROR_CODES.ACCOUNT_DISABLED);
@@ -1407,61 +1532,11 @@ describe("verified email registration and formal password authentication", () =>
       });
   });
 
-  it("sends, verifies, and invalidates a six-digit email OTP", async () => {
-    const fixture = await createAuthFixture();
-
-    const sendResponse = await request(fixture.app)
-      .post("/api/v1/auth/otp/send")
-      .send({ email: "admin@example.com" })
-      .expect(200);
-
-    expect(sendResponse.body).toEqual({
-      code: 0,
-      message: "success",
-      data: {
-        expiresIn: 600,
-        cooldownSeconds: 60
-      }
-    });
-    expect(fixture.deliveredOtps).toHaveLength(1);
-    expect(fixture.deliveredOtps[0]).toEqual({
-      email: "admin@example.com",
-      otp: expect.stringMatching(/^\d{6}$/)
-    });
-
-    await request(fixture.app)
-      .post("/api/v1/auth/otp/send")
-      .send({ email: "admin@example.com" })
-      .expect(429)
-      .expect((response) => {
-        expect(response.body.code).toBe(ERROR_CODES.OTP_COOLDOWN);
-      });
-
-    const verifyResponse = await request(fixture.app)
-      .post("/api/v1/auth/otp/verify")
-      .send({ email: "admin@example.com", otp: fixture.deliveredOtps[0].otp })
-      .expect(200);
-
-    expect(verifyResponse.body.data).toEqual({
-      accessToken: expect.any(String),
-      refreshToken: expect.any(String),
-      expiresIn: 900
-    });
-
-    await request(fixture.app)
-      .post("/api/v1/auth/otp/verify")
-      .send({ email: "admin@example.com", otp: fixture.deliveredOtps[0].otp })
-      .expect(401)
-      .expect((response) => {
-        expect(response.body.code).toBe(ERROR_CODES.OTP_EXPIRED);
-      });
-  });
-
   it("refreshes access tokens from Redis-backed refresh sessions", async () => {
     const fixture = await createAuthFixture();
     const loginResponse = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
       .expect(200);
 
     const response = await request(fixture.app)
@@ -1484,7 +1559,7 @@ describe("verified email registration and formal password authentication", () =>
     const fixture = await createAuthFixture();
     const loginResponse = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
       .expect(200);
     const { accessToken, refreshToken } = loginResponse.body.data;
 
@@ -1495,7 +1570,10 @@ describe("verified email registration and formal password authentication", () =>
 
     expect(meResponse.body.data).toMatchObject({
       id: 1,
+      needoId: "n0000000001",
       email: "admin@example.com",
+      emailVerifiedAt: "2026-08-26T00:00:00.000Z",
+      hasPassword: true,
       username: "admin",
       isActive: true,
       currentIdentity: {
@@ -1542,7 +1620,7 @@ describe("verified email registration and formal password authentication", () =>
     const fixture = await createAuthFixture();
     const customerLogin = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "customer@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "customer@example.com", password: "Abcd@1234" })
       .expect(200);
 
     await request(fixture.app)
@@ -1584,7 +1662,7 @@ describe("verified email registration and formal password authentication", () =>
 
     const multiLogin = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "multi@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "multi@example.com", password: "Abcd@1234" })
       .expect(200);
     await request(fixture.app)
       .get("/api/v1/auth/me")
@@ -1628,7 +1706,7 @@ describe("verified email registration and formal password authentication", () =>
     const fixture = await createAuthFixture();
     const loginResponse = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "multi@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "multi@example.com", password: "Abcd@1234" })
       .expect(200);
     const { accessToken, refreshToken } = loginResponse.body.data;
 
@@ -1712,7 +1790,7 @@ describe("verified email registration and formal password authentication", () =>
     const fixture = await createAuthFixture();
     const loginResponse = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ email: "noperms@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "noperms@example.com", password: "Abcd@1234" })
       .expect(200);
 
     await request(fixture.app)

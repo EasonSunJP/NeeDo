@@ -96,7 +96,10 @@ export interface AuthIdentityAvailabilityPayload {
 
 export interface AuthMePayload {
   id: number;
+  needoId: string;
   email: string;
+  emailVerifiedAt: string | null;
+  hasPassword: boolean;
   username: string;
   avatarUrl: string | null;
   isActive: boolean;
@@ -1700,7 +1703,10 @@ export class AuthService {
 
     return {
       id: user.id,
+      needoId: user.needoId,
       email: user.email,
+      emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+      hasPassword: Boolean(user.passwordHash),
       username: user.username,
       avatarUrl: user.avatarUrl,
       isActive: user.isActive,

@@ -229,7 +229,7 @@ const createFixture = async () => {
     backofficeRepository
   } as never);
   const login = async (email: string) => {
-    const response = await request(app).post("/api/v1/auth/login").send({ email, password: "Abcd@1234" }).expect(200);
+    const response = await request(app).post("/api/v1/auth/login").send({ loginIdentifier: email, password: "Abcd@1234" }).expect(200);
     return response.body.data.accessToken as string;
   };
 

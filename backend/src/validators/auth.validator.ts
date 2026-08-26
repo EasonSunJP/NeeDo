@@ -14,7 +14,7 @@ const loginIdentifierSchema = z
   .max(255)
   .transform((identifier) => identifier.toLowerCase());
 
-const registrationPasswordSchema = z
+export const strongPasswordSchema = z
   .string()
   .min(8)
   .max(128)
@@ -26,18 +26,25 @@ const registrationPasswordSchema = z
 export const registerBodySchema = z
   .object({
     email: emailSchema,
-    password: registrationPasswordSchema
+    password: strongPasswordSchema
   })
   .strict();
 
-export const registerVerifyBodySchema = z
+export const challengeVerificationBodySchema = z
   .object({
-    challengeId: z.string().uuid(),
+    challengeId: z.string().uuid().max(64),
     otp: z.string().regex(/^\d{6}$/)
   })
   .strict();
 
 export const loginBodySchema = z
+  .object({
+    loginIdentifier: loginIdentifierSchema,
+    password: z.string().min(1).max(128)
+  })
+  .strict();
+
+export const legacyLoginBodySchema = z
   .object({
     loginIdentifier: loginIdentifierSchema.optional(),
     email: emailSchema.optional(),
@@ -62,33 +69,49 @@ export const loginBodySchema = z
     password: body.password
   }));
 
-export const otpSendBodySchema = z.object({
-  email: emailSchema
-});
+export const registerVerifyBodySchema = challengeVerificationBodySchema;
 
-export const otpVerifyBodySchema = z.object({
-  email: emailSchema,
-  otp: z.string().regex(/^\d{6}$/)
-});
+export const emptyAuthActionBodySchema = z.object({}).strict();
 
-export const refreshBodySchema = z.object({
-  refreshToken: z.string().min(1)
-});
+export const googleCredentialBodySchema = z
+  .object({
+    credential: z.string().trim().min(1).max(8192),
+    nonceChallengeId: z.string().uuid().max(64)
+  })
+  .strict();
 
-export const switchIdentityBodySchema = z.object({
-  refreshToken: z.string().min(1),
-  identityId: z.number().int().positive()
-});
+export const passwordSetupBodySchema = z
+  .object({
+    password: strongPasswordSchema
+  })
+  .strict();
 
-export const logoutBodySchema = z.object({
-  refreshToken: z.string().min(1)
-});
+export const refreshBodySchema = z
+  .object({
+    refreshToken: z.string().min(1).max(8192)
+  })
+  .strict();
+
+export const switchIdentityBodySchema = z
+  .object({
+    refreshToken: z.string().min(1).max(8192),
+    identityId: z.number().int().positive()
+  })
+  .strict();
+
+export const logoutBodySchema = z
+  .object({
+    refreshToken: z.string().min(1).max(8192)
+  })
+  .strict();
 
 export type LoginBody = z.infer<typeof loginBodySchema>;
+export type LegacyLoginBody = z.infer<typeof legacyLoginBodySchema>;
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type RegisterVerifyBody = z.infer<typeof registerVerifyBodySchema>;
-export type OtpSendBody = z.infer<typeof otpSendBodySchema>;
-export type OtpVerifyBody = z.infer<typeof otpVerifyBodySchema>;
+export type ChallengeVerificationBody = z.infer<typeof challengeVerificationBodySchema>;
+export type GoogleCredentialBody = z.infer<typeof googleCredentialBodySchema>;
+export type PasswordSetupBody = z.infer<typeof passwordSetupBodySchema>;
 export type RefreshBody = z.infer<typeof refreshBodySchema>;
 export type SwitchIdentityBody = z.infer<typeof switchIdentityBodySchema>;
 export type LogoutBody = z.infer<typeof logoutBodySchema>;

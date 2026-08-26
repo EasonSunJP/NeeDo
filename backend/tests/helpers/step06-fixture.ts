@@ -726,7 +726,7 @@ export const createStep06Fixture = async () => {
   const loginAsAdmin = async (): Promise<string> => {
     const response = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
       .expect(200);
 
     return response.body.data.accessToken as string;

@@ -56,14 +56,11 @@ const optionalUrlSchema = z.preprocess((value) => {
 }, z.string().url().optional());
 
 const productionPlaceholderPattern = /(change-?me|example|placeholder|replace-?with)/i;
-const productionGoogleWebClientIdPattern = /^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?\.apps\.googleusercontent\.com$/;
+const productionGoogleWebClientIdPattern =
+  /^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?\.apps\.googleusercontent\.com$/;
 const productionGoogleClientIdNonProductionValuePattern = /\b(local|dummy|test)\b/i;
 
-const addProductionIssue = (
-  context: z.RefinementCtx,
-  path: string,
-  message: string
-): void => {
+const addProductionIssue = (context: z.RefinementCtx, path: string, message: string): void => {
   context.addIssue({
     code: z.ZodIssueCode.custom,
     message,
@@ -73,71 +70,76 @@ const addProductionIssue = (
 
 const envSchema = z
   .object({
-  NODE_ENV: z.enum(["development", "test", "production"]),
-  DEPLOY_ENV: z.enum(["local", "test", "staging", "prod"]).default("local"),
-  ALLOW_TEST_LOGIN: booleanSchema.default(false),
-  ALLOW_DEMO_SEED: booleanSchema.default(false),
-  ALLOW_SIMULATION_SEED: booleanSchema.default(false),
-  SERVICE_NAME: z.string().min(1),
-  PORT: z.coerce.number().int().min(1).max(65535),
-  API_PREFIX: z.string().regex(/^\/api\/v[0-9]+$/),
-  CORS_ALLOWED_ORIGINS: commaSeparatedListSchema,
-  TRUST_PROXY: booleanSchema.default(false),
-  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive(),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive(),
-  REQUEST_BODY_LIMIT: z.string().min(1),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]),
-  OPENAPI_ENABLED: booleanSchema,
-  METRICS_ENABLED: booleanSchema.default(true),
-  METRICS_BEARER_TOKEN: z.preprocess((value) => {
-    if (typeof value === "string" && value.trim().length === 0) {
-      return undefined;
-    }
+    NODE_ENV: z.enum(["development", "test", "production"]),
+    DEPLOY_ENV: z.enum(["local", "test", "staging", "prod"]).default("local"),
+    ALLOW_TEST_LOGIN: booleanSchema.default(false),
+    ALLOW_DEMO_SEED: booleanSchema.default(false),
+    ALLOW_SIMULATION_SEED: booleanSchema.default(false),
+    SERVICE_NAME: z.string().min(1),
+    PORT: z.coerce.number().int().min(1).max(65535),
+    API_PREFIX: z.string().regex(/^\/api\/v[0-9]+$/),
+    CORS_ALLOWED_ORIGINS: commaSeparatedListSchema,
+    TRUST_PROXY: booleanSchema.default(false),
+    RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive(),
+    RATE_LIMIT_MAX: z.coerce.number().int().positive(),
+    REQUEST_BODY_LIMIT: z.string().min(1),
+    LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]),
+    OPENAPI_ENABLED: booleanSchema,
+    METRICS_ENABLED: booleanSchema.default(true),
+    METRICS_BEARER_TOKEN: z.preprocess((value) => {
+      if (typeof value === "string" && value.trim().length === 0) {
+        return undefined;
+      }
 
-    return value;
-  }, z.string().min(32).optional()),
-  TRACING_ENABLED: booleanSchema.default(true),
-  CACHE_PUBLIC_MAX_AGE_SECONDS: z.coerce.number().int().min(0).default(30),
-  CACHE_STALE_WHILE_REVALIDATE_SECONDS: z.coerce.number().int().min(0).default(120),
-  CDN_BASE_URL: optionalUrlSchema,
-  DATABASE_URL: z.string().url(),
-  DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL: booleanSchema.default(false),
-  DATABASE_POOL_CONNECTION_LIMIT: z.coerce.number().int().positive().max(200).default(10),
-  DATABASE_POOL_ACQUIRE_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
-  DATABASE_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
-  DATABASE_POOL_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
-  REDIS_URL: z.string().url(),
-  REDIS_POOL_SIZE: z.coerce.number().int().positive().max(20).default(1),
-  REDIS_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
-  REDIS_RECONNECT_MAX_RETRIES: z.coerce.number().int().min(0).default(0),
-  REDIS_RECONNECT_BASE_DELAY_MS: z.coerce.number().int().positive().default(100),
-  REDIS_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
-  AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
-  AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
-  AUTH_VERIFICATION_SECRET: z.string().min(32),
-  AUTH_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5),
-  AUTH_GOOGLE_NONCE_TTL_SECONDS: z.coerce.number().int().positive().max(600),
-  GOOGLE_AUTH_CLIENT_ID: z.string().trim().min(1),
-  GOOGLE_AUTH_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive(),
-  AFFILIATE_LINK_SECRET: z.string().min(32),
-  SENSITIVE_DATA_ENCRYPTION_KEY: z.string().min(32),
-  AFFILIATE_PUBLIC_BASE_URL: z.string().url(),
-  CUSTOMER_AVATAR_STORAGE_DIR: z.string().min(1).default("runtime/customer-avatars"),
-  IDENTITY_APPLICATION_MEDIA_STORAGE_DIR: z
-    .string()
-    .min(1)
-    .default("runtime/identity-applications"),
-  IDENTITY_APPLICATION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
-  CUSTOMER_AVATAR_PUBLIC_BASE_URL: z.string().url(),
-  AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
-  AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),
-  AUTH_LOGIN_FAILURE_LIMIT: z.coerce.number().int().positive(),
-  AUTH_LOGIN_FAILURE_WINDOW_SECONDS: z.coerce.number().int().positive(),
-  AUTH_LOGIN_LOCK_SECONDS: z.coerce.number().int().positive(),
-  AUTH_OTP_TTL_SECONDS: z.coerce.number().int().positive().max(600),
-  AUTH_OTP_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
-  AUTH_OTP_EMAIL_WEBHOOK_URL: optionalUrlSchema,
-  AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
+      return value;
+    }, z.string().min(32).optional()),
+    TRACING_ENABLED: booleanSchema.default(true),
+    CACHE_PUBLIC_MAX_AGE_SECONDS: z.coerce.number().int().min(0).default(30),
+    CACHE_STALE_WHILE_REVALIDATE_SECONDS: z.coerce.number().int().min(0).default(120),
+    CDN_BASE_URL: optionalUrlSchema,
+    DATABASE_URL: z.string().url(),
+    DATABASE_ALLOW_PUBLIC_KEY_RETRIEVAL: booleanSchema.default(false),
+    DATABASE_POOL_CONNECTION_LIMIT: z.coerce.number().int().positive().max(200).default(10),
+    DATABASE_POOL_ACQUIRE_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+    DATABASE_POOL_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    DATABASE_POOL_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+    REDIS_URL: z.string().url(),
+    REDIS_POOL_SIZE: z.coerce.number().int().positive().max(20).default(1),
+    REDIS_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+    REDIS_RECONNECT_MAX_RETRIES: z.coerce.number().int().min(0).default(0),
+    REDIS_RECONNECT_BASE_DELAY_MS: z.coerce.number().int().positive().default(100),
+    REDIS_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
+    AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
+    AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
+    AUTH_VERIFICATION_SECRET: z.string().min(32),
+    AUTH_VERIFICATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5),
+    AUTH_ACTION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive(),
+    AUTH_REGISTRATION_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
+    AUTH_GOOGLE_INIT_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
+    AUTH_GOOGLE_CREDENTIAL_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
+    AUTH_VERIFICATION_RATE_LIMIT_MAX: z.coerce.number().int().positive(),
+    AUTH_GOOGLE_NONCE_TTL_SECONDS: z.coerce.number().int().positive().max(600),
+    GOOGLE_AUTH_CLIENT_ID: z.string().trim().min(1),
+    GOOGLE_AUTH_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive(),
+    AFFILIATE_LINK_SECRET: z.string().min(32),
+    SENSITIVE_DATA_ENCRYPTION_KEY: z.string().min(32),
+    AFFILIATE_PUBLIC_BASE_URL: z.string().url(),
+    CUSTOMER_AVATAR_STORAGE_DIR: z.string().min(1).default("runtime/customer-avatars"),
+    IDENTITY_APPLICATION_MEDIA_STORAGE_DIR: z
+      .string()
+      .min(1)
+      .default("runtime/identity-applications"),
+    IDENTITY_APPLICATION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
+    CUSTOMER_AVATAR_PUBLIC_BASE_URL: z.string().url(),
+    AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900),
+    AUTH_REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(604800),
+    AUTH_LOGIN_FAILURE_LIMIT: z.coerce.number().int().positive(),
+    AUTH_LOGIN_FAILURE_WINDOW_SECONDS: z.coerce.number().int().positive(),
+    AUTH_LOGIN_LOCK_SECONDS: z.coerce.number().int().positive(),
+    AUTH_OTP_TTL_SECONDS: z.coerce.number().int().positive().max(600),
+    AUTH_OTP_COOLDOWN_SECONDS: z.coerce.number().int().positive(),
+    AUTH_OTP_EMAIL_WEBHOOK_URL: optionalUrlSchema,
+    AUTH_OTP_EMAIL_WEBHOOK_TIMEOUT_MS: z.coerce.number().int().positive()
   })
   .superRefine((value, context) => {
     if (value.NODE_ENV !== "production") {
@@ -200,7 +202,11 @@ const envSchema = z
     ] as const;
     for (const [field, secret] of tokenSecrets) {
       if (productionPlaceholderPattern.test(secret)) {
-        addProductionIssue(context, field, `${field} must not use a placeholder value in production`);
+        addProductionIssue(
+          context,
+          field,
+          `${field} must not use a placeholder value in production`
+        );
       }
     }
     if (value.AUTH_ACCESS_TOKEN_SECRET === value.AUTH_REFRESH_TOKEN_SECRET) {

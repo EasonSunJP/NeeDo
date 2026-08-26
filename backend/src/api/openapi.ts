@@ -36,6 +36,41 @@ const jsonDataResponse = (description: string, dataSchema: Record<string, unknow
   }
 });
 
+const authJsonBody = (properties: Record<string, unknown>, required: string[] = []) => ({
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required,
+        properties
+      }
+    }
+  }
+});
+
+const authActionErrorResponses = {
+  "400": { description: "error.validation — strict request validation failed" },
+  "401": {
+    description:
+      "error.auth.token_invalid, error.auth.verification_code_invalid, or another authentication failure"
+  },
+  "403": {
+    description:
+      "error.forbidden, error.auth.account_disabled, or error.auth.account_restricted — permission or account-state denial"
+  },
+  "409": { description: "error.auth.google_conflict — login-method state conflicts" },
+  "429": {
+    description:
+      "error.rate_limited, error.auth.otp_cooldown, or error.auth.verification_attempts_exhausted"
+  },
+  "502": { description: "error.auth.otp_delivery_failed — verification email delivery failed" },
+  "503": {
+    description: "error.dependency.redis_unavailable or error.dependency.google_auth_unavailable"
+  }
+};
+
 const idPathParameter = (name = "id") => ({
   name,
   in: "path",
@@ -43,10 +78,7 @@ const idPathParameter = (name = "id") => ({
   schema: { type: "integer", minimum: 1 }
 });
 
-const identityWorkflowOperation = (
-  summary: string,
-  extras: Record<string, unknown> = {}
-) => ({
+const identityWorkflowOperation = (summary: string, extras: Record<string, unknown> = {}) => ({
   tags: ["Identity Applications"],
   summary,
   security: [{ bearerAuth: [] }],
@@ -589,7 +621,78 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           accessToken: { type: "string" },
           refreshToken: { type: "string" },
-          expiresIn: { type: "integer", enum: [900] }
+          expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] }
+        }
+      },
+      TokenPairWithNeedoId: {
+        type: "object",
+        additionalProperties: false,
+        required: ["accessToken", "refreshToken", "expiresIn"],
+        properties: {
+          accessToken: { type: "string" },
+          refreshToken: { type: "string" },
+          expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] },
+          needoId: { type: "string", pattern: "^n[0-9]{10}$" }
+        }
+      },
+      AuthChallengeMetadata: {
+        type: "object",
+        additionalProperties: false,
+        required: ["challengeId", "maskedEmail", "expiresIn", "cooldownSeconds"],
+        properties: {
+          challengeId: { type: "string", format: "uuid", maxLength: 64 },
+          maskedEmail: { type: "string", minLength: 1, maxLength: 255 },
+          expiresIn: { type: "integer", minimum: 1, maximum: 600 },
+          cooldownSeconds: { type: "integer", minimum: 0 }
+        }
+      },
+      GoogleAuthInitialization: {
+        type: "object",
+        additionalProperties: false,
+        required: ["clientId", "nonce", "nonceChallengeId", "expiresIn"],
+        properties: {
+          clientId: { type: "string", minLength: 1, maxLength: 255 },
+          nonce: { type: "string", minLength: 1, maxLength: 1024 },
+          nonceChallengeId: { type: "string", format: "uuid", maxLength: 64 },
+          expiresIn: { type: "integer", minimum: 1, maximum: 600 }
+        }
+      },
+      GoogleCredentialResult: {
+        oneOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["status", "accessToken", "refreshToken", "expiresIn"],
+            properties: {
+              status: { type: "string", const: "authenticated" },
+              accessToken: { type: "string" },
+              refreshToken: { type: "string" },
+              expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] }
+            }
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["status", "challengeId", "maskedEmail", "expiresIn", "cooldownSeconds"],
+            properties: {
+              status: { type: "string", const: "verification_required" },
+              challengeId: { type: "string", format: "uuid", maxLength: 64 },
+              maskedEmail: { type: "string", minLength: 1, maxLength: 255 },
+              expiresIn: { type: "integer", minimum: 1, maximum: 600 },
+              cooldownSeconds: { type: "integer", minimum: 0 }
+            }
+          }
+        ]
+      },
+      GoogleLinkStatus: {
+        type: "object",
+        additionalProperties: false,
+        required: ["linked", "maskedEmail", "hasPassword", "canUnlink"],
+        properties: {
+          linked: { type: "boolean" },
+          maskedEmail: { type: ["string", "null"], maxLength: 255 },
+          hasPassword: { type: "boolean" },
+          canUnlink: { type: "boolean" }
         }
       },
       RegisteredAccount: {
@@ -1011,10 +1114,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             }
           },
           reviewSummary: {
-            anyOf: [
-              { $ref: "#/components/schemas/BackofficeReviewSummary" },
-              { type: "null" }
-            ]
+            anyOf: [{ $ref: "#/components/schemas/BackofficeReviewSummary" }, { type: "null" }]
           },
           services: {
             type: "array",
@@ -1027,10 +1127,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             items: { $ref: "#/components/schemas/BackofficeScheduleSummary" }
           },
           compensationProfile: {
-            anyOf: [
-              { $ref: "#/components/schemas/BackofficeCompensation" },
-              { type: "null" }
-            ]
+            anyOf: [{ $ref: "#/components/schemas/BackofficeCompensation" }, { type: "null" }]
           },
           timeline: {
             type: "array",
@@ -1071,20 +1168,14 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
               },
               completedSpendJpy: { type: "number" },
               nextBooking: {
-                anyOf: [
-                  { $ref: "#/components/schemas/BackofficeBookingSummary" },
-                  { type: "null" }
-                ]
+                anyOf: [{ $ref: "#/components/schemas/BackofficeBookingSummary" }, { type: "null" }]
               },
               recentBookings: {
                 type: "array",
                 items: { $ref: "#/components/schemas/BackofficeBookingSummary" }
               },
               reviewSummary: {
-                anyOf: [
-                  { $ref: "#/components/schemas/BackofficeReviewSummary" },
-                  { type: "null" }
-                ]
+                anyOf: [{ $ref: "#/components/schemas/BackofficeReviewSummary" }, { type: "null" }]
               },
               timeline: {
                 type: "array",
@@ -1209,7 +1300,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         properties: {
           accessToken: { type: "string" },
           refreshToken: { type: "string" },
-          expiresIn: { type: "integer", enum: [900] },
+          expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] },
           me: { $ref: "#/components/schemas/AuthMe" }
         }
       },
@@ -1218,26 +1309,51 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["accessToken", "expiresIn"],
         properties: {
           accessToken: { type: "string" },
-          expiresIn: { type: "integer", enum: [900] }
+          expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] }
+        }
+      },
+      AuthIdentityAvailability: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "state", "identityId", "applicationId", "rejectionReason"],
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["customer", "technician", "merchant", "affiliate"]
+          },
+          state: {
+            type: "string",
+            enum: ["active", "available_to_apply", "draft", "pending", "rejected"]
+          },
+          identityId: { type: ["integer", "null"] },
+          applicationId: { type: ["integer", "null"] },
+          rejectionReason: { type: ["string", "null"] }
         }
       },
       AuthMe: {
         type: "object",
         required: [
           "id",
+          "needoId",
           "email",
+          "emailVerifiedAt",
+          "hasPassword",
           "username",
           "avatarUrl",
           "isActive",
           "currentIdentity",
           "identities",
+          "identityAvailability",
           "roles",
           "permissions",
           "menus"
         ],
         properties: {
           id: { type: "integer" },
+          needoId: { type: "string", pattern: "^n[0-9]{10}$" },
           email: { type: "string", format: "email" },
+          emailVerifiedAt: { type: ["string", "null"], format: "date-time" },
+          hasPassword: { type: "boolean" },
           username: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
           isActive: { type: "boolean" },
@@ -1245,6 +1361,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           identities: {
             type: "array",
             items: { $ref: "#/components/schemas/AuthIdentity" }
+          },
+          identityAvailability: {
+            type: "array",
+            items: { $ref: "#/components/schemas/AuthIdentityAvailability" }
           },
           roles: { type: "array", items: { type: "string" } },
           permissions: { type: "array", items: { type: "string" } },
@@ -1847,10 +1967,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           note: { type: ["string", "null"] },
           cancelReason: { type: ["string", "null"] },
           affiliate: {
-            anyOf: [
-              { $ref: "#/components/schemas/AffiliateCheckoutSummary" },
-              { type: "null" }
-            ]
+            anyOf: [{ $ref: "#/components/schemas/AffiliateCheckoutSummary" }, { type: "null" }]
           },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -2608,13 +2725,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       AffiliateTaskServiceSnapshot: {
         type: "object",
-        required: [
-          "id",
-          "shopId",
-          "serviceId",
-          "serviceNameSnapshot",
-          "servicePriceJpySnapshot"
-        ],
+        required: ["id", "shopId", "serviceId", "serviceNameSnapshot", "servicePriceJpySnapshot"],
         properties: {
           id: { type: "integer", minimum: 1 },
           shopId: { type: "integer", minimum: 1 },
@@ -2693,8 +2804,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           name: affiliateEditableTaskProperties.name,
           description: affiliateEditableTaskProperties.description,
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
-          rewardNdpPerCompletedOrder:
-            affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
+          rewardNdpPerCompletedOrder: affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
           totalBudgetNdp: affiliateEditableTaskProperties.totalBudgetNdp,
           customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
           fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
@@ -2706,8 +2816,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           taskStartsAt: affiliateEditableTaskProperties.taskStartsAt,
           taskEndsAt: affiliateEditableTaskProperties.taskEndsAt,
           attributionWindowDays: affiliateEditableTaskProperties.attributionWindowDays,
-          maxCompletedOrdersPerClaim:
-            affiliateEditableTaskProperties.maxCompletedOrdersPerClaim,
+          maxCompletedOrdersPerClaim: affiliateEditableTaskProperties.maxCompletedOrdersPerClaim,
           maxCompletedOrdersPerCustomer:
             affiliateEditableTaskProperties.maxCompletedOrdersPerCustomer,
           serviceScopeMode: affiliateEditableTaskProperties.serviceScopeMode,
@@ -2834,8 +2943,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           name: affiliateEditableTaskProperties.name,
           description: affiliateEditableTaskProperties.description,
           coverMediaAssetId: affiliateEditableTaskProperties.coverMediaAssetId,
-          rewardNdpPerCompletedOrder:
-            affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
+          rewardNdpPerCompletedOrder: affiliateEditableTaskProperties.rewardNdpPerCompletedOrder,
           customerDiscountType: affiliateEditableTaskProperties.customerDiscountType,
           fixedDiscountJpy: affiliateEditableTaskProperties.fixedDiscountJpy,
           discountRateBps: affiliateEditableTaskProperties.discountRateBps,
@@ -2846,8 +2954,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           taskStartsAt: affiliateEditableTaskProperties.taskStartsAt,
           taskEndsAt: affiliateEditableTaskProperties.taskEndsAt,
           attributionWindowDays: affiliateEditableTaskProperties.attributionWindowDays,
-          maxCompletedOrdersPerClaim:
-            affiliateEditableTaskProperties.maxCompletedOrdersPerClaim,
+          maxCompletedOrdersPerClaim: affiliateEditableTaskProperties.maxCompletedOrdersPerClaim,
           maxCompletedOrdersPerCustomer:
             affiliateEditableTaskProperties.maxCompletedOrdersPerCustomer,
           status: { type: "string", enum: affiliateTaskStatuses },
@@ -2934,13 +3041,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           rewardAllocatedNdp: { type: "integer", minimum: 1 },
           attributionStatus: {
             type: "string",
-            enum: [
-              "attributed",
-              "qualified",
-              "settled",
-              "invalidated",
-              "reversed"
-            ]
+            enum: ["attributed", "qualified", "settled", "invalidated", "reversed"]
           }
         }
       },
@@ -3231,8 +3332,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "403": { description: "Missing booking permission" },
           "404": { description: "Invalid, expired, or revoked affiliate code" },
           "409": {
-            description:
-              "Slot, task, scope, self-attribution, minimum amount, or budget conflict"
+            description: "Slot, task, scope, self-attribution, minimum amount, or budget conflict"
           }
         }
       }
@@ -3982,195 +4082,114 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/auth/login`]: {
       post: {
         tags: ["Auth"],
-        summary: "Username/email and password login",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["password"],
-                properties: {
-                  email: { type: "string", format: "email" },
-                  username: { type: "string", minLength: 1, maxLength: 255 },
-                  type: {
-                    type: "string",
-                    enum: ["username", "mobile", "email", "wechat", "qq", "weibo"]
-                  },
-                  numcode: { type: "string", maxLength: 32 },
-                  password: { type: "string", minLength: 1, maxLength: 128 }
-                },
-                anyOf: [{ required: ["email"] }, { required: ["username"] }]
-              }
-            }
-          }
-        },
-        responses: {
-          "200": {
-            description: "JWT token pair",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/TokenPair" }
-                  }
-                }
-              }
-            }
+        summary: "Email or immutable NeeDo ID and password login",
+        requestBody: authJsonBody(
+          {
+            loginIdentifier: { type: "string", minLength: 1, maxLength: 255 },
+            password: { type: "string", minLength: 1, maxLength: 128 }
           },
-          "401": { description: "Invalid credentials" },
-          "429": { description: "Account locked" },
-          "503": { description: "Redis auth session dependency is unavailable" }
+          ["loginIdentifier", "password"]
+        ),
+        responses: {
+          "200": jsonDataResponse("JWT token pair", {
+            $ref: "#/components/schemas/TokenPair"
+          }),
+          ...authActionErrorResponses
         }
       }
     },
     [`${config.API_PREFIX}/auth/register`]: {
       post: {
         tags: ["Auth"],
-        summary: "Register a customer or technician account",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["accountType", "email", "password", "username"],
-                oneOf: [
-                  {
-                    properties: { accountType: { const: "customer" } },
-                    required: ["accountType", "email", "password", "username"]
-                  },
-                  {
-                    properties: { accountType: { const: "technician" } },
-                    required: ["accountType", "city", "email", "password", "username"]
-                  }
-                ],
-                properties: {
-                  accountType: { type: "string", enum: ["customer", "technician"] },
-                  city: { type: "string", minLength: 1, maxLength: 100 },
-                  email: { type: "string", format: "email", maxLength: 255 },
-                  password: {
-                    type: "string",
-                    minLength: 8,
-                    maxLength: 128,
-                    pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).+$"
-                  },
-                  username: { type: "string", minLength: 1, maxLength: 100 }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          "201": {
-            description: "Registered account",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/RegisteredAccount" }
-                  }
-                }
-              }
+        summary: "Start verified email registration",
+        requestBody: authJsonBody(
+          {
+            email: { type: "string", format: "email", maxLength: 255 },
+            password: {
+              type: "string",
+              minLength: 8,
+              maxLength: 128,
+              pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).+$"
             }
           },
-          "400": { description: "Invalid registration input" },
-          "409": { description: "Email already exists" }
+          ["email", "password"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Action-bound email verification challenge", {
+            $ref: "#/components/schemas/AuthChallengeMetadata"
+          }),
+          ...authActionErrorResponses
         }
       }
     },
-    [`${config.API_PREFIX}/auth/otp/send`]: {
+    [`${config.API_PREFIX}/auth/register/verify`]: {
       post: {
         tags: ["Auth"],
-        summary: "Send email OTP",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["email"],
-                properties: {
-                  email: { type: "string", format: "email" }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          "200": {
-            description: "OTP delivery accepted",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: {
-                      type: "object",
-                      required: ["expiresIn", "cooldownSeconds"],
-                      properties: {
-                        expiresIn: { type: "integer", enum: [600] },
-                        cooldownSeconds: { type: "integer", enum: [60] }
-                      }
-                    }
-                  }
-                }
-              }
-            }
+        summary: "Verify email registration and create the baseline customer",
+        requestBody: authJsonBody(
+          {
+            challengeId: { type: "string", format: "uuid", maxLength: 64 },
+            otp: { type: "string", pattern: "^\\d{6}$" }
           },
-          "429": { description: "OTP cooldown active" },
-          "502": { description: "OTP delivery failed" }
+          ["challengeId", "otp"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Created account token pair and generated NeeDo ID", {
+            $ref: "#/components/schemas/TokenPairWithNeedoId"
+          }),
+          ...authActionErrorResponses
         }
       }
     },
-    [`${config.API_PREFIX}/auth/otp/verify`]: {
+    [`${config.API_PREFIX}/auth/google/init`]: {
       post: {
         tags: ["Auth"],
-        summary: "Verify email OTP",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["email", "otp"],
-                properties: {
-                  email: { type: "string", format: "email" },
-                  otp: { type: "string", pattern: "^\\d{6}$" }
-                }
-              }
-            }
-          }
-        },
+        summary: "Create a one-time nonce for Google Identity Services",
+        requestBody: authJsonBody({}),
         responses: {
-          "200": {
-            description: "JWT token pair",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["code", "message", "data"],
-                  properties: {
-                    code: { type: "integer", enum: [0] },
-                    message: { type: "string", enum: ["success"] },
-                    data: { $ref: "#/components/schemas/TokenPair" }
-                  }
-                }
-              }
-            }
+          "200": jsonDataResponse("Google authentication initialization", {
+            $ref: "#/components/schemas/GoogleAuthInitialization"
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/google`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Submit a Google ID credential against its one-time nonce",
+        requestBody: authJsonBody(
+          {
+            credential: { type: "string", minLength: 1, maxLength: 8192 },
+            nonceChallengeId: { type: "string", format: "uuid", maxLength: 64 }
           },
-          "401": { description: "Invalid or expired OTP" }
+          ["credential", "nonceChallengeId"]
+        ),
+        responses: {
+          "200": jsonDataResponse(
+            "Direct authenticated result or action-bound email verification challenge",
+            { $ref: "#/components/schemas/GoogleCredentialResult" }
+          ),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/google/verify`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify first-use Google registration or account link",
+        requestBody: authJsonBody(
+          {
+            challengeId: { type: "string", format: "uuid", maxLength: 64 },
+            otp: { type: "string", pattern: "^\\d{6}$" }
+          },
+          ["challengeId", "otp"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Authenticated Google token pair", {
+            $ref: "#/components/schemas/TokenPairWithNeedoId"
+          }),
+          ...authActionErrorResponses
         }
       }
     },
@@ -4178,20 +4197,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: {
         tags: ["Auth"],
         summary: "Refresh access token",
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["refreshToken"],
-                properties: {
-                  refreshToken: { type: "string" }
-                }
-              }
-            }
-          }
-        },
+        requestBody: authJsonBody(
+          { refreshToken: { type: "string", minLength: 1, maxLength: 8192 } },
+          ["refreshToken"]
+        ),
         responses: {
           "200": {
             description: "New access token",
@@ -4218,21 +4227,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Auth"],
         summary: "Switch current user identity and rotate the token pair",
         security: [{ bearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["refreshToken", "identityId"],
-                properties: {
-                  refreshToken: { type: "string" },
-                  identityId: { type: "integer", minimum: 1 }
-                }
-              }
-            }
-          }
-        },
+        requestBody: authJsonBody(
+          {
+            refreshToken: { type: "string", minLength: 1, maxLength: 8192 },
+            identityId: { type: "integer", minimum: 1 }
+          },
+          ["refreshToken", "identityId"]
+        ),
         responses: {
           "200": {
             description: "New token pair scoped to the requested identity",
@@ -4261,20 +4262,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         tags: ["Auth"],
         summary: "Logout and revoke current session",
         security: [{ bearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["refreshToken"],
-                properties: {
-                  refreshToken: { type: "string" }
-                }
-              }
-            }
-          }
-        },
+        requestBody: authJsonBody(
+          { refreshToken: { type: "string", minLength: 1, maxLength: 8192 } },
+          ["refreshToken"]
+        ),
         responses: {
           "200": {
             description: "Session revoked",
@@ -4321,6 +4312,160 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           },
           "401": { description: "Access token invalid, expired, or blacklisted" },
           "403": { description: "Missing auth me permission" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/google/link`]: {
+      get: {
+        tags: ["Auth"],
+        summary: "Read the current account Google link status",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current Google link status", {
+            $ref: "#/components/schemas/GoogleLinkStatus"
+          }),
+          ...authActionErrorResponses
+        }
+      },
+      post: {
+        tags: ["Auth"],
+        summary: "Submit a Google credential for the current account",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          {
+            credential: { type: "string", minLength: 1, maxLength: 8192 },
+            nonceChallengeId: { type: "string", format: "uuid", maxLength: 64 }
+          },
+          ["credential", "nonceChallengeId"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Action-bound Google link verification challenge", {
+            $ref: "#/components/schemas/AuthChallengeMetadata"
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/google/link/init`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Create a Google nonce bound to the current account",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody({}),
+        responses: {
+          "200": jsonDataResponse("Google link initialization", {
+            $ref: "#/components/schemas/GoogleAuthInitialization"
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/google/link/verify`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify and bind Google to the current account",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          {
+            challengeId: { type: "string", format: "uuid", maxLength: 64 },
+            otp: { type: "string", pattern: "^\\d{6}$" }
+          },
+          ["challengeId", "otp"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Google account linked", {
+            type: "object",
+            additionalProperties: false,
+            required: ["linked"],
+            properties: { linked: { type: "boolean", const: true } }
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/google/unlink`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Start action-bound Google unlink verification",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody({}),
+        responses: {
+          "200": jsonDataResponse("Google unlink verification challenge", {
+            $ref: "#/components/schemas/AuthChallengeMetadata"
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/google/unlink/verify`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify Google unlink and revoke all account sessions",
+        description:
+          "A stale access token can recover only this same completed unlink challenge; recovery never creates an authenticated request context.",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          {
+            challengeId: { type: "string", format: "uuid", maxLength: 64 },
+            otp: { type: "string", pattern: "^\\d{6}$" }
+          },
+          ["challengeId", "otp"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Google account unlinked and session signed out", {
+            type: "object",
+            additionalProperties: false,
+            required: ["signedOut"],
+            properties: { signedOut: { type: "boolean", const: true } }
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/password/setup`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Start password setup for a Google-only account",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          {
+            password: {
+              type: "string",
+              minLength: 8,
+              maxLength: 128,
+              pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).+$"
+            }
+          },
+          ["password"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Password setup verification challenge", {
+            $ref: "#/components/schemas/AuthChallengeMetadata"
+          }),
+          ...authActionErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/auth/password/setup/verify`]: {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify and persist the current account password",
+        security: [{ bearerAuth: [] }],
+        requestBody: authJsonBody(
+          {
+            challengeId: { type: "string", format: "uuid", maxLength: 64 },
+            otp: { type: "string", pattern: "^\\d{6}$" }
+          },
+          ["challengeId", "otp"]
+        ),
+        responses: {
+          "200": jsonDataResponse("Password login enabled", {
+            type: "object",
+            additionalProperties: false,
+            required: ["hasPassword"],
+            properties: { hasPassword: { type: "boolean", const: true } }
+          }),
+          ...authActionErrorResponses
         }
       }
     },
@@ -7303,7 +7448,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/identity-applications/mine`]: {
       get: identityWorkflowOperation("List the authenticated user's identity applications", {
         parameters: [
-          { name: "type", in: "query", schema: { type: "string", enum: ["technician", "merchant"] } },
+          {
+            name: "type",
+            in: "query",
+            schema: { type: "string", enum: ["technician", "merchant"] }
+          },
           {
             name: "status",
             in: "query",
@@ -7320,7 +7469,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/merchants/search`]: {
       get: identityWorkflowOperation("Search eligible shops by address, merchant ID, or name", {
         parameters: [
-          { name: "query", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 160 } },
+          {
+            name: "query",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 160 }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ]
@@ -7347,7 +7501,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             applicantName: { type: "string", minLength: 1, maxLength: 120 },
             phone: { type: ["string", "null"], maxLength: 32 },
             city: { type: ["string", "null"], maxLength: 100 },
-            serviceAreas: { type: "array", maxItems: 30, items: { type: "string", maxLength: 100 } },
+            serviceAreas: {
+              type: "array",
+              maxItems: 30,
+              items: { type: "string", maxLength: 100 }
+            },
             skills: { type: "array", maxItems: 50, items: { type: "string", maxLength: 100 } },
             yearsExperience: { type: ["integer", "null"], minimum: 0, maximum: 80 },
             bio: { type: ["string", "null"], maxLength: 2000 },
@@ -7480,8 +7638,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       post: identityWorkflowOperation("Upload protected application JPEG or PNG media", {
         parameters: [
           idPathParameter(),
-          { name: "purpose", in: "query", required: true, schema: { type: "string", maxLength: 50 } },
-          { name: "expected_version", in: "query", required: true, schema: { type: "integer", minimum: 1 } }
+          {
+            name: "purpose",
+            in: "query",
+            required: true,
+            schema: { type: "string", maxLength: 50 }
+          },
+          {
+            name: "expected_version",
+            in: "query",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
         ],
         requestBody: {
           required: true,
@@ -7504,45 +7672,64 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       })
     },
     [`${config.API_PREFIX}/identity-applications/{id}/withdraw`]: {
-      post: identityWorkflowOperation("Withdraw an identity application and start 30-day retention", {
-        parameters: [idPathParameter()],
-        requestBody: applicationVersionBody
-      })
+      post: identityWorkflowOperation(
+        "Withdraw an identity application and start 30-day retention",
+        {
+          parameters: [idPathParameter()],
+          requestBody: applicationVersionBody
+        }
+      )
     },
     [`${config.API_PREFIX}/contracts/affiliate/current`]: {
       get: identityWorkflowOperation("Get the current affiliate rules and binding NeeDo contract", {
         parameters: [
-          { name: "language", in: "query", schema: { type: "string", enum: ["zh-CN", "ja", "en"], default: "zh-CN" } }
+          {
+            name: "language",
+            in: "query",
+            schema: { type: "string", enum: ["zh-CN", "ja", "en"], default: "zh-CN" }
+          }
         ]
       })
     },
     [`${config.API_PREFIX}/contracts/merchant/current`]: {
       get: identityWorkflowOperation("Get the current merchant rules and binding NeeDo contract", {
         parameters: [
-          { name: "language", in: "query", schema: { type: "string", enum: ["zh-CN", "ja", "en"], default: "zh-CN" } }
+          {
+            name: "language",
+            in: "query",
+            schema: { type: "string", enum: ["zh-CN", "ja", "en"], default: "zh-CN" }
+          }
         ]
       })
     },
     [`${config.API_PREFIX}/contracts/acceptances/{receiptId}/receipt`]: {
       get: identityWorkflowOperation("Get the authenticated user's immutable contract receipt", {
         parameters: [
-          { name: "receiptId", in: "path", required: true, schema: { type: "string", minLength: 1, maxLength: 191 } }
+          {
+            name: "receiptId",
+            in: "path",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 191 }
+          }
         ]
       })
     },
     [`${config.API_PREFIX}/identity-activations/affiliate`]: {
-      post: identityWorkflowOperation("Accept the affiliate contract and activate the affiliate identity", {
-        requestBody: identityJsonBody(
-          {
-            contractVersion: { type: "string", minLength: 1, maxLength: 80 },
-            contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
-            language: { type: "string", enum: ["zh-CN", "ja", "en"] },
-            hasRead: { type: "boolean", enum: [true] },
-            hasAgreed: { type: "boolean", enum: [true] }
-          },
-          ["contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
-        )
-      })
+      post: identityWorkflowOperation(
+        "Accept the affiliate contract and activate the affiliate identity",
+        {
+          requestBody: identityJsonBody(
+            {
+              contractVersion: { type: "string", minLength: 1, maxLength: 80 },
+              contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+              language: { type: "string", enum: ["zh-CN", "ja", "en"] },
+              hasRead: { type: "boolean", enum: [true] },
+              hasAgreed: { type: "boolean", enum: [true] }
+            },
+            ["contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
+          )
+        }
+      )
     },
     [`${config.API_PREFIX}/bank-accounts/affiliate-withdrawal`]: {
       put: identityWorkflowOperation("Bind an eKYC-matched affiliate withdrawal bank account", {
@@ -7556,14 +7743,29 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             accountNumber: { type: "string", pattern: "^\\d{4,12}$" },
             accountHolderName: { type: "string", minLength: 1, maxLength: 191 }
           },
-          ["bankCode", "bankName", "branchCode", "branchName", "accountType", "accountNumber", "accountHolderName"]
+          [
+            "bankCode",
+            "bankName",
+            "branchCode",
+            "branchName",
+            "accountType",
+            "accountNumber",
+            "accountHolderName"
+          ]
         )
       })
     },
     [`${config.API_PREFIX}/merchant/technician-applications`]: {
       get: identityWorkflowOperation("List technician applications for the authenticated shop", {
         parameters: [
-          { name: "status", in: "query", schema: { type: "string", enum: ["submitted", "under_review", "approved", "rejected", "withdrawn"] } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["submitted", "under_review", "approved", "rejected", "withdrawn"]
+            }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ]
@@ -7599,29 +7801,45 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       })
     },
     [`${config.API_PREFIX}/merchant/technician-applications/{id}/resume.xlsx`]: {
-      get: identityWorkflowOperation("Download the application as an XLSX resume with embedded photos", {
-        parameters: [idPathParameter()]
-      })
+      get: identityWorkflowOperation(
+        "Download the application as an XLSX resume with embedded photos",
+        {
+          parameters: [idPathParameter()]
+        }
+      )
     },
     [`${config.API_PREFIX}/ops/merchant-applications`]: {
       get: identityWorkflowOperation("List merchant applications for operations review", {
         parameters: [
-          { name: "status", in: "query", schema: { type: "string", enum: ["submitted", "under_review", "approved", "rejected", "withdrawn"] } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["submitted", "under_review", "approved", "rejected", "withdrawn"]
+            }
+          },
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "page_size", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
         ]
       })
     },
     [`${config.API_PREFIX}/ops/merchant-applications/{id}`]: {
-      get: identityWorkflowOperation("Get merchant application, masked bank data, and authorized documents", {
-        parameters: [idPathParameter()]
-      })
+      get: identityWorkflowOperation(
+        "Get merchant application, masked bank data, and authorized documents",
+        {
+          parameters: [idPathParameter()]
+        }
+      )
     },
     [`${config.API_PREFIX}/ops/merchant-applications/{id}/approve`]: {
-      post: identityWorkflowOperation("Approve merchant identity, shop, billing, and trial atomically", {
-        parameters: [idPathParameter()],
-        requestBody: applicationVersionBody
-      })
+      post: identityWorkflowOperation(
+        "Approve merchant identity, shop, billing, and trial atomically",
+        {
+          parameters: [idPathParameter()],
+          requestBody: applicationVersionBody
+        }
+      )
     },
     [`${config.API_PREFIX}/ops/merchant-applications/{id}/reject`]: {
       post: identityWorkflowOperation("Reject merchant application with a reason", {
@@ -7842,7 +8060,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/im/conversations/{conversationId}`]: {
       delete: {
         tags: ["Step 13 Realtime"],
-        summary: "Hide a conversation from the current participant without deleting shared messages",
+        summary:
+          "Hide a conversation from the current participant without deleting shared messages",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
