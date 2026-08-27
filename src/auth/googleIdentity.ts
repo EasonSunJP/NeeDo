@@ -13,11 +13,47 @@ export type GoogleCredentialRequest = {
   clientId: string;
   nonce: string;
   container: HTMLElement;
+  signal?: AbortSignal;
   timeoutMs?: number;
 };
 
 let scriptLoadPromise: Promise<void> | null = null;
 let credentialRequestActive = false;
+
+function createCredentialCancelledError() {
+  return new Error(googleIdentityErrorKeys.credentialCancelled);
+}
+
+function rejectWhenAborted<T>(promise: Promise<T>, signal?: AbortSignal) {
+  if (!signal) {
+    return promise;
+  }
+
+  if (signal.aborted) {
+    return Promise.reject(createCredentialCancelledError());
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = () => {
+      reject(createCredentialCancelledError());
+    };
+    const cleanup = () => {
+      signal.removeEventListener("abort", handleAbort);
+    };
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
 
 function getGoogleIdentityApi() {
   return globalThis.google?.accounts?.id;
@@ -111,6 +147,7 @@ function receiveGoogleCredential(
 
       settled = true;
       globalThis.clearTimeout(timeoutId);
+      request.signal?.removeEventListener("abort", handleAbort);
 
       if ("errorKey" in result) {
         reject(new Error(result.errorKey));
@@ -120,9 +157,18 @@ function receiveGoogleCredential(
       resolve(result.credential);
     };
     const timeoutMs = request.timeoutMs ?? defaultCredentialTimeoutMs;
+    const handleAbort = () => {
+      finish({ errorKey: googleIdentityErrorKeys.credentialCancelled });
+    };
     const timeoutId = globalThis.setTimeout(() => {
       finish({ errorKey: googleIdentityErrorKeys.credentialTimeout });
     }, timeoutMs);
+
+    if (request.signal?.aborted) {
+      finish({ errorKey: googleIdentityErrorKeys.credentialCancelled });
+      return;
+    }
+    request.signal?.addEventListener("abort", handleAbort, { once: true });
 
     try {
       api.initialize({
@@ -163,7 +209,10 @@ export async function requestGoogleCredential(
   try {
     const timeoutMs = request.timeoutMs ?? defaultCredentialTimeoutMs;
     const deadline = Date.now() + timeoutMs;
-    await loadGoogleIdentityScript(timeoutMs);
+    await rejectWhenAborted(
+      loadGoogleIdentityScript(timeoutMs),
+      request.signal,
+    );
     const api = getGoogleIdentityApi();
     if (!api) {
       throw new Error(googleIdentityErrorKeys.apiUnavailable);

@@ -369,6 +369,9 @@ export const authApi = {
         retryOnUnauthorized: false,
       },
     );
+    if (!result || result.signedOut !== true) {
+      throw new Error("error.api");
+    }
     clearAuthTokens();
 
     return result;

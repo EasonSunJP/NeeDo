@@ -262,6 +262,39 @@ describe("Google Identity Services adapter", () => {
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });
 
+  it("aborts an abandoned credential request and immediately allows a new request", async () => {
+    vi.useFakeTimers();
+    const api = installGoogleApi();
+    const controller = new AbortController();
+    const { requestGoogleCredential } = await loadAdapter();
+    const first = requestGoogleCredential({
+      clientId: "client",
+      nonce: "nonce-1",
+      container: document.createElement("div"),
+      signal: controller.signal,
+      timeoutMs: 1_000,
+    });
+    const firstRejection = expect(first).rejects.toThrow(
+      "error.auth.google_credential_cancelled",
+    );
+
+    await vi.waitFor(() => expect(api.initialize).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await firstRejection;
+
+    const second = requestGoogleCredential({
+      clientId: "client",
+      nonce: "nonce-2",
+      container: document.createElement("div"),
+      timeoutMs: 1_000,
+    });
+    await vi.waitFor(() => expect(api.initialize).toHaveBeenCalledTimes(2));
+    api.callback()?.({ credential: "second-credential" });
+
+    await expect(second).resolves.toBe("second-credential");
+  });
+
   it("treats the credential as opaque and never decodes or persists it", async () => {
     const api = installGoogleApi();
     const atobSpy = vi.spyOn(globalThis, "atob");

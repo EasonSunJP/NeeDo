@@ -324,6 +324,18 @@ describe("formal auth API", () => {
     expect(clearAuthTokens).not.toHaveBeenCalled();
   });
 
+  it("does not clear tokens for a malformed unlink response without signedOut true", async () => {
+    vi.mocked(httpClient.request).mockResolvedValueOnce({ signedOut: false });
+
+    await expect(
+      authApi.verifyGoogleUnlink({
+        challengeId: challenge.challengeId,
+        otp: "123456",
+      }),
+    ).rejects.toThrow("error.api");
+    expect(clearAuthTokens).not.toHaveBeenCalled();
+  });
+
   it("starts and verifies password setup with authenticated non-retryable actions", async () => {
     vi.mocked(httpClient.request)
       .mockResolvedValueOnce(challenge)
