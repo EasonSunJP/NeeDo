@@ -75,6 +75,9 @@ describeIntegration("formal account-security recovery integration", () => {
         await transaction.loginLog.deleteMany({ where: { userId: { in: userIds } } });
         await transaction.externalAuthAccount.deleteMany({ where: { userId: { in: userIds } } });
         await transaction.userRole.deleteMany({ where: { userId: { in: userIds } } });
+        await transaction.publicIdentifier.deleteMany({
+          where: { userIdentity: { is: { userId: { in: userIds } } } }
+        });
         await transaction.userIdentity.deleteMany({ where: { userId: { in: userIds } } });
         await transaction.customerProfile.deleteMany({ where: { userId: { in: userIds } } });
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });

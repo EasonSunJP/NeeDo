@@ -301,7 +301,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
 
   const passwordUser = {
     id: 1,
-    needoId: "n0000000001",
+    needoId: "needo1234567890",
     email: "admin@example.com",
     emailVerifiedAt: new Date("2026-08-26T00:00:00.000Z"),
     phone: null,
@@ -355,7 +355,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const customerUser = {
     ...passwordUser,
     id: 2,
-    needoId: "n0000000002",
+    needoId: "u1234567891",
     email: "customer@example.com",
     username: "NeeDo Customer",
     identities: [
@@ -421,7 +421,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const disabledUser = {
     ...passwordUser,
     id: 3,
-    needoId: "n0000000003",
+    needoId: "needo1234567892",
     email: "disabled@example.com",
     username: "Disabled User",
     isActive: false,
@@ -430,7 +430,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const noPermissionUser = {
     ...passwordUser,
     id: 4,
-    needoId: "n0000000004",
+    needoId: "needo1234567893",
     email: "noperms@example.com",
     username: "No Permissions",
     identities: [
@@ -460,7 +460,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const restrictedUser = {
     ...passwordUser,
     id: 6,
-    needoId: "n0000000006",
+    needoId: "needo1234567895",
     email: "restricted@example.com",
     username: "Restricted User",
     accessState: { disabled: false, restricted: true },
@@ -469,7 +469,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const googleOnlyUser = {
     ...customerUser,
     id: 7,
-    needoId: "n0000000007",
+    needoId: "u1234567896",
     email: "google-only@example.com",
     username: "Google Only User",
     passwordHash: null
@@ -477,7 +477,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
   const multiPortalUser = {
     ...passwordUser,
     id: 5,
-    needoId: "n0000000005",
+    needoId: "u1234567894",
     email: "multi@example.com",
     username: "Multi Portal User",
     identities: [
@@ -584,7 +584,7 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
     }),
     createVerifiedBaselineCustomer: jest.fn(async (input: Record<string, unknown>) => {
       const id = 100 + registrations.length + 1;
-      const needoId = `n${String(id).padStart(10, "0")}`;
+      const needoId = `u${String(id).padStart(10, "0")}`;
       const createdUser = {
         ...customerUser,
         id,
@@ -695,7 +695,7 @@ describe("verified email registration and formal password authentication", () =>
       accessToken: expect.any(String),
       refreshToken: expect.any(String),
       expiresIn: 900,
-      needoId: "n0000000101"
+      needoId: "u0000000101"
     });
     expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledTimes(1);
     const creation = fixture.repository.createVerifiedBaselineCustomer.mock.calls[0][0] as {
@@ -1256,17 +1256,41 @@ describe("verified email registration and formal password authentication", () =>
     expect(response.body.data.refreshToken).toEqual(expect.any(String));
   });
 
-  it("logs in with the issued immutable NeeDo ID and password", async () => {
+  it("logs in with the issued immutable NEEDO personnel ID and password", async () => {
     const fixture = await createAuthFixture();
 
     const response = await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ loginIdentifier: "N0000000001", password: "Abcd@1234" })
+      .send({ loginIdentifier: "NEEDO1234567890", password: "Abcd@1234" })
       .expect(200);
 
     expect(response.body.data.accessToken).toEqual(expect.any(String));
     expect(response.body.data.refreshToken).toEqual(expect.any(String));
-    expect(fixture.repository.findUserByLoginIdentifier).toHaveBeenCalledWith("n0000000001");
+    expect(fixture.repository.findUserByLoginIdentifier).toHaveBeenCalledWith("needo1234567890");
+  });
+
+  it("issues tokens for the identity selected by an s/b/o personnel login alias", async () => {
+    const fixture = await createAuthFixture();
+    fixture.repository.findUserByLoginIdentifier.mockResolvedValueOnce({
+      ...fixture.multiPortalUser,
+      loginIdentityId: 51
+    } as never);
+
+    const response = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "s1234567890", password: "Abcd@1234" })
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${response.body.data.accessToken}`)
+      .expect(200)
+      .expect((meResponse) => {
+        expect(meResponse.body.data.currentIdentity).toMatchObject({
+          id: 51,
+          type: "technician"
+        });
+      });
   });
 
   it("rejects a mutable nickname with the generic invalid-credentials response", async () => {
@@ -1415,7 +1439,7 @@ describe("verified email registration and formal password authentication", () =>
     );
   });
 
-  it("shares failed-login state across email and immutable NeeDo ID, then clears it on success", async () => {
+  it("shares failed-login state across email and immutable NEEDO ID, then clears it on success", async () => {
     const fixture = await createAuthFixture();
     for (let index = 0; index < 4; index += 1) {
       await request(fixture.app)
@@ -1426,24 +1450,24 @@ describe("verified email registration and formal password authentication", () =>
 
     await request(fixture.app)
       .post("/api/v1/auth/login")
-      .send({ loginIdentifier: "n0000000001", password: "Abcd@1234" })
+      .send({ loginIdentifier: "needo1234567890", password: "Abcd@1234" })
       .expect(200);
 
     for (let index = 0; index < 4; index += 1) {
       await request(fixture.app)
         .post("/api/v1/auth/login")
-        .send({ loginIdentifier: "n0000000001", password: "wrong-password" })
+        .send({ loginIdentifier: "needo1234567890", password: "wrong-password" })
         .expect(401);
     }
     expect(await fixture.sessionStore.getAccountLoginLock(1)).toBe(false);
   });
 
-  it("locks a found account across NeeDo ID and email while unknown identifiers retain generic input-scoped failures", async () => {
+  it("locks a found account across NEEDO ID and email while unknown identifiers retain generic input-scoped failures", async () => {
     const fixture = await createAuthFixture();
     for (let index = 0; index < 5; index += 1) {
       await request(fixture.app)
         .post("/api/v1/auth/login")
-        .send({ loginIdentifier: "n0000000001", password: "wrong-password" })
+        .send({ loginIdentifier: "needo1234567890", password: "wrong-password" })
         .expect(index === 4 ? 429 : 401);
     }
 
@@ -1570,7 +1594,7 @@ describe("verified email registration and formal password authentication", () =>
 
     expect(meResponse.body.data).toMatchObject({
       id: 1,
-      needoId: "n0000000001",
+      needoId: "needo1234567890",
       email: "admin@example.com",
       emailVerifiedAt: "2026-08-26T00:00:00.000Z",
       hasPassword: true,

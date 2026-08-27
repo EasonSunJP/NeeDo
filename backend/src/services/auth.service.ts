@@ -677,7 +677,7 @@ export class AuthService {
       });
     }
 
-    return this.completeSuccessfulLogin(user, context);
+    return this.completeSuccessfulLogin(user, context, user.loginIdentityId);
   }
 
   public async startRegistration(input: RegistrationInput): Promise<RegistrationChallengePayload> {

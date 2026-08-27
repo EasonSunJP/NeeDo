@@ -112,6 +112,9 @@ describeIntegration("AuthRepository verified account and Google binding integrat
           where: { userId: { in: createdUserIds } }
         });
         await transaction.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+        await transaction.publicIdentifier.deleteMany({
+          where: { userIdentity: { is: { userId: { in: createdUserIds } } } }
+        });
         await transaction.userIdentity.deleteMany({ where: { userId: { in: createdUserIds } } });
         await transaction.customerProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
         await transaction.user.deleteMany({ where: { id: { in: createdUserIds } } });
@@ -123,7 +126,7 @@ describeIntegration("AuthRepository verified account and Google binding integrat
     }
   });
 
-  it("reads a trusted existing account by persisted email and NeeDo ID", async () => {
+  it("reads a trusted existing account by email but rejects its retired legacy ID", async () => {
     const user = await prisma.user.create({
       data: {
         needoId: "n9999999001",
@@ -141,9 +144,7 @@ describeIntegration("AuthRepository verified account and Google binding integrat
       emailVerifiedAt: user.emailVerifiedAt,
       accessState: { disabled: false, restricted: true }
     });
-    await expect(repository.findUserByLoginIdentifier(user.needoId)).resolves.toMatchObject({
-      id: user.id
-    });
+    await expect(repository.findUserByLoginIdentifier(user.needoId)).resolves.toBeNull();
     await expect(repository.findUserByLoginIdentifier(user.username)).resolves.toBeNull();
     await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
     await expect(repository.findUserById(user.id)).resolves.toMatchObject({
@@ -172,13 +173,18 @@ describeIntegration("AuthRepository verified account and Google binding integrat
       include: {
         customerProfile: true,
         externalAccounts: true,
-        identities: { where: { deletedAt: null } },
+        identities: {
+          where: { deletedAt: null },
+          include: { publicIdentifier: true }
+        },
         userRoles: { where: { deletedAt: null }, include: { role: true } }
       }
     });
 
     expect(stored.passwordHash).toBeNull();
-    expect(stored.needoId).toMatch(/^n\d{10}$/);
+    expect(stored.needoId).toMatch(/^u\d{10}$/);
+    expect(stored.accountNo).toMatch(/^\d{10}$/);
+    expect(stored.primaryIdentityType).toBe("U");
     expect(stored.username).toBe(stored.needoId);
     expect(stored.customerProfile?.displayName).toBe(stored.needoId);
     expect(stored.identities).toEqual(
@@ -187,7 +193,15 @@ describeIntegration("AuthRepository verified account and Google binding integrat
           type: "customer",
           displayName: stored.needoId,
           isDefault: true,
-          isActive: true
+          isActive: true,
+          publicIdentifier: expect.objectContaining({
+            publicId: stored.needoId,
+            numberPart: stored.accountNo,
+            kind: "U",
+            loginAllowed: true,
+            searchable: true,
+            status: "ACTIVE"
+          })
         })
       ])
     );

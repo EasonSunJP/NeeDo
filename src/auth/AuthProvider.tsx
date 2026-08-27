@@ -386,7 +386,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await authApi.refresh();
         let me = requireFormalAuthMePayload(await authApi.me());
         const rememberedSession = readRememberedPortalSession(portal);
-        const portalIdentity = findIdentityForPortal(me.identities, portal);
+        const portalIdentity = findIdentityForPortal(
+          [me.currentIdentity, ...me.identities],
+          portal
+        );
         if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
           me = requireFormalAuthMePayload((await authApi.switchIdentity(portalIdentity.id)).me);
         }
@@ -436,7 +439,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ): Promise<AuthActionResult> => {
       try {
         let me = requireFormalAuthMePayload(providedMe ?? (await authApi.me()), errorFallback);
-        const portalIdentity = findIdentityForPortal(me.identities, requestedPortal);
+        const portalIdentity = findIdentityForPortal(
+          [me.currentIdentity, ...me.identities],
+          requestedPortal
+        );
         if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
           me = requireFormalAuthMePayload((await authApi.switchIdentity(portalIdentity.id)).me, errorFallback);
         }
@@ -747,7 +753,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         let me = requireFormalAuthMePayload(await authApi.me());
         const targetPortal = requestedPortal ?? session.portal;
-        const portalIdentity = findIdentityForPortal(me.identities, targetPortal);
+        const portalIdentity = findIdentityForPortal(
+          [me.currentIdentity, ...me.identities],
+          targetPortal
+        );
         if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
           const switched = await authApi.switchIdentity(portalIdentity.id);
           identitySwitchCompleted = true;

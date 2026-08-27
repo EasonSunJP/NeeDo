@@ -47,6 +47,9 @@ describeIntegration("verified registration recovery integration", () => {
         });
         await transaction.loginLog.deleteMany({ where: { userId } });
         await transaction.userRole.deleteMany({ where: { userId } });
+        await transaction.publicIdentifier.deleteMany({
+          where: { userIdentity: { is: { userId } } }
+        });
         await transaction.userIdentity.deleteMany({ where: { userId } });
         await transaction.customerProfile.deleteMany({ where: { userId } });
         await transaction.user.deleteMany({ where: { id: userId } });

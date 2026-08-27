@@ -103,6 +103,20 @@ const technicianIdentity = {
   type: "technician"
 };
 
+const merchantStoreIdentity = {
+  id: 14,
+  scopeId: 43,
+  scopeType: "shop",
+  type: "merchant_owner"
+};
+
+const merchantOrganizationIdentity = {
+  id: 15,
+  scopeId: 9,
+  scopeType: "merchant_account",
+  type: "merchant_organization"
+};
+
 const customerMe: AuthMePayload = {
   id: 7,
   needoId: "n0000000007",
@@ -526,6 +540,37 @@ describe("AuthProvider formal registration and Google sessions", () => {
         currentIdentity: technicianIdentity,
         loginMethod: "google",
         portal: "technician"
+      }
+    });
+  });
+
+  it("keeps the O identity selected by prefixed login instead of replacing it with B", async () => {
+    const organizationMe: AuthMePayload = {
+      ...customerMe,
+      currentIdentity: merchantOrganizationIdentity,
+      identities: [
+        customerIdentity,
+        merchantStoreIdentity,
+        merchantOrganizationIdentity
+      ],
+      roles: ["customer", "merchant_owner"],
+      permissions: ["page:client-app", "page:merchant-app"],
+      menus: ["menu:client-app", "menu:merchant-app"]
+    };
+    mocked.authApi.loginFormal.mockResolvedValue({ me: organizationMe });
+    await renderProvider();
+    persistTokens("organization-access", "organization-refresh");
+
+    const loggedIn = await invoke(() =>
+      auth.loginWithFormalPassword("merchant", "o5831047296", "secret")
+    );
+
+    expect(mocked.authApi.switchIdentity).not.toHaveBeenCalled();
+    expect(loggedIn).toMatchObject({
+      ok: true,
+      session: {
+        currentIdentity: merchantOrganizationIdentity,
+        portal: "merchant"
       }
     });
   });

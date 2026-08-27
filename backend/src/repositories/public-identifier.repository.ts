@@ -51,7 +51,26 @@ export class PublicIdentifierRepository implements PublicIdentifierRepositoryPor
   public async createIdentifier(
     input: PublicIdentifierCreateInput
   ): Promise<PublicIdentifierRecord> {
-    return this.client.publicIdentifier.create({ data: input });
+    return this.runInTransaction(async (client) => {
+      if (
+        (input.kind === "U" || input.kind === "NEEDO") &&
+        input.userIdentityId !== undefined
+      ) {
+        await client.userIdentity.update({
+          where: { id: input.userIdentityId },
+          data: {
+            user: {
+              update: {
+                accountNo: input.numberPart,
+                primaryIdentityType: input.kind
+              }
+            }
+          }
+        });
+      }
+
+      return client.publicIdentifier.create({ data: input });
+    });
   }
 
   public async createShopSupportPair(
@@ -108,6 +127,7 @@ export class PublicIdentifierRepository implements PublicIdentifierRepositoryPor
 
     return (
       target.includes("public_id") ||
+      target.includes("account_no") ||
       target.includes("kind_number_part") ||
       (target.includes("kind") && target.includes("number_part"))
     );

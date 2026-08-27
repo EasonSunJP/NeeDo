@@ -5,6 +5,7 @@ import {
   canUseUserSessionForClientPortal,
   canAccessPortalFromSession,
   hasPermissionInSession,
+  findIdentityForPortal,
   isSessionAlignedWithPortal,
   type AuthMePayload
 } from "./rbac";
@@ -38,6 +39,18 @@ const baseMe = {
 } satisfies AuthMePayload;
 
 describe("frontend RBAC session helpers", () => {
+  it("keeps an organization O identity inside the merchant portal", () => {
+    const organizationIdentity = {
+      id: 9,
+      type: "merchant_organization",
+      scopeType: "merchant_account",
+      scopeId: 4
+    };
+
+    expect(findIdentityForPortal([organizationIdentity], "merchant")).toEqual(
+      organizationIdentity
+    );
+  });
   it("derives admin portal access from the real /auth/me identity and roles", () => {
     const session = buildAuthSessionFromMe(baseMe, "admin", "password");
 

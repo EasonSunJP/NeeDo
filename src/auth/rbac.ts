@@ -76,8 +76,11 @@ const identityPortalMap: Record<string, PortalScope> = {
   business: "business",
   customer: "user",
   merchant: "merchant",
+  merchant_organization: "merchant",
   merchant_owner: "merchant",
   merchant_staff: "merchant",
+  o: "merchant",
+  owner: "merchant",
   platform: "admin",
   platform_admin: "admin",
   scout: "business",
@@ -155,7 +158,7 @@ export function resolveAllowedPortals(me: AuthMePayload): PortalScope[] {
 const identityTypesByKind: Record<IdentityKind, string[]> = {
   customer: ["customer", "user"],
   technician: ["technician"],
-  merchant: ["merchant", "merchant_owner", "merchant_staff"],
+  merchant: ["merchant", "merchant_organization", "merchant_owner", "merchant_staff", "o", "owner"],
   affiliate: ["affiliate", "broker", "scout", "business"]
 };
 

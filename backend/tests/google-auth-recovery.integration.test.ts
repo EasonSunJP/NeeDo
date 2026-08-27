@@ -46,6 +46,9 @@ describeIntegration("formal Google recovery integration", () => {
         await tx.loginLog.deleteMany({ where: { userId: { in: userIds } } });
         await tx.externalAuthAccount.deleteMany({ where: { userId: { in: userIds } } });
         await tx.userRole.deleteMany({ where: { userId: { in: userIds } } });
+        await tx.publicIdentifier.deleteMany({
+          where: { userIdentity: { is: { userId: { in: userIds } } } }
+        });
         await tx.userIdentity.deleteMany({ where: { userId: { in: userIds } } });
         await tx.customerProfile.deleteMany({ where: { userId: { in: userIds } } });
         await tx.user.deleteMany({ where: { id: { in: userIds } } });

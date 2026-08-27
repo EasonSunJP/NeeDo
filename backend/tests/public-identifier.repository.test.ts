@@ -64,9 +64,11 @@ describe("PublicIdentifierRepository", () => {
     });
   });
 
-  it("persists a single identifier without changing service-owned data", async () => {
+  it("assigns a primary person number to the owning account before persisting its identifier", async () => {
+    const update = jest.fn().mockResolvedValue({ id: 11 });
     const create = jest.fn().mockResolvedValue({ id: 1, publicId: "u0000000123" });
     const repository = new PublicIdentifierRepository({
+      userIdentity: { update },
       publicIdentifier: { create }
     } as never);
     const input = {
@@ -81,6 +83,40 @@ describe("PublicIdentifierRepository", () => {
     await expect(repository.createIdentifier(input)).resolves.toMatchObject({
       publicId: "u0000000123"
     });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 11 },
+      data: {
+        user: {
+          update: {
+            accountNo: "0000000123",
+            primaryIdentityType: "U"
+          }
+        }
+      }
+    });
+    expect(create).toHaveBeenCalledWith({ data: input });
+  });
+
+  it("does not rewrite the account number when persisting a person alias", async () => {
+    const update = jest.fn();
+    const create = jest.fn().mockResolvedValue({ id: 2, publicId: "s0000000123" });
+    const repository = new PublicIdentifierRepository({
+      userIdentity: { update },
+      publicIdentifier: { create }
+    } as never);
+    const input = {
+      publicId: "s0000000123",
+      numberPart: "0000000123",
+      kind: "S" as const,
+      userIdentityId: 12,
+      loginAllowed: true,
+      searchable: true
+    };
+
+    await expect(repository.createIdentifier(input)).resolves.toMatchObject({
+      publicId: "s0000000123"
+    });
+    expect(update).not.toHaveBeenCalled();
     expect(create).toHaveBeenCalledWith({ data: input });
   });
 
@@ -151,6 +187,12 @@ describe("PublicIdentifierRepository", () => {
       repository.isRetryableIdentifierCollision({
         code: "P2002",
         meta: { target: ["kind", "numberPart"] }
+      })
+    ).toBe(true);
+    expect(
+      repository.isRetryableIdentifierCollision({
+        code: "P2002",
+        meta: { target: ["account_no"] }
       })
     ).toBe(true);
     expect(
