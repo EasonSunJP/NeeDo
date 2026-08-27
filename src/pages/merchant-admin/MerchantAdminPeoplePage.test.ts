@@ -16,6 +16,23 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).not.toContain("mapBackofficeOrder");
   });
 
+  it("retries only formal list reads and never renders an empty success state after an error", () => {
+    expect(source).toContain("loadCoreReadWithTransientRetry");
+    expect(source).toMatch(
+      /loadCoreReadWithTransientRetry\(\s*\(\) => backofficeRealDataApi\.technicians\("merchant-admin", query\)\s*\)/
+    );
+    expect(source).toMatch(
+      /loadCoreReadWithTransientRetry\(\s*\(\) => backofficeRealDataApi\.customers\("merchant-admin", query\)\s*\)/
+    );
+    expect(source).toContain("describeMerchantReadError(loadError, languageRef.current)");
+    expect(source).toContain('!loading && !error && module === "staff"');
+    expect(source).toContain('!loading && !error && module === "customers"');
+    expect(source).toContain('!loading && !error && module !== "reviews" && total > 0');
+    expect(source).not.toContain(
+      "setError(loadError instanceof Error ? loadError.message : String(loadError))"
+    );
+  });
+
   it("keeps supported technician mutations on audited merchant endpoints", () => {
     expect(source).toContain('backofficeRealDataApi.updateTechnician("merchant-admin"');
     expect(source).toContain('backofficeRealDataApi.approveTechnician("merchant-admin"');

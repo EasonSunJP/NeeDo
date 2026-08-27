@@ -17,6 +17,8 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
+import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
+import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { getMerchantStaffEmploymentLabel } from "../../lib/merchantStaffRoles";
@@ -101,18 +103,22 @@ export function MerchantAdminPeoplePage() {
     try {
       const query = { page, pageSize, keyword: keyword || undefined };
       if (module === "staff") {
-        const result = await backofficeRealDataApi.technicians("merchant-admin", query);
+        const result = await loadCoreReadWithTransientRetry(
+          () => backofficeRealDataApi.technicians("merchant-admin", query)
+        );
         setTechnicians(result.list);
         setCustomers([]);
         setTotal(result.total);
       } else {
-        const result = await backofficeRealDataApi.customers("merchant-admin", query);
+        const result = await loadCoreReadWithTransientRetry(
+          () => backofficeRealDataApi.customers("merchant-admin", query)
+        );
         setCustomers(result.list);
         setTechnicians([]);
         setTotal(result.total);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
+      setError(describeMerchantReadError(loadError, languageRef.current));
       if (rejectOnError) throw loadError;
     } finally {
       setLoading(false);
@@ -290,7 +296,7 @@ export function MerchantAdminPeoplePage() {
 
         {loading ? <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">正在读取当前店铺正式人员数据...</p> : null}
 
-        {!loading && module === "staff" ? (
+        {!loading && !error && module === "staff" ? (
           technicians.length ? (
             <DataTable<BackofficeTechnicianPayload>
               columns={[
@@ -310,7 +316,7 @@ export function MerchantAdminPeoplePage() {
           ) : <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">本店当前没有符合条件的正式技师</p>
         ) : null}
 
-        {!loading && module === "customers" ? (
+        {!loading && !error && module === "customers" ? (
           customers.length ? (
             <DataTable<BackofficeCustomerPayload>
               columns={[
@@ -330,7 +336,7 @@ export function MerchantAdminPeoplePage() {
           ) : <p className="rounded-lg border border-line bg-white p-6 text-sm font-bold text-ink/50">本店当前没有符合条件的正式客户</p>
         ) : null}
 
-        {!loading && module !== "reviews" && total > 0 ? (
+        {!loading && !error && module !== "reviews" && total > 0 ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white p-3 text-sm font-bold shadow-panel">
             <span>共 {total} 条 · 第 {page} / {totalPages} 页</span>
             <div className="flex gap-2">
