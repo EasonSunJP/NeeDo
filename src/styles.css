@@ -4416,6 +4416,13 @@ body:has(.client-theme-vital-mono.merchant-analytics-clean-shell),
   margin-bottom: 34px;
 }
 
+.admin-login-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .admin-login-card {
   display: flex;
   width: 100%;

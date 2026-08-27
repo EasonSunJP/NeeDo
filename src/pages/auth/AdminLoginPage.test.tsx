@@ -3,6 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AdminLoginPortal } from "../../auth/adminLogin";
 import adminLoginSource from "./AdminLoginPage.tsx?raw";
 
 const mocked = vi.hoisted(() => ({
@@ -16,6 +17,9 @@ const mocked = vi.hoisted(() => ({
     sendVerificationCode: vi.fn(),
     session: null
   },
+  language: "en" as "en" | "ja" | "ko" | "zh" | "zh-Hant",
+  requestBrowserPasswordSave: vi.fn(async () => undefined),
+  setLanguage: vi.fn(),
   navigate: vi.fn()
 }));
 
@@ -26,7 +30,12 @@ vi.mock("../../auth/AuthProvider", async (importOriginal) => {
 
 vi.mock("../../i18n/I18nProvider", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../i18n/I18nProvider")>();
-  return { ...actual, useI18n: () => ({ language: "en" as const, setLanguage: vi.fn() }) };
+  return { ...actual, useI18n: () => ({ language: mocked.language, setLanguage: mocked.setLanguage }) };
+});
+
+vi.mock("../../auth/browserPasswordSave", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../auth/browserPasswordSave")>();
+  return { ...actual, requestBrowserPasswordSave: mocked.requestBrowserPasswordSave };
 });
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -46,6 +55,7 @@ describe("AdminLoginPage formal password surface", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mocked.language = "en";
     window.localStorage.clear();
     window.localStorage.setItem(
       "needo.auth.remember-credentials.admin.admin",
@@ -60,9 +70,7 @@ describe("AdminLoginPage formal password surface", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    await act(async () => {
-      root.render(createElement(AdminLoginPage, { portal: "admin" }));
-    });
+    await renderPortal("admin");
   });
 
   afterEach(async () => {
@@ -70,14 +78,91 @@ describe("AdminLoginPage formal password surface", () => {
     container.remove();
   });
 
-  it("mounts only browser-managed username and current-password inputs", () => {
+  async function renderPortal(portal: AdminLoginPortal) {
+    await act(async () => {
+      root.render(createElement(AdminLoginPage, { portal }));
+    });
+  }
+
+  function setInput(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  it("keeps browser password saving opt-in", () => {
     const username = container.querySelector<HTMLInputElement>('input[autocomplete="username"]');
     const password = container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]');
 
-    expect(username?.value).toBe("admin");
-    expect(password?.value).toBe("");
-    expect(container.querySelector('[role="switch"]')).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('input[value="admin"]')).not.toBeNull();
+    expect(username).toBeNull();
+    expect(password).toBeNull();
+    expect(container.querySelector('[role="switch"]')?.getAttribute("aria-checked")).toBe("false");
     expect(container.textContent).not.toContain("Remember account and password");
+  });
+
+  it.each([
+    ["zh", "admin", "请使用运营后台"],
+    ["zh", "merchant-admin", "请使用商户/店铺后台"],
+    ["zh-Hant", "admin", "請使用營運後台"],
+    ["zh-Hant", "merchant-admin", "請使用商戶／店鋪後台"],
+    ["ja", "admin", "運営管理画面をご利用ください"],
+    ["ja", "merchant-admin", "店舗管理画面をご利用ください"],
+    ["en", "admin", "Please use Operations Admin"],
+    ["en", "merchant-admin", "Please use Merchant / Store Admin"],
+    ["ko", "admin", "운영 관리자 화면을 이용해 주세요"],
+    ["ko", "merchant-admin", "가맹점/매장 관리자 화면을 이용해 주세요"]
+  ] as const)("renders %s %s portal copy", async (language, portal, subtitle) => {
+    mocked.language = language;
+    await renderPortal(portal);
+
+    expect(container.textContent).toContain(subtitle);
+  });
+
+  it("places the five-language selector beside the heading", async () => {
+    const languageButton = container.querySelector<HTMLButtonElement>('button[aria-label="Language selector"]');
+
+    expect(languageButton).not.toBeNull();
+    await act(async () => languageButton?.click());
+    const japanese = Array.from(container.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')).find(
+      (button) => button.textContent?.includes("日本語")
+    );
+    await act(async () => japanese?.click());
+
+    expect(mocked.setLanguage).toHaveBeenCalledWith("ja");
+  });
+
+  it("persists only the backend portal preference and enables password-manager semantics", async () => {
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
+
+    await act(async () => toggle.click());
+
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(window.localStorage.getItem("needo.auth.browser-password-save.backend:admin")).toBe("true");
+    expect(container.querySelector<HTMLInputElement>('input[autocomplete="username"]')?.value).toBe("admin");
+    expect(container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')?.value).toBe("");
+  });
+
+  it("requests browser password storage only after a successful opted-in login", async () => {
+    mocked.auth.loginWithFormalPassword.mockResolvedValue({
+      ok: true,
+      session: { portal: "admin" }
+    });
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    await act(async () => toggle.click());
+    const password = container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')!;
+    setInput(password, "Strong.Password.2026");
+
+    await act(async () => {
+      container.querySelector<HTMLFormElement>("form")?.requestSubmit();
+    });
+
+    expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
+      id: "admin",
+      name: "Operations Admin",
+      password: "Strong.Password.2026"
+    });
+    expect(mocked.navigate).toHaveBeenCalledWith("/admin", { replace: true });
   });
 
   it("purges all legacy plaintext credential records while preserving unrelated auth storage", () => {

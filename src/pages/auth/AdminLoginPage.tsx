@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
+import {
+  readBrowserPasswordSavePreference,
+  requestBrowserPasswordSave,
+  writeBrowserPasswordSavePreference,
+  type BrowserPasswordSaveScope
+} from "../../auth/browserPasswordSave";
 import type { PortalScope } from "../../auth/demoAccount";
 import { useAuth } from "../../auth/AuthProvider";
 import { purgeLegacyRememberedCredentials } from "../../auth/rememberCredentials";
 import { isFrontendBypassSession } from "../../auth/rbac";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
+import { AdminToggleSwitch } from "../../components/admin/AdminToggleSwitch";
+import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
@@ -14,6 +22,7 @@ import {
   defaultDayAdminTheme,
   defaultNightAdminTheme,
   detectSystemAdminTheme,
+  isDarkAdminTheme,
   normalizeAdminTheme,
   platformAdminThemeOptions,
   sharedAdminThemeOptions,
@@ -25,7 +34,7 @@ type LoginMode = "account" | "code" | "qr";
 type BackendLoginCopy = {
   pageEyebrow: string;
   pageTitle: string;
-  pageSubtitle: string;
+  pageSubtitle: Record<AdminLoginPortal, string>;
   portalName: Record<AdminLoginPortal, string>;
   portalSubtitle: Record<AdminLoginPortal, string>;
   tabs: Record<LoginMode, string>;
@@ -33,6 +42,7 @@ type BackendLoginCopy = {
   accountPlaceholder: string;
   passwordLabel: string;
   passwordPlaceholder: string;
+  savePassword: string;
   codeEmailLabel: string;
   codeEmailPlaceholder: string;
   codeLabel: string;
@@ -63,7 +73,11 @@ const adminLoginCopy = {
   zh: {
     pageEyebrow: "NeeDo 后台",
     pageTitle: "欢迎回来",
-    pageSubtitle: "请使用后台账号登录",
+    pageSubtitle: {
+      admin: "请使用运营后台",
+      "merchant-admin": "请使用商户/店铺后台",
+      "afirieito-admin": "请使用后台账号登录"
+    },
     portalName: {
       admin: "运营后台",
       "merchant-admin": "商户后台",
@@ -83,6 +97,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
+    savePassword: "保存密码",
     codeEmailLabel: "登录邮箱",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "验证码",
@@ -109,7 +124,11 @@ const adminLoginCopy = {
   "zh-Hant": {
     pageEyebrow: "NeeDo 後台",
     pageTitle: "歡迎回來",
-    pageSubtitle: "請使用後台帳號登入",
+    pageSubtitle: {
+      admin: "請使用營運後台",
+      "merchant-admin": "請使用商戶／店鋪後台",
+      "afirieito-admin": "請使用後台帳號登入"
+    },
     portalName: {
       admin: "營運後台",
       "merchant-admin": "商戶後台",
@@ -129,6 +148,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
+    savePassword: "儲存密碼",
     codeEmailLabel: "登入信箱",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "驗證碼",
@@ -155,7 +175,11 @@ const adminLoginCopy = {
   ja: {
     pageEyebrow: "NeeDo 管理",
     pageTitle: "お帰りなさい",
-    pageSubtitle: "管理アカウントでログインしてください",
+    pageSubtitle: {
+      admin: "運営管理画面をご利用ください",
+      "merchant-admin": "店舗管理画面をご利用ください",
+      "afirieito-admin": "管理アカウントでログインしてください"
+    },
     portalName: {
       admin: "運営管理",
       "merchant-admin": "店舗管理",
@@ -175,6 +199,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
+    savePassword: "パスワードを保存",
     codeEmailLabel: "ログインメール",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "認証コード",
@@ -201,7 +226,11 @@ const adminLoginCopy = {
   en: {
     pageEyebrow: "NeeDo Admin",
     pageTitle: "Welcome back",
-    pageSubtitle: "Sign in with your admin account",
+    pageSubtitle: {
+      admin: "Please use Operations Admin",
+      "merchant-admin": "Please use Merchant / Store Admin",
+      "afirieito-admin": "Sign in with your admin account"
+    },
     portalName: {
       admin: "Operations Admin",
       "merchant-admin": "Merchant Admin",
@@ -221,6 +250,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
+    savePassword: "Save password",
     codeEmailLabel: "Login email",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "Verification code",
@@ -247,7 +277,11 @@ const adminLoginCopy = {
   ko: {
     pageEyebrow: "NeeDo 관리자",
     pageTitle: "다시 오신 것을 환영합니다",
-    pageSubtitle: "관리자 계정으로 로그인하세요",
+    pageSubtitle: {
+      admin: "운영 관리자 화면을 이용해 주세요",
+      "merchant-admin": "가맹점/매장 관리자 화면을 이용해 주세요",
+      "afirieito-admin": "관리자 계정으로 로그인하세요"
+    },
     portalName: {
       admin: "운영 관리자",
       "merchant-admin": "상점 관리자",
@@ -267,6 +301,7 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
+    savePassword: "비밀번호 저장",
     codeEmailLabel: "로그인 이메일",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "인증코드",
@@ -407,6 +442,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const { language } = useI18n();
   const copy = adminLoginCopy[language];
   const config = backendLoginConfig[portal];
+  const passwordSaveScope = `backend:${portal}` as BrowserPasswordSaveScope;
   const theme = useMemo(() => getInitialBackendLoginTheme(portal), [portal]);
   const requestedMode = normalizeMode(searchParams.get("mode"));
   const scanStatus = searchParams.get("scan");
@@ -414,6 +450,9 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [mode, setMode] = useState<LoginMode>(requestedMode);
   const [account, setAccount] = useState<string>(config.defaultEmail);
   const [password, setPassword] = useState<string>("");
+  const [savePassword, setSavePassword] = useState(() =>
+    readBrowserPasswordSavePreference(passwordSaveScope)
+  );
   const [codeEmail, setCodeEmail] = useState<string>(config.defaultEmail);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -447,6 +486,10 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     setPassword("");
     setCodeEmail(config.defaultEmail);
   }, [config.defaultEmail]);
+
+  useEffect(() => {
+    setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
+  }, [passwordSaveScope]);
 
   useEffect(() => {
     if (scanStatus !== "approved") {
@@ -488,7 +531,20 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
       return;
     }
 
+    if (savePassword && result.session.portal === config.authPortal) {
+      await requestBrowserPasswordSave({
+        id: account.trim(),
+        name: copy.portalName[portal],
+        password
+      });
+    }
+
     navigateToBackendSession(result.session.portal);
+  };
+
+  const updateSavePassword = (enabled: boolean) => {
+    setSavePassword(enabled);
+    writeBrowserPasswordSavePreference(passwordSaveScope, enabled);
   };
 
   const submitCodeLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -553,8 +609,11 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
         <section className="admin-login-panel">
           <div className="admin-login-panel-content">
             <div className="admin-login-heading">
-              <h1 className="admin-login-title text-3xl font-black leading-tight">{copy.pageTitle}</h1>
-              <p className="admin-login-muted mt-2 text-sm font-semibold">{copy.pageSubtitle}</p>
+              <div className="admin-login-heading-row">
+                <h1 className="admin-login-title text-3xl font-black leading-tight">{copy.pageTitle}</h1>
+                <LanguageSwitcher dark={isDarkAdminTheme(theme)} iconOnly />
+              </div>
+              <p className="admin-login-muted mt-2 text-sm font-semibold">{copy.pageSubtitle[portal]}</p>
             </div>
 
             <div className="admin-login-card">
@@ -605,7 +664,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       <div className="admin-login-field">
                         <span className="admin-login-field-icon">@</span>
                         <input
-                          autoComplete="username"
+                          autoComplete={savePassword ? "username" : "off"}
                           onChange={(event) => setAccount(event.target.value)}
                           placeholder={copy.accountPlaceholder}
                           value={account}
@@ -613,9 +672,19 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       </div>
                     </label>
                     <label className="block">
-                      <span className="admin-login-label mb-2 block text-sm font-black">{copy.passwordLabel}</span>
+                      <span className="mb-2 flex items-center justify-between gap-3">
+                        <span className="admin-login-label text-sm font-black">{copy.passwordLabel}</span>
+                        <span className="inline-flex items-center gap-2 text-xs font-bold text-[color:var(--admin-muted)]">
+                          {copy.savePassword}
+                          <AdminToggleSwitch
+                            ariaLabel={copy.savePassword}
+                            checked={savePassword}
+                            onChange={updateSavePassword}
+                          />
+                        </span>
+                      </span>
                       <PasswordInput
-                        autoComplete="current-password"
+                        autoComplete={savePassword ? "current-password" : "off"}
                         inputClassName="pr-10"
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder={copy.passwordPlaceholder}
