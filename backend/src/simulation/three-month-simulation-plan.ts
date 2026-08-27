@@ -1,8 +1,16 @@
-export const SIMULATION_NAMESPACE = "needo_three_month_v1";
+export const SIMULATION_NAMESPACE = "lifedance_real_ops_v1";
 export const SIMULATION_START_AT = "2026-06-01T00:00:00.000Z";
 export const SIMULATION_END_AT = "2026-08-31T14:59:59.999Z";
 export const SIMULATION_AS_OF_AT = "2026-08-25T00:00:00.000Z";
-export const SIMULATION_ORDER_PREFIX = "SIM3M-";
+export const SIMULATION_ORDER_PREFIX = "LD2026-";
+export const LIFEDANCE_SHOP_KEY = "shop-001";
+export const LIFEDANCE_ADMIN_EMAIL = "admin@lifedance.com";
+export const LIFEDANCE_LEGACY_OWNER_EMAIL = "sim.shop.001@needo.local";
+export const LIFEDANCE_SHOP_NAME = "LifeDance Wellness 渋谷";
+export const LIFEDANCE_STAFF_KEYS = Array.from(
+  { length: 20 },
+  (_, index) => `technician-${String(index + 1).padStart(3, "0")}`
+);
 
 export type SimulationBookingStatus =
   | "PENDING"
@@ -35,6 +43,8 @@ export interface SimulationTechnicianPlan {
   city: string;
   serviceArea: string;
   yearsExperience: number;
+  employmentType: "FULL_TIME" | "TEMPORARY";
+  employmentStartedAt: string;
   avatarUrl: string;
 }
 
@@ -110,17 +120,19 @@ export interface SimulationOrderHistoryPlan {
   createdAt: string;
 }
 
-export type SimulationImParticipantType = "customer" | "technician" | "shop_owner";
+export type SimulationImParticipantType = "admin" | "customer" | "technician" | "shop_owner";
 
 export interface SimulationConversationPlan {
   key: string;
-  customerKey: string;
-  participantType: Exclude<SimulationImParticipantType, "customer">;
-  participantKey: string;
+  firstType: SimulationImParticipantType;
+  firstKey: string;
+  secondType: SimulationImParticipantType;
+  secondKey: string;
   createdAt: string;
 }
 
 export interface SimulationContactPlan {
+  key: string;
   ownerType: SimulationImParticipantType;
   ownerKey: string;
   contactType: SimulationImParticipantType;
@@ -248,7 +260,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
       fromStatus: null,
       toStatus: "PENDING",
       actorType: "customer",
-      reason: "simulation_booking_created",
+      reason: "予約を受け付けました。",
       createdAt: requestedAt
     }
   ];
@@ -265,7 +277,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
         fromStatus: "PENDING",
         toStatus: "CANCELLED",
         actorType: "customer",
-        reason: booking.cancelReason ?? "customer_schedule_changed",
+        reason: booking.cancelReason ?? "お客様の予定変更によりキャンセルしました。",
         createdAt: addMinutes(requestedAt, 120)
       }
     ];
@@ -276,7 +288,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
     fromStatus: "PENDING",
     toStatus: "CONFIRMED",
     actorType: "merchant",
-    reason: "simulation_booking_confirmed",
+    reason: "店舗が予約内容を確認しました。",
     createdAt: confirmedAt
   };
 
@@ -289,7 +301,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
     fromStatus: "CONFIRMED",
     toStatus: "IN_SERVICE",
     actorType: "merchant",
-    reason: "simulation_service_started",
+    reason: "担当技師が施術を開始しました。",
     createdAt: inServiceAt
   };
 
@@ -306,7 +318,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
       fromStatus: "IN_SERVICE",
       toStatus: "COMPLETED",
       actorType: "merchant",
-      reason: "simulation_service_completed",
+      reason: "施術完了とお支払いを確認しました。",
       createdAt: completedAt
     }
   ];
@@ -316,6 +328,20 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
   const shops: SimulationShopPlan[] = SHOP_TEMPLATES.map(
     ([name, city, address], index): SimulationShopPlan => {
       const sequence = index + 1;
+      if (sequence === 1) {
+        return {
+          key: LIFEDANCE_SHOP_KEY,
+          ownerEmail: LIFEDANCE_ADMIN_EMAIL,
+          ownerUsername: "LifeDance 管理员",
+          name: LIFEDANCE_SHOP_NAME,
+          city: "東京都",
+          address: "東京都渋谷区道玄坂1-12-1",
+          phone: "050-9101-1001",
+          description:
+            "渋谷のボディケア、ヘッドケア、訪問リラクゼーションを提供するウェルネス店舗です。",
+          avatarUrl: SHOP_AVATAR_URLS[index]!
+        };
+      }
       return {
         key: `shop-${pad(sequence)}`,
         ownerEmail: `sim.shop.${pad(sequence)}@needo.local`,
@@ -324,7 +350,7 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         city,
         address,
         phone: `050-91${pad(sequence, 2)}-${pad(1000 + sequence, 4)}`,
-        description: `${SIMULATION_NAMESPACE} の正式ローカル検証用店舗データです。`,
+        description: `${city}で予約制のボディケアと訪問リラクゼーションを提供しています。`,
         avatarUrl: SHOP_AVATAR_URLS[index]!
       };
     }
@@ -334,7 +360,10 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
     { length: 100 },
     (_, index): SimulationTechnicianPlan => {
       const sequence = index + 1;
-      const shop = shops[Math.floor(index / 10)];
+      const shop =
+        sequence <= 20
+          ? shops[0]
+          : shops[1 + ((sequence - 21) % Math.max(shops.length - 1, 1))];
       if (!shop) {
         throw new Error(`Simulation shop assignment is missing for technician ${sequence}.`);
       }
@@ -347,6 +376,15 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         city: shop.city,
         serviceArea: `${shop.city}および周辺地域`,
         yearsExperience: 1 + (index % 12),
+        employmentType:
+          sequence <= 10
+            ? "FULL_TIME"
+            : sequence <= 20
+              ? "TEMPORARY"
+              : sequence % 3 === 0
+                ? "TEMPORARY"
+                : "FULL_TIME",
+        employmentStartedAt: "2026-06-01T00:00:00.000Z",
         avatarUrl: buildProfileAvatarUrl(sequence, 7)
       };
     }
@@ -461,15 +499,22 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         const isHistorical = startsAt < SIMULATION_AS_OF_AT;
         const isServiceDay =
           startsAt >= SIMULATION_AS_OF_AT && startsAt < "2026-08-26T00:00:00.000Z";
-        const shouldBook = isServiceDay
+        const isLifeDanceStaff = technician.shopKey === LIFEDANCE_SHOP_KEY;
+        const guaranteedFutureReservation =
+          isLifeDanceStaff && weekIndex === 12 && weeklySlotIndex === 1;
+        const shouldBook = guaranteedFutureReservation
           ? true
-          : isHistorical
-            ? slotSequence % 10 < 7
-            : slotSequence % 4 < 2;
+          : isServiceDay
+            ? true
+            : isHistorical
+              ? isLifeDanceStaff || slotSequence % 10 < 7
+              : slotSequence % 4 < 2;
         let bookingStatus: SimulationBookingStatus | null = null;
 
         if (shouldBook) {
-          if (isServiceDay) {
+          if (guaranteedFutureReservation) {
+            bookingStatus = "CONFIRMED";
+          } else if (isServiceDay) {
             bookingStatus =
               slotSequence % 3 === 0
                 ? "IN_SERVICE"
@@ -477,7 +522,13 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
                   ? "CONFIRMED"
                   : "PENDING";
           } else if (isHistorical) {
-            bookingStatus = slotSequence % 10 < 5 ? "COMPLETED" : "CANCELLED";
+            bookingStatus = isLifeDanceStaff
+              ? weeklySlotIndex === 0 || weekIndex % 4 !== 0
+                ? "COMPLETED"
+                : "CANCELLED"
+              : slotSequence % 10 < 5
+                ? "COMPLETED"
+                : "CANCELLED";
           } else {
             bookingStatus = slotSequence % 4 === 0 ? "PENDING" : "CONFIRMED";
           }
@@ -529,7 +580,10 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
           startsAt,
           endsAt,
           createdAt,
-          cancelReason: bookingStatus === "CANCELLED" ? "customer_schedule_changed" : null
+          cancelReason:
+            bookingStatus === "CANCELLED"
+              ? "お客様の予定変更によりキャンセルしました。"
+              : null
         };
         bookings.push(booking);
       }
@@ -584,19 +638,22 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
       );
       conversations.push({
         key: counterpart.conversationKey,
-        customerKey: customer.key,
-        participantType: counterpart.type,
-        participantKey: counterpart.key,
+        firstType: "customer",
+        firstKey: customer.key,
+        secondType: counterpart.type,
+        secondKey: counterpart.key,
         createdAt
       });
       contacts.push(
         {
+          key: `${counterpart.conversationKey}-contact-customer`,
           ownerType: "customer",
           ownerKey: customer.key,
           contactType: counterpart.type,
           contactKey: counterpart.key
         },
         {
+          key: `${counterpart.conversationKey}-contact-counterpart`,
           ownerType: counterpart.type,
           ownerKey: counterpart.key,
           contactType: "customer",
@@ -663,19 +720,22 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
     );
     conversations.push({
       key: conversationKey,
-      customerKey: focusedCustomer.key,
-      participantType: counterpart.type,
-      participantKey: counterpart.key,
+      firstType: "customer",
+      firstKey: focusedCustomer.key,
+      secondType: counterpart.type,
+      secondKey: counterpart.key,
       createdAt
     });
     contacts.push(
       {
+        key: `${conversationKey}-contact-customer`,
         ownerType: "customer",
         ownerKey: focusedCustomer.key,
         contactType: counterpart.type,
         contactKey: counterpart.key
       },
       {
+        key: `${conversationKey}-contact-counterpart`,
         ownerType: counterpart.type,
         ownerKey: counterpart.key,
         contactType: "customer",
@@ -692,6 +752,67 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         senderKey: senderIsCustomer ? focusedCustomer.key : counterpart.key,
         content,
         createdAt: addDaysAndHours(createdAt, focusedMessageDayOffsets[messageIndex] ?? 0, 0)
+      });
+    }
+  }
+
+  const staffMessageDayOffsets = [0, 1, 14, 15, 28, 29, 45, 46, 60, 61];
+  for (const [staffIndex, technicianKey] of LIFEDANCE_STAFF_KEYS.entries()) {
+    const technician = technicians.find((candidate) => candidate.key === technicianKey);
+    if (!technician || technician.shopKey !== LIFEDANCE_SHOP_KEY) {
+      throw new Error(`LifeDance staff assignment is missing for ${technicianKey}.`);
+    }
+    const conversationKey = `lifedance-staff-${technician.key}`;
+    const createdAt = addDaysAndHours(SIMULATION_START_AT, 1 + staffIndex, staffIndex % 6);
+    conversations.push({
+      key: conversationKey,
+      firstType: "admin",
+      firstKey: "lifedance-admin",
+      secondType: "technician",
+      secondKey: technician.key,
+      createdAt
+    });
+    contacts.push(
+      {
+        key: `${conversationKey}-contact-admin`,
+        ownerType: "admin",
+        ownerKey: "lifedance-admin",
+        contactType: "technician",
+        contactKey: technician.key
+      },
+      {
+        key: `${conversationKey}-contact-technician`,
+        ownerType: "technician",
+        ownerKey: technician.key,
+        contactType: "admin",
+        contactKey: "lifedance-admin"
+      }
+    );
+    const staffScript = [
+      `${technician.displayName}さん、来週のシフトを確認してください。変更希望は明日までにお願いします。`,
+      `確認しました。${staffIndex % 2 === 0 ? "水曜日は12時" : "金曜日は11時"}から勤務できます。`,
+      "本日の訪問予約は渋谷駅南口で合流してください。お客様のご希望も予約メモに記載しています。",
+      "承知しました。前の施術が終わり次第、到着予定を連絡します。",
+      "タオルとヘッドケア用品の在庫が少ないため、閉店前に補充をお願いします。",
+      "補充完了しました。予備をバックヤード上段に置いています。",
+      "先ほどの予約は施術が終わっています。完了処理とお客様メモの登録をお願いします。",
+      "完了報告とお客様メモを登録しました。お支払いも店頭で確認済みです。",
+      "今月の給与明細を公開しました。勤務時間と対象予約の内容を確認してください。",
+      "確認しました。金額と勤務時間に問題ありません。今月もありがとうございました。"
+    ];
+    for (const [messageIndex, content] of staffScript.entries()) {
+      const senderIsAdmin = messageIndex % 2 === 0;
+      messages.push({
+        key: `${conversationKey}-message-${messageIndex + 1}`,
+        conversationKey,
+        senderType: senderIsAdmin ? "admin" : "technician",
+        senderKey: senderIsAdmin ? "lifedance-admin" : technician.key,
+        content,
+        createdAt: addDaysAndHours(
+          createdAt,
+          staffMessageDayOffsets[messageIndex] ?? 0,
+          messageIndex % 2
+        )
       });
     }
   }

@@ -1240,6 +1240,33 @@ describe("verified email registration and formal password authentication", () =>
       });
   });
 
+  it("accepts the migrated LifeDance administrator email and rejects the removed legacy email", async () => {
+    const fixture = await createAuthFixture();
+    fixture.user.email = "admin@lifedance.com";
+    fixture.user.username = "LifeDance 管理员";
+
+    await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(401);
+
+    const response = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: " ADMIN@LIFEDANCE.COM ", password: "Abcd@1234" })
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${response.body.data.accessToken}`)
+      .expect(200)
+      .expect((meResponse) => {
+        expect(meResponse.body.data).toMatchObject({
+          email: "admin@lifedance.com",
+          username: "LifeDance 管理员"
+        });
+      });
+  });
+
   it("supports the deployed /login URI under the API base path", async () => {
     const fixture = await createAuthFixture();
 

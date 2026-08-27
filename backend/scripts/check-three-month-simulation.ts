@@ -1,10 +1,15 @@
-import { BookingOrderStatus } from "@prisma/client";
+import { BookingOrderStatus, TechnicianEmploymentType } from "@prisma/client";
 import { compare } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
+  LIFEDANCE_ADMIN_EMAIL,
+  LIFEDANCE_LEGACY_OWNER_EMAIL,
+  LIFEDANCE_SHOP_KEY,
+  LIFEDANCE_SHOP_NAME,
+  SIMULATION_AS_OF_AT,
   SIMULATION_END_AT,
   SIMULATION_NAMESPACE,
   SIMULATION_ORDER_PREFIX,
@@ -12,6 +17,8 @@ import {
   buildThreeMonthSimulationPlan
 } from "../src/simulation/three-month-simulation-plan";
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
+import { BackofficeRepository } from "../src/repositories/backoffice.repository";
+import { LIFEDANCE_PAYROLL_PERIODS } from "../src/simulation/lifedance-payroll-seed";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -30,6 +37,11 @@ const main = async (): Promise<void> => {
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
   const seedConfig = getSimulationSeedConfig(process.env);
+  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
+  assert(
+    adminPassword,
+    "ADMIN_DEFAULT_PASSWORD is required to verify the LifeDance administrator."
+  );
   const [{ prisma, disconnectPrisma }] = await Promise.all([import("../src/prisma/client")]);
   const plan = buildThreeMonthSimulationPlan();
 
@@ -46,7 +58,9 @@ const main = async (): Promise<void> => {
           passwordHash: true,
           avatarUrl: true,
           customerProfile: { select: { id: true } },
-          technicianProfile: { select: { id: true, shopId: true, status: true } }
+          technicianProfile: {
+            select: { id: true, shopId: true, status: true, employmentType: true }
+          }
         }
       }),
       prisma.user.findMany({
@@ -56,7 +70,15 @@ const main = async (): Promise<void> => {
           email: true,
           passwordHash: true,
           avatarUrl: true,
-          technicianProfile: { select: { id: true, shopId: true, status: true } },
+          technicianProfile: {
+            select: {
+              id: true,
+              shopId: true,
+              status: true,
+              employmentType: true,
+              employmentStartedAt: true
+            }
+          },
           customerProfile: { select: { id: true } }
         }
       }),
@@ -99,7 +121,11 @@ const main = async (): Promise<void> => {
     const simulationUsers = [...owners, ...technicianUsers, ...customerUsers];
     const simulationUserIds = simulationUsers.map((user) => user.id);
     assert(
-      simulationUsers.every((user) => user.avatarUrl === plannedAvatarByEmail.get(user.email)),
+      simulationUsers.every(
+        (user) =>
+          user.email === LIFEDANCE_ADMIN_EMAIL ||
+          user.avatarUrl === plannedAvatarByEmail.get(user.email)
+      ),
       "every simulation account must use its deterministic generated avatar"
     );
     assert(
@@ -111,7 +137,7 @@ const main = async (): Promise<void> => {
 
     const shops = await prisma.shop.findMany({
       where: { ownerUserId: { in: owners.map((owner) => owner.id) }, deletedAt: null },
-      select: { id: true, ownerUserId: true, status: true }
+      select: { id: true, ownerUserId: true, name: true, status: true }
     });
     assert(shops.length === 10, `expected 10 simulation shops, found ${shops.length}`);
     assert(
@@ -126,7 +152,14 @@ const main = async (): Promise<void> => {
           isActive: true,
           deletedAt: null
         },
-        select: { userId: true, type: true, scopeType: true, scopeId: true, activeKey: true }
+        select: {
+          userId: true,
+          type: true,
+          scopeType: true,
+          scopeId: true,
+          activeKey: true,
+          isDefault: true
+        }
       }),
       prisma.userRole.findMany({
         where: { userId: { in: simulationUserIds }, deletedAt: null },
@@ -146,6 +179,23 @@ const main = async (): Promise<void> => {
       codes.add(role.role.code);
       roleCodesByUser.set(role.userId, codes);
     }
+    const expectIdentity = (
+      user: { id: number; email: string },
+      type: string,
+      scopeType: string,
+      scopeId: number | null
+    ): void => {
+      const identities = identitiesByUser.get(user.id) ?? [];
+      assert(
+        identities.some(
+          (identity) =>
+            identity.type === type &&
+            identity.scopeType === scopeType &&
+            identity.scopeId === scopeId
+        ),
+        `${user.email} is missing ${type}/${scopeType}/${String(scopeId)} identity`
+      );
+    };
     const assertIdentityMatrix = (
       user: (typeof simulationUsers)[number],
       expectedTypes: string[],
@@ -200,6 +250,36 @@ const main = async (): Promise<void> => {
         `${owner.email} merchant identity scope is invalid`
       );
     }
+    const admin = owners.find((owner) => owner.email === LIFEDANCE_ADMIN_EMAIL);
+    assert(admin, "LifeDance administrator is missing from the owner cohort");
+    assert(admin.customerProfile, "LifeDance administrator customer profile is missing");
+    assert(admin.technicianProfile, "LifeDance administrator technician profile is missing");
+    const lifeDanceShop = shops.find((shop) => shop.name === LIFEDANCE_SHOP_NAME);
+    assert(lifeDanceShop, "LifeDance shop was not updated in place");
+    expectIdentity(admin, "platform", "global", null);
+    expectIdentity(admin, "customer", "customer_profile", admin.customerProfile.id);
+    expectIdentity(admin, "merchant_owner", "shop", lifeDanceShop.id);
+    expectIdentity(admin, "technician", "technician_profile", admin.technicianProfile.id);
+    expectIdentity(admin, "scout", "global", null);
+    const adminIdentities = identitiesByUser.get(admin.id) ?? [];
+    assert(
+      adminIdentities.filter((identity) => identity.isDefault).length === 1 &&
+        adminIdentities.some((identity) => identity.type === "platform" && identity.isDefault),
+      "only the LifeDance platform identity may be the default identity"
+    );
+    assert(
+      admin.technicianProfile.shopId === null &&
+        admin.technicianProfile.status === "private" &&
+        admin.technicianProfile.employmentType === TechnicianEmploymentType.INDEPENDENT,
+      "LifeDance administrator technician profile must remain private and independent"
+    );
+    assert(
+      roleCodesByUser.get(admin.id)?.has("admin") &&
+        ["customer", "merchant_owner", "technician", "scout"].every((roleCode) =>
+          roleCodesByUser.get(admin.id)?.has(roleCode)
+        ),
+      "LifeDance administrator is missing a cross-portal role"
+    );
     for (const technician of technicianUsers) {
       assert(technician.customerProfile, `${technician.email} is missing a customer profile`);
       assertIdentityMatrix(
@@ -222,11 +302,106 @@ const main = async (): Promise<void> => {
       user.technicianProfile ? [user.technicianProfile.id] : []
     );
     const [
+      activeLegacyAdministrator,
+      previousLifeDanceOwner,
+      lifeDanceMerchantAccounts,
+      adminTechnicianServices,
+      adminAvailabilities,
+      adminBookings
+    ] = await Promise.all([
+      prisma.user.findFirst({
+        where: { email: "admin@example.com", isActive: true, deletedAt: null },
+        select: { id: true }
+      }),
+      prisma.user.findUnique({
+        where: { email: LIFEDANCE_LEGACY_OWNER_EMAIL },
+        select: {
+          id: true,
+          technicianProfile: { select: { shopId: true, status: true, employmentType: true } }
+        }
+      }),
+      prisma.merchantAccount.findMany({
+        where: {
+          code: "lifedance-real-ops",
+          ownerUserId: admin.id,
+          status: "active",
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          memberships: {
+            where: {
+              shopId: lifeDanceShop.id,
+              endsAt: null,
+              deletedAt: null
+            },
+            select: { id: true }
+          }
+        }
+      }),
+      prisma.technicianService.count({
+        where: { technicianId: admin.technicianProfile.id, deletedAt: null }
+      }),
+      prisma.availability.count({
+        where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
+      }),
+      prisma.bookingOrder.count({
+        where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
+      })
+    ]);
+    assert(
+      !activeLegacyAdministrator,
+      "legacy administrator email must not resolve to an active user"
+    );
+    assert(
+      lifeDanceMerchantAccounts.length === 1 &&
+        lifeDanceMerchantAccounts[0]?.memberships.length === 1,
+      "LifeDance administrator must own one active merchant account and shop membership"
+    );
+    assert(
+      adminTechnicianServices === 0 && adminAvailabilities === 0 && adminBookings === 0,
+      "LifeDance administrator private technician profile must be non-bookable"
+    );
+    if (previousLifeDanceOwner) {
+      const [previousMerchantIdentities, previousMerchantRoles] = await Promise.all([
+        prisma.userIdentity.count({
+          where: {
+            userId: previousLifeDanceOwner.id,
+            type: "merchant_owner",
+            scopeType: "shop",
+            scopeId: lifeDanceShop.id,
+            isActive: true,
+            deletedAt: null
+          }
+        }),
+        prisma.userRole.count({
+          where: {
+            userId: previousLifeDanceOwner.id,
+            role: { code: "merchant_owner" },
+            scopeType: "shop",
+            scopeId: lifeDanceShop.id,
+            deletedAt: null
+          }
+        })
+      ]);
+      assert(
+        previousMerchantIdentities === 0 && previousMerchantRoles === 0,
+        "previous LifeDance owner merchant scope must be inactive"
+      );
+      assert(
+        !previousLifeDanceOwner.technicianProfile ||
+          (previousLifeDanceOwner.technicianProfile.shopId !== lifeDanceShop.id &&
+            previousLifeDanceOwner.technicianProfile.status === "private" &&
+            previousLifeDanceOwner.technicianProfile.employmentType ===
+              TechnicianEmploymentType.INDEPENDENT),
+        "previous LifeDance owner private technician profile must be detached"
+      );
+    }
+    const [
       services,
       technicianServices,
       scheduleSlots,
       bookings,
-      financials,
       customerWallets,
       seedLedgerTransactions,
       seedWalletLedgers,
@@ -242,20 +417,40 @@ const main = async (): Promise<void> => {
           startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
           deletedAt: null
         },
-        select: { id: true, startsAt: true, endsAt: true }
+        select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true }
       }),
       prisma.bookingOrder.findMany({
         where: { orderNo: { startsWith: SIMULATION_ORDER_PREFIX }, deletedAt: null },
-        select: { id: true, orderNo: true, status: true, startsAt: true, endsAt: true }
-      }),
-      prisma.orderFinancial.count({
-        where: {
-          bookingOrder: {
-            orderNo: { startsWith: SIMULATION_ORDER_PREFIX },
-            status: BookingOrderStatus.COMPLETED,
-            deletedAt: null
+        select: {
+          id: true,
+          orderNo: true,
+          shopId: true,
+          technicianProfileId: true,
+          status: true,
+          priceAmount: true,
+          paymentStatus: true,
+          paymentAmountJpy: true,
+          serviceSnapshotJson: true,
+          startsAt: true,
+          endsAt: true,
+          statusHistory: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "asc" },
+            select: { toStatus: true, createdAt: true }
           },
-          deletedAt: null
+          financial: {
+            select: {
+              serviceAmountJpy: true,
+              offlineReportedServiceAmountJpy: true,
+              paymentChannel: true,
+              serviceIncomeStatus: true,
+              moneyTimelineJson: true,
+              serviceIncomeConfirmedById: true,
+              serviceIncomeConfirmedAt: true,
+              settlementStatus: true,
+              deletedAt: true
+            }
+          }
         }
       }),
       prisma.wallet.findMany({
@@ -279,7 +474,7 @@ const main = async (): Promise<void> => {
       prisma.notification.count({
         where: {
           recipientUserId: { in: customerUsers.map((user) => user.id) },
-          title: "Simulation booking update",
+          title: "ご予約状況のお知らせ",
           deletedAt: null
         }
       })
@@ -338,19 +533,97 @@ const main = async (): Promise<void> => {
     }
 
     const completedBookings = expectedStatusCounts.get("COMPLETED") ?? 0;
-    assert(
-      financials === completedBookings,
-      `expected ${completedBookings} completed-order financials, found ${financials}`
+    const orderFinancials = bookings.flatMap((booking) =>
+      booking.financial && !booking.financial.deletedAt ? [booking.financial] : []
     );
-    const historyCount = await prisma.orderStatusHistory.count({
-      where: {
-        bookingOrder: { orderNo: { startsWith: SIMULATION_ORDER_PREFIX }, deletedAt: null },
-        deletedAt: null
+    assert(
+      orderFinancials.length === completedBookings,
+      `expected ${completedBookings} completed-order financials, found ${orderFinancials.length}`
+    );
+    for (const booking of bookings) {
+      const snapshot = readJsonRecord(booking.serviceSnapshotJson);
+      assert(
+        snapshot?.namespace === SIMULATION_NAMESPACE &&
+          snapshot.dataset === "lifedance_real_operations",
+        `${booking.orderNo} is missing the formal dataset marker`
+      );
+      const latestHistory = booking.statusHistory.at(-1);
+      assert(latestHistory, `${booking.orderNo} has no status history`);
+      assert(
+        latestHistory.toStatus === booking.status,
+        `${booking.orderNo} latest history does not match its order status`
+      );
+      if (booking.status === BookingOrderStatus.COMPLETED) {
+        const financial = booking.financial;
+        assert(financial && !financial.deletedAt, `${booking.orderNo} has no active financial`);
+        const payrollPeriod = LIFEDANCE_PAYROLL_PERIODS.find(
+          (period) =>
+            booking.endsAt >= new Date(period.periodStart) &&
+            booking.endsAt <= new Date(period.periodEnd)
+        );
+        assert(
+          booking.shopId !== lifeDanceShop.id || payrollPeriod,
+          `${booking.orderNo} completed outside the three approved payroll periods`
+        );
+        const expectedSettlementStatus =
+          booking.shopId !== lifeDanceShop.id
+            ? "ready_for_payroll"
+            : payrollPeriod?.shouldPay
+              ? "settled"
+              : "payroll_approved";
+        assert(
+          booking.paymentStatus === "CONFIRMED" &&
+            booking.paymentAmountJpy === Number(booking.priceAmount),
+          `${booking.orderNo} payment is not confirmed or reconciled`
+        );
+        assert(
+          financial.serviceAmountJpy === Number(booking.priceAmount) &&
+            financial.offlineReportedServiceAmountJpy === Number(booking.priceAmount) &&
+            financial.serviceIncomeStatus === "confirmed" &&
+            ["offline_card", "onsite_cash"].includes(financial.paymentChannel) &&
+            financial.serviceIncomeConfirmedById === admin.id &&
+            financial.serviceIncomeConfirmedAt &&
+            financial.settlementStatus === expectedSettlementStatus &&
+            Array.isArray(financial.moneyTimelineJson) &&
+            financial.moneyTimelineJson.length > 0,
+          `${booking.orderNo} income or settlement fields do not reconcile`
+        );
+      } else {
+        assert(!booking.financial, `${booking.orderNo} must not have confirmed income`);
       }
-    });
+    }
+    const historyCount = bookings.reduce(
+      (total, booking) => total + booking.statusHistory.length,
+      0
+    );
     assert(
       historyCount === plan.histories.length,
       `expected ${plan.histories.length} status-history rows, found ${historyCount}`
+    );
+    const representativeLifeDanceOrder = bookings.find(
+      (booking) => booking.shopId === lifeDanceShop.id
+    );
+    assert(representativeLifeDanceOrder, "LifeDance has no representative order");
+    const backofficeRepository = new BackofficeRepository(prisma);
+    const [platformOrderResult, merchantOrderResult] = await Promise.all([
+      backofficeRepository.listOrders({
+        scope: "platform",
+        page: 1,
+        pageSize: 1,
+        keyword: representativeLifeDanceOrder.orderNo
+      }),
+      backofficeRepository.listOrders({
+        scope: "merchant",
+        shopId: lifeDanceShop.id,
+        page: 1,
+        pageSize: 1,
+        keyword: representativeLifeDanceOrder.orderNo
+      })
+    ]);
+    assert(
+      platformOrderResult.list[0]?.id === representativeLifeDanceOrder.id &&
+        merchantOrderResult.list[0]?.id === representativeLifeDanceOrder.id,
+      "the same LifeDance order must be visible in platform and merchant repository scopes"
     );
 
     const candidateMessages = await prisma.message.findMany({
@@ -358,7 +631,13 @@ const main = async (): Promise<void> => {
         createdAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
         deletedAt: null
       },
-      select: { id: true, conversationId: true, metadata: true }
+      select: {
+        id: true,
+        conversationId: true,
+        senderUserId: true,
+        createdAt: true,
+        metadata: true
+      }
     });
     const simulationMessages = candidateMessages.filter((message) => {
       const metadata = readJsonRecord(message.metadata);
@@ -379,9 +658,16 @@ const main = async (): Promise<void> => {
       where: { id: { in: simulationConversationIds }, deletedAt: null },
       select: {
         id: true,
+        type: true,
         participants: {
           where: { deletedAt: null },
-          select: { userId: true }
+          select: {
+            userId: true,
+            unreadCount: true,
+            isPinned: true,
+            isMuted: true,
+            lastReadAt: true
+          }
         }
       }
     });
@@ -446,9 +732,12 @@ const main = async (): Promise<void> => {
       })
     );
     const resolveParticipantId = (
-      type: "customer" | "technician" | "shop_owner",
+      type: "admin" | "customer" | "technician" | "shop_owner",
       key: string
     ): number => {
+      if (type === "admin") {
+        return admin.id;
+      }
       const source =
         type === "customer"
           ? customerIdByKey
@@ -475,7 +764,7 @@ const main = async (): Promise<void> => {
         },
         deletedAt: null
       },
-      select: { ownerUserId: true, contactUserId: true }
+      select: { ownerUserId: true, contactUserId: true, source: true }
     });
     const simulationContacts = candidateContacts.filter((contact) =>
       expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
@@ -492,23 +781,439 @@ const main = async (): Promise<void> => {
       `expected 12 focused customer contacts, found ${focusedCustomerContacts.length}`
     );
 
+    const lifeDanceStaffMessages = simulationMessages.filter((message) => {
+      const metadata = readJsonRecord(message.metadata);
+      return metadata?.purpose === "staff_operations";
+    });
+    const lifeDanceStaffConversationIds = [
+      ...new Set(lifeDanceStaffMessages.map((message) => message.conversationId))
+    ];
+    const lifeDanceStaffConversations = simulationConversations.filter((conversation) =>
+      lifeDanceStaffConversationIds.includes(conversation.id)
+    );
+    const lifeDanceStaffContacts = simulationContacts.filter(
+      (contact) => contact.source === "lifedance_staff_seed"
+    );
+    const lifeDanceStaffUserIds = new Set(
+      plan.technicians
+        .filter((technician) => technician.shopKey === LIFEDANCE_SHOP_KEY)
+        .map((technician) => resolveParticipantId("technician", technician.key))
+    );
+    assert(
+      lifeDanceStaffConversations.length === 20,
+      `expected 20 LifeDance staff conversations, found ${lifeDanceStaffConversations.length}`
+    );
+    assert(
+      lifeDanceStaffMessages.length === 200,
+      `expected 200 LifeDance staff messages, found ${lifeDanceStaffMessages.length}`
+    );
+    assert(
+      lifeDanceStaffContacts.length === 40,
+      `expected 40 LifeDance staff contacts, found ${lifeDanceStaffContacts.length}`
+    );
+    for (const conversation of lifeDanceStaffConversations) {
+      assert(
+        conversation.type === "DIRECT" && conversation.participants.length === 2,
+        `staff conversation ${conversation.id} must be a two-person direct conversation`
+      );
+      const participantIds = new Set(
+        conversation.participants.map((participant) => participant.userId)
+      );
+      assert(
+        participantIds.has(admin.id) &&
+          [...participantIds].filter((userId) => lifeDanceStaffUserIds.has(userId)).length === 1,
+        `staff conversation ${conversation.id} must contain only the admin and one LifeDance employee`
+      );
+      assert(
+        conversation.participants.every((participant) => participant.lastReadAt),
+        `staff conversation ${conversation.id} must persist read state`
+      );
+      const conversationMessages = lifeDanceStaffMessages
+        .filter((message) => message.conversationId === conversation.id)
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+      assert(
+        conversationMessages.length === 10,
+        `staff conversation ${conversation.id} must contain 10 messages`
+      );
+      assert(
+        new Set(conversationMessages.map((message) => message.senderUserId)).size === 2,
+        `staff conversation ${conversation.id} must contain messages from both participants`
+      );
+      assert(
+        conversationMessages.every(
+          (message, index) =>
+            index === 0 || conversationMessages[index - 1]!.createdAt < message.createdAt
+        ),
+        `staff conversation ${conversation.id} messages must be strictly ordered`
+      );
+    }
+    const lifeDanceStaffParticipantStates = lifeDanceStaffConversations.flatMap(
+      (conversation) => conversation.participants
+    );
+    assert(
+      lifeDanceStaffParticipantStates.some((participant) => participant.isPinned) &&
+        lifeDanceStaffParticipantStates.some((participant) => participant.isMuted) &&
+        lifeDanceStaffParticipantStates.some((participant) => participant.unreadCount > 0),
+      "LifeDance staff conversations must persist varied pin, mute and unread state"
+    );
+    assert(
+      lifeDanceStaffContacts.every(
+        (contact) =>
+          (contact.ownerUserId === admin.id && lifeDanceStaffUserIds.has(contact.contactUserId)) ||
+          (lifeDanceStaffUserIds.has(contact.ownerUserId) && contact.contactUserId === admin.id)
+      ),
+      "LifeDance staff contacts must not include technicians from other shops"
+    );
+    const staffOperations = {
+      conversations: lifeDanceStaffConversations.length,
+      messages: lifeDanceStaffMessages.length,
+      contacts: lifeDanceStaffContacts.length
+    };
+
     const techniciansPerShop = new Map<number, number>();
     for (const user of technicianUsers) {
       const shopId = user.technicianProfile?.shopId;
       assert(shopId, `technician ${user.email} has no shop`);
       techniciansPerShop.set(shopId, (techniciansPerShop.get(shopId) ?? 0) + 1);
     }
-    assert(
-      shops.every((shop) => techniciansPerShop.get(shop.id) === 10),
-      "every simulation shop must have exactly 10 technicians"
+    const shopIdByKey = new Map(
+      plan.shops.flatMap((shopPlan) => {
+        const ownerId = ownerIdByKey.get(shopPlan.key);
+        const shop = shops.find((candidate) => candidate.ownerUserId === ownerId);
+        return shop ? [[shopPlan.key, shop.id] as const] : [];
+      })
     );
+    const expectedTechniciansPerShop = new Map<string, number>();
+    for (const technician of plan.technicians) {
+      expectedTechniciansPerShop.set(
+        technician.shopKey,
+        (expectedTechniciansPerShop.get(technician.shopKey) ?? 0) + 1
+      );
+    }
+    for (const [shopKey, expectedCount] of expectedTechniciansPerShop) {
+      const shopId = shopIdByKey.get(shopKey);
+      assert(shopId, `shop id is missing for ${shopKey}`);
+      assert(
+        techniciansPerShop.get(shopId) === expectedCount,
+        `${shopKey} expected ${expectedCount} technicians, found ${techniciansPerShop.get(shopId) ?? 0}`
+      );
+    }
+
+    const lifeDanceTechnicianPlans = plan.technicians.filter(
+      (technician) => technician.shopKey === LIFEDANCE_SHOP_KEY
+    );
+    const lifeDanceTechnicians = lifeDanceTechnicianPlans.map((technicianPlan) => {
+      const user = technicianUsers.find((candidate) => candidate.email === technicianPlan.email);
+      assert(user?.technicianProfile, `${technicianPlan.email} profile is missing`);
+      const expectedEmploymentType =
+        technicianPlan.employmentType === "FULL_TIME"
+          ? TechnicianEmploymentType.FULL_TIME
+          : TechnicianEmploymentType.TEMPORARY;
+      assert(
+        user.technicianProfile.shopId === lifeDanceShop.id &&
+          user.technicianProfile.employmentType === expectedEmploymentType &&
+          user.technicianProfile.employmentStartedAt?.toISOString() ===
+            technicianPlan.employmentStartedAt,
+        `${technicianPlan.email} employment does not match the LifeDance plan`
+      );
+      return { technicianPlan, user, profile: user.technicianProfile };
+    });
+    assert(lifeDanceTechnicians.length === 20, "LifeDance must have exactly 20 active employees");
+    assert(
+      lifeDanceTechnicians.filter(
+        ({ profile }) => profile.employmentType === TechnicianEmploymentType.FULL_TIME
+      ).length === 10 &&
+        lifeDanceTechnicians.filter(
+          ({ profile }) => profile.employmentType === TechnicianEmploymentType.TEMPORARY
+        ).length === 10,
+      "LifeDance employment must be 10 full-time and 10 temporary technicians"
+    );
+    const organizationDirectory = await backofficeRepository.listTechnicians({
+      scope: "merchant",
+      shopId: lifeDanceShop.id,
+      page: 1,
+      pageSize: 100,
+      status: "published"
+    });
+    assert(
+      organizationDirectory.total === 20 && organizationDirectory.list.length === 20,
+      `LifeDance organization directory expected 20 employees, found ${organizationDirectory.total}`
+    );
+    assert(
+      organizationDirectory.list.every(
+        (technician) =>
+          technician.shopId === lifeDanceShop.id &&
+          ["full_time", "temporary"].includes(technician.employmentType)
+      ),
+      "LifeDance organization directory contains an outsider or invalid employment type"
+    );
+
+    const lifeDanceTechnicianProfileIds = lifeDanceTechnicians.map(({ profile }) => profile.id);
+    const [compensationProfiles, payRuns] = await Promise.all([
+      prisma.technicianCompensationProfile.findMany({
+        where: {
+          shopId: lifeDanceShop.id,
+          technicianProfileId: { in: lifeDanceTechnicianProfileIds },
+          status: "active",
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          technicianProfileId: true,
+          name: true,
+          wageMode: true,
+          baseSalaryJpy: true,
+          hourlyRateJpy: true,
+          fixedOrderPayJpy: true,
+          commissionRateBps: true,
+          ndpFeeBearer: true,
+          technicianNdpShareBps: true,
+          effectiveFrom: true,
+          effectiveTo: true
+        }
+      }),
+      prisma.payRun.findMany({
+        where: {
+          shopId: lifeDanceShop.id,
+          OR: LIFEDANCE_PAYROLL_PERIODS.map((period) => ({
+            periodStart: new Date(period.periodStart),
+            periodEnd: new Date(period.periodEnd)
+          })),
+          deletedAt: null
+        },
+        include: {
+          payslips: {
+            where: { deletedAt: null },
+            include: {
+              lines: { where: { deletedAt: null }, orderBy: [{ id: "asc" }] },
+              payoutRecords: { where: { deletedAt: null }, orderBy: [{ id: "asc" }] }
+            },
+            orderBy: [{ technicianProfileId: "asc" }]
+          }
+        },
+        orderBy: [{ periodStart: "asc" }]
+      })
+    ]);
+    assert(
+      compensationProfiles.length === 20,
+      `expected 20 active compensation profiles, found ${compensationProfiles.length}`
+    );
+    const employmentByTechnicianProfileId = new Map(
+      lifeDanceTechnicians.map(({ profile }) => [profile.id, profile.employmentType])
+    );
+    const compensationProfileByTechnicianId = new Map(
+      compensationProfiles.map((profile) => [profile.technicianProfileId, profile])
+    );
+    for (const technicianProfileId of lifeDanceTechnicianProfileIds) {
+      const profile = compensationProfileByTechnicianId.get(technicianProfileId);
+      assert(profile, `technician ${technicianProfileId} has no active compensation profile`);
+      const employmentType = employmentByTechnicianProfileId.get(technicianProfileId);
+      const fullTime = employmentType === TechnicianEmploymentType.FULL_TIME;
+      assert(
+        profile.name ===
+          (fullTime ? "LifeDance 2026 正社員給与" : "LifeDance 2026 臨時スタッフ給与") &&
+          profile.wageMode === (fullTime ? "base_plus_commission" : "hourly") &&
+          profile.baseSalaryJpy === (fullTime ? 230_000 : 0) &&
+          profile.hourlyRateJpy === (fullTime ? 0 : 1_500) &&
+          profile.fixedOrderPayJpy === 0 &&
+          profile.commissionRateBps === (fullTime ? 2_000 : 0) &&
+          profile.ndpFeeBearer === "shop" &&
+          profile.technicianNdpShareBps === 0 &&
+          profile.effectiveFrom?.toISOString() === "2026-06-01T00:00:00.000Z" &&
+          profile.effectiveTo === null,
+        `technician ${technicianProfileId} compensation rule does not match employment type`
+      );
+    }
+    assert(payRuns.length === 3, `expected 3 LifeDance pay runs, found ${payRuns.length}`);
+    const payrollOrderIds = new Set<number>();
+    let payslipOrderLines = 0;
+    let payoutRecords = 0;
+    let payslips = 0;
+    for (const payRun of payRuns) {
+      const period = LIFEDANCE_PAYROLL_PERIODS.find(
+        (candidate) =>
+          payRun.periodStart.toISOString() === candidate.periodStart &&
+          payRun.periodEnd.toISOString() === candidate.periodEnd
+      );
+      assert(period, `pay run ${payRun.id} does not match an approved LifeDance period`);
+      assert(
+        payRun.generatedById === admin.id && payRun.approvedById === admin.id,
+        `pay run ${payRun.id} must be generated and approved by the LifeDance administrator`
+      );
+      assert(
+        payRun.status === (period.shouldPay ? "paid" : "approved"),
+        `pay run ${payRun.id} has invalid status ${payRun.status}`
+      );
+      assert(
+        payRun.payslips.length === 20,
+        `pay run ${payRun.id} expected 20 payslips, found ${payRun.payslips.length}`
+      );
+      assert(
+        new Set(payRun.payslips.map((payslip) => payslip.technicianProfileId)).size === 20 &&
+          payRun.payslips.every((payslip) =>
+            lifeDanceTechnicianProfileIds.includes(payslip.technicianProfileId)
+          ),
+        `pay run ${payRun.id} does not cover the exact LifeDance employee cohort`
+      );
+      const expectedPeriodOrders = bookings.filter(
+        (booking) =>
+          booking.shopId === lifeDanceShop.id &&
+          booking.status === BookingOrderStatus.COMPLETED &&
+          booking.endsAt >= new Date(period.periodStart) &&
+          booking.endsAt <= new Date(period.periodEnd)
+      );
+      const orderLines = payRun.payslips.flatMap((payslip) =>
+        payslip.lines.filter((line) => line.sourceType === "order" && line.orderId)
+      );
+      const orderLineIds = orderLines.flatMap((line) => (line.orderId ? [line.orderId] : []));
+      assert(
+        orderLineIds.length === expectedPeriodOrders.length &&
+          new Set(orderLineIds).size === expectedPeriodOrders.length &&
+          expectedPeriodOrders.every((booking) => orderLineIds.includes(booking.id)),
+        `pay run ${payRun.id} order lines do not exactly match completed orders in ${period.month}`
+      );
+      orderLineIds.forEach((orderId) => payrollOrderIds.add(orderId));
+      payslipOrderLines += orderLineIds.length;
+      payslips += payRun.payslips.length;
+
+      const totals = payRun.payslips.reduce(
+        (summary, payslip) => {
+          const employmentType = employmentByTechnicianProfileId.get(payslip.technicianProfileId);
+          const fullTime = employmentType === TechnicianEmploymentType.FULL_TIME;
+          const compensationProfile = compensationProfileByTechnicianId.get(
+            payslip.technicianProfileId
+          );
+          assert(
+            compensationProfile && payslip.compensationProfileId === compensationProfile.id,
+            `payslip ${payslip.id} compensation profile is missing or stale`
+          );
+          const signedLineTotal = payslip.lines.reduce((total, line) => total + line.amountJpy, 0);
+          const ruleBaseLines = payslip.lines.filter(
+            (line) => line.sourceType === "rule" && line.lineType === "base_salary"
+          );
+          assert(
+            signedLineTotal === payslip.netPayJpy,
+            `payslip ${payslip.id} net pay does not reconcile to signed lines`
+          );
+          assert(
+            fullTime
+              ? payslip.baseSalaryJpy === 230_000 &&
+                  ruleBaseLines.length === 1 &&
+                  ruleBaseLines[0]?.amountJpy === 230_000
+              : payslip.baseSalaryJpy > 0 && ruleBaseLines.length === 0,
+            `payslip ${payslip.id} base or hourly wage is invalid`
+          );
+          if (period.shouldPay) {
+            assert(
+              payslip.status === "paid" &&
+                payslip.paidAmountJpy === payslip.netPayJpy &&
+                payslip.unpaidAmountJpy === 0 &&
+                payslip.payoutRecords.length === 1 &&
+                payslip.payoutRecords[0]?.amountJpy === payslip.netPayJpy &&
+                payslip.payoutRecords[0]?.status === "completed" &&
+                payslip.payoutRecords[0]?.confirmedByTechnician === true &&
+                Boolean(payslip.payoutRecords[0]?.technicianConfirmedAt),
+              `payslip ${payslip.id} paid-month evidence is incomplete`
+            );
+          } else {
+            assert(
+              payslip.status === "approved" &&
+                payslip.paidAmountJpy === 0 &&
+                payslip.unpaidAmountJpy === payslip.netPayJpy &&
+                payslip.payoutRecords.length === 0,
+              `payslip ${payslip.id} approved-month unpaid balance is invalid`
+            );
+          }
+          payoutRecords += payslip.payoutRecords.length;
+          return {
+            base: summary.base + payslip.baseSalaryJpy,
+            commission: summary.commission + payslip.commissionJpy,
+            bonus: summary.bonus + payslip.bonusJpy,
+            allowance: summary.allowance + payslip.allowanceJpy,
+            deduction: summary.deduction + payslip.deductionJpy,
+            net: summary.net + payslip.netPayJpy,
+            paid: summary.paid + payslip.paidAmountJpy,
+            unpaid: summary.unpaid + payslip.unpaidAmountJpy
+          };
+        },
+        { base: 0, commission: 0, bonus: 0, allowance: 0, deduction: 0, net: 0, paid: 0, unpaid: 0 }
+      );
+      assert(
+        payRun.totalBaseSalaryJpy === totals.base &&
+          payRun.totalCommissionJpy === totals.commission &&
+          payRun.totalBonusJpy === totals.bonus &&
+          payRun.totalAllowanceJpy === totals.allowance &&
+          payRun.totalDeductionJpy === totals.deduction &&
+          payRun.totalNetPayJpy === totals.net &&
+          payRun.paidAmountJpy === totals.paid &&
+          payRun.unpaidAmountJpy === totals.unpaid,
+        `pay run ${payRun.id} totals do not reconcile to payslips`
+      );
+    }
+    const lifeDanceCompletedOrders = bookings.filter(
+      (booking) =>
+        booking.shopId === lifeDanceShop.id && booking.status === BookingOrderStatus.COMPLETED
+    );
+    assert(
+      payrollOrderIds.size === lifeDanceCompletedOrders.length &&
+        lifeDanceCompletedOrders.every((booking) => payrollOrderIds.has(booking.id)),
+      "every completed LifeDance order must appear exactly once in payroll"
+    );
+    assert(payslips === 60, `expected 60 payslips, found ${payslips}`);
+    assert(payoutRecords === 40, `expected 40 payout records, found ${payoutRecords}`);
+    const settlementReconciliation = {
+      settled: lifeDanceCompletedOrders.filter(
+        (booking) => booking.financial?.settlementStatus === "settled"
+      ).length,
+      payrollApproved: lifeDanceCompletedOrders.filter(
+        (booking) => booking.financial?.settlementStatus === "payroll_approved"
+      ).length
+    };
+
+    for (const { technicianPlan, profile } of lifeDanceTechnicians) {
+      const technicianSlots = scheduleSlots
+        .filter((slot) => slot.technicianProfileId === profile.id)
+        .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+      const technicianBookings = bookings.filter(
+        (booking) => booking.technicianProfileId === profile.id
+      );
+      const completed = technicianBookings.filter(
+        (booking) => booking.status === BookingOrderStatus.COMPLETED
+      );
+      const completedTokyoMonths = new Set(
+        completed.map(
+          (booking) => new Date(booking.startsAt.getTime() + 9 * 60 * 60 * 1_000).getUTCMonth() + 1
+        )
+      );
+      assert(technicianSlots.length >= 26, `${technicianPlan.key} has fewer than 26 shifts`);
+      assert(technicianBookings.length >= 12, `${technicianPlan.key} has fewer than 12 bookings`);
+      assert(completed.length >= 6, `${technicianPlan.key} has fewer than 6 completed bookings`);
+      assert(
+        [6, 7, 8].every((month) => completedTokyoMonths.has(month)),
+        `${technicianPlan.key} needs completed work in June, July and August`
+      );
+      assert(
+        technicianBookings.some(
+          (booking) =>
+            booking.status === BookingOrderStatus.CONFIRMED &&
+            booking.startsAt > new Date(SIMULATION_AS_OF_AT)
+        ),
+        `${technicianPlan.key} has no future confirmed booking`
+      );
+      assert(
+        technicianSlots.every(
+          (slot, index) => index === 0 || technicianSlots[index - 1]!.endsAt <= slot.startsAt
+        ),
+        `${technicianPlan.key} has overlapping shifts`
+      );
+    }
 
     const representativeAccounts = [owners[0], technicianUsers[0], customerUsers[0]];
     assert(representativeAccounts.every(Boolean), "representative login accounts are missing");
     const passwordChecks = await Promise.all(
       representativeAccounts.map((account) =>
         compare(
-          seedConfig.defaultPassword,
+          account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
           account.passwordHash
         )
       )
@@ -530,7 +1235,7 @@ const main = async (): Promise<void> => {
       JSON.stringify(
         {
           database: seedConfig.databaseName,
-          accounts: {
+          account: {
             merchantOwners: owners.length,
             technicians: technicianUsers.length,
             customers: customerUsers.length,
@@ -541,7 +1246,20 @@ const main = async (): Promise<void> => {
             unique: new Set(simulationUsers.map((user) => user.avatarUrl)).size,
             shopUnique: new Set(owners.map((owner) => owner.avatarUrl)).size
           },
-          shops: shops.length,
+          shop: {
+            total: shops.length,
+            lifeDanceShopId: lifeDanceShop.id,
+            lifeDanceName: lifeDanceShop.name
+          },
+          employment: {
+            lifeDanceEmployees: lifeDanceTechnicians.length,
+            fullTime: lifeDanceTechnicians.filter(
+              ({ profile }) => profile.employmentType === TechnicianEmploymentType.FULL_TIME
+            ).length,
+            temporary: lifeDanceTechnicians.filter(
+              ({ profile }) => profile.employmentType === TechnicianEmploymentType.TEMPORARY
+            ).length
+          },
           techniciansPerShop: Object.fromEntries(
             shops.map((shop) => [shop.id, techniciansPerShop.get(shop.id) ?? 0])
           ),
@@ -555,15 +1273,32 @@ const main = async (): Promise<void> => {
           },
           seedLedgerTransactions,
           seedWalletLedgers,
-          scheduleSlots: scheduleSlots.length,
-          scheduleRange: {
-            first: firstSlot.startsAt.toISOString(),
-            last: lastSlot.endsAt.toISOString()
+          schedule: {
+            slots: scheduleSlots.length,
+            range: {
+              first: firstSlot.startsAt.toISOString(),
+              last: lastSlot.endsAt.toISOString()
+            }
           },
           bookings: bookings.length,
-          bookingStatuses: Object.fromEntries(actualStatusCounts),
+          bookingsByStatus: Object.fromEntries(actualStatusCounts),
           statusHistories: historyCount,
-          completedOrderFinancials: financials,
+          orderFinancials: {
+            count: orderFinancials.length,
+            readyForPayroll: orderFinancials.filter(
+              (financial) => financial.settlementStatus === "ready_for_payroll"
+            ).length,
+            serviceIncomeJpy: orderFinancials.reduce(
+              (total, financial) => total + financial.serviceAmountJpy,
+              0
+            )
+          },
+          compensationProfiles: compensationProfiles.length,
+          payRuns: payRuns.length,
+          payslips,
+          payslipOrderLines,
+          payoutRecords,
+          settlementReconciliation,
           notifications,
           simulationConversations: simulationConversations.length,
           simulationMessages: simulationMessages.length,
@@ -571,6 +1306,8 @@ const main = async (): Promise<void> => {
           focusedCustomerConversations: focusedCustomerConversations.length,
           focusedCustomerMessages: focusedCustomerMessages.length,
           focusedCustomerContacts: focusedCustomerContacts.length,
+          organizationDirectory: organizationDirectory.total,
+          staffOperations,
           status: "ok"
         },
         null,

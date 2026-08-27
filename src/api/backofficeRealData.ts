@@ -90,6 +90,8 @@ export interface BackofficeTechnicianPayload {
   shopName: string | null;
   city: string;
   serviceArea: string | null;
+  employmentType: "independent" | "full_time" | "temporary";
+  employmentStartedAt: string | null;
   status: string;
   verifiedAt: string | null;
   createdAt: string;
@@ -324,7 +326,7 @@ export interface BackofficeShopCreateInput {
 
 export type BackofficeShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone" | "isRecommended">>;
 export type MerchantShopUpdateInput = Partial<Pick<BackofficeShopCreateInput, "name" | "description" | "city" | "address" | "phone">>;
-export type BackofficeTechnicianUpdateInput = Partial<Pick<BackofficeTechnicianPayload, "displayName" | "city" | "serviceArea">> & { shopId?: number | null; isRecommended?: boolean };
+export type BackofficeTechnicianUpdateInput = Partial<Pick<BackofficeTechnicianPayload, "displayName" | "city" | "serviceArea" | "employmentType" | "employmentStartedAt">> & { shopId?: number | null; isRecommended?: boolean };
 export type BackofficeCustomerUpdateInput = Partial<Pick<BackofficeCustomerPayload, "displayName" | "city" | "membershipLevel" | "isPublic">> & { bio?: string | null };
 export type BackofficeServiceCreateInput = Pick<BackofficeServicePayload, "categoryId" | "name" | "city" | "serviceMode" | "priceAmount" | "durationMinutes"> & Partial<Pick<BackofficeServicePayload, "technicianProfileId" | "description" | "status" | "isRecommended" | "sortOrder">>;
 export type BackofficeServiceUpdateInput = Partial<BackofficeServiceCreateInput>;

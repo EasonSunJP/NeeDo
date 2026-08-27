@@ -211,6 +211,21 @@ describe("UserCenterPage inline profile editing", () => {
     expect(nickname?.className).toContain("[field-sizing:content]");
   });
 
+  it("uses the same compact name font in view and edit modes so the ID remains visible", async () => {
+    await renderUserCenter();
+
+    const displayName = Array.from(container.querySelectorAll("h1")).find((element) => element.textContent?.includes("服务端原名"));
+    expect(displayName).toBeDefined();
+    expect(displayName?.className).toContain("text-lg");
+
+    await click(findIconButton("编辑资料"));
+    const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
+
+    expect(nickname).not.toBeNull();
+    expect(nickname?.className).toContain("text-lg");
+    expect(container.textContent).toContain("ID u0000000041");
+  });
+
   it("does not reserve an empty membership badge slot before the level label", async () => {
     await renderUserCenter();
 

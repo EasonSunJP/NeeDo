@@ -61,6 +61,7 @@ export type RealtimeContact = {
   nickname: string | null;
   ownerUserId: number;
   source: string;
+  isBlocked: boolean;
 };
 
 export type RealtimeFriendRequest = {
@@ -167,6 +168,12 @@ export const realtimeApi = {
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });
   },
+  blockContact(contactId: number) {
+    return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "POST" });
+  },
+  unblockContact(contactId: number) {
+    return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "DELETE" });
+  },
   listFriendRequests(query: PageQuery & { direction?: "incoming" | "outgoing" | "all"; status?: RealtimeFriendRequest["status"] } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeFriendRequest>>("/im/friend-requests", { query });
   },
@@ -265,7 +272,7 @@ function waitForReconnect(milliseconds: number, signal: AbortSignal) {
   });
 }
 
-export function subscribeRealtimeEvents(options: SubscribeRealtimeOptions) {
+function openRealtimeEventStream(options: SubscribeRealtimeOptions) {
   const controller = new AbortController();
   let stopped = false;
   let lastEventId = options.lastEventId ?? "";
@@ -314,5 +321,84 @@ export function subscribeRealtimeEvents(options: SubscribeRealtimeOptions) {
   return () => {
     stopped = true;
     controller.abort();
+  };
+}
+
+const realtimeSubscribers = new Set<SubscribeRealtimeOptions>();
+let stopSharedRealtimeStream: (() => void) | null = null;
+let sharedRealtimeAccessToken: string | null = null;
+let sharedRealtimeLastEventId = "";
+let realtimeVisibilityDocument: Document | null = null;
+
+function stopSharedRealtimeConnection() {
+  stopSharedRealtimeStream?.();
+  stopSharedRealtimeStream = null;
+  sharedRealtimeAccessToken = null;
+}
+
+function isRealtimeTabVisible() {
+  return typeof document === "undefined" || document.visibilityState !== "hidden";
+}
+
+function startSharedRealtimeConnection() {
+  if (stopSharedRealtimeStream || realtimeSubscribers.size === 0 || !isRealtimeTabVisible()) return;
+
+  const firstSubscriber = realtimeSubscribers.values().next().value as SubscribeRealtimeOptions | undefined;
+  if (!firstSubscriber) return;
+
+  sharedRealtimeAccessToken = getAccessToken();
+  stopSharedRealtimeStream = openRealtimeEventStream({
+    lastEventId: sharedRealtimeLastEventId || firstSubscriber.lastEventId,
+    reconnectDelayMs: firstSubscriber.reconnectDelayMs,
+    onError(error) {
+      [...realtimeSubscribers].forEach((subscriber) => subscriber.onError?.(error));
+    },
+    onEvent(event) {
+      if (event.id) sharedRealtimeLastEventId = event.id;
+      [...realtimeSubscribers].forEach((subscriber) => subscriber.onEvent(event));
+    }
+  });
+}
+
+function handleRealtimeVisibilityChange() {
+  if (!isRealtimeTabVisible()) {
+    stopSharedRealtimeConnection();
+    return;
+  }
+
+  startSharedRealtimeConnection();
+}
+
+function attachRealtimeVisibilityListener() {
+  if (typeof document === "undefined" || realtimeVisibilityDocument === document) return;
+  realtimeVisibilityDocument?.removeEventListener("visibilitychange", handleRealtimeVisibilityChange);
+  realtimeVisibilityDocument = document;
+  realtimeVisibilityDocument.addEventListener("visibilitychange", handleRealtimeVisibilityChange);
+}
+
+export function subscribeRealtimeEvents(options: SubscribeRealtimeOptions) {
+  realtimeSubscribers.add(options);
+  const currentAccessToken = getAccessToken();
+  if (!sharedRealtimeLastEventId && options.lastEventId) sharedRealtimeLastEventId = options.lastEventId;
+  attachRealtimeVisibilityListener();
+
+  if (stopSharedRealtimeStream && sharedRealtimeAccessToken !== currentAccessToken) {
+    stopSharedRealtimeConnection();
+  }
+
+  startSharedRealtimeConnection();
+
+  let subscribed = true;
+  return () => {
+    if (!subscribed) return;
+    subscribed = false;
+    realtimeSubscribers.delete(options);
+
+    if (realtimeSubscribers.size === 0) {
+      stopSharedRealtimeConnection();
+      sharedRealtimeLastEventId = "";
+      realtimeVisibilityDocument?.removeEventListener("visibilitychange", handleRealtimeVisibilityChange);
+      realtimeVisibilityDocument = null;
+    }
   };
 }

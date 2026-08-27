@@ -1,5 +1,10 @@
 import {
+  LIFEDANCE_ADMIN_EMAIL,
+  LIFEDANCE_SHOP_KEY,
+  LIFEDANCE_SHOP_NAME,
+  SIMULATION_AS_OF_AT,
   SIMULATION_END_AT,
+  SIMULATION_NAMESPACE,
   SIMULATION_ORDER_PREFIX,
   SIMULATION_START_AT,
   buildThreeMonthSimulationPlan
@@ -8,16 +13,20 @@ import {
 describe("three-month simulation plan", () => {
   const plan = buildThreeMonthSimulationPlan();
 
+  it("uses the stable LifeDance operating dataset namespace", () => {
+    expect(SIMULATION_NAMESPACE).toBe("lifedance_real_ops_v1");
+  });
+
   it("creates the requested isolated account cohort", () => {
     expect(plan.shops).toHaveLength(10);
     expect(plan.technicians).toHaveLength(100);
     expect(plan.customers).toHaveLength(100);
 
-    for (const shop of plan.shops) {
-      expect(plan.technicians.filter((technician) => technician.shopKey === shop.key)).toHaveLength(
-        10
-      );
-    }
+    const technicianCounts = plan.shops.map(
+      (shop) => plan.technicians.filter((technician) => technician.shopKey === shop.key).length
+    );
+    expect(technicianCounts[0]).toBe(20);
+    expect(technicianCounts.slice(1).every((count) => count === 8 || count === 9)).toBe(true);
 
     const accountEmails = [
       ...plan.shops.map((shop) => shop.ownerEmail),
@@ -25,7 +34,49 @@ describe("three-month simulation plan", () => {
       ...plan.customers.map((customer) => customer.email)
     ];
     expect(new Set(accountEmails).size).toBe(210);
-    expect(accountEmails.every((email) => email.startsWith("sim."))).toBe(true);
+    expect(accountEmails.filter((email) => !email.startsWith("sim."))).toEqual([
+      LIFEDANCE_ADMIN_EMAIL
+    ]);
+  });
+
+  it("assigns technicians 001-020 to LifeDance with persisted employment contracts", () => {
+    const lifeDanceStaff = plan.technicians.filter(
+      (technician) => technician.shopKey === LIFEDANCE_SHOP_KEY
+    );
+
+    expect(lifeDanceStaff).toHaveLength(20);
+    expect(
+      lifeDanceStaff.slice(0, 10).every((technician) => technician.employmentType === "FULL_TIME")
+    ).toBe(true);
+    expect(
+      lifeDanceStaff.slice(10).every((technician) => technician.employmentType === "TEMPORARY")
+    ).toBe(true);
+    expect(
+      lifeDanceStaff.every(
+        (technician) => technician.employmentStartedAt === "2026-06-01T00:00:00.000Z"
+      )
+    ).toBe(true);
+    expect(
+      plan.technicians.slice(20).every(
+        (technician) =>
+          technician.employmentType === "FULL_TIME" ||
+          technician.employmentType === "TEMPORARY"
+      )
+    ).toBe(true);
+  });
+
+  it("updates the first stable shop slot into the administrator-owned LifeDance shop", () => {
+    expect(plan.shops[0]).toMatchObject({
+      key: LIFEDANCE_SHOP_KEY,
+      ownerEmail: LIFEDANCE_ADMIN_EMAIL,
+      ownerUsername: "LifeDance 管理员",
+      name: LIFEDANCE_SHOP_NAME,
+      city: "東京都",
+      address: "東京都渋谷区道玄坂1-12-1",
+      phone: "050-9101-1001",
+      description:
+        "渋谷のボディケア、ヘッドケア、訪問リラクゼーションを提供するウェルネス店舗です。"
+    });
   });
 
   it("assigns stable generated avatars to every simulated account", () => {
@@ -100,7 +151,61 @@ describe("three-month simulation plan", () => {
     }
   });
 
+  it("gives every LifeDance employee non-overlapping work, completed monthly orders and a future reservation", () => {
+    const toTokyoMonth = (iso: string): string =>
+      new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1_000).toISOString().slice(0, 7);
+    const lifeDanceStaff = plan.technicians.filter(
+      (technician) => technician.shopKey === LIFEDANCE_SHOP_KEY
+    );
+    const technicianServiceByTechnician = new Map(
+      plan.technicianServices.map((service) => [service.technicianKey, service])
+    );
+    const serviceByKey = new Map(plan.services.map((service) => [service.key, service]));
+
+    for (const technician of lifeDanceStaff) {
+      const slots = plan.scheduleSlots
+        .filter((slot) => slot.technicianKey === technician.key)
+        .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+      const bookings = plan.bookings.filter(
+        (booking) => booking.technicianKey === technician.key
+      );
+      expect(slots.length).toBeGreaterThanOrEqual(26);
+      expect(bookings.length).toBeGreaterThanOrEqual(12);
+      expect(bookings.filter((booking) => booking.status === "COMPLETED").length).toBeGreaterThanOrEqual(6);
+      expect(
+        bookings.some(
+          (booking) =>
+            booking.status === "CONFIRMED" && booking.startsAt > SIMULATION_AS_OF_AT
+        )
+      ).toBe(true);
+      for (const month of ["2026-06", "2026-07", "2026-08"]) {
+        expect(
+          bookings.some(
+            (booking) =>
+              booking.status === "COMPLETED" && toTokyoMonth(booking.endsAt) === month
+          )
+        ).toBe(true);
+      }
+      for (let index = 1; index < slots.length; index += 1) {
+        expect(new Date(slots[index]!.startsAt).getTime()).toBeGreaterThanOrEqual(
+          new Date(slots[index - 1]!.endsAt).getTime()
+        );
+      }
+
+      const technicianService = technicianServiceByTechnician.get(technician.key);
+      expect(technicianService).toBeDefined();
+      for (const booking of bookings) {
+        const service = serviceByKey.get(booking.serviceKey);
+        expect(booking.shopKey).toBe(technician.shopKey);
+        expect(booking.technicianServiceKey).toBe(technicianService?.key);
+        expect(technicianService?.shopKey).toBe(booking.shopKey);
+        expect(service?.shopKey).toBe(booking.shopKey);
+      }
+    }
+  });
+
   it("includes bookings, completed service, cancellations and future reservations", () => {
+    expect(SIMULATION_ORDER_PREFIX).toBe("LD2026-");
     expect(plan.bookings.length).toBeGreaterThan(1_000);
     expect(new Set(plan.bookings.map((booking) => booking.orderNo)).size).toBe(
       plan.bookings.length
@@ -147,18 +252,32 @@ describe("three-month simulation plan", () => {
 
   it("creates real IM replacement data for every simulated customer", () => {
     const imPlan = plan as typeof plan & {
-      conversations?: Array<{ key: string; customerKey: string; participantKey: string }>;
-      contacts?: Array<{ ownerKey: string; contactKey: string }>;
-      messages?: Array<{ conversationKey: string; senderKey: string; createdAt: string }>;
+      conversations?: Array<{
+        key: string;
+        firstType: string;
+        firstKey: string;
+        secondType: string;
+        secondKey: string;
+      }>;
+      contacts?: Array<{ key: string; ownerKey: string; contactKey: string }>;
+      messages?: Array<{
+        conversationKey: string;
+        senderType: string;
+        senderKey: string;
+        createdAt: string;
+      }>;
     };
 
-    expect(imPlan.conversations).toHaveLength(210);
-    expect(imPlan.contacts).toHaveLength(420);
-    expect(imPlan.messages).toHaveLength(860);
+    expect(imPlan.conversations).toHaveLength(230);
+    expect(imPlan.contacts).toHaveLength(460);
+    expect(imPlan.messages).toHaveLength(1_060);
 
     for (const customer of plan.customers) {
       expect(
-        imPlan.conversations?.filter((conversation) => conversation.customerKey === customer.key)
+        imPlan.conversations?.filter(
+          (conversation) =>
+            conversation.firstType === "customer" && conversation.firstKey === customer.key
+        )
       ).toHaveLength(customer.key === "customer-100" ? 12 : 2);
     }
 
@@ -167,12 +286,44 @@ describe("three-month simulation plan", () => {
     );
     const focusedConversationKeys = new Set(
       imPlan.conversations
-        ?.filter((conversation) => conversation.customerKey === "customer-100")
+        ?.filter(
+          (conversation) =>
+            conversation.firstType === "customer" && conversation.firstKey === "customer-100"
+        )
         .map((conversation) => conversation.key)
     );
     expect(
       imPlan.messages?.filter((message) => focusedConversationKeys.has(message.conversationKey))
     ).toHaveLength(68);
+
+    const staffConversations = imPlan.conversations?.filter((conversation) =>
+      conversation.key.startsWith("lifedance-staff-")
+    );
+    const staffContacts = imPlan.contacts?.filter((contact) =>
+      contact.key.startsWith("lifedance-staff-")
+    );
+    const staffMessages = imPlan.messages?.filter((message) =>
+      message.conversationKey.startsWith("lifedance-staff-")
+    );
+    expect(staffConversations).toHaveLength(20);
+    expect(staffContacts).toHaveLength(40);
+    expect(staffMessages).toHaveLength(200);
+    for (const conversation of staffConversations ?? []) {
+      expect(conversation.firstType).toBe("admin");
+      expect(conversation.secondType).toBe("technician");
+      const conversationMessages = (staffMessages ?? []).filter(
+        (message) => message.conversationKey === conversation.key
+      );
+      expect(conversationMessages).toHaveLength(10);
+      expect(new Set(conversationMessages.map((message) => message.senderType))).toEqual(
+        new Set(["admin", "technician"])
+      );
+      for (let index = 1; index < conversationMessages.length; index += 1) {
+        expect(new Date(conversationMessages[index]!.createdAt).getTime()).toBeGreaterThan(
+          new Date(conversationMessages[index - 1]!.createdAt).getTime()
+        );
+      }
+    }
 
     const conversationKeys = new Set(imPlan.conversations?.map((conversation) => conversation.key));
     const periodStart = new Date(SIMULATION_START_AT).getTime();

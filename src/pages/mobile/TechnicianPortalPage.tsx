@@ -5411,34 +5411,40 @@ export function TechnicianPortalPage() {
         )}
 
         {activeView === "schedule" && (
-          <>
-            {scheduleTopControls}
-
-            <div className="w-full min-w-0 max-w-full overflow-visible">
-              {schedulePrimaryTab === "mySchedule" ? (
-                <div className="space-y-4">
-                  <FormalScheduleInventoryPanel scope="technician" shopId={technicianShopApiId} />
-                  <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" searchQuery={scheduleSearchQuery} />
-                </div>
-              ) : null}
-
-              {schedulePrimaryTab === "planning" ? (
-                <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]">
-                  {schedulePlanningProgressCard}
-                  <TechnicianShiftPlanningPanel
-                    activeStep={effectiveSchedulePlanningStep}
-                    onPlanningMethodChange={updateSchedulePlanningMethod}
-                    onStepChange={updateSchedulePlanningStep}
-                    selectedPlanningMethod={schedulePlanningMethod}
-                    storeId={store.id}
-                    technicianId={baseTech.id}
-                  />
-                </div>
-              ) : null}
+          formalTechnicianProfileId ? (
+            <div className="space-y-4">
+              <FormalScheduleInventoryPanel scope="technician" shopId={technicianShopApiId} />
             </div>
+          ) : (
+            <>
+              {scheduleTopControls}
 
-            {renderTechnicianStatusTimeline("mt-4 mb-[calc(220px+env(safe-area-inset-bottom))]")}
-          </>
+              <div className="w-full min-w-0 max-w-full overflow-visible">
+                {schedulePrimaryTab === "mySchedule" ? (
+                  <div className="space-y-4">
+                    <FormalScheduleInventoryPanel scope="technician" shopId={technicianShopApiId} />
+                    <UnifiedUserCalendar currentTechnician={baseTech} displayMode="parallel" scope="technician" searchQuery={scheduleSearchQuery} />
+                  </div>
+                ) : null}
+
+                {schedulePrimaryTab === "planning" ? (
+                  <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden [overflow-x:clip]">
+                    {schedulePlanningProgressCard}
+                    <TechnicianShiftPlanningPanel
+                      activeStep={effectiveSchedulePlanningStep}
+                      onPlanningMethodChange={updateSchedulePlanningMethod}
+                      onStepChange={updateSchedulePlanningStep}
+                      selectedPlanningMethod={schedulePlanningMethod}
+                      storeId={store.id}
+                      technicianId={baseTech.id}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              {renderTechnicianStatusTimeline("mt-4 mb-[calc(220px+env(safe-area-inset-bottom))]")}
+            </>
+          )
         )}
 
         {activeView === "moments" && renderTechnicianStatusTimeline()}

@@ -9,7 +9,7 @@ New tables:
 - `conversations`: direct or group conversation shell.
 - `conversation_participants`: membership, role, `unread_count`, last-read marker, per-user pin/mute preferences, and personal list hiding.
 - `messages`: durable message history with cursor pagination by message id.
-- `contacts`: user-to-user contact rows.
+- `contacts`: user-to-user contact rows with owner-scoped `blocked_at` state.
 - `friend_requests`: pending, accepted, and rejected friend requests.
 - `social_posts`: basic text/media social posts with `public` or `followers` visibility.
 - `follows`: user follow graph.
@@ -32,6 +32,8 @@ IM:
 - `PATCH /im/conversations/:conversationId/preferences`
 - `DELETE /im/conversations/:conversationId`
 - `GET /im/contacts`
+- `POST /im/contacts/:contactId/block`
+- `DELETE /im/contacts/:contactId/block`
 - `GET /im/friend-requests`
 - `POST /im/friend-requests`
 - `POST /im/friend-requests/:id/accept`
@@ -87,8 +89,8 @@ The database stores durable messages, social posts, requests, follows, and notif
 
 Formal authenticated sessions use the typed adapter in `src/features/realtime/api.ts` for IM, Social, notifications, unread counts, and SSE. The global unread-count provider owns one application-level SSE connection for navigation and pet badges.
 
-Legacy IM/Social pages and browser databases remain available only to an explicit static-demo build with a frontend-bypass session. Formal IM uses persisted APIs for conversations, messages, reactions, read/unread state, pin/mute preferences, and personal deletion. Other unsupported legacy mutations still reject with `error.feature_unavailable`, so unrelated components cannot silently persist fake business state.
+Legacy IM/Social pages and browser databases remain available only to an explicit static-demo build with a frontend-bypass session. Formal IM uses persisted APIs for conversations, messages, reactions, read/unread state, pin/mute preferences, personal deletion, and owner-scoped contact block/unblock state. Blocking requires `contact:block`, can modify only the authenticated user's own contact row, and emits `contact.updated`. Other unsupported legacy mutations still reject with `error.feature_unavailable`, so unrelated components cannot silently persist fake business state.
 
 For a formal merchant identity, the organization directory is hydrated separately from the paginated `GET /api/v1/merchant-admin/technicians?status=published` source. It uses the shop-scoped persisted technician profile, account, and avatar fields and does not create or imply a reciprocal IM contact relationship.
 
-The first production slice supports text IM, conversation list preferences, merchant technician organization contacts, and basic text Social posts. File/media upload, cross-device drafts, reply/like/repost/quote/bookmark state, relationship lists, other organization directory types, blacklists, tags, service accounts, and advanced group settings remain capability-gated until their database, storage, RBAC, moderation, and audit contracts are implemented.
+The first production slice supports text IM, conversation list preferences, persisted contact blocking, merchant technician organization contacts, and basic text Social posts. File/media upload, cross-device drafts, reply/like/repost/quote/bookmark state, relationship lists, other organization directory types, contact tags, service accounts, and advanced group settings remain capability-gated until their database, storage, RBAC, moderation, and audit contracts are implemented.

@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, TechnicianEmploymentType, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { NeedoIdAllocator } from "../services/needo-id.service";
 import { ERROR_CODES } from "../constants/error-codes";
@@ -65,6 +65,23 @@ interface TechnicianRankingDatabaseRow {
 }
 
 const PROFILE_DETAIL_SERVICE_LIMIT = 50;
+
+type TechnicianEmploymentPayload = BackofficeTechnicianPayload["employmentType"];
+
+const employmentTypeFromDb = (
+  value: TechnicianEmploymentType
+): TechnicianEmploymentPayload =>
+  value === TechnicianEmploymentType.FULL_TIME
+    ? "full_time"
+    : value === TechnicianEmploymentType.TEMPORARY
+      ? "temporary"
+      : "independent";
+
+const employmentTypeToDb: Record<TechnicianEmploymentPayload, TechnicianEmploymentType> = {
+  independent: TechnicianEmploymentType.INDEPENDENT,
+  full_time: TechnicianEmploymentType.FULL_TIME,
+  temporary: TechnicianEmploymentType.TEMPORARY
+};
 
 type OrderRecord = Prisma.BookingOrderGetPayload<{
   include: {
@@ -997,6 +1014,15 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
       ...(input.city !== undefined ? { city: input.city } : {}),
       ...(input.serviceArea !== undefined ? { serviceArea: input.serviceArea } : {}),
+      ...(input.employmentType !== undefined
+        ? { employmentType: employmentTypeToDb[input.employmentType] }
+        : {}),
+      ...(input.employmentStartedAt !== undefined
+        ? {
+            employmentStartedAt:
+              input.employmentStartedAt === null ? null : new Date(input.employmentStartedAt)
+          }
+        : {}),
       ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {}),
       ...(input.scope === "platform" && input.shopId !== undefined ? { shopId: input.shopId } : {})
     };
@@ -1674,6 +1700,8 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       shopName: technician.shop?.name ?? null,
       city: technician.city,
       serviceArea: technician.serviceArea,
+      employmentType: employmentTypeFromDb(technician.employmentType),
+      employmentStartedAt: technician.employmentStartedAt?.toISOString() ?? null,
       status: technician.status,
       verifiedAt: technician.verifiedAt?.toISOString() ?? null,
       createdAt: technician.createdAt.toISOString()

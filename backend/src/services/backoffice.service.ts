@@ -247,6 +247,8 @@ export interface BackofficeTechnicianPayload {
   shopName: string | null;
   city: string;
   serviceArea: string | null;
+  employmentType: "independent" | "full_time" | "temporary";
+  employmentStartedAt: string | null;
   status: string;
   verifiedAt: string | null;
   createdAt: string;
@@ -961,6 +963,10 @@ export class BackofficeService {
       ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
       ...(input.city !== undefined ? { city: input.city } : {}),
       ...(input.serviceArea !== undefined ? { serviceArea: input.serviceArea } : {}),
+      ...(input.employmentType !== undefined ? { employmentType: input.employmentType } : {}),
+      ...(input.employmentStartedAt !== undefined
+        ? { employmentStartedAt: input.employmentStartedAt }
+        : {}),
       ...(input.isRecommended !== undefined ? { isRecommended: input.isRecommended } : {})
     };
     const technician = this.requireResult(

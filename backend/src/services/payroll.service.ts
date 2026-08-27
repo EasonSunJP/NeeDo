@@ -983,7 +983,7 @@ export class PayrollService {
     const metrics = this.groupMetrics(sourceOrders);
 
     sourceOrders.forEach((order) => {
-      const group = this.getPayslipAccumulator(grouped, order);
+      const group = this.getPayslipAccumulator(grouped, order, actorUserId);
       const metric = metrics.get(order.technicianProfileId) ?? {
         monthlyCompletedOrders: 0,
         monthlyServiceGmvJpy: 0
@@ -1096,12 +1096,14 @@ export class PayrollService {
 
   private getPayslipAccumulator(
     grouped: Map<number, GeneratedPayslipAccumulator>,
-    order: PayrollOrderFinancialSource
+    order: PayrollOrderFinancialSource,
+    actorUserId: number
   ): GeneratedPayslipAccumulator {
     const existing = grouped.get(order.technicianProfileId);
     if (existing) {
       return existing;
     }
+    const monthlyBaseSalaryJpy = Math.max(0, order.compensationRule.baseSalaryJpy);
     const created: GeneratedPayslipAccumulator = {
       shopId: order.shopId,
       shopName: order.shopName,
@@ -1112,7 +1114,7 @@ export class PayrollService {
         order.compensationRule.sourceType === "technician_override"
           ? order.compensationRule.id
           : null,
-      baseSalaryJpy: 0,
+      baseSalaryJpy: monthlyBaseSalaryJpy,
       annualSalaryProratedJpy: 0,
       dailyWageJpy: 0,
       hourlyWageJpy: 0,
@@ -1122,8 +1124,23 @@ export class PayrollService {
       allowanceJpy: 0,
       deductionJpy: 0,
       platformFeeShareDeductionJpy: 0,
-      netPayJpy: 0,
-      lines: []
+      netPayJpy: monthlyBaseSalaryJpy,
+      lines:
+        monthlyBaseSalaryJpy > 0
+          ? [
+              this.line({
+                lineType: "base_salary",
+                title: "月額基本給",
+                amountJpy: monthlyBaseSalaryJpy,
+                sourceType: "rule",
+                sourceId: order.compensationRule.id,
+                ruleId: String(order.compensationRule.id),
+                orderId: null,
+                explanation: order.compensationRule.name,
+                createdById: actorUserId
+              })
+            ]
+          : []
     };
     grouped.set(order.technicianProfileId, created);
     return created;

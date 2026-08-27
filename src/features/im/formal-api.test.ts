@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
+import { httpClient } from "../../api/httpClient";
 import { realtimeApi } from "../realtime/api";
 import { createFormalImApi } from "./formal-api";
 
@@ -63,6 +64,7 @@ describe("formal IM adapter", () => {
           },
           nickname: "小林技师",
           source: "simulation_seed",
+          isBlocked: false,
           createdAt: now,
         },
       ],
@@ -116,6 +118,40 @@ describe("formal IM adapter", () => {
     );
   });
 
+  it("maps a persisted formal contact block response into the original IM model", async () => {
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 31,
+      ownerUserId: 100,
+      contactUserId: 201,
+      contactUser: {
+        userId: 201,
+        needoId: "n0000000201",
+        username: "sim-technician-001",
+        avatarUrl: "/avatars/tech-1.png",
+      },
+      nickname: "小林技师",
+      source: "simulation_seed",
+      isBlocked: true,
+      createdAt: now,
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "n0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.blockContact("31")).resolves.toEqual({
+      contact: expect.objectContaining({ id: "31", isBlocked: true }),
+    });
+    expect(request).toHaveBeenCalledWith("/im/contacts/31/block", {
+      method: "POST",
+    });
+  });
+
   it("loads published merchant technicians as real organization members", async () => {
     vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
       list: [],
@@ -150,12 +186,31 @@ describe("formal IM adapter", () => {
             shopName: "Tokyo Relax Shibuya",
             city: "Tokyo",
             serviceArea: "Shibuya",
+            employmentType: "full_time",
+            employmentStartedAt: "2026-07-01T00:00:00.000Z",
+            status: "published",
+            verifiedAt: now,
+            createdAt: now,
+          },
+          {
+            id: 32,
+            userId: 202,
+            needoId: "n0000000202",
+            displayName: "吉田 拓海",
+            email: "sim.technician.011@needo.local",
+            avatarUrl: "/images/generated/profiles/ai-profile-11.jpg",
+            shopId: 16,
+            shopName: "Tokyo Relax Shibuya",
+            city: "Tokyo",
+            serviceArea: "Shibuya",
+            employmentType: "temporary",
+            employmentStartedAt: "2026-07-01T00:00:00.000Z",
             status: "published",
             verifiedAt: now,
             createdAt: now,
           },
         ],
-        total: 1,
+        total: 2,
         page: 1,
         page_size: 100,
       });
@@ -183,6 +238,11 @@ describe("formal IM adapter", () => {
         source: "merchant_technician_profile",
         tags: ["员工", "正社员", "技师"],
       }),
+      expect.objectContaining({
+        targetUserId: "202",
+        source: "merchant_technician_profile",
+        tags: ["员工", "临时工", "技师"],
+      }),
     ]);
     expect(bootstrap.users.find((user) => user.id === "201")).toMatchObject({
       accountId: "n0000000201",
@@ -191,6 +251,11 @@ describe("formal IM adapter", () => {
       entityType: "technician",
       entityId: "tech-31",
       userIdLabel: "n0000000201",
+    });
+    expect(bootstrap.users.find((user) => user.id === "202")).toMatchObject({
+      accountId: "n0000000202",
+      nickname: "吉田 拓海",
+      tags: ["员工", "临时工", "技师"],
     });
   });
 

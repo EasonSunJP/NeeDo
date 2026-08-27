@@ -127,6 +127,8 @@ export const backofficeTechnicianUpdateBodySchema = z.object({
   city: z.string().trim().min(1).max(100).optional(),
   serviceArea: z.string().trim().max(255).nullable().optional(),
   shopId: z.number().int().positive().nullable().optional(),
+  employmentType: z.enum(["independent", "full_time", "temporary"]).optional(),
+  employmentStartedAt: z.string().datetime().nullable().optional(),
   isRecommended: z.boolean().optional()
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
 

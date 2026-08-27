@@ -180,6 +180,7 @@ const realtimePermissions = [
   "message:react",
   "message:read",
   "contact:list",
+  "contact:block",
   "friend-request:list",
   "friend-request:create",
   "friend-request:respond",
@@ -311,6 +312,7 @@ const createFixture = async () => {
     ownerUserId: number;
     contactUserId: number;
     nickname: string | null;
+    isBlocked: boolean;
     createdAt: Date;
   }> = [];
   const friendRequests: Array<{
@@ -636,6 +638,20 @@ const createFixture = async () => {
     listContacts: jest.fn(async (userId: number) =>
       listPage(contacts.filter((contact) => contact.ownerUserId === userId))
     ),
+    setContactBlocked: jest.fn(
+      async (input: {
+        contactId: number;
+        isBlocked: boolean;
+        ownerUserId: number;
+      }) => {
+        const contact = contacts.find(
+          (item) => item.id === input.contactId && item.ownerUserId === input.ownerUserId
+        );
+        if (!contact) return null;
+        contact.isBlocked = input.isBlocked;
+        return contact;
+      }
+    ),
     createFriendRequest: jest.fn(
       async (input: { requesterUserId: number; targetUserId: number; message?: string | null }) => {
         const friendRequest = {
@@ -690,6 +706,7 @@ const createFixture = async () => {
             ownerUserId: friendRequest.requesterUserId,
             contactUserId: friendRequest.targetUserId,
             nickname: null,
+            isBlocked: false,
             createdAt: now
           });
           contacts.push({
@@ -697,6 +714,7 @@ const createFixture = async () => {
             ownerUserId: friendRequest.targetUserId,
             contactUserId: friendRequest.requesterUserId,
             nickname: null,
+            isBlocked: false,
             createdAt: now
           });
         }
@@ -948,6 +966,43 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .get("/api/v1/social/users/2/activity-status")
       .set("Authorization", `Bearer ${ayaToken}`)
       .expect(403);
+  });
+
+  it("blocks and unblocks only a contact owned by the authenticated user", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/friend-requests")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ targetUserId: 2 })
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/im/friend-requests/1/accept")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200);
+
+    await request(fixture.app)
+      .post("/api/v1/im/contacts/1/block")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ id: 1, isBlocked: true });
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/im/contacts/1/block")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(404);
+
+    await request(fixture.app)
+      .delete("/api/v1/im/contacts/1/block")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ id: 1, isBlocked: false });
+      });
   });
 
   it("creates conversations, paginates messages with a cursor, and clears unread counts", async () => {

@@ -1,4 +1,4 @@
-export type MerchantStaffEmploymentType = "fullTime" | "partTime";
+export type MerchantStaffEmploymentType = "fullTime" | "partTime" | "independent";
 
 export type MerchantManualStaffRoleRecord = {
   storeId?: string;
@@ -11,7 +11,23 @@ export const merchantTechnicianRoleName = "技师";
 export const merchantStaffRoleQuickOptions = ["总务", "财务", "司机", "厨师"] as const;
 
 export function getMerchantStaffEmploymentLabel(employmentType: MerchantStaffEmploymentType) {
-  return employmentType === "partTime" ? "临时工" : "正社员";
+  if (employmentType === "partTime") {
+    return "临时工";
+  }
+
+  return employmentType === "independent" ? "独立技师" : "正社员";
+}
+
+export function toMerchantStaffEmploymentType(value: string): MerchantStaffEmploymentType | null {
+  if (value === "full_time") {
+    return "fullTime";
+  }
+
+  if (value === "temporary") {
+    return "partTime";
+  }
+
+  return value === "independent" ? "independent" : null;
 }
 
 export function normalizeMerchantStaffEmploymentTag(tag: string) {

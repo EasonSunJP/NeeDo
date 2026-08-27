@@ -21,6 +21,7 @@ import { loadCoreReadWithTransientRetry } from "../../features/core-read/transie
 import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
+import { getMerchantStaffEmploymentLabel } from "../../lib/merchantStaffRoles";
 import {
   createFormalDetailRequestCoordinator,
   hasFormalDetailRefreshFailure,
@@ -28,7 +29,13 @@ import {
 } from "../admin/formalDetailRequest";
 
 type PeopleModule = "staff" | "customers" | "reviews";
-type TechnicianDraft = { displayName: string; city: string; serviceArea: string };
+type TechnicianDraft = {
+  displayName: string;
+  city: string;
+  serviceArea: string;
+  employmentType: BackofficeTechnicianPayload["employmentType"];
+  employmentStartedAt: string;
+};
 type ConfirmationAction = "approve" | "delete" | null;
 
 const pageSize = 20;
@@ -42,7 +49,9 @@ function technicianDraft(technician: BackofficeTechnicianPayload): TechnicianDra
   return {
     displayName: technician.displayName,
     city: technician.city,
-    serviceArea: technician.serviceArea ?? ""
+    serviceArea: technician.serviceArea ?? "",
+    employmentType: technician.employmentType,
+    employmentStartedAt: technician.employmentStartedAt?.slice(0, 10) ?? ""
   };
 }
 
@@ -69,7 +78,7 @@ export function MerchantAdminPeoplePage() {
   const [customerDetailLoading, setCustomerDetailLoading] = useState(false);
   const [technicianDetailError, setTechnicianDetailError] = useState("");
   const [customerDetailError, setCustomerDetailError] = useState("");
-  const [draft, setDraft] = useState<TechnicianDraft>({ displayName: "", city: "", serviceArea: "" });
+  const [draft, setDraft] = useState<TechnicianDraft>({ displayName: "", city: "", serviceArea: "", employmentType: "independent", employmentStartedAt: "" });
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -194,7 +203,7 @@ export function MerchantAdminPeoplePage() {
   const openTechnician = (technician: BackofficeTechnicianPayload) => {
     closeCustomer();
     setSelectedTechnicianId(technician.id);
-    setDraft({ displayName: "", city: "", serviceArea: "" });
+    setDraft({ displayName: "", city: "", serviceArea: "", employmentType: "independent", employmentStartedAt: "" });
     setConfirmationAction(null);
     void technicianDetailRequest.load(technician.id);
   };
@@ -295,6 +304,7 @@ export function MerchantAdminPeoplePage() {
                 { key: "email", title: "邮箱", render: (row) => row.email },
                 { key: "city", title: "城市", render: (row) => row.city },
                 { key: "area", title: "服务区域", render: (row) => row.serviceArea ?? "未设置" },
+                { key: "employment", title: translateText("雇佣类型", language), render: (row) => translateText(getMerchantStaffEmploymentLabel(row.employmentType === "full_time" ? "fullTime" : row.employmentType === "temporary" ? "partTime" : "independent"), language) },
                 { key: "status", title: "状态", render: (row) => <Badge tone={statusTone(row.status)}>{row.status}</Badge> }
               ]}
               footerPlacement="inline"
@@ -363,7 +373,16 @@ export function MerchantAdminPeoplePage() {
                 <label className="block"><span className="mb-2 block text-sm font-black">显示名称</span><input className={inputClassName} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, displayName: event.target.value }))} value={draft.displayName} /></label>
                 <label className="block"><span className="mb-2 block text-sm font-black">城市</span><input className={inputClassName} maxLength={100} onChange={(event) => setDraft((current) => ({ ...current, city: event.target.value }))} value={draft.city} /></label>
                 <label className="block"><span className="mb-2 block text-sm font-black">服务区域</span><input className={inputClassName} maxLength={255} onChange={(event) => setDraft((current) => ({ ...current, serviceArea: event.target.value }))} value={draft.serviceArea} /></label>
-                <Button disabled={saving || !draft.displayName.trim() || !draft.city.trim()} onClick={() => void runMutation(technicianDetail.id, () => backofficeRealDataApi.updateTechnician("merchant-admin", technicianDetail.id, { displayName: draft.displayName.trim(), city: draft.city.trim(), serviceArea: draft.serviceArea.trim() || null }))}>{saving ? "处理中..." : "保存资料"}</Button>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-black">{translateText("雇佣类型", language)}</span>
+                  <select className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, employmentType: event.target.value as TechnicianDraft["employmentType"] }))} value={draft.employmentType}>
+                    <option value="full_time">{translateText("正社员", language)}</option>
+                    <option value="temporary">{translateText("临时工", language)}</option>
+                    <option value="independent">{translateText("独立技师", language)}</option>
+                  </select>
+                </label>
+                <label className="block"><span className="mb-2 block text-sm font-black">{translateText("入职日期", language)}</span><input className={inputClassName} onChange={(event) => setDraft((current) => ({ ...current, employmentStartedAt: event.target.value }))} type="date" value={draft.employmentStartedAt} /></label>
+                <Button disabled={saving || !draft.displayName.trim() || !draft.city.trim()} onClick={() => void runMutation(technicianDetail.id, () => backofficeRealDataApi.updateTechnician("merchant-admin", technicianDetail.id, { displayName: draft.displayName.trim(), city: draft.city.trim(), serviceArea: draft.serviceArea.trim() || null, employmentType: draft.employmentType, employmentStartedAt: draft.employmentStartedAt ? `${draft.employmentStartedAt}T00:00:00.000Z` : null }))}>{saving ? "处理中..." : "保存资料"}</Button>
               </div>}
             />
           ) : null}

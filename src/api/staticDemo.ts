@@ -1976,6 +1976,8 @@ function technicianPayload(index: number): BackofficeTechnicianPayload {
     shopName: store?.name ?? null,
     city: technician.serviceAreas[0] ?? "东京",
     serviceArea: technician.serviceAreas.join(", "),
+    employmentType: "independent",
+    employmentStartedAt: null,
     status: technician.status === "off" ? "draft" : "published",
     verifiedAt: staticTimestamp,
     createdAt: staticTimestamp

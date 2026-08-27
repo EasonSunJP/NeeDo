@@ -132,6 +132,7 @@ const createFixture = async () => {
     "backoffice:finance:list",
     "backoffice:finance:export",
     "backoffice:technicians:list",
+    "backoffice:technicians:write",
     "backoffice:shops:list",
     "backoffice:merchant-accounts:read",
     "merchant-admin:dashboard:read",
@@ -140,6 +141,7 @@ const createFixture = async () => {
     "merchant-admin:finance:list",
     "merchant-admin:finance:export",
     "merchant-admin:technicians:list",
+    "merchant-admin:technicians:write",
     "merchant-admin:shop:read",
     "merchant-admin:shop:write",
     "menu:dashboard",
@@ -429,6 +431,23 @@ const createFixture = async () => {
       id,
       name: input.name ?? "Aoyama Care Studio",
       status: "published"
+    })),
+    updateTechnician: jest.fn(async (input: Record<string, unknown>) => ({
+      id: input.technicianId,
+      userId: 17,
+      needoId: "n0000000017",
+      displayName: "Mika Tanaka",
+      email: "mika@example.com",
+      avatarUrl: null,
+      shopId: 11,
+      shopName: "Aoyama Care Studio",
+      city: "Tokyo",
+      serviceArea: "Minato",
+      employmentType: input.employmentType,
+      employmentStartedAt: input.employmentStartedAt,
+      status: "published",
+      verifiedAt: now.toISOString(),
+      createdAt: now.toISOString()
     }))
   };
   const app = createApp(undefined, {
@@ -453,6 +472,37 @@ const createFixture = async () => {
 };
 
 describe("Step 12 backoffice and merchant-admin real data APIs", () => {
+  it("updates persisted employment through the protected technician API", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login("admin@example.com");
+
+    const response = await request(fixture.app)
+      .patch("/api/v1/backoffice/technicians/7")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        employmentType: "temporary",
+        employmentStartedAt: "2026-08-01T00:00:00.000Z"
+      })
+      .expect(200);
+
+    expect(response.body.data).toMatchObject({
+      employmentType: "temporary",
+      employmentStartedAt: "2026-08-01T00:00:00.000Z"
+    });
+    expect(fixture.backofficeRepository.updateTechnician).toHaveBeenCalledWith({
+      scope: "platform",
+      technicianId: 7,
+      employmentType: "temporary",
+      employmentStartedAt: "2026-08-01T00:00:00.000Z"
+    });
+
+    await request(fixture.app)
+      .patch("/api/v1/backoffice/technicians/7")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ employmentType: "contractor" })
+      .expect(400);
+  });
+
   it("serves the completed-order technician leaderboard in a Tokyo custom period", async () => {
     const fixture = await createFixture();
     const token = await fixture.login("admin@example.com");

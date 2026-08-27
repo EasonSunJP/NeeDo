@@ -12,6 +12,7 @@ import {
   ServiceOwnerType,
   ShopPricingMode,
   SocialPostVisibility,
+  TechnicianEmploymentType,
   TechnicianServiceReviewStatus,
   WalletLedgerDirection,
   WalletOwnerType,
@@ -24,6 +25,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import {
+  LIFEDANCE_ADMIN_EMAIL,
+  LIFEDANCE_SHOP_KEY,
+  LIFEDANCE_SHOP_NAME,
   SIMULATION_END_AT,
   SIMULATION_AS_OF_AT,
   SIMULATION_NAMESPACE,
@@ -38,16 +42,25 @@ import {
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
+import { migrateLifeDanceAdminOwnership } from "../src/simulation/lifedance-admin-ownership";
 import {
   buildSimulationIdentityGrants,
   simulationIdentityActiveKey
 } from "../src/simulation/simulation-identity-matrix";
-import {
-  getSimulationSeedConfig
-} from "../src/simulation/simulation-seed-config";
+import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 import { NeedoIdAllocator } from "../src/services/needo-id.service";
+import {
+  resetLifeDancePayrollPeriods,
+  runLifeDancePayrollWorkflow,
+  upsertLifeDanceCompensationProfiles
+} from "../src/simulation/lifedance-payroll-seed";
+import { PayrollRepository } from "../src/repositories/payroll.repository";
+import { AuditLogRepository } from "../src/repositories/audit-log.repository";
+import { AuditLogService } from "../src/services/audit-log.service";
+import { PayrollService } from "../src/services/payroll.service";
 
 const BCRYPT_ROUNDS = 12;
+const LEGACY_SIMULATION_NAMESPACE = "needo_three_month_v1";
 const needoIdAllocator = new NeedoIdAllocator();
 const DEFAULT_ACCOUNT_EXPORT_PATH = "../outputs/NeeDo_正式测试账号_2026-08-25.csv";
 
@@ -102,7 +115,10 @@ const main = async (): Promise<void> => {
   const [{ prisma, disconnectPrisma }] = await Promise.all([import("../src/prisma/client")]);
   const plan = buildThreeMonthSimulationPlan();
   const socialPlan = buildSocialSimulationPlan();
-  const accountEmails = socialPlan.accounts.map((account) => account.email);
+  const credentialAccounts = socialPlan.accounts.filter(
+    (account) => account.email !== LIFEDANCE_ADMIN_EMAIL
+  );
+  const accountEmails = credentialAccounts.map((account) => account.email);
   const accountPasswords = new Map(
     accountEmails.map((email) => [email, seedConfig.defaultPassword])
   );
@@ -117,6 +133,13 @@ const main = async (): Promise<void> => {
   );
 
   try {
+    const existingLifeDanceShop = await prisma.shop.findFirst({
+      where: { name: LIFEDANCE_SHOP_NAME, deletedAt: null },
+      select: { id: true }
+    });
+    if (existingLifeDanceShop) {
+      await resetLifeDancePayrollPeriods(prisma, existingLifeDanceShop.id);
+    }
     const summary = await prisma.$transaction(
       async (tx) => {
         const roles = await tx.role.findMany({
@@ -132,16 +155,16 @@ const main = async (): Promise<void> => {
           where: { code: "sim3m-wellness" },
           create: {
             code: "sim3m-wellness",
-            name: "Simulation Wellness",
-            nameJa: "シミュレーション・ウェルネス",
-            nameEn: "Simulation Wellness",
+            name: "ボディケア・ウェルネス",
+            nameJa: "ボディケア・ウェルネス",
+            nameEn: "Body Care & Wellness",
             sortOrder: 900,
             isActive: true
           },
           update: {
-            name: "Simulation Wellness",
-            nameJa: "シミュレーション・ウェルネス",
-            nameEn: "Simulation Wellness",
+            name: "ボディケア・ウェルネス",
+            nameJa: "ボディケア・ウェルネス",
+            nameEn: "Body Care & Wellness",
             sortOrder: 900,
             isActive: true,
             deletedAt: null
@@ -151,87 +174,103 @@ const main = async (): Promise<void> => {
         const ownerUserIds = new Map<string, number>();
         const technicianUserIds = new Map<string, number>();
         const customerUserIds = new Map<string, number>();
+        const lifeDanceOwnership = await migrateLifeDanceAdminOwnership(tx);
 
         for (const shop of plan.shops) {
-          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-            where: { email: shop.ownerEmail },
-            create: {
-              needoId,
-              email: shop.ownerEmail,
-              emailVerifiedAt: new Date("2026-05-15T00:00:00.000Z"),
-              passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
-              username: shop.ownerUsername,
-              avatarUrl: shop.avatarUrl,
-              isActive: true,
-              createdAt: new Date("2026-05-15T00:00:00.000Z")
-            },
-            update: {
-              passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
-              username: shop.ownerUsername,
-              avatarUrl: shop.avatarUrl,
-              isActive: true,
-              deletedAt: null
-            }
-          }));
+          if (shop.key === LIFEDANCE_SHOP_KEY) {
+            ownerUserIds.set(shop.key, lifeDanceOwnership.adminUserId);
+            continue;
+          }
+          const user = await needoIdAllocator.withNewId((needoId) =>
+            tx.user.upsert({
+              where: { email: shop.ownerEmail },
+              create: {
+                needoId,
+                email: shop.ownerEmail,
+                emailVerifiedAt: new Date("2026-05-15T00:00:00.000Z"),
+                passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
+                username: shop.ownerUsername,
+                avatarUrl: shop.avatarUrl,
+                isActive: true,
+                createdAt: new Date("2026-05-15T00:00:00.000Z")
+              },
+              update: {
+                passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
+                username: shop.ownerUsername,
+                avatarUrl: shop.avatarUrl,
+                isActive: true,
+                deletedAt: null
+              }
+            })
+          );
           ownerUserIds.set(shop.key, user.id);
         }
 
         for (const technician of plan.technicians) {
-          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-            where: { email: technician.email },
-            create: {
-              needoId,
-              email: technician.email,
-              emailVerifiedAt: new Date("2026-05-20T00:00:00.000Z"),
-              passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
-              username: technician.username,
-              avatarUrl: technician.avatarUrl,
-              isActive: true,
-              createdAt: new Date("2026-05-20T00:00:00.000Z")
-            },
-            update: {
-              passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
-              username: technician.username,
-              avatarUrl: technician.avatarUrl,
-              isActive: true,
-              deletedAt: null
-            }
-          }));
+          const user = await needoIdAllocator.withNewId((needoId) =>
+            tx.user.upsert({
+              where: { email: technician.email },
+              create: {
+                needoId,
+                email: technician.email,
+                emailVerifiedAt: new Date("2026-05-20T00:00:00.000Z"),
+                passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
+                username: technician.username,
+                avatarUrl: technician.avatarUrl,
+                isActive: true,
+                createdAt: new Date("2026-05-20T00:00:00.000Z")
+              },
+              update: {
+                passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
+                username: technician.username,
+                avatarUrl: technician.avatarUrl,
+                isActive: true,
+                deletedAt: null
+              }
+            })
+          );
           technicianUserIds.set(technician.key, user.id);
         }
 
         for (const customer of plan.customers) {
-          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-            where: { email: customer.email },
-            create: {
-              needoId,
-              email: customer.email,
-              emailVerifiedAt: new Date("2026-05-25T00:00:00.000Z"),
-              passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
-              username: customer.username,
-              avatarUrl: customer.avatarUrl,
-              isActive: true,
-              createdAt: new Date("2026-05-25T00:00:00.000Z")
-            },
-            update: {
-              passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
-              username: customer.username,
-              avatarUrl: customer.avatarUrl,
-              isActive: true,
-              deletedAt: null
-            }
-          }));
+          const user = await needoIdAllocator.withNewId((needoId) =>
+            tx.user.upsert({
+              where: { email: customer.email },
+              create: {
+                needoId,
+                email: customer.email,
+                emailVerifiedAt: new Date("2026-05-25T00:00:00.000Z"),
+                passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
+                username: customer.username,
+                avatarUrl: customer.avatarUrl,
+                isActive: true,
+                createdAt: new Date("2026-05-25T00:00:00.000Z")
+              },
+              update: {
+                passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
+                username: customer.username,
+                avatarUrl: customer.avatarUrl,
+                isActive: true,
+                deletedAt: null
+              }
+            })
+          );
           customerUserIds.set(customer.key, user.id);
         }
 
         const shopIds = new Map<string, number>();
         for (const shop of plan.shops) {
+          if (shop.key === LIFEDANCE_SHOP_KEY) {
+            shopIds.set(shop.key, lifeDanceOwnership.shopId);
+            continue;
+          }
           const ownerUserId = getRequiredId(ownerUserIds, shop.key, "shop owner");
           const existing = await tx.shop.findFirst({ where: { ownerUserId } });
           const record = existing
             ? await tx.shop.update({
                 where: { id: existing.id },
                 data: {
+                  ownerUserId,
                   name: shop.name,
                   description: shop.description,
                   city: shop.city,
@@ -271,10 +310,12 @@ const main = async (): Promise<void> => {
               userId,
               shopId: getRequiredId(shopIds, technician.shopKey, "shop"),
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用技師プロフィールです。`,
+              bio: "お客様の体調やご希望を丁寧に伺い、安心できる施術を心がけています。",
               city: technician.city,
               serviceArea: technician.serviceArea,
               yearsExperience: technician.yearsExperience,
+              employmentType: technician.employmentType,
+              employmentStartedAt: new Date(technician.employmentStartedAt),
               status: "published",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
               createdAt: new Date("2026-05-20T00:00:00.000Z")
@@ -282,10 +323,12 @@ const main = async (): Promise<void> => {
             update: {
               shopId: getRequiredId(shopIds, technician.shopKey, "shop"),
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用技師プロフィールです。`,
+              bio: "お客様の体調やご希望を丁寧に伺い、安心できる施術を心がけています。",
               city: technician.city,
               serviceArea: technician.serviceArea,
               yearsExperience: technician.yearsExperience,
+              employmentType: technician.employmentType,
+              employmentStartedAt: new Date(technician.employmentStartedAt),
               status: "published",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
               deletedAt: null
@@ -303,7 +346,7 @@ const main = async (): Promise<void> => {
             create: {
               userId,
               displayName: customer.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用顧客プロフィールです。`,
+              bio: "休日には地域のお店やウェルネスサービスを楽しんでいます。",
               city: customer.city,
               membershipLevel: customer.membershipLevel,
               isPublic: true,
@@ -311,7 +354,7 @@ const main = async (): Promise<void> => {
             },
             update: {
               displayName: customer.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用顧客プロフィールです。`,
+              bio: "休日には地域のお店やウェルネスサービスを楽しんでいます。",
               city: customer.city,
               membershipLevel: customer.membershipLevel,
               isPublic: true,
@@ -329,14 +372,14 @@ const main = async (): Promise<void> => {
             create: {
               userId,
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の技師兼顧客プロフィールです。`,
+              bio: "施術の仕事をしながら、地域の新しいサービスも利用しています。",
               city: technician.city,
               membershipLevel: "standard",
               isPublic: true
             },
             update: {
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の技師兼顧客プロフィールです。`,
+              bio: "施術の仕事をしながら、地域の新しいサービスも利用しています。",
               city: technician.city,
               membershipLevel: "standard",
               isPublic: true,
@@ -349,19 +392,24 @@ const main = async (): Promise<void> => {
         const ownerTechnicianProfileIds = new Map<string, number>();
         for (const shop of plan.shops) {
           const userId = getRequiredId(ownerUserIds, shop.key, "shop owner");
+          if (shop.key === LIFEDANCE_SHOP_KEY) {
+            switchingCustomerProfileIds.set(userId, lifeDanceOwnership.customerProfileId);
+            ownerTechnicianProfileIds.set(shop.key, lifeDanceOwnership.technicianProfileId);
+            continue;
+          }
           const customerProfile = await tx.customerProfile.upsert({
             where: { userId },
             create: {
               userId,
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者兼顧客プロフィールです。`,
+              bio: "地域のお客様に安心して利用いただける店舗運営を心がけています。",
               city: shop.city,
               membershipLevel: "standard",
               isPublic: true
             },
             update: {
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者兼顧客プロフィールです。`,
+              bio: "地域のお客様に安心して利用いただける店舗運営を心がけています。",
               city: shop.city,
               membershipLevel: "standard",
               isPublic: true,
@@ -375,20 +423,24 @@ const main = async (): Promise<void> => {
               userId,
               shopId: getRequiredId(shopIds, shop.key, "shop"),
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。`,
+              bio: "店舗運営と予約管理を担当しています。",
               city: shop.city,
               serviceArea: shop.city,
               yearsExperience: 0,
+              employmentType: TechnicianEmploymentType.INDEPENDENT,
+              employmentStartedAt: null,
               status: "private",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z")
             },
             update: {
               shopId: getRequiredId(shopIds, shop.key, "shop"),
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。`,
+              bio: "店舗運営と予約管理を担当しています。",
               city: shop.city,
               serviceArea: shop.city,
               yearsExperience: 0,
+              employmentType: TechnicianEmploymentType.INDEPENDENT,
+              employmentStartedAt: null,
               status: "private",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
               deletedAt: null
@@ -483,22 +535,18 @@ const main = async (): Promise<void> => {
           customerProfileId: number;
           technicianProfileId?: number;
           shopId?: number;
+          forceNonDefault?: boolean;
         }): Promise<void> => {
           const grants = buildSimulationIdentityGrants(input);
           for (const grant of grants) {
-            await ensureRole(
-              input.userId,
-              grant.roleCode,
-              grant.scopeType,
-              grant.scopeId
-            );
+            await ensureRole(input.userId, grant.roleCode, grant.scopeType, grant.scopeId);
             await ensureIdentity(
               input.userId,
               grant.identityType,
               grant.scopeType,
               grant.scopeId,
               grant.displayName,
-              grant.isDefault,
+              input.forceNonDefault ? false : grant.isDefault,
               simulationIdentityActiveKey(input.userId, grant)
             );
           }
@@ -538,7 +586,8 @@ const main = async (): Promise<void> => {
               shop.key,
               "merchant technician profile"
             ),
-            shopId: getRequiredId(shopIds, shop.key, "shop")
+            shopId: getRequiredId(shopIds, shop.key, "shop"),
+            forceNonDefault: shop.key === LIFEDANCE_SHOP_KEY
           });
         }
 
@@ -766,21 +815,20 @@ const main = async (): Promise<void> => {
           formalSocialUsers.map((user) => [user.email, user])
         );
         for (const account of socialPlan.accounts) {
-          const user = getRequiredId(
-            formalSocialUserByEmail,
-            account.email,
-            "formal social user"
-          );
+          const user = getRequiredId(formalSocialUserByEmail, account.email, "formal social user");
           await syncFormalSocialAccountProfile(tx, user.id, account);
         }
 
         const previewSourceConversations = hasPreviewCustomer
-          ? plan.conversations.filter((conversation) => conversation.customerKey === "customer-001")
+          ? plan.conversations.filter(
+              (conversation) =>
+                conversation.firstType === "customer" && conversation.firstKey === "customer-001"
+            )
           : [];
         const previewConversations = previewSourceConversations.map((conversation) => ({
           ...conversation,
-          key: `conversation-${previewCustomerKey}-${conversation.participantKey}`,
-          customerKey: previewCustomerKey
+          key: `conversation-${previewCustomerKey}-${conversation.secondKey}`,
+          firstKey: previewCustomerKey
         }));
         const previewConversationKeyBySource = new Map(
           previewSourceConversations.map((conversation, index) => [
@@ -806,14 +854,16 @@ const main = async (): Promise<void> => {
         });
         const previewContacts = previewConversations.flatMap((conversation) => [
           {
+            key: `${conversation.key}-contact-customer`,
             ownerType: "customer" as const,
             ownerKey: previewCustomerKey,
-            contactType: conversation.participantType,
-            contactKey: conversation.participantKey
+            contactType: conversation.secondType,
+            contactKey: conversation.secondKey
           },
           {
-            ownerType: conversation.participantType,
-            ownerKey: conversation.participantKey,
+            key: `${conversation.key}-contact-counterpart`,
+            ownerType: conversation.secondType,
+            ownerKey: conversation.secondKey,
             contactType: "customer" as const,
             contactKey: previewCustomerKey
           }
@@ -822,9 +872,12 @@ const main = async (): Promise<void> => {
         const contactsToSeed = [...plan.contacts, ...previewContacts];
         const messagesToSeed = [...plan.messages, ...previewMessages];
         const getParticipantUserId = (
-          type: "customer" | "technician" | "shop_owner",
+          type: "admin" | "customer" | "technician" | "shop_owner",
           key: string
         ): number => {
+          if (type === "admin") {
+            return lifeDanceOwnership.adminUserId;
+          }
           if (type === "customer") {
             return getRequiredId(customerUserIds, key, "IM customer user");
           }
@@ -842,7 +895,9 @@ const main = async (): Promise<void> => {
           ...new Set(
             existingSimulationMessages.flatMap((message) => {
               const metadata = readJsonRecord(message.metadata);
-              return metadata?.namespace === SIMULATION_NAMESPACE && metadata.dataset === "im"
+              return [SIMULATION_NAMESPACE, LEGACY_SIMULATION_NAMESPACE].includes(
+                String(metadata?.namespace)
+              ) && metadata?.dataset === "im"
                 ? [message.conversationId]
                 : [];
             })
@@ -878,7 +933,9 @@ const main = async (): Promise<void> => {
         ];
         await tx.contact.deleteMany({
           where: {
-            source: "simulation_seed",
+            source: {
+              in: ["simulation_seed", "lifedance_customer_service_seed", "lifedance_staff_seed"]
+            },
             OR: [
               { ownerUserId: { in: simulationParticipantUserIds } },
               { contactUserId: { in: simulationParticipantUserIds } }
@@ -889,7 +946,9 @@ const main = async (): Promise<void> => {
           (contact): Prisma.ContactCreateManyInput => ({
             ownerUserId: getParticipantUserId(contact.ownerType, contact.ownerKey),
             contactUserId: getParticipantUserId(contact.contactType, contact.contactKey),
-            source: "simulation_seed",
+            source: contact.key.startsWith("lifedance-staff-")
+              ? "lifedance_staff_seed"
+              : "lifedance_customer_service_seed",
             createdAt: new Date("2026-06-01T00:00:00.000Z")
           })
         );
@@ -921,6 +980,15 @@ const main = async (): Promise<void> => {
           await tx.contact.createMany({ data: missingContactRows, skipDuplicates: true });
         }
 
+        const imPolicy = await tx.imPolicy.findFirst({
+          where: { activeKey: "active", deletedAt: null },
+          select: {
+            textRetentionSeconds: true,
+            recallWindowSeconds: true,
+            version: true
+          }
+        });
+        assert(imPolicy, "Run the formal IM lifecycle migration before seeding conversations.");
         const messagePlansByConversation = new Map<string, typeof messagesToSeed>();
         for (const message of messagesToSeed) {
           messagePlansByConversation.set(message.conversationKey, [
@@ -928,11 +996,11 @@ const main = async (): Promise<void> => {
             message
           ]);
         }
-        for (const conversation of conversationsToSeed) {
-          const customerUserId = getParticipantUserId("customer", conversation.customerKey);
-          const counterpartUserId = getParticipantUserId(
-            conversation.participantType,
-            conversation.participantKey
+        for (const [conversationIndex, conversation] of conversationsToSeed.entries()) {
+          const firstUserId = getParticipantUserId(conversation.firstType, conversation.firstKey);
+          const secondUserId = getParticipantUserId(
+            conversation.secondType,
+            conversation.secondKey
           );
           const conversationMessages = messagePlansByConversation.get(conversation.key) ?? [];
           assert(
@@ -942,42 +1010,70 @@ const main = async (): Promise<void> => {
           const updatedAt = new Date(
             conversationMessages.at(-1)?.createdAt ?? conversation.createdAt
           );
+          const isStaffConversation = conversation.key.startsWith("lifedance-staff-");
           await tx.conversation.create({
             data: {
               type: ConversationType.DIRECT,
-              createdByUserId: customerUserId,
+              createdByUserId: firstUserId,
               createdAt: new Date(conversation.createdAt),
               updatedAt,
               participants: {
                 create: [
                   {
-                    userId: customerUserId,
+                    userId: firstUserId,
                     role: "member",
-                    unreadCount: 1,
+                    unreadCount: isStaffConversation ? conversationIndex % 3 : 1,
+                    isPinned: isStaffConversation && conversationIndex % 4 === 0,
+                    isMuted: false,
+                    lastReadAt: new Date(
+                      conversationMessages.at(-2)?.createdAt ?? conversation.createdAt
+                    ),
                     createdAt: new Date(conversation.createdAt)
                   },
                   {
-                    userId: counterpartUserId,
+                    userId: secondUserId,
                     role: "member",
-                    unreadCount: 0,
+                    unreadCount: isStaffConversation ? conversationIndex % 2 : 0,
+                    isPinned: isStaffConversation && conversationIndex % 5 === 0,
+                    isMuted: isStaffConversation && conversationIndex % 7 === 0,
+                    lastReadAt: new Date(
+                      conversationMessages.at(-1)?.createdAt ?? conversation.createdAt
+                    ),
                     createdAt: new Date(conversation.createdAt)
                   }
                 ]
               },
               messages: {
-                create: conversationMessages.map((message) => ({
-                  senderUserId: getParticipantUserId(message.senderType, message.senderKey),
-                  type: MessageType.TEXT,
-                  content: message.content,
-                  metadata: {
-                    namespace: SIMULATION_NAMESPACE,
-                    dataset: "im",
-                    messageKey: message.key,
-                    focusedCustomer: conversation.customerKey === "customer-100",
-                    previewCustomer: conversation.customerKey === previewCustomerKey
-                  },
-                  createdAt: new Date(message.createdAt)
-                }))
+                create: conversationMessages.map((message) => {
+                  const createdAt = new Date(message.createdAt);
+                  return {
+                    senderUserId: getParticipantUserId(message.senderType, message.senderKey),
+                    type: MessageType.TEXT,
+                    content: message.content,
+                    metadata: {
+                      namespace: SIMULATION_NAMESPACE,
+                      dataset: "im",
+                      messageKey: message.key,
+                      purpose: isStaffConversation ? "staff_operations" : "customer_service",
+                      focusedCustomer:
+                        conversation.firstType === "customer" &&
+                        conversation.firstKey === "customer-100",
+                      previewCustomer:
+                        conversation.firstType === "customer" &&
+                        conversation.firstKey === previewCustomerKey
+                    },
+                    createdAt,
+                    expiresAt:
+                      imPolicy.textRetentionSeconds === null
+                        ? null
+                        : new Date(createdAt.getTime() + imPolicy.textRetentionSeconds * 1_000),
+                    recallDeadlineAt: new Date(
+                      createdAt.getTime() + imPolicy.recallWindowSeconds * 1_000
+                    ),
+                    privacyPolicyVersionAtSend: null,
+                    lifecycleVersion: imPolicy.version
+                  };
+                })
               }
             }
           });
@@ -1002,7 +1098,9 @@ const main = async (): Promise<void> => {
         });
         const simulationSocialPostIds = existingSocialPosts.flatMap((post) => {
           const media = readJsonRecord(post.media);
-          return media?.namespace === SIMULATION_NAMESPACE && media.dataset === "social"
+          return [SIMULATION_NAMESPACE, LEGACY_SIMULATION_NAMESPACE].includes(
+            String(media?.namespace)
+          ) && media?.dataset === "social"
             ? [post.id]
             : [];
         });
@@ -1016,16 +1114,22 @@ const main = async (): Promise<void> => {
         const nonQuotePosts = socialPlan.posts.filter((post) => post.kind !== "quote");
         for (const rows of chunkRows(nonQuotePosts)) {
           await tx.socialPost.createMany({
-            data: rows.map((post): Prisma.SocialPostCreateManyInput => ({
-              authorUserId: getRequiredId(socialUserIdByKey, post.authorKey, "social post author"),
-              content: post.content,
-              media: post.media as unknown as Prisma.InputJsonValue,
-              visibility:
-                post.visibility === "followers"
-                  ? SocialPostVisibility.FOLLOWERS
-                  : SocialPostVisibility.PUBLIC,
-              createdAt: new Date(post.createdAt)
-            }))
+            data: rows.map(
+              (post): Prisma.SocialPostCreateManyInput => ({
+                authorUserId: getRequiredId(
+                  socialUserIdByKey,
+                  post.authorKey,
+                  "social post author"
+                ),
+                content: post.content,
+                media: post.media as unknown as Prisma.InputJsonValue,
+                visibility:
+                  post.visibility === "followers"
+                    ? SocialPostVisibility.FOLLOWERS
+                    : SocialPostVisibility.PUBLIC,
+                createdAt: new Date(post.createdAt)
+              })
+            )
           });
         }
 
@@ -1144,9 +1248,21 @@ const main = async (): Promise<void> => {
           });
         }
 
-        const existingOrders = await tx.bookingOrder.findMany({
-          where: { orderNo: { startsWith: SIMULATION_ORDER_PREFIX } },
-          select: { id: true }
+        const technicianIds = [...technicianProfileIds.values()];
+        const existingOrderCandidates = await tx.bookingOrder.findMany({
+          where: {
+            technicianProfileId: { in: technicianIds },
+            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) }
+          },
+          select: { id: true, orderNo: true, serviceSnapshotJson: true }
+        });
+        const existingOrders = existingOrderCandidates.filter((order) => {
+          const snapshot = readJsonRecord(order.serviceSnapshotJson);
+          return (
+            snapshot?.namespace === SIMULATION_NAMESPACE ||
+            order.orderNo.startsWith(SIMULATION_ORDER_PREFIX) ||
+            order.orderNo.startsWith("SIM3M-")
+          );
         });
         const existingOrderIds = existingOrders.map((order) => order.id);
         if (existingOrderIds.length > 0) {
@@ -1195,7 +1311,6 @@ const main = async (): Promise<void> => {
           await tx.bookingOrder.deleteMany({ where: { id: { in: existingOrderIds } } });
         }
 
-        const technicianIds = [...technicianProfileIds.values()];
         const retiredAt = new Date(SIMULATION_AS_OF_AT);
         await tx.scheduleSlot.updateMany({
           where: {
@@ -1256,7 +1371,7 @@ const main = async (): Promise<void> => {
               ),
               sourceShopServiceId: getRequiredId(serviceIds, service.serviceKey, "service"),
               name: service.name,
-              description: `${SIMULATION_NAMESPACE} の技師別予約メニューです。`,
+              description: "担当技師の経験と施術方針に合わせた予約メニューです。",
               categoryId: category.id,
               priceAmount: service.priceAmountJpy,
               currency: "JPY",
@@ -1396,12 +1511,13 @@ const main = async (): Promise<void> => {
               serviceDurationSnapshot: booking.durationMinutes,
               serviceSnapshotJson: {
                 namespace: SIMULATION_NAMESPACE,
+                dataset: "lifedance_real_operations",
                 serviceKey: booking.serviceKey,
                 slotKey: booking.slotKey
               },
               startsAt: new Date(booking.startsAt),
               endsAt: new Date(booking.endsAt),
-              note: `${SIMULATION_NAMESPACE} deterministic booking`,
+              note: "ご予約ありがとうございます。当日の体調に合わせて施術内容を調整します。",
               cancelReason: booking.cancelReason,
               paymentMethod: ServicePaymentMethod.ONSITE,
               paymentStatus: completed
@@ -1412,8 +1528,8 @@ const main = async (): Promise<void> => {
                 ? getRequiredId(ownerUserIds, booking.shopKey, "shop owner")
                 : null,
               paymentConfirmedAt: completed ? new Date(booking.endsAt) : null,
-              paymentReference: completed ? `SIM-CASH-${booking.orderNo}` : null,
-              paymentNote: completed ? "Simulation onsite payment confirmed." : null,
+              paymentReference: completed ? `POS-${booking.orderNo}` : null,
+              paymentNote: completed ? "店頭でのお支払いを確認しました。" : null,
               createdAt: new Date(booking.createdAt)
             };
           })
@@ -1448,7 +1564,7 @@ const main = async (): Promise<void> => {
         await tx.notification.deleteMany({
           where: {
             recipientUserId: { in: [...customerUserIds.values()] },
-            title: "Simulation booking update"
+            title: { in: ["Simulation booking update", "ご予約状況のお知らせ"] }
           }
         });
         const latestHistoryAt = new Map<string, string>();
@@ -1461,10 +1577,11 @@ const main = async (): Promise<void> => {
               recipientUserId: getRequiredId(customerUserIds, booking.customerKey, "customer user"),
               actorUserId: getRequiredId(ownerUserIds, booking.shopKey, "shop owner"),
               type: NotificationType.ORDER_STATUS,
-              title: "Simulation booking update",
-              body: `${booking.orderNo} status changed to ${booking.status}.`,
+              title: "ご予約状況のお知らせ",
+              body: `${booking.orderNo} の予約状況が更新されました。`,
               payload: {
                 namespace: SIMULATION_NAMESPACE,
+                dataset: "lifedance_real_operations",
                 orderNo: booking.orderNo,
                 status: booking.status
               },
@@ -1483,7 +1600,6 @@ const main = async (): Promise<void> => {
           data: completedBookings.map((booking): Prisma.OrderFinancialCreateManyInput => {
             const ordinal = (completedOrdinalByShop.get(booking.shopKey) ?? 0) + 1;
             completedOrdinalByShop.set(booking.shopKey, ordinal);
-            const ownerUserId = getRequiredId(ownerUserIds, booking.shopKey, "shop owner");
             return {
               bookingOrderId: getRequiredId(orderIds, booking.orderNo, "booking order"),
               orderType: "booking",
@@ -1496,7 +1612,7 @@ const main = async (): Promise<void> => {
               ),
               serviceAmountJpy: booking.priceAmountJpy,
               offlineReportedServiceAmountJpy: booking.priceAmountJpy,
-              paymentChannel: ordinal % 3 === 0 ? "offline_card" : "onsite_cash",
+              paymentChannel: ordinal % 2 === 0 ? "offline_card" : "onsite_cash",
               serviceIncomeStatus: "confirmed",
               bPlatformFeeActualNdp: 500,
               userRewardNdp: ordinal % 5 === 0 ? 100 : 0,
@@ -1504,16 +1620,16 @@ const main = async (): Promise<void> => {
               platformFeePayerId: getRequiredId(shopIds, booking.shopKey, "shop"),
               platformFeeBearerForPayroll: "shop",
               completedOrderOrdinalInPeriod: ordinal,
-              appliedFeeRuleIdsJson: ["simulation:b_platform_fee"],
+              appliedFeeRuleIdsJson: ["lifedance:b_platform_fee"],
               moneyTimelineJson: [
                 { type: "service_income_confirmed", amountJpy: booking.priceAmountJpy },
                 { type: "b_platform_fee_recorded", amountNdp: 500 }
               ],
-              serviceIncomeReportedById: ownerUserId,
+              serviceIncomeReportedById: lifeDanceOwnership.adminUserId,
               serviceIncomeReportedAt: new Date(booking.endsAt),
-              serviceIncomeConfirmedById: ownerUserId,
+              serviceIncomeConfirmedById: lifeDanceOwnership.adminUserId,
               serviceIncomeConfirmedAt: new Date(booking.endsAt),
-              serviceIncomeNote: "Three-month local simulation income record.",
+              serviceIncomeNote: "店頭決済の入金確認済み。給与計算対象として確定しました。",
               settlementStatus: "ready_for_payroll",
               createdAt: new Date(booking.endsAt)
             };
@@ -1565,17 +1681,137 @@ const main = async (): Promise<void> => {
       { maxWait: 20_000, timeout: 180_000 }
     );
 
+    const [payrollAdmin, payrollShop, payrollTechnicians] = await Promise.all([
+      prisma.user.findUnique({
+        where: { email: LIFEDANCE_ADMIN_EMAIL },
+        select: {
+          id: true,
+          email: true,
+          identities: {
+            where: { type: "merchant_owner", isActive: true, deletedAt: null },
+            select: { id: true, scopeType: true, scopeId: true }
+          }
+        }
+      }),
+      prisma.shop.findFirst({
+        where: { name: LIFEDANCE_SHOP_NAME, deletedAt: null },
+        select: { id: true }
+      }),
+      prisma.user.findMany({
+        where: {
+          email: {
+            in: plan.technicians
+              .filter((technician) => technician.shopKey === LIFEDANCE_SHOP_KEY)
+              .map((technician) => technician.email)
+          },
+          isActive: true,
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          email: true,
+          technicianProfile: {
+            select: { id: true, employmentType: true }
+          },
+          identities: {
+            where: { type: "technician", isActive: true, deletedAt: null },
+            select: { id: true, scopeType: true, scopeId: true }
+          }
+        }
+      })
+    ]);
+    assert(payrollAdmin, "LifeDance payroll administrator is missing.");
+    assert(payrollShop, "LifeDance payroll shop is missing.");
+    const merchantIdentity = payrollAdmin.identities.find(
+      (identity) => identity.scopeType === "shop" && identity.scopeId === payrollShop.id
+    );
+    assert(merchantIdentity, "LifeDance merchant identity is missing for payroll.");
+    assert(payrollTechnicians.length === 20, "LifeDance payroll requires exactly 20 technicians.");
+    const compensationTechnicians = payrollTechnicians.map((technician) => {
+      assert(technician.technicianProfile, `${technician.email} technician profile is missing.`);
+      assert(
+        technician.technicianProfile.employmentType === TechnicianEmploymentType.FULL_TIME ||
+          technician.technicianProfile.employmentType === TechnicianEmploymentType.TEMPORARY,
+        `${technician.email} payroll employment type is invalid.`
+      );
+      return {
+        technicianProfileId: technician.technicianProfile.id,
+        employmentType: technician.technicianProfile.employmentType
+      };
+    });
+    const compensationProfileIds = await upsertLifeDanceCompensationProfiles(prisma, {
+      shopId: payrollShop.id,
+      adminUserId: payrollAdmin.id,
+      technicians: compensationTechnicians
+    });
+    const merchantActor = {
+      userId: payrollAdmin.id,
+      email: payrollAdmin.email,
+      accessTokenJti: "lifedance-payroll-seed",
+      accessTokenExpiresAt: Date.now() + 900_000,
+      currentIdentityId: merchantIdentity.id,
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: payrollShop.id,
+      roles: ["merchant_owner"],
+      permissions: [
+        "merchant-admin:payroll:write",
+        "merchant-admin:payroll:publish",
+        "merchant-admin:payroll:payout-record:write"
+      ]
+    };
+    const technicianActors = payrollTechnicians.map((technician) => {
+      assert(technician.technicianProfile, `${technician.email} technician profile is missing.`);
+      const identity = technician.identities.find(
+        (candidate) =>
+          candidate.scopeType === "technician_profile" &&
+          candidate.scopeId === technician.technicianProfile?.id
+      );
+      assert(identity, `${technician.email} technician identity is missing for payroll.`);
+      return {
+        technicianProfileId: technician.technicianProfile.id,
+        actor: {
+          userId: technician.id,
+          email: technician.email,
+          accessTokenJti: `lifedance-payroll-${technician.id}`,
+          accessTokenExpiresAt: Date.now() + 900_000,
+          currentIdentityId: identity.id,
+          currentIdentityType: "technician",
+          currentIdentityScopeType: "technician_profile",
+          currentIdentityScopeId: technician.technicianProfile.id,
+          roles: ["technician"],
+          permissions: ["technician:payslip:confirm", "technician:payout-record:confirm"]
+        }
+      };
+    });
+    const payrollRepository = new PayrollRepository(prisma);
+    const payrollService = new PayrollService(
+      payrollRepository,
+      new AuditLogService(new AuditLogRepository(prisma))
+    );
+    try {
+      await runLifeDancePayrollWorkflow(payrollService, {
+        shopId: payrollShop.id,
+        merchantActor,
+        technicianActors,
+        context: { ip: "127.0.0.1", userAgent: "lifedance-payroll-seed" }
+      });
+    } catch (error) {
+      await resetLifeDancePayrollPeriods(prisma, payrollShop.id);
+      throw error;
+    }
+
     const exportedUsers = await prisma.user.findMany({
-      where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
+      where: { email: { in: credentialAccounts.map((account) => account.email) } },
       select: {
         id: true,
         needoId: true,
-        email: true,
+        email: true
       }
     });
     const exportedUserByEmail = new Map(exportedUsers.map((user) => [user.email, user]));
     const accountRows = orderFormalTestAccountExports(
-      socialPlan.accounts.map((account) => {
+      credentialAccounts.map((account) => {
         const user = getRequiredId(exportedUserByEmail, account.email, "exported NeeDo user");
         return buildFormalTestAccountExportRow(
           {
@@ -1585,17 +1821,8 @@ const main = async (): Promise<void> => {
           getRequiredId(accountPasswords, account.email, "account password")
         );
       })
-    ).map((row) => [
-      row.accountType,
-      row.needoId,
-      row.nickname,
-      row.email,
-      row.password
-    ]);
-    const csv = [
-      ["account_type", "needo_id", "nickname", "email", "password"],
-      ...accountRows
-    ]
+    ).map((row) => [row.accountType, row.needoId, row.nickname, row.email, row.password]);
+    const csv = [["account_type", "needo_id", "nickname", "email", "password"], ...accountRows]
       .map((row) => row.map(escapeCsv).join(","))
       .join("\n");
     const accountExportPath = resolve(
@@ -1615,9 +1842,12 @@ const main = async (): Promise<void> => {
             merchantOwners: plan.shops.length,
             technicians: plan.technicians.length,
             customers: plan.customers.length,
+            exportedCredentials: accountRows.length,
             exportPath: accountExportPath
           },
           ...summary,
+          compensationProfiles: compensationProfileIds.length,
+          payrollPeriods: 3,
           status: "ok"
         },
         null,
@@ -1630,6 +1860,6 @@ const main = async (): Promise<void> => {
 };
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
   process.exitCode = 1;
 });

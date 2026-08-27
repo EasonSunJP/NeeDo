@@ -21,6 +21,23 @@ describe("TechnicianPortalPage profile card", () => {
     expect(source).toContain("isStaticDemoMode()");
   });
 
+  it("keeps formal technician schedules free of the legacy calendar and status timeline", () => {
+    const scheduleStart = source.indexOf('{activeView === "schedule"');
+    const scheduleEnd = source.indexOf('{activeView === "moments"', scheduleStart);
+    const scheduleSource = source.slice(scheduleStart, scheduleEnd);
+    const formalBranchEnd = scheduleSource.indexOf(") : (");
+    const formalBranch = scheduleSource.slice(0, formalBranchEnd);
+
+    expect(scheduleStart).toBeGreaterThan(-1);
+    expect(formalBranchEnd).toBeGreaterThan(-1);
+    expect(formalBranch).toContain("formalTechnicianProfileId ?");
+    expect(formalBranch).toContain(
+      '<FormalScheduleInventoryPanel scope="technician" shopId={technicianShopApiId} />',
+    );
+    expect(formalBranch).not.toContain("UnifiedUserCalendar");
+    expect(formalBranch).not.toContain("renderTechnicianStatusTimeline");
+  });
+
   it("keeps the info/data tabs and places privacy plus tags in the info card", () => {
     const cardStart = source.indexOf('data-testid="technician-info-card"');
     const cardEnd = source.indexOf('{activeMeTab === "data"', cardStart);

@@ -41,6 +41,17 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain("再次点击确认移除技师");
   });
 
+  it("shows and edits persisted employment data through the audited endpoint", () => {
+    expect(source).toContain("getMerchantStaffEmploymentLabel(");
+    expect(source).toContain("row.employmentType");
+    expect(source).toContain('translateText("雇佣类型", language)');
+    expect(source).toContain('employmentType: draft.employmentType');
+    expect(source).toContain('employmentStartedAt: draft.employmentStartedAt ? `${draft.employmentStartedAt}T00:00:00.000Z` : null');
+    expect(source).toContain('<option value="full_time">');
+    expect(source).toContain('<option value="temporary">');
+    expect(source).toContain('<option value="independent">');
+  });
+
   it("loads formal selected profiles into the shared detail panels", () => {
     expect(source).toContain('backofficeRealDataApi.technician("merchant-admin"');
     expect(source).toContain('backofficeRealDataApi.customer("merchant-admin"');

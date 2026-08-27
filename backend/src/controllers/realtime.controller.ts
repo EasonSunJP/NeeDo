@@ -3,6 +3,7 @@ import type { RealtimeService } from "../services/realtime.service";
 import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess } from "../utils/request-context";
 import {
+  contactIdParamSchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
@@ -130,6 +131,24 @@ export class RealtimeController {
       contactListQuerySchema.parse(request.query)
     )
   );
+
+  public blockContact = this.createHandler((request, response) => {
+    const params = contactIdParamSchema.parse(request.params);
+    return this.service.setContactBlocked(
+      getAuthenticatedAccess(response),
+      params.contactId,
+      true
+    );
+  });
+
+  public unblockContact = this.createHandler((request, response) => {
+    const params = contactIdParamSchema.parse(request.params);
+    return this.service.setContactBlocked(
+      getAuthenticatedAccess(response),
+      params.contactId,
+      false
+    );
+  });
 
   public listFriendRequests = this.createHandler((request, response) =>
     this.service.listFriendRequests(

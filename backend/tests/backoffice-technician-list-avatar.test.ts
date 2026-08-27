@@ -15,6 +15,8 @@ describe("merchant technician list identity data", () => {
             city: "Tokyo",
             serviceArea: "Shibuya",
             yearsExperience: 5,
+            employmentType: "FULL_TIME",
+            employmentStartedAt: createdAt,
             status: "published",
             isRecommended: false,
             verifiedAt: createdAt,
@@ -47,7 +49,9 @@ describe("merchant technician list identity data", () => {
         id: 31,
         userId: 41,
         needoId: "n0000000041",
-        avatarUrl: "/images/generated/profiles/ai-profile-01.jpg"
+        avatarUrl: "/images/generated/profiles/ai-profile-01.jpg",
+        employmentType: "full_time",
+        employmentStartedAt: "2026-08-25T00:00:00.000Z"
       })
     ]);
   });
