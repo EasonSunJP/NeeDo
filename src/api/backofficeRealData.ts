@@ -84,6 +84,7 @@ export interface BackofficeTechnicianPayload {
   userId: number;
   displayName: string;
   email: string;
+  avatarUrl: string | null;
   shopId: number | null;
   shopName: string | null;
   city: string;
@@ -533,7 +534,7 @@ export function mapBackofficeTechnician(row: BackofficeTechnicianPayload): Techn
     cancelRate: 0,
     reviewCount: 0,
     languages: ["日本語"],
-    avatar: "/images/generated/profiles/profile-12.jpg",
+    avatar: row.avatarUrl ?? "/images/generated/profiles/profile-12.jpg",
     accountUsername: row.email,
     identityLabel: row.shopId ? "店铺所属技师" : "个人技师"
   };

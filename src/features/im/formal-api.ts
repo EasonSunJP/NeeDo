@@ -1,4 +1,8 @@
 import {
+  backofficeRealDataApi,
+  type BackofficeTechnicianPayload,
+} from "../../api/backofficeRealData";
+import {
   realtimeApi,
   subscribeRealtimeEvents,
   type PaginatedRealtimeData,
@@ -159,6 +163,56 @@ function toPlaceholderUser(userId: number): ImUser {
   });
 }
 
+function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
+  const id = String(technician.userId);
+
+  return {
+    id,
+    accountId: technician.email,
+    nickname: technician.displayName,
+    avatar:
+      technician.avatarUrl ??
+      buildInitialAvatar(technician.displayName, "technician"),
+    region: technician.city,
+    status: "active",
+    searchableFields: [
+      technician.displayName,
+      technician.email,
+      technician.city,
+      technician.serviceArea ?? "",
+      id,
+    ].filter(Boolean),
+    sortKey: technician.displayName,
+    profileKind: "technician",
+    entityType: "technician",
+    entityId: `tech-${technician.id}`,
+    source: "merchant_technician_profile",
+    tags: ["员工", "正社员", "技师"],
+    userIdLabel: id,
+    canCall: false,
+    canVideoCall: false,
+  };
+}
+
+function toOrganizationContact(
+  ownerUserId: number,
+  technician: BackofficeTechnicianPayload,
+): ContactRelation {
+  return {
+    id: `merchant-technician-${technician.id}`,
+    ownerUserId: String(ownerUserId),
+    targetUserId: String(technician.userId),
+    relationStatus: "active",
+    source: "merchant_technician_profile",
+    tags: ["员工", "正社员", "技师"],
+    isStarred: false,
+    isBlocked: false,
+    description: technician.shopName ?? undefined,
+    createdAt: technician.createdAt,
+    updatedAt: technician.createdAt,
+  };
+}
+
 function toConversationMessage(message: RealtimeMessage): ConversationMessage {
   const metadata = readMetadata(message.metadata);
   const storedType = metadata.needoMessageType;
@@ -314,6 +368,7 @@ function buildBootstrap(
   conversations: RealtimeConversation[],
   contacts: RealtimeContact[],
   friendRequests: RealtimeFriendRequest[],
+  organizationTechnicians?: BackofficeTechnicianPayload[],
 ): ImBootstrapPayload {
   const userMap = new Map<string, ImUser>();
   const currentParticipant: RealtimeParticipant = {
@@ -326,6 +381,9 @@ function buildBootstrap(
     conversation.participants.forEach((participant) => {
       userMap.set(String(participant.userId), toImUser(participant));
     });
+  });
+  organizationTechnicians?.forEach((technician) => {
+    userMap.set(String(technician.userId), toOrganizationUser(technician));
   });
   contacts.forEach((contact) => {
     const id = String(contact.contactUserId);
@@ -346,6 +404,13 @@ function buildBootstrap(
     config: formalRuntimeConfig,
     users: Array.from(userMap.values()),
     contacts: contacts.map(toContact),
+    ...(organizationTechnicians
+      ? {
+          organizationContacts: organizationTechnicians.map((technician) =>
+            toOrganizationContact(currentUser.id, technician),
+          ),
+        }
+      : {}),
     friendRequests: friendRequests.map(toFriendRequest),
     conversations: conversations.map((conversation) =>
       toConversation(conversation, currentUser.id),
@@ -356,6 +421,7 @@ function buildBootstrap(
 
 export function createFormalImApi({
   currentUser,
+  scope,
 }: CreateFormalImApiOptions): ImApi {
   const loadConversations = () =>
     loadAllPages((query) => realtimeApi.listConversations(query));
@@ -365,15 +431,36 @@ export function createFormalImApi({
     loadAllPages((query) =>
       realtimeApi.listFriendRequests({ ...query, direction: "all" }),
     );
+  const loadOrganizationTechnicians = () =>
+    loadAllPages((query) =>
+      backofficeRealDataApi.technicians("merchant-admin", {
+        ...query,
+        status: "published",
+      }),
+    );
 
   const bootstrap = async () => {
-    const [conversations, contacts, friendRequests] = await Promise.all([
+    const [
+      conversations,
+      contacts,
+      friendRequests,
+      organizationTechnicians,
+    ] = await Promise.all([
       loadConversations(),
       loadContacts(),
       loadFriendRequests(),
+      scope === "merchant"
+        ? loadOrganizationTechnicians()
+        : Promise.resolve(undefined),
     ]);
 
-    return buildBootstrap(currentUser, conversations, contacts, friendRequests);
+    return buildBootstrap(
+      currentUser,
+      conversations,
+      contacts,
+      friendRequests,
+      organizationTechnicians,
+    );
   };
 
   const findConversation = async (conversationId: string) => {

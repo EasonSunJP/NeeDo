@@ -61,6 +61,7 @@ type ImSnapshot = {
   users: ImUser[];
   usersById: Record<string, ImUser>;
   contacts: ContactRelation[];
+  organizationContacts?: ContactRelation[];
   friendRequests: FriendRequest[];
   conversations: Conversation[];
   members: ConversationMember[];
@@ -340,6 +341,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
           users: bootstrap.users,
           usersById: toUserRecord(bootstrap.users),
           contacts: bootstrap.contacts,
+          organizationContacts: bootstrap.organizationContacts,
           friendRequests: bootstrap.friendRequests,
           conversations: sortConversations(applyDraftsToConversations(bootstrap.conversations, snapshot.ui.drafts)),
           members: bootstrap.members
@@ -844,6 +846,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         users: bootstrap.users,
         usersById: toUserRecord(bootstrap.users),
         contacts: bootstrap.contacts,
+        organizationContacts: bootstrap.organizationContacts,
         friendRequests: bootstrap.friendRequests,
         conversations: sortConversations(applyDraftsToConversations(bootstrap.conversations, snapshot.ui.drafts)),
         members: bootstrap.members

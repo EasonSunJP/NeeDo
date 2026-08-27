@@ -18,6 +18,17 @@ describe("formal IM routes", () => {
     expect(source).not.toContain("installImMockServer");
   });
 
+  it("keeps formal organization members separate from reciprocal IM contacts", () => {
+    const pages = read("./pages.tsx");
+    const store = read("./store.ts");
+
+    expect(store).toContain(
+      "organizationContacts: bootstrap.organizationContacts",
+    );
+    expect(pages).toContain("store.organizationContacts !== undefined");
+    expect(pages).toContain('contact.source === "merchant_technician_profile"');
+  });
+
   it("routes every authenticated mode through the original rich pages", () => {
     const source = read("./route-pages.tsx");
 

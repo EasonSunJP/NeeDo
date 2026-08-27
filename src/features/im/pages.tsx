@@ -2019,7 +2019,7 @@ export function ImContactsListPage() {
   });
   const organizationContacts = useMemo(
     () => getOrganizationContacts(store, scope, entityStore),
-    [entityStore, scope, store.contacts, store.usersById]
+    [entityStore, scope, store.contacts, store.organizationContacts, store.usersById]
   );
   const editingRemarkContact = visibleContacts.find((contact) => contact.id === editingRemarkContactId);
   const editingRemarkUser = editingRemarkContact ? store.usersById[editingRemarkContact.targetUserId] : undefined;
@@ -2655,6 +2655,12 @@ function hasOrganizationTag(contact: ContactRelation, user: ImUser, tags: string
 }
 
 function getOrganizationContacts(store: ReturnType<typeof useImStore>, scope: ImRoleType, entityStore: ReturnType<typeof useEntityStore>) {
+  if (store.organizationContacts !== undefined) {
+    return store.organizationContacts.filter(
+      (contact) => contact.relationStatus === "active" && contact.source === "merchant_technician_profile"
+    );
+  }
+
   const currentUser = getCurrentUser(store);
 
   if (!currentUser?.entityId) {
@@ -3611,7 +3617,7 @@ export function ImOrganizationContactsPage() {
   const [roleFilterSheetOpen, setRoleFilterSheetOpen] = useState(false);
   const organizationContacts = useMemo(
     () => getOrganizationContacts(store, scope, entityStore),
-    [entityStore, scope, store.contacts, store.usersById]
+    [entityStore, scope, store.contacts, store.organizationContacts, store.usersById]
   );
   const normalizedOrganizationQuery = deferredOrganizationQuery.trim().toLowerCase();
   const contacts = useMemo(
@@ -3830,7 +3836,9 @@ export function ImOrganizationContactsPage() {
           <div className="overflow-hidden rounded-[24px] bg-[color:var(--client-surface)] shadow-[0_12px_32px_color-mix(in_srgb,var(--client-shadow)_14%,transparent)]">
             {contacts.map((contact) => {
               const user = store.usersById[contact.targetUserId];
-              const contactInfoTarget = getContactInfoSettingsTarget(config, contact);
+              const contactInfoTarget = user && contact.source === "merchant_technician_profile"
+                ? resolveImProfilePath(scope, user)
+                : getContactInfoSettingsTarget(config, contact);
 
               return user ? (
                 <ContactRow

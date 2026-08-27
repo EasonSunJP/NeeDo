@@ -1970,6 +1970,7 @@ function technicianPayload(index: number): BackofficeTechnicianPayload {
     userId: index + 10,
     displayName: technician.name,
     email: technician.accountUsername ?? `${technician.id}@static-demo.needo.jp`,
+    avatarUrl: technician.avatar,
     shopId: store ? numberFromText(store.id, index + 1) : null,
     shopName: store?.name ?? null,
     city: technician.serviceAreas[0] ?? "东京",

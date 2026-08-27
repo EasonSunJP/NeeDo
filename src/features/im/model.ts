@@ -391,6 +391,7 @@ export type ImBootstrapPayload = {
   config: ImRuntimeConfig;
   users: ImUser[];
   contacts: ContactRelation[];
+  organizationContacts?: ContactRelation[];
   friendRequests: FriendRequest[];
   conversations: Conversation[];
   members: ConversationMember[];

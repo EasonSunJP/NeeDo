@@ -769,7 +769,7 @@ function getPublishNdpCost(type: ExchangePost["type"], budget: number) {
 function getContextSeedCopy(context: MessageCenterContext) {
   return {
     user: {
-      primaryTab: "all" as const,
+      primaryTab: "demand" as const,
       author: customers[0].name,
       role: "客户"
     },
@@ -1327,8 +1327,8 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   const infoImageInputRef = useRef<HTMLInputElement | null>(null);
   const requestedTab = searchParams.get("tab");
   const initialActiveType =
-    requestedTab === "all" || requestedTab === "demand" || requestedTab === "reverse" ? requestedTab : copy.primaryTab;
-  const [activeType, setActiveType] = useState<"all" | "demand" | "reverse">(initialActiveType);
+    requestedTab === "demand" || requestedTab === "reverse" ? requestedTab : copy.primaryTab;
+  const [activeType, setActiveType] = useState<ExchangePost["type"]>(initialActiveType);
   const [posts, setPosts] = useState<ExchangePost[]>(() => getNeedoFeedPosts(context));
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [showComposer, setShowComposer] = useState(false);
@@ -1358,14 +1358,14 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   const visiblePosts = useMemo(
     () =>
       posts.filter((post) =>
-        (activeType === "all" || post.type === activeType) &&
+        post.type === activeType &&
         !blockedPostIdSet.has(post.id) &&
         matchesNeedoExchangeSearch(post, appliedSearchTokens)
       ),
     [activeType, appliedSearchTokens, blockedPostIdSet, posts]
   );
   const composerType = getComposerTypeByContext(context);
-  const canComposeOnActiveTab = activeType === "all" || activeType === composerType;
+  const canComposeOnActiveTab = activeType === composerType;
   const forwardContacts = getForwardContacts(context);
   const homePath = context === "merchant" ? "/merchant" : context === "technician" ? "/technician" : "/";
   const nearbyStoresPath = "/categories?type=store";
@@ -1402,10 +1402,12 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
   }, []);
 
   useEffect(() => {
-    if (requestedTab === "all" || requestedTab === "demand" || requestedTab === "reverse") {
-      setActiveType(requestedTab);
-    }
-  }, [requestedTab]);
+    setActiveType(
+      requestedTab === "demand" || requestedTab === "reverse"
+        ? requestedTab
+        : copy.primaryTab
+    );
+  }, [copy.primaryTab, requestedTab]);
 
   const postRuntime = useMemo(() => {
     return Object.fromEntries(
@@ -1592,7 +1594,6 @@ export function NeedoExchangePage({ context = "user" }: { context?: MessageCente
         />
         <FeatureSegmentedTabs
           items={[
-            { label: "全部", value: "all" },
             { label: "需求", value: "demand" },
             { label: "情报", value: "reverse" }
           ]}

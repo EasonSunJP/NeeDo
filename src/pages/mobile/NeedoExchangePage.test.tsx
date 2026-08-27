@@ -14,6 +14,23 @@ describe("NeedoExchangePage", () => {
     expect(headerSource.indexOf("<FloatingHeaderSearchBar")).toBeLessThan(headerSource.indexOf("<FeatureSegmentedTabs"));
   });
 
+  it("keeps only demand and intelligence without an all-feed state", () => {
+    const headerStart = source.indexOf("<FloatingHomeHeader");
+    const headerEnd = source.indexOf("</FloatingHomeHeader>", headerStart);
+    const headerSource = source.slice(headerStart, headerEnd);
+
+    expect(headerSource).toContain('{ label: "需求", value: "demand" }');
+    expect(headerSource).toContain('{ label: "情报", value: "reverse" }');
+    expect(headerSource).not.toContain('{ label: "全部", value: "all" }');
+    expect(source).not.toContain('primaryTab: "all"');
+    expect(source).not.toContain('requestedTab === "all"');
+    expect(source).not.toContain('activeType === "all"');
+    expect(source).not.toContain('"all" | "demand" | "reverse"');
+    expect(source).toMatch(
+      /setActiveType\(\s*requestedTab === "demand" \|\| requestedTab === "reverse"\s*\? requestedTab\s*: copy\.primaryTab\s*\)/u,
+    );
+  });
+
   it("filters exchange cards through the submitted service search query", () => {
     expect(source).toContain("const [searchDraft, setSearchDraft] = useState(\"\");");
     expect(source).toContain("const [appliedSearchQuery, setAppliedSearchQuery] = useState(\"\");");

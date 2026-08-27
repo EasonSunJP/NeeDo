@@ -241,6 +241,7 @@ export interface BackofficeTechnicianPayload {
   userId: number;
   displayName: string;
   email: string;
+  avatarUrl: string | null;
   shopId: number | null;
   shopName: string | null;
   city: string;

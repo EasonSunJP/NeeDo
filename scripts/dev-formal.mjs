@@ -3,6 +3,7 @@ import { createServer as createNetServer } from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { resolveFormalDevConfig } from "./dev-formal-config.mjs";
+import { waitForService } from "./dev-formal-runtime.mjs";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const { backendPort, frontendPort, proxyTarget } = resolveFormalDevConfig(process.env);
@@ -97,6 +98,7 @@ function start(name, command, args, options = {}) {
 function shutdown(exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
+  process.exitCode = exitCode;
   children.forEach((child) => {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
   });
@@ -129,5 +131,25 @@ if (frontendState === "free") {
   });
 }
 
-console.log(`[dev:formal] frontend http://127.0.0.1:${frontendPort}`);
-console.log(`[dev:formal] backend  ${proxyTarget}/api/v1`);
+try {
+  await Promise.all([
+    waitForService({
+      name: "formal backend",
+      detector: isFormalBackendRunning,
+      timeoutMs: 15_000,
+      intervalMs: 250
+    }),
+    waitForService({
+      name: "frontend",
+      detector: isFrontendRunning,
+      timeoutMs: 15_000,
+      intervalMs: 250
+    })
+  ]);
+
+  console.log(`[dev:formal] frontend ready http://127.0.0.1:${frontendPort}`);
+  console.log(`[dev:formal] backend ready  ${proxyTarget}/api/v1`);
+} catch (error) {
+  console.error(`[dev:formal] startup failed: ${error instanceof Error ? error.message : error}`);
+  shutdown(1);
+}

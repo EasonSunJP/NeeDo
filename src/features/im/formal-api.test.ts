@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { realtimeApi } from "../realtime/api";
 import { createFormalImApi } from "./formal-api";
 
@@ -98,6 +99,80 @@ describe("formal IM adapter", () => {
     expect(bootstrap.users.find((user) => user.id === "100")?.avatar).toMatch(
       /^data:image\/svg\+xml/,
     );
+  });
+
+  it("loads published merchant technicians as real organization members", async () => {
+    vi.spyOn(realtimeApi, "listConversations").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listContacts").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+    vi.spyOn(realtimeApi, "listFriendRequests").mockResolvedValue({
+      list: [],
+      total: 0,
+      page: 1,
+      page_size: 100,
+    });
+    const listTechnicians = vi
+      .spyOn(backofficeRealDataApi, "technicians")
+      .mockResolvedValue({
+        list: [
+          {
+            id: 31,
+            userId: 201,
+            displayName: "佐藤 美咲",
+            email: "sim.technician.001@needo.local",
+            avatarUrl: "/images/generated/profiles/ai-profile-01.jpg",
+            shopId: 16,
+            shopName: "Tokyo Relax Shibuya",
+            city: "Tokyo",
+            serviceArea: "Shibuya",
+            status: "published",
+            verifiedAt: now,
+            createdAt: now,
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 100,
+      });
+
+    const api = createFormalImApi({
+      currentUser: {
+        id: 16,
+        username: "sim.shop.001@needo.local",
+        avatarUrl: null,
+      },
+      scope: "merchant",
+    });
+    const bootstrap = await api.bootstrap();
+
+    expect(listTechnicians).toHaveBeenCalledWith("merchant-admin", {
+      page: 1,
+      pageSize: 100,
+      status: "published",
+    });
+    expect(bootstrap.contacts).toEqual([]);
+    expect(bootstrap.organizationContacts).toEqual([
+      expect.objectContaining({
+        targetUserId: "201",
+        source: "merchant_technician_profile",
+        tags: ["员工", "正社员", "技师"],
+      }),
+    ]);
+    expect(bootstrap.users.find((user) => user.id === "201")).toMatchObject({
+      nickname: "佐藤 美咲",
+      avatar: "/images/generated/profiles/ai-profile-01.jpg",
+      entityType: "technician",
+      entityId: "tech-31",
+    });
   });
 
   it("persists rich text messages through the formal message endpoint", async () => {

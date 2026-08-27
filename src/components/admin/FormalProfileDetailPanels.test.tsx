@@ -59,6 +59,7 @@ const technicianDetail: BackofficeTechnicianDetailPayload = {
   userId: 1031,
   displayName: "佐藤 美香",
   email: "mika@example.jp",
+  avatarUrl: "/images/mika.jpg",
   shopId: 8,
   shopName: "NeeDo 青山店",
   city: "東京都港区",
