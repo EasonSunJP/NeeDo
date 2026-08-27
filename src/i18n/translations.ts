@@ -137,12 +137,6 @@ export const authTrustGatewayTranslations: TranslationMap = {
     en: "Sending…",
     ko: "전송 중…",
   },
-  记录账号密码: {
-    "zh-Hant": "儲存帳號和密碼",
-    ja: "アカウントとパスワードを保存",
-    en: "Save account and password",
-    ko: "계정과 비밀번호 저장",
-  },
   显示密码: {
     "zh-Hant": "顯示密碼",
     ja: "パスワードを表示",

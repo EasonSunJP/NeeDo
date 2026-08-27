@@ -11,11 +11,6 @@ import { authApi, type VerificationChallengePayload } from "../../api/auth";
 import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import { requestGoogleCredential } from "../../auth/googleIdentity";
-import {
-  clearRememberedCredentials,
-  readRememberedCredentials,
-  writeRememberedCredentials,
-} from "../../auth/rememberCredentials";
 import { isFrontendBypassSession, type AuthSession } from "../../auth/rbac";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
@@ -125,7 +120,6 @@ function buildLoginCopy(language: Language) {
     registrationTitle: text("创建 NeeDo 账号"),
     registerButton: text("发送验证码"),
     registering: text("正在发送…"),
-    rememberCredentials: text("记录账号密码"),
     requiredAccount: text("请输入邮箱或 NeeDo ID 和密码。"),
     requiredRegistration: text("请输入邮箱和密码。"),
     showPassword: text("显示密码"),
@@ -342,10 +336,6 @@ function AppMark() {
   );
 }
 
-function getFrontendRememberCredentialsScope(portal: PortalScope) {
-  return `frontend.${portal}`;
-}
-
 export function LoginPage({
   navigateToPortal = openPortalEntry,
 }: {
@@ -360,7 +350,7 @@ export function LoginPage({
     enterFrontendWithoutAuthentication,
     hasRememberedPortalAuthorization,
     isAuthenticated,
-    loginWithFormalPassword,
+    login,
     loginWithGoogle,
     logout,
     session,
@@ -388,22 +378,18 @@ export function LoginPage({
   const [copyError, setCopyError] = useState("");
   const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState(false);
-  const [rememberCredentials, setRememberCredentials] = useState(false);
   const [googleFlowKey, setGoogleFlowKey] = useState(0);
   const [googleState, setGoogleState] = useState<
     "connecting" | "error" | "idle" | "static"
   >("idle");
   const googleContainerRef = useRef<HTMLDivElement>(null);
+  const googleFlowGenerationRef = useRef(0);
   const navigationInFlightRef = useRef(false);
   const copy = useMemo(() => buildLoginCopy(language), [language]);
   const activePortalCopy = copy.portals[activePortal];
   const nextPath = useMemo(
     () => getPostLoginRoute(activePortal, redirectPath),
     [activePortal, redirectPath],
-  );
-  const rememberScope = useMemo(
-    () => getFrontendRememberCredentialsScope(activePortal),
-    [activePortal],
   );
   const requiresFormalLogin = requiresFormalFrontendLogin(
     activePortal,
@@ -427,19 +413,6 @@ export function LoginPage({
   useEffect(() => {
     navigationInFlightRef.current = false;
   }, [activePortal, nextPath]);
-
-  useEffect(() => {
-    const remembered = readRememberedCredentials(rememberScope);
-    setRememberCredentials(remembered.enabled);
-    setLoginIdentifier(remembered.enabled ? remembered.account : "");
-    setLoginPassword(remembered.enabled ? remembered.password : "");
-  }, [rememberScope]);
-
-  useEffect(() => {
-    if (rememberCredentials) {
-      writeRememberedCredentials(rememberScope, loginIdentifier, loginPassword);
-    }
-  }, [loginIdentifier, loginPassword, rememberCredentials, rememberScope]);
 
   const enterPortal = useCallback(async () => {
     if (navigationInFlightRef.current) {
@@ -472,7 +445,7 @@ export function LoginPage({
       hasActiveAccess &&
       !pending &&
       !generatedNeedoId &&
-      panelMode !== "verification"
+      panelMode === "welcome"
     ) {
       void enterPortal();
     }
@@ -517,7 +490,12 @@ export function LoginPage({
 
   useEffect(() => {
     const container = googleContainerRef.current;
-    if (!container || hasActiveAccess || generatedNeedoId) {
+    if (
+      !container ||
+      panelMode !== "welcome" ||
+      hasActiveAccess ||
+      generatedNeedoId
+    ) {
       return;
     }
 
@@ -528,26 +506,30 @@ export function LoginPage({
     }
 
     let active = true;
+    const flowGeneration = googleFlowGenerationRef.current + 1;
+    googleFlowGenerationRef.current = flowGeneration;
+    const isCurrentFlow = () =>
+      active && googleFlowGenerationRef.current === flowGeneration;
     setGoogleState("connecting");
     setFeedback("");
 
     const run = async () => {
       try {
         const initialization = await authApi.initializeGoogleLogin();
-        if (!active) return;
+        if (!isCurrentFlow()) return;
         const credential = await requestGoogleCredential({
           clientId: initialization.clientId,
           container,
           nonce: initialization.nonce,
         });
-        if (!active) return;
+        if (!isCurrentFlow()) return;
         const credentialResult = await authApi.submitGoogleCredential({
           credential,
           nonceChallengeId: initialization.nonceChallengeId,
         });
-        if (!active) return;
+        if (!isCurrentFlow()) return;
         const result = await loginWithGoogle(credentialResult, activePortal);
-        if (!active) return;
+        if (!isCurrentFlow()) return;
         if (!result.ok) {
           setGoogleState("error");
           setFeedback(resolveLoginErrorMessage(result.message, language));
@@ -565,7 +547,7 @@ export function LoginPage({
           getPostLoginRoute(result.session.portal, redirectPath),
         );
       } catch (error) {
-        if (!active) return;
+        if (!isCurrentFlow()) return;
         setGoogleState("error");
         setFeedback(
           resolveLoginErrorMessage(
@@ -579,6 +561,9 @@ export function LoginPage({
     void run();
     return () => {
       active = false;
+      if (googleFlowGenerationRef.current === flowGeneration) {
+        googleFlowGenerationRef.current += 1;
+      }
     };
   }, [
     activePortal,
@@ -588,18 +573,10 @@ export function LoginPage({
     language,
     loginWithGoogle,
     navigateToPortal,
+    panelMode,
     redirectPath,
     staticDemo,
   ]);
-
-  const toggleRememberCredentials = (checked: boolean) => {
-    setRememberCredentials(checked);
-    if (checked) {
-      writeRememberedCredentials(rememberScope, loginIdentifier, loginPassword);
-    } else {
-      clearRememberedCredentials(rememberScope);
-    }
-  };
 
   const handleAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -613,11 +590,7 @@ export function LoginPage({
 
     setPending(true);
     try {
-      const result = await loginWithFormalPassword(
-        activePortal,
-        identifier,
-        loginPassword,
-      );
+      const result = await login(activePortal, identifier, loginPassword);
       if (!result.ok) {
         setFeedback(resolveLoginErrorMessage(result.message, language));
         return;
@@ -753,6 +726,12 @@ export function LoginPage({
     setVerificationError("");
   };
 
+  const leaveGoogleWelcome = (nextMode: "account" | "register") => {
+    googleFlowGenerationRef.current += 1;
+    setPanelMode(nextMode);
+    setFeedback("");
+  };
+
   return (
     <div
       className={cn(
@@ -762,7 +741,10 @@ export function LoginPage({
       )}
       data-no-i18n
     >
-      <main className="mx-auto flex min-h-[100dvh] w-full max-w-[440px] flex-col pb-8 pt-[calc(env(safe-area-inset-top,0px)+16px)]">
+      <main
+        className="mx-auto flex min-h-[100dvh] w-full max-w-[440px] flex-col pb-8 pt-[calc(env(safe-area-inset-top,0px)+16px)]"
+        style={{ maxWidth: "440px" }}
+      >
         <header className="flex min-h-11 items-center justify-between gap-3">
           {panelMode === "account" || panelMode === "register" ? (
             <button
@@ -848,7 +830,7 @@ export function LoginPage({
                 onSubmit={handleVerificationSubmit}
                 pending={pending}
               />
-            ) : hasActiveAccess ? (
+            ) : panelMode === "welcome" && hasActiveAccess ? (
               <div className="space-y-4">
                 <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[color:var(--client-surface)] p-5 text-left shadow-[var(--client-shadow)]">
                   <p className="text-sm font-black text-[color:var(--client-primary)]">
@@ -967,39 +949,9 @@ export function LoginPage({
                   />
                 </label>
                 <label className="block">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-black text-[color:var(--client-muted)]">
-                      {copy.passwordLabel}
-                    </span>
-                    <button
-                      aria-checked={rememberCredentials}
-                      className="inline-flex min-h-11 items-center gap-2 rounded-full px-1 text-xs font-black text-[color:var(--client-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
-                      onClick={() =>
-                        toggleRememberCredentials(!rememberCredentials)
-                      }
-                      role="switch"
-                      type="button"
-                    >
-                      <span>{copy.rememberCredentials}</span>
-                      <span
-                        className={cn(
-                          "relative inline-flex h-6 w-11 items-center rounded-full border border-[color:var(--client-line)] transition",
-                          rememberCredentials
-                            ? "bg-[color:var(--client-primary)]"
-                            : "bg-[color:var(--client-surface)]",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "h-5 w-5 rounded-full bg-white shadow transition",
-                            rememberCredentials
-                              ? "translate-x-[19px]"
-                              : "translate-x-[2px]",
-                          )}
-                        />
-                      </span>
-                    </button>
-                  </div>
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">
+                    {copy.passwordLabel}
+                  </span>
                   <PasswordInput
                     autoComplete="current-password"
                     data-testid="login-password"
@@ -1026,10 +978,7 @@ export function LoginPage({
                 <button
                   className="h-14 w-full rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[var(--client-shadow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
                   data-testid="show-password-login"
-                  onClick={() => {
-                    setPanelMode("account");
-                    setFeedback("");
-                  }}
+                  onClick={() => leaveGoogleWelcome("account")}
                   type="button"
                 >
                   {copy.accountLogin}
@@ -1038,10 +987,7 @@ export function LoginPage({
                   <button
                     className="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
                     data-testid="show-registration"
-                    onClick={() => {
-                      setPanelMode("register");
-                      setFeedback("");
-                    }}
+                    onClick={() => leaveGoogleWelcome("register")}
                     type="button"
                   >
                     {copy.createAccount}

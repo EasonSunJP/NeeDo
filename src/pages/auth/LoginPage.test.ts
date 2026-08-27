@@ -17,7 +17,7 @@ const mocked = vi.hoisted(() => ({
     enterFrontendWithoutAuthentication: vi.fn(),
     hasRememberedPortalAuthorization: vi.fn(() => false),
     isAuthenticated: false,
-    loginWithFormalPassword: vi.fn(),
+    login: vi.fn(),
     loginWithGoogle: vi.fn(),
     logout: vi.fn(),
     session: null as AuthSession | null,
@@ -113,6 +113,17 @@ function setInput(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+function createDeferred<T>() {
+  let reject!: (reason?: unknown) => void;
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
+}
+
 async function flushUi() {
   await act(async () => {
     await Promise.resolve();
@@ -131,7 +142,7 @@ describe("LoginPage verified identity behavior", () => {
     mocked.auth.session = null;
     mocked.auth.canAccess.mockReturnValue(false);
     mocked.auth.hasRememberedPortalAuthorization.mockReturnValue(false);
-    mocked.auth.loginWithFormalPassword.mockResolvedValue({
+    mocked.auth.login.mockResolvedValue({
       message: "error.auth.invalid_credentials",
       ok: false,
     });
@@ -213,11 +224,139 @@ describe("LoginPage verified identity behavior", () => {
     );
 
     expect(container.textContent).toContain("邮箱或 NeeDo ID");
-    expect(mocked.auth.loginWithFormalPassword).toHaveBeenCalledWith(
+    expect(mocked.auth.login).toHaveBeenCalledWith(
       "user",
       "NDO-2026-11",
       "  Strong.Password  ",
     );
+  });
+
+  it("keeps the desktop identity gateway constrained to 440px", () => {
+    expect(container.querySelector("main")?.style.maxWidth).toBe("440px");
+  });
+
+  it("uses browser password-manager semantics without custom credential storage", async () => {
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
+        ?.click(),
+    );
+
+    expect(container.querySelector('[role="switch"]')).toBeNull();
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-identifier"]',
+      )?.autocomplete,
+    ).toBe("username");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-password"]',
+      )?.autocomplete,
+    ).toBe("current-password");
+  });
+
+  it("ignores a stale Google initialization failure after switching to registration", async () => {
+    await act(async () => root.unmount());
+    mocked.authApi.initializeGoogleLogin.mockReset();
+    const initialization = createDeferred<{
+      clientId: string;
+      expiresIn: number;
+      nonce: string;
+      nonceChallengeId: string;
+    }>();
+    mocked.authApi.initializeGoogleLogin.mockReturnValueOnce(
+      initialization.promise,
+    );
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
+      );
+    });
+    await flushUi();
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="show-registration"]')
+        ?.click(),
+    );
+
+    await act(async () => {
+      initialization.reject(new Error("error.api"));
+      await initialization.promise.catch(() => undefined);
+    });
+    await flushUi();
+
+    expect(
+      container.querySelector('[data-testid="registration-form"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).not.toContain("登录服务暂时不可用");
+  });
+
+  it("keeps registration active when a stale Google provider completion updates auth context", async () => {
+    await act(async () => root.unmount());
+    mocked.requestGoogleCredential.mockResolvedValueOnce(
+      "stale-google-credential",
+    );
+    mocked.authApi.submitGoogleCredential.mockResolvedValueOnce({
+      accessToken: "stale-access-token",
+      expiresIn: 900,
+      refreshToken: "stale-refresh-token",
+      status: "authenticated",
+    });
+    const providerCompletion = createDeferred<{
+      ok: true;
+      session: AuthSession;
+      status: "authenticated";
+    }>();
+    mocked.auth.loginWithGoogle.mockReturnValueOnce(providerCompletion.promise);
+    mocked.auth.switchPortal.mockResolvedValue({ ok: true, session });
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(
+        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
+      );
+    });
+    await flushUi();
+    expect(mocked.auth.loginWithGoogle).toHaveBeenCalledTimes(1);
+
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="show-registration"]')
+        ?.click(),
+    );
+    mocked.auth.isAuthenticated = true;
+    mocked.auth.session = session;
+    mocked.auth.canAccess.mockReturnValue(true);
+    await act(async () => {
+      root.render(
+        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
+      );
+      await Promise.resolve();
+    });
+    await act(async () => {
+      providerCompletion.resolve({
+        ok: true,
+        session,
+        status: "authenticated",
+      });
+      await providerCompletion.promise;
+    });
+    await flushUi();
+
+    expect(
+      container.querySelector('[data-testid="registration-form"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="auth-verification-panel"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="generated-needo-id"]'),
+    ).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(mocked.navigateToPortal).not.toHaveBeenCalled();
   });
 
   it("registers only email and password, then shows the shared masked-email challenge", async () => {
@@ -502,6 +641,11 @@ describe("LoginPage formal flow guardrails", () => {
       "loginWithVerificationCode",
       "authApi.register",
       "authApi.fetchCaptcha",
+      "loginWithFormalPassword",
+      "readRememberedCredentials",
+      "writeRememberedCredentials",
+      "clearRememberedCredentials",
+      "rememberCredentials",
       "registrationCity",
       'accountType: "technician"',
     ].forEach((removedSource) =>
@@ -582,7 +726,6 @@ describe("LoginPage formal flow guardrails", () => {
       "验证码将发送到此邮箱。验证后会生成你的 NeeDo ID。",
       "发送验证码",
       "正在发送…",
-      "记录账号密码",
       "显示密码",
       "当前账号",
       "账号登录",
