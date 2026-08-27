@@ -5,7 +5,9 @@ const source = readFileSync(new URL("./MerchantAdminAnalyticsPage.tsx", import.m
 
 describe("MerchantAdminAnalyticsPage production boundary", () => {
   it("uses only the authenticated merchant aggregate", () => {
-    expect(source).toContain('backofficeRealDataApi.dashboard("merchant-admin")');
+    expect(source).not.toContain('backofficeRealDataApi.dashboard("merchant-admin")');
+    expect(source).toContain("MerchantAdminDashboardResource");
+    expect(source).toContain("resource.reload");
     expect(source).toContain("dashboard.finance");
     expect(source).toContain("dashboard.schedule");
     expect(source).not.toContain("../../data/mock");

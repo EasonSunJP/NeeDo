@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { backofficeRealDataApi, type BackofficeDashboardPayload } from "../../api/backofficeRealData";
+import type { BackofficeDashboardPayload } from "../../api/backofficeRealData";
 import { useAuth } from "../../auth/AuthProvider";
 import type { FeaturePermission } from "../../auth/featurePermissions";
 import {
@@ -9,6 +9,10 @@ import {
   setMerchantAdminPreviewShop
 } from "../../auth/merchantAdminPreview";
 import { translateMerchantBillingText } from "../../features/merchant-saas-billing/i18n";
+import {
+  invalidateMerchantAdminDashboard,
+  loadMerchantAdminDashboard
+} from "../../features/merchant-admin/dashboardResource";
 import { useI18n } from "../../i18n/I18nProvider";
 import { cn, yen } from "../../lib/utils";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, normalizeAdminTheme, sharedAdminThemeOptions, type AdminTheme } from "../../theme/AdminTheme";
@@ -40,6 +44,17 @@ type AdminThemePreferenceMode = "auto" | "manual";
 type AdminThemeState = {
   theme: AdminTheme;
   preferenceMode: AdminThemePreferenceMode;
+};
+
+export type MerchantAdminDashboardResource = {
+  dashboard: BackofficeDashboardPayload | null;
+  error: unknown;
+  reload: () => void;
+  status: "loading" | "success" | "error";
+};
+
+type MerchantAdminLayoutProps = {
+  children: ReactNode | ((resource: MerchantAdminDashboardResource) => ReactNode);
 };
 
 const merchantAdminSections: MerchantAdminNavSection[] = [
@@ -177,7 +192,7 @@ function getInitialThemeState(): AdminThemeState {
   };
 }
 
-export function MerchantAdminLayout({ children }: { children: ReactNode }) {
+export function MerchantAdminLayout({ children }: MerchantAdminLayoutProps) {
   const { canAccessFeature, session } = useAuth();
   const { language } = useI18n();
   const t = (source: string) => translateMerchantBillingText(source, language);
@@ -186,10 +201,17 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
   const [summaryStatus, setSummaryStatus] = useState<"loading" | "success" | "error">("loading");
+  const [summaryError, setSummaryError] = useState<unknown>(null);
   const [summaryRevision, setSummaryRevision] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const readOnlyPreview = preview && session?.allowedPortals.includes("admin") ? preview : null;
+  const dashboardScopeKey = [
+    session?.id ?? "anonymous",
+    session?.currentIdentity.id ?? "no-identity",
+    readOnlyPreview?.selectedShopId ?? "current-shop",
+    session?.loggedInAt ?? "no-session"
+  ].join(":");
   const visibleSections = useMemo(
     () =>
       merchantAdminSections
@@ -240,23 +262,37 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     let activeRequest = true;
     setSummaryStatus("loading");
+    setSummaryError(null);
 
-    backofficeRealDataApi.dashboard("merchant-admin")
+    loadMerchantAdminDashboard(dashboardScopeKey)
       .then((payload) => {
         if (!activeRequest) return;
         setDashboard(payload);
         setSummaryStatus("success");
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!activeRequest) return;
         setDashboard(null);
+        setSummaryError(error);
         setSummaryStatus("error");
       });
 
     return () => {
       activeRequest = false;
     };
-  }, [readOnlyPreview?.selectedShopId, session?.currentIdentity.id, summaryRevision]);
+  }, [dashboardScopeKey, summaryRevision]);
+
+  const reloadDashboard = () => {
+    invalidateMerchantAdminDashboard(dashboardScopeKey);
+    setSummaryRevision((current) => current + 1);
+  };
+
+  const dashboardResource: MerchantAdminDashboardResource = {
+    dashboard,
+    error: summaryError,
+    reload: reloadDashboard,
+    status: summaryStatus
+  };
 
   const changePreviewShop = (shopId: number) => {
     const next = setMerchantAdminPreviewShop(shopId);
@@ -313,7 +349,7 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
             {summaryStatus === "error" ? (
               <button
                 className="mt-2 w-full rounded-md border border-coral/30 bg-coral/5 px-2 py-2 text-xs font-black text-coral"
-                onClick={() => setSummaryRevision((current) => current + 1)}
+                onClick={reloadDashboard}
                 type="button"
               >
                 重新加载店铺摘要
@@ -506,7 +542,7 @@ export function MerchantAdminLayout({ children }: { children: ReactNode }) {
               </button>
             </section>
           ) : null}
-          {children}
+          {typeof children === "function" ? children(dashboardResource) : children}
         </main>
       </div>
     </div>

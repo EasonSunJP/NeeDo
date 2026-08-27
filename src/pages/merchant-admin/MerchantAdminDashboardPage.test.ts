@@ -3,7 +3,9 @@ import source from "./MerchantAdminDashboardPage.tsx?raw";
 
 describe("merchant dashboard real data", () => {
   it("uses only the merchant-scoped aggregate and real payload names", () => {
-    expect(source).toContain('backofficeRealDataApi.dashboard("merchant-admin")');
+    expect(source).not.toContain('backofficeRealDataApi.dashboard("merchant-admin")');
+    expect(source).toContain("MerchantAdminDashboardResource");
+    expect(source).toContain("resource.reload");
     expect(source).toContain("dashboard.schedule");
     expect(source).toContain("dashboard.finance");
     expect(source).toContain("mapBackofficeOrder");
