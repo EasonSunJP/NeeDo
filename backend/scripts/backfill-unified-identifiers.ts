@@ -360,6 +360,7 @@ const planPrimaryIdentifier = (
     user.primaryIdentityType === primaryKind &&
     existingPrimary?.identity.id === primaryIdentity.id &&
     existingPrimary.identifier.numberPart === user.accountNo &&
+    user.needoId === existingPrimary.identifier.publicId &&
     primaryIdentity.isDefault;
   if (!primaryComplete) {
     operations.push({
@@ -1223,7 +1224,11 @@ export class PrismaUnifiedIdentifierBackfillRuntime implements UnifiedIdentifier
         throw new Error(`Backfill number allocation failed: User ${operation.userId}`);
       await transaction.user.update({
         where: { id: operation.userId },
-        data: { accountNo: numberPart, primaryIdentityType: operation.primaryKind }
+        data: {
+          needoId: formatPersonId(operation.primaryKind, numberPart),
+          accountNo: numberPart,
+          primaryIdentityType: operation.primaryKind
+        }
       });
       return mutatedRows + 1 + (identifierCreated ? 1 : 0);
     }

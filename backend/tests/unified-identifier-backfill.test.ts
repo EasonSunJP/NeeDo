@@ -213,6 +213,7 @@ const applyOperationsToFixture = (
         numberPart,
         publicId: `${operation.primaryKind === "U" ? "u" : "needo"}${numberPart}`
       };
+      user.needoId = identity.publicIdentifier.publicId;
       mutatedRows += 2;
       continue;
     }
@@ -301,6 +302,30 @@ class FixtureRuntime implements UnifiedIdentifierBackfillRuntime {
 }
 
 describe("unified identifier backfill", () => {
+  it("plans a primary repair when only the retired User.needoId value is still legacy", () => {
+    const batch = fixture();
+    const user = batch.users[0];
+    if (!user) throw new Error("fixture user missing");
+    user.accountNo = "5831047296";
+    user.primaryIdentityType = "U";
+    user.identities[0]!.publicIdentifier = {
+      kind: "U",
+      numberPart: "5831047296",
+      publicId: "u5831047296"
+    };
+
+    const plan = buildUnifiedIdentifierBackfillPlan({
+      users: [user],
+      shops: [],
+      merchantAccounts: []
+    });
+
+    expect(plan.issues).toEqual([]);
+    expect(plan.operations).toContainEqual(
+      expect.objectContaining({ type: "ASSIGN_PRIMARY", userId: 1, primaryKind: "U" })
+    );
+  });
+
   it("creates a distinct customer primary identity when a legacy user only has a technician identity", () => {
     const batch = fixture();
     batch.users = [
