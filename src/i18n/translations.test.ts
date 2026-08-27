@@ -81,6 +81,25 @@ describe("translations", () => {
     expect(translateText("开始聊天", "ko")).toBe("채팅 시작");
   });
 
+  it("localizes every standard recall residue and failure message", () => {
+    const keys = [
+      "你撤回了一条消息",
+      "对方撤回了一条消息",
+      "发送超过3分钟后无法撤回",
+      "撤回失败，请稍后重试",
+    ] as const;
+
+    keys.forEach((key) => {
+      expect(translations[key]).toMatchObject({
+        "zh-Hant": expect.any(String),
+        ja: expect.any(String),
+        en: expect.any(String),
+        ko: expect.any(String),
+      });
+      expect(Object.values(translations[key]).every((value) => value?.trim())).toBe(true);
+    });
+  });
+
   it("uses tax-included wording for 税込 instead of after-tax wording", () => {
     expect(translateText("含税", "zh-Hant")).toBe("含稅");
     expect(translateText("含税", "ja")).toBe("税込");

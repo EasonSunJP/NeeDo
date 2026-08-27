@@ -83,6 +83,42 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("persists standard recall through the conversation-scoped endpoint", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({
+        action: "standard_recall",
+        conversationId: 91,
+        messageId: 700,
+        message: {
+          id: 700,
+          conversationId: 91,
+          senderUserId: 100,
+          type: "text",
+          content: null,
+          metadata: null,
+          reactions: [],
+          recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+          recalledAt: "2026-08-25T10:01:00.000Z",
+          recallMode: "standard",
+          contentPurgedAt: "2026-08-25T10:01:00.000Z",
+          lifecycleVersion: 2,
+          availableRecallModes: [],
+          createdAt: "2026-08-25T10:00:00.000Z"
+        }
+      })
+    );
+
+    await realtimeApi.recallMessage(91, 700, "standard");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/im/conversations/91/messages/700/recall",
+      expect.objectContaining({
+        body: JSON.stringify({ mode: "standard" }),
+        method: "POST"
+      })
+    );
+  });
+
   it("parses authenticated SSE events and sends the last event id on reconnect", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

@@ -2002,10 +2002,16 @@ export function createImApi(scope: ImRoleType) {
       body: JSON.stringify(input)
     });
   },
-  recallMessage(messageId: string) {
-      return requestIm<{ conversation: Conversation; message: ConversationMessage }>(scope, `/api/im/messages/${messageId}/recall`, {
+  async recallMessage(conversationId: string, messageId: string, mode: "standard") {
+      const response = await requestIm<{ conversation: Conversation; message: ConversationMessage }>(scope, `/api/im/messages/${messageId}/recall`, {
       method: "POST"
     });
+      return {
+        conversationId,
+        message: response.message,
+        messageId,
+        mode
+      };
   },
   resendMessage(messageId: string) {
       return requestIm<{ conversation: Conversation; message: ConversationMessage }>(scope, `/api/im/messages/${messageId}/resend`, {

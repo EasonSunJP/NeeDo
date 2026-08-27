@@ -16,6 +16,8 @@ import {
   friendRequestListQuerySchema,
   messageCreateBodySchema,
   messageListQuerySchema,
+  messageRecallBodySchema,
+  messageRecallParamSchema,
   messageReactionBodySchema,
   messageReactionParamSchema,
   notificationIdParamSchema,
@@ -88,6 +90,17 @@ export class RealtimeController {
       conversationId: params.conversationId,
       messageId: params.messageId,
       emoji: body.emoji
+    });
+  });
+
+  public recallMessage = this.createHandler((request, response) => {
+    const params = messageRecallParamSchema.parse(request.params);
+    const body = messageRecallBodySchema.parse(request.body);
+
+    return this.service.recallMessage(getAuthenticatedAccess(response), {
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      mode: body.mode
     });
   });
 

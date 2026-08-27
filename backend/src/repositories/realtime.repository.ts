@@ -1,11 +1,14 @@
 import {
   ConversationType,
   FriendRequestStatus,
+  ImDeletionAction,
+  MessageRecallMode,
   MessageType,
   NotificationType,
+  Prisma,
   SocialPostVisibility
 } from "@prisma/client";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
@@ -13,6 +16,7 @@ import type { EnsureTechnicianApplicationContactInput } from "../services/techni
 
 export type ConversationTypePayload = "direct" | "group";
 export type MessageTypePayload = "text" | "system" | "orderStatus";
+export type MessageRecallModePayload = "standard" | "traceless";
 export type FriendRequestStatusPayload = "pending" | "accepted" | "rejected";
 export type SocialPostVisibilityPayload = "public" | "followers";
 export type NotificationTypePayload = "orderStatus" | "friendRequest" | "system" | "social";
@@ -47,6 +51,12 @@ export interface MessagePayload {
   metadata: unknown;
   reactions: MessageReactionSummaryPayload[];
   createdAt: Date;
+  recallDeadlineAt: Date;
+  recalledAt: Date | null;
+  recallMode: MessageRecallModePayload | null;
+  contentPurgedAt: Date | null;
+  lifecycleVersion: number;
+  availableRecallModes: MessageRecallModePayload[];
 }
 
 export interface MessageReactionPersonPayload {
@@ -169,6 +179,17 @@ export interface CreateMessageInput {
   metadata?: unknown;
 }
 
+export interface RecallMessageInput {
+  conversationId: number;
+  messageId: number;
+  senderUserId: number;
+  now: Date;
+}
+
+export type StandardRecallRepositoryOutcome =
+  | { status: "recalled" | "already_recalled"; message: MessagePayload }
+  | { status: "not_found" | "window_expired" };
+
 export interface MessageReactionMutationInput {
   conversationId: number;
   messageId: number;
@@ -248,6 +269,7 @@ export interface RealtimeRepositoryPort {
     input: PaginationInput
   ) => Promise<PaginatedResponse<ConversationPayload>>;
   createMessage: (input: CreateMessageInput) => Promise<MessagePayload | null>;
+  recallMessage: (input: RecallMessageInput) => Promise<StandardRecallRepositoryOutcome>;
   listMessages: (input: ListMessagesInput) => Promise<MessageHistoryPayload | null>;
   setMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
   removeMessageReaction: (input: MessageReactionMutationInput) => Promise<MessagePayload | null>;
@@ -571,6 +593,139 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
 
       return this.mapMessage(message, input.senderUserId);
+    });
+  }
+
+  public async recallMessage(
+    input: RecallMessageInput
+  ): Promise<StandardRecallRepositoryOutcome> {
+    return this.client.$transaction(async (tx) => {
+      const scope = {
+        id: input.messageId,
+        conversationId: input.conversationId,
+        senderUserId: input.senderUserId,
+        deletedAt: null,
+        conversation: {
+          deletedAt: null,
+          participants: {
+            some: {
+              userId: input.senderUserId,
+              deletedAt: null
+            }
+          }
+        }
+      } satisfies Prisma.MessageWhereInput;
+      const candidate = await tx.message.findFirst({
+        where: scope,
+        include: messageInclude
+      });
+
+      if (!candidate) {
+        return { status: "not_found" } as const;
+      }
+
+      if (candidate.recalledAt !== null || candidate.recallMode !== null) {
+        return {
+          status: "already_recalled",
+          message: this.mapMessage(candidate, input.senderUserId, input.now)
+        } as const;
+      }
+
+      if (input.now.getTime() > candidate.recallDeadlineAt.getTime()) {
+        return { status: "window_expired" } as const;
+      }
+
+      const claimed = await tx.message.updateMany({
+        where: {
+          id: input.messageId,
+          conversationId: input.conversationId,
+          senderUserId: input.senderUserId,
+          recalledAt: null,
+          recallMode: null,
+          deletedAt: null,
+          recallDeadlineAt: { gte: input.now }
+        },
+        data: {
+          content: null,
+          metadata: Prisma.DbNull,
+          recalledAt: input.now,
+          recallMode: MessageRecallMode.STANDARD,
+          contentPurgedAt: input.now,
+          lifecycleVersion: { increment: 1 }
+        }
+      });
+
+      if (claimed.count !== 1) {
+        const latest = await tx.message.findFirst({
+          where: scope,
+          include: messageInclude
+        });
+
+        if (latest?.recalledAt !== null && latest?.recalledAt !== undefined) {
+          return {
+            status: "already_recalled",
+            message: this.mapMessage(latest, input.senderUserId, input.now)
+          } as const;
+        }
+        if (latest && input.now.getTime() > latest.recallDeadlineAt.getTime()) {
+          return { status: "window_expired" } as const;
+        }
+        return { status: "not_found" } as const;
+      }
+
+      await tx.messageReaction.updateMany({
+        where: { messageId: input.messageId, deletedAt: null },
+        data: { deletedAt: input.now }
+      });
+      await tx.imDeletionSync.upsert({
+        where: {
+          messageId_action: {
+            messageId: input.messageId,
+            action: ImDeletionAction.STANDARD_RECALL
+          }
+        },
+        create: {
+          conversationId: input.conversationId,
+          messageId: input.messageId,
+          action: ImDeletionAction.STANDARD_RECALL,
+          mediaKind: null,
+          occurredAt: input.now
+        },
+        update: {}
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: input.senderUserId,
+          action: "im.message.standard_recall",
+          targetType: "Message",
+          targetId: input.messageId,
+          ip: null,
+          userAgent: null,
+          metadata: {
+            conversationId: input.conversationId,
+            recallMode: "standard"
+          },
+          createdAt: input.now
+        }
+      });
+      await tx.conversation.update({
+        where: { id: input.conversationId },
+        data: { updatedAt: input.now }
+      });
+
+      const updated = await tx.message.findUnique({
+        where: { id: input.messageId },
+        include: messageInclude
+      });
+
+      if (!updated) {
+        return { status: "not_found" } as const;
+      }
+
+      return {
+        status: "recalled",
+        message: this.mapMessage(updated, input.senderUserId, input.now)
+      } as const;
     });
   }
 
@@ -1449,7 +1604,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     };
   }
 
-  private mapMessage(message: MessageRecord, viewerUserId: number): MessagePayload {
+  private mapMessage(
+    message: MessageRecord,
+    viewerUserId: number,
+    now: Date = new Date()
+  ): MessagePayload {
     const reactions = new Map<string, MessageReactionPersonPayload[]>();
     for (const reaction of message.reactions) {
       const people = reactions.get(reaction.emoji) ?? [];
@@ -1460,6 +1619,20 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       });
       reactions.set(reaction.emoji, people);
     }
+
+    const recallMode =
+      message.recallMode === MessageRecallMode.STANDARD
+        ? "standard"
+        : message.recallMode === MessageRecallMode.TRACELESS
+          ? "traceless"
+          : null;
+    const canRecall =
+      message.senderUserId === viewerUserId &&
+      message.recalledAt === null &&
+      message.recallMode === null &&
+      message.contentPurgedAt === null &&
+      now.getTime() <= message.recallDeadlineAt.getTime() &&
+      (message.expiresAt === null || now.getTime() < message.expiresAt.getTime());
 
     return {
       id: message.id,
@@ -1473,7 +1646,13 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         people,
         reactedByMe: people.some((person) => person.userId === viewerUserId)
       })),
-      createdAt: message.createdAt
+      createdAt: message.createdAt,
+      recallDeadlineAt: message.recallDeadlineAt,
+      recalledAt: message.recalledAt,
+      recallMode,
+      contentPurgedAt: message.contentPurgedAt,
+      lifecycleVersion: message.lifecycleVersion,
+      availableRecallModes: canRecall ? ["standard"] : []
     };
   }
 

@@ -177,6 +177,7 @@ const realtimePermissions = [
   "conversation:create",
   "message:list",
   "message:create",
+  "message:recall",
   "message:react",
   "message:read",
   "contact:list",
@@ -298,9 +299,14 @@ const createFixture = async () => {
     conversationId: number;
     senderUserId: number;
     type: string;
-    content: string;
+    content: string | null;
     metadata: unknown;
     createdAt: Date;
+    recallDeadlineAt: Date;
+    recalledAt: Date | null;
+    recallMode: "standard" | null;
+    contentPurgedAt: Date | null;
+    lifecycleVersion: number;
   }> = [];
   const messageReactions: Array<{
     messageId: number;
@@ -480,7 +486,12 @@ const createFixture = async () => {
           type: input.type,
           content: input.content,
           metadata: input.metadata ?? null,
-          createdAt: now
+          createdAt: now,
+          recallDeadlineAt: new Date(Date.now() + 180_000),
+          recalledAt: null,
+          recallMode: null,
+          contentPurgedAt: null,
+          lifecycleVersion: 0
         };
         messages.push(message);
         conversation.updatedAt = now;
@@ -494,6 +505,52 @@ const createFixture = async () => {
         }
 
         return mapMessage(message, input.senderUserId);
+      }
+    ),
+    recallMessage: jest.fn(
+      async (input: {
+        conversationId: number;
+        messageId: number;
+        senderUserId: number;
+        now: Date;
+      }) => {
+        const conversation = conversations.find((item) => item.id === input.conversationId);
+        const message = messages.find(
+          (item) => item.id === input.messageId && item.conversationId === input.conversationId
+        );
+        if (
+          !conversation?.participantUserIds.includes(input.senderUserId) ||
+          !message ||
+          message.senderUserId !== input.senderUserId
+        ) {
+          return { status: "not_found" as const };
+        }
+        if (message.recalledAt || message.recallMode) {
+          return {
+            status: "already_recalled" as const,
+            message: mapMessage(message, input.senderUserId)
+          };
+        }
+        if (input.now.getTime() > message.recallDeadlineAt.getTime()) {
+          return { status: "window_expired" as const };
+        }
+
+        message.content = null;
+        message.metadata = null;
+        message.recalledAt = input.now;
+        message.recallMode = "standard";
+        message.contentPurgedAt = input.now;
+        message.lifecycleVersion += 1;
+        for (let index = messageReactions.length - 1; index >= 0; index -= 1) {
+          if (messageReactions[index]?.messageId === message.id) {
+            messageReactions.splice(index, 1);
+          }
+        }
+
+        return {
+          status: "recalled" as const,
+          message: mapMessage(message, input.senderUserId)
+        };
       }
     ),
     listMessages: jest.fn(
@@ -1076,6 +1133,60 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .set("Authorization", `Bearer ${mikaToken}`)
       .expect(200);
     expect(unreadAfterRead.body.data.total).toBe(0);
+  });
+
+  it("recalls an owned message through the protected formal endpoint", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "direct", participantUserIds: [2] })
+      .expect(201);
+    const messageResponse = await request(fixture.app)
+      .post("/api/v1/im/conversations/1/messages")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ type: "text", content: "撤回后重新编辑" })
+      .expect(201);
+
+    await request(fixture.app)
+      .post(`/api/v1/im/conversations/1/messages/${messageResponse.body.data.id}/recall`)
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ mode: "standard" })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toMatchObject({
+          action: "standard_recall",
+          conversationId: 1,
+          messageId: messageResponse.body.data.id,
+          message: {
+            id: messageResponse.body.data.id,
+            content: null,
+            metadata: null,
+            recallMode: "standard"
+          }
+        });
+      });
+  });
+
+  it("requires message:recall and rejects unsupported recall modes", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/1/messages/1/recall")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ mode: "traceless" })
+      .expect(400);
+
+    fixture.revokePermission("aya@example.com", "message:recall");
+    const tokenWithoutPermission = await fixture.login("aya@example.com");
+    await request(fixture.app)
+      .post("/api/v1/im/conversations/1/messages/1/recall")
+      .set("Authorization", `Bearer ${tokenWithoutPermission}`)
+      .send({ mode: "standard" })
+      .expect(403);
   });
 
   it("keeps pin, mute, unread, and deletion state private to each conversation participant", async () => {
