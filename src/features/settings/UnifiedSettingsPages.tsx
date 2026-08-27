@@ -60,6 +60,7 @@ import {
 } from "./portalSettingsState";
 import { getLegalPrivacyDocument, getLegalPrivacyUiCopy, type LegalPrivacyBlock } from "./legalPrivacyContent";
 import { getLegalTermsDocument, getLegalTermsUiCopy } from "./legalTermsContent";
+import { TestOnlyBackendPortalEntries } from "./TestOnlyBackendPortalEntries";
 import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
 import { AuthVerificationPanel, type AuthVerificationLabels } from "../../pages/auth/AuthVerificationPanel";
 
@@ -138,27 +139,6 @@ const compactPortalLabels: Record<PortalScope, { label: string; caption: string 
 type SwitchableSettingsPortal = Extract<UnifiedSettingsPortal, "user" | "technician" | "merchant" | "business">;
 
 const settingsPortalOptions: SwitchableSettingsPortal[] = ["user", "technician", "merchant", "business"];
-
-const backendSettingsPortalEntries = [
-  {
-    id: "merchant-admin",
-    title: "商户后台",
-    subtitle: "店铺订单、排班、员工、财务与门店设置",
-    href: "/store-admin.html#/login/merchant-admin"
-  },
-  {
-    id: "operations-admin",
-    title: "运营后台",
-    subtitle: "平台运营、店铺、技师、订单、财务与全局规则",
-    href: "/pf-admin.html#/login/admin"
-  },
-  {
-    id: "afirieito-admin",
-    title: "NDA管理后台",
-    subtitle: "推广计划、归因、分佣、风险与增长数据管理",
-    href: "/afirieito-admin.html#/NDA-admin"
-  }
-] as const;
 
 export function getPortalEntry(portal: PortalScope | UnifiedSettingsPortal) {
   if (portal === "business") {
@@ -1982,10 +1962,6 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
       state: nextNavigationState
     });
   };
-  const openBackendPortal = (href: string) => {
-    window.location.assign(href);
-  };
-
   return (
     <PortalScopedSettingsPage portal={portal} preserveSuffix={false} redirectToEntryOnPortalChange>
       <SettingsDetailPage
@@ -2061,23 +2037,7 @@ export function UnifiedSettingsPortalPage({ portal }: { portal: UnifiedSettingsP
           {switchError ? <p className="px-4 py-3 text-xs font-bold text-[color:var(--client-danger)]">{t(switchError)}</p> : null}
         </SettingsSection>
 
-        <SettingsSection
-          description={t("后台入口独立进入，不会改变当前前台身份。")}
-          panelClassName="divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]"
-          title={t("后台入口")}
-        >
-          {backendSettingsPortalEntries.map((entry) => (
-            <SettingsPortalActionRow
-              actionLabel={`${t("进入后台")}：${t(entry.title)}`}
-              info={t(entry.subtitle)}
-              infoLabel={t("查看后台入口说明")}
-              key={entry.id}
-              onClick={() => openBackendPortal(entry.href)}
-              title={t(entry.title)}
-              trailing={<SettingsArrow />}
-            />
-          ))}
-        </SettingsSection>
+        <TestOnlyBackendPortalEntries t={t} />
       </SettingsDetailPage>
     </PortalScopedSettingsPage>
   );
