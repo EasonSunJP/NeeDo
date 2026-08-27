@@ -24,6 +24,13 @@ describe("translations", () => {
     expect(translateText("English", "ko")).toBe(englishRow.ko ?? englishRow.en ?? englishRow.ja ?? "English");
   });
 
+  it("localizes the password-save control in every supported target language", () => {
+    expect(translateText("保存密码", "zh-Hant")).toBe("儲存密碼");
+    expect(translateText("保存密码", "ja")).toBe("パスワードを保存");
+    expect(translateText("保存密码", "en")).toBe("Save password");
+    expect(translateText("保存密码", "ko")).toBe("비밀번호 저장");
+  });
+
   it("keeps truly unknown source text untouched", () => {
     const unknownText = "__test_unknown_translation_key__";
     expect(translateText(unknownText, "ko")).toBe(unknownText);

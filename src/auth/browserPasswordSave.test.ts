@@ -38,7 +38,7 @@ describe("browser password save", () => {
   });
 
   it("submits credentials to the browser manager without persisting the password in app storage", async () => {
-    const store = vi.fn(async () => undefined);
+    const store = vi.fn(async (_credential: Credential) => undefined);
     class FakePasswordCredential {
       constructor(readonly data: { id: string; password: string; name?: string }) {}
     }

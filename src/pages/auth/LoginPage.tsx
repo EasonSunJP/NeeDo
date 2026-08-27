@@ -10,10 +10,17 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { authApi, type VerificationChallengePayload } from "../../api/auth";
 import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
+import {
+  readBrowserPasswordSavePreference,
+  requestBrowserPasswordSave,
+  writeBrowserPasswordSavePreference,
+  type BrowserPasswordSaveScope,
+} from "../../auth/browserPasswordSave";
 import { requestGoogleCredential } from "../../auth/googleIdentity";
 import { isFrontendBypassSession, type AuthSession } from "../../auth/rbac";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
+import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
@@ -109,6 +116,7 @@ function buildLoginCopy(language: Language) {
     logout: text("退出登录"),
     passwordLabel: text("密码"),
     passwordPlaceholder: text("输入密码"),
+    savePassword: text("保存密码"),
     registrationEmailLabel: text("邮箱"),
     registrationEmailPlaceholder: text("输入邮箱"),
     registrationPasswordHint: text(
@@ -363,6 +371,12 @@ export function LoginPage({
   const redirectPath = searchParams.get("redirect");
   const [activePortal, setActivePortal] =
     useState<PortalScope>(requestedPortal);
+  const passwordSaveScope = `frontend:${activePortal}` as BrowserPasswordSaveScope;
+  const [savePassword, setSavePassword] = useState(() =>
+    readBrowserPasswordSavePreference(
+      `frontend:${requestedPortal}` as BrowserPasswordSaveScope,
+    ),
+  );
   const [panelMode, setPanelMode] = useState<LoginPanelMode>("welcome");
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -410,6 +424,9 @@ export function LoginPage({
   const staticDemo = isStaticDemoMode();
 
   useEffect(() => setActivePortal(requestedPortal), [requestedPortal]);
+  useEffect(() => {
+    setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
+  }, [passwordSaveScope]);
   useEffect(() => {
     navigationInFlightRef.current = false;
   }, [activePortal, nextPath]);
@@ -594,6 +611,13 @@ export function LoginPage({
       if (!result.ok) {
         setFeedback(resolveLoginErrorMessage(result.message, language));
         return;
+      }
+      if (savePassword && result.session.portal === activePortal) {
+        await requestBrowserPasswordSave({
+          id: identifier,
+          name: "NeeDo",
+          password: loginPassword,
+        });
       }
       navigateToPortal(
         result.session.portal,
@@ -940,7 +964,7 @@ export function LoginPage({
                     {copy.accountLabel}
                   </span>
                   <input
-                    autoComplete="username"
+                    autoComplete={savePassword ? "username" : "off"}
                     className="mt-2 h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
                     data-testid="login-identifier"
                     onChange={(event) => setLoginIdentifier(event.target.value)}
@@ -949,11 +973,28 @@ export function LoginPage({
                   />
                 </label>
                 <label className="block">
-                  <span className="text-sm font-black text-[color:var(--client-muted)]">
-                    {copy.passwordLabel}
+                  <span className="flex items-center justify-between gap-4">
+                    <span className="text-sm font-black text-[color:var(--client-muted)]">
+                      {copy.passwordLabel}
+                    </span>
+                    <span className="flex items-center gap-2 text-sm font-bold text-[color:var(--client-muted)]">
+                      <span>{copy.savePassword}</span>
+                      <ToggleSwitch
+                        ariaLabel={copy.savePassword}
+                        checked={savePassword}
+                        disabled={pending}
+                        onChange={(enabled) => {
+                          setSavePassword(enabled);
+                          writeBrowserPasswordSavePreference(
+                            passwordSaveScope,
+                            enabled,
+                          );
+                        }}
+                      />
+                    </span>
                   </span>
                   <PasswordInput
-                    autoComplete="current-password"
+                    autoComplete={savePassword ? "current-password" : "off"}
                     data-testid="login-password"
                     disabled={pending}
                     hidePasswordLabel={copy.hidePassword}
