@@ -1,4 +1,4 @@
-import type { RealtimeSocialPost } from "../realtime/api";
+import type { RealtimeSocialPost, RealtimeSocialProfileSummary } from "../realtime/api";
 import type {
   SocialEntityType,
   SocialMediaItem,
@@ -125,36 +125,43 @@ export function mapFormalSocialPost(post: RealtimeSocialPost): SocialPost {
   };
 }
 
+export function mapFormalSocialProfile(author: RealtimeSocialProfileSummary): SocialProfile {
+  const entityType = toEntityType(author.entityType);
+  const avatar = author.avatarUrl ?? "";
+
+  return {
+    id: String(author.userId),
+    entityType,
+    displayName: author.displayName || author.username,
+    handle: author.username,
+    avatar,
+    coverImage: avatar,
+    bio:
+      entityType === "shop"
+        ? "门店公开发布现场环境、预约提醒和服务更新。"
+        : entityType === "technician"
+          ? "认证技师公开分享服务准备、专业建议和近期档期。"
+          : "记录真实预约体验、现场反馈和生活服务发现。",
+    joinedAt: author.joinedAt,
+    verifiedStatus: entityType === "shop" ? "business" : entityType === "technician" ? "verified" : "none",
+    followerCount: 0,
+    followingCount: 0,
+    extraProfileFields: {}
+  };
+}
+
 export function mapFormalSocialProfiles(posts: RealtimeSocialPost[]) {
   const profiles = posts.flatMap((post): SocialProfile[] => {
     const author = post.author;
     if (!author) return [];
-    const entityType = toEntityType(author.entityType);
     const envelope = readMediaEnvelope(post.media);
-    const avatar = author.avatarUrl ?? "";
+    const profile = mapFormalSocialProfile(author);
 
-    return [
-      {
-        id: String(author.userId),
-        entityType,
-        displayName: author.displayName || author.username,
-        handle: author.username,
-        avatar,
-        coverImage: avatar || envelope.items[0]?.thumbnailUrl || envelope.items[0]?.url || "",
-        bio:
-          entityType === "shop"
-            ? "门店公开发布现场环境、预约提醒和服务更新。"
-            : entityType === "technician"
-              ? "认证技师公开分享服务准备、专业建议和近期档期。"
-              : "记录真实预约体验、现场反馈和生活服务发现。",
-        location: envelope.locationLabel,
-        joinedAt: post.createdAt,
-        verifiedStatus: entityType === "shop" ? "business" : entityType === "technician" ? "verified" : "none",
-        followerCount: 0,
-        followingCount: 0,
-        extraProfileFields: {}
-      }
-    ];
+    return [{
+      ...profile,
+      coverImage: profile.coverImage || envelope.items[0]?.thumbnailUrl || envelope.items[0]?.url || "",
+      location: envelope.locationLabel
+    }];
   });
 
   return Object.fromEntries(

@@ -185,6 +185,7 @@ import { ImScopeProvider } from "./features/im/scope";
 import { SocialProvider } from "./features/social/context";
 import { RealtimeUnreadCountsProvider } from "./features/realtime/useRealtimeUnreadCounts";
 import {
+  SocialAccountProfilePage,
   SocialComposerPage,
   SocialDraftsPage,
   SocialMediaViewerPage,
@@ -1060,6 +1061,7 @@ export default function App() {
               <Route path="/moments/search" element={protect("user", <SocialSearchPage />)} />
               <Route path="/moments/tags/:tag" element={protect("user", <SocialSearchPage />)} />
               <Route path="/moments/notifications" element={protect("user", <SocialNotificationsPage />)} />
+              <Route path="/moments/users/:userId" element={protect("user", <SocialAccountProfilePage />)} />
               <Route path="/moments/posts/:postId/replies" element={protect("user", <SocialPostDetailPage />)} />
               <Route path="/moments/posts/:postId/repost" element={protect("user", <SocialRepostPage />)} />
               <Route path="/moments/posts/:postId/media/:mediaId" element={protect("user", <SocialMediaViewerPage />)} />
@@ -1151,6 +1153,7 @@ export default function App() {
               <Route path="/merchant/moments/search" element={protect("merchant", <SocialSearchPage />)} />
               <Route path="/merchant/moments/tags/:tag" element={protect("merchant", <SocialSearchPage />)} />
               <Route path="/merchant/moments/notifications" element={protect("merchant", <SocialNotificationsPage />)} />
+              <Route path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)} />
               <Route path="/merchant/moments/posts/:postId/replies" element={protect("merchant", <SocialPostDetailPage />)} />
               <Route path="/merchant/moments/posts/:postId/repost" element={protect("merchant", <SocialRepostPage />)} />
               <Route path="/merchant/moments/posts/:postId/media/:mediaId" element={protect("merchant", <SocialMediaViewerPage />)} />
@@ -1279,6 +1282,7 @@ export default function App() {
               <Route path="/technician/moments/search" element={protect("technician", <SocialSearchPage />)} />
               <Route path="/technician/moments/tags/:tag" element={protect("technician", <SocialSearchPage />)} />
               <Route path="/technician/moments/notifications" element={protect("technician", <SocialNotificationsPage />)} />
+              <Route path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)} />
               <Route path="/technician/moments/posts/:postId/replies" element={protect("technician", <SocialPostDetailPage />)} />
               <Route path="/technician/moments/posts/:postId/repost" element={protect("technician", <SocialRepostPage />)} />
               <Route path="/technician/moments/posts/:postId/media/:mediaId" element={protect("technician", <SocialMediaViewerPage />)} />

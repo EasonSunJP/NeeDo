@@ -9,6 +9,7 @@ const FullSocialPostDetailPage = lazy(() => import("./pages/SocialPostDetailPage
 const FullSocialRelationshipsPage = lazy(() => import("./pages/SocialRelationshipsPage").then((module) => ({ default: module.SocialRelationshipsPage })));
 const FullSocialRepostPage = lazy(() => import("./pages/SocialRepostPage").then((module) => ({ default: module.SocialRepostPage })));
 const FullSocialSearchPage = lazy(() => import("./pages/SocialSearchPage").then((module) => ({ default: module.SocialSearchPage })));
+const FullSocialAccountProfilePage = lazy(() => import("./pages/SocialProfilePage").then((module) => ({ default: module.SocialAccountProfilePage })));
 
 function FullSocialRoute({ page: Page }: { page: ComponentType }) {
   return <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center text-sm font-black">正在加载动态...</div>}><Page /></Suspense>;
@@ -23,3 +24,4 @@ export function SocialPostDetailPage() { return <FullSocialRoute page={FullSocia
 export function SocialRelationshipsPage() { return <FullSocialRoute page={FullSocialRelationshipsPage} />; }
 export function SocialRepostPage() { return <FullSocialRoute page={FullSocialRepostPage} />; }
 export function SocialSearchPage() { return <FullSocialRoute page={FullSocialSearchPage} />; }
+export function SocialAccountProfilePage() { return <FullSocialRoute page={FullSocialAccountProfilePage} />; }

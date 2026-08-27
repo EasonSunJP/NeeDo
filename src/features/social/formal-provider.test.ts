@@ -22,4 +22,13 @@ describe("formal social provider gate", () => {
     expect(source).toContain("const { isRestoring, session } = useAuth();");
     expect(source).toContain("if (!session || isRestoring) return;");
   });
+
+  it("loads a selected account only after its profile page asks for it and deduplicates concurrent requests", () => {
+    expect(source).toContain("ensureAccountProfile:");
+    expect(source).toContain("accountProfileRequestsRef");
+    expect(source).toContain("realtimeApi.getSocialActivityStatus(userId)");
+    expect(source).toContain("realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: userId })");
+    expect(source).toContain("accountProfileRequestsRef.current.set(userId, request)");
+    expect(source).toContain("accountProfileRequestsRef.current.delete(userId)");
+  });
 });

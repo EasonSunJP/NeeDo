@@ -69,7 +69,8 @@ describe("formal social adapter", () => {
         id: "22",
         entityType: "technician",
         displayName: "美香",
-        avatar: "/images/generated/profiles/ai-profile-01.jpg"
+        avatar: "/images/generated/profiles/ai-profile-01.jpg",
+        joinedAt: "2025-02-03T04:05:06.000Z"
       })
     });
   });

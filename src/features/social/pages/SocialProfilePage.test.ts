@@ -20,6 +20,15 @@ describe("SocialProfilePage core-read technician fallback", () => {
   });
 });
 
+describe("SocialAccountProfilePage", () => {
+  it("loads a numeric account on entry and reuses the complete social profile scene", () => {
+    expect(socialProfilePageSource).toContain("export function SocialAccountProfilePage");
+    expect(socialProfilePageSource).toContain("ensureAccountProfile(userId)");
+    expect(socialProfilePageSource).toContain("<SocialProfileScene");
+    expect(socialProfilePageSource).toContain('"好友近期无动态"');
+  });
+});
+
 describe("SocialProfileTopBar shared controls", () => {
   it("uses the shared back and metric action controls without a close action", () => {
     expect(unifiedSocialUiSource).toContain('label="返回资料页"');

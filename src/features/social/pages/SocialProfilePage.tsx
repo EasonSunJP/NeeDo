@@ -444,8 +444,8 @@ function SocialProfileScene({
               ) : (
                 <div className="p-4">
                   <SocialEmptyState
-                    action={<PrimaryButton to={socialPaths.compose(scope, { author: profileKey(profile) })}>发布媒体动态</PrimaryButton>}
-                    description="这个主页还没有公开媒体内容。图片和视频会在这里统一汇总。"
+                    action={isSelf ? <PrimaryButton to={socialPaths.compose(scope, { author: profileKey(profile) })}>发布媒体动态</PrimaryButton> : undefined}
+                    description={isSelf ? "这个主页还没有公开媒体内容。图片和视频会在这里统一汇总。" : "该好友近期没有公开媒体内容。"}
                     title="媒体区还是空的"
                   />
                 </div>
@@ -455,9 +455,9 @@ function SocialProfileScene({
             ) : (
               <div className="p-4">
                 <SocialEmptyState
-                  action={<PrimaryButton to={socialPaths.compose(scope, { author: profileKey(profile) })}>发表动态</PrimaryButton>}
-                  description="当前 tab 还没有内容。你可以切到其他 tab，或者直接从这里发布新的公开动态。"
-                  title="这里还没有内容"
+                  action={isSelf ? <PrimaryButton to={socialPaths.compose(scope, { author: profileKey(profile) })}>发表动态</PrimaryButton> : undefined}
+                  description={isSelf ? "当前 tab 还没有内容。你可以切到其他 tab，或者直接从这里发布新的公开动态。" : "最近没有可向你展示的好友动态。"}
+                  title={isSelf ? "这里还没有内容" : "好友近期无动态"}
                 />
               </div>
             )}
@@ -578,6 +578,69 @@ export function SocialProfilePage() {
   }
 
   return <SocialProfileScene actorKey={actorKey} onClose={closeProfile} profile={profile} resetKey={`${entityType}:${id}`} scope={scope} />;
+}
+
+export function SocialAccountProfilePage() {
+  const { userId: userIdParam } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const scope = getSocialScopeFromPathname(location.pathname);
+  const { ensureAccountProfile, getActorForScope } = useSocial();
+  const actorKey = getActorForScope(scope);
+  const userId = Number(userIdParam);
+  const [loadState, setLoadState] = useState<"error" | "loading" | "ready">("loading");
+  const [profile, setProfile] = useState<SocialProfile>();
+
+  useEffect(() => {
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      setProfile(undefined);
+      setLoadState("error");
+      return;
+    }
+
+    let cancelled = false;
+    setLoadState("loading");
+    void ensureAccountProfile(userId)
+      .then((nextProfile) => {
+        if (cancelled) return;
+        setProfile(nextProfile);
+        setLoadState(nextProfile ? "ready" : "error");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProfile(undefined);
+          setLoadState("error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureAccountProfile, userId]);
+
+  const closeProfile = () => {
+    if (canNavigateBackFromProfile(location.key)) {
+      navigate(-1);
+      return;
+    }
+
+    navigate(getProfileCloseFallback(scope), { replace: true });
+  };
+
+  if (loadState === "loading") {
+    return (
+      <PageScaffold contentClassName="space-y-6 pb-28" navItems={navItemsForSocialScope(scope)}>
+        <AppTopBar subtitle="好友动态" title="正在加载好友动态" />
+        <SocialEmptyState description="正在从正式数据库读取该好友可向你展示的动态。" title="正在加载" />
+      </PageScaffold>
+    );
+  }
+
+  if (!profile || loadState === "error") {
+    return <SocialProfileUnavailable scope={scope} title="好友动态" />;
+  }
+
+  return <SocialProfileScene actorKey={actorKey} onClose={closeProfile} profile={profile} resetKey={`account:${userId}`} scope={scope} />;
 }
 
 export function SocialSelfProfilePage() {
