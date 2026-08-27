@@ -69,6 +69,11 @@ describe("release verification helpers", () => {
     expect(requests.map((request) => request.url)).toContain(
       "https://needo.dackou.com/api/v1/auth/me"
     );
+    const loginRequest = requests.find((request) => String(request.url).endsWith("/auth/login"));
+    expect(JSON.parse(loginRequest.options.body)).toEqual({
+      loginIdentifier: "smoke@example.test",
+      password: "secret"
+    });
     expect(requests.at(-1).options.headers.authorization).toBe("Bearer access-secret");
   });
 });

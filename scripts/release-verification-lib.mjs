@@ -84,7 +84,7 @@ export async function runProductionSmoke({
     const login = await get("login", "/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ loginIdentifier: email, password })
     });
     if (!login.accessToken || !login.refreshToken) {
       throw new Error("Login response did not include access and refresh tokens");
