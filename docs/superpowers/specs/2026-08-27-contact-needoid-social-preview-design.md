@@ -74,7 +74,7 @@ GET /api/v1/social/users/:userId/activity-status
 1. 验证目标用户存在且未软删除。
 2. 使用当前认证用户执行动态可见性过滤。
 3. 使用 `findFirst`/`EXISTS` 只判断最近 30 天是否至少存在一条可见动态，不读取媒体 JSON 或完整动态列表。
-4. 返回目标好友的 Social profile ref，保证三端能跳转到正确的好友动态页。
+4. 返回目标好友的 Social profile ref，保证三端能跳转到以正式 `User.id` 定位的好友动态页。
 5. 明确区分 `recent_posts` 与 `no_recent_posts` 状态。
 
 查询使用 `authorUserId + deletedAt + createdAt` 组合索引，只在打开单个好友信息页时调用一次；不在通讯录列表中批量预取。该接口不替代已有分页动态列表接口，好友完整动态页继续使用正式分页 Social API。
@@ -90,7 +90,9 @@ GET /api/v1/social/users/:userId/activity-status
 - 动态入口卡移动到标签卡之后。
 - 入口卡在进入单聊信息设置页时按目标 `userId` 单独请求，不能依赖 Social Provider 已加载的全局第一页。
 - 加载期间保留稳定卡片高度，避免标签和消息设置区域跳动。
-- 三端路由使用现有 `socialPaths.profile` 生成用户端、商户端和技师端各自的好友动态页地址。
+- 三端新增 `socialPaths.accountProfile(scope, userId)`，使用正式 `User.id` 生成用户端、商户端和技师端各自的好友动态页地址，避免用户 ID 与技师/店铺业务档案 ID 混淆。
+- userId 路由只做正式资料加载与路由适配，继续复用现有完整 `SocialProfileScene`，不得复制或简化好友动态页 UI。
+- 联系人信息页只查询近期动态状态；只有用户明确点击进入好友动态页后，资料页才按 `authorUserId` 加载该好友的分页动态。
 
 ## 5. 错误与边界
 
