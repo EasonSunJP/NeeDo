@@ -41,6 +41,10 @@ export const socialPostIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
 
+export const socialUserIdParamSchema = z.object({
+  userId: z.coerce.number().int().positive()
+});
+
 export const followTargetParamSchema = z.object({
   targetUserId: z.coerce.number().int().positive()
 });

@@ -21,6 +21,8 @@ import type { RealtimeEventGatewayPort } from "./realtime-event.gateway";
 import { AppError } from "../utils/app-error";
 import type { PaginationInput } from "../utils/pagination";
 
+const SOCIAL_ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
 export interface OrderStatusNotificationInput {
   actorUserId: number;
   orderId: number;
@@ -287,6 +289,24 @@ export class RealtimeService implements OrderStatusNotificationPort {
     }
 
     return post;
+  }
+
+  public async getSocialActivityStatus(
+    auth: AuthenticatedAccessContext,
+    targetUserId: number,
+    now: Date = new Date()
+  ) {
+    const result = await this.repository.getSocialActivityStatus({
+      viewerUserId: auth.userId,
+      targetUserId,
+      since: new Date(now.getTime() - SOCIAL_ACTIVITY_WINDOW_MS)
+    });
+
+    if (!result) {
+      throw this.notFoundError("error.realtime.social_profile_not_found");
+    }
+
+    return result;
   }
 
   public async createFollow(

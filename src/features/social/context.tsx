@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
 import { isFrontendBypassSession } from "../../auth/rbac";
@@ -25,6 +25,7 @@ import type {
 import {
   buildFormalSocialMediaEnvelope,
   mapFormalSocialPost,
+  mapFormalSocialProfile,
   mapFormalSocialProfiles
 } from "./formal-adapter";
 import {
@@ -87,6 +88,7 @@ type SocialContextValue = {
   incrementView: (postId: string) => void;
   markNotificationsRead: (recipientKey: string) => void;
   refreshFeeds: () => void;
+  ensureAccountProfile: (userId: number) => Promise<SocialProfile | undefined>;
 };
 
 const SocialContext = createContext<SocialContextValue | null>(null);
@@ -1963,7 +1965,8 @@ function LegacySocialProvider({ children }: { children: ReactNode }) {
       updateProfileOverride,
       incrementView,
       markNotificationsRead,
-      refreshFeeds
+      refreshFeeds,
+      ensureAccountProfile: async (userId) => profileList.find((profile) => Number(profile.id) === userId)
     };
   }, [actorByScope, composerProfileKeys, profileList, profiles, state]);
 
@@ -2016,6 +2019,68 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
   const { isRestoring, session } = useAuth();
   const [state, setState] = useState<SocialState>(emptyFormalSocialState);
   const [profiles, setProfiles] = useState<Record<string, SocialProfile>>({});
+  const accountProfileRequestsRef = useRef(new Map<number, Promise<SocialProfile | undefined>>());
+
+  const ensureAccountProfile = useCallback((userId: number) => {
+    const pendingRequest = accountProfileRequestsRef.current.get(userId);
+    if (pendingRequest) {
+      return pendingRequest;
+    }
+
+    if (!session || isRestoring || !Number.isSafeInteger(userId) || userId <= 0) {
+      return Promise.resolve(undefined);
+    }
+
+    const request = (async () => {
+      try {
+        const [activityStatus, postPage] = await Promise.all([
+          realtimeApi.getSocialActivityStatus(userId),
+          realtimeApi.listSocialPosts({ page: 1, pageSize: 100, authorUserId: userId })
+        ]);
+        const profile = mapFormalSocialProfile(activityStatus.profile);
+        const targetKey = profileKey(profile);
+        const postProfiles = mapFormalSocialProfiles(postPage.list);
+        const postProfile = postProfiles[targetKey];
+        const mergedProfile = postProfile
+          ? { ...profile, coverImage: profile.coverImage || postProfile.coverImage, location: postProfile.location }
+          : profile;
+        const mappedPosts = postPage.list.map(mapFormalSocialPost);
+        const actorKey = `${formalEntityType(session.currentIdentity?.type)}:${session.id}`;
+
+        setProfiles((current) => ({ ...current, ...postProfiles, [targetKey]: mergedProfile }));
+        setState((current) => {
+          const mappedPostIds = new Set(mappedPosts.map((post) => post.id));
+          const nextFollows = { ...current.follows };
+
+          postPage.list.forEach((post, index) => {
+            const authorKey = postAuthorKey(mappedPosts[index]);
+            if (post.viewerFollowsAuthor) {
+              nextFollows[actorKey] = unique([...(nextFollows[actorKey] ?? []), authorKey]);
+            }
+            if (post.authorFollowsViewer) {
+              nextFollows[authorKey] = unique([...(nextFollows[authorKey] ?? []), actorKey]);
+            }
+          });
+
+          return {
+            ...current,
+            follows: nextFollows,
+            posts: sortPostsByNewest([
+              ...mappedPosts,
+              ...current.posts.filter((post) => !mappedPostIds.has(post.id))
+            ])
+          };
+        });
+
+        return mergedProfile;
+      } finally {
+        accountProfileRequestsRef.current.delete(userId);
+      }
+    })();
+
+    accountProfileRequestsRef.current.set(userId, request);
+    return request;
+  }, [isRestoring, session]);
 
   const loadFormalSocial = useCallback(async () => {
     if (!session || isRestoring) return;
@@ -2192,9 +2257,10 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
       updateProfileOverride: formalSocialMutationUnavailable,
       incrementView: () => undefined,
       markNotificationsRead: () => { void realtimeApi.markAllNotificationsRead().then(() => loadFormalSocial()); },
-      refreshFeeds: () => { void loadFormalSocial(); }
+      refreshFeeds: () => { void loadFormalSocial(); },
+      ensureAccountProfile
     };
-  }, [loadFormalSocial, profiles, session, state]);
+  }, [ensureAccountProfile, loadFormalSocial, profiles, session, state]);
 
   return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;
 }

@@ -18,9 +18,15 @@ describe("formal IM adapter", () => {
           type: "direct",
           title: null,
           participants: [
-            { userId: 100, username: "sim-customer-100", avatarUrl: null },
+            {
+              userId: 100,
+              needoId: "n0000000100",
+              username: "sim-customer-100",
+              avatarUrl: null,
+            },
             {
               userId: 201,
+              needoId: "n0000000201",
               username: "sim-technician-001",
               avatarUrl: "/avatars/tech-1.png",
             },
@@ -49,6 +55,12 @@ describe("formal IM adapter", () => {
           id: 31,
           ownerUserId: 100,
           contactUserId: 201,
+          contactUser: {
+            userId: 201,
+            needoId: "n0000000201",
+            username: "sim-technician-001",
+            avatarUrl: "/avatars/tech-1.png",
+          },
           nickname: "小林技师",
           source: "simulation_seed",
           createdAt: now,
@@ -68,6 +80,7 @@ describe("formal IM adapter", () => {
     const api = createFormalImApi({
       currentUser: {
         id: 100,
+        needoId: "n0000000100",
         username: "sim-customer-100",
         avatarUrl: null,
       },
@@ -92,9 +105,11 @@ describe("formal IM adapter", () => {
       relationStatus: "active",
     });
     expect(bootstrap.users.find((user) => user.id === "201")).toMatchObject({
+      accountId: "n0000000201",
       nickname: "sim-technician-001",
       profileKind: "technician",
       avatar: "/avatars/tech-1.png",
+      userIdLabel: "n0000000201",
     });
     expect(bootstrap.users.find((user) => user.id === "100")?.avatar).toMatch(
       /^data:image\/svg\+xml/,
@@ -127,6 +142,7 @@ describe("formal IM adapter", () => {
           {
             id: 31,
             userId: 201,
+            needoId: "n0000000201",
             displayName: "佐藤 美咲",
             email: "sim.technician.001@needo.local",
             avatarUrl: "/images/generated/profiles/ai-profile-01.jpg",
@@ -147,6 +163,7 @@ describe("formal IM adapter", () => {
     const api = createFormalImApi({
       currentUser: {
         id: 16,
+        needoId: "n0000000016",
         username: "sim.shop.001@needo.local",
         avatarUrl: null,
       },
@@ -168,10 +185,12 @@ describe("formal IM adapter", () => {
       }),
     ]);
     expect(bootstrap.users.find((user) => user.id === "201")).toMatchObject({
+      accountId: "n0000000201",
       nickname: "佐藤 美咲",
       avatar: "/images/generated/profiles/ai-profile-01.jpg",
       entityType: "technician",
       entityId: "tech-31",
+      userIdLabel: "n0000000201",
     });
   });
 
@@ -194,8 +213,18 @@ describe("formal IM adapter", () => {
           type: "direct",
           title: null,
           participants: [
-            { userId: 100, username: "sim-customer-100", avatarUrl: null },
-            { userId: 201, username: "sim-technician-001", avatarUrl: null },
+            {
+              userId: 100,
+              needoId: "n0000000100",
+              username: "sim-customer-100",
+              avatarUrl: null,
+            },
+            {
+              userId: 201,
+              needoId: "n0000000201",
+              username: "sim-technician-001",
+              avatarUrl: null,
+            },
           ],
           lastMessage: null,
           unreadCount: 0,
@@ -209,7 +238,12 @@ describe("formal IM adapter", () => {
     });
 
     const api = createFormalImApi({
-      currentUser: { id: 100, username: "sim-customer-100", avatarUrl: null },
+      currentUser: {
+        id: 100,
+        needoId: "n0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
       scope: "user",
     });
     const result = await api.sendMessage("text", {
@@ -261,6 +295,7 @@ describe("formal IM adapter", () => {
     const api = createFormalImApi({
       currentUser: {
         id: 100,
+        needoId: "n0000000100",
         username: "sim-customer-100",
         avatarUrl: "/avatars/customer-100.png",
       },
@@ -290,8 +325,18 @@ describe("formal IM adapter", () => {
       type: "direct" as const,
       title: null,
       participants: [
-        { userId: 100, username: "sim-customer-100", avatarUrl: null },
-        { userId: 201, username: "sim-technician-001", avatarUrl: null },
+        {
+          userId: 100,
+          needoId: "n0000000100",
+          username: "sim-customer-100",
+          avatarUrl: null,
+        },
+        {
+          userId: 201,
+          needoId: "n0000000201",
+          username: "sim-technician-001",
+          avatarUrl: null,
+        },
       ],
       lastMessage: null,
       unreadCount: 0,
@@ -322,7 +367,12 @@ describe("formal IM adapter", () => {
     });
 
     const api = createFormalImApi({
-      currentUser: { id: 100, username: "sim-customer-100", avatarUrl: null },
+      currentUser: {
+        id: 100,
+        needoId: "n0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
       scope: "user",
     });
 

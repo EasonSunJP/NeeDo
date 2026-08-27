@@ -239,6 +239,7 @@ export interface BackofficeFinanceSettlementPayload {
 export interface BackofficeTechnicianPayload {
   id: number;
   userId: number;
+  needoId: string;
   displayName: string;
   email: string;
   avatarUrl: string | null;

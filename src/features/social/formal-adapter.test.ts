@@ -10,7 +10,8 @@ const formalPost: RealtimeSocialPost = {
     username: "Mika Technician",
     displayName: "美香",
     avatarUrl: "/images/generated/profiles/ai-profile-01.jpg",
-    entityType: "technician"
+    entityType: "technician",
+    joinedAt: "2025-02-03T04:05:06.000Z"
   },
   content: "肩颈护理前会先确认力度。#服务日常",
   createdAt: "2026-08-25T02:00:00.000Z",
@@ -68,7 +69,8 @@ describe("formal social adapter", () => {
         id: "22",
         entityType: "technician",
         displayName: "美香",
-        avatar: "/images/generated/profiles/ai-profile-01.jpg"
+        avatar: "/images/generated/profiles/ai-profile-01.jpg",
+        joinedAt: "2025-02-03T04:05:06.000Z"
       })
     });
   });

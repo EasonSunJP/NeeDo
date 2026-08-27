@@ -57,4 +57,10 @@ describe("production route chunk boundaries", () => {
     expect(appSource).toContain('lazy(() => import("./pages/mobile/TechnicianPortalPage")');
     expect(appSource.match(/<Suspense fallback=\{null\}><TechnicianPortalPage \/><\/Suspense>/g)).toHaveLength(2);
   });
+
+  it("exposes the same account social page in user, merchant, and technician portals", () => {
+    expect(appSource).toContain('path="/moments/users/:userId" element={protect("user", <SocialAccountProfilePage />)}');
+    expect(appSource).toContain('path="/merchant/moments/users/:userId" element={protect("merchant", <SocialAccountProfilePage />)}');
+    expect(appSource).toContain('path="/technician/moments/users/:userId" element={protect("technician", <SocialAccountProfilePage />)}');
+  });
 });

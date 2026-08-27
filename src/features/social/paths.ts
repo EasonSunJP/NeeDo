@@ -70,6 +70,9 @@ export const socialPaths = {
   media(scope: SocialPortalScope, postId: string, mediaId: string, index: number) {
     return `${scopePrefix(scope)}/moments/posts/${postId}/media/${mediaId}?index=${index}`;
   },
+  accountProfile(scope: SocialPortalScope, userId: number | string) {
+    return `${scopePrefix(scope)}/moments/users/${encodeURIComponent(String(userId))}`;
+  },
   profile(scope: SocialPortalScope, ref: SocialProfileRef | string) {
     const nextRef = typeof ref === "string" ? profileKeyToRef(ref) : ref;
     return `${scopePrefix(scope)}/profiles/${nextRef.entityType}/${nextRef.id}`;

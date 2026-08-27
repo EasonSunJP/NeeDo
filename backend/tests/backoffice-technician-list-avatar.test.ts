@@ -22,6 +22,7 @@ describe("merchant technician list identity data", () => {
             updatedAt: createdAt,
             deletedAt: null,
             user: {
+              needoId: "n0000000041",
               email: "sim.technician.001@needo.local",
               avatarUrl: "/images/generated/profiles/ai-profile-01.jpg"
             },
@@ -45,6 +46,7 @@ describe("merchant technician list identity data", () => {
       expect.objectContaining({
         id: 31,
         userId: 41,
+        needoId: "n0000000041",
         avatarUrl: "/images/generated/profiles/ai-profile-01.jpg"
       })
     ]);

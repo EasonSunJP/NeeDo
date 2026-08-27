@@ -9,6 +9,7 @@ export type PaginatedRealtimeData<TItem> = {
 
 export type RealtimeParticipant = {
   avatarUrl: string | null;
+  needoId: string;
   userId: number;
   username: string;
 };
@@ -53,6 +54,7 @@ export type RealtimeMessageHistory = PaginatedRealtimeData<RealtimeMessage> & {
 };
 
 export type RealtimeContact = {
+  contactUser: RealtimeParticipant;
   contactUserId: number;
   createdAt: string;
   id: number;
@@ -76,6 +78,7 @@ export type RealtimeSocialPost = {
     avatarUrl: string | null;
     displayName: string;
     entityType: "user" | "technician" | "shop";
+    joinedAt: string;
     userId: number;
     username: string;
   };
@@ -87,6 +90,14 @@ export type RealtimeSocialPost = {
   media: unknown;
   viewerFollowsAuthor?: boolean;
   visibility: "public" | "followers";
+};
+
+export type RealtimeSocialProfileSummary = NonNullable<RealtimeSocialPost["author"]>;
+
+export type RealtimeSocialActivityStatus = {
+  latestVisiblePostAt: string | null;
+  profile: RealtimeSocialProfileSummary;
+  status: "recent_posts" | "no_recent_posts";
 };
 
 export type RealtimeNotification = {
@@ -170,6 +181,9 @@ export const realtimeApi = {
   },
   listSocialPosts(query: PageQuery & { authorUserId?: number } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeSocialPost>>("/social/posts", { query });
+  },
+  getSocialActivityStatus(userId: number) {
+    return httpClient.request<RealtimeSocialActivityStatus>(`/social/users/${userId}/activity-status`);
   },
   getSocialPost(id: number) {
     return httpClient.request<RealtimeSocialPost>(`/social/posts/${id}`);

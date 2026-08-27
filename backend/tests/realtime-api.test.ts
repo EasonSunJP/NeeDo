@@ -737,6 +737,39 @@ const createFixture = async () => {
         );
       return canRead ? post : null;
     }),
+    getSocialActivityStatus: jest.fn(
+      async (input: { viewerUserId: number; targetUserId: number; since: Date }) => {
+        const target = users.find((user) => user.id === input.targetUserId);
+        if (!target) return null;
+        const latestVisiblePost = socialPosts
+          .filter((post) => post.authorUserId === input.targetUserId)
+          .filter((post) => post.createdAt >= input.since)
+          .filter(
+            (post) =>
+              post.visibility === "public" ||
+              post.authorUserId === input.viewerUserId ||
+              follows.some(
+                (follow) =>
+                  follow.followerUserId === input.viewerUserId &&
+                  follow.followingUserId === post.authorUserId
+              )
+          )
+          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
+
+        return {
+          status: latestVisiblePost ? ("recent_posts" as const) : ("no_recent_posts" as const),
+          latestVisiblePostAt: latestVisiblePost?.createdAt ?? null,
+          profile: {
+            userId: target.id,
+            username: target.username,
+            displayName: target.username,
+            avatarUrl: target.avatarUrl,
+            entityType: target.identities[0]?.type === "technician" ? ("technician" as const) : ("user" as const),
+            joinedAt: target.createdAt
+          }
+        };
+      }
+    ),
     listFollowerUserIds: jest.fn(async (followingUserId: number) =>
       follows
         .filter((follow) => follow.followingUserId === followingUserId)
@@ -850,10 +883,73 @@ const createFixture = async () => {
     return response.body.data.accessToken as string;
   };
 
-  return { app, login, realtimeRepository };
+  const revokePermission = (email: string, permissionCode: string) => {
+    const user = users.find((candidate) => candidate.email === email);
+    for (const userRole of user?.userRoles ?? []) {
+      userRole.role.rolePermissions = userRole.role.rolePermissions.filter(
+        (rolePermission) => rolePermission.permission.code !== permissionCode
+      );
+    }
+  };
+
+  return { app, login, realtimeRepository, revokePermission };
 };
 
 describe("Step 13 realtime IM / Social / Notification API", () => {
+  it("returns a protected 30-day friend activity status without media payloads", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/social/posts")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .send({ content: "Recent appointment note", visibility: "public" })
+      .expect(201);
+
+    const response = await request(fixture.app)
+      .get("/api/v1/social/users/2/activity-status")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      code: 0,
+      message: "success",
+      data: {
+        status: "no_recent_posts",
+        latestVisiblePostAt: null,
+        profile: {
+          userId: 2,
+          username: "Mika Technician",
+          displayName: "Mika Technician",
+          avatarUrl: null,
+          entityType: "technician",
+          joinedAt: now.toISOString()
+        }
+      }
+    });
+    expect(response.body.data).not.toHaveProperty("media");
+    expect(fixture.realtimeRepository.getSocialActivityStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ viewerUserId: 1, targetUserId: 2 })
+    );
+
+    await request(fixture.app)
+      .get("/api/v1/social/users/0/activity-status")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(400);
+  });
+
+  it("requires social-post:list for friend activity status", async () => {
+    const fixture = await createFixture();
+    fixture.revokePermission("aya@example.com", "social-post:list");
+    const ayaToken = await fixture.login("aya@example.com");
+
+    await request(fixture.app)
+      .get("/api/v1/social/users/2/activity-status")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(403);
+  });
+
   it("creates conversations, paginates messages with a cursor, and clears unread counts", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");

@@ -12,5 +12,7 @@ describe("single complete social pages", () => {
     expect(routeSource).not.toContain("isStaticDemoMode");
     expect(timelineSource).toContain("SharedHomeHeader");
     expect(timelineSource).toContain("SocialPostItem");
+    expect(routeSource).toContain('import("./pages/SocialProfilePage")');
+    expect(routeSource).toContain("SocialAccountProfilePage");
   });
 });

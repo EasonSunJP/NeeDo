@@ -27,7 +27,8 @@ import {
   notificationListQuerySchema,
   socialPostCreateBodySchema,
   socialPostIdParamSchema,
-  socialPostListQuerySchema
+  socialPostListQuerySchema,
+  socialUserIdParamSchema
 } from "../validators/realtime.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -189,6 +190,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.createSocialPost),
     validateRequest({ body: socialPostCreateBodySchema }),
     controller.createSocialPost
+  );
+  router.get(
+    "/social/users/:userId/activity-status",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.listSocialPosts),
+    validateRequest({ params: socialUserIdParamSchema }),
+    controller.getSocialActivityStatus
   );
   router.get(
     "/social/posts/:id",

@@ -19,6 +19,7 @@ export type NotificationTypePayload = "orderStatus" | "friendRequest" | "system"
 
 export interface ParticipantPayload {
   userId: number;
+  needoId: string;
   username: string;
   avatarUrl: string | null;
 }
@@ -68,6 +69,7 @@ export interface ContactPayload {
   id: number;
   ownerUserId: number;
   contactUserId: number;
+  contactUser: ParticipantPayload;
   nickname: string | null;
   source: string;
   createdAt: Date;
@@ -89,6 +91,15 @@ export interface SocialPostAuthorPayload {
   displayName: string;
   avatarUrl: string | null;
   entityType: "user" | "technician" | "shop";
+  joinedAt: Date;
+}
+
+export type SocialActivityStatus = "recent_posts" | "no_recent_posts";
+
+export interface SocialActivityStatusPayload {
+  status: SocialActivityStatus;
+  profile: SocialPostAuthorPayload;
+  latestVisiblePostAt: Date | null;
 }
 
 export interface SocialPostPayload {
@@ -193,6 +204,12 @@ export interface SocialPostListInput extends PaginationInput {
   authorUserId?: number;
 }
 
+export interface SocialActivityStatusInput {
+  viewerUserId: number;
+  targetUserId: number;
+  since: Date;
+}
+
 export interface CreateFollowInput {
   followerUserId: number;
   followingUserId: number;
@@ -263,6 +280,9 @@ export interface RealtimeRepositoryPort {
     input: SocialPostListInput
   ) => Promise<PaginatedResponse<SocialPostPayload>>;
   getSocialPost: (userId: number, postId: number) => Promise<SocialPostPayload | null>;
+  getSocialActivityStatus: (
+    input: SocialActivityStatusInput
+  ) => Promise<SocialActivityStatusPayload | null>;
   listFollowerUserIds: (followingUserId: number) => Promise<number[]>;
   createFollow: (input: CreateFollowInput) => Promise<FollowPayload>;
   deleteFollow: (followerUserId: number, followingUserId: number) => Promise<{ deleted: boolean }>;
@@ -297,20 +317,34 @@ const messageInclude = {
   }
 } satisfies Prisma.MessageInclude;
 
+const socialAuthorSelect = {
+  id: true,
+  username: true,
+  avatarUrl: true,
+  createdAt: true,
+  identities: {
+    where: { deletedAt: null, isActive: true },
+    select: { type: true, displayName: true, isDefault: true },
+    orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
+  }
+} satisfies Prisma.UserSelect;
+
 const socialPostInclude = {
   author: {
-    select: {
-      id: true,
-      username: true,
-      avatarUrl: true,
-      identities: {
-        where: { deletedAt: null, isActive: true },
-        select: { type: true, displayName: true, isDefault: true },
-        orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
-      }
-    }
+    select: socialAuthorSelect
   }
 } satisfies Prisma.SocialPostInclude;
+
+const contactInclude = {
+  contactUser: {
+    select: {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    }
+  }
+} satisfies Prisma.ContactInclude;
 
 type ConversationRecord = Prisma.ConversationGetPayload<{
   include: {
@@ -319,6 +353,7 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
         user: {
           select: {
             id: true;
+            needoId: true;
             username: true;
             avatarUrl: true;
           };
@@ -332,8 +367,9 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
 }>;
 
 type MessageRecord = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
-type ContactRecord = Prisma.ContactGetPayload<Record<string, never>>;
+type ContactRecord = Prisma.ContactGetPayload<{ include: typeof contactInclude }>;
 type FriendRequestRecord = Prisma.FriendRequestGetPayload<Record<string, never>>;
+type SocialAuthorRecord = Prisma.UserGetPayload<{ select: typeof socialAuthorSelect }>;
 type SocialPostRecord = Prisma.SocialPostGetPayload<{ include: typeof socialPostInclude }>;
 type FollowRecord = Prisma.FollowGetPayload<Record<string, never>>;
 type NotificationRecord = Prisma.NotificationGetPayload<Record<string, never>>;
@@ -706,6 +742,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.contact.findMany({
         where,
+        include: contactInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
@@ -975,6 +1012,53 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       socialPost.authorUserId,
       relationshipMap
     );
+  }
+
+  public async getSocialActivityStatus(
+    input: SocialActivityStatusInput
+  ): Promise<SocialActivityStatusPayload | null> {
+    const profile = await this.client.user.findFirst({
+      where: {
+        id: input.targetUserId,
+        isActive: true,
+        deletedAt: null
+      },
+      select: socialAuthorSelect
+    });
+
+    if (!profile) {
+      return null;
+    }
+
+    const latestVisiblePost = await this.client.socialPost.findFirst({
+      where: {
+        authorUserId: input.targetUserId,
+        createdAt: { gte: input.since },
+        deletedAt: null,
+        OR: [
+          { visibility: SocialPostVisibility.PUBLIC },
+          { authorUserId: input.viewerUserId },
+          {
+            author: {
+              followers: {
+                some: {
+                  followerUserId: input.viewerUserId,
+                  deletedAt: null
+                }
+              }
+            }
+          }
+        ]
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { createdAt: true, id: true }
+    });
+
+    return {
+      status: latestVisiblePost ? "recent_posts" : "no_recent_posts",
+      profile: this.mapSocialAuthor(profile),
+      latestVisiblePostAt: latestVisiblePost?.createdAt ?? null
+    };
   }
 
   public async listFollowerUserIds(followingUserId: number): Promise<number[]> {
@@ -1280,6 +1364,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           user: {
             select: {
               id: true,
+              needoId: true,
               username: true,
               avatarUrl: true
             }
@@ -1307,11 +1392,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: conversation.id,
       type: this.conversationTypeFromDb(conversation.type),
       title: conversation.title,
-      participants: conversation.participants.map((participant) => ({
-        userId: participant.user.id,
-        username: participant.user.username,
-        avatarUrl: participant.user.avatarUrl
-      })),
+      participants: conversation.participants.map((participant) =>
+        this.mapParticipant(participant.user)
+      ),
       lastMessage: conversation.messages[0]
         ? this.mapMessage(conversation.messages[0], viewerUserId)
         : null,
@@ -1357,9 +1440,24 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: contact.id,
       ownerUserId: contact.ownerUserId,
       contactUserId: contact.contactUserId,
+      contactUser: this.mapParticipant(contact.contactUser),
       nickname: contact.nickname,
       source: contact.source,
       createdAt: contact.createdAt
+    };
+  }
+
+  private mapParticipant(user: {
+    id: number;
+    needoId: string;
+    username: string;
+    avatarUrl: string | null;
+  }): ParticipantPayload {
+    return {
+      userId: user.id,
+      needoId: user.needoId,
+      username: user.username,
+      avatarUrl: user.avatarUrl
     };
   }
 
@@ -1411,16 +1509,11 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     );
   }
 
-  private mapSocialPost(
-    socialPost: SocialPostRecord,
-    viewerUserId: number,
-    authorUserId: number,
-    relationshipMap: Set<string> = new Set()
-  ): SocialPostPayload {
+  private mapSocialAuthor(author: SocialAuthorRecord): SocialPostAuthorPayload {
     const identity =
-      socialPost.author.identities.find((item) =>
+      author.identities.find((item) =>
         ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(item.type)
-      ) ?? socialPost.author.identities[0];
+      ) ?? author.identities[0];
     const entityType: SocialPostAuthorPayload["entityType"] =
       identity?.type === "technician"
         ? "technician"
@@ -1428,6 +1521,22 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           ? "shop"
           : "user";
 
+    return {
+      userId: author.id,
+      username: author.username,
+      displayName: identity?.displayName?.trim() || author.username,
+      avatarUrl: author.avatarUrl,
+      entityType,
+      joinedAt: author.createdAt
+    };
+  }
+
+  private mapSocialPost(
+    socialPost: SocialPostRecord,
+    viewerUserId: number,
+    authorUserId: number,
+    relationshipMap: Set<string> = new Set()
+  ): SocialPostPayload {
     return {
       id: socialPost.id,
       authorUserId: socialPost.authorUserId,
@@ -1439,13 +1548,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         viewerUserId === authorUserId || relationshipMap.has(`${viewerUserId}:${authorUserId}`),
       authorFollowsViewer:
         viewerUserId === authorUserId || relationshipMap.has(`${authorUserId}:${viewerUserId}`),
-      author: {
-        userId: socialPost.author.id,
-        username: socialPost.author.username,
-        displayName: identity?.displayName?.trim() || socialPost.author.username,
-        avatarUrl: socialPost.author.avatarUrl,
-        entityType
-      }
+      author: this.mapSocialAuthor(socialPost.author)
     };
   }
 
