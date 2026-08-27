@@ -268,7 +268,10 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       port: 5180,
-      proxy: apiProxy
+      proxy: apiProxy,
+      watch: {
+        ignored: ["**/.worktrees/**", "**/worktrees/**"]
+      }
     },
     preview: {
       port: 5180,

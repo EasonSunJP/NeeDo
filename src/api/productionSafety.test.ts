@@ -85,15 +85,21 @@ describe("frontend production safety", () => {
     );
   });
 
-  it("keeps isolated git worktrees outside the root Vitest suite", () => {
+  it("keeps isolated git worktrees outside the root test suite and dev watcher", () => {
     const createConfig = viteConfig as unknown as (config: {
       command: "serve";
       mode: string;
-    }) => { test?: { exclude?: string[] } };
+    }) => {
+      server?: { watch?: { ignored?: string[] } };
+      test?: { exclude?: string[] };
+    };
     const config = createConfig({ command: "serve", mode: "test" });
 
     expect(config.test?.exclude).toEqual(
       expect.arrayContaining([".worktrees/**", "worktrees/**"])
+    );
+    expect(config.server?.watch?.ignored).toEqual(
+      expect.arrayContaining(["**/.worktrees/**", "**/worktrees/**"])
     );
   });
 
