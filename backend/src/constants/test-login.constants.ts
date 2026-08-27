@@ -14,8 +14,8 @@ export interface TestUserAccountDefinition {
 
 export const TEST_USER_ACCOUNTS = [
   {
-    email: "admin@example.com",
-    username: "神谷 俊介",
+    email: "admin@lifedance.com",
+    username: "LifeDance 管理员",
     avatarUrl: "/images/generated/profiles/cartoon-profile-02.png",
     roleCode: "admin",
     identityType: "platform",

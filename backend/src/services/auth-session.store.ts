@@ -65,7 +65,7 @@ export interface AuthSessionStore {
   }) => Promise<boolean>;
   hasRefreshToken: (userId: number, jti: string) => Promise<boolean>;
   revokeRefreshToken: (userId: number, jti: string) => Promise<void>;
-  revokeAllRefreshTokens: (userId: number) => Promise<void>;
+  revokeAllRefreshTokens: (userId: number, sessionGeneration?: number) => Promise<void>;
   blacklistAccessToken: (jti: string, ttlSeconds: number) => Promise<void>;
   isAccessTokenBlacklisted: (jti: string) => Promise<boolean>;
 }
@@ -262,8 +262,15 @@ export class RedisAuthSessionStore implements AuthSessionStore {
     );
   }
 
-  public async revokeAllRefreshTokens(userId: number): Promise<void> {
-    await this.eval(REFRESH_REVOKE_ALL_LUA, [this.refreshUserKey(userId)], [String(userId)]);
+  public async revokeAllRefreshTokens(
+    userId: number,
+    sessionGeneration?: number
+  ): Promise<void> {
+    await this.eval(
+      REFRESH_REVOKE_ALL_LUA,
+      [this.refreshUserKey(userId), this.sessionGenerationKey(userId)],
+      [String(userId), ...(sessionGeneration === undefined ? [] : [String(sessionGeneration)])]
+    );
   }
 
   public async blacklistAccessToken(jti: string, ttlSeconds: number): Promise<void> {
@@ -465,5 +472,6 @@ const REFRESH_REVOKE_ALL_LUA = `
 local jtis = redis.call('SMEMBERS', KEYS[1])
 redis.call('DEL', KEYS[1])
 for _, jti in ipairs(jtis) do redis.call('DEL', 'auth:v2:refresh:' .. ARGV[1] .. ':' .. jti) end
+if ARGV[2] then redis.call('SET', KEYS[2], ARGV[2]) end
 return {'ok'}
 `;

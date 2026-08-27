@@ -1,10 +1,13 @@
-import { BookingOrderStatus } from "@prisma/client";
+import { BookingOrderStatus, TechnicianEmploymentType } from "@prisma/client";
 import { compare } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
+  LIFEDANCE_ADMIN_EMAIL,
+  LIFEDANCE_LEGACY_OWNER_EMAIL,
+  LIFEDANCE_SHOP_NAME,
   SIMULATION_END_AT,
   SIMULATION_NAMESPACE,
   SIMULATION_ORDER_PREFIX,
@@ -30,6 +33,8 @@ const main = async (): Promise<void> => {
   process.env.ENV_FILE = envFile;
   loadDotenv({ path: envFile });
   const seedConfig = getSimulationSeedConfig(process.env);
+  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
+  assert(adminPassword, "ADMIN_DEFAULT_PASSWORD is required to verify the LifeDance administrator.");
   const [{ prisma, disconnectPrisma }] = await Promise.all([import("../src/prisma/client")]);
   const plan = buildThreeMonthSimulationPlan();
 
@@ -46,7 +51,9 @@ const main = async (): Promise<void> => {
           passwordHash: true,
           avatarUrl: true,
           customerProfile: { select: { id: true } },
-          technicianProfile: { select: { id: true, shopId: true, status: true } }
+          technicianProfile: {
+            select: { id: true, shopId: true, status: true, employmentType: true }
+          }
         }
       }),
       prisma.user.findMany({
@@ -99,7 +106,11 @@ const main = async (): Promise<void> => {
     const simulationUsers = [...owners, ...technicianUsers, ...customerUsers];
     const simulationUserIds = simulationUsers.map((user) => user.id);
     assert(
-      simulationUsers.every((user) => user.avatarUrl === plannedAvatarByEmail.get(user.email)),
+      simulationUsers.every(
+        (user) =>
+          user.email === LIFEDANCE_ADMIN_EMAIL ||
+          user.avatarUrl === plannedAvatarByEmail.get(user.email)
+      ),
       "every simulation account must use its deterministic generated avatar"
     );
     assert(
@@ -111,7 +122,7 @@ const main = async (): Promise<void> => {
 
     const shops = await prisma.shop.findMany({
       where: { ownerUserId: { in: owners.map((owner) => owner.id) }, deletedAt: null },
-      select: { id: true, ownerUserId: true, status: true }
+      select: { id: true, ownerUserId: true, name: true, status: true }
     });
     assert(shops.length === 10, `expected 10 simulation shops, found ${shops.length}`);
     assert(
@@ -126,7 +137,14 @@ const main = async (): Promise<void> => {
           isActive: true,
           deletedAt: null
         },
-        select: { userId: true, type: true, scopeType: true, scopeId: true, activeKey: true }
+        select: {
+          userId: true,
+          type: true,
+          scopeType: true,
+          scopeId: true,
+          activeKey: true,
+          isDefault: true
+        }
       }),
       prisma.userRole.findMany({
         where: { userId: { in: simulationUserIds }, deletedAt: null },
@@ -146,6 +164,23 @@ const main = async (): Promise<void> => {
       codes.add(role.role.code);
       roleCodesByUser.set(role.userId, codes);
     }
+    const expectIdentity = (
+      user: { id: number; email: string },
+      type: string,
+      scopeType: string,
+      scopeId: number | null
+    ): void => {
+      const identities = identitiesByUser.get(user.id) ?? [];
+      assert(
+        identities.some(
+          (identity) =>
+            identity.type === type &&
+            identity.scopeType === scopeType &&
+            identity.scopeId === scopeId
+        ),
+        `${user.email} is missing ${type}/${scopeType}/${String(scopeId)} identity`
+      );
+    };
     const assertIdentityMatrix = (
       user: (typeof simulationUsers)[number],
       expectedTypes: string[],
@@ -200,6 +235,38 @@ const main = async (): Promise<void> => {
         `${owner.email} merchant identity scope is invalid`
       );
     }
+    const admin = owners.find((owner) => owner.email === LIFEDANCE_ADMIN_EMAIL);
+    assert(admin, "LifeDance administrator is missing from the owner cohort");
+    assert(admin.customerProfile, "LifeDance administrator customer profile is missing");
+    assert(admin.technicianProfile, "LifeDance administrator technician profile is missing");
+    const lifeDanceShop = shops.find((shop) => shop.name === LIFEDANCE_SHOP_NAME);
+    assert(lifeDanceShop, "LifeDance shop was not updated in place");
+    expectIdentity(admin, "platform", "global", null);
+    expectIdentity(admin, "customer", "customer_profile", admin.customerProfile.id);
+    expectIdentity(admin, "merchant_owner", "shop", lifeDanceShop.id);
+    expectIdentity(admin, "technician", "technician_profile", admin.technicianProfile.id);
+    expectIdentity(admin, "scout", "global", null);
+    const adminIdentities = identitiesByUser.get(admin.id) ?? [];
+    assert(
+      adminIdentities.filter((identity) => identity.isDefault).length === 1 &&
+        adminIdentities.some(
+          (identity) => identity.type === "platform" && identity.isDefault
+        ),
+      "only the LifeDance platform identity may be the default identity"
+    );
+    assert(
+      admin.technicianProfile.shopId === null &&
+        admin.technicianProfile.status === "private" &&
+        admin.technicianProfile.employmentType === TechnicianEmploymentType.INDEPENDENT,
+      "LifeDance administrator technician profile must remain private and independent"
+    );
+    assert(
+      roleCodesByUser.get(admin.id)?.has("admin") &&
+        ["customer", "merchant_owner", "technician", "scout"].every((roleCode) =>
+          roleCodesByUser.get(admin.id)?.has(roleCode)
+        ),
+      "LifeDance administrator is missing a cross-portal role"
+    );
     for (const technician of technicianUsers) {
       assert(technician.customerProfile, `${technician.email} is missing a customer profile`);
       assertIdentityMatrix(
@@ -221,6 +288,99 @@ const main = async (): Promise<void> => {
     const technicianProfileIds = technicianUsers.flatMap((user) =>
       user.technicianProfile ? [user.technicianProfile.id] : []
     );
+    const [
+      activeLegacyAdministrator,
+      previousLifeDanceOwner,
+      lifeDanceMerchantAccounts,
+      adminTechnicianServices,
+      adminAvailabilities,
+      adminBookings
+    ] = await Promise.all([
+      prisma.user.findFirst({
+        where: { email: "admin@example.com", isActive: true, deletedAt: null },
+        select: { id: true }
+      }),
+      prisma.user.findUnique({
+        where: { email: LIFEDANCE_LEGACY_OWNER_EMAIL },
+        select: {
+          id: true,
+          technicianProfile: { select: { shopId: true, status: true, employmentType: true } }
+        }
+      }),
+      prisma.merchantAccount.findMany({
+        where: {
+          code: "lifedance-real-ops",
+          ownerUserId: admin.id,
+          status: "active",
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          memberships: {
+            where: {
+              shopId: lifeDanceShop.id,
+              endsAt: null,
+              deletedAt: null
+            },
+            select: { id: true }
+          }
+        }
+      }),
+      prisma.technicianService.count({
+        where: { technicianId: admin.technicianProfile.id, deletedAt: null }
+      }),
+      prisma.availability.count({
+        where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
+      }),
+      prisma.bookingOrder.count({
+        where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
+      })
+    ]);
+    assert(!activeLegacyAdministrator, "legacy administrator email must not resolve to an active user");
+    assert(
+      lifeDanceMerchantAccounts.length === 1 &&
+        lifeDanceMerchantAccounts[0]?.memberships.length === 1,
+      "LifeDance administrator must own one active merchant account and shop membership"
+    );
+    assert(
+      adminTechnicianServices === 0 && adminAvailabilities === 0 && adminBookings === 0,
+      "LifeDance administrator private technician profile must be non-bookable"
+    );
+    if (previousLifeDanceOwner) {
+      const [previousMerchantIdentities, previousMerchantRoles] = await Promise.all([
+        prisma.userIdentity.count({
+          where: {
+            userId: previousLifeDanceOwner.id,
+            type: "merchant_owner",
+            scopeType: "shop",
+            scopeId: lifeDanceShop.id,
+            isActive: true,
+            deletedAt: null
+          }
+        }),
+        prisma.userRole.count({
+          where: {
+            userId: previousLifeDanceOwner.id,
+            role: { code: "merchant_owner" },
+            scopeType: "shop",
+            scopeId: lifeDanceShop.id,
+            deletedAt: null
+          }
+        })
+      ]);
+      assert(
+        previousMerchantIdentities === 0 && previousMerchantRoles === 0,
+        "previous LifeDance owner merchant scope must be inactive"
+      );
+      assert(
+        !previousLifeDanceOwner.technicianProfile ||
+          (previousLifeDanceOwner.technicianProfile.shopId !== lifeDanceShop.id &&
+            previousLifeDanceOwner.technicianProfile.status === "private" &&
+            previousLifeDanceOwner.technicianProfile.employmentType ===
+              TechnicianEmploymentType.INDEPENDENT),
+        "previous LifeDance owner private technician profile must be detached"
+      );
+    }
     const [
       services,
       technicianServices,
@@ -508,7 +668,9 @@ const main = async (): Promise<void> => {
     const passwordChecks = await Promise.all(
       representativeAccounts.map((account) =>
         compare(
-          seedConfig.defaultPassword,
+          account.email === LIFEDANCE_ADMIN_EMAIL
+            ? adminPassword
+            : seedConfig.defaultPassword,
           account.passwordHash
         )
       )

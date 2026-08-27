@@ -3,6 +3,10 @@ export const SIMULATION_START_AT = "2026-06-01T00:00:00.000Z";
 export const SIMULATION_END_AT = "2026-08-31T14:59:59.999Z";
 export const SIMULATION_AS_OF_AT = "2026-08-25T00:00:00.000Z";
 export const SIMULATION_ORDER_PREFIX = "SIM3M-";
+export const LIFEDANCE_SHOP_KEY = "shop-001";
+export const LIFEDANCE_ADMIN_EMAIL = "admin@lifedance.com";
+export const LIFEDANCE_LEGACY_OWNER_EMAIL = "sim.shop.001@needo.local";
+export const LIFEDANCE_SHOP_NAME = "LifeDance Wellness 渋谷";
 
 export type SimulationBookingStatus =
   | "PENDING"
@@ -316,6 +320,20 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
   const shops: SimulationShopPlan[] = SHOP_TEMPLATES.map(
     ([name, city, address], index): SimulationShopPlan => {
       const sequence = index + 1;
+      if (sequence === 1) {
+        return {
+          key: LIFEDANCE_SHOP_KEY,
+          ownerEmail: LIFEDANCE_ADMIN_EMAIL,
+          ownerUsername: "LifeDance 管理员",
+          name: LIFEDANCE_SHOP_NAME,
+          city: "東京都",
+          address: "東京都渋谷区道玄坂1-12-1",
+          phone: "050-9101-1001",
+          description:
+            "渋谷のボディケア、ヘッドケア、訪問リラクゼーションを提供するウェルネス店舗です。",
+          avatarUrl: SHOP_AVATAR_URLS[index]!
+        };
+      }
       return {
         key: `shop-${pad(sequence)}`,
         ownerEmail: `sim.shop.${pad(sequence)}@needo.local`,

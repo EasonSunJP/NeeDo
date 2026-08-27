@@ -62,9 +62,9 @@ describe("user management seed contract", () => {
         ADMIN_DEFAULT_PASSWORD: "S3cure-dev-password!"
       })
     ).toMatchObject({
-      email: "admin@example.com",
+      email: "admin@lifedance.com",
       password: "S3cure-dev-password!",
-      username: "admin"
+      username: "LifeDance 管理员"
     });
 
     expect(
@@ -75,7 +75,7 @@ describe("user management seed contract", () => {
         TEST_USER_DEFAULT_PASSWORD: "test-user-password"
       })
     ).toMatchObject({
-      email: "admin@example.com",
+      email: "admin@lifedance.com",
       password: "admin-bootstrap-password"
     });
     expect(
@@ -85,14 +85,14 @@ describe("user management seed contract", () => {
         ADMIN_DEFAULT_PASSWORD: "prod-admin-bootstrap-password"
       })
     ).toMatchObject({
-      email: "admin@example.com",
+      email: "admin@lifedance.com",
       password: "prod-admin-bootstrap-password"
     });
   });
 
   it("defines the required real test accounts for each portal", () => {
     expect(REQUIRED_TEST_ACCOUNT_EMAILS).toEqual([
-      "admin@example.com",
+      "admin@lifedance.com",
       "operator@example.com",
       "merchant@example.com",
       "affiliate@example.com",
@@ -102,7 +102,7 @@ describe("user management seed contract", () => {
     expect(
       TEST_USER_ACCOUNTS.map((account) => [account.email, account.roleCode, account.identityType])
     ).toEqual([
-      ["admin@example.com", "admin", "platform"],
+      ["admin@lifedance.com", "admin", "platform"],
       ["operator@example.com", "operator", "platform"],
       ["merchant@example.com", "merchant_owner", "merchant"],
       ["affiliate@example.com", "broker", "broker"],

@@ -1,5 +1,9 @@
 import { TEST_USER_ACCOUNTS } from "../constants/test-login.constants";
-import { SIMULATION_NAMESPACE, buildThreeMonthSimulationPlan } from "./three-month-simulation-plan";
+import {
+  LIFEDANCE_ADMIN_EMAIL,
+  SIMULATION_NAMESPACE,
+  buildThreeMonthSimulationPlan
+} from "./three-month-simulation-plan";
 
 export type SocialSimulationType = "shop" | "technician" | "user";
 export type SocialSimulationPostKind =
@@ -137,7 +141,7 @@ const buildAccounts = (): SocialSimulationAccount[] => {
   const simulated: SocialSimulationAccount[] = [
     ...plan.shops.map((shop) => ({
       key: shop.key,
-      accountType: "merchant_owner",
+      accountType: shop.ownerEmail === LIFEDANCE_ADMIN_EMAIL ? "admin" : "merchant_owner",
       email: shop.ownerEmail,
       displayName: `${shop.name} 公式受付`,
       avatarUrl: shop.avatarUrl,
@@ -160,22 +164,27 @@ const buildAccounts = (): SocialSimulationAccount[] => {
       socialType: "user" as const
     }))
   ];
-  const fixed = TEST_USER_ACCOUNTS.map((account): SocialSimulationAccount => ({
-    key:
-      account.email === "customer@example.com"
-        ? "formal-preview-customer"
-        : `fixed-${account.email.split("@")[0]}`,
-    accountType: account.roleCode,
-    email: account.email,
-    displayName: account.username,
-    avatarUrl: account.avatarUrl,
-    socialType:
-      account.identityType === "merchant"
-        ? "shop"
-        : account.identityType === "technician"
-          ? "technician"
-          : "user"
-  }));
+  const simulatedEmails = new Set(simulated.map((account) => account.email));
+  const fixed = TEST_USER_ACCOUNTS.filter(
+    (account) => !simulatedEmails.has(account.email)
+  ).map(
+    (account): SocialSimulationAccount => ({
+      key:
+        account.email === "customer@example.com"
+          ? "formal-preview-customer"
+          : `fixed-${account.email.split("@")[0]}`,
+      accountType: account.roleCode,
+      email: account.email,
+      displayName: account.username,
+      avatarUrl: account.avatarUrl,
+      socialType:
+        account.identityType === "merchant"
+          ? "shop"
+          : account.identityType === "technician"
+            ? "technician"
+            : "user"
+    })
+  );
 
   return [...simulated, ...fixed];
 };

@@ -12,6 +12,7 @@ import {
   ServiceOwnerType,
   ShopPricingMode,
   SocialPostVisibility,
+  TechnicianEmploymentType,
   TechnicianServiceReviewStatus,
   WalletLedgerDirection,
   WalletOwnerType,
@@ -24,6 +25,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import {
+  LIFEDANCE_ADMIN_EMAIL,
+  LIFEDANCE_SHOP_KEY,
   SIMULATION_END_AT,
   SIMULATION_AS_OF_AT,
   SIMULATION_NAMESPACE,
@@ -38,6 +41,7 @@ import {
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
+import { migrateLifeDanceAdminOwnership } from "../src/simulation/lifedance-admin-ownership";
 import {
   buildSimulationIdentityGrants,
   simulationIdentityActiveKey
@@ -103,8 +107,13 @@ const main = async (): Promise<void> => {
   const plan = buildThreeMonthSimulationPlan();
   const socialPlan = buildSocialSimulationPlan();
   const accountEmails = socialPlan.accounts.map((account) => account.email);
+  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
+  assert(adminPassword, "ADMIN_DEFAULT_PASSWORD is required for the LifeDance administrator export.");
   const accountPasswords = new Map(
-    accountEmails.map((email) => [email, seedConfig.defaultPassword])
+    accountEmails.map((email) => [
+      email,
+      email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword
+    ])
   );
   const passwordHashes = new Map(
     await Promise.all(
@@ -151,8 +160,13 @@ const main = async (): Promise<void> => {
         const ownerUserIds = new Map<string, number>();
         const technicianUserIds = new Map<string, number>();
         const customerUserIds = new Map<string, number>();
+        const lifeDanceOwnership = await migrateLifeDanceAdminOwnership(tx);
 
         for (const shop of plan.shops) {
+          if (shop.key === LIFEDANCE_SHOP_KEY) {
+            ownerUserIds.set(shop.key, lifeDanceOwnership.adminUserId);
+            continue;
+          }
           const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
             where: { email: shop.ownerEmail },
             create: {
@@ -226,12 +240,17 @@ const main = async (): Promise<void> => {
 
         const shopIds = new Map<string, number>();
         for (const shop of plan.shops) {
+          if (shop.key === LIFEDANCE_SHOP_KEY) {
+            shopIds.set(shop.key, lifeDanceOwnership.shopId);
+            continue;
+          }
           const ownerUserId = getRequiredId(ownerUserIds, shop.key, "shop owner");
           const existing = await tx.shop.findFirst({ where: { ownerUserId } });
           const record = existing
             ? await tx.shop.update({
                 where: { id: existing.id },
                 data: {
+                  ownerUserId,
                   name: shop.name,
                   description: shop.description,
                   city: shop.city,
@@ -349,6 +368,11 @@ const main = async (): Promise<void> => {
         const ownerTechnicianProfileIds = new Map<string, number>();
         for (const shop of plan.shops) {
           const userId = getRequiredId(ownerUserIds, shop.key, "shop owner");
+          if (shop.key === LIFEDANCE_SHOP_KEY) {
+            switchingCustomerProfileIds.set(userId, lifeDanceOwnership.customerProfileId);
+            ownerTechnicianProfileIds.set(shop.key, lifeDanceOwnership.technicianProfileId);
+            continue;
+          }
           const customerProfile = await tx.customerProfile.upsert({
             where: { userId },
             create: {
@@ -379,6 +403,8 @@ const main = async (): Promise<void> => {
               city: shop.city,
               serviceArea: shop.city,
               yearsExperience: 0,
+              employmentType: TechnicianEmploymentType.INDEPENDENT,
+              employmentStartedAt: null,
               status: "private",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z")
             },
@@ -389,6 +415,8 @@ const main = async (): Promise<void> => {
               city: shop.city,
               serviceArea: shop.city,
               yearsExperience: 0,
+              employmentType: TechnicianEmploymentType.INDEPENDENT,
+              employmentStartedAt: null,
               status: "private",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
               deletedAt: null
@@ -483,6 +511,7 @@ const main = async (): Promise<void> => {
           customerProfileId: number;
           technicianProfileId?: number;
           shopId?: number;
+          forceNonDefault?: boolean;
         }): Promise<void> => {
           const grants = buildSimulationIdentityGrants(input);
           for (const grant of grants) {
@@ -498,7 +527,7 @@ const main = async (): Promise<void> => {
               grant.scopeType,
               grant.scopeId,
               grant.displayName,
-              grant.isDefault,
+              input.forceNonDefault ? false : grant.isDefault,
               simulationIdentityActiveKey(input.userId, grant)
             );
           }
@@ -538,7 +567,8 @@ const main = async (): Promise<void> => {
               shop.key,
               "merchant technician profile"
             ),
-            shopId: getRequiredId(shopIds, shop.key, "shop")
+            shopId: getRequiredId(shopIds, shop.key, "shop"),
+            forceNonDefault: shop.key === LIFEDANCE_SHOP_KEY
           });
         }
 

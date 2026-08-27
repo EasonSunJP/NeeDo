@@ -43,8 +43,8 @@ export const orderFormalTestAccountExports = (
   rows: readonly FormalTestAccountExportRow[]
 ): FormalTestAccountExportRow[] =>
   [...rows].sort((left, right) => {
-    if (left.email === "admin@example.com") return -1;
-    if (right.email === "admin@example.com") return 1;
+    if (left.email === "admin@lifedance.com") return -1;
+    if (right.email === "admin@lifedance.com") return 1;
 
     const leftFixed = left.email.endsWith("@example.com");
     const rightFixed = right.email.endsWith("@example.com");

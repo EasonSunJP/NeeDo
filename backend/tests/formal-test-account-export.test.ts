@@ -13,8 +13,8 @@ describe("formal test account export", () => {
     },
     {
       accountType: "admin",
-      displayName: "神谷 俊介",
-      email: "admin@example.com",
+      displayName: "LifeDance 管理员",
+      email: "admin@lifedance.com",
       needoId: "n0000000001"
     },
     {
@@ -65,7 +65,7 @@ describe("formal test account export", () => {
     expect(rows[0]).toEqual(
       expect.objectContaining({
         accountType: "运营后台超级管理员",
-        email: "admin@example.com",
+        email: "admin@lifedance.com",
         password: "needotest"
       })
     );

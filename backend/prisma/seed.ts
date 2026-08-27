@@ -13,6 +13,10 @@ import {
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
+import {
+  RedisAuthSessionStore,
+  type AuthSessionStore
+} from "../src/services/auth-session.store";
 import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 import {
@@ -28,8 +32,10 @@ import {
 
 const BCRYPT_ROUNDS = 12;
 const needoIdAllocator = new NeedoIdAllocator();
-const DEFAULT_ADMIN_EMAIL = "admin@example.com";
-const DEFAULT_ADMIN_USERNAME = "admin";
+const DEFAULT_ADMIN_EMAIL = "admin@lifedance.com";
+const LEGACY_ADMIN_EMAIL = "admin@example.com";
+const DEFAULT_ADMIN_USERNAME = "LifeDance 管理员";
+const ADMIN_SEED_AUDIT_NAMESPACE = "lifedance_real_ops_v1";
 const SEED_PRISMA_LOG_LEVELS: Prisma.LogLevel[] = ["error"];
 export const DEFAULT_REQUEST_DISPATCH_FEE_NDP = 500;
 export const CUSTOMER_REQUEST_WALLET_SEED_NDP = DEFAULT_REQUEST_DISPATCH_FEE_NDP * 2;
@@ -59,6 +65,100 @@ export interface AdminSeedConfig {
   username: string;
   password: string;
 }
+
+type AdminSeedTransaction = Pick<Prisma.TransactionClient, "user" | "auditLog">;
+type AdminSeedSessionRevoker = Pick<AuthSessionStore, "revokeAllRefreshTokens">;
+
+interface MigrateAdminAccountOptions {
+  adminConfig: AdminSeedConfig;
+  adminPasswordHash: string;
+  allocateNeedoId: <T>(create: (needoId: string) => Promise<T>) => Promise<T>;
+}
+
+export const migrateAdminAccount = async (
+  tx: AdminSeedTransaction,
+  options: MigrateAdminAccountOptions
+) => {
+  const candidates = await tx.user.findMany({
+    where: {
+      email: { in: [options.adminConfig.email, LEGACY_ADMIN_EMAIL] },
+      deletedAt: null
+    },
+    select: {
+      id: true,
+      needoId: true,
+      email: true,
+      isActive: true
+    }
+  });
+  const candidatesById = new Map<number, (typeof candidates)[number]>();
+
+  for (const candidate of candidates) {
+    const selected = candidatesById.get(candidate.id);
+    if (!selected || candidate.email === options.adminConfig.email) {
+      candidatesById.set(candidate.id, candidate);
+    }
+  }
+
+  if (candidatesById.size > 1) {
+    throw new Error("ADMIN_SEED_ACCOUNT_CONFLICT");
+  }
+
+  const existing = candidatesById.values().next().value as
+    | (typeof candidates)[number]
+    | undefined;
+  const verifiedAt = new Date();
+  const adminUser = existing
+    ? await tx.user.update({
+        where: { id: existing.id },
+        data: {
+          email: options.adminConfig.email,
+          emailVerifiedAt: verifiedAt,
+          passwordHash: options.adminPasswordHash,
+          username: options.adminConfig.username,
+          isActive: true,
+          sessionGeneration: { increment: 1 },
+          deletedAt: null
+        }
+      })
+    : await options.allocateNeedoId((needoId) =>
+        tx.user.create({
+          data: {
+            needoId,
+            email: options.adminConfig.email,
+            emailVerifiedAt: verifiedAt,
+            passwordHash: options.adminPasswordHash,
+            username: options.adminConfig.username,
+            isActive: true
+          }
+        })
+      );
+
+  await tx.auditLog.create({
+    data: {
+      actorId: adminUser.id,
+      action: "seed.admin_account.migrate",
+      targetType: "User",
+      targetId: adminUser.id,
+      metadata: {
+        namespace: ADMIN_SEED_AUDIT_NAMESPACE,
+        oldEmail: existing?.email ?? null,
+        newEmail: options.adminConfig.email,
+        preservedNeedoId: adminUser.needoId
+      }
+    }
+  });
+
+  return adminUser;
+};
+
+export const revokeAdminSeedSessions = async (
+  sessionRevoker: AdminSeedSessionRevoker,
+  adminUserId: number,
+  sessionGeneration: number
+): Promise<void> => {
+  await sessionRevoker.revokeAllRefreshTokens(adminUserId, sessionGeneration);
+};
 
 export interface SeedUserInput {
   email: string;
@@ -3414,7 +3514,8 @@ const upsertSeedShopFinanceRuleSet = async (
 };
 
 export const seedUserManagement = async (
-  prisma: PrismaClient = createSeedPrismaClient()
+  prisma: PrismaClient = createSeedPrismaClient(),
+  sessionRevoker: AdminSeedSessionRevoker = new RedisAuthSessionStore()
 ): Promise<void> => {
   const adminConfig = getAdminSeedConfig();
   const adminPasswordHash = await hash(adminConfig.password, BCRYPT_ROUNDS);
@@ -3424,6 +3525,9 @@ export const seedUserManagement = async (
     ? await hash(getTestUserSeedPassword(), BCRYPT_ROUNDS)
     : null;
   const rolePermissionAssignments = buildRolePermissionAssignments();
+
+  let adminUserId: number | null = null;
+  let adminSessionGeneration: number | null = null;
 
   await prisma.$transaction(async (tx) => {
     for (const role of SYSTEM_ROLES) {
@@ -3513,24 +3617,13 @@ export const seedUserManagement = async (
       }
     }
 
-    const adminUser = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-      where: { email: adminConfig.email },
-      create: {
-        needoId,
-        email: adminConfig.email,
-        emailVerifiedAt: new Date(),
-        passwordHash: adminPasswordHash,
-        username: adminConfig.username,
-        isActive: true
-      },
-      update: {
-        emailVerifiedAt: new Date(),
-        passwordHash: adminPasswordHash,
-        username: adminConfig.username,
-        isActive: true,
-        deletedAt: null
-      }
-    }));
+    const adminUser = await migrateAdminAccount(tx, {
+      adminConfig,
+      adminPasswordHash,
+      allocateNeedoId: (create) => needoIdAllocator.withNewId(create)
+    });
+    adminUserId = adminUser.id;
+    adminSessionGeneration = adminUser.sessionGeneration;
 
     const adminIdentity = await tx.userIdentity.findFirst({
       where: {
@@ -3641,6 +3734,12 @@ export const seedUserManagement = async (
       });
     }
   });
+
+  if (adminUserId === null || adminSessionGeneration === null) {
+    throw new Error("ADMIN_SEED_ACCOUNT_MIGRATION_MISSING");
+  }
+
+  await revokeAdminSeedSessions(sessionRevoker, adminUserId, adminSessionGeneration);
 };
 
 const runSeed = async (): Promise<void> => {

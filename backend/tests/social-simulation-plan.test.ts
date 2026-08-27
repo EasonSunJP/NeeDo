@@ -6,7 +6,8 @@ describe("formal social simulation plan", () => {
   const { accounts, posts, friendships } = plan;
 
   it("creates 15 deterministic realistic posts for every exported test account", () => {
-    expect(accounts).toHaveLength(216);
+    expect(accounts).toHaveLength(215);
+    expect(new Set(accounts.map((account) => account.email)).size).toBe(accounts.length);
     expect(posts).toHaveLength(accounts.length * 15);
     for (const account of accounts) {
       const accountPosts = posts.filter((post) => post.authorKey === account.key);
@@ -49,8 +50,8 @@ describe("formal social simulation plan", () => {
     expect(accounts).toContainEqual(
       expect.objectContaining({
         accountType: "admin",
-        email: "admin@example.com",
-        socialType: "user"
+        email: "admin@lifedance.com",
+        socialType: "shop"
       })
     );
   });

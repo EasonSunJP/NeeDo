@@ -1,4 +1,7 @@
 import {
+  LIFEDANCE_ADMIN_EMAIL,
+  LIFEDANCE_SHOP_KEY,
+  LIFEDANCE_SHOP_NAME,
   SIMULATION_END_AT,
   SIMULATION_ORDER_PREFIX,
   SIMULATION_START_AT,
@@ -25,7 +28,23 @@ describe("three-month simulation plan", () => {
       ...plan.customers.map((customer) => customer.email)
     ];
     expect(new Set(accountEmails).size).toBe(210);
-    expect(accountEmails.every((email) => email.startsWith("sim."))).toBe(true);
+    expect(accountEmails.filter((email) => !email.startsWith("sim."))).toEqual([
+      LIFEDANCE_ADMIN_EMAIL
+    ]);
+  });
+
+  it("updates the first stable shop slot into the administrator-owned LifeDance shop", () => {
+    expect(plan.shops[0]).toMatchObject({
+      key: LIFEDANCE_SHOP_KEY,
+      ownerEmail: LIFEDANCE_ADMIN_EMAIL,
+      ownerUsername: "LifeDance 管理员",
+      name: LIFEDANCE_SHOP_NAME,
+      city: "東京都",
+      address: "東京都渋谷区道玄坂1-12-1",
+      phone: "050-9101-1001",
+      description:
+        "渋谷のボディケア、ヘッドケア、訪問リラクゼーションを提供するウェルネス店舗です。"
+    });
   });
 
   it("assigns stable generated avatars to every simulated account", () => {

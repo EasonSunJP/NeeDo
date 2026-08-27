@@ -66,8 +66,14 @@ class FakeRedis {
       throw new Error("simulated Redis transaction failure");
     }
     if (script.includes("auth-refresh-store")) {
-      const [refreshKey, userIndexKey] = options.keys;
-      const [jti, ttl] = options.arguments;
+      const [refreshKey, userIndexKey, generationKey] = options.keys;
+      const [jti, ttl, requestedGeneration] = options.arguments;
+      const currentGeneration = await this.get(generationKey);
+      if (currentGeneration === null) {
+        await this.set(generationKey, requestedGeneration);
+      } else if (currentGeneration !== requestedGeneration) {
+        return ["generation_mismatch"];
+      }
       await this.set(refreshKey, "1", { EX: Number(ttl) });
       await this.sAdd(userIndexKey, jti);
       if ((await this.ttl(userIndexKey)) < Number(ttl)) {
@@ -99,10 +105,13 @@ class FakeRedis {
       return ["ok"];
     }
     if (script.includes("auth-refresh-revoke-all")) {
-      const [userIndexKey] = options.keys;
-      const [userId] = options.arguments;
+      const [userIndexKey, generationKey] = options.keys;
+      const [userId, synchronizedGeneration] = options.arguments;
       const jtis = await this.sMembers(userIndexKey);
       await this.del(userIndexKey, ...jtis.map((jti) => `auth:v2:refresh:${userId}:${jti}`));
+      if (synchronizedGeneration !== undefined) {
+        await this.set(generationKey, synchronizedGeneration);
+      }
       return ["ok"];
     }
     throw new Error("unexpected Redis Lua script");
@@ -141,6 +150,20 @@ describe("RedisAuthSessionStore refresh-session index", () => {
     await store.storeRefreshToken(7, "short-session", 60);
 
     expect(await client.ttl("auth:v2:refresh:user:7")).toBe(600);
+  });
+
+  it("synchronizes the Redis generation while revoking migrated administrator sessions", async () => {
+    const client = new FakeRedis();
+    const store = new RedisAuthSessionStore(() => client as never);
+
+    await expect(store.storeRefreshToken(7, "old-session", 600, 0)).resolves.toBe(true);
+    await expect(store.storeRefreshToken(7, "blocked-session", 600, 1)).resolves.toBe(false);
+
+    await store.revokeAllRefreshTokens(7, 1);
+
+    expect(await client.get("auth:v2:session:generation:7")).toBe("1");
+    await expect(store.hasRefreshToken(7, "old-session")).resolves.toBe(false);
+    await expect(store.storeRefreshToken(7, "new-session", 600, 1)).resolves.toBe(true);
   });
 
   it("ignores legacy unindexed refresh keys and uses the v2 session namespace", async () => {
