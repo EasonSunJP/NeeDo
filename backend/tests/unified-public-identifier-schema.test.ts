@@ -9,6 +9,19 @@ describe("unified public identifier schema foundation", () => {
   );
   const schema = readFileSync(schemaPath, "utf8");
   const migration = existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+  const realtimeRepository = readFileSync(
+    join(process.cwd(), "src/repositories/realtime.repository.ts"),
+    "utf8"
+  );
+  const deployedPrerequisiteMigrations = [
+    "20260826132000_im_message_lifecycle_policy",
+    "20260826133000_im_deletion_sync",
+    "20260826134000_group_privacy_mode",
+    "20260827200000_technician_employment_type",
+    "20260828030000_contact_block_state",
+    "20260828031500_contact_block_permission",
+    "20260828060000_message_recall_permission"
+  ];
 
   const modelBlock = (name: string): string => {
     const match = schema.match(new RegExp(`model ${name} \\{([\\s\\S]*?)\\n\\}`));
@@ -144,5 +157,38 @@ describe("unified public identifier schema foundation", () => {
         new RegExp(`${constraint}[\\s\\S]*?ON DELETE RESTRICT ON UPDATE RESTRICT`)
       );
     }
+  });
+
+  it("preserves already-deployed prerequisite migrations and their schema projections", () => {
+    for (const migrationName of deployedPrerequisiteMigrations) {
+      expect(
+        existsSync(join(process.cwd(), `prisma/migrations/${migrationName}/migration.sql`))
+      ).toBe(true);
+    }
+
+    const technician = modelBlock("TechnicianProfile");
+    const conversation = modelBlock("Conversation");
+    const message = modelBlock("Message");
+    const contact = modelBlock("Contact");
+
+    expect(enumBlock("TechnicianEmploymentType")).toContain("INDEPENDENT");
+    expect(technician).toMatch(/employmentType\s+TechnicianEmploymentType/);
+    expect(technician).toContain("employmentStartedAt");
+    expect(enumBlock("MessageRecallMode")).toContain("TRACELESS");
+    expect(enumBlock("ImDeletionAction")).toContain("SERVER_RETENTION_EXPIRED");
+    expect(conversation).toContain("privacyModeEnabled");
+    expect(conversation).toContain("disappearingTtlSeconds");
+    expect(message).toContain("recallDeadlineAt");
+    expect(message).toContain("privacyPolicyVersionAtSend");
+    expect(modelBlock("ImPolicy")).toContain("recallWindowSeconds");
+    expect(modelBlock("ImDeletionSync")).toContain("conversationId");
+    expect(contact).toContain("blockedAt");
+  });
+
+  it("keeps formal message writes compatible with the deployed lifecycle constraint", () => {
+    expect(realtimeRepository).toContain("tx.imPolicy.findFirst");
+    expect(realtimeRepository).toContain("recallWindowSeconds");
+    expect(realtimeRepository).toContain("recallDeadlineAt:");
+    expect(realtimeRepository).toContain("lifecycleVersion:");
   });
 });
