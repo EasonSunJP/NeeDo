@@ -980,6 +980,15 @@ const main = async (): Promise<void> => {
           await tx.contact.createMany({ data: missingContactRows, skipDuplicates: true });
         }
 
+        const imPolicy = await tx.imPolicy.findFirst({
+          where: { activeKey: "active", deletedAt: null },
+          select: {
+            textRetentionSeconds: true,
+            recallWindowSeconds: true,
+            version: true
+          }
+        });
+        assert(imPolicy, "Run the formal IM lifecycle migration before seeding conversations.");
         const messagePlansByConversation = new Map<string, typeof messagesToSeed>();
         for (const message of messagesToSeed) {
           messagePlansByConversation.set(message.conversationKey, [
@@ -1035,24 +1044,36 @@ const main = async (): Promise<void> => {
                 ]
               },
               messages: {
-                create: conversationMessages.map((message) => ({
-                  senderUserId: getParticipantUserId(message.senderType, message.senderKey),
-                  type: MessageType.TEXT,
-                  content: message.content,
-                  metadata: {
-                    namespace: SIMULATION_NAMESPACE,
-                    dataset: "im",
-                    messageKey: message.key,
-                    purpose: isStaffConversation ? "staff_operations" : "customer_service",
-                    focusedCustomer:
-                      conversation.firstType === "customer" &&
-                      conversation.firstKey === "customer-100",
-                    previewCustomer:
-                      conversation.firstType === "customer" &&
-                      conversation.firstKey === previewCustomerKey
-                  },
-                  createdAt: new Date(message.createdAt)
-                }))
+                create: conversationMessages.map((message) => {
+                  const createdAt = new Date(message.createdAt);
+                  return {
+                    senderUserId: getParticipantUserId(message.senderType, message.senderKey),
+                    type: MessageType.TEXT,
+                    content: message.content,
+                    metadata: {
+                      namespace: SIMULATION_NAMESPACE,
+                      dataset: "im",
+                      messageKey: message.key,
+                      purpose: isStaffConversation ? "staff_operations" : "customer_service",
+                      focusedCustomer:
+                        conversation.firstType === "customer" &&
+                        conversation.firstKey === "customer-100",
+                      previewCustomer:
+                        conversation.firstType === "customer" &&
+                        conversation.firstKey === previewCustomerKey
+                    },
+                    createdAt,
+                    expiresAt:
+                      imPolicy.textRetentionSeconds === null
+                        ? null
+                        : new Date(createdAt.getTime() + imPolicy.textRetentionSeconds * 1_000),
+                    recallDeadlineAt: new Date(
+                      createdAt.getTime() + imPolicy.recallWindowSeconds * 1_000
+                    ),
+                    privacyPolicyVersionAtSend: null,
+                    lifecycleVersion: imPolicy.version
+                  };
+                })
               }
             }
           });

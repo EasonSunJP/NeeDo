@@ -503,13 +503,32 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
         return null;
       }
 
+      const policy = await tx.imPolicy.findFirst({
+        where: { activeKey: "active", deletedAt: null },
+        select: {
+          textRetentionSeconds: true,
+          recallWindowSeconds: true,
+          version: true
+        }
+      });
+      const createdAt = new Date();
+      const recallWindowSeconds = policy?.recallWindowSeconds ?? 180;
+      const expiresAt =
+        policy?.textRetentionSeconds === null || policy?.textRetentionSeconds === undefined
+          ? null
+          : new Date(createdAt.getTime() + policy.textRetentionSeconds * 1_000);
       const message = await tx.message.create({
         data: {
           conversationId: input.conversationId,
           senderUserId: input.senderUserId,
           type: this.messageTypeToDb(input.type),
           content: input.content,
-          metadata: this.toJsonValue(input.metadata)
+          metadata: this.toJsonValue(input.metadata),
+          createdAt,
+          expiresAt,
+          recallDeadlineAt: new Date(createdAt.getTime() + recallWindowSeconds * 1_000),
+          privacyPolicyVersionAtSend: null,
+          lifecycleVersion: policy?.version ?? 1
         },
         include: messageInclude
       });
@@ -966,12 +985,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
 
     return buildPaginatedResponse(
       list.map((socialPost) =>
-        this.mapSocialPost(
-          socialPost,
-          userId,
-          socialPost.authorUserId,
-          relationshipMap
-        )
+        this.mapSocialPost(socialPost, userId, socialPost.authorUserId, relationshipMap)
       ),
       total,
       pagination
@@ -1006,12 +1020,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     }
 
     const relationshipMap = await this.loadSocialRelationshipMap(userId, [socialPost.authorUserId]);
-    return this.mapSocialPost(
-      socialPost,
-      userId,
-      socialPost.authorUserId,
-      relationshipMap
-    );
+    return this.mapSocialPost(socialPost, userId, socialPost.authorUserId, relationshipMap);
   }
 
   public async getSocialActivityStatus(
@@ -1512,12 +1521,16 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
   private mapSocialAuthor(author: SocialAuthorRecord): SocialPostAuthorPayload {
     const identity =
       author.identities.find((item) =>
-        ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(item.type)
+        ["customer", "technician", "merchant", "merchant_owner", "merchant_staff"].includes(
+          item.type
+        )
       ) ?? author.identities[0];
     const entityType: SocialPostAuthorPayload["entityType"] =
       identity?.type === "technician"
         ? "technician"
-        : identity?.type === "merchant" || identity?.type === "merchant_owner" || identity?.type === "merchant_staff"
+        : identity?.type === "merchant" ||
+            identity?.type === "merchant_owner" ||
+            identity?.type === "merchant_staff"
           ? "shop"
           : "user";
 

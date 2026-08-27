@@ -284,6 +284,19 @@ enum MessageType {
   @@map("message_type")
 }
 
+enum MessageRecallMode {
+  STANDARD
+  TRACELESS
+}
+
+enum ImDeletionAction {
+  STANDARD_RECALL
+  TRACELESS_RECALL
+  PRIVACY_EXPIRED
+  MEDIA_EXPIRED
+  SERVER_RETENTION_EXPIRED
+}
+
 enum FriendRequestStatus {
   PENDING  @map("pending")
   ACCEPTED @map("accepted")
@@ -357,6 +370,8 @@ model User {
   conversationParticipants        ConversationParticipant[]
   sentMessages                    Message[]                  @relation("MessageSender")
   messageReactions                MessageReaction[]
+  imPoliciesUpdated               ImPolicy[]                 @relation("ImPolicyUpdater")
+  conversationPrivacyUpdates      Conversation[]             @relation("ConversationPrivacyUpdater")
   ownedContacts                   Contact[]                  @relation("ContactOwner")
   contactEntries                  Contact[]                  @relation("ContactUser")
   sentFriendRequests              FriendRequest[]            @relation("FriendRequestRequester")
@@ -1084,20 +1099,29 @@ model OrderStatusHistory {
 }
 
 model Conversation {
-  id              Int              @id @default(autoincrement())
-  type            ConversationType @default(DIRECT)
-  title           String?          @db.VarChar(120)
-  createdByUserId Int?             @map("created_by_user_id")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  deletedAt       DateTime?        @map("deleted_at")
+  id                     Int              @id @default(autoincrement())
+  type                   ConversationType @default(DIRECT)
+  title                  String?          @db.VarChar(120)
+  createdByUserId        Int?             @map("created_by_user_id")
+  privacyModeEnabled     Boolean          @default(false) @map("privacy_mode_enabled")
+  disappearingTtlSeconds Int?             @map("disappearing_ttl_seconds")
+  privacyPolicyVersion   Int              @default(0) @map("privacy_policy_version")
+  privacyUpdatedAt       DateTime?        @map("privacy_updated_at")
+  privacyUpdatedByUserId Int?             @map("privacy_updated_by_user_id")
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
+  deletedAt              DateTime?        @map("deleted_at")
 
-  createdBy    User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  participants ConversationParticipant[]
-  messages     Message[]
+  createdBy        User?                     @relation("ConversationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  privacyUpdatedBy User?                     @relation("ConversationPrivacyUpdater", fields: [privacyUpdatedByUserId], references: [id], onDelete: SetNull)
+  participants     ConversationParticipant[]
+  messages         Message[]
+  deletionSync     ImDeletionSync[]
 
   @@index([type])
   @@index([createdByUserId])
+  @@index([privacyUpdatedByUserId])
+  @@index([privacyModeEnabled, deletedAt])
   @@index([updatedAt])
   @@index([deletedAt])
   @@map("conversations")
@@ -1132,15 +1156,23 @@ model ConversationParticipant {
 }
 
 model Message {
-  id             Int         @id @default(autoincrement())
-  conversationId Int         @map("conversation_id")
-  senderUserId   Int?        @map("sender_user_id")
-  type           MessageType @default(TEXT)
-  content        String?     @db.Text
-  metadata       Json?
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
-  deletedAt      DateTime?   @map("deleted_at")
+  id                         Int                @id @default(autoincrement())
+  conversationId             Int                @map("conversation_id")
+  senderUserId               Int?               @map("sender_user_id")
+  type                       MessageType        @default(TEXT)
+  content                    String?            @db.Text
+  metadata                   Json?
+  expiresAt                  DateTime?          @map("expires_at")
+  expiredAt                  DateTime?          @map("expired_at")
+  recallDeadlineAt           DateTime           @map("recall_deadline_at")
+  recalledAt                 DateTime?          @map("recalled_at")
+  recallMode                 MessageRecallMode? @map("recall_mode")
+  contentPurgedAt            DateTime?          @map("content_purged_at")
+  privacyPolicyVersionAtSend Int?               @map("privacy_policy_version_at_send")
+  lifecycleVersion           Int                @default(0) @map("lifecycle_version")
+  createdAt                  DateTime           @default(now()) @map("created_at")
+  updatedAt                  DateTime           @updatedAt @map("updated_at")
+  deletedAt                  DateTime?           @map("deleted_at")
 
   conversation Conversation              @relation(fields: [conversationId], references: [id], onDelete: Restrict)
   sender       User?                     @relation("MessageSender", fields: [senderUserId], references: [id], onDelete: SetNull)
@@ -1151,8 +1183,52 @@ model Message {
   @@index([senderUserId])
   @@index([type])
   @@index([createdAt])
+  @@index([expiresAt, expiredAt, deletedAt])
+  @@index([privacyPolicyVersionAtSend, expiresAt, expiredAt, deletedAt], map: "messages_privacy_expiry_source_idx")
+  @@index([senderUserId, recallDeadlineAt])
   @@index([deletedAt])
   @@map("messages")
+}
+
+model ImPolicy {
+  id                              Int       @id @default(autoincrement())
+  activeKey                       String?   @unique @map("active_key") @db.VarChar(20)
+  textRetentionSeconds            Int?      @map("text_retention_seconds")
+  imageRetentionSeconds           Int       @default(259200) @map("image_retention_seconds")
+  videoRetentionSeconds           Int       @default(259200) @map("video_retention_seconds")
+  recallWindowSeconds             Int       @default(180) @map("recall_window_seconds")
+  tracelessRecallMembershipLevels Json      @map("traceless_recall_membership_levels")
+  version                         Int       @default(1)
+  updatedByUserId                 Int?      @map("updated_by_user_id")
+  createdAt                       DateTime  @default(now()) @map("created_at")
+  updatedAt                       DateTime  @updatedAt @map("updated_at")
+  deletedAt                       DateTime? @map("deleted_at")
+
+  updatedBy User? @relation("ImPolicyUpdater", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([updatedByUserId])
+  @@index([deletedAt])
+  @@map("im_policies")
+}
+
+model ImDeletionSync {
+  id             Int              @id @default(autoincrement())
+  conversationId Int              @map("conversation_id")
+  messageId      Int              @map("message_id")
+  action         ImDeletionAction
+  mediaKind      String?          @map("media_kind") @db.VarChar(20)
+  occurredAt     DateTime         @map("occurred_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@unique([messageId, action])
+  @@index([conversationId, id])
+  @@index([occurredAt])
+  @@index([deletedAt])
+  @@map("im_deletion_sync")
 }
 
 model MessageReaction {
