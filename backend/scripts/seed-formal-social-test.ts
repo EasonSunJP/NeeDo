@@ -8,8 +8,7 @@ import { dirname, resolve } from "node:path";
 import { SIMULATION_NAMESPACE } from "../src/simulation/three-month-simulation-plan";
 import {
   buildFormalTestAccountExportRow,
-  orderFormalTestAccountExports,
-  resolveFormalNeeDoSequence
+  orderFormalTestAccountExports
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
@@ -58,11 +57,8 @@ const main = async (): Promise<void> => {
           where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
           select: {
             id: true,
+            needoId: true,
             email: true,
-            identities: {
-              where: { isActive: true, deletedAt: null },
-              select: { scopeId: true, scopeType: true }
-            }
           }
         });
         assert(
@@ -71,8 +67,7 @@ const main = async (): Promise<void> => {
         );
 
         const userIdByEmail = new Map(users.map((user) => [user.email, user.id]));
-        const userByEmail = new Map(users.map((user) => [user.email, user]));
-        const needoSequenceByEmail = new Map<string, number>();
+        const needoIdByEmail = new Map(users.map((user) => [user.email, user.needoId]));
         const userIdByKey = new Map(
           socialPlan.accounts.map((account) => [
             account.key,
@@ -95,18 +90,7 @@ const main = async (): Promise<void> => {
             where: { userId, deletedAt: null },
             data: { displayName: account.displayName }
           });
-          const profileScopeId = await syncFormalSocialAccountProfile(tx, userId, account);
-          const user = getRequired(userByEmail, account.email, "formal test user");
-          needoSequenceByEmail.set(
-            account.email,
-            profileScopeId ??
-              resolveFormalNeeDoSequence(
-                account.accountType,
-                account.socialType,
-                user.id,
-                user.identities
-              )
-          );
+          await syncFormalSocialAccountProfile(tx, userId, account);
         }
 
         const existingPosts = await tx.socialPost.findMany({
@@ -244,7 +228,7 @@ const main = async (): Promise<void> => {
           });
         }
 
-        return { userIdByEmail, needoSequenceByEmail, accountCount: users.length };
+        return { userIdByEmail, needoIdByEmail, accountCount: users.length };
       },
       { maxWait: 20_000, timeout: 180_000 }
     );
@@ -254,12 +238,12 @@ const main = async (): Promise<void> => {
         buildFormalTestAccountExportRow(
           {
             ...account,
-            identityScopeId: getRequired(
-              result.needoSequenceByEmail,
+            needoId: getRequired(
+              result.needoIdByEmail,
               account.email,
-              "NeeDo identity"
+              "NeeDo ID"
             ),
-            userId: getRequired(result.userIdByEmail, account.email, "NeeDo ID")
+            userId: getRequired(result.userIdByEmail, account.email, "formal test user")
           },
           seedConfig.defaultPassword
         )

@@ -101,6 +101,8 @@ import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
 import type { AuthSessionStore } from "./services/auth-session.store";
+import type { VerificationChallengeStore } from "./services/auth-verification-challenge.store";
+import type { GoogleCredentialVerifierPort } from "./services/google-credential-verifier.service";
 import type { CustomerAvatarStoragePort } from "./services/customer-avatar.storage";
 import {
   SseRealtimeEventGateway,
@@ -117,8 +119,11 @@ export interface AppDependencies {
   databaseHealthCheck?: () => Promise<DatabaseHealthStatus>;
   metricsService?: ObservabilityMetricsPort;
   authRepository?: AuthRepositoryPort;
+  testOnlyAllowLegacyAuthAdapters?: boolean;
   authSessionStore?: AuthSessionStore;
   otpDeliveryClient?: OtpDeliveryClient;
+  verificationChallengeStore?: VerificationChallengeStore;
+  googleCredentialVerifier?: GoogleCredentialVerifierPort;
   auditLogRepository?: AuditLogRepositoryPort;
   permissionRepository?: PermissionRepositoryPort;
   pricingModeRepository?: PricingModeRepositoryPort;

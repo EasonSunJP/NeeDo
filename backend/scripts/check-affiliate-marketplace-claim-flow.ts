@@ -2,6 +2,7 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
+import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const TASK_BUDGET_NDP = 2_000_000;
 const REWARD_NDP = 1_000;
@@ -65,27 +66,16 @@ const main = async (): Promise<void> => {
 
   try {
     const passwordHash = await hash("AffiliateClaimFlow.2026!", 12);
-    const publisher = await prisma.user.create({
-      data: {
-        email: `${marker}-publisher@needo.test`,
-        passwordHash,
-        username: `${marker} publisher`
-      }
-    });
-    const claimant = await prisma.user.create({
-      data: {
-        email: `${marker}-claimant@needo.test`,
-        passwordHash,
-        username: `${marker} claimant`
-      }
-    });
-    const otherUser = await prisma.user.create({
-      data: {
-        email: `${marker}-other@needo.test`,
-        passwordHash,
-        username: `${marker} other`
-      }
-    });
+    const needoIdAllocator = new NeedoIdAllocator();
+    const createUser = (email: string, username: string) =>
+      needoIdAllocator.withNewId((needoId) =>
+        prisma.user.create({
+          data: { needoId, email, emailVerifiedAt: new Date(), passwordHash, username }
+        })
+      );
+    const publisher = await createUser(`${marker}-publisher@needo.test`, `${marker} publisher`);
+    const claimant = await createUser(`${marker}-claimant@needo.test`, `${marker} claimant`);
+    const otherUser = await createUser(`${marker}-other@needo.test`, `${marker} other`);
     userIds.push(publisher.id, claimant.id, otherUser.id);
 
     const fullRole = await prisma.role.create({

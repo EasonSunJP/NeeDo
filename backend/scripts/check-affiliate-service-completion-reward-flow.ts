@@ -3,6 +3,7 @@ import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
 import { assertSafeAffiliateCompletionDatabase } from "./lib/assert-safe-affiliate-completion-database";
+import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const REWARD_NDP = 1_000;
 const BOOKING_FEE_NDP = 100;
@@ -59,14 +60,17 @@ const main = async (): Promise<void> => {
 
   try {
     const passwordHash = await hash("AffiliateCompletionFlow.2026!", 12);
+    const needoIdAllocator = new NeedoIdAllocator();
     const createUser = async (label: string) => {
-      const user = await prisma.user.create({
+      const user = await needoIdAllocator.withNewId((needoId) => prisma.user.create({
         data: {
+          needoId,
           email: `${marker}-${label}@needo.test`,
+          emailVerifiedAt: new Date(),
           username: `${marker} ${label}`,
           passwordHash
         }
-      });
+      }));
       userIds.push(user.id);
       return user;
     };

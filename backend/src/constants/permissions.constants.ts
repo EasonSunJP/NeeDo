@@ -108,6 +108,34 @@ export const SYSTEM_PERMISSIONS = [
   createPermission("auth:me", "查看当前账号", "api", "auth", "读取当前登录账号、身份、角色和权限"),
   createPermission("auth:refresh", "刷新访问令牌", "api", "auth", "使用刷新令牌续期访问令牌"),
   createPermission("auth:logout", "退出登录", "api", "auth", "退出登录并吊销会话"),
+  createPermission(
+    "auth:google:read",
+    "查看 Google 登录状态",
+    "api",
+    "auth",
+    "查看当前账号的 Google 登录绑定状态"
+  ),
+  createPermission(
+    "auth:google:link",
+    "绑定 Google 登录",
+    "api",
+    "auth",
+    "为当前账号绑定经过验证的 Google 登录"
+  ),
+  createPermission(
+    "auth:google:unlink",
+    "解除 Google 登录",
+    "api",
+    "auth",
+    "解除当前账号的 Google 登录并吊销现有会话"
+  ),
+  createPermission(
+    "auth:password:setup",
+    "设置密码登录",
+    "api",
+    "auth",
+    "为当前账号设置经过邮箱验证的登录密码"
+  ),
 
   createPermission(
     "customer-profile:read",
@@ -968,6 +996,10 @@ const AUTH_AND_DASHBOARD_PERMISSION_CODES = [
   "auth:me",
   "auth:refresh",
   "auth:logout",
+  "auth:google:read",
+  "auth:google:link",
+  "auth:google:unlink",
+  "auth:password:setup",
   "menu:dashboard",
   "page:dashboard"
 ] as const satisfies readonly SystemPermissionCode[];

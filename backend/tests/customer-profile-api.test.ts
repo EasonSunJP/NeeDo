@@ -22,11 +22,21 @@ class InMemoryAuthSessionStore {
     return this.getValue(`login:lock:${email}`) !== null;
   }
 
+  public async getAccountLoginLock(): Promise<boolean> {
+    return false;
+  }
+
   public async recordFailedLogin(): Promise<{ count: number; locked: boolean }> {
     return { count: 1, locked: false };
   }
 
   public async clearFailedLogin(): Promise<void> {}
+
+  public async recordFailedLoginForAccount(): Promise<{ count: number; locked: boolean }> {
+    return { count: 1, locked: false };
+  }
+
+  public async clearFailedLoginForAccount(): Promise<void> {}
 
   public async storeOtp(email: string, otp: string, ttlSeconds: number): Promise<void> {
     this.setValue(`otp:${email}`, otp, ttlSeconds);
@@ -62,6 +72,15 @@ class InMemoryAuthSessionStore {
 
   public async revokeRefreshToken(userId: number, jti: string): Promise<void> {
     this.values.delete(`refresh:${userId}:${jti}`);
+  }
+
+  public async revokeAllRefreshTokens(userId: number): Promise<void> {
+    const keyPrefix = `refresh:${userId}:`;
+    for (const key of this.values.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.values.delete(key);
+      }
+    }
   }
 
   public async blacklistAccessToken(jti: string, ttlSeconds: number): Promise<void> {
@@ -136,12 +155,14 @@ const createFixture = async () => {
   };
   const customer = {
     id: 11,
+    needoId: "n0000000011",
     email: "customer@example.com",
     phone: null,
     passwordHash,
     username: "Aya Customer",
     avatarUrl: null,
     isActive: true,
+    accessState: { disabled: false, restricted: false },
     lastLoginAt: null,
     createdAt: now,
     updatedAt: now,
@@ -164,6 +185,7 @@ const createFixture = async () => {
   const technician = {
     ...customer,
     id: 12,
+    needoId: "n0000000012",
     email: "technician@example.com",
     username: "Tomo Technician",
     identities: [
@@ -184,6 +206,7 @@ const createFixture = async () => {
   const wrongIdentity = {
     ...technician,
     id: 13,
+    needoId: "n0000000013",
     email: "wrong-identity@example.com",
     username: "Mika Wrong Identity",
     identities: [
@@ -210,12 +233,13 @@ const createFixture = async () => {
     ),
     findUserByLoginIdentifier: jest.fn(
       async (identifier: string) =>
-        users.find((user) => user.email === identifier || user.username === identifier) ?? null
+        users.find((user) => user.email === identifier || user.needoId === identifier) ?? null
     ),
-    findUserById: jest.fn(
-      async (id: number) => users.find((user) => user.id === id) ?? null
-    ),
-    registerUser: jest.fn(),
+    findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null),
+    createVerifiedBaselineCustomer: jest.fn(async () => {
+      throw new Error("unexpected verified registration");
+    }),
+    findVerifiedRegistrationByChallenge: jest.fn(async () => null),
     updateLastLoginAt: jest.fn(async () => undefined),
     createLoginLog: jest.fn(async () => undefined),
     createAuditLog: jest.fn(async (entry: unknown) => {
@@ -253,6 +277,7 @@ const createFixture = async () => {
     {
       redisHealthCheck: async () => ({ status: "ok", latencyMs: 0 }),
       authRepository,
+      testOnlyAllowLegacyAuthAdapters: true,
       authSessionStore: new InMemoryAuthSessionStore(),
       auditLogRepository: {
         create: jest.fn(async (entry: unknown) => {
@@ -265,7 +290,7 @@ const createFixture = async () => {
   const login = async (email: string) => {
     const response = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email, password: "Abcd@1234" })
+      .send({ loginIdentifier: email, password: "Abcd@1234" })
       .expect(200);
     return response.body.data.accessToken as string;
   };
@@ -274,6 +299,19 @@ const createFixture = async () => {
 };
 
 describe("customer profile current-user API", () => {
+  it("implements per-user refresh-session revocation in its auth store fixture", async () => {
+    const sessionStore = new InMemoryAuthSessionStore();
+    await sessionStore.storeRefreshToken(11, "customer-session-a", 600);
+    await sessionStore.storeRefreshToken(11, "customer-session-b", 600);
+    await sessionStore.storeRefreshToken(12, "other-user-session", 600);
+
+    await sessionStore.revokeAllRefreshTokens(11);
+
+    await expect(sessionStore.hasRefreshToken(11, "customer-session-a")).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(11, "customer-session-b")).resolves.toBe(false);
+    await expect(sessionStore.hasRefreshToken(12, "other-user-session")).resolves.toBe(true);
+  });
+
   it("reads and updates only the authenticated customer profile", async () => {
     const fixture = await createFixture();
 
@@ -358,9 +396,7 @@ describe("customer profile current-user API", () => {
       await request(fixture.app)
         .get(`/media/customer-avatars/${avatarHash}.png/not-an-avatar`)
         .expect(404);
-      await request(fixture.app)
-        .get(`/media/customer-avatars/${avatarHash}.png.json`)
-        .expect(404);
+      await request(fixture.app).get(`/media/customer-avatars/${avatarHash}.png.json`).expect(404);
     } finally {
       await rm(fixture.avatarDirectory, { recursive: true, force: true });
     }

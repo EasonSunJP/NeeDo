@@ -1,6 +1,6 @@
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import type { PortalScope } from "./demoAccount";
-import { normalizeAuthSessionEntityIds, type AuthSession } from "./rbac";
+import { authSessionVersion, isLoginMethod, normalizeAuthSessionEntityIds, type AuthSession } from "./rbac";
 
 const rememberedPortalSessionStoragePrefix = "needo.auth.portal-session";
 const rememberedPortalRefreshTokenStoragePrefix = "needo.auth.portal-refresh-token";
@@ -23,10 +23,15 @@ function isStoredPortalSession(value: unknown, portal: PortalScope): value is Au
   const session = value as Partial<AuthSession>;
 
   return (
-    session.authVersion === 5 &&
+    session.authVersion === authSessionVersion &&
     session.portal === portal &&
     typeof session.id === "number" &&
+    typeof session.needoId === "string" &&
     typeof session.username === "string" &&
+    typeof session.email === "string" &&
+    (session.emailVerifiedAt === null || typeof session.emailVerifiedAt === "string") &&
+    typeof session.hasPassword === "boolean" &&
+    isLoginMethod(session.loginMethod) &&
     Array.isArray(session.allowedPortals) &&
     Array.isArray(session.roles) &&
     Array.isArray(session.permissions) &&
@@ -52,7 +57,9 @@ export function readRememberedPortalSession(portal: PortalScope) {
 }
 
 export function readRememberedPortalRefreshToken(portal: PortalScope) {
-  return readBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), { silent: true });
+  return readBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), {
+    silent: true
+  });
 }
 
 export function hasRememberedPortalAuthorization(portal: PortalScope) {
@@ -75,8 +82,12 @@ export function rememberPortalAuthorization(session: AuthSession, refreshToken: 
 }
 
 export function forgetRememberedPortalAuthorization(portal: PortalScope) {
-  removeBrowserStorage(getRememberedPortalSessionStorageKey(portal), { silent: true });
-  removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), { silent: true });
+  removeBrowserStorage(getRememberedPortalSessionStorageKey(portal), {
+    silent: true
+  });
+  removeBrowserStorage(getRememberedPortalRefreshTokenStorageKey(portal), {
+    silent: true
+  });
 }
 
 export function forgetAllRememberedPortalAuthorizations() {

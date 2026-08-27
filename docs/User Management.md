@@ -2,8 +2,8 @@
 
 > 用户、技师、店铺与联盟营销身份的申请、审核、合同、银行名义、试用期和 30 天删除规则，以 [`IDENTITY_APPLICATION_WORKFLOWS.md`](./IDENTITY_APPLICATION_WORKFLOWS.md) 为准。
 
-> 文档版本：v1.2.0  
-> 最后更新：2026-05-24  
+> 文档版本：v1.3.0
+> 最后更新：2026-08-27
 > 原文件名：`用户管理.md`  
 > 新文件名：`User Management.md`  
 > 适用阶段：Step 1「工程底座、数据库、认证权限」  
@@ -110,6 +110,10 @@ NeeDo 当前已经有大量页面、三端入口、后台菜单、IM、Social、
 - 后端 User / Identity / Role / Permission 数据模型。
 - Prisma migration 和 seed。
 - 邮箱密码登录。
+- 邮箱注册先验证 OTP，验证成功后才创建账号。
+- 邮箱或不可变 NeeDoID + 密码登录。
+- Google Identity Services 注册/登录，以及登录后绑定、密码设置和解绑。
+- 首次 Google 使用或绑定验证邮箱；已绑定 Google 后续直接登录。
 - OTP 发送与验证。
 - JWT Access Token。
 - Refresh Token。
@@ -138,7 +142,9 @@ NeeDo 当前已经有大量页面、三端入口、后台菜单、IM、Social、
 - 不做 Booking 下单。
 - 不做 NDP 钱包账本。
 - 不做 Stripe / 支付。
-- 不做 LINE / Apple / Google 三方登录正式接入。
+- 不做 LINE / Apple 三方登录正式接入。
+- 不把 Google 登录扩大为 Google Calendar 接入；Calendar 的 OAuth scope、
+  consent 和 provider token 生命周期必须作为独立任务设计。
 - 不做完整 eKYC 审核流。
 - 不做完整商户入驻。
 - 不做完整技师资料审核。
@@ -221,16 +227,28 @@ User Management 必须拆成小 PR，不允许一次性爆发式开发。
 交付 API：
 
 - `POST /api/v1/auth/login`
-- `POST /api/v1/auth/otp/send`
-- `POST /api/v1/auth/otp/verify`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/register/verify`
+- `POST /api/v1/auth/google/init`
+- `POST /api/v1/auth/google`
+- `POST /api/v1/auth/google/verify`
+- `GET /api/v1/auth/google/link`
+- `POST /api/v1/auth/google/link/init`
+- `POST /api/v1/auth/google/link`
+- `POST /api/v1/auth/google/link/verify`
+- `POST /api/v1/auth/password/setup`
+- `POST /api/v1/auth/password/setup/verify`
+- `POST /api/v1/auth/google/unlink`
+- `POST /api/v1/auth/google/unlink/verify`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/me`
 
 验收：
 
-- 邮箱密码登录可用。
-- OTP 登录可用。
+- 邮箱或 NeeDoID + 密码登录可用。
+- 邮箱注册在 OTP 验证前不创建 User。
+- Google 首次使用验证、已绑定直接登录、账号绑定、密码设置和安全解绑可用。
 - Refresh Token 可刷新 Access Token。
 - Logout 后 Access Token 黑名单生效。
 - `/auth/me` 返回身份列表、当前身份、角色、权限和菜单。
@@ -319,22 +337,26 @@ User Management 必须拆成小 PR，不允许一次性爆发式开发。
 
 ```prisma
 model User {
-  id           Int        @id @default(autoincrement())
-  email        String     @unique @db.VarChar(255)
-  phone        String?    @unique @db.VarChar(32)
-  passwordHash String     @map("password_hash") @db.VarChar(255)
-  username     String     @db.VarChar(100)
-  avatarUrl    String?    @map("avatar_url") @db.VarChar(500)
-  isActive     Boolean    @default(true) @map("is_active")
-  lastLoginAt  DateTime?  @map("last_login_at")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
-  deletedAt    DateTime?  @map("deleted_at")
+  id                Int        @id @default(autoincrement())
+  needoId           String     @unique @map("needo_id") @db.VarChar(32)
+  email             String     @unique @db.VarChar(255)
+  phone             String?    @unique @db.VarChar(32)
+  emailVerifiedAt   DateTime?  @map("email_verified_at")
+  passwordHash      String?    @map("password_hash") @db.VarChar(255)
+  username          String     @db.VarChar(100)
+  avatarUrl         String?    @map("avatar_url") @db.VarChar(500)
+  isActive          Boolean    @default(true) @map("is_active")
+  sessionGeneration Int        @default(0) @map("session_generation")
+  lastLoginAt       DateTime?  @map("last_login_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  deletedAt         DateTime?  @map("deleted_at")
 
   identities   UserIdentity[]
   userRoles    UserRole[]
   loginLogs    LoginLog[]
   auditLogs    AuditLog[]
+  externalAccounts ExternalAuthAccount[]
 
   @@index([email])
   @@index([phone])
@@ -343,6 +365,13 @@ model User {
   @@map("users")
 }
 ```
+
+`needoId` 的正式格式是 lowercase `n` + 10 位十进制数字。它由后端在
+邮箱验证完成、创建基线账号的事务中分配，永久 immutable，专门作为稳定
+登录标识。`username`、CustomerProfile/UserIdentity 的 display name 是可编辑
+昵称：新账号初始值等于 `needoId`，后续修改显示名称不得回写或替换
+`needoId`。Google-only 账号允许 `passwordHash=null`，但仍必须有已验证邮箱、
+NeeDoID、基线 customer identity/role/profile。
 
 ### 7.2 UserIdentity
 
@@ -603,7 +632,7 @@ page:admin-settings
 
 ```json
 {
-  "email": "admin@example.com",
+  "loginIdentifier": "admin@example.com",
   "password": "Abcd@1234"
 }
 ```
@@ -624,45 +653,68 @@ page:admin-settings
 
 要求：
 
-- 邮箱不存在和密码错误返回相同错误，防止枚举。
+- `loginIdentifier` 接受规范化 verified email 或 immutable NeeDoID；不得把
+  可编辑昵称当成账号 ID。
+- 邮箱/NeeDoID 不存在和密码错误返回相同错误，防止枚举。
+- 已完成注册验证的账号后续密码登录不重复发送 OTP。
 - 登录成功写 `LoginLog`。
 - 登录失败写 `LoginLog`。
 - 连续失败触发 Redis 锁定。
 
-### 9.2 POST /api/v1/auth/otp/send
+### 9.2 POST /api/v1/auth/register 与 /auth/register/verify
 
-请求：
-
-```json
-{
-  "email": "user@example.com"
-}
-```
-
-要求：
-
-- OTP 6 位数字。
-- Redis key：`otp:{email}`。
-- TTL：600 秒。
-- 冷却 key：`otp:cooldown:{email}`。
-- 冷却 TTL：60 秒。
-- 邮件发送失败必须返回错误，不得静默成功。
-
-### 9.3 POST /api/v1/auth/otp/verify
-
-请求：
+开始请求：
 
 ```json
 {
   "email": "user@example.com",
+  "password": "Abcd@1234"
+}
+```
+
+开始响应只有 `{ challengeId, maskedEmail, expiresIn, cooldownSeconds }`。
+`POST /api/v1/auth/register` 不创建 User；密码仅以 bcrypt cost 12 hash 放在
+受保护的短期 challenge metadata 中。邮件投递失败必须取消 challenge 并返回
+稳定错误，禁止静默成功、响应 OTP、写日志或新增取码接口。
+
+验证请求：
+
+```json
+{
+  "challengeId": "00000000-0000-4000-8000-000000000000",
   "otp": "123456"
 }
 ```
 
+验证成功才在一个数据库事务中创建 verified baseline customer、不可变
+NeeDoID、默认 identity/role、profile、audit，然后返回 NeeDo
+access/refresh token。新用户 nickname/display name 初始等于 NeeDoID，之后只
+允许修改 display name。
+
+### 9.3 Google 注册/登录
+
+1. `POST /api/v1/auth/google/init` 以 `{}` 取得
+   `{ clientId, nonce, nonceChallengeId, expiresIn }`。
+2. 浏览器把 nonce 交给 Google Identity Services，再把
+   `{ credential, nonceChallengeId }` POST 到 `/api/v1/auth/google`。
+3. 已绑定 subject 返回 `status=authenticated` 和 NeeDo token；首次 subject
+   返回 `status=verification_required` 和邮箱 challenge。
+4. 首次流程使用 `{ challengeId, otp }` 调用
+   `/api/v1/auth/google/verify`。同 verified email 的既有账号被绑定；不同邮箱
+   创建独立 Google-only baseline customer。只有新建账号时响应包含 NeeDoID。
+
 要求：
 
-- 验证成功后立即删除 OTP。
-- 返回 token 结构与 login 一致。
+- OTP 6 位数字。
+- Google credential 必须校验 signature、issuer、audience、nonce、expiry、
+  email 和 `email_verified`；nonce 单次使用并原子消费。
+- 首次 Google 使用/注册和登录后绑定都验证邮箱；相同绑定后续登录不重复
+  OTP。
+- 不存 Google access token、refresh token 或 client secret，只存 provider
+  subject、规范化邮箱和验证/使用时间。
+- subject 已属于其他用户时返回 stable conflict，不静默合并。
+- Google 登录只申请 identity claims；Google Calendar 权限、consent 和 token
+  存储是完全独立的功能。
 
 ### 9.4 POST /api/v1/auth/refresh
 
@@ -677,7 +729,7 @@ page:admin-settings
 要求：
 
 - 校验 Refresh Token 签名。
-- 校验 Redis 中 `refresh:{userId}:{jti}` 是否存在。
+- 校验 Redis 中 `auth:v2:refresh:{userId}:{jti}` 是否存在。
 - 返回新的 Access Token。
 - 可选实现 Refresh Token rotation，但必须保证旧 token 可吊销。
 
@@ -725,6 +777,26 @@ page:admin-settings
   }
 }
 ```
+
+### 9.7 登录后 Google 与密码安全管理
+
+正式 API：
+
+- `GET /api/v1/auth/google/link`：读取 `{ linked, maskedEmail, hasPassword, canUnlink }`。
+- `POST /api/v1/auth/google/link/init`：创建绑定到当前 user 的 Google nonce。
+- `POST /api/v1/auth/google/link`：验证 Google credential 后，向 NeeDo email
+  创建 OTP challenge。
+- `POST /api/v1/auth/google/link/verify`：OTP 正确后原子创建绑定。
+- `POST /api/v1/auth/password/setup` 和 `/password/setup/verify`：允许
+  Google-only 用户经 NeeDo email OTP 设置第一个密码。
+- `POST /api/v1/auth/google/unlink` 和 `/google/unlink/verify`：只有已有密码时
+  才允许经 OTP 解绑。
+
+所有接口从 Bearer token 解析当前用户，body 不接受 userId。Google unlink
+成功后必须软删除 binding、推进数据库/Redis session generation、撤销该用户
+全部 refresh token、把当前 access token 加黑名单并返回 `{ signedOut: true }`。
+客户端立即清空本地登录态。短期 completion receipt 只用于在 token 已失效后
+安全重试同一个 unlink 完成响应，不能恢复 session 或执行第二次解绑。
 
 ---
 
@@ -895,16 +967,29 @@ page:admin-settings
 
 | 用途 | Key | TTL |
 |---|---|---|
-| OTP | `otp:{email}` | 600s |
-| OTP 冷却 | `otp:cooldown:{email}` | 60s |
+| Formal email challenge | `auth:verification:email:{challengeId}` | 固定 600s |
+| Formal OTP 冷却 | `auth:verification:cooldown:{HMAC}` | 固定 60s |
+| Google nonce | `auth:verification:google-nonce:{nonceChallengeId}` | `AUTH_GOOGLE_NONCE_TTL_SECONDS`，最大 600s |
 | 登录失败计数 | `login:fail:{ip}:{email}` | 300s |
 | 账号锁定 | `login:lock:{email}` | 300s |
 | Access Token 黑名单 | `token:blacklist:{jti}` | Access Token 剩余 TTL |
-| Refresh Token | `refresh:{userId}:{jti}` | 7d |
+| Refresh Token | `auth:v2:refresh:{userId}:{jti}` | 最大 7d |
+| Refresh Token 用户索引 | `auth:v2:refresh:user:{userId}` | 当前最长 refresh TTL |
+| Session generation | `auth:v2:session:generation:{userId}` | 不过期；账号安全变更时推进 |
+| Unlink completion receipt | `auth:verification:unlink-complete:{challengeId}` | 600s |
 | 用户权限缓存 | `rbac:user:{userId}:identity:{identityId}` | 300s |
 | 用户 me 缓存 | `auth:me:{userId}:identity:{identityId}` | 120s |
 
 权限、角色、用户身份变化时，必须清理相关 RBAC 和 `/auth/me` 缓存。
+正式注册/Google/account-security 流不得使用历史 `otp:{email}` 通用 key；它们
+必须携带 purpose、user binding 和 attempt counter。OTP 只存 HMAC digest，
+cooldown email identity 使用 HMAC，Google nonce 使用 AES-256-GCM；allowlisted
+challenge metadata 是 Redis JSON，不是密文，必须由 Redis 私网、ACL、传输与备份
+控制保护。
+`AUTH_VERIFICATION_MAX_ATTEMPTS` 最大为 5，最后一次错误会销毁 challenge；成功
+验证立即消费。Google nonce 只能原子消费一次。Unlink 通过单个 Redis 原子操作
+完成 challenge finalize、all-refresh revoke、session generation 同步、access
+blacklist 和 completion receipt。
 
 ---
 
@@ -1107,11 +1192,13 @@ backend/tests/rbac.middleware.test.ts
 
 覆盖：
 
-- 正常邮箱密码登录。
+- 正常邮箱与 NeeDoID 密码登录。
 - 密码错误返回统一错误。
 - 连续失败 5 次后锁定。
-- OTP 发送与验证。
+- 邮箱注册在 OTP 验证前无 User，验证后创建完整 baseline customer。
 - OTP 使用后失效。
+- Google 首次 OTP 绑定、重复直接登录和独立 Google-only 注册。
+- Google-only 密码设置和 Google unlink 全 session 撤销。
 - Token refresh。
 - Logout 后 token 黑名单生效。
 - `/auth/me` 返回权限列表。
@@ -1143,8 +1230,10 @@ backend/tests/rbac.middleware.test.ts
 
 ### 功能验收
 
-- [ ] 邮箱密码登录端到端可用。
-- [ ] OTP 登录端到端可用。
+- [ ] 邮箱或 NeeDoID + 密码登录端到端可用。
+- [ ] Email registration 在 OTP 验证前不创建 User，验证后返回 immutable NeeDoID。
+- [ ] Google first-use OTP、repeat direct login、Google-only registration 端到端可用。
+- [ ] Google-only password setup 与 Google unlink 的全 session 撤销可用。
 - [ ] Token refresh 可用。
 - [ ] Logout 后旧 token 无法使用。
 - [ ] `/auth/me` 返回当前用户、身份、角色、权限、菜单。

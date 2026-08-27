@@ -1,6 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { authApi } from "../api/auth";
-import { clearAuthTokens, getAccessToken, getStoredRefreshToken, setAccessToken, setAuthExpiredHandler, setStoredRefreshToken } from "../api/httpClient";
+import {
+  authApi,
+  type GoogleCredentialResult,
+  type RegistrationStartInput,
+  type VerificationChallengeInput,
+  type VerificationChallengePayload
+} from "../api/auth";
+import {
+  clearAuthTokens,
+  getAccessToken,
+  getStoredRefreshToken,
+  setAccessToken,
+  setAuthExpiredHandler,
+  setStoredRefreshToken
+} from "../api/httpClient";
 import { isStaticDemoMode } from "../api/staticDemoMode";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { demoAuthAccount, type PortalScope } from "./demoAccount";
@@ -14,8 +27,10 @@ import {
   readRememberedPortalSession,
   rememberPortalAuthorization
 } from "./portalAuthorization";
+import { purgeLegacyRememberedCredentials } from "./rememberCredentials";
 import {
   buildAuthSessionFromMe,
+  authSessionVersion,
   canAccessFeatureFromSession,
   canAccessMenuFromSession,
   canAccessPortalFromSession,
@@ -24,6 +39,7 @@ import {
   hasAnyPermissionInSession,
   hasPermissionInSession,
   isFrontendBypassSession,
+  isLoginMethod,
   normalizeAuthSessionEntityIds,
   type AuthMePayload,
   type AuthSession,
@@ -34,9 +50,30 @@ export type { PortalScope } from "./demoAccount";
 export { demoAuthAccount } from "./demoAccount";
 export type { AuthSession } from "./rbac";
 
-export type AuthActionResult =
-  | { ok: true; session: AuthSession }
+export type AuthActionResult = { ok: true; session: AuthSession } | { message: string; ok: false };
+
+export type AuthChallengeActionResult =
+  | {
+      challenge: VerificationChallengePayload;
+      ok: true;
+      status: "verification_required";
+    }
   | { message: string; ok: false };
+
+export type AuthenticatedAuthActionResult =
+  | {
+      needoId?: string;
+      ok: true;
+      session: AuthSession;
+      status: "authenticated";
+    }
+  | { message: string; ok: false };
+
+export type VerifiedRegistrationActionResult =
+  | { needoId: string; ok: true; session: AuthSession; status: "authenticated" }
+  | { message: string; ok: false };
+
+export type GoogleAuthActionResult = AuthChallengeActionResult | AuthenticatedAuthActionResult;
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -44,9 +81,17 @@ type AuthContextValue = {
   isRestoring: boolean;
   login: (portal: PortalScope, email: string, password: string, captchaCode?: string) => Promise<AuthActionResult>;
   loginWithFormalPassword: (portal: PortalScope, username: string, password: string) => Promise<AuthActionResult>;
+  startRegistration: (input: RegistrationStartInput) => Promise<AuthChallengeActionResult>;
+  verifyRegistration: (input: VerificationChallengeInput) => Promise<VerifiedRegistrationActionResult>;
+  loginWithGoogle: (result: GoogleCredentialResult, requestedPortal?: PortalScope) => Promise<GoogleAuthActionResult>;
+  verifyGoogleRegistrationOrLink: (
+    input: VerificationChallengeInput,
+    requestedPortal?: PortalScope
+  ) => Promise<AuthenticatedAuthActionResult>;
+  /** @deprecated Task 11 removes the obsolete generic verification-code page. */
   sendVerificationCode: (email: string) => Promise<{ message?: string; ok: boolean }>;
+  /** @deprecated Task 11 removes the obsolete generic verification-code page. */
   loginWithVerificationCode: (portal: PortalScope, email: string, code: string) => Promise<AuthActionResult>;
-  loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => Promise<AuthActionResult>;
   loginWithQr: (portal: PortalScope, token: string) => Promise<AuthActionResult>;
   enterFrontendWithoutAuthentication: (portal: PortalScope) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
@@ -99,14 +144,17 @@ const frontendBypassIdentityConfig = {
     scopeId: null,
     scopeType: "global"
   }
-} satisfies Record<Exclude<PortalScope, "admin">, {
-  identityType: string;
-  menu: string;
-  permission: string;
-  role: string;
-  scopeId: number | null;
-  scopeType: string;
-}>;
+} satisfies Record<
+  Exclude<PortalScope, "admin">,
+  {
+    identityType: string;
+    menu: string;
+    permission: string;
+    role: string;
+    scopeId: number | null;
+    scopeType: string;
+  }
+>;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -126,9 +174,15 @@ function isStoredAuthSession(value: unknown): value is AuthSession {
   const session = value as Partial<AuthSession>;
 
   return (
-    session.authVersion === 5 &&
+    session.authVersion === authSessionVersion &&
     typeof session.id === "number" &&
+    typeof session.needoId === "string" &&
+    session.needoId.length > 0 &&
     typeof session.username === "string" &&
+    typeof session.email === "string" &&
+    (session.emailVerifiedAt === null || typeof session.emailVerifiedAt === "string") &&
+    typeof session.hasPassword === "boolean" &&
+    isLoginMethod(session.loginMethod) &&
     allPortals.includes(session.portal as PortalScope) &&
     Array.isArray(session.allowedPortals) &&
     Array.isArray(session.roles) &&
@@ -139,7 +193,9 @@ function isStoredAuthSession(value: unknown): value is AuthSession {
 }
 
 function readStoredAuthSession() {
-  const rawSession = readBrowserStorage(legacySessionStorageKey, { silent: true });
+  const rawSession = readBrowserStorage(legacySessionStorageKey, {
+    silent: true
+  });
 
   if (!rawSession) {
     return null;
@@ -147,9 +203,7 @@ function readStoredAuthSession() {
 
   try {
     const parsedSession: unknown = JSON.parse(rawSession);
-    const storedSession = isStoredAuthSession(parsedSession)
-      ? normalizeAuthSessionEntityIds(parsedSession)
-      : null;
+    const storedSession = isStoredAuthSession(parsedSession) ? normalizeAuthSessionEntityIds(parsedSession) : null;
 
     if (isFrontendBypassSession(storedSession) && !isStaticDemoMode()) {
       removeBrowserStorage(portalStorageKey, { silent: true });
@@ -163,8 +217,106 @@ function readStoredAuthSession() {
   }
 }
 
-function normalizeApiError(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
+function normalizeApiError(error: unknown, fallback = "error.api") {
+  const candidate =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? (error as { message?: unknown }).message
+        : null;
+
+  return typeof candidate === "string" && /^error(?:\.[a-z0-9_-]+)+$/i.test(candidate) ? candidate : fallback;
+}
+
+function isVerificationChallenge(value: unknown): value is VerificationChallengePayload {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const challenge = value as Partial<VerificationChallengePayload>;
+
+  return (
+    typeof challenge.challengeId === "string" &&
+    challenge.challengeId.length > 0 &&
+    typeof challenge.maskedEmail === "string" &&
+    challenge.maskedEmail.length > 0 &&
+    typeof challenge.expiresIn === "number" &&
+    challenge.expiresIn > 0 &&
+    typeof challenge.cooldownSeconds === "number" &&
+    challenge.cooldownSeconds >= 0
+  );
+}
+
+function isAuthIdentityPayload(value: unknown): value is AuthMePayload["currentIdentity"] {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const identity = value as Partial<AuthMePayload["currentIdentity"]>;
+
+  return (
+    typeof identity.id === "number" &&
+    Number.isInteger(identity.id) &&
+    typeof identity.type === "string" &&
+    identity.type.length > 0 &&
+    (identity.scopeId === null || (typeof identity.scopeId === "number" && Number.isInteger(identity.scopeId))) &&
+    (identity.scopeType === null || typeof identity.scopeType === "string")
+  );
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const me = value as Partial<AuthMePayload>;
+
+  return (
+    typeof me.id === "number" &&
+    typeof me.needoId === "string" &&
+    me.needoId.length > 0 &&
+    typeof me.email === "string" &&
+    (me.emailVerifiedAt === null || typeof me.emailVerifiedAt === "string") &&
+    typeof me.hasPassword === "boolean" &&
+    typeof me.username === "string" &&
+    (me.avatarUrl === null || typeof me.avatarUrl === "string") &&
+    typeof me.isActive === "boolean" &&
+    isAuthIdentityPayload(me.currentIdentity) &&
+    Array.isArray(me.identities) &&
+    me.identities.length > 0 &&
+    me.identities.every(isAuthIdentityPayload) &&
+    me.identities.some((identity) => identity.id === me.currentIdentity?.id) &&
+    isStringArray(me.roles) &&
+    isStringArray(me.permissions) &&
+    isStringArray(me.menus) &&
+    (me.identityAvailability === undefined || Array.isArray(me.identityAvailability))
+  );
+}
+
+function requireFormalAuthMePayload(value: unknown, errorKey = "error.api"): AuthMePayload {
+  if (!isFormalAuthMePayload(value)) {
+    throw new Error(errorKey);
+  }
+
+  return value;
+}
+
+function isAuthenticatedGoogleResult(
+  result: GoogleCredentialResult
+): result is Extract<GoogleCredentialResult, { status: "authenticated" }> {
+  return (
+    result.status === "authenticated" &&
+    typeof result.accessToken === "string" &&
+    result.accessToken.length > 0 &&
+    typeof result.refreshToken === "string" &&
+    result.refreshToken.length > 0 &&
+    typeof result.expiresIn === "number" &&
+    result.expiresIn > 0
+  );
 }
 
 function createFrontendBypassMe(portal: Exclude<PortalScope, "admin">): AuthMePayload {
@@ -178,7 +330,10 @@ function createFrontendBypassMe(portal: Exclude<PortalScope, "admin">): AuthMePa
 
   return {
     id: 260417,
+    needoId: "n0000260417",
     email: `${portal}.preview@needo.local`,
+    emailVerifiedAt: null,
+    hasPassword: false,
     username: `${portal}-preview`,
     avatarUrl: null,
     isActive: true,
@@ -191,7 +346,10 @@ function createFrontendBypassMe(portal: Exclude<PortalScope, "admin">): AuthMePa
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<AuthSession | null>(() => readStoredAuthSession());
+  const [storedSessionForInitialRestore] = useState(() => readStoredAuthSession());
+  const [session, setSession] = useState<AuthSession | null>(() =>
+    isFrontendBypassSession(storedSessionForInitialRestore) ? storedSessionForInitialRestore : null
+  );
   const [isRestoring, setIsRestoring] = useState(() => Boolean(getStoredRefreshToken()) && !getAccessToken());
 
   const clearSession = useCallback(() => {
@@ -204,7 +362,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const persistSession = useCallback((nextSession: AuthSession) => {
     setSession(nextSession);
     writeBrowserStorage(portalStorageKey, nextSession.portal, { silent: true });
-    writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), { silent: true });
+    writeBrowserStorage(legacySessionStorageKey, JSON.stringify(nextSession), {
+      silent: true
+    });
     rememberPortalAuthorization(nextSession, getStoredRefreshToken());
   }, []);
 
@@ -224,8 +384,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         await authApi.refresh();
-        const me = await authApi.me();
+        let me = requireFormalAuthMePayload(await authApi.me());
         const rememberedSession = readRememberedPortalSession(portal);
+        const portalIdentity = findIdentityForPortal(me.identities, portal);
+        if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
+          me = requireFormalAuthMePayload((await authApi.switchIdentity(portalIdentity.id)).me);
+        }
         const nextSession = buildAuthSessionFromMe(
           me,
           portal,
@@ -264,12 +428,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const completeAuthenticatedSession = useCallback(
-    async (requestedPortal: PortalScope, loginMethod: LoginMethod, providedMe?: AuthMePayload): Promise<AuthActionResult> => {
+    async (
+      requestedPortal: PortalScope,
+      loginMethod: LoginMethod,
+      providedMe?: AuthMePayload,
+      errorFallback = "error.api"
+    ): Promise<AuthActionResult> => {
       try {
-        let me = providedMe ?? (await authApi.me());
+        let me = requireFormalAuthMePayload(providedMe ?? (await authApi.me()), errorFallback);
         const portalIdentity = findIdentityForPortal(me.identities, requestedPortal);
         if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
-          me = (await authApi.switchIdentity(portalIdentity.id)).me;
+          me = requireFormalAuthMePayload((await authApi.switchIdentity(portalIdentity.id)).me, errorFallback);
         }
         const nextSession = buildAuthSessionFromMe(me, requestedPortal, loginMethod);
         persistSession(nextSession);
@@ -278,13 +447,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         clearSession();
 
-        return { ok: false, message: normalizeApiError(error) };
+        return { ok: false, message: normalizeApiError(error, errorFallback) };
       }
     },
     [clearSession, persistSession]
   );
 
   useEffect(() => {
+    purgeLegacyRememberedCredentials();
     setAuthExpiredHandler(clearSession);
 
     return () => setAuthExpiredHandler(null);
@@ -317,8 +487,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setIsRestoring(true);
         await authApi.refresh();
-        const restorePortal = session?.portal ?? readStoredPortal();
-        const restored = await completeAuthenticatedSession(restorePortal, "password");
+        const restorePortal = session?.portal ?? storedSessionForInitialRestore?.portal ?? readStoredPortal();
+        const restoreLoginMethod = session?.loginMethod ?? storedSessionForInitialRestore?.loginMethod ?? "password";
+        const restored = await completeAuthenticatedSession(restorePortal, restoreLoginMethod);
         if (!active || !restored.ok) {
           return;
         }
@@ -338,7 +509,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [clearSession, completeAuthenticatedSession, session]);
+  }, [clearSession, completeAuthenticatedSession, session, storedSessionForInitialRestore]);
 
   const login = useCallback(
     async (portal: PortalScope, email: string, password: string, captchaCode?: string): Promise<AuthActionResult> => {
@@ -370,40 +541,127 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [clearSession, completeAuthenticatedSession]
   );
 
-  const sendVerificationCode = useCallback(async (email: string) => {
-    try {
-      await authApi.sendOtp(email);
+  const startRegistration = useCallback(
+    async (input: RegistrationStartInput): Promise<AuthChallengeActionResult> => {
+      forgetAllRememberedPortalAuthorizations();
+      clearSession();
 
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, message: normalizeApiError(error) };
-    }
-  }, []);
-
-  const loginWithVerificationCode = useCallback(
-    async (portal: PortalScope, email: string, code: string): Promise<AuthActionResult> => {
       try {
-        await authApi.verifyOtp(email, code);
+        const registrationChallenge = await authApi.startRegistration(input);
 
-        return completeAuthenticatedSession(portal, "verification-code");
+        if (!isVerificationChallenge(registrationChallenge)) {
+          throw new Error("error.api");
+        }
+
+        return {
+          ok: true,
+          status: "verification_required",
+          challenge: registrationChallenge
+        };
+      } catch (error) {
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [clearSession]
+  );
+
+  const verifyRegistration = useCallback(
+    async (input: VerificationChallengeInput): Promise<VerifiedRegistrationActionResult> => {
+      try {
+        const verified = await authApi.verifyRegistration(input);
+        if (typeof verified.needoId !== "string" || !verified.needoId) {
+          throw new Error("error.api");
+        }
+        const completed = await completeAuthenticatedSession("user", "password");
+
+        if (completed.ok && (completed.session.portal !== "user" || !findIdentityForPortal([completed.session.currentIdentity], "user"))) {
+          clearSession();
+          return { ok: false, message: "error.auth.portal_forbidden" };
+        }
+
+        return completed.ok ? { ...completed, status: "authenticated", needoId: verified.needoId } : completed;
       } catch (error) {
         clearSession();
-
         return { ok: false, message: normalizeApiError(error) };
       }
     },
     [clearSession, completeAuthenticatedSession]
   );
 
-  const loginWithProvider = useCallback(async (): Promise<AuthActionResult> => ({
-    ok: false,
-    message: "error.auth.provider_unavailable"
-  }), []);
+  const loginWithGoogle = useCallback(
+    async (result: GoogleCredentialResult, requestedPortal: PortalScope = "user"): Promise<GoogleAuthActionResult> => {
+      if (result.status === "verification_required") {
+        forgetAllRememberedPortalAuthorizations();
+        clearSession();
 
-  const loginWithQr = useCallback(async (): Promise<AuthActionResult> => ({
-    ok: false,
-    message: "error.auth.qr_unavailable"
-  }), []);
+        if (!isVerificationChallenge(result)) {
+          return { ok: false, message: "error.auth.google_api_unavailable" };
+        }
+
+        const googleChallenge: VerificationChallengePayload = {
+          challengeId: result.challengeId,
+          maskedEmail: result.maskedEmail,
+          expiresIn: result.expiresIn,
+          cooldownSeconds: result.cooldownSeconds
+        };
+
+        return {
+          ok: true,
+          status: "verification_required",
+          challenge: googleChallenge
+        };
+      }
+
+      if (!isAuthenticatedGoogleResult(result)) {
+        clearSession();
+        return { ok: false, message: "error.auth.google_api_unavailable" };
+      }
+
+      const completed = await completeAuthenticatedSession(requestedPortal, "google", undefined, "error.auth.google_api_unavailable");
+
+      return completed.ok ? { ...completed, status: "authenticated" } : completed;
+    },
+    [clearSession, completeAuthenticatedSession]
+  );
+
+  const verifyGoogleRegistrationOrLink = useCallback(
+    async (input: VerificationChallengeInput, requestedPortal: PortalScope = "user"): Promise<AuthenticatedAuthActionResult> => {
+      try {
+        const verified = await authApi.verifyGoogleRegistrationOrLink(input);
+        const completed = await completeAuthenticatedSession(requestedPortal, "google", undefined, "error.auth.google_api_unavailable");
+
+        if (completed.ok && verified.needoId && !findIdentityForPortal([completed.session.currentIdentity], "user")) {
+          clearSession();
+          return { ok: false, message: "error.auth.portal_forbidden" };
+        }
+
+        return completed.ok ? { ...completed, status: "authenticated", needoId: verified.needoId } : completed;
+      } catch (error) {
+        clearSession();
+        return {
+          ok: false,
+          message: normalizeApiError(error, "error.auth.google_api_unavailable")
+        };
+      }
+    },
+    [clearSession, completeAuthenticatedSession]
+  );
+
+  const sendVerificationCode = useCallback(async () => {
+    return { ok: false, message: "error.auth.legacy_otp_unavailable" };
+  }, []);
+
+  const loginWithVerificationCode = useCallback(async (): Promise<AuthActionResult> => {
+    return { ok: false, message: "error.auth.legacy_otp_unavailable" };
+  }, []);
+
+  const loginWithQr = useCallback(
+    async (): Promise<AuthActionResult> => ({
+      ok: false,
+      message: "error.auth.qr_unavailable"
+    }),
+    []
+  );
 
   const enterFrontendWithoutAuthentication = useCallback(
     async (portal: PortalScope): Promise<AuthActionResult> => {
@@ -412,7 +670,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       clearAuthTokens();
-      const nextSession = buildAuthSessionFromMe(createFrontendBypassMe(portal as Exclude<PortalScope, "admin">), portal, "frontend-bypass");
+      const nextSession = buildAuthSessionFromMe(
+        createFrontendBypassMe(portal as Exclude<PortalScope, "admin">),
+        portal,
+        "frontend-bypass"
+      );
       persistSession(nextSession);
 
       return { ok: true, session: nextSession };
@@ -426,63 +688,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
   }, [clearSession]);
 
-  const switchPortal = useCallback(async (portal: PortalScope): Promise<AuthActionResult> => {
-    if (!session || !canAccessPortalFromSession(session, portal)) {
-      const restored = await restoreRememberedPortalSession(portal);
+  const switchPortal = useCallback(
+    async (portal: PortalScope): Promise<AuthActionResult> => {
+      if (!session || !canAccessPortalFromSession(session, portal)) {
+        const restored = await restoreRememberedPortalSession(portal);
 
-      if (restored.ok) {
-        return restored;
+        if (restored.ok) {
+          return restored;
+        }
+
+        return { ok: false, message: restored.message };
       }
 
-      return { ok: false, message: restored.message };
-    }
+      const portalIdentity = findIdentityForPortal(session.identities, portal);
+      const nextLocalSession = {
+        ...session,
+        portal
+      };
+      const needsBackendIdentitySwitch =
+        Boolean(portalIdentity) &&
+        portalIdentity?.id !== session.currentIdentity.id &&
+        Boolean(getAccessToken()) &&
+        Boolean(getStoredRefreshToken());
 
-    const portalIdentity = findIdentityForPortal(session.identities, portal);
-    const nextLocalSession = {
-      ...session,
-      portal
-    };
-    const needsBackendIdentitySwitch =
-      Boolean(portalIdentity) &&
-      portalIdentity?.id !== session.currentIdentity.id &&
-      Boolean(getAccessToken()) &&
-      Boolean(getStoredRefreshToken());
-
-    if (!needsBackendIdentitySwitch || !portalIdentity) {
-      persistSession(nextLocalSession);
-      return { ok: true, session: nextLocalSession };
-    }
-
-    try {
-      const switched = await authApi.switchIdentity(portalIdentity.id);
-      const nextSession = buildAuthSessionFromMe(switched.me, portal, session.loginMethod);
-      persistSession(nextSession);
-
-      return { ok: true, session: nextSession };
-    } catch (error) {
-      return { ok: false, message: normalizeApiError(error) };
-    }
-  }, [persistSession, restoreRememberedPortalSession, session]);
-
-  const refreshSession = useCallback(async (requestedPortal?: PortalScope): Promise<AuthActionResult> => {
-    if (!session) {
-      return { ok: false, message: "error.auth.unauthorized" };
-    }
-
-    try {
-      let me = await authApi.me();
-      const targetPortal = requestedPortal ?? session.portal;
-      const portalIdentity = findIdentityForPortal(me.identities, targetPortal);
-      if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
-        me = (await authApi.switchIdentity(portalIdentity.id)).me;
+      if (!needsBackendIdentitySwitch || !portalIdentity) {
+        persistSession(nextLocalSession);
+        return { ok: true, session: nextLocalSession };
       }
-      const nextSession = buildAuthSessionFromMe(me, targetPortal, session.loginMethod);
-      persistSession(nextSession);
-      return { ok: true, session: nextSession };
-    } catch (error) {
-      return { ok: false, message: normalizeApiError(error) };
-    }
-  }, [persistSession, session]);
+
+      let identitySwitchCompleted = false;
+
+      try {
+        const switched = await authApi.switchIdentity(portalIdentity.id);
+        identitySwitchCompleted = true;
+        const nextSession = buildAuthSessionFromMe(requireFormalAuthMePayload(switched.me), portal, session.loginMethod);
+        persistSession(nextSession);
+
+        return { ok: true, session: nextSession };
+      } catch (error) {
+        if (identitySwitchCompleted) {
+          clearSession();
+        }
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [clearSession, persistSession, restoreRememberedPortalSession, session]
+  );
+
+  const refreshSession = useCallback(
+    async (requestedPortal?: PortalScope): Promise<AuthActionResult> => {
+      if (!session) {
+        return { ok: false, message: "error.auth.unauthorized" };
+      }
+
+      let identitySwitchCompleted = false;
+
+      try {
+        let me = requireFormalAuthMePayload(await authApi.me());
+        const targetPortal = requestedPortal ?? session.portal;
+        const portalIdentity = findIdentityForPortal(me.identities, targetPortal);
+        if (portalIdentity && portalIdentity.id !== me.currentIdentity.id && getStoredRefreshToken()) {
+          const switched = await authApi.switchIdentity(portalIdentity.id);
+          identitySwitchCompleted = true;
+          me = requireFormalAuthMePayload(switched.me);
+        }
+        const nextSession = buildAuthSessionFromMe(me, targetPortal, session.loginMethod);
+        persistSession(nextSession);
+        return { ok: true, session: nextSession };
+      } catch (error) {
+        if (identitySwitchCompleted) {
+          clearSession();
+        }
+
+        return { ok: false, message: normalizeApiError(error) };
+      }
+    },
+    [clearSession, persistSession, session]
+  );
 
   const hasPermission = useCallback((permission: string) => hasPermissionInSession(session, permission), [session]);
   const hasAnyPermission = useCallback((permissions: string[]) => hasAnyPermissionInSession(session, permissions), [session]);
@@ -511,9 +794,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRestoring,
       login,
       loginWithFormalPassword,
+      startRegistration,
+      verifyRegistration,
+      loginWithGoogle,
+      verifyGoogleRegistrationOrLink,
       sendVerificationCode,
       loginWithVerificationCode,
-      loginWithProvider,
       loginWithQr,
       enterFrontendWithoutAuthentication,
       logout,
@@ -538,15 +824,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isRestoring,
       login,
       loginWithFormalPassword,
+      loginWithGoogle,
       enterFrontendWithoutAuthentication,
-      loginWithProvider,
       loginWithQr,
       loginWithVerificationCode,
       logout,
       refreshSession,
       sendVerificationCode,
       session,
+      startRegistration,
       switchPortal,
+      verifyGoogleRegistrationOrLink,
+      verifyRegistration
     ]
   );
 

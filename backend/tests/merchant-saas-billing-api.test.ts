@@ -327,6 +327,7 @@ const createFixture = async () => {
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository,
+    testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository: { create: jest.fn(async (entry: unknown) => auditLogs.push(entry)) },
@@ -335,7 +336,7 @@ const createFixture = async () => {
   const login = async (email: string): Promise<string> => {
     const response = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email, password: "Abcd@1234" })
+      .send({ loginIdentifier: email, password: "Abcd@1234" })
       .expect(200);
 
     return response.body.data.accessToken as string;

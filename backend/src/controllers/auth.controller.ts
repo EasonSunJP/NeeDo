@@ -4,12 +4,14 @@ import { successResponse } from "../utils/api-response";
 import { AppError } from "../utils/app-error";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
+  ChallengeVerificationBody,
+  GoogleCredentialBody,
   LoginBody,
   LogoutBody,
-  OtpSendBody,
-  OtpVerifyBody,
+  PasswordSetupBody,
   RefreshBody,
   RegisterBody,
+  RegisterVerifyBody,
   SwitchIdentityBody
 } from "../validators/auth.validator";
 
@@ -44,38 +46,254 @@ export class AuthController {
   ): Promise<void> => {
     try {
       response
-        .status(201)
-        .json(successResponse(await this.authService.register(request.body, this.getContext(request))));
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  public sendOtp = async (
-    request: BodyRequest<OtpSendBody>,
-    response: Response,
-    next: NextFunction
-  ): Promise<void> => {
-    try {
-      response
         .status(200)
-        .json(successResponse(await this.authService.sendOtp(request.body.email)));
+        .json(successResponse(await this.authService.startRegistration(request.body)));
     } catch (error) {
       next(error);
     }
   };
 
-  public verifyOtp = async (
-    request: BodyRequest<OtpVerifyBody>,
+  public verifyRegistration = async (
+    request: BodyRequest<RegisterVerifyBody>,
     response: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
-      const { email, otp } = request.body;
       response
         .status(200)
         .json(
-          successResponse(await this.authService.verifyOtp(email, otp, this.getContext(request)))
+          successResponse(
+            await this.authService.verifyRegistration(
+              request.body.challengeId,
+              request.body.otp,
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public initializeGoogleLogin = async (
+    _request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response.status(200).json(successResponse(await this.authService.initializeGoogleLogin()));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public submitGoogleCredential = async (
+    request: BodyRequest<GoogleCredentialBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.submitGoogleCredential(request.body, this.getContext(request))
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public verifyGoogleRegistrationOrLink = async (
+    request: BodyRequest<ChallengeVerificationBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.verifyGoogleRegistrationOrLink(
+              request.body.challengeId,
+              request.body.otp,
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public getGoogleLinkStatus = async (
+    _request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.getGoogleLinkStatus(this.getAuthenticatedAccess(response))
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public initializeAuthenticatedGoogleLink = async (
+    _request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.initializeAuthenticatedGoogleLink(
+              this.getAuthenticatedAccess(response)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public submitAuthenticatedGoogleLink = async (
+    request: BodyRequest<GoogleCredentialBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.submitAuthenticatedGoogleLink(
+              request.body,
+              this.getAuthenticatedAccess(response),
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public verifyAuthenticatedGoogleLink = async (
+    request: BodyRequest<ChallengeVerificationBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.verifyAuthenticatedGoogleLink(
+              request.body.challengeId,
+              request.body.otp,
+              this.getAuthenticatedAccess(response),
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public startGoogleUnlink = async (
+    request: Request,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.startGoogleUnlink(
+              this.getAuthenticatedAccess(response),
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public verifyGoogleUnlink = async (
+    request: BodyRequest<ChallengeVerificationBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const auth = response.locals.auth as AuthenticatedAccessContext | undefined;
+      const result = auth
+        ? await this.authService.verifyGoogleUnlink(
+            request.body.challengeId,
+            request.body.otp,
+            auth,
+            this.getContext(request)
+          )
+        : await this.authService.recoverGoogleUnlinkCompletion(
+            this.getBearerToken(request),
+            request.body.challengeId
+          );
+      response.status(200).json(successResponse(result));
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public startPasswordSetup = async (
+    request: BodyRequest<PasswordSetupBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.startPasswordSetup(
+              request.body.password,
+              this.getAuthenticatedAccess(response),
+              this.getContext(request)
+            )
+          )
+        );
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  public verifyPasswordSetup = async (
+    request: BodyRequest<ChallengeVerificationBody>,
+    response: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      response
+        .status(200)
+        .json(
+          successResponse(
+            await this.authService.verifyPasswordSetup(
+              request.body.challengeId,
+              request.body.otp,
+              this.getAuthenticatedAccess(response),
+              this.getContext(request)
+            )
+          )
         );
     } catch (error) {
       next(error);
@@ -180,5 +398,18 @@ export class AuthController {
     }
 
     return auth;
+  }
+
+  private getBearerToken(request: Request): string {
+    const authorization = request.get("authorization");
+    const [scheme, token, extra] = authorization?.split(/\s+/) ?? [];
+    if (scheme?.toLowerCase() !== "bearer" || !token || extra) {
+      throw new AppError({
+        code: ERROR_CODES.TOKEN_INVALID,
+        message: "error.auth.token_invalid",
+        statusCode: 401
+      });
+    }
+    return token;
   }
 }

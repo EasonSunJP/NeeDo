@@ -215,6 +215,7 @@ const createFixture = () => {
   };
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
+    testOnlyAllowLegacyAuthAdapters: true,
     authRepository: {
       findUserById: jest.fn(async (id: number) => users.find((user) => user.id === id) ?? null)
     },

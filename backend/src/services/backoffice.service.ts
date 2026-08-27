@@ -1,4 +1,5 @@
 import { hash } from "bcryptjs";
+import { NeedoIdAllocationExhaustedError } from "./needo-id.service";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   BackofficeCustomerUpdateBody,
@@ -863,6 +864,9 @@ export class BackofficeService {
         ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS)
       });
     } catch (error) {
+      if (error instanceof NeedoIdAllocationExhaustedError) {
+        throw this.needoIdAllocationUnavailableError();
+      }
       if (this.isUniqueConstraintError(error)) {
         throw this.emailExistsError();
       }
@@ -1210,6 +1214,14 @@ export class BackofficeService {
 
   private emailExistsError(): AppError {
     return new AppError({ code: ERROR_CODES.EMAIL_ALREADY_EXISTS, message: "error.user.email_exists", statusCode: 409 });
+  }
+
+  private needoIdAllocationUnavailableError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.NEEDO_ID_ALLOCATION_UNAVAILABLE,
+      message: "error.auth.needo_id_allocation_unavailable",
+      statusCode: 503
+    });
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

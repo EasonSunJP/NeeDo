@@ -1,4 +1,5 @@
 import { hash } from "bcryptjs";
+import { NeedoIdAllocationExhaustedError } from "./needo-id.service";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   UserRecord,
@@ -106,14 +107,22 @@ export class UserService {
       await this.assertPhoneAvailable(input.phone);
     }
 
-    const user = await this.repository.create({
-      email: input.email,
-      phone: input.phone ?? null,
-      passwordHash: await hash(input.password, BCRYPT_ROUNDS),
-      username: input.username,
-      avatarUrl: input.avatarUrl ?? null,
-      isActive: input.isActive ?? true
-    });
+    let user: UserRecord;
+    try {
+      user = await this.repository.create({
+        email: input.email,
+        phone: input.phone ?? null,
+        passwordHash: await hash(input.password, BCRYPT_ROUNDS),
+        username: input.username,
+        avatarUrl: input.avatarUrl ?? null,
+        isActive: input.isActive ?? true
+      });
+    } catch (error) {
+      if (error instanceof NeedoIdAllocationExhaustedError) {
+        throw this.needoIdAllocationUnavailableError();
+      }
+      throw error;
+    }
     await this.auditLogService.record({
       actor,
       action: "user.create",
@@ -304,6 +313,14 @@ export class UserService {
         statusCode: 409
       });
     }
+  }
+
+  private needoIdAllocationUnavailableError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.NEEDO_ID_ALLOCATION_UNAVAILABLE,
+      message: "error.auth.needo_id_allocation_unavailable",
+      statusCode: 503
+    });
   }
 
   private async assertPhoneAvailable(phone: string): Promise<void> {

@@ -130,13 +130,14 @@ const createFixture = async () => {
       createLoginLog: jest.fn(async () => undefined),
       createAuditLog: jest.fn(async () => undefined)
     },
+    testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemorySessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository: { create: jest.fn(async (entry: Record<string, unknown>) => { auditLogs.push(entry); }) },
     bookingRepository
   } as never);
   const login = async (email: string) => {
-    const response = await request(app).post("/api/v1/auth/login").send({ email, password: "Abcd@1234" }).expect(200);
+    const response = await request(app).post("/api/v1/auth/login").send({ loginIdentifier: email, password: "Abcd@1234" }).expect(200);
     return response.body.data.accessToken as string;
   };
 

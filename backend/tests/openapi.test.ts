@@ -1,5 +1,7 @@
 import request from "supertest";
 import { createApp } from "../src/app";
+import { createOpenApiDocument } from "../src/api/openapi";
+import { env } from "../src/config/env";
 
 describe("GET /api/v1/openapi.json", () => {
   it("describes the health endpoint with the versioned API prefix", async () => {
@@ -11,12 +13,116 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/metrics");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/login");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/register");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/register/verify");
     expect(response.body.paths).not.toHaveProperty("/api/v1/auth/test-login");
-    expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/send");
-    expect(response.body.paths).toHaveProperty("/api/v1/auth/otp/verify");
+    expect(response.body.paths).not.toHaveProperty("/api/v1/auth/otp/send");
+    expect(response.body.paths).not.toHaveProperty("/api/v1/auth/otp/verify");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google/init");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google/verify");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google/link");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google/link/init");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google/link/verify");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google/unlink");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/google/unlink/verify");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/password/setup");
+    expect(response.body.paths).toHaveProperty("/api/v1/auth/password/setup/verify");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/refresh");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/logout");
     expect(response.body.paths).toHaveProperty("/api/v1/auth/me");
+
+    const strictAuthBodies = [
+      ["/api/v1/auth/register", ["email", "password"]],
+      ["/api/v1/auth/register/verify", ["challengeId", "otp"]],
+      ["/api/v1/auth/login", ["loginIdentifier", "password"]],
+      ["/api/v1/auth/google/init", []],
+      ["/api/v1/auth/google", ["credential", "nonceChallengeId"]],
+      ["/api/v1/auth/google/verify", ["challengeId", "otp"]],
+      ["/api/v1/auth/google/link/init", []],
+      ["/api/v1/auth/google/link", ["credential", "nonceChallengeId"]],
+      ["/api/v1/auth/google/link/verify", ["challengeId", "otp"]],
+      ["/api/v1/auth/google/unlink", []],
+      ["/api/v1/auth/google/unlink/verify", ["challengeId", "otp"]],
+      ["/api/v1/auth/password/setup", ["password"]],
+      ["/api/v1/auth/password/setup/verify", ["challengeId", "otp"]]
+    ] as const;
+    for (const [path, required] of strictAuthBodies) {
+      const schema = response.body.paths[path].post.requestBody.content["application/json"].schema;
+      expect(schema.additionalProperties).toBe(false);
+      expect(schema.required ?? []).toEqual(required);
+      expect(schema.properties).not.toHaveProperty("userId");
+    }
+
+    const protectedAuthPaths = [
+      "/api/v1/auth/google/link",
+      "/api/v1/auth/google/link/init",
+      "/api/v1/auth/google/link/verify",
+      "/api/v1/auth/google/unlink",
+      "/api/v1/auth/google/unlink/verify",
+      "/api/v1/auth/password/setup",
+      "/api/v1/auth/password/setup/verify"
+    ];
+    for (const path of protectedAuthPaths) {
+      const method = response.body.paths[path].get ?? response.body.paths[path].post;
+      expect(method.security).toEqual([{ bearerAuth: [] }]);
+      expect(method.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.objectContaining({
+            description: expect.stringContaining("error.validation")
+          }),
+          "401": expect.objectContaining({ description: expect.stringContaining("error.auth") }),
+          "403": expect.objectContaining({
+            description: expect.stringContaining("error.forbidden")
+          }),
+          "409": expect.objectContaining({
+            description: expect.stringContaining("error.auth.google_conflict")
+          }),
+          "429": expect.objectContaining({
+            description: expect.stringContaining("error.rate_limited")
+          }),
+          "502": expect.objectContaining({
+            description: expect.stringContaining("error.auth.otp_delivery_failed")
+          }),
+          "503": expect.objectContaining({
+            description: expect.stringContaining("error.dependency")
+          })
+        })
+      );
+    }
+
+    expect(response.body.components.schemas).toEqual(
+      expect.objectContaining({
+        AuthChallengeMetadata: expect.any(Object),
+        GoogleAuthInitialization: expect.any(Object),
+        GoogleCredentialResult: expect.any(Object),
+        GoogleLinkStatus: expect.any(Object),
+        TokenPairWithNeedoId: expect.any(Object)
+      })
+    );
+    expect(response.body.components.schemas.AuthMe.required).toEqual(
+      expect.arrayContaining(["needoId", "emailVerifiedAt", "hasPassword", "identityAvailability"])
+    );
+    expect(response.body.components.schemas.AuthMe.properties.identityAvailability).toMatchObject({
+      type: "array",
+      items: { $ref: "#/components/schemas/AuthIdentityAvailability" }
+    });
+    const authResponseContracts = protectedAuthPaths
+      .concat([
+        "/api/v1/auth/register",
+        "/api/v1/auth/register/verify",
+        "/api/v1/auth/login",
+        "/api/v1/auth/google/init",
+        "/api/v1/auth/google",
+        "/api/v1/auth/google/verify"
+      ])
+      .map((path) => {
+        const method = response.body.paths[path].get ?? response.body.paths[path].post;
+        return method.responses;
+      });
+    const serializedAuthResponses = JSON.stringify(authResponseContracts);
+    expect(serializedAuthResponses).not.toMatch(
+      /"(?:providerSubject|rawGoogleCredential|credential|otp|password|passwordHash|tokenJti|jti)"/
+    );
     [
       "/api/v1/identity-applications/mine",
       "/api/v1/merchants/search",
@@ -95,19 +201,21 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/finance/settlements/export");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technicians");
     expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technician-rankings");
-    expect(response.body.paths).toHaveProperty(
-      "/api/v1/backoffice/technician-rankings/export"
-    );
-    expect(
-      response.body.paths["/api/v1/backoffice/technician-rankings"].get.parameters
-    ).toEqual(
+    expect(response.body.paths).toHaveProperty("/api/v1/backoffice/technician-rankings/export");
+    expect(response.body.paths["/api/v1/backoffice/technician-rankings"].get.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           name: "period",
           schema: expect.objectContaining({ default: "month" })
         }),
-        expect.objectContaining({ name: "from", schema: expect.objectContaining({ format: "date" }) }),
-        expect.objectContaining({ name: "to", schema: expect.objectContaining({ format: "date" }) }),
+        expect.objectContaining({
+          name: "from",
+          schema: expect.objectContaining({ format: "date" })
+        }),
+        expect.objectContaining({
+          name: "to",
+          schema: expect.objectContaining({ format: "date" })
+        }),
         expect.objectContaining({ name: "sortBy" })
       ])
     );
@@ -123,11 +231,26 @@ describe("GET /api/v1/openapi.json", () => {
             default: "month"
           })
         }),
-        expect.objectContaining({ name: "from", schema: expect.objectContaining({ format: "date" }) }),
-        expect.objectContaining({ name: "to", schema: expect.objectContaining({ format: "date" }) }),
-        expect.objectContaining({ name: "keyword", schema: expect.objectContaining({ maxLength: 100 }) }),
-        expect.objectContaining({ name: "shopId", schema: expect.objectContaining({ minimum: 1 }) }),
-        expect.objectContaining({ name: "city", schema: expect.objectContaining({ maxLength: 100 }) }),
+        expect.objectContaining({
+          name: "from",
+          schema: expect.objectContaining({ format: "date" })
+        }),
+        expect.objectContaining({
+          name: "to",
+          schema: expect.objectContaining({ format: "date" })
+        }),
+        expect.objectContaining({
+          name: "keyword",
+          schema: expect.objectContaining({ maxLength: 100 })
+        }),
+        expect.objectContaining({
+          name: "shopId",
+          schema: expect.objectContaining({ minimum: 1 })
+        }),
+        expect.objectContaining({
+          name: "city",
+          schema: expect.objectContaining({ maxLength: 100 })
+        }),
         expect.objectContaining({
           name: "sortBy",
           schema: expect.objectContaining({
@@ -142,8 +265,7 @@ describe("GET /api/v1/openapi.json", () => {
       ])
     );
     expect(
-      technicianRankingExport.responses["200"].content["application/json"].schema.properties
-        .data
+      technicianRankingExport.responses["200"].content["application/json"].schema.properties.data
     ).toMatchObject({
       type: "object",
       required: ["filename", "contentType", "content"],
@@ -314,14 +436,10 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/finance/reconciliation/export");
     expect(response.body.paths).toHaveProperty("/api/v1/affiliate/tasks");
     expect(response.body.paths).toHaveProperty("/api/v1/affiliate/tasks/{taskId}");
-    expect(response.body.paths).toHaveProperty(
-      "/api/v1/affiliate/tasks/{taskId}/claims"
-    );
+    expect(response.body.paths).toHaveProperty("/api/v1/affiliate/tasks/{taskId}/claims");
     expect(response.body.paths).toHaveProperty("/api/v1/affiliate/claims");
     expect(response.body.paths).toHaveProperty("/api/v1/affiliate/claims/{claimId}");
-    expect(response.body.paths).toHaveProperty(
-      "/api/v1/affiliate/resolve/{publicToken}"
-    );
+    expect(response.body.paths).toHaveProperty("/api/v1/affiliate/resolve/{publicToken}");
     expect(response.body.paths).toHaveProperty("/api/v1/affiliate/codes/validate");
     [
       "/api/v1/merchant-admin/pay-runs/export",
@@ -432,24 +550,13 @@ describe("GET /api/v1/openapi.json", () => {
     const registrationPath = response.body.paths["/api/v1/auth/register"].post;
     expect(registrationPath.security).toBeUndefined();
     expect(
-      registrationPath.requestBody.content["application/json"].schema.properties.accountType
-    ).toEqual({ type: "string", enum: ["customer", "technician"] });
-    expect(registrationPath.requestBody.content["application/json"].schema.oneOf).toEqual([
-      {
-        properties: { accountType: { const: "customer" } },
-        required: ["accountType", "email", "password", "username"]
-      },
-      {
-        properties: { accountType: { const: "technician" } },
-        required: ["accountType", "city", "email", "password", "username"]
-      }
-    ]);
+      registrationPath.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/AuthChallengeMetadata" });
     expect(
-      registrationPath.responses["201"].content["application/json"].schema.properties.data
-    ).toEqual({ $ref: "#/components/schemas/RegisteredAccount" });
-    expect(response.body.components.schemas.RegisteredAccount.properties).not.toHaveProperty(
-      "passwordHash"
-    );
+      response.body.paths["/api/v1/auth/register/verify"].post.responses["200"].content[
+        "application/json"
+      ].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/TokenPairWithNeedoId" });
 
     const orderFinanceSchema = response.body.components.schemas.OrderFinanceDetail;
     expect(orderFinanceSchema.properties).toMatchObject({
@@ -471,27 +578,14 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(response.body.components.schemas.BookingOrder.required).toContain("affiliate");
     expect(response.body.components.schemas.BookingOrder.properties.affiliate).toEqual({
-      anyOf: [
-        { $ref: "#/components/schemas/AffiliateCheckoutSummary" },
-        { type: "null" }
-      ]
+      anyOf: [{ $ref: "#/components/schemas/AffiliateCheckoutSummary" }, { type: "null" }]
     });
     expect(
-      response.body.components.schemas.AffiliateCheckoutSummary.properties
-        .attributionStatus.enum
-    ).toEqual([
-      "attributed",
-      "qualified",
-      "settled",
-      "invalidated",
-      "reversed"
-    ]);
-    const codeValidationPath =
-      response.body.paths["/api/v1/affiliate/codes/validate"].post;
+      response.body.components.schemas.AffiliateCheckoutSummary.properties.attributionStatus.enum
+    ).toEqual(["attributed", "qualified", "settled", "invalidated", "reversed"]);
+    const codeValidationPath = response.body.paths["/api/v1/affiliate/codes/validate"].post;
     expect(codeValidationPath.security).toEqual([{ bearerAuth: [] }]);
-    expect(
-      codeValidationPath.requestBody.content["application/json"].schema
-    ).toMatchObject({
+    expect(codeValidationPath.requestBody.content["application/json"].schema).toMatchObject({
       additionalProperties: false,
       required: ["publicCode", "scheduleSlotId"]
     });
@@ -555,5 +649,34 @@ describe("GET /api/v1/openapi.json", () => {
       ])
     );
     expect(response.body.paths).toHaveProperty("/media/customer-avatars/{filename}");
+  });
+
+  it("documents the configured access-token lifetime instead of a fixed default", () => {
+    const document = createOpenApiDocument({
+      ...env,
+      AUTH_ACCESS_TOKEN_TTL_SECONDS: 600
+    }) as {
+      components: {
+        schemas: Record<string, { properties?: Record<string, unknown> }>;
+      };
+    };
+
+    const schemas = document.components.schemas;
+    expect(schemas.TokenPair.properties?.expiresIn).toEqual({ type: "integer", enum: [600] });
+    expect(schemas.TokenPairWithNeedoId.properties?.expiresIn).toEqual({
+      type: "integer",
+      enum: [600]
+    });
+    expect(schemas.GoogleCredentialResult).toEqual(
+      expect.objectContaining({
+        oneOf: expect.arrayContaining([
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              expiresIn: { type: "integer", enum: [600] }
+            })
+          })
+        ])
+      })
+    );
   });
 });

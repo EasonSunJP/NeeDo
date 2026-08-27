@@ -239,6 +239,7 @@ const createFixture = async () => {
       createLoginLog: jest.fn(async () => undefined),
       createAuditLog: jest.fn(async () => undefined)
     },
+    testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: new InMemoryAuthSessionStore(),
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     ledgerRepository
@@ -246,7 +247,7 @@ const createFixture = async () => {
   const login = async () => {
     const response = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: user.email, password: "Abcd@1234" })
+      .send({ loginIdentifier: user.email, password: "Abcd@1234" })
       .expect(200);
 
     return response.body.data.accessToken as string;

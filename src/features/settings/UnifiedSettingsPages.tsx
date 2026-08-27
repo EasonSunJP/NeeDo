@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import type { PortalScope } from "../../auth/AuthProvider";
+import { authApi, type GoogleLinkStatus, type VerificationChallengePayload } from "../../api/auth";
+import type { AuthSession, PortalScope } from "../../auth/AuthProvider";
 import { useAuth } from "../../auth/AuthProvider";
+import { requestGoogleCredential } from "../../auth/googleIdentity";
 import { PrimaryButton, SecondaryButton, SectionBlock, SegmentedTabs, StickyBottomBar, SurfacePanel } from "../../components/client-ui/AppScaffold";
 import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { FloatingHeaderSearchBar } from "../../components/mobile/FloatingHeaderSearchBar";
@@ -23,14 +25,6 @@ import {
 } from "../../components/client-ui/SettingsDirectory";
 import { useI18n } from "../../i18n/I18nProvider";
 import { languages, translateText, type Language } from "../../i18n/translations";
-import {
-  fetchGoogleAccountApi,
-  getGoogleAccountActorId,
-  googleAccountIconSrc,
-  type GoogleAccountAuthUrlResponse,
-  type GoogleAccountConnectionStatus,
-  type GoogleAccountScope
-} from "../../lib/googleAccountApi";
 import { readImageFileAsDataUrl } from "../../lib/imageUpload";
 import {
   detectPwaInstallPlatform,
@@ -67,6 +61,7 @@ import {
 import { getLegalPrivacyDocument, getLegalPrivacyUiCopy, type LegalPrivacyBlock } from "./legalPrivacyContent";
 import { getLegalTermsDocument, getLegalTermsUiCopy } from "./legalTermsContent";
 import { buildIdentityRows, defaultIdentityAvailability, type IdentityKind } from "../identity-applications/model";
+import { AuthVerificationPanel, type AuthVerificationLabels } from "../../pages/auth/AuthVerificationPanel";
 
 const serviceAreaPool = ["银座", "新宿", "涩谷", "惠比寿", "目黑", "六本木", "品川", "东京站", "池袋", "横滨"];
 const settingsListDividerClassName = "divide-y divide-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)]";
@@ -305,93 +300,6 @@ function getSettingsPath(portal: UnifiedSettingsPortal, segment?: string) {
   const basePath = getSettingsBasePath(portal);
   return segment ? `${basePath}/${segment}` : basePath;
 }
-
-function getGoogleAccountScopeForPortal(portal: UnifiedSettingsPortal): GoogleAccountScope {
-  return portal;
-}
-
-const googleAccountBindingCopy: Record<
-  Language,
-  {
-    accountTitle: string;
-    checking: string;
-    connect: string;
-    connected: string;
-    connectedFallback: string;
-    connecting: string;
-    disconnected: string;
-    disconnectedSubtitle: string;
-    reconnect: string;
-    sectionInfo: string;
-    sectionTitle: string;
-  }
-> = {
-  zh: {
-    accountTitle: "Google 账号",
-    checking: "检查中",
-    connect: "绑定 Google 账号",
-    connected: "已绑定",
-    connectedFallback: "当前账号已授权 Google 身份",
-    connecting: "正在打开 Google 账号授权",
-    disconnected: "未绑定",
-    disconnectedSubtitle: "用于账号绑定、登录和后续 Google 服务连接",
-    reconnect: "重新授权 Google 账号",
-    sectionInfo: "绑定后可以用于 Google 登录，并作为日历等 Google 服务授权的账号基础。",
-    sectionTitle: "Google 账号绑定"
-  },
-  "zh-Hant": {
-    accountTitle: "Google 帳號",
-    checking: "檢查中",
-    connect: "綁定 Google 帳號",
-    connected: "已綁定",
-    connectedFallback: "目前帳號已授權 Google 身分",
-    connecting: "正在開啟 Google 帳號授權",
-    disconnected: "未綁定",
-    disconnectedSubtitle: "用於帳號綁定、登入與後續 Google 服務連接",
-    reconnect: "重新授權 Google 帳號",
-    sectionInfo: "綁定後可用於 Google 登入，並作為日曆等 Google 服務授權的帳號基礎。",
-    sectionTitle: "Google 帳號綁定"
-  },
-  ja: {
-    accountTitle: "Googleアカウント",
-    checking: "確認中",
-    connect: "Googleアカウントの連携",
-    connected: "連携済み",
-    connectedFallback: "Googleアカウントを連携済み",
-    connecting: "Googleアカウント連携を開いています",
-    disconnected: "連携されてない",
-    disconnectedSubtitle: "Googleログインとサービス連携に使用",
-    reconnect: "Googleアカウントを再連携",
-    sectionInfo: "連携後は Google ログインと Google サービス連携に使用できます。",
-    sectionTitle: "Googleアカウントの連携"
-  },
-  en: {
-    accountTitle: "Google Account",
-    checking: "Checking",
-    connect: "Link Google Account",
-    connected: "Linked",
-    connectedFallback: "Google identity authorized",
-    connecting: "Opening Google authorization",
-    disconnected: "Not linked",
-    disconnectedSubtitle: "Used for Google login and service connections",
-    reconnect: "Reauthorize Google Account",
-    sectionInfo: "After linking, this account can be used for Google login and Google service authorization.",
-    sectionTitle: "Google Account Linking"
-  },
-  ko: {
-    accountTitle: "Google 계정",
-    checking: "확인 중",
-    connect: "Google 계정 연결",
-    connected: "연결됨",
-    connectedFallback: "Google 계정 인증 완료",
-    connecting: "Google 계정 인증을 여는 중",
-    disconnected: "연결되지 않음",
-    disconnectedSubtitle: "Google 로그인 및 서비스 연결에 사용",
-    reconnect: "Google 계정 다시 인증",
-    sectionInfo: "연결 후 Google 로그인과 Google 서비스 인증에 사용할 수 있습니다.",
-    sectionTitle: "Google 계정 연결"
-  }
-};
 
 function getSettingsNavItems(portal: UnifiedSettingsPortal) {
   return portal === "business" ? businessNavItems : undefined;
@@ -841,140 +749,392 @@ function summarizeAccountStatus(portal: UnifiedSettingsPortal, customer: Custome
   return customer.phone ? "已绑定手机" : "需要完善";
 }
 
-function getAccountUsername({
-  portal,
-  customer,
-  technician,
-  store,
-  fallback
-}: {
-  portal: UnifiedSettingsPortal;
-  customer: Customer;
-  technician: Technician;
-  store: Store;
-  fallback?: string;
-}) {
-  if (portal === "business") {
-    return fallback ?? "aya-tokyo-fit";
-  }
+type AccountSecurityVerificationKind = "google-link" | "password-setup" | "google-unlink";
 
-  if (portal === "merchant") {
-    return store.accountUsername ?? fallback ?? "demo";
-  }
+type AccountSecurityVerification = {
+  challenge: VerificationChallengePayload;
+  kind: AccountSecurityVerificationKind;
+};
 
-  if (portal === "technician") {
-    return technician.accountUsername ?? fallback ?? "demo";
-  }
+type FormalAccountSecurityPanelProps = {
+  autoFocus: boolean;
+  language: Language;
+  onSessionRefresh: () => Promise<void>;
+  onSignedOut: () => Promise<void>;
+  session: Pick<AuthSession, "email" | "emailVerifiedAt" | "needoId" | "username">;
+};
 
-  return customer.accountUsername ?? fallback ?? "demo";
+const googleBrandIconSrc = "/icons/google-g-logo-2026.png";
+
+function formatAccountSecurityText(source: string, language: Language, values: Record<string, number | string> = {}) {
+  return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`{${key}}`, String(value)), translateText(source, language));
 }
 
-function GoogleCalendarAccountBinding({
-  autoFocus,
-  customer,
-  portal,
-  store,
-  technician
-}: {
-  autoFocus: boolean;
-  customer?: Customer;
-  portal: UnifiedSettingsPortal;
-  store?: Store;
-  technician?: Technician;
-}) {
-  const { language } = useI18n();
-  const copy = googleAccountBindingCopy[language] ?? googleAccountBindingCopy.zh;
+function resolveAccountSecurityError(error: unknown, language: Language) {
+  const errorKey = error instanceof Error ? error.message.trim() : "";
+  const errorSource: Record<string, string> = {
+    "error.api": "账户安全操作失败，请重试。",
+    "error.auth.google_api_unavailable": "Google 登录服务暂时不可用，请稍后重试。",
+    "error.auth.google_conflict": "Google 账号状态已变化，请刷新后重试。",
+    "error.auth.google_credential_cancelled": "未完成 Google 账号选择，请重试。",
+    "error.auth.google_credential_invalid": "Google 凭证无效或已过期，请重新选择账号。",
+    "error.auth.google_credential_timeout": "Google 登录等待超时，请重试。",
+    "error.auth.google_nonce_invalid": "Google 登录请求已失效，请重新开始。",
+    "error.auth.google_request_in_progress": "Google 登录正在进行，请完成当前操作。",
+    "error.auth.google_script_load_failed": "无法加载 Google 登录服务，请检查网络后重试。",
+    "error.auth.invalid_otp": "验证码不正确，请重新输入。",
+    "error.auth.otp_cooldown": "请稍候再重新发送验证码。",
+    "error.auth.otp_expired": "验证码已过期，请重新发送。",
+    "error.auth.verification_attempts_exhausted": "尝试次数过多，请重新获取验证码。",
+    "error.auth.verification_challenge_expired": "验证请求已超过有效期限，请重新开始。",
+    "error.auth.verification_code_invalid": "验证码不正确，请重新输入。",
+    "error.dependency.google_auth_unavailable": "Google 登录服务暂时不可用，请稍后重试。",
+    "error.dependency.redis_unavailable": "身份服务暂时不可用，请稍后重试。",
+    "error.network": "网络连接失败，请检查网络后重试。",
+    "error.network.timeout": "网络响应超时，请稍后重试。"
+  };
+
+  return translateText(errorSource[errorKey] ?? "账户安全操作失败，请重试。", language);
+}
+
+function buildAccountSecurityVerificationLabels(language: Language, kind: AccountSecurityVerificationKind): AuthVerificationLabels {
+  const titleByKind: Record<AccountSecurityVerificationKind, string> = {
+    "google-link": "确认绑定 Google 账号",
+    "google-unlink": "确认解除 Google 绑定",
+    "password-setup": "确认设置登录密码"
+  };
+
+  return {
+    back: translateText("返回", language),
+    codeLabel: translateText("六位邮箱验证码", language),
+    cooldown: (seconds) =>
+      formatAccountSecurityText("{seconds} 秒后可重新发送", language, {
+        seconds
+      }),
+    destination: (maskedEmail) =>
+      formatAccountSecurityText("验证码已发送至 {email}", language, {
+        email: maskedEmail
+      }),
+    eyebrow: translateText("账户安全验证", language),
+    expired: translateText("验证码已过期，请重新发送。", language),
+    expires: (seconds) =>
+      formatAccountSecurityText("验证码将在 {seconds} 秒后失效", language, {
+        seconds
+      }),
+    invalidLength: translateText("请输入完整的六位验证码。", language),
+    resend: translateText(kind === "google-link" ? "重新选择 Google 账号" : "重新发送验证码", language),
+    submit: translateText("确认验证码", language),
+    submitting: translateText("正在验证…", language),
+    title: translateText(titleByKind[kind], language)
+  };
+}
+
+export function FormalAccountSecurityPanel({ autoFocus, language, onSessionRefresh, onSignedOut, session }: FormalAccountSecurityPanelProps) {
   const sectionRef = useRef<HTMLDivElement | null>(null);
-  const googleScope = getGoogleAccountScopeForPortal(portal);
-  const googleActorId = getGoogleAccountActorId(googleScope, customer, technician, store);
-  const [googleStatus, setGoogleStatus] = useState<GoogleAccountConnectionStatus | null>(null);
-  const [googleBusy, setGoogleBusy] = useState<"status" | "connect" | null>(null);
+  const googleButtonContainerRef = useRef<HTMLDivElement | null>(null);
+  const statusRequestGenerationRef = useRef(0);
+  const actionRequestGenerationRef = useRef(0);
+  const googleCredentialAbortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  const [status, setStatus] = useState<GoogleLinkStatus | null>(null);
+  const [statusState, setStatusState] = useState<"error" | "loading" | "ready">("loading");
+  const [busyAction, setBusyAction] = useState<AccountSecurityVerificationKind | "verify" | null>(null);
+  const [verification, setVerification] = useState<AccountSecurityVerification | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const passwordMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+  const t = useCallback((source: string) => translateText(source, language), [language]);
 
-  useEffect(() => {
-    if (!autoFocus) {
-      return;
+  const loadStatus = useCallback(async () => {
+    if (!mountedRef.current) return;
+    const generation = statusRequestGenerationRef.current + 1;
+    statusRequestGenerationRef.current = generation;
+    setStatusState("loading");
+    setFeedback("");
+
+    try {
+      const nextStatus = await authApi.getGoogleLinkStatus();
+      if (!mountedRef.current || statusRequestGenerationRef.current !== generation) return;
+      setStatus(nextStatus);
+      setStatusState("ready");
+    } catch {
+      if (!mountedRef.current || statusRequestGenerationRef.current !== generation) return;
+      setStatusState("error");
+      setFeedback(t("账户安全状态读取失败，请重试。"));
     }
-
-    window.setTimeout(() => {
-      sectionRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, 80);
-  }, [autoFocus]);
+  }, [t]);
 
   useEffect(() => {
-    let cancelled = false;
-    setGoogleBusy("status");
-    fetchGoogleAccountApi<GoogleAccountConnectionStatus>(`/api/google-account/status?actorId=${encodeURIComponent(googleActorId)}`)
-      .then((status) => {
-        if (cancelled) {
-          return;
-        }
-
-        setGoogleStatus(status);
-      })
-      .catch(() => null)
-      .finally(() => {
-        if (!cancelled) {
-          setGoogleBusy(null);
-        }
-      });
+    mountedRef.current = true;
 
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
+      actionRequestGenerationRef.current += 1;
+      googleCredentialAbortRef.current?.abort();
+      googleCredentialAbortRef.current = null;
     };
-  }, [googleActorId, googleScope]);
+  }, []);
 
-  const handleGoogleConnect = async () => {
-    if (googleBusy) {
-      return;
-    }
+  useEffect(() => {
+    void loadStatus();
 
-    setGoogleBusy("connect");
-    try {
-      const response = await fetchGoogleAccountApi<GoogleAccountAuthUrlResponse>(
-        `/api/google-account/auth-url?mode=bind&actorId=${encodeURIComponent(googleActorId)}&returnTo=${encodeURIComponent(
-          typeof window === "undefined" ? "" : window.location.href
-        )}`
-      );
-      setGoogleStatus(response);
-      if (response.authUrl && typeof window !== "undefined") {
-        window.location.assign(response.authUrl);
+    return () => {
+      statusRequestGenerationRef.current += 1;
+    };
+  }, [loadStatus]);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    const timer = window.setTimeout(() => {
+      sectionRef.current?.scrollIntoView({
+        block: "start",
+        behavior: "smooth"
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [autoFocus]);
+
+  const startVerification = useCallback(
+    async (kind: AccountSecurityVerificationKind) => {
+      if (busyAction) return;
+      const generation = actionRequestGenerationRef.current + 1;
+      actionRequestGenerationRef.current = generation;
+      const isCurrent = () => mountedRef.current && actionRequestGenerationRef.current === generation;
+      googleCredentialAbortRef.current?.abort();
+      googleCredentialAbortRef.current = null;
+      let googleCredentialController: AbortController | null = null;
+      setBusyAction(kind);
+      setFeedback("");
+
+      try {
+        let challenge: VerificationChallengePayload;
+        if (kind === "google-link") {
+          const container = googleButtonContainerRef.current;
+          if (!container) throw new Error("error.auth.google_api_unavailable");
+          container.replaceChildren();
+          const initialization = await authApi.initializeGoogleLink();
+          if (!isCurrent()) return;
+          googleCredentialController = new AbortController();
+          googleCredentialAbortRef.current = googleCredentialController;
+          const credential = await requestGoogleCredential({
+            clientId: initialization.clientId,
+            container,
+            nonce: initialization.nonce,
+            signal: googleCredentialController.signal
+          });
+          if (!isCurrent()) return;
+          challenge = await authApi.submitGoogleLinkCredential({
+            credential,
+            nonceChallengeId: initialization.nonceChallengeId
+          });
+        } else if (kind === "password-setup") {
+          if (!newPassword || passwordMismatch || newPassword !== confirmPassword) return;
+          challenge = await authApi.startPasswordSetup({
+            password: newPassword
+          });
+        } else {
+          challenge = await authApi.startGoogleUnlink();
+        }
+
+        if (!isCurrent()) return;
+        setVerification({ challenge, kind });
+      } catch (error) {
+        if (!isCurrent()) return;
+        const message = resolveAccountSecurityError(error, language);
+        if (kind === "google-unlink") {
+          await loadStatus();
+        }
+        if (!isCurrent()) return;
+        setFeedback(message);
+      } finally {
+        if (isCurrent()) setBusyAction(null);
+        if (googleCredentialAbortRef.current === googleCredentialController) {
+          googleCredentialAbortRef.current = null;
+        }
       }
-    } catch {
-      setGoogleStatus(null);
+    },
+    [busyAction, confirmPassword, language, loadStatus, newPassword, passwordMismatch]
+  );
+
+  const handlePasswordSetup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void startVerification("password-setup");
+  };
+
+  const handleVerificationSubmit = async (otp: string) => {
+    if (!verification || busyAction) return;
+    const currentVerification = verification;
+    const generation = actionRequestGenerationRef.current + 1;
+    actionRequestGenerationRef.current = generation;
+    const isCurrent = () => mountedRef.current && actionRequestGenerationRef.current === generation;
+    setBusyAction("verify");
+    setFeedback("");
+
+    try {
+      if (currentVerification.kind === "google-link") {
+        const result = await authApi.verifyGoogleLink({
+          challengeId: currentVerification.challenge.challengeId,
+          otp
+        });
+        if (!isCurrent()) return;
+        if (result.linked !== true) throw new Error("error.api");
+        setVerification(null);
+        await loadStatus();
+      } else if (currentVerification.kind === "password-setup") {
+        const result = await authApi.verifyPasswordSetup({
+          challengeId: currentVerification.challenge.challengeId,
+          otp
+        });
+        if (!isCurrent()) return;
+        if (result.hasPassword !== true) throw new Error("error.api");
+        setVerification(null);
+        setNewPassword("");
+        setConfirmPassword("");
+        await loadStatus();
+        if (!isCurrent()) return;
+        await onSessionRefresh();
+      } else {
+        const result = await authApi.verifyGoogleUnlink({
+          challengeId: currentVerification.challenge.challengeId,
+          otp
+        });
+        if (!isCurrent()) return;
+        if (result.signedOut !== true) throw new Error("error.api");
+        await onSignedOut();
+      }
+    } catch (error) {
+      if (!isCurrent()) return;
+      const message = resolveAccountSecurityError(error, language);
+      if (currentVerification.kind === "google-unlink") {
+        await loadStatus();
+      }
+      if (!isCurrent()) return;
+      setFeedback(message);
     } finally {
-      setGoogleBusy(null);
+      if (isCurrent()) setBusyAction(null);
     }
   };
-  const statusLabel = googleBusy === "status" ? copy.checking : googleStatus?.connected ? copy.connected : copy.disconnected;
+
+  const handleVerificationResend = async () => {
+    if (!verification) return;
+    const kind = verification.kind;
+    setVerification(null);
+    await startVerification(kind);
+  };
+
+  const hasPassword = status?.hasPassword ?? false;
+  const googleLinked = status?.linked ?? false;
 
   return (
     <div ref={sectionRef}>
-      <SettingsSection
-        description={copy.sectionInfo}
-        panelClassName="space-y-3 p-4"
-        title={copy.sectionTitle}
-      >
-        <div className="flex items-center gap-3 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] p-3">
-          <img alt="" className="h-10 w-10 shrink-0 object-contain" src={googleAccountIconSrc} />
-          <div className="min-w-0 flex-1">
-            <strong className="block text-[15px] font-black text-[color:var(--client-text)]">{copy.accountTitle}</strong>
-            <span className="mt-0.5 block text-[12px] font-bold leading-5 text-[color:var(--client-muted)]">
-              {googleStatus?.connected ? googleStatus.profile?.email ?? copy.connectedFallback : copy.disconnectedSubtitle}
-            </span>
+      <SettingsSection description={t("登录方式由 NeeDo 正式认证服务管理。Google 邮箱不会替换你的 NeeDo 主邮箱。")} panelClassName="space-y-4 p-4" title={t("登录与账户安全")}>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-soft-muted)]">{t("NeeDo ID（不可修改）")}</span>
+            <strong className="mt-2 block break-all font-mono text-[15px] font-black text-[color:var(--client-text)]">{session.needoId}</strong>
           </div>
-          <span className="shrink-0 rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">
-            {statusLabel}
-          </span>
+          <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-soft-muted)]">{t("NeeDo 主邮箱")}</span>
+            <strong className="mt-2 block break-all text-[14px] font-black text-[color:var(--client-text)]">{session.email}</strong>
+            <span className="mt-1 block text-[11px] font-bold text-[color:var(--client-primary)]">{t(session.emailVerifiedAt ? "邮箱已验证" : "邮箱未验证")}</span>
+          </div>
+          <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
+            <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-soft-muted)]">{t("显示名称（可修改）")}</span>
+            <strong className="mt-2 block break-words text-[15px] font-black text-[color:var(--client-text)]">{session.username}</strong>
+          </div>
         </div>
-        <button
-          className="focus-ring inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] shadow-[0_18px_40px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] disabled:opacity-55"
-          disabled={Boolean(googleBusy)}
-          onClick={handleGoogleConnect}
-          type="button"
-        >
-          <img alt="" className="h-6 w-6 object-contain" src={googleAccountIconSrc} />
-          {googleBusy === "connect" ? copy.connecting : googleStatus?.connected ? copy.reconnect : copy.connect}
-        </button>
+
+        {statusState === "loading" ? (
+          <p className="rounded-[16px] border border-[color:var(--client-line)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]" role="status">
+            {t("正在读取账户安全状态…")}
+          </p>
+        ) : statusState === "error" ? (
+          <button className="focus-ring min-h-12 w-full rounded-full border border-[color:var(--client-line)] px-5 text-sm font-black text-[color:var(--client-primary)]" onClick={() => void loadStatus()} type="button">
+            {t("重试")}
+          </button>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 rounded-[20px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,transparent)] p-4">
+              <img alt="" aria-hidden="true" className="h-10 w-10 shrink-0 object-contain" src={googleBrandIconSrc} />
+              <div className="min-w-0 flex-1">
+                <strong className="block text-[15px] font-black text-[color:var(--client-text)]">{t(googleLinked ? "Google 账号已绑定" : "Google 账号未绑定")}</strong>
+                <span className="mt-1 block text-[12px] font-bold leading-5 text-[color:var(--client-muted)]">{googleLinked && status?.maskedEmail ? status.maskedEmail : t("绑定后可以直接使用 Google 登录 NeeDo")}</span>
+              </div>
+              <span className="shrink-0 rounded-full bg-[color:color-mix(in_srgb,var(--client-primary)_12%,transparent)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary)]">{t(googleLinked ? "已绑定" : "未绑定")}</span>
+            </div>
+
+            {!googleLinked ? (
+              <div className="space-y-3">
+                <p className="text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t("可以选择与 NeeDo 邮箱不同的 Google 账号；验证码仍发送到你的 NeeDo 邮箱。")}</p>
+                <button className="focus-ring h-12 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-55" disabled={Boolean(busyAction)} onClick={() => void startVerification("google-link")} type="button">
+                  {t(busyAction === "google-link" ? "正在连接 Google…" : "绑定 Google 账号")}
+                </button>
+                <div aria-label={t("选择要绑定的 Google 账号")} className="flex min-h-0 items-center justify-center overflow-hidden rounded-[12px]" data-testid="account-security-google-button" ref={googleButtonContainerRef} />
+              </div>
+            ) : null}
+
+            {googleLinked && !hasPassword ? (
+              <form className="space-y-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_6%,var(--client-surface))] p-4" onSubmit={handlePasswordSetup}>
+                <div>
+                  <strong className="text-[15px] font-black text-[color:var(--client-text)]">{t("设置登录密码")}</strong>
+                  <p className="mt-1 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t("先设置密码后才能解除 Google 绑定。")}</p>
+                </div>
+                <label className="block space-y-2">
+                  <span className="block text-xs font-black text-[color:var(--client-muted)]">{t("输入新密码")}</span>
+                  <input aria-label={t("输入新密码")} autoComplete="new-password" className="h-12 w-full rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-sm font-bold text-[color:var(--client-text)] outline-none focus:border-[color:var(--client-primary)]" data-testid="account-security-new-password" disabled={Boolean(busyAction)} onChange={(event) => setNewPassword(event.target.value)} placeholder={t("输入新密码")} type="password" value={newPassword} />
+                </label>
+                <label className="block space-y-2">
+                  <span className="block text-xs font-black text-[color:var(--client-muted)]">{t("再次输入新密码")}</span>
+                  <input aria-label={t("再次输入新密码")} autoComplete="new-password" className="h-12 w-full rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-sm font-bold text-[color:var(--client-text)] outline-none focus:border-[color:var(--client-primary)]" data-testid="account-security-confirm-password" disabled={Boolean(busyAction)} onChange={(event) => setConfirmPassword(event.target.value)} placeholder={t("再次输入新密码")} type="password" value={confirmPassword} />
+                </label>
+                {passwordMismatch ? <p className="text-xs font-bold text-[color:var(--client-accent)]">{t("两次输入的密码不一致。")}</p> : null}
+                <button className="focus-ring h-12 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-sm font-black text-[color:var(--client-primary-contrast)] disabled:opacity-55" disabled={Boolean(busyAction) || !newPassword || !confirmPassword || passwordMismatch} type="submit">
+                  {t(busyAction === "password-setup" ? "正在发送…" : "向 NeeDo 邮箱发送验证码")}
+                </button>
+              </form>
+            ) : googleLinked ? (
+              <div className="rounded-[16px] border border-[color:var(--client-line)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]">{t("邮箱或 NeeDo ID 加密码登录已启用。")}</div>
+            ) : null}
+
+            {googleLinked ? (
+              <div className="space-y-2 border-t border-[color:var(--client-line)] pt-4">
+                <p className="text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t(hasPassword ? "解除后会退出所有设备，需要使用邮箱或 NeeDo ID 加密码重新登录。" : "先设置密码后才能解除 Google 绑定。")}</p>
+                <button className="focus-ring h-12 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-accent)_45%,var(--client-line))] px-5 text-sm font-black text-[color:var(--client-accent)] disabled:opacity-45" disabled={Boolean(busyAction) || !status?.canUnlink} onClick={() => void startVerification("google-unlink")} type="button">
+                  {t(busyAction === "google-unlink" ? "正在发送…" : "解除 Google 绑定")}
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {verification ? (
+          <div className="rounded-[20px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-4">
+            {verification.kind === "google-link" ? <p className="mb-4 text-xs font-bold leading-5 text-[color:var(--client-muted)]">{t("可以选择与 NeeDo 邮箱不同的 Google 账号；验证码仍发送到你的 NeeDo 邮箱。")}</p> : null}
+            <AuthVerificationPanel
+              challenge={verification.challenge}
+              error={feedback || undefined}
+              labels={buildAccountSecurityVerificationLabels(language, verification.kind)}
+              onBack={() => {
+                actionRequestGenerationRef.current += 1;
+                googleCredentialAbortRef.current?.abort();
+                googleCredentialAbortRef.current = null;
+                setVerification(null);
+                setFeedback("");
+              }}
+              onResend={handleVerificationResend}
+              onSubmit={handleVerificationSubmit}
+              pending={busyAction === "verify"}
+            />
+          </div>
+        ) : null}
+
+        {feedback && !verification ? (
+          <p className="rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-accent)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-accent)_10%,var(--client-bg))] px-4 py-3 text-sm font-bold leading-5 text-[color:var(--client-accent)]" role="alert">
+            {feedback}
+          </p>
+        ) : null}
       </SettingsSection>
     </div>
   );
@@ -3137,37 +3297,31 @@ export function UnifiedSettingsServiceRangePage({ portal }: { portal: UnifiedSet
 }
 
 export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettingsPortal }) {
-  const { session } = useAuth();
+  const navigate = useNavigate();
+  const { language } = useI18n();
+  const { logout, refreshSession, session } = useAuth();
   const [searchParams] = useSearchParams();
-  const { customers, technicians, stores } = useEntityStore();
+  const { customers, stores } = useEntityStore();
   const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
-  const technician = technicians.find((item) => item.id === session?.linkedTechnicianId) ?? technicians[0];
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const businessPromoter = businessCpsPromoters[0];
-  const accountUsername = getAccountUsername({
-    portal,
-    customer,
-    technician,
-    store,
-    fallback: session?.username
-  });
+  const t = (source: string) => translateText(source, language);
+  const handleSessionRefresh = async () => {
+    const result = await refreshSession(portal);
+    if (!result.ok) throw new Error(result.message);
+  };
+  const handleSignedOut = async () => {
+    await logout();
+    navigate(`/login/${portal}`, { replace: true });
+  };
 
   return (
     <PortalScopedSettingsPage portal={portal}>
-      <SettingsDetailPage
-        backTo={getSettingsBasePath(portal)}
-        info={portal === "business" ? "Afirieito 账号、安全、推广码和收款身份统一收口到同一页。" : "账户、安全、绑定信息统一收口到同一页。"}
-        navItems={getSettingsNavItems(portal)}
-        title="账户与安全"
-      >
-        <SettingsSection
-          description={portal === "business" ? "这里展示 NeeDoAfirieito 推广账号的基础绑定信息，不展示普通用户会员等级。" : "首页只显示摘要，这里承接三端账户、安全与主体绑定相关内容。"}
-          panelClassName={settingsListDividerClassName}
-          title="账户信息"
-        >
+      <SettingsDetailPage backTo={getSettingsBasePath(portal)} info={portal === "business" ? "Afirieito 账号、安全、推广码和收款身份统一收口到同一页。" : "账户、安全、绑定信息统一收口到同一页。"} navItems={getSettingsNavItems(portal)} title="账户与安全">
+        <SettingsSection description={portal === "business" ? "这里展示 NeeDoAfirieito 推广账号的基础绑定信息，不展示普通用户会员等级。" : "首页只显示摘要，这里承接三端账户、安全与主体绑定相关内容。"} panelClassName={settingsListDividerClassName} title="账户信息">
           {portal === "business" ? (
             <>
-              <SettingsListItem subtitle={`账号 ${accountUsername}`} title="Afirieito 登录账号" value="已启用" />
+              <SettingsListItem subtitle={session?.needoId ?? t("正在读取账户身份…")} title="NeeDo ID" value={t("不可修改")} />
               <SettingsListItem subtitle={businessPromoter?.inviteCode ?? "未分配推广码"} title="专属推广码" value="已绑定" />
               <SettingsListItem subtitle={businessPromoter?.primaryChannel ?? "待设置"} title="默认推广渠道" value="可使用" />
               <SettingsListItem subtitle="提现、税务与银行资料后续接入正式接口" title="收款身份" value="待复核" />
@@ -3176,35 +3330,27 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
           ) : (
             <>
               <SettingsListItem subtitle={customer.phone || "未设置手机号"} title={portal === "merchant" ? "管理员手机" : "手机绑定"} value={customer.phone ? "已绑定" : "未设置"} />
-          <SettingsListItem subtitle={`用户名 ${accountUsername}`} title="登录方式" value="账号密码" />
-          <SettingsListItem subtitle="当前前端保留结构，未接入真实改密接口" title="登录密码" value="已设置" />
-          {portal === "merchant" ? (
-            <>
-              <SettingsListItem subtitle="店铺主体、资质与结算信息已绑定到当前门店账号" title="绑定信息" value="主体已绑定" />
-              <SettingsListItem subtitle="分账、提现与票据配置入口保留在统一账户页中" title="结算账户" value="待接入" />
-            </>
-          ) : portal === "technician" ? (
-            <>
-              <SettingsListItem subtitle="技师资料、接单身份与展示信息已关联" title="绑定信息" value="基础完成" />
-              <SettingsListItem subtitle="提现、结算与税务资料后续统一收口到这里" title="收款账户" value="待接入" />
-              <SettingsListItem subtitle="紧急联系人与位置共享会复用统一设置体系" title="紧急联系人" value="已配置" />
-            </>
-          ) : (
-            <>
-              <SettingsListItem subtitle="账号与资料主体已关联" title="绑定信息" value="基础完成" />
-              <SettingsListItem subtitle="演示环境未接入多设备记录" title="设备管理" value="当前设备" />
-            </>
-          )}
+              {portal === "merchant" ? (
+                <>
+                  <SettingsListItem subtitle="店铺主体、资质与结算信息已绑定到当前门店账号" title="绑定信息" value="主体已绑定" />
+                  <SettingsListItem subtitle="分账、提现与票据配置入口保留在统一账户页中" title="结算账户" value="待接入" />
+                </>
+              ) : portal === "technician" ? (
+                <>
+                  <SettingsListItem subtitle="技师资料、接单身份与展示信息已关联" title="绑定信息" value="基础完成" />
+                  <SettingsListItem subtitle="提现、结算与税务资料后续统一收口到这里" title="收款账户" value="待接入" />
+                  <SettingsListItem subtitle="紧急联系人与位置共享会复用统一设置体系" title="紧急联系人" value="已配置" />
+                </>
+              ) : (
+                <>
+                  <SettingsListItem subtitle="账号与资料主体已关联" title="绑定信息" value="基础完成" />
+                  <SettingsListItem subtitle="演示环境未接入多设备记录" title="设备管理" value="当前设备" />
+                </>
+              )}
             </>
           )}
         </SettingsSection>
-        <GoogleCalendarAccountBinding
-          autoFocus={searchParams.get("section") === "google-account" || searchParams.get("section") === "google-calendar"}
-          customer={customer}
-          portal={portal}
-          store={store}
-          technician={technician}
-        />
+        {session ? <FormalAccountSecurityPanel autoFocus={searchParams.get("section") === "google-account"} language={language} onSessionRefresh={handleSessionRefresh} onSignedOut={handleSignedOut} session={session} /> : null}
       </SettingsDetailPage>
     </PortalScopedSettingsPage>
   );

@@ -715,6 +715,7 @@ export const createStep06Fixture = async () => {
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
     authRepository,
+    testOnlyAllowLegacyAuthAdapters: true,
     authSessionStore: sessionStore,
     otpDeliveryClient: { sendOtp: jest.fn(async () => undefined) },
     auditLogRepository,
@@ -725,7 +726,7 @@ export const createStep06Fixture = async () => {
   const loginAsAdmin = async (): Promise<string> => {
     const response = await request(app)
       .post("/api/v1/auth/login")
-      .send({ email: "admin@example.com", password: "Abcd@1234" })
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
       .expect(200);
 
     return response.body.data.accessToken as string;

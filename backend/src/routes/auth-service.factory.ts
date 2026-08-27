@@ -4,6 +4,8 @@ import { AuthRepository } from "../repositories/auth.repository";
 import { WebhookOtpDeliveryClient } from "../services/auth-otp-delivery.service";
 import { RedisAuthSessionStore } from "../services/auth-session.store";
 import { AuthService } from "../services/auth.service";
+import { RedisVerificationChallengeStore } from "../services/auth-verification-challenge.store";
+import { GoogleCredentialVerifierService } from "../services/google-credential-verifier.service";
 
 export const createAuthServiceForRoutes = (
   config: AppConfig,
@@ -13,5 +15,8 @@ export const createAuthServiceForRoutes = (
     config,
     dependencies.authRepository ?? new AuthRepository(),
     dependencies.authSessionStore ?? new RedisAuthSessionStore(),
-    dependencies.otpDeliveryClient ?? new WebhookOtpDeliveryClient(config)
+    dependencies.otpDeliveryClient ?? new WebhookOtpDeliveryClient(config),
+    dependencies.verificationChallengeStore ?? new RedisVerificationChallengeStore(),
+    dependencies.testOnlyAllowLegacyAuthAdapters ?? false,
+    dependencies.googleCredentialVerifier ?? new GoogleCredentialVerifierService(undefined, config)
   );

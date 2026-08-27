@@ -75,20 +75,43 @@ Auth behavior:
 - Access Token is kept in memory only.
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
-- Public registration uses `POST /api/v1/auth/register` and only accepts customer or technician accounts. Customers are activated immediately; technicians remain inactive with a `pending_review` profile until the protected management workflow approves them.
+- Public email registration is a two-step verified flow: `POST /api/v1/auth/register`
+  creates an email challenge and `POST /api/v1/auth/register/verify` creates the
+  baseline customer only after the six-digit OTP is accepted.
+  No User row is created before OTP verification. A new account receives an immutable NeeDoID
+  (`n` plus ten digits); its initial nickname/display name equals that NeeDoID
+  and may later be edited without changing the login identifier.
+- `POST /api/v1/auth/login` accepts `loginIdentifier` as either the verified
+  email address or immutable NeeDoID plus password. A successful verification
+  is not repeated on later password logins.
+- Google Identity Services is an additional credential, not a replacement for
+  NeeDo sessions. First Google use or authenticated linking requires email OTP;
+  later use of the same linked Google subject signs in directly and receives
+  NeeDo access/refresh tokens. Google-only registration is supported, and a
+  Google-only user can set a password after email OTP verification.
 - Merchant and operations accounts do not have public self-registration and continue to be created through protected management APIs.
 
 Verify the registration transaction against the configured local, non-production MySQL database (the check rejects remote/production targets and removes only the uniquely named rows it creates):
 
 ```bash
 npm --prefix backend run check:registration-flow
+npm --prefix backend run check:google-auth-flow
 ```
+
+Both checkers fail closed unless `NODE_ENV`/`DEPLOY_ENV`, `DATABASE_URL`, and
+`REDIS_URL` identify an explicitly non-production local test runtime. They use
+the real repositories, bcrypt, token/session stores, audit writes, and Redis
+challenge state, then assert that every uniquely marked database row and Redis
+key was removed. The Google checker injects only a deterministic credential
+verifier and capture-only OTP delivery seam; it does not add a route, auth
+bypass, or fake application API. See `docs/api.md` and `docs/environment.md`
+for the public contract and provider configuration.
 
 Set `VITE_API_BASE_URL` when the real backend is served from a different origin. Without it, frontend requests use the relative `/api/v1` prefix. Local Vite dev/preview proxies `/api/v1` to the formal backend at `http://127.0.0.1:3000` by default; override with `NEEDO_API_PROXY_TARGET` or `VITE_API_PROXY_TARGET` if needed.
 
 The shared Apifox login/register/captcha endpoints are legacy pre-login routes, not formal `/api/v1/auth/*` routes. Local development keeps the formal backend on `/api/v1` and routes only legacy captcha traffic through `VITE_LEGACY_AUTH_BASE_URL=/legacy-auth`; Vite proxies that prefix to `VITE_LEGACY_AUTH_PROXY_TARGET`. Formal password login must use `POST /api/v1/auth/login` so the returned access token can pass `/api/v1/auth/me`. The Apifox public pre-login bearer belongs in `VITE_API_PUBLIC_AUTHORIZATION` when legacy Apifox traffic needs it; keep the real value in local or deployment env files, not source.
 
-Passwordless test-login shortcuts are not part of the formal login chain. Seeded local/staging test accounts sign in manually through `POST /api/v1/auth/login` with `username/email + password`; the shared local/staging test username is `admin` and the seed password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. Login pages do not bundle `VITE_TEST_LOGIN_*` credentials and do not expose test-account autofill or one-click login controls.
+Passwordless test-login shortcuts are not part of the formal login chain. Verified formal accounts sign in through `POST /api/v1/auth/login` with `email-or-NeeDoID + password`; seeded local/staging accounts must use their seeded email or NeeDoID. Their password comes from `TEST_USER_DEFAULT_PASSWORD`, falling back to `ADMIN_DEFAULT_PASSWORD` only for local development. Login pages do not bundle `VITE_TEST_LOGIN_*` credentials and do not expose test-account autofill or one-click login controls.
 
 ## Local Three-Month Simulation Data
 

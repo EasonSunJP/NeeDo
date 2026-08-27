@@ -1,0 +1,79 @@
+NeeDo BP rebuild report
+
+Original: /Users/eason/Documents/NeeDo/NeeDo_BP.pptx
+Revised: /Users/eason/Documents/NeeDo/NeeDo_BP_投资人精简优化版.pptx
+Slide 01: transferred 13 text/table shapes
+Slide 02: transferred 16 text/table shapes
+Slide 03: transferred 16 text/table shapes
+Slide 04: transferred 45 text/table shapes
+Slide 05: transferred 21 text/table shapes; added TextBox 24
+Slide 06: transferred 19 text/table shapes
+Slide 07: transferred 15 text/table shapes; added TextBox 19
+Slide 08: transferred 88 text/table shapes
+Slide 09: transferred 26 text/table shapes
+Slide 10: transferred 31 text/table shapes
+Slide 11: transferred 20 text/table shapes
+Slide 12: transferred 17 text/table shapes
+Slide 13: transferred 18 text/table shapes
+Slide 14: transferred 37 text/table shapes
+Slide 15: transferred 27 text/table shapes
+Slide 16: transferred 22 text/table shapes
+Slide 17: transferred 26 text/table shapes
+Slide 18: transferred 34 text/table shapes
+Slide 19: rebuilt with original four-card design
+Slide 20: transferred 5 text/table shapes
+
+Output: /Users/eason/Documents/New project/artifacts/needo_bp_rebuild_20260826/NeeDo_BP_投资人精简优化_美术重制版.pptx
+Slides: 20
+
+Automated content QA
+Slide 01: title OK; text exact; charts=0; pictures=1
+Slide 02: title OK; text exact; charts=0; pictures=1
+Slide 03: title OK; text exact; charts=0; pictures=1
+Slide 04: title OK; text exact; charts=0; pictures=0
+Slide 05: title OK; text exact; charts=0; pictures=0
+Slide 06: title OK; text exact; charts=0; pictures=1
+Slide 07: title OK; text exact; charts=0; pictures=1
+Slide 08: title OK; text exact; charts=0; pictures=0
+Slide 09: title OK; text exact; charts=0; pictures=0
+Slide 10: title OK; text exact; charts=0; pictures=0
+Slide 11: title OK; text exact; charts=0; pictures=1
+Slide 12: title OK; text exact; charts=0; pictures=1
+Slide 13: title OK; text exact; charts=0; pictures=0
+Slide 14: title OK; text exact; charts=1; pictures=0
+Slide 15: title OK; text exact; charts=0; pictures=0
+Slide 16: title OK; text exact; charts=1; pictures=0
+Slide 17: title OK; text exact; charts=0; pictures=0
+Slide 18: title OK; text exact; charts=0; pictures=1
+Slide 19: title OK; text custom-team check; charts=0; pictures=0
+Slide 20: title OK; text exact; charts=0; pictures=1
+
+Page numbers: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+
+Automated content QA: PASS
+
+Automated content QA
+Slide 01: title OK; text exact; charts=0; pictures=1
+Slide 02: title OK; text exact; charts=0; pictures=1
+Slide 03: title OK; text exact; charts=0; pictures=1
+Slide 04: title OK; text exact; charts=0; pictures=0
+Slide 05: title OK; text exact; charts=0; pictures=0
+Slide 06: title OK; text exact; charts=0; pictures=1
+Slide 07: title OK; text exact; charts=0; pictures=1
+Slide 08: title OK; text exact; charts=0; pictures=0
+Slide 09: title OK; text exact; charts=0; pictures=0
+Slide 10: title OK; text exact; charts=0; pictures=0
+Slide 11: title OK; text exact; charts=0; pictures=1
+Slide 12: title OK; text exact; charts=0; pictures=1
+Slide 13: title OK; text exact; charts=0; pictures=0
+Slide 14: title OK; text exact; charts=1; pictures=0
+Slide 15: title OK; text exact; charts=0; pictures=0
+Slide 16: title OK; text exact; charts=1; pictures=0
+Slide 17: title OK; text exact; charts=0; pictures=0
+Slide 18: title OK; text exact; charts=0; pictures=1
+Slide 19: title OK; text custom-team check; charts=0; pictures=0
+Slide 20: title OK; text exact; charts=0; pictures=1
+
+Page numbers: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+
+Automated content QA: PASS

@@ -59,6 +59,34 @@ Do not promote until every item in this section has external evidence:
 - [ ] Rolling deployment and rollback drill completed
 - [ ] k6 1k tier measured and recorded before attempting the next tier
 
+### Google authentication staging gate
+
+- [ ] Apply Prisma migrations in order with `prisma migrate deploy`:
+  `20260826140000_formal_google_auth_identity`, then
+  `20260827090000_google_account_security_hardening`; do not edit either after
+  it has been applied.
+- [ ] Regenerate Prisma Client and build the exact release image after migration.
+- [ ] Configure `GOOGLE_AUTH_CLIENT_ID` from the staging secret/config store;
+  confirm no Google client secret, Google provider token, or OTP appears in the
+  image, environment examples, logs, traces, or API responses.
+- [ ] Configure the exact staging HTTPS origin as an authorized JavaScript
+  origin in the Google Cloud Web client. Do not configure a callback route for
+  this ID-token flow.
+- [ ] Configure the HTTPS `AUTH_OTP_EMAIL_WEBHOOK_URL` behind a private-network/
+  IP allow-list or approved gateway; the current sender has no signature/header
+  secret. Prove delivery, timeout/error handling, alerting, redaction,
+  reject/bounce handling, and OTP retention/deletion.
+- [ ] Before promotion, run `npm --prefix backend run check:registration-flow`
+  and `npm --prefix backend run check:google-auth-flow` only against an isolated
+  local `needo_test` clone plus local Redis. Their safety guards intentionally
+  reject staging and production databases.
+- [ ] In staging browser acceptance, prove: no user before email OTP; email and
+  NeeDoID password login; first Google OTP link; repeated direct Google login;
+  distinct Google-only registration; password setup; unlink; and rejection of
+  every pre-unlink access/refresh session.
+- [ ] Confirm Google Calendar remains disabled/separately consented; Google
+  sign-in alone grants no Calendar scope or provider access token.
+
 Capacity tiers must be run in order. The 30k and 100k tiers require distributed
 load generators and horizontally scaled infrastructure.
 
@@ -106,3 +134,43 @@ incompatible, HTTP 5xx reaches 1%, payment/ledger consistency fails, or the
 accepted latency thresholds fail. Preserve logs and metrics, shift traffic to
 the previous healthy image, and restore a database only from a tested backup
 when the failed release performed irreversible writes.
+
+For Google authentication, the rollback boundary is the compatibility of the
+previous application image with nullable password hashes, immutable NeeDoIDs,
+external auth accounts, account-security audit records, and the authoritative
+session-generation field. Schema migrations are forward-only: never edit or
+reverse an applied migration in place. Roll the application image back only
+when that image has been rehearsed against the migrated schema and cannot write
+old semantics into new account records. Otherwise fix forward.
+
+Once a user has registered, linked Google, set a password, or unlinked after the
+new image is active, disabling `GOOGLE_AUTH_CLIENT_ID` or restoring old code is
+not a data rollback. Preserve those account/security events and use an explicit,
+audited operator recovery or a tested database snapshot/PITR plan. Restoring a
+database also requires coordinated Redis/session invalidation so sessions from
+the discarded timeline cannot survive.
+
+## 8. Google Authentication Troubleshooting
+
+- Google button reports `origin_mismatch` or does not render: compare scheme,
+  host, and port byte-for-byte with the Web client's authorized JavaScript
+  origins; paths and callback redirect URIs do not belong in that list.
+- `error.auth.otp_delivery_not_configured`: configure the email webhook. Do not
+  expose OTPs in a response, log, manual database update, or temporary endpoint.
+- `error.dependency.google_auth_unavailable`: the release is missing the current
+  Google-capable repository/account-security wiring. Verify the matching backend
+  image, migrations, and generated Prisma Client; this key is not a provider
+  network/key-fetch error.
+- `error.auth.google_nonce_invalid` or `google_credential_invalid`: restart from
+  `/api/v1/auth/google/init`; a nonce is bound, expiring, and single-use. If
+  `google_credential_invalid` becomes widespread, operators should also inspect
+  Google reachability, client-ID audience, and verifier timeouts; clients still
+  receive the same generic `401` by design.
+- `error.auth.google_conflict`: inspect the audited Google binding/credential
+  state. Never merge or move a provider subject manually without an approved
+  recovery procedure.
+- Prisma reports an unknown account-security field: regenerate Prisma Client
+  from the migrated schema and restart the exact backend process.
+- A checker refuses to start: verify it targets `NODE_ENV=test`,
+  `DEPLOY_ENV=test`, local MySQL/Redis, and database name `needo_test`. Do not
+  weaken the guard or point it at `needo_dev` to make the check pass.

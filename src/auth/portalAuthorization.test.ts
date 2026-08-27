@@ -30,10 +30,13 @@ function createStorage() {
 
 function createSession(portal: AuthSession["portal"]): AuthSession {
   return {
-    authVersion: 5,
+    authVersion: 6,
     id: 9,
+    needoId: "n0000000009",
     username: `${portal}-user`,
     email: `${portal}@needo.local`,
+    emailVerifiedAt: "2026-08-27T00:00:00.000Z",
+    hasPassword: true,
     avatarUrl: null,
     portal,
     allowedPortals: [portal],

@@ -1,124 +1,217 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { authApi } from "../../api/auth";
+import { authApi, type VerificationChallengePayload } from "../../api/auth";
 import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
-import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
-import { isFrontendBypassSession } from "../../auth/rbac";
+import { requestGoogleCredential } from "../../auth/googleIdentity";
+import { isFrontendBypassSession, type AuthSession } from "../../auth/rbac";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { useI18n } from "../../i18n/I18nProvider";
-import type { Language } from "../../i18n/translations";
-import { googleAccountIconSrc } from "../../lib/googleAccountApi";
+import { translateText, type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
-import { getClientThemeClassName, getClientThemeModeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
+import {
+  getClientThemeClassName,
+  getClientThemeModeClassName,
+  useClientTheme,
+} from "../../theme/ClientThemeProvider";
+import {
+  AuthVerificationPanel,
+  type AuthVerificationLabels,
+} from "./AuthVerificationPanel";
 
-type LoginPanelMode = "welcome" | "account" | "register";
+type LoginPanelMode =
+  | "welcome"
+  | "account"
+  | "register"
+  | "verification"
+  | "needo-id";
+type VerificationKind = "google" | "registration";
 
-type FrontendLoginCopy = {
-  brand: string;
-  welcomeTitle: string;
-  welcomeSubtitle: string;
-  gmailLogin: string;
-  accountLogin: string;
-  createAccount: string;
-  createNotice: string;
-  registrationTitle: string;
-  registrationSubtitle: string;
-  displayNameLabel: string;
-  displayNamePlaceholder: string;
-  cityLabel: string;
-  cityPlaceholder: string;
-  registrationPasswordHint: string;
-  registerButton: string;
-  registering: string;
-  registrationCustomerSuccess: string;
-  registrationTechnicianPending: string;
-  registrationEmailExists: string;
-  useAccountTitle: string;
-  useAccountSubtitle: string;
-  accountLabel: string;
-  accountPlaceholder: string;
-  passwordLabel: string;
-  passwordPlaceholder: string;
-  captchaLabel: string;
-  captchaPlaceholder: string;
-  captchaRefresh: string;
-  rememberCredentials: string;
-  loginButton: string;
-  loginPending: string;
-  back: string;
-  requiredError: string;
-  captchaRequiredError: string;
-  captchaLoadError: string;
-  accountError: string;
-  dependencyUnavailableError: string;
-  networkTimeoutError: string;
-  resourceNotFoundError: string;
-  googleLoginUnavailable: string;
-  continueTitle: string;
-  signedInAs: string;
-  continueButton: string;
-  logout: string;
-  copyright: string;
-  portals: Record<PortalScope, { label: string; shortLabel: string; title: string; subtitle: string }>;
+type VerificationState = {
+  challenge: VerificationChallengePayload;
+  kind: VerificationKind;
 };
 
-export type LoginFeedbackCopy = Pick<
-  FrontendLoginCopy,
-  "accountError" | "captchaLoadError" | "captchaRequiredError" | "createNotice" | "googleLoginUnavailable" | "requiredError"
->;
-export type LoginErrorCopy = Pick<FrontendLoginCopy, "accountError" | "dependencyUnavailableError" | "networkTimeoutError" | "resourceNotFoundError">;
-type LoginFeedbackTone = "error" | "notice";
-type LoginFeedbackKey = keyof LoginFeedbackCopy;
-
-export type LoginFeedbackState =
-  | { key: LoginFeedbackKey; tone: LoginFeedbackTone; type: "localized" }
-  | { message: string; tone: LoginFeedbackTone; type: "custom" };
-
-export function resolveLoginFeedbackMessage(feedback: LoginFeedbackState | null, copy: LoginFeedbackCopy) {
-  if (!feedback) {
-    return "";
-  }
-
-  if (feedback.type === "custom") {
-    return feedback.message;
-  }
-
-  return copy[feedback.key];
-}
-
-export function resolveLoginErrorMessage(message: string | undefined, copy: LoginErrorCopy) {
-  const normalizedMessage = message?.trim();
-
-  if (normalizedMessage === "error.auth.invalid_credentials") {
-    return copy.accountError;
-  }
-
-  if (message === "error.network.timeout") {
-    return copy.networkTimeoutError;
-  }
-
-  if (message === "error.dependency.redis_unavailable" || normalizedMessage === "Internal Server Error") {
-    return copy.dependencyUnavailableError;
-  }
-
-  if (
-    message === "error.resource_not_found" ||
-    message === "resource_not_found" ||
-    message === "error.cors_forbidden" ||
-    message === "Not Found"
-  ) {
-    return copy.resourceNotFoundError;
-  }
-
-  return message || copy.accountError;
-}
+type GeneratedNeedoIdState = {
+  needoId: string;
+  session: AuthSession;
+};
 
 type FrontendLoginEnv = {
   PROD?: boolean;
   VITE_NEEDO_FRONTEND_AUTH_BYPASS?: string;
 };
+
+const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
+const loginCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
+
+const portalEntryRoute: Record<PortalScope, string> = {
+  admin: "/admin",
+  business: "/afirieito",
+  merchant: "/merchant",
+  technician: "/technician",
+  user: "/",
+};
+
+const portalEntryFile: Record<PortalScope, string> = {
+  admin: "/pf-admin.html",
+  business: "/afirieito.html",
+  merchant: "/merchant.html",
+  technician: "/technician.html",
+  user: "/user.html",
+};
+
+function formatLocalized(
+  source: string,
+  language: Language,
+  values: Record<string, number | string> = {},
+) {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    translateText(source, language),
+  );
+}
+
+function buildLoginCopy(language: Language) {
+  const text = (source: string) => translateText(source, language);
+
+  return {
+    accountLabel: text("邮箱或 NeeDo ID"),
+    accountLogin: text("使用邮箱或 NeeDo ID 登录"),
+    accountPlaceholder: text("输入邮箱或 NeeDo ID"),
+    back: text("返回"),
+    continueButton: text("继续进入"),
+    continueTitle: text("已登录"),
+    copied: text("已复制"),
+    copy: text("复制 NeeDo ID"),
+    copyFailed: text("无法自动复制，请长按 NeeDo ID 手动复制。"),
+    copyright: loginCopyrightText,
+    createAccount: text("新建账号"),
+    generatedDescription: text(
+      "请保存此 ID。以后可以使用邮箱或 NeeDo ID 加密码登录。",
+    ),
+    generatedTitle: text("首次注册已完成，这是你的 NeeDo ID"),
+    googleLogin: text("使用 Google 登录"),
+    googlePrompt: text("请选择下方的 Google 账号"),
+    googleRestart: text("重新使用 Google 验证"),
+    googleUnavailableStatic: text("静态演示模式不提供 Google 登录"),
+    hidePassword: text("隐藏密码"),
+    loginButton: text("登录"),
+    loginPending: text("登录中…"),
+    logout: text("退出登录"),
+    passwordLabel: text("密码"),
+    passwordPlaceholder: text("输入密码"),
+    registrationEmailLabel: text("邮箱"),
+    registrationEmailPlaceholder: text("输入邮箱"),
+    registrationPasswordHint: text(
+      "至少 8 位，并包含大写字母、小写字母、数字和符号。",
+    ),
+    registrationSubtitle: text(
+      "验证码将发送到此邮箱。验证后会生成你的 NeeDo ID。",
+    ),
+    registrationTitle: text("创建 NeeDo 账号"),
+    registerButton: text("发送验证码"),
+    registering: text("正在发送…"),
+    requiredAccount: text("请输入邮箱或 NeeDo ID 和密码。"),
+    requiredRegistration: text("请输入邮箱和密码。"),
+    showPassword: text("显示密码"),
+    signedInAs: text("当前账号"),
+    useAccountSubtitle: text("使用已验证的邮箱或 NeeDo ID 登录。"),
+    useAccountTitle: text("账号登录"),
+    welcomeSubtitle: text(
+      "先确认你的 NeeDo 身份，再进入预约、消息或工作空间。",
+    ),
+    welcomeTitle: text("欢迎使用 NeeDo"),
+    portals: {
+      admin: { shortLabel: text("后台"), title: text("NeeDo 运营后台") },
+      business: { shortLabel: text("推广"), title: "NeeDoAfirieito" },
+      merchant: { shortLabel: text("店铺"), title: text("NeeDo 店铺端") },
+      technician: { shortLabel: text("员工"), title: text("NeeDo 员工端") },
+      user: { shortLabel: text("用户"), title: text("NeeDo 用户端") },
+    },
+  };
+}
+
+function buildVerificationLabels(
+  language: Language,
+  kind: VerificationKind,
+): AuthVerificationLabels {
+  return {
+    back: translateText("返回", language),
+    codeLabel: translateText("六位邮箱验证码", language),
+    cooldown: (seconds) =>
+      formatLocalized("{seconds} 秒后可重新发送", language, { seconds }),
+    destination: (maskedEmail) =>
+      formatLocalized("验证码已发送至 {email}", language, {
+        email: maskedEmail,
+      }),
+    eyebrow: translateText("身份验证", language),
+    expired: translateText("验证码已过期，请重新发送。", language),
+    expires: (seconds) =>
+      formatLocalized("验证码将在 {seconds} 秒后失效", language, { seconds }),
+    invalidLength: translateText("请输入完整的六位验证码。", language),
+    resend: translateText(
+      kind === "google" ? "重新使用 Google 验证" : "重新发送验证码",
+      language,
+    ),
+    submit: translateText("确认验证码", language),
+    submitting: translateText("正在验证…", language),
+    title: translateText("验证邮箱", language),
+  };
+}
+
+export function resolveLoginErrorMessage(
+  message: string | undefined,
+  language: Language,
+) {
+  const errorSource: Record<string, string> = {
+    "error.api": "登录服务暂时不可用，请稍后重试。",
+    "error.auth.google_api_unavailable":
+      "Google 登录服务暂时不可用，请稍后重试。",
+    "error.auth.google_conflict": "Google 账号已绑定到其他 NeeDo 账号",
+    "error.auth.google_credential_cancelled":
+      "未完成 Google 账号选择，请重试。",
+    "error.auth.google_credential_invalid":
+      "Google 凭证无效或已过期，请重新选择账号。",
+    "error.auth.google_credential_timeout": "Google 登录等待超时，请重试。",
+    "error.auth.google_nonce_invalid": "Google 登录请求已失效，请重新开始。",
+    "error.auth.google_request_in_progress":
+      "Google 登录正在进行，请完成当前操作。",
+    "error.auth.google_script_load_failed":
+      "无法加载 Google 登录服务，请检查网络后重试。",
+    "error.auth.invalid_credentials": "邮箱、NeeDo ID 或密码不正确。",
+    "error.auth.invalid_otp": "验证码不正确，请重新输入。",
+    "error.auth.otp_delivery_failed": "验证码发送失败，请稍后重试。",
+    "error.auth.otp_cooldown": "请稍候再重新发送验证码。",
+    "error.auth.otp_expired": "验证码已过期，请重新发送。",
+    "error.auth.verification_attempts_exhausted":
+      "尝试次数过多，请重新获取验证码。",
+    "error.auth.verification_challenge_expired":
+      "验证请求已超过有效期限，请重新开始。",
+    "error.auth.verification_code_invalid": "验证码不正确，请重新输入。",
+    "error.dependency.auth_generation_unavailable":
+      "身份服务暂时不可用，请稍后重试。",
+    "error.dependency.google_auth_unavailable":
+      "Google 登录服务暂时不可用，请稍后重试。",
+    "error.dependency.redis_unavailable": "身份服务暂时不可用，请稍后重试。",
+    "error.network": "网络连接失败，请检查网络后重试。",
+    "error.network.timeout": "网络响应超时，请稍后重试。",
+    "error.resource_not_found": "登录接口不可用，请联系 NeeDo 支持。",
+    "error.response.invalid_json": "登录服务返回异常，请稍后重试。",
+    "error.user.email_exists": "该邮箱已注册，请直接登录。",
+  };
+  const source = message ? errorSource[message.trim()] : undefined;
+
+  return translateText(source ?? "登录服务暂时不可用，请稍后重试。", language);
+}
 
 export function isFrontendAuthBypassEnabled(env: FrontendLoginEnv) {
   if (env.PROD) {
@@ -126,439 +219,8 @@ export function isFrontendAuthBypassEnabled(env: FrontendLoginEnv) {
   }
 
   const value = env.VITE_NEEDO_FRONTEND_AUTH_BYPASS?.trim().toLowerCase();
-
   return value === "1" || value === "true" || value === "yes";
 }
-
-const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
-
-const portalEntryRoute: Record<PortalScope, string> = {
-  user: "/",
-  merchant: "/merchant",
-  technician: "/technician",
-  business: "/afirieito",
-  admin: "/admin"
-};
-
-const portalEntryFile: Record<PortalScope, string> = {
-  user: "/user.html",
-  merchant: "/merchant.html",
-  technician: "/technician.html",
-  business: "/afirieito.html",
-  admin: "/pf-admin.html"
-};
-
-const portalGmailEmail: Record<PortalScope, string> = {
-  user: "needo.user@gmail.com",
-  merchant: "needo.store@gmail.com",
-  technician: "needo.staff@gmail.com",
-  business: "needo.afirieito@gmail.com",
-  admin: "needo.ops@gmail.com"
-};
-
-const loginCopyrightText = "Copyright © 2026 LifeDance. All rights reserved.";
-
-function getFrontendRememberCredentialsScope(portal: PortalScope) {
-  return `frontend.${portal}`;
-}
-
-const loginCopy = {
-  zh: {
-    brand: "NeeDo",
-    welcomeTitle: "欢迎使用 NeeDo",
-    welcomeSubtitle: "用一个账号连接消息、预约和工作协作。",
-    gmailLogin: "使用 Google 登录",
-    accountLogin: "使用邮箱登录",
-    createAccount: "新建账号",
-    createNotice: "新建账号流程正在准备中，请先使用已发行邮箱登录。",
-    registrationTitle: "创建 NeeDo 账号",
-    registrationSubtitle: "用户账号可立即使用；技师账号需审核后启用。",
-    displayNameLabel: "显示名称",
-    displayNamePlaceholder: "请输入姓名或昵称",
-    cityLabel: "所在城市",
-    cityPlaceholder: "例如：Tokyo",
-    registrationPasswordHint: "至少8位，并包含大小写字母、数字和符号。",
-    registerButton: "创建账号",
-    registering: "创建中...",
-    registrationCustomerSuccess: "账号创建成功，请使用邮箱和密码登录。",
-    registrationTechnicianPending: "申请已提交，运营或店铺审核后将启用技师账号。",
-    registrationEmailExists: "该邮箱已注册，请直接登录或更换邮箱。",
-    useAccountTitle: "账号登录",
-    useAccountSubtitle: "请输入已发行账号信息。",
-    accountLabel: "邮箱",
-    accountPlaceholder: "请输入邮箱",
-    passwordLabel: "密码",
-    passwordPlaceholder: "请输入密码",
-    captchaLabel: "图形验证码",
-    captchaPlaceholder: "请输入验证码",
-    captchaRefresh: "换一张",
-    rememberCredentials: "记录账号密码",
-    loginButton: "登录",
-    loginPending: "登录中...",
-    back: "返回",
-    requiredError: "请先填写登录信息。",
-    captchaRequiredError: "请先填写图形验证码。",
-    captchaLoadError: "图形验证码加载失败，请刷新后再试。",
-    accountError: "账号或密码不正确，请确认后再试。",
-    dependencyUnavailableError: "登录服务依赖未启动，请确认真实 backend、MySQL 和 Redis 已启动。",
-    networkTimeoutError: "后端没有响应，请确认真实 backend、MySQL 和 Redis 已启动。",
-    resourceNotFoundError: "接口不存在，请确认接口域名和登录 / 注册路径配置正确。",
-    googleLoginUnavailable: "当前环境暂时无法发起 Google 登录，请在正式环境配置 Google 账号 API 后重试。",
-    continueTitle: "已登录",
-    signedInAs: "当前账号",
-    continueButton: "继续进入",
-    logout: "退出登录",
-    copyright: loginCopyrightText,
-    portals: {
-      user: {
-        label: "用户端",
-        shortLabel: "用户",
-        title: "NeeDo 用户端",
-        subtitle: "浏览服务、预约、聊天和订单。"
-      },
-      technician: {
-        label: "员工端",
-        shortLabel: "员工",
-        title: "NeeDo 员工端",
-        subtitle: "查看任务、状态和日程。"
-      },
-      merchant: {
-        label: "店铺端",
-        shortLabel: "店铺",
-        title: "NeeDo 店铺端",
-        subtitle: "处理预约、排班和门店协作。"
-      },
-      business: {
-        label: "Afirieito",
-        shortLabel: "推广",
-        title: "NeeDoAfirieito",
-        subtitle: "查看推广、素材、归因收益。"
-      },
-      admin: {
-        label: "运营后台",
-        shortLabel: "后台",
-        title: "NeeDo 运营后台",
-        subtitle: "平台运营管理。"
-      }
-    }
-  },
-  "zh-Hant": {
-    brand: "NeeDo",
-    welcomeTitle: "歡迎使用 NeeDo",
-    welcomeSubtitle: "用一個帳號連接訊息、預約和工作協作。",
-    gmailLogin: "使用 Google 登入",
-    accountLogin: "使用信箱登入",
-    createAccount: "建立帳號",
-    createNotice: "建立帳號流程正在準備中，請先使用已發行信箱登入。",
-    registrationTitle: "建立 NeeDo 帳號",
-    registrationSubtitle: "用戶帳號可立即使用；技師帳號需審核後啟用。",
-    displayNameLabel: "顯示名稱",
-    displayNamePlaceholder: "請輸入姓名或暱稱",
-    cityLabel: "所在城市",
-    cityPlaceholder: "例如：Tokyo",
-    registrationPasswordHint: "至少8位，並包含大小寫字母、數字和符號。",
-    registerButton: "建立帳號",
-    registering: "建立中...",
-    registrationCustomerSuccess: "帳號建立成功，請使用信箱和密碼登入。",
-    registrationTechnicianPending: "申請已提交，營運或店鋪審核後將啟用技師帳號。",
-    registrationEmailExists: "此信箱已註冊，請直接登入或更換信箱。",
-    useAccountTitle: "帳號登入",
-    useAccountSubtitle: "請輸入已發行帳號資訊。",
-    accountLabel: "信箱",
-    accountPlaceholder: "請輸入信箱",
-    passwordLabel: "密碼",
-    passwordPlaceholder: "請輸入密碼",
-    captchaLabel: "圖形驗證碼",
-    captchaPlaceholder: "請輸入驗證碼",
-    captchaRefresh: "換一張",
-    rememberCredentials: "記錄帳號密碼",
-    loginButton: "登入",
-    loginPending: "登入中...",
-    back: "返回",
-    requiredError: "請先填寫登入資訊。",
-    captchaRequiredError: "請先填寫圖形驗證碼。",
-    captchaLoadError: "圖形驗證碼載入失敗，請重新整理後再試。",
-    accountError: "帳號或密碼不正確，請確認後再試。",
-    dependencyUnavailableError: "登入服務依賴未啟動，請確認真實 backend、MySQL 和 Redis 已啟動。",
-    networkTimeoutError: "後端沒有回應，請確認真實 backend、MySQL 和 Redis 已啟動。",
-    resourceNotFoundError: "介面不存在，請確認介面域名和登入 / 註冊路徑配置正確。",
-    googleLoginUnavailable: "目前環境暫時無法發起 Google 登入，請在正式環境配置 Google 帳號 API 後重試。",
-    continueTitle: "已登入",
-    signedInAs: "目前帳號",
-    continueButton: "繼續進入",
-    logout: "登出",
-    copyright: loginCopyrightText,
-    portals: {
-      user: {
-        label: "用戶端",
-        shortLabel: "用戶",
-        title: "NeeDo 用戶端",
-        subtitle: "瀏覽服務、預約、聊天和訂單。"
-      },
-      technician: {
-        label: "員工端",
-        shortLabel: "員工",
-        title: "NeeDo 員工端",
-        subtitle: "查看任務、狀態和日程。"
-      },
-      merchant: {
-        label: "店鋪端",
-        shortLabel: "店鋪",
-        title: "NeeDo 店鋪端",
-        subtitle: "處理預約、排班和門店協作。"
-      },
-      business: {
-        label: "Afirieito",
-        shortLabel: "推廣",
-        title: "NeeDoAfirieito",
-        subtitle: "查看推廣、素材、歸因收益。"
-      },
-      admin: {
-        label: "營運後台",
-        shortLabel: "後台",
-        title: "NeeDo 營運後台",
-        subtitle: "平台營運管理。"
-      }
-    }
-  },
-  ja: {
-    brand: "NeeDo",
-    welcomeTitle: "NeeDoへようこそ",
-    welcomeSubtitle: "メッセージ、予約、仕事の連絡をひとつのアカウントで。",
-    gmailLogin: "Googleでログイン",
-    accountLogin: "メールでログイン",
-    createAccount: "新規登録",
-    createNotice: "新規登録フローは準備中です。発行済みメールでログインしてください。",
-    registrationTitle: "NeeDoアカウントを作成",
-    registrationSubtitle: "ユーザーはすぐに利用できます。スタッフは審査後に有効になります。",
-    displayNameLabel: "表示名",
-    displayNamePlaceholder: "氏名またはニックネームを入力",
-    cityLabel: "活動エリア",
-    cityPlaceholder: "例：Tokyo",
-    registrationPasswordHint: "8文字以上で、大文字・小文字・数字・記号を含めてください。",
-    registerButton: "アカウントを作成",
-    registering: "作成中...",
-    registrationCustomerSuccess: "アカウントを作成しました。メールとパスワードでログインしてください。",
-    registrationTechnicianPending: "申請を受け付けました。運営または店舗の審査後にスタッフアカウントが有効になります。",
-    registrationEmailExists: "このメールは登録済みです。ログインするか別のメールを使用してください。",
-    useAccountTitle: "アカウントログイン",
-    useAccountSubtitle: "発行済みアカウント情報を入力してください。",
-    accountLabel: "メール",
-    accountPlaceholder: "メールを入力",
-    passwordLabel: "パスワード",
-    passwordPlaceholder: "パスワードを入力",
-    captchaLabel: "画像認証コード",
-    captchaPlaceholder: "認証コードを入力",
-    captchaRefresh: "更新",
-    rememberCredentials: "アカウントとパスワードを保存",
-    loginButton: "ログイン",
-    loginPending: "ログイン中...",
-    back: "戻る",
-    requiredError: "ログイン情報を入力してください。",
-    captchaRequiredError: "画像認証コードを入力してください。",
-    captchaLoadError: "画像認証コードを読み込めません。更新してから再試行してください。",
-    accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
-    dependencyUnavailableError: "ログインサービスの依存先が起動していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
-    networkTimeoutError: "バックエンドが応答していません。実際の backend、MySQL、Redis が起動しているか確認してください。",
-    resourceNotFoundError: "API が見つかりません。API ドメインとログイン / 登録パスの設定を確認してください。",
-    googleLoginUnavailable: "現在の環境では Google ログインを開始できません。正式環境で Google アカウント API を設定してから再試行してください。",
-    continueTitle: "ログイン済み",
-    signedInAs: "現在のアカウント",
-    continueButton: "続けて開く",
-    logout: "ログアウト",
-    copyright: loginCopyrightText,
-    portals: {
-      user: {
-        label: "ユーザー端末",
-        shortLabel: "ユーザー",
-        title: "NeeDo ユーザー端末",
-        subtitle: "サービス閲覧、予約、チャット、注文確認。"
-      },
-      technician: {
-        label: "スタッフ端末",
-        shortLabel: "スタッフ",
-        title: "NeeDo スタッフ端末",
-        subtitle: "タスク、ステータス、スケジュール確認。"
-      },
-      merchant: {
-        label: "店舗端末",
-        shortLabel: "店舗",
-        title: "NeeDo 店舗端末",
-        subtitle: "予約、シフト、店舗内連携の管理。"
-      },
-      business: {
-        label: "Afirieito",
-        shortLabel: "紹介",
-        title: "NeeDoAfirieito",
-        subtitle: "紹介、素材、成果収益の確認。"
-      },
-      admin: {
-        label: "運営管理",
-        shortLabel: "管理",
-        title: "NeeDo 運営管理",
-        subtitle: "プラットフォーム運営管理。"
-      }
-    }
-  },
-  en: {
-    brand: "NeeDo",
-    welcomeTitle: "Welcome to NeeDo",
-    welcomeSubtitle: "Messages, bookings, and work updates in one account.",
-    gmailLogin: "Continue with Google",
-    accountLogin: "Log in with email",
-    createAccount: "Create account",
-    createNotice: "Account creation is being prepared. Use an issued email for now.",
-    registrationTitle: "Create a NeeDo account",
-    registrationSubtitle: "Customer accounts are ready immediately; staff accounts require approval.",
-    displayNameLabel: "Display name",
-    displayNamePlaceholder: "Enter your name or nickname",
-    cityLabel: "City",
-    cityPlaceholder: "Example: Tokyo",
-    registrationPasswordHint: "Use at least 8 characters with upper and lowercase letters, a number, and a symbol.",
-    registerButton: "Create account",
-    registering: "Creating...",
-    registrationCustomerSuccess: "Account created. Log in with your email and password.",
-    registrationTechnicianPending: "Application submitted. Operations or a store will enable the staff account after review.",
-    registrationEmailExists: "That email is already registered. Log in or use a different email.",
-    useAccountTitle: "Account login",
-    useAccountSubtitle: "Enter your issued account details.",
-    accountLabel: "Email",
-    accountPlaceholder: "Enter email",
-    passwordLabel: "Password",
-    passwordPlaceholder: "Enter password",
-    captchaLabel: "Captcha",
-    captchaPlaceholder: "Enter captcha",
-    captchaRefresh: "Refresh",
-    rememberCredentials: "Remember account and password",
-    loginButton: "Log in",
-    loginPending: "Logging in...",
-    back: "Back",
-    requiredError: "Fill in the login information first.",
-    captchaRequiredError: "Enter the captcha first.",
-    captchaLoadError: "Captcha could not be loaded. Refresh and try again.",
-    accountError: "The account or password is incorrect. Please check and try again.",
-    dependencyUnavailableError: "The login service dependency is not running. Confirm the real backend, MySQL, and Redis are running.",
-    networkTimeoutError: "The backend did not respond. Confirm the real backend, MySQL, and Redis are running.",
-    resourceNotFoundError: "The API route was not found. Confirm the API domain and login / register routes are configured correctly.",
-    googleLoginUnavailable: "Google login cannot be started in this environment. Configure the Google Account API in the production environment and try again.",
-    continueTitle: "Signed in",
-    signedInAs: "Current account",
-    continueButton: "Continue to",
-    logout: "Log out",
-    copyright: loginCopyrightText,
-    portals: {
-      user: {
-        label: "User",
-        shortLabel: "User",
-        title: "NeeDo User",
-        subtitle: "Browse services, book, chat, and review orders."
-      },
-      technician: {
-        label: "Staff",
-        shortLabel: "Staff",
-        title: "NeeDo Staff",
-        subtitle: "Check tasks, status, and schedules."
-      },
-      merchant: {
-        label: "Store",
-        shortLabel: "Store",
-        title: "NeeDo Store",
-        subtitle: "Handle bookings, shifts, and store collaboration."
-      },
-      business: {
-        label: "Afirieito",
-        shortLabel: "Promo",
-        title: "NeeDoAfirieito",
-        subtitle: "Track campaigns, creatives, attribution, and earnings."
-      },
-      admin: {
-        label: "Operations Admin",
-        shortLabel: "Admin",
-        title: "NeeDo Operations Admin",
-        subtitle: "Platform operations management."
-      }
-    }
-  },
-  ko: {
-    brand: "NeeDo",
-    welcomeTitle: "NeeDo에 오신 것을 환영합니다",
-    welcomeSubtitle: "메시지, 예약, 업무 연락을 하나의 계정으로 연결합니다.",
-    gmailLogin: "Google로 로그인",
-    accountLogin: "이메일로 로그인",
-    createAccount: "새 계정 만들기",
-    createNotice: "새 계정 만들기 흐름은 준비 중입니다. 지금은 발급된 이메일로 로그인하세요.",
-    registrationTitle: "NeeDo 계정 만들기",
-    registrationSubtitle: "사용자 계정은 즉시 사용할 수 있으며 스태프 계정은 승인 후 활성화됩니다.",
-    displayNameLabel: "표시 이름",
-    displayNamePlaceholder: "이름 또는 닉네임 입력",
-    cityLabel: "활동 도시",
-    cityPlaceholder: "예: Tokyo",
-    registrationPasswordHint: "8자 이상이며 대문자, 소문자, 숫자, 기호를 포함하세요.",
-    registerButton: "계정 만들기",
-    registering: "만드는 중...",
-    registrationCustomerSuccess: "계정이 생성되었습니다. 이메일과 비밀번호로 로그인하세요.",
-    registrationTechnicianPending: "신청이 제출되었습니다. 운영자 또는 상점 승인 후 스태프 계정이 활성화됩니다.",
-    registrationEmailExists: "이미 등록된 이메일입니다. 로그인하거나 다른 이메일을 사용하세요.",
-    useAccountTitle: "계정 로그인",
-    useAccountSubtitle: "발급된 계정 정보를 입력하세요.",
-    accountLabel: "이메일",
-    accountPlaceholder: "이메일 입력",
-    passwordLabel: "비밀번호",
-    passwordPlaceholder: "비밀번호 입력",
-    captchaLabel: "이미지 인증 코드",
-    captchaPlaceholder: "인증 코드 입력",
-    captchaRefresh: "새로고침",
-    rememberCredentials: "계정과 비밀번호 저장",
-    loginButton: "로그인",
-    loginPending: "로그인 중...",
-    back: "뒤로",
-    requiredError: "먼저 로그인 정보를 입력하세요.",
-    captchaRequiredError: "먼저 이미지 인증 코드를 입력하세요.",
-    captchaLoadError: "이미지 인증 코드를 불러오지 못했습니다. 새로고침 후 다시 시도하세요.",
-    accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
-    dependencyUnavailableError: "로그인 서비스 의존성이 실행 중이 아닙니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
-    networkTimeoutError: "백엔드가 응답하지 않습니다. 실제 backend, MySQL, Redis가 실행 중인지 확인하세요.",
-    resourceNotFoundError: "API 경로를 찾을 수 없습니다. API 도메인과 로그인 / 가입 경로 설정을 확인하세요.",
-    googleLoginUnavailable: "현재 환경에서는 Google 로그인을 시작할 수 없습니다. 정식 환경에서 Google 계정 API를 설정한 후 다시 시도하세요.",
-    continueTitle: "로그인됨",
-    signedInAs: "현재 계정",
-    continueButton: "계속 이동",
-    logout: "로그아웃",
-    copyright: loginCopyrightText,
-    portals: {
-      user: {
-        label: "사용자",
-        shortLabel: "사용자",
-        title: "NeeDo 사용자",
-        subtitle: "서비스 탐색, 예약, 채팅, 주문 확인."
-      },
-      technician: {
-        label: "스태프",
-        shortLabel: "스태프",
-        title: "NeeDo 스태프",
-        subtitle: "작업, 상태, 일정을 확인."
-      },
-      merchant: {
-        label: "상점",
-        shortLabel: "상점",
-        title: "NeeDo 상점",
-        subtitle: "예약, 근무표, 상점 협업 관리."
-      },
-      business: {
-        label: "Afirieito",
-        shortLabel: "홍보",
-        title: "NeeDoAfirieito",
-        subtitle: "홍보, 소재, 기여 수익 확인."
-      },
-      admin: {
-        label: "운영 관리자",
-        shortLabel: "관리",
-        title: "NeeDo 운영 관리자",
-        subtitle: "플랫폼 운영 관리."
-      }
-    }
-  }
-} satisfies Record<Language, FrontendLoginCopy>;
 
 function normalizePortal(value?: string | null): PortalScope {
   if (value === "merchant" || value === "technician" || value === "business") {
@@ -572,30 +234,15 @@ function normalizePortal(value?: string | null): PortalScope {
   return "user";
 }
 
-function AppMark() {
-  return (
-    <div className="needo-login-logo mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px]">
-      <img alt="" aria-hidden="true" className="needo-login-logo__mark h-full w-full object-cover" draggable="false" src={loginIconMarkUrl} />
-    </div>
-  );
-}
-
-function GmailMark() {
-  return (
-    <img alt="" aria-hidden="true" className="h-7 w-7 object-contain" draggable="false" src={googleAccountIconSrc} />
-  );
-}
-
-function openPortalEntry(portal: PortalScope, route: string) {
-  const target = new URL(portalEntryFile[portal], window.location.href);
-  target.hash = route;
-  window.location.assign(target.href);
-}
-
 function normalizeRedirectRoute(redirectPath: string | null) {
   const normalized = redirectPath?.trim();
 
-  if (!normalized || !normalized.startsWith("/") || normalized.startsWith("//") || normalized.startsWith("/login")) {
+  if (
+    !normalized ||
+    !normalized.startsWith("/") ||
+    normalized.startsWith("//") ||
+    normalized.startsWith("/login")
+  ) {
     return null;
   }
 
@@ -603,9 +250,13 @@ function normalizeRedirectRoute(redirectPath: string | null) {
 }
 
 function resolvePortalFromRoute(route: string): PortalScope {
-  const pathname = route.split(/[?#]/)[0] || "/";
+  const pathname = route.split(/[?#]/u)[0] || "/";
 
-  if (pathname.startsWith("/merchant-admin") || pathname.startsWith("/merchant") || pathname.startsWith("/shop")) {
+  if (
+    pathname.startsWith("/merchant-admin") ||
+    pathname.startsWith("/merchant") ||
+    pathname.startsWith("/shop")
+  ) {
     return "merchant";
   }
 
@@ -627,48 +278,69 @@ function resolvePortalFromRoute(route: string): PortalScope {
     return "business";
   }
 
-  if (pathname.startsWith("/admin")) {
-    return "admin";
-  }
-
-  return "user";
+  return pathname.startsWith("/admin") ? "admin" : "user";
 }
 
-export function getPostLoginRoute(portal: PortalScope, redirectPath: string | null) {
+export function getPostLoginRoute(
+  portal: PortalScope,
+  redirectPath: string | null,
+) {
   const redirectRoute = normalizeRedirectRoute(redirectPath);
-
-  if (!redirectRoute || resolvePortalFromRoute(redirectRoute) !== portal) {
-    return portalEntryRoute[portal];
-  }
-
-  return redirectRoute;
+  return !redirectRoute || resolvePortalFromRoute(redirectRoute) !== portal
+    ? portalEntryRoute[portal]
+    : redirectRoute;
 }
 
 export function requiresFormalFrontendLogin(
   portal: PortalScope,
   redirectPath: string | null,
   isProduction = import.meta.env.PROD,
-  isStaticDemo = isStaticDemoMode()
+  isStaticDemo = isStaticDemoMode(),
 ) {
   if (isProduction || !isStaticDemo) {
     return true;
   }
 
-  const redirectRoute = normalizeRedirectRoute(redirectPath);
-  const pathname = redirectRoute?.split(/[?#]/)[0] || "";
-
+  const pathname =
+    normalizeRedirectRoute(redirectPath)?.split(/[?#]/u)[0] || "";
   if (portal === "technician") {
-    return pathname.startsWith("/technician/payroll") || pathname === "/technician/schedule";
+    return (
+      pathname.startsWith("/technician/payroll") ||
+      pathname === "/technician/schedule"
+    );
   }
 
-  if (portal === "merchant") {
-    return pathname === "/merchant/schedule" || pathname === "/merchant/orders";
-  }
-
-  return false;
+  return (
+    portal === "merchant" &&
+    (pathname === "/merchant/schedule" || pathname === "/merchant/orders")
+  );
 }
 
-export function LoginPage() {
+function openPortalEntry(portal: PortalScope, route: string) {
+  const target = new URL(portalEntryFile[portal], window.location.href);
+  target.hash = route;
+  window.location.assign(target.href);
+}
+
+function AppMark() {
+  return (
+    <div className="needo-login-logo mx-auto h-[92px] w-[92px] overflow-hidden rounded-[26px]">
+      <img
+        alt=""
+        aria-hidden="true"
+        className="needo-login-logo__mark h-full w-full object-cover"
+        draggable="false"
+        src={loginIconMarkUrl}
+      />
+    </div>
+  );
+}
+
+export function LoginPage({
+  navigateToPortal = openPortalEntry,
+}: {
+  navigateToPortal?: (portal: PortalScope, route: string) => void;
+}) {
   const { portal } = useParams();
   const [searchParams] = useSearchParams();
   const { language } = useI18n();
@@ -679,115 +351,68 @@ export function LoginPage() {
     hasRememberedPortalAuthorization,
     isAuthenticated,
     login,
-    loginWithFormalPassword,
-    loginWithProvider,
+    loginWithGoogle,
     logout,
     session,
-    switchPortal: switchSessionPortal
+    startRegistration,
+    switchPortal,
+    verifyGoogleRegistrationOrLink,
+    verifyRegistration,
   } = useAuth();
   const requestedPortal = normalizePortal(portal);
   const redirectPath = searchParams.get("redirect");
-  const [activePortal, setActivePortal] = useState<PortalScope>(requestedPortal);
+  const [activePortal, setActivePortal] =
+    useState<PortalScope>(requestedPortal);
   const [panelMode, setPanelMode] = useState<LoginPanelMode>("welcome");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [registrationName, setRegistrationName] = useState("");
-  const [registrationCity, setRegistrationCity] = useState("");
-  const [feedback, setFeedback] = useState<LoginFeedbackState | null>(null);
-  const [isLoginPending, setIsLoginPending] = useState(false);
-  const [captchaImage, setCaptchaImage] = useState("");
-  const [captchaCode, setCaptchaCode] = useState("");
-  const [isCaptchaPending, setIsCaptchaPending] = useState(false);
-  const [rememberCredentials, setRememberCredentials] = useState(false);
+  const [loginIdentifier, setLoginIdentifier] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [registrationEmail, setRegistrationEmail] = useState("");
+  const [registrationPassword, setRegistrationPassword] = useState("");
+  const [verification, setVerification] = useState<VerificationState | null>(
+    null,
+  );
+  const [generatedNeedoId, setGeneratedNeedoId] =
+    useState<GeneratedNeedoIdState | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [verificationError, setVerificationError] = useState("");
+  const [copyError, setCopyError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [googleFlowKey, setGoogleFlowKey] = useState(0);
+  const [googleState, setGoogleState] = useState<
+    "connecting" | "error" | "idle" | "static"
+  >("idle");
+  const googleContainerRef = useRef<HTMLDivElement>(null);
+  const googleFlowGenerationRef = useRef(0);
   const navigationInFlightRef = useRef(false);
-
-  useEffect(() => {
-    setActivePortal(requestedPortal);
-  }, [requestedPortal]);
-
-  const copy = loginCopy[language];
+  const copy = useMemo(() => buildLoginCopy(language), [language]);
   const activePortalCopy = copy.portals[activePortal];
-  const nextPath = useMemo(() => getPostLoginRoute(activePortal, redirectPath), [activePortal, redirectPath]);
-  const rememberCredentialsScope = useMemo(() => getFrontendRememberCredentialsScope(activePortal), [activePortal]);
-  const requiresFormalLogin = requiresFormalFrontendLogin(activePortal, redirectPath);
-  const canSelfRegister = activePortal === "user" || activePortal === "technician";
-  const shouldBypassFrontendLogin = !requiresFormalLogin && isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);
-  const hasRememberedActivePortal = hasRememberedPortalAuthorization(activePortal);
-  const hasBlockedFormalFrontendBypass = requiresFormalLogin && isFrontendBypassSession(session);
-  const hasActiveAccess = (isAuthenticated && canAccess(activePortal) && !hasBlockedFormalFrontendBypass) || hasRememberedActivePortal;
-  const feedbackMessage = resolveLoginFeedbackMessage(feedback, copy);
-  const error = feedback?.tone === "error" ? feedbackMessage : "";
-  const notice = feedback?.tone === "notice" ? feedbackMessage : "";
+  const nextPath = useMemo(
+    () => getPostLoginRoute(activePortal, redirectPath),
+    [activePortal, redirectPath],
+  );
+  const requiresFormalLogin = requiresFormalFrontendLogin(
+    activePortal,
+    redirectPath,
+  );
+  const shouldBypassFrontendLogin =
+    !requiresFormalLogin &&
+    isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);
+  const hasRememberedActivePortal =
+    hasRememberedPortalAuthorization(activePortal);
+  const hasBlockedFormalFrontendBypass =
+    requiresFormalLogin && isFrontendBypassSession(session);
+  const hasActiveAccess =
+    (isAuthenticated &&
+      canAccess(activePortal) &&
+      !hasBlockedFormalFrontendBypass) ||
+    hasRememberedActivePortal;
+  const staticDemo = isStaticDemoMode();
 
+  useEffect(() => setActivePortal(requestedPortal), [requestedPortal]);
   useEffect(() => {
     navigationInFlightRef.current = false;
   }, [activePortal, nextPath]);
-
-  useEffect(() => {
-    if (searchParams.get("googleAccount") !== "connected" || searchParams.get("googleAccountMode") !== "login") {
-      return;
-    }
-
-    const googlePortal = normalizePortal(searchParams.get("portal") ?? activePortal);
-    const googleEmail = searchParams.get("googleEmail") || portalGmailEmail[googlePortal];
-
-    loginWithProvider(googlePortal, "gmail", googleEmail).then((result) => {
-      if (!result.ok) {
-        setFeedback({ message: result.message, tone: "error", type: "custom" });
-        return;
-      }
-
-      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
-    });
-  }, [activePortal, loginWithProvider, redirectPath, searchParams]);
-
-  useEffect(() => {
-    const remembered = readRememberedCredentials(rememberCredentialsScope);
-    setRememberCredentials(remembered.enabled);
-
-    if (remembered.enabled) {
-      setUsername(remembered.account);
-      setPassword(remembered.password);
-    } else {
-      setPassword("");
-    }
-  }, [rememberCredentialsScope]);
-
-  useEffect(() => {
-    if (!rememberCredentials) {
-      return;
-    }
-
-    writeRememberedCredentials(rememberCredentialsScope, username, password);
-  }, [password, rememberCredentials, rememberCredentialsScope, username]);
-
-  const clearFeedback = () => {
-    setFeedback(null);
-  };
-
-  const loadCaptcha = useCallback(async () => {
-    setIsCaptchaPending(true);
-
-    try {
-      const nextCaptchaImage = await authApi.fetchCaptcha();
-      setCaptchaImage(nextCaptchaImage);
-      setCaptchaCode("");
-    } catch {
-      setCaptchaImage("");
-      setCaptchaCode("");
-      setFeedback({ key: "captchaLoadError", tone: "error", type: "localized" });
-    } finally {
-      setIsCaptchaPending(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (requiresFormalLogin || hasActiveAccess || panelMode !== "account") {
-      return;
-    }
-
-    void loadCaptcha();
-  }, [hasActiveAccess, loadCaptcha, panelMode, requiresFormalLogin]);
 
   const enterPortal = useCallback(async () => {
     if (navigationInFlightRef.current) {
@@ -795,478 +420,635 @@ export function LoginPage() {
     }
 
     navigationInFlightRef.current = true;
-
     if (isAuthenticated || hasRememberedPortalAuthorization(activePortal)) {
-      const switched = await switchSessionPortal(activePortal);
-
+      const switched = await switchPortal(activePortal);
       if (!switched.ok) {
         navigationInFlightRef.current = false;
-        setFeedback({ message: switched.message, tone: "error", type: "custom" });
+        setFeedback(resolveLoginErrorMessage(switched.message, language));
         return;
       }
     }
 
-    openPortalEntry(activePortal, nextPath);
-  }, [activePortal, hasRememberedPortalAuthorization, isAuthenticated, nextPath, switchSessionPortal]);
-
-  useEffect(() => {
-    if (!hasActiveAccess || isLoginPending) {
-      return;
-    }
-
-    void enterPortal();
-  }, [enterPortal, hasActiveAccess, isLoginPending]);
-
-  const toggleRememberCredentials = (checked: boolean) => {
-    setRememberCredentials(checked);
-
-    if (checked) {
-      writeRememberedCredentials(rememberCredentialsScope, username, password);
-      return;
-    }
-
-    clearRememberedCredentials(rememberCredentialsScope);
-  };
-
-  const continueWithGmail = async () => {
-    if (isLoginPending) {
-      return;
-    }
-
-    clearFeedback();
-    setIsLoginPending(true);
-
-    try {
-      const result = await loginWithProvider(activePortal, "gmail", portalGmailEmail[activePortal]);
-
-      if (!result.ok) {
-        setFeedback({ key: "googleLoginUnavailable", tone: "error", type: "localized" });
-        return;
-      }
-
-      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
-    } finally {
-      setIsLoginPending(false);
-    }
-  };
-
-  const continueWithFrontendBypass = useCallback(async () => {
-    if (!shouldBypassFrontendLogin || isLoginPending) {
-      return;
-    }
-
-    clearFeedback();
-    setIsLoginPending(true);
-
-    try {
-      const result = await enterFrontendWithoutAuthentication(activePortal);
-      if (!result.ok) {
-        setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
-        return;
-      }
-
-      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
-    } finally {
-      setIsLoginPending(false);
-    }
+    navigateToPortal(activePortal, nextPath);
   }, [
     activePortal,
-    copy,
-    enterFrontendWithoutAuthentication,
-    isLoginPending,
-    redirectPath,
-    shouldBypassFrontendLogin
+    hasRememberedPortalAuthorization,
+    isAuthenticated,
+    language,
+    navigateToPortal,
+    nextPath,
+    switchPortal,
   ]);
 
   useEffect(() => {
-    if (!shouldBypassFrontendLogin || hasActiveAccess || isLoginPending) {
+    if (
+      hasActiveAccess &&
+      !pending &&
+      !generatedNeedoId &&
+      panelMode === "welcome"
+    ) {
+      void enterPortal();
+    }
+  }, [enterPortal, generatedNeedoId, hasActiveAccess, panelMode, pending]);
+
+  useEffect(() => {
+    if (!shouldBypassFrontendLogin || hasActiveAccess || pending) {
       return;
     }
 
-    void continueWithFrontendBypass();
-  }, [continueWithFrontendBypass, hasActiveAccess, isLoginPending, shouldBypassFrontendLogin]);
+    let active = true;
+    setPending(true);
+    enterFrontendWithoutAuthentication(activePortal)
+      .then((result) => {
+        if (!active) return;
+        if (!result.ok) {
+          setFeedback(resolveLoginErrorMessage(result.message, language));
+          return;
+        }
+        navigateToPortal(
+          result.session.portal,
+          getPostLoginRoute(result.session.portal, redirectPath),
+        );
+      })
+      .finally(() => {
+        if (active) setPending(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    activePortal,
+    enterFrontendWithoutAuthentication,
+    hasActiveAccess,
+    language,
+    navigateToPortal,
+    pending,
+    redirectPath,
+    shouldBypassFrontendLogin,
+  ]);
+
+  useEffect(() => {
+    const container = googleContainerRef.current;
+    if (
+      !container ||
+      panelMode !== "welcome" ||
+      hasActiveAccess ||
+      generatedNeedoId
+    ) {
+      return;
+    }
+
+    container.replaceChildren();
+    if (staticDemo) {
+      setGoogleState("static");
+      return;
+    }
+
+    let active = true;
+    const flowGeneration = googleFlowGenerationRef.current + 1;
+    googleFlowGenerationRef.current = flowGeneration;
+    const isCurrentFlow = () =>
+      active && googleFlowGenerationRef.current === flowGeneration;
+    setGoogleState("connecting");
+    setFeedback("");
+
+    const run = async () => {
+      try {
+        const initialization = await authApi.initializeGoogleLogin();
+        if (!isCurrentFlow()) return;
+        const credential = await requestGoogleCredential({
+          clientId: initialization.clientId,
+          container,
+          nonce: initialization.nonce,
+        });
+        if (!isCurrentFlow()) return;
+        const credentialResult = await authApi.submitGoogleCredential({
+          credential,
+          nonceChallengeId: initialization.nonceChallengeId,
+        });
+        if (!isCurrentFlow()) return;
+        const result = await loginWithGoogle(credentialResult, activePortal);
+        if (!isCurrentFlow()) return;
+        if (!result.ok) {
+          setGoogleState("error");
+          setFeedback(resolveLoginErrorMessage(result.message, language));
+          return;
+        }
+        if (result.status === "verification_required") {
+          setVerification({ challenge: result.challenge, kind: "google" });
+          setVerificationError("");
+          setPanelMode("verification");
+          setGoogleState("idle");
+          return;
+        }
+        navigateToPortal(
+          result.session.portal,
+          getPostLoginRoute(result.session.portal, redirectPath),
+        );
+      } catch (error) {
+        if (!isCurrentFlow()) return;
+        setGoogleState("error");
+        setFeedback(
+          resolveLoginErrorMessage(
+            error instanceof Error ? error.message : undefined,
+            language,
+          ),
+        );
+      }
+    };
+
+    void run();
+    return () => {
+      active = false;
+      if (googleFlowGenerationRef.current === flowGeneration) {
+        googleFlowGenerationRef.current += 1;
+      }
+    };
+  }, [
+    activePortal,
+    generatedNeedoId,
+    googleFlowKey,
+    hasActiveAccess,
+    language,
+    loginWithGoogle,
+    navigateToPortal,
+    panelMode,
+    redirectPath,
+    staticDemo,
+  ]);
 
   const handleAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isLoginPending) {
+    if (pending) return;
+    setFeedback("");
+    const identifier = loginIdentifier.trim();
+    if (!identifier || !loginPassword) {
+      setFeedback(copy.requiredAccount);
       return;
     }
 
-    clearFeedback();
-
-    if (!username.trim() || !password.trim()) {
-      setFeedback({ key: "requiredError", tone: "error", type: "localized" });
-      return;
-    }
-    const normalizedUsername = username.trim();
-    const normalizedPassword = password.trim();
-
-    if (requiresFormalLogin) {
-      setIsLoginPending(true);
-
-      try {
-        const result = await loginWithFormalPassword(activePortal, normalizedUsername, normalizedPassword);
-        if (!result.ok) {
-          setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
-          return;
-        }
-
-        openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
-      } finally {
-        setIsLoginPending(false);
-      }
-      return;
-    }
-
-    const normalizedCaptchaCode = captchaCode.trim();
-
-    if (!normalizedCaptchaCode) {
-      setFeedback({ key: "captchaRequiredError", tone: "error", type: "localized" });
-      return;
-    }
-
-    setIsLoginPending(true);
-
+    setPending(true);
     try {
-      const result = await login(activePortal, normalizedUsername, normalizedPassword, normalizedCaptchaCode);
+      const result = await login(activePortal, identifier, loginPassword);
       if (!result.ok) {
-        setFeedback({ message: resolveLoginErrorMessage(result.message, copy), tone: "error", type: "custom" });
-        void loadCaptcha();
+        setFeedback(resolveLoginErrorMessage(result.message, language));
         return;
       }
-
-      openPortalEntry(result.session.portal, getPostLoginRoute(result.session.portal, redirectPath));
+      navigateToPortal(
+        result.session.portal,
+        getPostLoginRoute(result.session.portal, redirectPath),
+      );
     } finally {
-      setIsLoginPending(false);
+      setPending(false);
     }
   };
 
   const handleRegistration = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isLoginPending || !canSelfRegister) {
+    if (pending || activePortal !== "user") return;
+    setFeedback("");
+    const email = registrationEmail.trim();
+    if (!email || !registrationPassword) {
+      setFeedback(copy.requiredRegistration);
       return;
     }
 
-    clearFeedback();
-    const accountType = activePortal === "technician" ? "technician" : "customer";
-    const email = username.trim();
-    const displayName = registrationName.trim();
-    const city = registrationCity.trim();
-
-    if (!email || !displayName || !password.trim() || (accountType === "technician" && !city)) {
-      setFeedback({ key: "requiredError", tone: "error", type: "localized" });
-      return;
-    }
-
-    setIsLoginPending(true);
-
+    setPending(true);
     try {
-      const registrationData = { email, password, username: displayName };
-      const registered = await authApi.register(
-        accountType === "technician"
-          ? { ...registrationData, accountType: "technician", city }
-          : { ...registrationData, accountType: "customer" }
-      );
-      setPassword("");
-      setRegistrationCity("");
-      setRegistrationName("");
-      setPanelMode(registered.accountType === "customer" ? "account" : "welcome");
-      setFeedback({
-        message:
-          registered.approvalStatus === "pending_review"
-            ? copy.registrationTechnicianPending
-            : copy.registrationCustomerSuccess,
-        tone: "notice",
-        type: "custom"
+      const result = await startRegistration({
+        email,
+        password: registrationPassword,
       });
-    } catch (registrationError) {
-      const message = registrationError instanceof Error ? registrationError.message : "";
-      setFeedback({
-        message:
-          message === "error.user.email_exists" ? copy.registrationEmailExists : message || copy.accountError,
-        tone: "error",
-        type: "custom"
-      });
+      if (!result.ok) {
+        setFeedback(resolveLoginErrorMessage(result.message, language));
+        return;
+      }
+      setVerification({ challenge: result.challenge, kind: "registration" });
+      setVerificationError("");
+      setPanelMode("verification");
     } finally {
-      setIsLoginPending(false);
+      setPending(false);
     }
   };
 
-  const captchaControl = (
-    <label className="block text-left">
-      <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.captchaLabel}</span>
-      <div className="mt-2 grid grid-cols-[1fr_128px] gap-2">
-        <input
-          autoComplete="off"
-          className="h-12 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
-          disabled={isLoginPending}
-          inputMode="text"
-          onChange={(event) => setCaptchaCode(event.target.value)}
-          placeholder={copy.captchaPlaceholder}
-          value={captchaCode}
-        />
-        <button
-          aria-label={copy.captchaRefresh}
-          className="flex h-12 items-center justify-center overflow-hidden rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_70%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,var(--client-bg)_26%)] text-xs font-black text-[color:var(--client-muted)] disabled:cursor-wait disabled:opacity-70"
-          disabled={isLoginPending || isCaptchaPending}
-          onClick={() => {
-            void loadCaptcha();
-          }}
-          title={copy.captchaRefresh}
-          type="button"
-        >
-          {captchaImage ? (
-            <img alt="" className="h-full w-full object-cover" draggable="false" src={captchaImage} />
-          ) : (
-            <span>{isCaptchaPending ? copy.loginPending : copy.captchaRefresh}</span>
-          )}
-        </button>
-      </div>
-    </label>
-  );
+  const handleVerificationSubmit = async (otp: string) => {
+    if (!verification || pending) return;
+    setPending(true);
+    setVerificationError("");
+    try {
+      const input = { challengeId: verification.challenge.challengeId, otp };
+      const result =
+        verification.kind === "registration"
+          ? await verifyRegistration(input)
+          : await verifyGoogleRegistrationOrLink(input, activePortal);
+      if (!result.ok) {
+        setVerificationError(
+          resolveLoginErrorMessage(result.message, language),
+        );
+        return;
+      }
+      if (result.needoId) {
+        setGeneratedNeedoId({
+          needoId: result.needoId,
+          session: result.session,
+        });
+        setCopied(false);
+        setCopyError("");
+        setPanelMode("needo-id");
+        return;
+      }
+      navigateToPortal(
+        result.session.portal,
+        getPostLoginRoute(result.session.portal, redirectPath),
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const handleVerificationResend = async () => {
+    if (!verification || pending) return;
+    setVerificationError("");
+    if (verification.kind === "google") {
+      setVerification(null);
+      setPanelMode("welcome");
+      setGoogleFlowKey((current) => current + 1);
+      return;
+    }
+
+    setPending(true);
+    try {
+      const result = await startRegistration({
+        email: registrationEmail.trim(),
+        password: registrationPassword,
+      });
+      if (!result.ok) {
+        setVerificationError(
+          resolveLoginErrorMessage(result.message, language),
+        );
+        return;
+      }
+      setVerification({ challenge: result.challenge, kind: "registration" });
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const handleVerificationBack = () => {
+    const returningFromGoogle = verification?.kind === "google";
+    const priorMode = returningFromGoogle ? "welcome" : "register";
+    setVerification(null);
+    setVerificationError("");
+    setPanelMode(priorMode);
+    if (returningFromGoogle) {
+      setGoogleFlowKey((current) => current + 1);
+    }
+  };
+
+  const handleCopyNeedoId = async () => {
+    if (!generatedNeedoId) return;
+    setCopyError("");
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("clipboard_unavailable");
+      }
+      await navigator.clipboard.writeText(generatedNeedoId.needoId);
+      setCopied(true);
+    } catch {
+      setCopyError(copy.copyFailed);
+    }
+  };
+
+  const resetToWelcome = () => {
+    setPanelMode("welcome");
+    setFeedback("");
+    setVerificationError("");
+  };
+
+  const leaveGoogleWelcome = (nextMode: "account" | "register") => {
+    googleFlowGenerationRef.current += 1;
+    setPanelMode(nextMode);
+    setFeedback("");
+  };
 
   return (
     <div
       className={cn(
         "client-shell flex min-h-[100dvh] bg-[color:var(--client-bg)] px-5 text-[color:var(--client-text)]",
         getClientThemeModeClassName(theme),
-        getClientThemeClassName(theme)
+        getClientThemeClassName(theme),
       )}
       data-no-i18n
     >
-      <main className="mx-auto flex min-h-[100dvh] w-full max-w-[440px] flex-col pb-8 pt-[calc(env(safe-area-inset-top,0px)+16px)]">
+      <main
+        className="mx-auto flex min-h-[100dvh] w-full max-w-[440px] flex-col pb-8 pt-[calc(env(safe-area-inset-top,0px)+16px)]"
+        style={{ maxWidth: "440px" }}
+      >
         <header className="flex min-h-11 items-center justify-between gap-3">
-          {panelMode !== "welcome" ? (
+          {panelMode === "account" || panelMode === "register" ? (
             <button
-              className="inline-flex h-10 items-center justify-center rounded-full px-1 text-sm font-black text-[color:var(--client-muted)]"
-              onClick={() => {
-                setPanelMode("welcome");
-                clearFeedback();
-              }}
+              className="inline-flex min-h-11 items-center justify-center rounded-full px-1 text-sm font-black text-[color:var(--client-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
+              onClick={resetToWelcome}
               type="button"
             >
               {copy.back}
             </button>
           ) : (
-            <span className="text-sm font-black text-[color:var(--client-soft-muted)]">{activePortalCopy.shortLabel}</span>
+            <span className="text-sm font-black text-[color:var(--client-soft-muted)]">
+              {activePortalCopy.shortLabel}
+            </span>
           )}
           <LanguageSwitcher dark={isNight} iconOnly />
         </header>
 
-        <section className="flex flex-1 flex-col justify-center py-10 text-center">
+        <section className="flex flex-1 flex-col justify-center py-8 text-center">
           <AppMark />
-          <h1 className="mt-7 text-[32px] font-black leading-tight tracking-normal text-[color:var(--client-text)]">{copy.welcomeTitle}</h1>
-          <p className="mx-auto mt-3 max-w-[320px] text-sm font-semibold leading-6 text-[color:var(--client-muted)]">{copy.welcomeSubtitle}</p>
+          <h1 className="mt-7 text-[32px] font-black leading-tight tracking-normal text-[color:var(--client-text)]">
+            {copy.welcomeTitle}
+          </h1>
+          <p className="mx-auto mt-3 max-w-[340px] text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+            {copy.welcomeSubtitle}
+          </p>
 
-          <div className="mt-9">
-            {hasActiveAccess ? (
-              <div className="space-y-4">
-                <div className="rounded-[28px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 py-5 text-left shadow-[var(--client-shadow)]">
-                  <p className="text-sm font-black text-[color:var(--client-primary)]">{copy.continueTitle}</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
-                    {copy.signedInAs}: <strong className="text-[color:var(--client-text)]">{session?.email || session?.username || activePortalCopy.title}</strong>
+          <div className="mt-8">
+            {generatedNeedoId ? (
+              <div className="space-y-5" data-testid="generated-needo-id">
+                <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-primary)_38%,var(--client-line))] bg-[color:color-mix(in_srgb,var(--client-primary)_8%,var(--client-surface))] p-5 text-left shadow-[var(--client-shadow)]">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">
+                    {copy.generatedTitle}
                   </p>
-                  <p className="mt-1 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">{activePortalCopy.title}</p>
+                  <p className="mt-4 select-all break-all font-mono text-2xl font-black tracking-[0.08em] text-[color:var(--client-text)]">
+                    {generatedNeedoId.needoId}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+                    {copy.generatedDescription}
+                  </p>
+                  <button
+                    className="mt-4 min-h-11 rounded-full border border-[color:var(--client-primary)] px-4 text-sm font-black text-[color:var(--client-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
+                    data-testid="generated-needo-id-copy"
+                    onClick={() => void handleCopyNeedoId()}
+                    type="button"
+                  >
+                    {copied ? copy.copied : copy.copy}
+                  </button>
+                  {copyError ? (
+                    <p
+                      className="mt-3 text-sm font-bold text-[color:var(--client-accent)]"
+                      role="alert"
+                    >
+                      {copyError}
+                    </p>
+                  ) : null}
                 </div>
                 <button
-                  className="h-14 w-full rounded-[6px] bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90"
-                  onClick={enterPortal}
+                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
+                  data-testid="generated-needo-id-continue"
+                  onClick={() =>
+                    navigateToPortal(
+                      generatedNeedoId.session.portal,
+                      getPostLoginRoute(
+                        generatedNeedoId.session.portal,
+                        redirectPath,
+                      ),
+                    )
+                  }
+                  type="button"
+                >
+                  {copy.continueButton}
+                </button>
+              </div>
+            ) : panelMode === "verification" && verification ? (
+              <AuthVerificationPanel
+                attemptFeedback={translateText("最多可尝试 5 次", language)}
+                challenge={verification.challenge}
+                error={verificationError}
+                key={verification.challenge.challengeId}
+                labels={buildVerificationLabels(language, verification.kind)}
+                onBack={handleVerificationBack}
+                onResend={handleVerificationResend}
+                onSubmit={handleVerificationSubmit}
+                pending={pending}
+              />
+            ) : panelMode === "welcome" && hasActiveAccess ? (
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-primary)_28%,var(--client-line))] bg-[color:var(--client-surface)] p-5 text-left shadow-[var(--client-shadow)]">
+                  <p className="text-sm font-black text-[color:var(--client-primary)]">
+                    {copy.continueTitle}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+                    {copy.signedInAs}:{" "}
+                    <strong className="text-[color:var(--client-text)]">
+                      {session?.email ||
+                        session?.needoId ||
+                        activePortalCopy.title}
+                    </strong>
+                  </p>
+                </div>
+                <button
+                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)]"
+                  onClick={() => void enterPortal()}
                   type="button"
                 >
                   {copy.continueButton} {activePortalCopy.shortLabel}
                 </button>
                 <button
-                  className="h-12 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_76%,var(--client-bg)_24%)] px-5 text-sm font-black text-[color:var(--client-muted)]"
-                  onClick={logout}
+                  className="h-12 w-full rounded-full border border-[color:var(--client-line)] px-5 text-sm font-black text-[color:var(--client-muted)]"
+                  onClick={() => void logout()}
                   type="button"
                 >
                   {copy.logout}
                 </button>
               </div>
-            ) : panelMode === "welcome" ? (
+            ) : panelMode === "register" ? (
+              <form
+                className="space-y-5 text-left"
+                data-testid="registration-form"
+                onSubmit={handleRegistration}
+              >
+                <div className="text-center">
+                  <h2 className="text-2xl font-black text-[color:var(--client-text)]">
+                    {copy.registrationTitle}
+                  </h2>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-[color:var(--client-muted)]">
+                    {copy.registrationSubtitle}
+                  </p>
+                </div>
+                <label className="block">
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">
+                    {copy.registrationEmailLabel}
+                  </span>
+                  <input
+                    autoComplete="email"
+                    className="mt-2 h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
+                    data-testid="registration-email"
+                    disabled={pending}
+                    onChange={(event) =>
+                      setRegistrationEmail(event.target.value)
+                    }
+                    placeholder={copy.registrationEmailPlaceholder}
+                    type="email"
+                    value={registrationEmail}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">
+                    {copy.passwordLabel}
+                  </span>
+                  <PasswordInput
+                    autoComplete="new-password"
+                    data-testid="registration-password"
+                    disabled={pending}
+                    hidePasswordLabel={copy.hidePassword}
+                    inputClassName="h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 pr-14 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
+                    onChange={(event) =>
+                      setRegistrationPassword(event.target.value)
+                    }
+                    placeholder={copy.passwordPlaceholder}
+                    showPasswordLabel={copy.showPassword}
+                    value={registrationPassword}
+                    wrapperClassName="mt-2"
+                  />
+                  <span className="mt-2 block text-xs font-semibold leading-5 text-[color:var(--client-soft-muted)]">
+                    {copy.registrationPasswordHint}
+                  </span>
+                </label>
+                <button
+                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] disabled:opacity-60"
+                  disabled={pending}
+                  type="submit"
+                >
+                  {pending ? copy.registering : copy.registerButton}
+                </button>
+              </form>
+            ) : panelMode === "account" ? (
+              <form
+                className="space-y-5 text-left"
+                data-testid="password-login-form"
+                onSubmit={handleAccountLogin}
+              >
+                <div className="text-center">
+                  <h2 className="text-2xl font-black text-[color:var(--client-text)]">
+                    {copy.useAccountTitle}
+                  </h2>
+                  <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">
+                    {copy.useAccountSubtitle}
+                  </p>
+                </div>
+                <label className="block">
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">
+                    {copy.accountLabel}
+                  </span>
+                  <input
+                    autoComplete="username"
+                    className="mt-2 h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
+                    data-testid="login-identifier"
+                    onChange={(event) => setLoginIdentifier(event.target.value)}
+                    placeholder={copy.accountPlaceholder}
+                    value={loginIdentifier}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-black text-[color:var(--client-muted)]">
+                    {copy.passwordLabel}
+                  </span>
+                  <PasswordInput
+                    autoComplete="current-password"
+                    data-testid="login-password"
+                    disabled={pending}
+                    hidePasswordLabel={copy.hidePassword}
+                    inputClassName="h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 pr-14 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
+                    onChange={(event) => setLoginPassword(event.target.value)}
+                    placeholder={copy.passwordPlaceholder}
+                    showPasswordLabel={copy.showPassword}
+                    value={loginPassword}
+                    wrapperClassName="mt-2"
+                  />
+                </label>
+                <button
+                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] disabled:opacity-60"
+                  disabled={pending}
+                  type="submit"
+                >
+                  {pending ? copy.loginPending : copy.loginButton}
+                </button>
+              </form>
+            ) : (
               <div className="space-y-4">
                 <button
-                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
-                  disabled={isLoginPending}
-                  onClick={continueWithGmail}
-                  type="button"
-                >
-                  <GmailMark />
-                  {isLoginPending ? copy.loginPending : copy.gmailLogin}
-                </button>
-                <button
-                  className="h-14 w-full rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[0_14px_32px_rgba(0,0,0,0.08)] transition hover:border-[color:var(--client-primary)] disabled:cursor-wait disabled:opacity-70"
-                  disabled={isLoginPending}
-                  onClick={() => {
-                    setPanelMode("account");
-                    clearFeedback();
-                  }}
+                  className="h-14 w-full rounded-full border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-5 text-base font-black text-[color:var(--client-text)] shadow-[var(--client-shadow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
+                  data-testid="show-password-login"
+                  onClick={() => leaveGoogleWelcome("account")}
                   type="button"
                 >
                   {copy.accountLogin}
                 </button>
-                {canSelfRegister ? (
+                {activePortal === "user" ? (
                   <button
-                    className="mt-2 inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)]"
-                    onClick={() => {
-                      setPanelMode("register");
-                      clearFeedback();
-                    }}
+                    className="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-base font-black text-[color:var(--client-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary)]"
+                    data-testid="show-registration"
+                    onClick={() => leaveGoogleWelcome("register")}
                     type="button"
                   >
                     {copy.createAccount}
                   </button>
                 ) : null}
               </div>
-            ) : panelMode === "register" ? (
-              <form className="space-y-5 text-left" onSubmit={handleRegistration}>
-                <div className="text-center">
-                  <h2 className="text-2xl font-black tracking-normal text-[color:var(--client-text)]">{copy.registrationTitle}</h2>
-                  <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">{copy.registrationSubtitle}</p>
-                </div>
-                <label className="block">
-                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.accountLabel}</span>
-                  <input
-                    autoComplete="email"
-                    className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
-                    disabled={isLoginPending}
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder={copy.accountPlaceholder}
-                    type="email"
-                    value={username}
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.displayNameLabel}</span>
-                  <input
-                    autoComplete="name"
-                    className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
-                    disabled={isLoginPending}
-                    onChange={(event) => setRegistrationName(event.target.value)}
-                    placeholder={copy.displayNamePlaceholder}
-                    value={registrationName}
-                  />
-                </label>
-                {activePortal === "technician" ? (
-                  <label className="block">
-                    <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.cityLabel}</span>
-                    <input
-                      autoComplete="address-level2"
-                      className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
-                      disabled={isLoginPending}
-                      onChange={(event) => setRegistrationCity(event.target.value)}
-                      placeholder={copy.cityPlaceholder}
-                      value={registrationCity}
-                    />
-                  </label>
-                ) : null}
-                <label className="block">
-                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.passwordLabel}</span>
-                  <PasswordInput
-                    autoComplete="new-password"
-                    disabled={isLoginPending}
-                    inputClassName="h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 pr-14 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)]"
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder={copy.passwordPlaceholder}
-                    toggleClassName="right-3 text-[color:var(--client-muted)]"
-                    value={password}
-                    wrapperClassName="mt-2"
-                  />
-                  <span className="mt-2 block text-xs font-semibold leading-5 text-[color:var(--client-soft-muted)]">{copy.registrationPasswordHint}</span>
-                </label>
-                <button
-                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] disabled:cursor-wait disabled:opacity-70"
-                  disabled={isLoginPending}
-                  type="submit"
-                >
-                  {isLoginPending ? copy.registering : copy.registerButton}
-                </button>
-              </form>
-            ) : (
-              <form className="space-y-5 text-left" onSubmit={handleAccountLogin}>
-                <div className="text-center">
-                  <h2 className="text-2xl font-black tracking-normal text-[color:var(--client-text)]">{copy.useAccountTitle}</h2>
-                  <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">{copy.useAccountSubtitle}</p>
-                </div>
-                <label className="block">
-                  <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.accountLabel}</span>
-                  <input
-                    autoComplete="username email"
-                    className="mt-2 h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder={copy.accountPlaceholder}
-                    value={username}
-                  />
-                </label>
-                <label className="block">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-black text-[color:var(--client-muted)]">{copy.passwordLabel}</span>
-                    <button
-                      aria-checked={rememberCredentials}
-                      className={cn(
-                        "inline-flex items-center gap-2 rounded-full px-1 py-1 text-xs font-black text-[color:var(--client-muted)]",
-                        "transition hover:text-[color:var(--client-text)]"
-                      )}
-                      onClick={() => toggleRememberCredentials(!rememberCredentials)}
-                      role="switch"
-                      type="button"
-                    >
-                      <span>{copy.rememberCredentials}</span>
-                      <span
-                        className={cn(
-                          "relative inline-flex h-6 w-11 items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] transition",
-                          rememberCredentials
-                            ? "bg-[color:color-mix(in_srgb,var(--client-primary)_42%,var(--client-surface))]"
-                            : "bg-[color:color-mix(in_srgb,var(--client-surface)_86%,var(--client-bg))]"
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "h-5 w-5 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.24)] transition",
-                            rememberCredentials ? "translate-x-[19px]" : "translate-x-[2px]"
-                          )}
-                        />
-                      </span>
-                    </button>
-                  </div>
-                  <PasswordInput
-                    autoComplete="current-password"
-                    disabled={isLoginPending}
-                    inputClassName="h-14 w-full rounded-[6px] border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-4 pr-14 text-base font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-soft-muted)] focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder={copy.passwordPlaceholder}
-                    toggleClassName="right-3 text-[color:var(--client-muted)]"
-                    value={password}
-                    wrapperClassName="mt-2"
-                  />
-                </label>
-                {requiresFormalLogin ? null : captchaControl}
-                <button
-                  className="h-14 w-full rounded-full bg-[color:var(--client-primary)] px-5 text-base font-black text-[color:var(--client-needo-text)] shadow-[0_18px_36px_color-mix(in_srgb,var(--client-primary)_24%,transparent)] transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
-                  disabled={isLoginPending}
-                  type="submit"
-                >
-                  {isLoginPending ? copy.loginPending : copy.loginButton}
-                </button>
-                <button
-                  className="flex h-14 w-full items-center justify-center gap-3 rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,var(--client-bg)_18%)] px-5 text-base font-black text-[color:var(--client-text)] disabled:cursor-wait disabled:opacity-70"
-                  disabled={isLoginPending}
-                  onClick={continueWithGmail}
-                  type="button"
-                >
-                  <GmailMark />
-                  {isLoginPending ? copy.loginPending : copy.gmailLogin}
-                </button>
-              </form>
             )}
 
-            {error ? <p className="mt-4 rounded-[6px] bg-[color:color-mix(in_srgb,var(--client-accent)_13%,var(--client-bg)_87%)] px-4 py-3 text-left text-sm font-bold text-[color:var(--client-accent)]">{error}</p> : null}
-            {notice ? <p className="mt-4 rounded-[6px] bg-[color:color-mix(in_srgb,var(--client-primary)_12%,var(--client-bg)_88%)] px-4 py-3 text-left text-sm font-bold leading-6 text-[color:var(--client-primary-strong)]">{notice}</p> : null}
+            <div
+              className={
+                panelMode === "welcome" && !hasActiveAccess && !generatedNeedoId
+                  ? "mt-4"
+                  : "hidden"
+              }
+            >
+              {staticDemo ? (
+                <p
+                  className="rounded-[12px] border border-[color:var(--client-line)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]"
+                  role="status"
+                >
+                  {copy.googleUnavailableStatic}
+                </p>
+              ) : (
+                <div className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3">
+                  <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">
+                    {copy.googlePrompt}
+                  </p>
+                  <div
+                    aria-label={copy.googleLogin}
+                    className="flex min-h-11 items-center justify-center"
+                    data-testid="google-identity-button"
+                    ref={googleContainerRef}
+                  />
+                  {googleState === "error" ? (
+                    <button
+                      className="mt-2 min-h-11 rounded-full px-4 text-sm font-black text-[color:var(--client-primary)]"
+                      onClick={() => setGoogleFlowKey((current) => current + 1)}
+                      type="button"
+                    >
+                      {copy.googleRestart}
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
+            {feedback ? (
+              <p
+                className="mt-4 rounded-[12px] border border-[color:color-mix(in_srgb,var(--client-accent)_34%,transparent)] bg-[color:color-mix(in_srgb,var(--client-accent)_10%,var(--client-bg))] px-4 py-3 text-left text-sm font-bold leading-5 text-[color:var(--client-accent)]"
+                role="alert"
+              >
+                {feedback}
+              </p>
+            ) : null}
           </div>
         </section>
 
         <footer className="pb-[env(safe-area-inset-bottom,0px)]">
-          <p className="text-center text-xs font-semibold leading-5 text-[color:var(--client-soft-muted)]">{copy.copyright}</p>
+          <p className="text-center text-xs font-semibold leading-5 text-[color:var(--client-soft-muted)]">
+            {copy.copyright}
+          </p>
         </footer>
       </main>
     </div>

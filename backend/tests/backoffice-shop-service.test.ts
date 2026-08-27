@@ -1,5 +1,6 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { BackofficeService } from "../src/services/backoffice.service";
+import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
 
 const context = { ip: "127.0.0.1", userAgent: "jest" };
 const actor = {
@@ -62,5 +63,37 @@ describe("BackofficeService merchant shop updates", () => {
       context
     )).rejects.toMatchObject({ code: ERROR_CODES.IDENTITY_FORBIDDEN, statusCode: 403 });
     expect(updateShop).not.toHaveBeenCalled();
+  });
+
+  it("maps exhausted NeeDo ID allocation during merchant-owner creation to a stable error", async () => {
+    const createShop = jest.fn(async () => {
+      throw new NeedoIdAllocationExhaustedError();
+    });
+    const service = new BackofficeService(
+      {
+        findUserByEmail: jest.fn(async () => null),
+        createShop
+      } as never,
+      { record: jest.fn(async () => undefined) } as never
+    );
+
+    await expect(
+      service.createPlatformShop(
+        {
+          ownerEmail: "allocation-failure@example.com",
+          ownerUsername: "Allocation Failure",
+          ownerPassword: "Abcd@1234",
+          name: "Allocation Failure Shop",
+          city: "Tokyo",
+          address: "1-1"
+        },
+        actor as never,
+        context
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.NEEDO_ID_ALLOCATION_UNAVAILABLE,
+      message: "error.auth.needo_id_allocation_unavailable",
+      statusCode: 503
+    });
   });
 });

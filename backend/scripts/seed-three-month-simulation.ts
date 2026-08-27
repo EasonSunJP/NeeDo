@@ -34,8 +34,7 @@ import {
 } from "../src/simulation/three-month-simulation-plan";
 import {
   buildFormalTestAccountExportRow,
-  orderFormalTestAccountExports,
-  resolveFormalNeeDoSequence
+  orderFormalTestAccountExports
 } from "../src/simulation/formal-test-account-export";
 import { syncFormalSocialAccountProfile } from "../src/simulation/formal-social-account-profile";
 import { buildSocialSimulationPlan } from "../src/simulation/social-simulation-plan";
@@ -46,8 +45,10 @@ import {
 import {
   getSimulationSeedConfig
 } from "../src/simulation/simulation-seed-config";
+import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const BCRYPT_ROUNDS = 12;
+const needoIdAllocator = new NeedoIdAllocator();
 const DEFAULT_ACCOUNT_EXPORT_PATH = "../outputs/NeeDo_正式测试账号_2026-08-25.csv";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
@@ -152,10 +153,12 @@ const main = async (): Promise<void> => {
         const customerUserIds = new Map<string, number>();
 
         for (const shop of plan.shops) {
-          const user = await tx.user.upsert({
+          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
             where: { email: shop.ownerEmail },
             create: {
+              needoId,
               email: shop.ownerEmail,
+              emailVerifiedAt: new Date("2026-05-15T00:00:00.000Z"),
               passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
               username: shop.ownerUsername,
               avatarUrl: shop.avatarUrl,
@@ -169,15 +172,17 @@ const main = async (): Promise<void> => {
               isActive: true,
               deletedAt: null
             }
-          });
+          }));
           ownerUserIds.set(shop.key, user.id);
         }
 
         for (const technician of plan.technicians) {
-          const user = await tx.user.upsert({
+          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
             where: { email: technician.email },
             create: {
+              needoId,
               email: technician.email,
+              emailVerifiedAt: new Date("2026-05-20T00:00:00.000Z"),
               passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
               username: technician.username,
               avatarUrl: technician.avatarUrl,
@@ -191,15 +196,17 @@ const main = async (): Promise<void> => {
               isActive: true,
               deletedAt: null
             }
-          });
+          }));
           technicianUserIds.set(technician.key, user.id);
         }
 
         for (const customer of plan.customers) {
-          const user = await tx.user.upsert({
+          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
             where: { email: customer.email },
             create: {
+              needoId,
               email: customer.email,
+              emailVerifiedAt: new Date("2026-05-25T00:00:00.000Z"),
               passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
               username: customer.username,
               avatarUrl: customer.avatarUrl,
@@ -213,7 +220,7 @@ const main = async (): Promise<void> => {
               isActive: true,
               deletedAt: null
             }
-          });
+          }));
           customerUserIds.set(customer.key, user.id);
         }
 
@@ -1562,11 +1569,8 @@ const main = async (): Promise<void> => {
       where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
       select: {
         id: true,
+        needoId: true,
         email: true,
-        identities: {
-          where: { isActive: true, deletedAt: null },
-          select: { scopeId: true, scopeType: true }
-        }
       }
     });
     const exportedUserByEmail = new Map(exportedUsers.map((user) => [user.email, user]));
@@ -1576,13 +1580,7 @@ const main = async (): Promise<void> => {
         return buildFormalTestAccountExportRow(
           {
             ...account,
-            identityScopeId: resolveFormalNeeDoSequence(
-              account.accountType,
-              account.socialType,
-              user.id,
-              user.identities
-            ),
-            userId: user.id
+            needoId: user.needoId
           },
           getRequiredId(accountPasswords, account.email, "account password")
         );

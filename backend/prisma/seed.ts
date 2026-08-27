@@ -13,6 +13,7 @@ import {
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
+import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 import {
   SYSTEM_PERMISSIONS,
@@ -26,6 +27,7 @@ import {
 } from "../src/constants/test-login.constants";
 
 const BCRYPT_ROUNDS = 12;
+const needoIdAllocator = new NeedoIdAllocator();
 const DEFAULT_ADMIN_EMAIL = "admin@example.com";
 const DEFAULT_ADMIN_USERNAME = "admin";
 const SEED_PRISMA_LOG_LEVELS: Prisma.LogLevel[] = ["error"];
@@ -1101,6 +1103,7 @@ const createSeedPrismaClient = (): PrismaClient =>
 
 export const buildSeedUserUpdateData = (input: SeedUserInput, passwordHash: string) => ({
   phone: input.phone ?? null,
+  emailVerifiedAt: new Date(),
   passwordHash,
   username: input.username,
   ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
@@ -1109,18 +1112,20 @@ export const buildSeedUserUpdateData = (input: SeedUserInput, passwordHash: stri
 });
 
 const upsertSeedUser = (tx: Prisma.TransactionClient, input: SeedUserInput, passwordHash: string) =>
-  tx.user.upsert({
+  needoIdAllocator.withNewId((needoId) => tx.user.upsert({
     where: { email: input.email },
     create: {
+      needoId,
       email: input.email,
       phone: input.phone ?? null,
+      emailVerifiedAt: new Date(),
       passwordHash,
       username: input.username,
       avatarUrl: input.avatarUrl ?? null,
       isActive: true
     },
     update: buildSeedUserUpdateData(input, passwordHash)
-  });
+  }));
 
 const upsertSeedIdentity = async (
   tx: Prisma.TransactionClient,
@@ -3508,21 +3513,24 @@ export const seedUserManagement = async (
       }
     }
 
-    const adminUser = await tx.user.upsert({
+    const adminUser = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
       where: { email: adminConfig.email },
       create: {
+        needoId,
         email: adminConfig.email,
+        emailVerifiedAt: new Date(),
         passwordHash: adminPasswordHash,
         username: adminConfig.username,
         isActive: true
       },
       update: {
+        emailVerifiedAt: new Date(),
         passwordHash: adminPasswordHash,
         username: adminConfig.username,
         isActive: true,
         deletedAt: null
       }
-    });
+    }));
 
     const adminIdentity = await tx.userIdentity.findFirst({
       where: {
