@@ -63,6 +63,26 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("persists contact block and unblock state through the formal API", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ id: 31, isBlocked: true }))
+      .mockResolvedValueOnce(jsonResponse({ id: 31, isBlocked: false }));
+
+    await realtimeApi.blockContact(31);
+    await realtimeApi.unblockContact(31);
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/v1/im/contacts/31/block",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/im/contacts/31/block",
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+
   it("parses authenticated SSE events and sends the last event id on reconnect", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

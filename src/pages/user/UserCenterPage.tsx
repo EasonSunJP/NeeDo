@@ -963,7 +963,7 @@ function CompleteUserCenterPage({
                           <textarea
                             aria-label="昵称"
                             autoFocus
-                            className="-ml-0.5 max-h-[79px] min-h-[26px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-0 text-[21px] font-black leading-tight shadow-none outline-none [appearance:none] [field-sizing:content] [overflow-wrap:anywhere]"
+                            className="-ml-0.5 max-h-[79px] min-h-[26px] max-w-[calc(100%-22px)] flex-none resize-none overflow-hidden break-all rounded-none border-0 bg-transparent px-0.5 py-0 text-lg font-black leading-tight shadow-none outline-none [appearance:none] [field-sizing:content] [overflow-wrap:anywhere]"
                             data-profile-field="nickname"
                             readOnly={isSavingProfile}
                             onChange={(event) => updateProfileDraft({ nickname: event.currentTarget.value })}
@@ -976,7 +976,7 @@ function CompleteUserCenterPage({
                           <KycVerifiedBadge className="mt-1.5" size="label" />
                         </div>
                       ) : (
-                        <h1 className="max-w-full overflow-hidden break-all text-[21px] font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [overflow-wrap:anywhere]">
+                        <h1 className="max-w-full overflow-hidden break-all text-lg font-black leading-tight [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3] [overflow-wrap:anywhere]">
                           {displayName}
                           <KycVerifiedBadge className="ml-1 inline-flex align-middle" size="label" />
                         </h1>

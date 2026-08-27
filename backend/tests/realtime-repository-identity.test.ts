@@ -85,6 +85,7 @@ describe("RealtimeRepository formal identity payloads", () => {
             contactUserId: 237,
             nickname: null,
             source: "simulation_seed",
+            blockedAt: createdAt,
             createdAt,
             updatedAt: createdAt,
             deletedAt: null,
@@ -108,6 +109,7 @@ describe("RealtimeRepository formal identity payloads", () => {
     expect(result.list[0]).toMatchObject({
       id: 4056,
       contactUserId: 237,
+      isBlocked: true,
       contactUser: {
         userId: 237,
         needoId: "n0000000237",
@@ -129,5 +131,61 @@ describe("RealtimeRepository formal identity payloads", () => {
         }
       })
     );
+  });
+
+  it("updates block state only for a contact owned by the authenticated user", async () => {
+    const createdAt = new Date("2026-08-25T00:00:00.000Z");
+    const updatedContact = {
+      id: 4056,
+      ownerUserId: 137,
+      contactUserId: 237,
+      nickname: null,
+      source: "simulation_seed",
+      blockedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      deletedAt: null,
+      contactUser: {
+        id: 237,
+        needoId: "n0000000237",
+        username: "柴田 陽菜",
+        avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
+      }
+    };
+    const client = {
+      contact: {
+        findFirst: jest.fn(async () => ({ id: 4056, blockedAt: null })),
+        update: jest.fn(async () => updatedContact)
+      }
+    } as unknown as PrismaClient;
+    const repository = new RealtimeRepository(client) as RealtimeRepository & {
+      setContactBlocked: (input: {
+        contactId: number;
+        isBlocked: boolean;
+        ownerUserId: number;
+      }) => Promise<unknown>;
+    };
+
+    const result = await repository.setContactBlocked({
+      contactId: 4056,
+      isBlocked: true,
+      ownerUserId: 137
+    });
+
+    expect(client.contact.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 4056,
+        ownerUserId: 137,
+        deletedAt: null,
+        contactUser: { deletedAt: null, isActive: true }
+      },
+      select: { blockedAt: true, id: true }
+    });
+    expect(client.contact.update).toHaveBeenCalledWith({
+      where: { id: 4056 },
+      data: { blockedAt: expect.any(Date) },
+      include: expect.any(Object)
+    });
+    expect(result).toMatchObject({ id: 4056, isBlocked: true });
   });
 });

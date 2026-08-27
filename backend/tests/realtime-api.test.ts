@@ -180,6 +180,7 @@ const realtimePermissions = [
   "message:react",
   "message:read",
   "contact:list",
+  "contact:block",
   "friend-request:list",
   "friend-request:create",
   "friend-request:respond",
@@ -311,6 +312,7 @@ const createFixture = async () => {
     ownerUserId: number;
     contactUserId: number;
     nickname: string | null;
+    isBlocked: boolean;
     createdAt: Date;
   }> = [];
   const friendRequests: Array<{
@@ -636,6 +638,20 @@ const createFixture = async () => {
     listContacts: jest.fn(async (userId: number) =>
       listPage(contacts.filter((contact) => contact.ownerUserId === userId))
     ),
+    setContactBlocked: jest.fn(
+      async (input: {
+        contactId: number;
+        isBlocked: boolean;
+        ownerUserId: number;
+      }) => {
+        const contact = contacts.find(
+          (item) => item.id === input.contactId && item.ownerUserId === input.ownerUserId
+        );
+        if (!contact) return null;
+        contact.isBlocked = input.isBlocked;
+        return contact;
+      }
+    ),
     createFriendRequest: jest.fn(
       async (input: { requesterUserId: number; targetUserId: number; message?: string | null }) => {
         const friendRequest = {
@@ -690,6 +706,7 @@ const createFixture = async () => {
             ownerUserId: friendRequest.requesterUserId,
             contactUserId: friendRequest.targetUserId,
             nickname: null,
+            isBlocked: false,
             createdAt: now
           });
           contacts.push({
@@ -697,6 +714,7 @@ const createFixture = async () => {
             ownerUserId: friendRequest.targetUserId,
             contactUserId: friendRequest.requesterUserId,
             nickname: null,
+            isBlocked: false,
             createdAt: now
           });
         }

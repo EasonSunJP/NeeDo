@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
+import { httpClient } from "../../api/httpClient";
 import { realtimeApi } from "../realtime/api";
 import { createFormalImApi } from "./formal-api";
 
@@ -114,6 +115,40 @@ describe("formal IM adapter", () => {
     expect(bootstrap.users.find((user) => user.id === "100")?.avatar).toMatch(
       /^data:image\/svg\+xml/,
     );
+  });
+
+  it("maps a persisted formal contact block response into the original IM model", async () => {
+    const request = vi.spyOn(httpClient, "request").mockResolvedValue({
+      id: 31,
+      ownerUserId: 100,
+      contactUserId: 201,
+      contactUser: {
+        userId: 201,
+        needoId: "n0000000201",
+        username: "sim-technician-001",
+        avatarUrl: "/avatars/tech-1.png",
+      },
+      nickname: "小林技师",
+      source: "simulation_seed",
+      isBlocked: true,
+      createdAt: now,
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "n0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.blockContact("31")).resolves.toEqual({
+      contact: expect.objectContaining({ id: "31", isBlocked: true }),
+    });
+    expect(request).toHaveBeenCalledWith("/im/contacts/31/block", {
+      method: "POST",
+    });
   });
 
   it("loads published merchant technicians as real organization members", async () => {
