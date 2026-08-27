@@ -661,6 +661,7 @@ function shopCard(index: number): CoreShopCard {
 
   return {
     id: index + 1,
+    publicId: `shop${String(index + 1).padStart(10, "0")}`,
     name: store.name,
     city: store.area,
     address: store.address,
@@ -674,6 +675,7 @@ function technicianCard(index: number): CoreTechnicianCard {
 
   return {
     id: index + 1,
+    publicId: `s${String(index + 1).padStart(10, "0")}`,
     displayName: technician.name,
     city: technician.serviceAreas[0] ?? "东京",
     avatarUrl: technician.avatar,
@@ -761,6 +763,7 @@ function customerProfile(id: number): CoreCustomerProfile {
 
   return {
     id,
+    publicId: `u${String(id).padStart(10, "0")}`,
     displayName: source.nickname ? `${source.nickname} / ${source.name}` : source.name,
     city: source.tags[0] ?? null,
     bio: source.bio ?? null,

@@ -112,6 +112,7 @@ const avatarHash = "a".repeat(64);
 
 const makeProfile = (): CustomerProfilePayload => ({
   id: 41,
+  publicId: "u3141592653",
   userId: 11,
   displayName: "田中 彩",
   city: "Tokyo",

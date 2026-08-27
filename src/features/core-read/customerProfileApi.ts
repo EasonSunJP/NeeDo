@@ -3,6 +3,7 @@ export type CustomerProfileVisibility = "public" | "privateAll" | "limited" | "n
 
 export type CustomerSelfProfile = {
   id: number;
+  publicId: string;
   userId: number;
   displayName: string;
   city: string | null;

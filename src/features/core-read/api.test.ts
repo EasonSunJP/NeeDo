@@ -44,6 +44,7 @@ const coreService = {
   },
   shop: {
     id: 3,
+    publicId: "shop5831047296",
     name: "Aoyama Care Studio",
     city: "Tokyo",
     address: "3-1 Kita Aoyama, Minato-ku",
@@ -52,6 +53,7 @@ const coreService = {
   },
   technician: {
     id: 5,
+    publicId: "s5831047296",
     displayName: "Mika Tanaka",
     city: "Tokyo",
     avatarUrl: "/images/generated/profile-technician-mika.jpg",
@@ -142,6 +144,7 @@ describe("core read API adapter", () => {
     } satisfies CoreTechnicianDetail);
     const customer = mapCoreCustomerToCustomer({
       id: 9,
+      publicId: "u3141592653",
       displayName: "Aya Customer",
       city: "Tokyo",
       bio: "Prefers evening appointments.",
@@ -152,8 +155,8 @@ describe("core read API adapter", () => {
       updatedAt: coreService.updatedAt
     } satisfies CoreCustomerProfile);
 
-    expect(shop).toMatchObject({ id: "3", name: "Aoyama Care Studio", rating: 4.8 });
-    expect(technician).toMatchObject({ id: "5", name: "Mika Tanaka", storeId: "3", rating: 4.8 });
-    expect(customer).toMatchObject({ id: "9", name: "Aya Customer", memberLevel: "standard" });
+    expect(shop).toMatchObject({ id: "3", systemId: "shop5831047296", name: "Aoyama Care Studio", rating: 4.8 });
+    expect(technician).toMatchObject({ id: "5", systemId: "s5831047296", name: "Mika Tanaka", storeId: "3", rating: 4.8 });
+    expect(customer).toMatchObject({ id: "9", systemId: "u3141592653", name: "Aya Customer", memberLevel: "standard" });
   });
 });

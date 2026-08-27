@@ -1,5 +1,4 @@
 import { httpClient } from "../../api/httpClient";
-import { formatSystemId } from "../../lib/systemIds";
 import type { Customer, FulfillmentMode, ServiceCategory, ServiceItem, Store, Technician } from "../../types/domain";
 
 export type PaginatedCoreReadData<TItem> = {
@@ -45,6 +44,7 @@ export type CoreCategory = {
 
 export type CoreShopCard = {
   id: number;
+  publicId: string;
   name: string;
   city: string;
   address: string;
@@ -54,6 +54,7 @@ export type CoreShopCard = {
 
 export type CoreTechnicianCard = {
   id: number;
+  publicId: string;
   displayName: string;
   city: string;
   avatarUrl: string | null;
@@ -107,6 +108,7 @@ export type CoreTechnicianDetail = CoreTechnicianCard & {
 
 export type CoreCustomerProfile = {
   id: number;
+  publicId: string;
   displayName: string;
   city: string | null;
   bio: string | null;
@@ -296,7 +298,7 @@ export function mapCoreShopToStore(shop: CoreShopCard | CoreShopDetail): Store {
 
   return {
     id: String(shop.id),
-    systemId: formatSystemId("s", shop.id),
+    systemId: shop.publicId,
     merchantId: `merchant-${shop.id}`,
     name: shop.name,
     area: shop.city,
@@ -329,7 +331,7 @@ export function mapCoreTechnicianToTechnician(technician: CoreTechnicianCard | C
 
   return {
     id: String(technician.id),
-    systemId: formatSystemId("b", technician.id),
+    systemId: technician.publicId,
     name: technician.displayName,
     storeId: detail?.shop ? String(detail.shop.id) : firstService ? String(firstService.shop.id) : "",
     role: "therapist",
@@ -364,7 +366,7 @@ export function mapCoreCustomerToCustomer(customer: CustomerProfileViewSource): 
 
   return {
     id: String(customer.id),
-    systemId: formatSystemId("u", customer.id),
+    systemId: customer.publicId,
     name: customer.displayName,
     avatar: customer.avatarUrl ?? fallbackCustomerAvatar,
     phone: "",

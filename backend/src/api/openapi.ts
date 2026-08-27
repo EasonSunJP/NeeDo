@@ -1633,9 +1633,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       ShopCard: {
         type: "object",
-        required: ["id", "name", "city", "address", "coverUrl", "reviewSummary"],
+        required: ["id", "publicId", "name", "city", "address", "coverUrl", "reviewSummary"],
         properties: {
           id: { type: "integer" },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
           name: { type: "string" },
           city: { type: "string" },
           address: { type: "string" },
@@ -1645,9 +1646,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       TechnicianCard: {
         type: "object",
-        required: ["id", "displayName", "city", "avatarUrl", "reviewSummary"],
+        required: ["id", "publicId", "displayName", "city", "avatarUrl", "reviewSummary"],
         properties: {
           id: { type: "integer" },
+          publicId: { type: "string", pattern: "^s[0-9]{10}$" },
           displayName: { type: "string" },
           city: { type: "string" },
           avatarUrl: { type: ["string", "null"] },
@@ -1769,6 +1771,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         required: [
           "id",
+          "publicId",
           "displayName",
           "city",
           "bio",
@@ -1780,6 +1783,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
+          publicId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
           displayName: { type: "string" },
           city: { type: ["string", "null"] },
           bio: { type: ["string", "null"] },
@@ -1794,6 +1798,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         type: "object",
         required: [
           "id",
+          "publicId",
           "userId",
           "displayName",
           "city",
@@ -1811,6 +1816,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer", minimum: 1 },
+          publicId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
           userId: { type: "integer", minimum: 1 },
           displayName: { type: "string", minLength: 1, maxLength: 120 },
           city: { type: ["string", "null"] },

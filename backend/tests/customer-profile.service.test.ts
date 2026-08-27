@@ -14,6 +14,7 @@ import { CustomerProfileService } from "../src/services/customer-profile.service
 
 const updatedProfile: CustomerProfilePayload = {
   id: 41,
+  publicId: "u3141592653",
   userId: 11,
   displayName: "松尾 雄大",
   city: "Tokyo",

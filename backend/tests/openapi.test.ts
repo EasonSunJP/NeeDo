@@ -649,6 +649,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas.CustomerSelfProfile.required).toEqual(
       expect.arrayContaining([
         "id",
+        "publicId",
         "displayName",
         "avatarUrl",
         "gender",

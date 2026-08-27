@@ -74,6 +74,7 @@ const savedProfile: CustomerSelfProfile = {
   gender: "private" as const,
   heightCm: 171,
   id: 41,
+  publicId: "u3141592653",
   isPublic: false,
   languages: ["日本語"],
   membershipLevel: "standard",
