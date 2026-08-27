@@ -17,7 +17,13 @@ describe("three-month simulation IM persistence", () => {
     expect(seedSource).toContain("plan.conversations");
     expect(seedSource).toContain("plan.contacts");
     expect(seedSource).toContain("plan.messages");
-    expect(seedSource).toContain('source: "simulation_seed"');
+    expect(seedSource).toContain('"lifedance_customer_service_seed"');
+    expect(seedSource).toContain('"lifedance_staff_seed"');
+    expect(seedSource).toContain('type === "admin"');
+    expect(seedSource).toContain('"staff_operations"');
+    expect(seedSource).toContain("lastReadAt");
+    expect(seedSource).toContain("isPinned");
+    expect(seedSource).toContain("isMuted");
   });
 
   it("removes dependent message reactions before replacing simulated messages", () => {
@@ -40,7 +46,7 @@ describe("three-month simulation IM persistence", () => {
   });
 
   it("keeps the focused customer-100 account linked to an expanded real IM dataset", () => {
-    expect(seedSource).toContain('conversation.customerKey === "customer-100"');
+    expect(seedSource).toContain('conversation.firstKey === "customer-100"');
     expect(checkSource).toContain('"sim.customer.100@needo.local"');
     expect(checkSource).toContain("focusedCustomerConversations");
     expect(checkSource).toContain("focusedCustomerContacts");
@@ -54,5 +60,9 @@ describe("three-month simulation IM persistence", () => {
     expect(checkSource).toContain("plan.conversations.length");
     expect(checkSource).toContain("plan.messages.length");
     expect(checkSource).toContain("plan.contacts.length");
+    expect(checkSource).toContain("lifeDanceStaffConversations");
+    expect(checkSource).toContain("lifeDanceStaffMessages");
+    expect(checkSource).toContain("lifeDanceStaffContacts");
+    expect(checkSource).toContain("staffOperations");
   });
 });

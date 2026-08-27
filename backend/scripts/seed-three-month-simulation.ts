@@ -810,12 +810,16 @@ const main = async (): Promise<void> => {
         }
 
         const previewSourceConversations = hasPreviewCustomer
-          ? plan.conversations.filter((conversation) => conversation.customerKey === "customer-001")
+          ? plan.conversations.filter(
+              (conversation) =>
+                conversation.firstType === "customer" &&
+                conversation.firstKey === "customer-001"
+            )
           : [];
         const previewConversations = previewSourceConversations.map((conversation) => ({
           ...conversation,
-          key: `conversation-${previewCustomerKey}-${conversation.participantKey}`,
-          customerKey: previewCustomerKey
+          key: `conversation-${previewCustomerKey}-${conversation.secondKey}`,
+          firstKey: previewCustomerKey
         }));
         const previewConversationKeyBySource = new Map(
           previewSourceConversations.map((conversation, index) => [
@@ -841,14 +845,16 @@ const main = async (): Promise<void> => {
         });
         const previewContacts = previewConversations.flatMap((conversation) => [
           {
+            key: `${conversation.key}-contact-customer`,
             ownerType: "customer" as const,
             ownerKey: previewCustomerKey,
-            contactType: conversation.participantType,
-            contactKey: conversation.participantKey
+            contactType: conversation.secondType,
+            contactKey: conversation.secondKey
           },
           {
-            ownerType: conversation.participantType,
-            ownerKey: conversation.participantKey,
+            key: `${conversation.key}-contact-counterpart`,
+            ownerType: conversation.secondType,
+            ownerKey: conversation.secondKey,
             contactType: "customer" as const,
             contactKey: previewCustomerKey
           }
@@ -857,9 +863,12 @@ const main = async (): Promise<void> => {
         const contactsToSeed = [...plan.contacts, ...previewContacts];
         const messagesToSeed = [...plan.messages, ...previewMessages];
         const getParticipantUserId = (
-          type: "customer" | "technician" | "shop_owner",
+          type: "admin" | "customer" | "technician" | "shop_owner",
           key: string
         ): number => {
+          if (type === "admin") {
+            return lifeDanceOwnership.adminUserId;
+          }
           if (type === "customer") {
             return getRequiredId(customerUserIds, key, "IM customer user");
           }
@@ -915,7 +924,13 @@ const main = async (): Promise<void> => {
         ];
         await tx.contact.deleteMany({
           where: {
-            source: "simulation_seed",
+            source: {
+              in: [
+                "simulation_seed",
+                "lifedance_customer_service_seed",
+                "lifedance_staff_seed"
+              ]
+            },
             OR: [
               { ownerUserId: { in: simulationParticipantUserIds } },
               { contactUserId: { in: simulationParticipantUserIds } }
@@ -926,7 +941,9 @@ const main = async (): Promise<void> => {
           (contact): Prisma.ContactCreateManyInput => ({
             ownerUserId: getParticipantUserId(contact.ownerType, contact.ownerKey),
             contactUserId: getParticipantUserId(contact.contactType, contact.contactKey),
-            source: "simulation_seed",
+            source: contact.key.startsWith("lifedance-staff-")
+              ? "lifedance_staff_seed"
+              : "lifedance_customer_service_seed",
             createdAt: new Date("2026-06-01T00:00:00.000Z")
           })
         );
@@ -965,11 +982,14 @@ const main = async (): Promise<void> => {
             message
           ]);
         }
-        for (const conversation of conversationsToSeed) {
-          const customerUserId = getParticipantUserId("customer", conversation.customerKey);
-          const counterpartUserId = getParticipantUserId(
-            conversation.participantType,
-            conversation.participantKey
+        for (const [conversationIndex, conversation] of conversationsToSeed.entries()) {
+          const firstUserId = getParticipantUserId(
+            conversation.firstType,
+            conversation.firstKey
+          );
+          const secondUserId = getParticipantUserId(
+            conversation.secondType,
+            conversation.secondKey
           );
           const conversationMessages = messagePlansByConversation.get(conversation.key) ?? [];
           assert(
@@ -979,24 +999,35 @@ const main = async (): Promise<void> => {
           const updatedAt = new Date(
             conversationMessages.at(-1)?.createdAt ?? conversation.createdAt
           );
+          const isStaffConversation = conversation.key.startsWith("lifedance-staff-");
           await tx.conversation.create({
             data: {
               type: ConversationType.DIRECT,
-              createdByUserId: customerUserId,
+              createdByUserId: firstUserId,
               createdAt: new Date(conversation.createdAt),
               updatedAt,
               participants: {
                 create: [
                   {
-                    userId: customerUserId,
+                    userId: firstUserId,
                     role: "member",
-                    unreadCount: 1,
+                    unreadCount: isStaffConversation ? conversationIndex % 3 : 1,
+                    isPinned: isStaffConversation && conversationIndex % 4 === 0,
+                    isMuted: false,
+                    lastReadAt: new Date(
+                      conversationMessages.at(-2)?.createdAt ?? conversation.createdAt
+                    ),
                     createdAt: new Date(conversation.createdAt)
                   },
                   {
-                    userId: counterpartUserId,
+                    userId: secondUserId,
                     role: "member",
-                    unreadCount: 0,
+                    unreadCount: isStaffConversation ? conversationIndex % 2 : 0,
+                    isPinned: isStaffConversation && conversationIndex % 5 === 0,
+                    isMuted: isStaffConversation && conversationIndex % 7 === 0,
+                    lastReadAt: new Date(
+                      conversationMessages.at(-1)?.createdAt ?? conversation.createdAt
+                    ),
                     createdAt: new Date(conversation.createdAt)
                   }
                 ]
@@ -1010,8 +1041,13 @@ const main = async (): Promise<void> => {
                     namespace: SIMULATION_NAMESPACE,
                     dataset: "im",
                     messageKey: message.key,
-                    focusedCustomer: conversation.customerKey === "customer-100",
-                    previewCustomer: conversation.customerKey === previewCustomerKey
+                    purpose: isStaffConversation ? "staff_operations" : "customer_service",
+                    focusedCustomer:
+                      conversation.firstType === "customer" &&
+                      conversation.firstKey === "customer-100",
+                    previewCustomer:
+                      conversation.firstType === "customer" &&
+                      conversation.firstKey === previewCustomerKey
                   },
                   createdAt: new Date(message.createdAt)
                 }))

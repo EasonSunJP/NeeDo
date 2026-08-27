@@ -7,6 +7,10 @@ export const LIFEDANCE_SHOP_KEY = "shop-001";
 export const LIFEDANCE_ADMIN_EMAIL = "admin@lifedance.com";
 export const LIFEDANCE_LEGACY_OWNER_EMAIL = "sim.shop.001@needo.local";
 export const LIFEDANCE_SHOP_NAME = "LifeDance Wellness 渋谷";
+export const LIFEDANCE_STAFF_KEYS = Array.from(
+  { length: 20 },
+  (_, index) => `technician-${String(index + 1).padStart(3, "0")}`
+);
 
 export type SimulationBookingStatus =
   | "PENDING"
@@ -116,17 +120,19 @@ export interface SimulationOrderHistoryPlan {
   createdAt: string;
 }
 
-export type SimulationImParticipantType = "customer" | "technician" | "shop_owner";
+export type SimulationImParticipantType = "admin" | "customer" | "technician" | "shop_owner";
 
 export interface SimulationConversationPlan {
   key: string;
-  customerKey: string;
-  participantType: Exclude<SimulationImParticipantType, "customer">;
-  participantKey: string;
+  firstType: SimulationImParticipantType;
+  firstKey: string;
+  secondType: SimulationImParticipantType;
+  secondKey: string;
   createdAt: string;
 }
 
 export interface SimulationContactPlan {
+  key: string;
   ownerType: SimulationImParticipantType;
   ownerKey: string;
   contactType: SimulationImParticipantType;
@@ -632,19 +638,22 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
       );
       conversations.push({
         key: counterpart.conversationKey,
-        customerKey: customer.key,
-        participantType: counterpart.type,
-        participantKey: counterpart.key,
+        firstType: "customer",
+        firstKey: customer.key,
+        secondType: counterpart.type,
+        secondKey: counterpart.key,
         createdAt
       });
       contacts.push(
         {
+          key: `${counterpart.conversationKey}-contact-customer`,
           ownerType: "customer",
           ownerKey: customer.key,
           contactType: counterpart.type,
           contactKey: counterpart.key
         },
         {
+          key: `${counterpart.conversationKey}-contact-counterpart`,
           ownerType: counterpart.type,
           ownerKey: counterpart.key,
           contactType: "customer",
@@ -711,19 +720,22 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
     );
     conversations.push({
       key: conversationKey,
-      customerKey: focusedCustomer.key,
-      participantType: counterpart.type,
-      participantKey: counterpart.key,
+      firstType: "customer",
+      firstKey: focusedCustomer.key,
+      secondType: counterpart.type,
+      secondKey: counterpart.key,
       createdAt
     });
     contacts.push(
       {
+        key: `${conversationKey}-contact-customer`,
         ownerType: "customer",
         ownerKey: focusedCustomer.key,
         contactType: counterpart.type,
         contactKey: counterpart.key
       },
       {
+        key: `${conversationKey}-contact-counterpart`,
         ownerType: counterpart.type,
         ownerKey: counterpart.key,
         contactType: "customer",
@@ -740,6 +752,67 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         senderKey: senderIsCustomer ? focusedCustomer.key : counterpart.key,
         content,
         createdAt: addDaysAndHours(createdAt, focusedMessageDayOffsets[messageIndex] ?? 0, 0)
+      });
+    }
+  }
+
+  const staffMessageDayOffsets = [0, 1, 14, 15, 28, 29, 45, 46, 60, 61];
+  for (const [staffIndex, technicianKey] of LIFEDANCE_STAFF_KEYS.entries()) {
+    const technician = technicians.find((candidate) => candidate.key === technicianKey);
+    if (!technician || technician.shopKey !== LIFEDANCE_SHOP_KEY) {
+      throw new Error(`LifeDance staff assignment is missing for ${technicianKey}.`);
+    }
+    const conversationKey = `lifedance-staff-${technician.key}`;
+    const createdAt = addDaysAndHours(SIMULATION_START_AT, 1 + staffIndex, staffIndex % 6);
+    conversations.push({
+      key: conversationKey,
+      firstType: "admin",
+      firstKey: "lifedance-admin",
+      secondType: "technician",
+      secondKey: technician.key,
+      createdAt
+    });
+    contacts.push(
+      {
+        key: `${conversationKey}-contact-admin`,
+        ownerType: "admin",
+        ownerKey: "lifedance-admin",
+        contactType: "technician",
+        contactKey: technician.key
+      },
+      {
+        key: `${conversationKey}-contact-technician`,
+        ownerType: "technician",
+        ownerKey: technician.key,
+        contactType: "admin",
+        contactKey: "lifedance-admin"
+      }
+    );
+    const staffScript = [
+      `${technician.displayName}さん、来週のシフトを確認してください。変更希望は明日までにお願いします。`,
+      `確認しました。${staffIndex % 2 === 0 ? "水曜日は12時" : "金曜日は11時"}から勤務できます。`,
+      "本日の訪問予約は渋谷駅南口で合流してください。お客様のご希望も予約メモに記載しています。",
+      "承知しました。前の施術が終わり次第、到着予定を連絡します。",
+      "タオルとヘッドケア用品の在庫が少ないため、閉店前に補充をお願いします。",
+      "補充完了しました。予備をバックヤード上段に置いています。",
+      "先ほどの予約は施術が終わっています。完了処理とお客様メモの登録をお願いします。",
+      "完了報告とお客様メモを登録しました。お支払いも店頭で確認済みです。",
+      "今月の給与明細を公開しました。勤務時間と対象予約の内容を確認してください。",
+      "確認しました。金額と勤務時間に問題ありません。今月もありがとうございました。"
+    ];
+    for (const [messageIndex, content] of staffScript.entries()) {
+      const senderIsAdmin = messageIndex % 2 === 0;
+      messages.push({
+        key: `${conversationKey}-message-${messageIndex + 1}`,
+        conversationKey,
+        senderType: senderIsAdmin ? "admin" : "technician",
+        senderKey: senderIsAdmin ? "lifedance-admin" : technician.key,
+        content,
+        createdAt: addDaysAndHours(
+          createdAt,
+          staffMessageDayOffsets[messageIndex] ?? 0,
+          messageIndex % 2
+        )
       });
     }
   }

@@ -611,7 +611,13 @@ const main = async (): Promise<void> => {
         createdAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
         deletedAt: null
       },
-      select: { id: true, conversationId: true, metadata: true }
+      select: {
+        id: true,
+        conversationId: true,
+        senderUserId: true,
+        createdAt: true,
+        metadata: true
+      }
     });
     const simulationMessages = candidateMessages.filter((message) => {
       const metadata = readJsonRecord(message.metadata);
@@ -632,9 +638,16 @@ const main = async (): Promise<void> => {
       where: { id: { in: simulationConversationIds }, deletedAt: null },
       select: {
         id: true,
+        type: true,
         participants: {
           where: { deletedAt: null },
-          select: { userId: true }
+          select: {
+            userId: true,
+            unreadCount: true,
+            isPinned: true,
+            isMuted: true,
+            lastReadAt: true
+          }
         }
       }
     });
@@ -699,9 +712,12 @@ const main = async (): Promise<void> => {
       })
     );
     const resolveParticipantId = (
-      type: "customer" | "technician" | "shop_owner",
+      type: "admin" | "customer" | "technician" | "shop_owner",
       key: string
     ): number => {
+      if (type === "admin") {
+        return admin.id;
+      }
       const source =
         type === "customer"
           ? customerIdByKey
@@ -728,7 +744,7 @@ const main = async (): Promise<void> => {
         },
         deletedAt: null
       },
-      select: { ownerUserId: true, contactUserId: true }
+      select: { ownerUserId: true, contactUserId: true, source: true }
     });
     const simulationContacts = candidateContacts.filter((contact) =>
       expectedContactKeys.has(`${contact.ownerUserId}:${contact.contactUserId}`)
@@ -744,6 +760,96 @@ const main = async (): Promise<void> => {
       focusedCustomerContacts.length === 12,
       `expected 12 focused customer contacts, found ${focusedCustomerContacts.length}`
     );
+
+    const lifeDanceStaffMessages = simulationMessages.filter((message) => {
+      const metadata = readJsonRecord(message.metadata);
+      return metadata?.purpose === "staff_operations";
+    });
+    const lifeDanceStaffConversationIds = [
+      ...new Set(lifeDanceStaffMessages.map((message) => message.conversationId))
+    ];
+    const lifeDanceStaffConversations = simulationConversations.filter((conversation) =>
+      lifeDanceStaffConversationIds.includes(conversation.id)
+    );
+    const lifeDanceStaffContacts = simulationContacts.filter(
+      (contact) => contact.source === "lifedance_staff_seed"
+    );
+    const lifeDanceStaffUserIds = new Set(
+      plan.technicians
+        .filter((technician) => technician.shopKey === LIFEDANCE_SHOP_KEY)
+        .map((technician) => resolveParticipantId("technician", technician.key))
+    );
+    assert(
+      lifeDanceStaffConversations.length === 20,
+      `expected 20 LifeDance staff conversations, found ${lifeDanceStaffConversations.length}`
+    );
+    assert(
+      lifeDanceStaffMessages.length === 200,
+      `expected 200 LifeDance staff messages, found ${lifeDanceStaffMessages.length}`
+    );
+    assert(
+      lifeDanceStaffContacts.length === 40,
+      `expected 40 LifeDance staff contacts, found ${lifeDanceStaffContacts.length}`
+    );
+    for (const conversation of lifeDanceStaffConversations) {
+      assert(
+        conversation.type === "DIRECT" && conversation.participants.length === 2,
+        `staff conversation ${conversation.id} must be a two-person direct conversation`
+      );
+      const participantIds = new Set(
+        conversation.participants.map((participant) => participant.userId)
+      );
+      assert(
+        participantIds.has(admin.id) &&
+          [...participantIds].filter((userId) => lifeDanceStaffUserIds.has(userId)).length === 1,
+        `staff conversation ${conversation.id} must contain only the admin and one LifeDance employee`
+      );
+      assert(
+        conversation.participants.every((participant) => participant.lastReadAt),
+        `staff conversation ${conversation.id} must persist read state`
+      );
+      const conversationMessages = lifeDanceStaffMessages
+        .filter((message) => message.conversationId === conversation.id)
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+      assert(
+        conversationMessages.length === 10,
+        `staff conversation ${conversation.id} must contain 10 messages`
+      );
+      assert(
+        new Set(conversationMessages.map((message) => message.senderUserId)).size === 2,
+        `staff conversation ${conversation.id} must contain messages from both participants`
+      );
+      assert(
+        conversationMessages.every(
+          (message, index) =>
+            index === 0 || conversationMessages[index - 1]!.createdAt < message.createdAt
+        ),
+        `staff conversation ${conversation.id} messages must be strictly ordered`
+      );
+    }
+    const lifeDanceStaffParticipantStates = lifeDanceStaffConversations.flatMap(
+      (conversation) => conversation.participants
+    );
+    assert(
+      lifeDanceStaffParticipantStates.some((participant) => participant.isPinned) &&
+        lifeDanceStaffParticipantStates.some((participant) => participant.isMuted) &&
+        lifeDanceStaffParticipantStates.some((participant) => participant.unreadCount > 0),
+      "LifeDance staff conversations must persist varied pin, mute and unread state"
+    );
+    assert(
+      lifeDanceStaffContacts.every(
+        (contact) =>
+          (contact.ownerUserId === admin.id &&
+            lifeDanceStaffUserIds.has(contact.contactUserId)) ||
+          (lifeDanceStaffUserIds.has(contact.ownerUserId) && contact.contactUserId === admin.id)
+      ),
+      "LifeDance staff contacts must not include technicians from other shops"
+    );
+    const staffOperations = {
+      conversations: lifeDanceStaffConversations.length,
+      messages: lifeDanceStaffMessages.length,
+      contacts: lifeDanceStaffContacts.length
+    };
 
     const techniciansPerShop = new Map<number, number>();
     for (const user of technicianUsers) {
@@ -802,6 +908,25 @@ const main = async (): Promise<void> => {
           ({ profile }) => profile.employmentType === TechnicianEmploymentType.TEMPORARY
         ).length === 10,
       "LifeDance employment must be 10 full-time and 10 temporary technicians"
+    );
+    const organizationDirectory = await backofficeRepository.listTechnicians({
+      scope: "merchant",
+      shopId: lifeDanceShop.id,
+      page: 1,
+      pageSize: 100,
+      status: "published"
+    });
+    assert(
+      organizationDirectory.total === 20 && organizationDirectory.list.length === 20,
+      `LifeDance organization directory expected 20 employees, found ${organizationDirectory.total}`
+    );
+    assert(
+      organizationDirectory.list.every(
+        (technician) =>
+          technician.shopId === lifeDanceShop.id &&
+          ["full_time", "temporary"].includes(technician.employmentType)
+      ),
+      "LifeDance organization directory contains an outsider or invalid employment type"
     );
 
     for (const { technicianPlan, profile } of lifeDanceTechnicians) {
@@ -937,6 +1062,8 @@ const main = async (): Promise<void> => {
           focusedCustomerConversations: focusedCustomerConversations.length,
           focusedCustomerMessages: focusedCustomerMessages.length,
           focusedCustomerContacts: focusedCustomerContacts.length,
+          organizationDirectory: organizationDirectory.total,
+          staffOperations,
           status: "ok"
         },
         null,

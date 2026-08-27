@@ -252,18 +252,32 @@ describe("three-month simulation plan", () => {
 
   it("creates real IM replacement data for every simulated customer", () => {
     const imPlan = plan as typeof plan & {
-      conversations?: Array<{ key: string; customerKey: string; participantKey: string }>;
-      contacts?: Array<{ ownerKey: string; contactKey: string }>;
-      messages?: Array<{ conversationKey: string; senderKey: string; createdAt: string }>;
+      conversations?: Array<{
+        key: string;
+        firstType: string;
+        firstKey: string;
+        secondType: string;
+        secondKey: string;
+      }>;
+      contacts?: Array<{ key: string; ownerKey: string; contactKey: string }>;
+      messages?: Array<{
+        conversationKey: string;
+        senderType: string;
+        senderKey: string;
+        createdAt: string;
+      }>;
     };
 
-    expect(imPlan.conversations).toHaveLength(210);
-    expect(imPlan.contacts).toHaveLength(420);
-    expect(imPlan.messages).toHaveLength(860);
+    expect(imPlan.conversations).toHaveLength(230);
+    expect(imPlan.contacts).toHaveLength(460);
+    expect(imPlan.messages).toHaveLength(1_060);
 
     for (const customer of plan.customers) {
       expect(
-        imPlan.conversations?.filter((conversation) => conversation.customerKey === customer.key)
+        imPlan.conversations?.filter(
+          (conversation) =>
+            conversation.firstType === "customer" && conversation.firstKey === customer.key
+        )
       ).toHaveLength(customer.key === "customer-100" ? 12 : 2);
     }
 
@@ -272,12 +286,44 @@ describe("three-month simulation plan", () => {
     );
     const focusedConversationKeys = new Set(
       imPlan.conversations
-        ?.filter((conversation) => conversation.customerKey === "customer-100")
+        ?.filter(
+          (conversation) =>
+            conversation.firstType === "customer" && conversation.firstKey === "customer-100"
+        )
         .map((conversation) => conversation.key)
     );
     expect(
       imPlan.messages?.filter((message) => focusedConversationKeys.has(message.conversationKey))
     ).toHaveLength(68);
+
+    const staffConversations = imPlan.conversations?.filter((conversation) =>
+      conversation.key.startsWith("lifedance-staff-")
+    );
+    const staffContacts = imPlan.contacts?.filter((contact) =>
+      contact.key.startsWith("lifedance-staff-")
+    );
+    const staffMessages = imPlan.messages?.filter((message) =>
+      message.conversationKey.startsWith("lifedance-staff-")
+    );
+    expect(staffConversations).toHaveLength(20);
+    expect(staffContacts).toHaveLength(40);
+    expect(staffMessages).toHaveLength(200);
+    for (const conversation of staffConversations ?? []) {
+      expect(conversation.firstType).toBe("admin");
+      expect(conversation.secondType).toBe("technician");
+      const conversationMessages = (staffMessages ?? []).filter(
+        (message) => message.conversationKey === conversation.key
+      );
+      expect(conversationMessages).toHaveLength(10);
+      expect(new Set(conversationMessages.map((message) => message.senderType))).toEqual(
+        new Set(["admin", "technician"])
+      );
+      for (let index = 1; index < conversationMessages.length; index += 1) {
+        expect(new Date(conversationMessages[index]!.createdAt).getTime()).toBeGreaterThan(
+          new Date(conversationMessages[index - 1]!.createdAt).getTime()
+        );
+      }
+    }
 
     const conversationKeys = new Set(imPlan.conversations?.map((conversation) => conversation.key));
     const periodStart = new Date(SIMULATION_START_AT).getTime();
