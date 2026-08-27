@@ -1,7 +1,7 @@
 # NeeDo 统一公开号、身份隔离、通讯录与 Customer Support 正式设计
 
 - 日期：2026-08-28
-- 状态：产品规则已逐段确认，待设计文档最终复核
+- 状态：已由用户最终批准，可进入小步实施计划
 - 适用范围：NeeDo 用户端、技师端、店铺端、商户端、平台后台、Auth、User Management、IM、Social、Customer Support
 
 ## 1. 目标
