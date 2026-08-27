@@ -118,4 +118,94 @@ describe("formal realtime API", () => {
       })
     );
   });
+
+  it("shares one SSE connection across multiple subscribers in the same browser tab", async () => {
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+      }
+    });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ conversations: 0, notifications: 0, friendRequests: 0, total: 0 }))
+      .mockResolvedValueOnce(new Response(stream, { headers: { "content-type": "text/event-stream" }, status: 200 }));
+
+    const received: string[] = [];
+    const firstEvent = new Promise<void>((resolve) => {
+      const unsubscribe = subscribeRealtimeEvents({
+        onEvent(event) {
+          received.push(`first:${event.id}`);
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    const secondEvent = new Promise<void>((resolve) => {
+      const unsubscribe = subscribeRealtimeEvents({
+        onEvent(event) {
+          received.push(`second:${event.id}`);
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    streamController.enqueue(encoder.encode('id: evt-shared\nevent: notification.created\ndata: {"id":"evt-shared","type":"notification.created","payload":{}}\n\n'));
+    await Promise.all([firstEvent, secondEvent]);
+
+    expect(received).toEqual(["first:evt-shared", "second:evt-shared"]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/realtime/events",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer access-token" }) })
+    );
+  });
+
+  it("restarts the shared SSE connection after identity switching rotates the access token", async () => {
+    const firstStream = new ReadableStream<Uint8Array>({ start() {} });
+    const secondStream = new ReadableStream<Uint8Array>({ start() {} });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ conversations: 0, notifications: 0, friendRequests: 0, total: 0 }))
+      .mockResolvedValueOnce(new Response(firstStream, { headers: { "content-type": "text/event-stream" }, status: 200 }))
+      .mockResolvedValueOnce(jsonResponse({ conversations: 0, notifications: 0, friendRequests: 0, total: 0 }))
+      .mockResolvedValueOnce(new Response(secondStream, { headers: { "content-type": "text/event-stream" }, status: 200 }));
+
+    const unsubscribeFirst = subscribeRealtimeEvents({ onEvent() {} });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+
+    setAccessToken("rotated-access-token");
+    const unsubscribeSecond = subscribeRealtimeEvents({ onEvent() {} });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      "/api/v1/realtime/events",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer rotated-access-token" }) })
+    );
+
+    unsubscribeFirst();
+    unsubscribeSecond();
+  });
+
+  it("does not hold an SSE connection while the browser tab is hidden", async () => {
+    const documentTarget = new EventTarget() as EventTarget & { visibilityState: "hidden" | "visible" };
+    Object.defineProperty(documentTarget, "visibilityState", { configurable: true, value: "hidden", writable: true });
+    vi.stubGlobal("document", documentTarget);
+    const stream = new ReadableStream<Uint8Array>({ start() {} });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(jsonResponse({ conversations: 0, notifications: 0, friendRequests: 0, total: 0 }))
+      .mockResolvedValueOnce(new Response(stream, { headers: { "content-type": "text/event-stream" }, status: 200 }));
+
+    const unsubscribe = subscribeRealtimeEvents({ onEvent() {} });
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 20));
+    expect(fetch).not.toHaveBeenCalled();
+
+    documentTarget.visibilityState = "visible";
+    documentTarget.dispatchEvent(new Event("visibilitychange"));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+
+    unsubscribe();
+  });
 });
