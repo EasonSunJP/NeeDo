@@ -20,6 +20,13 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).not.toContain("needsPortalSync");
   });
 
+  it("aligns the active backend identity before rendering an already-authorized portal", () => {
+    expect(requirePortalAuthSource).toContain("isSessionAlignedWithPortal(session, portal)");
+    expect(requirePortalAuthSource).toContain("needsPortalAlignment");
+    expect(requirePortalAuthSource).toContain("switchPortal(portal)");
+    expect(requirePortalAuthSource).toContain("!isSessionAlignedWithPortal(result.session, portal)");
+  });
+
   it("keeps backend and formal finance routes on direct portal access instead of remembered frontend authorization", () => {
     expect(requirePortalAuthSource).toContain('const isTechnicianPayrollRoute = portal === "technician" && location.pathname.startsWith("/technician/payroll");');
     expect(requirePortalAuthSource).toContain("const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;");

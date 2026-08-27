@@ -97,6 +97,14 @@ export function findIdentityForPortal(identities: AuthIdentityPayload[], portal:
   return identities.find((identity) => resolvePortalFromIdentity(identity) === portal) ?? null;
 }
 
+export function isSessionAlignedWithPortal(session: AuthSession | null, portal: PortalScope) {
+  return Boolean(
+    session &&
+      session.portal === portal &&
+      resolvePortalFromIdentity(session.currentIdentity) === portal
+  );
+}
+
 function resolvePortalsFromRoles(roles: string[]) {
   const portals: PortalScope[] = [];
 

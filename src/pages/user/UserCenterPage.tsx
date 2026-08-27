@@ -10,7 +10,6 @@ import { KycVerifiedBadge } from "../../components/ui/KycVerifiedBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { InfoTooltipTrigger } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
-import { reviews, stores } from "../../data/mock";
 import { bookingApi, type BookingOrderStatus } from "../../features/booking/api";
 import { mapCoreCustomerToCustomer } from "../../features/core-read/api";
 import { customerProfileApi, type CustomerSelfProfile } from "../../features/core-read/customerProfileApi";
@@ -20,16 +19,7 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
 import { formatCustomerCreditReviewCount, formatCustomerCreditScore, formatCustomerGenderLabel } from "../../shared/profile-card/customerProfileLabels";
-import { updateCustomerEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
-import type { Customer, Technician } from "../../types/domain";
-
-const legacyOrderShortcuts = [
-  { label: "待付款", count: 1, to: "/orders" },
-  { label: "待服务", count: 3, to: "/orders" },
-  { label: "进行中", count: 2, to: "/orders" },
-  { label: "已完成", count: 18, to: "/orders" },
-  { label: "已取消", count: 1, to: "/orders" }
-];
+import type { Customer } from "../../types/domain";
 
 const formalOrderStatuses = ["pending", "confirmed", "inService", "completed", "cancelled"] as const satisfies readonly BookingOrderStatus[];
 type FormalOrderCounts = Record<(typeof formalOrderStatuses)[number], number>;
@@ -219,17 +209,16 @@ function getThemeProfileSurfaceClassNames() {
   };
 }
 
-function buildUserProfile(customer: Customer, linkedTechnician?: Technician) {
+function buildUserProfile(customer: Customer) {
   return {
-    avatar: customer.avatar || linkedTechnician?.avatar || "",
-    nickname: customer.nickname?.trim() || linkedTechnician?.nickname?.trim() || customer.name,
-    age: customer.age?.trim() || linkedTechnician?.age?.trim() || "",
-    height: customer.height?.trim() || linkedTechnician?.height?.trim() || "",
-    gender: formatCustomerGenderLabel(customer.gender ?? linkedTechnician?.gender),
-    languages: customer.languages?.length ? [...customer.languages] : linkedTechnician?.languages?.length ? [...linkedTechnician.languages] : ["日本語"],
+    avatar: customer.avatar || "",
+    nickname: customer.nickname?.trim() || customer.name,
+    age: customer.age?.trim() || "",
+    height: customer.height?.trim() || "",
+    gender: formatCustomerGenderLabel(customer.gender),
+    languages: customer.languages?.length ? [...customer.languages] : ["日本語"],
     bio:
       customer.bio?.trim() ||
-      linkedTechnician?.bio?.trim() ||
       "可在这里补充你的语言偏好、常用预约习惯和其他说明，方便门店与技师更准确地理解你的需求。"
   };
 }
@@ -239,7 +228,7 @@ function getUserProfileNameByteLength(value: string) {
 }
 
 function getUserProfileNameEditorWidth(value: string) {
-  const visualUnits = Array.from(value.trim() || "Mia").reduce((sum, character) => sum + (/^[\x00-\x7F]$/.test(character) ? 0.62 : 1), 0);
+  const visualUnits = Array.from(value.trim() || "用户").reduce((sum, character) => sum + (/^[\x00-\x7F]$/.test(character) ? 0.62 : 1), 0);
 
   return `${clampNumber(visualUnits + 0.85, 3.2, 14)}em`;
 }
@@ -262,12 +251,10 @@ function limitUserProfileName(value: string) {
   return nextValue;
 }
 
-function getUserProfileDisplayName(customer: Customer, linkedTechnician?: Technician, draft?: UserProfileDraft | null, savedPreview?: UserProfileDraft | null) {
+function getUserProfileDisplayName(customer: Customer, draft?: UserProfileDraft | null) {
   return (
     draft?.nickname.trim() ||
-    savedPreview?.nickname.trim() ||
     customer.nickname?.trim() ||
-    linkedTechnician?.nickname?.trim() ||
     customer.name
   );
 }
@@ -336,13 +323,13 @@ function UserProfilePrivacyInfoButton({ content }: { content: string }) {
   );
 }
 
-function buildUserProfileDraft(customer: Customer, linkedTechnician?: Technician): UserProfileDraft {
-  const profile = buildUserProfile(customer, linkedTechnician);
+function buildUserProfileDraft(customer: Customer): UserProfileDraft {
+  const profile = buildUserProfile(customer);
 
   return {
     avatar: profile.avatar,
     nickname: profile.nickname,
-    gender: customer.gender ?? linkedTechnician?.gender ?? "private",
+    gender: customer.gender ?? "private",
     age: profile.age,
     height: formatUserHeightInput(profile.height),
     languages: profile.languages,
@@ -586,30 +573,16 @@ function CompleteUserCenterPage({
   formalData,
   onFormalProfileUpdated
 }: {
-  formalData?: FormalUserCenterData;
-  onFormalProfileUpdated?: (profile: CustomerSelfProfile) => void;
+  formalData: FormalUserCenterData;
+  onFormalProfileUpdated: (profile: CustomerSelfProfile) => void;
 }) {
   const navigate = useNavigate();
-  const { session } = useAuth();
-  const { customers, technicians } = useEntityStore();
-  const entityCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
-  const currentCustomer = useMemo(
-    () => (formalData ? mapCoreCustomerToCustomer(formalData.profile) : entityCustomer),
-    [entityCustomer, formalData]
-  );
-  const linkedTechnician = formalData
-    ? undefined
-    : technicians.find((technician) => technician.id === session?.linkedTechnicianId);
-  const userProfile = useMemo(() => buildUserProfile(currentCustomer, linkedTechnician), [currentCustomer, linkedTechnician]);
+  const currentCustomer = useMemo(() => mapCoreCustomerToCustomer(formalData.profile), [formalData.profile]);
+  const userProfile = useMemo(() => buildUserProfile(currentCustomer), [currentCustomer]);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileDraft, setProfileDraft] = useState<UserProfileDraft | null>(null);
-  const [savedProfilePreview, setSavedProfilePreview] = useState<UserProfileDraft | null>(null);
   const [profileNameOverride, setProfileNameOverride] = useState("");
-  const [savedProfilePrivacyPreview, setSavedProfilePrivacyPreview] = useState<UserProfilePrivacyState>({
-    enabled: false,
-    visibility: "privateAll"
-  });
   const [profilePrivacyDraft, setProfilePrivacyDraft] = useState<UserProfilePrivacyState | null>(null);
   const [profilePrivacyMenuOpen, setProfilePrivacyMenuOpen] = useState(false);
   const [profilePrivacyConfirmOpen, setProfilePrivacyConfirmOpen] = useState(false);
@@ -626,55 +599,39 @@ function CompleteUserCenterPage({
         languages: profileDraft.languages,
         bio: profileDraft.bio
       }
-    : savedProfilePreview
-      ? {
-          avatar: savedProfilePreview.avatar,
-          nickname: savedProfilePreview.nickname,
-          age: savedProfilePreview.age,
-          height: savedProfilePreview.height,
-          gender: formatCustomerGenderLabel(savedProfilePreview.gender),
-          languages: savedProfilePreview.languages,
-          bio: savedProfilePreview.bio
-        }
-      : userProfile;
-  const displayName = limitUserProfileName(profileNameOverride.trim() || getUserProfileDisplayName(currentCustomer, linkedTechnician, profileDraft, savedProfilePreview));
+    : userProfile;
+  const displayName = limitUserProfileName(getUserProfileDisplayName(currentCustomer, profileDraft));
   const profileNameEditorWidth = getUserProfileNameEditorWidth(profileNameOverride || displayName);
-  const points = formalData?.wallet.availableBalance ?? currentCustomer.points ?? 18420;
-  const usageCount = formalData
-    ? Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0)
-    : currentCustomer.orderCount;
+  const points = formalData.wallet.availableBalance;
+  const usageCount = Object.values(formalData.orderCounts).reduce((sum, count) => sum + count, 0);
   const creditScore = formatCustomerCreditScore(currentCustomer);
   const creditReviewLabel = formatCustomerCreditReviewCount(currentCustomer);
   const levelLabel = getCustomerLevelLabel(currentCustomer.activeScore);
   const membershipSurface = getThemeProfileSurfaceClassNames();
-  const savedProfilePrivacy = formalData
-    ? getPersistedUserProfilePrivacy(formalData.profile.visibility)
-    : savedProfilePrivacyPreview;
+  const savedProfilePrivacy = getPersistedUserProfilePrivacy(formalData.profile.visibility);
   const activeProfilePrivacy = isEditingProfile && profilePrivacyDraft ? profilePrivacyDraft : savedProfilePrivacy;
   const profilePrivacySummary = getUserProfilePrivacySummary(activeProfilePrivacy.enabled, activeProfilePrivacy.visibility);
   const nicknameInputRef = useRef<HTMLTextAreaElement>(null);
   const ageInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
   const bioInputRef = useRef<HTMLTextAreaElement>(null);
-  const orderShortcuts = formalData
-    ? [
-        { label: "待确认", count: formalData.orderCounts.pending, to: "/orders" },
-        { label: "待服务", count: formalData.orderCounts.confirmed, to: "/orders" },
-        { label: "进行中", count: formalData.orderCounts.inService, to: "/orders" },
-        { label: "已完成", count: formalData.orderCounts.completed, to: "/orders" },
-        { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" }
-      ]
-    : legacyOrderShortcuts;
+  const orderShortcuts = [
+    { label: "待确认", count: formalData.orderCounts.pending, to: "/orders" },
+    { label: "待服务", count: formalData.orderCounts.confirmed, to: "/orders" },
+    { label: "进行中", count: formalData.orderCounts.inService, to: "/orders" },
+    { label: "已完成", count: formalData.orderCounts.completed, to: "/orders" },
+    { label: "已取消", count: formalData.orderCounts.cancelled, to: "/orders" }
+  ];
   const serviceTools: Array<{ label: string; info: string; value: number | string; to: string }> = [
-    { label: "我的收藏", info: "店铺、技师、服务", value: formalData ? "—" : stores.length, to: "/categories?type=store" },
-    { label: "我的地址", info: "家庭、公司、常用地址", value: formalData ? "—" : 4, to: "/checkout/svc-clean-1" },
-    { label: "我的评价", info: "已评价与待回复", value: formalData ? "—" : reviews.length, to: "/me" },
-    { label: "周期预约", info: "保洁、护理、家电维护", value: formalData ? "—" : 2, to: "/categories?type=service" },
-    { label: "会员", info: "老人、儿童、共同居住人", value: formalData ? "—" : 3, to: "/me" },
+    { label: "我的收藏", info: "店铺、技师、服务", value: "—", to: "/categories?type=store" },
+    { label: "我的地址", info: "家庭、公司、常用地址", value: "—", to: "/checkout/svc-clean-1" },
+    { label: "我的评价", info: "已评价与待回复", value: "—", to: "/me" },
+    { label: "周期预约", info: "保洁、护理、家电维护", value: "—", to: "/categories?type=service" },
+    { label: "会员", info: "老人、儿童、共同居住人", value: "—", to: "/me" },
     { label: "KYC身份验证", info: "实名、证件、本人确认", value: "去", to: "/me/settings/verification" }
   ];
   const startProfileEdit = () => {
-    const nextDraft = savedProfilePreview ?? buildUserProfileDraft(currentCustomer, linkedTechnician);
+    const nextDraft = buildUserProfileDraft(currentCustomer);
     const limitedDraft = {
       ...nextDraft,
       nickname: limitUserProfileName(nextDraft.nickname)
@@ -692,7 +649,7 @@ function CompleteUserCenterPage({
   const cancelProfileEdit = () => {
     setIsEditingProfile(false);
     setProfileDraft(null);
-    setProfileNameOverride(savedProfilePreview?.nickname ?? "");
+    setProfileNameOverride("");
     setProfilePrivacyDraft(null);
     setAvatarCrop(null);
     setProfilePrivacyMenuOpen(false);
@@ -832,53 +789,19 @@ function CompleteUserCenterPage({
     setProfileToastMessage("");
 
     try {
-      if (formalData) {
-        const updated = await customerProfileApi.updateMine({
-          displayName: nextProfile.nickname,
-          avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
-          gender: nextProfile.gender,
-          age: ageNumber,
-          heightCm: heightNumber,
-          languages: nextProfile.languages,
-          bio: nextProfile.bio || null,
-          visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
-        });
+      const updated = await customerProfileApi.updateMine({
+        displayName: nextProfile.nickname,
+        avatarDataUrl: nextProfile.avatar.startsWith("data:image/") ? nextProfile.avatar : undefined,
+        gender: nextProfile.gender,
+        age: ageNumber,
+        heightCm: heightNumber,
+        languages: nextProfile.languages,
+        bio: nextProfile.bio || null,
+        visibility: activeProfilePrivacy.enabled ? activeProfilePrivacy.visibility : "public"
+      });
 
-        onFormalProfileUpdated?.(updated);
-        setSavedProfilePreview(null);
-        setProfileNameOverride("");
-      } else {
-        const nextPreview: UserProfileDraft = {
-          avatar: nextProfile.avatar,
-          nickname: nextProfile.nickname,
-          gender: nextProfile.gender,
-          age: nextProfile.age,
-          height: nextProfile.height,
-          languages: [...nextProfile.languages],
-          bio: nextProfile.bio
-        };
-        const customerPersisted = updateCustomerEntity(currentCustomer.id, nextProfile);
-        let technicianPersisted = true;
-
-        if (linkedTechnician) {
-          technicianPersisted = updateTechnicianEntity(linkedTechnician.id, {
-            avatar: nextProfile.avatar,
-            nickname: nextProfile.nickname,
-            age: nextProfile.age,
-            height: nextProfile.height,
-            languages: [...nextProfile.languages],
-            bio: nextProfile.bio
-          });
-        }
-
-        if (!customerPersisted || !technicianPersisted) {
-          throw new Error("Unable to persist the frontend-preview profile.");
-        }
-
-        setSavedProfilePreview(nextPreview);
-        setSavedProfilePrivacyPreview(activeProfilePrivacy);
-        setProfileNameOverride(nextProfile.nickname);
-      }
+      onFormalProfileUpdated(updated);
+      setProfileNameOverride("");
 
       setIsEditingProfile(false);
       setProfileDraft(null);
@@ -1083,7 +1006,7 @@ function CompleteUserCenterPage({
 
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   {[
-                    { label: formalData ? "NDP" : "积分", value: points.toLocaleString("en-US") },
+                    { label: "NDP", value: points.toLocaleString("en-US") },
                     { label: "利用次数", value: `${usageCount}` },
                     { label: "信用值", value: creditScore, suffix: "/5" }
                   ].map((item) => (
@@ -1302,13 +1225,13 @@ function CompleteUserCenterPage({
 export function UserCenterPage() {
   const { session } = useAuth();
 
-  if (
-    session?.currentIdentity.type === "customer" &&
-    session.currentIdentity.scopeId &&
-    session.loginMethod !== "frontend-bypass"
-  ) {
-    return <FormalUserCenterDataGate customerProfileId={session.currentIdentity.scopeId} />;
+  if (!session || (session.loginMethod !== "password" && session.loginMethod !== "google")) {
+    return <UserCenterDataStatus error="登录状态已失效，请重新登录" />;
   }
 
-  return <CompleteUserCenterPage />;
+  if (session.currentIdentity.type !== "customer" || !session.currentIdentity.scopeId) {
+    return <UserCenterDataStatus error="当前身份没有读取个人数据的权限" />;
+  }
+
+  return <FormalUserCenterDataGate customerProfileId={session.currentIdentity.scopeId} />;
 }

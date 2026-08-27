@@ -32,7 +32,7 @@ describe("formal customer center integration", () => {
 
   it("writes formal edits through the protected current-profile API and preserves drafts on failure", () => {
     expect(centerSource).toContain("customerProfileApi.updateMine({");
-    expect(centerSource).toContain("onFormalProfileUpdated?.(updated)");
+    expect(centerSource).toContain("onFormalProfileUpdated(updated)");
     expect(centerSource).toContain("资料保存失败，请保留当前内容后重试");
     expect(centerSource).toContain("setIsEditingProfile(true)");
   });

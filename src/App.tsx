@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
 import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
-import { isFrontendBypassSession } from "./auth/rbac";
+import { isFrontendBypassSession, isSessionAlignedWithPortal } from "./auth/rbac";
 import { I18nProvider, I18nRuntime } from "./i18n/I18nProvider";
 import { ClientThemeProvider, getClientThemeClassName, getClientThemeModeClassName, getInitialClientThemeState, isNightClientTheme, useClientTheme } from "./theme/ClientThemeProvider";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, isDarkAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, sharedAdminThemeOptions, type AdminTheme, type AdminThemeOption } from "./theme/AdminTheme";
@@ -820,6 +820,7 @@ function RequirePortalAuth({
   const { session, isAuthenticated, isRestoring, canAccess, canEnterPortal, hasRememberedPortalAuthorization, switchPortal } = useAuth();
   const location = useLocation();
   const [isPortalRestorePending, setIsPortalRestorePending] = useState(false);
+  const [failedPortalAlignmentKey, setFailedPortalAlignmentKey] = useState<string | null>(null);
   const hasDirectAccess = canAccess(portal);
   const isOperationsMerchantPreview = Boolean(
     portal === "merchant" &&
@@ -836,31 +837,56 @@ function RequirePortalAuth({
   const hasAccess = hasDirectAccess || isOperationsMerchantPreview || (!requiresDirectPortalAccess && canEnterPortal(portal));
   const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);
   const hasBlockedFrontendBypass = requiresDirectPortalAccess && isFrontendBypassSession(session);
+  const isPortalAligned = isSessionAlignedWithPortal(session, portal);
+  const needsPortalAlignment = Boolean(
+    isAuthenticated &&
+      hasAccess &&
+      !isOperationsMerchantPreview &&
+      !hasBlockedFrontendBypass &&
+      !isPortalAligned
+  );
+  const portalAlignmentKey = `${session?.id ?? "anonymous"}:${session?.currentIdentity.id ?? "none"}:${portal}`;
+  const portalAlignmentFailed = failedPortalAlignmentKey === portalAlignmentKey;
+  const shouldSwitchPortal = (!hasAccess && canRestoreRememberedPortal) || needsPortalAlignment;
 
   useEffect(() => {
-    if (isRestoring || hasAccess || !canRestoreRememberedPortal || isPortalRestorePending) {
+    if (isRestoring || !shouldSwitchPortal || isPortalRestorePending || portalAlignmentFailed) {
       return;
     }
 
     let active = true;
     setIsPortalRestorePending(true);
 
-    void switchPortal(portal).finally(() => {
-      if (active) {
-        setIsPortalRestorePending(false);
-      }
-    });
+    void switchPortal(portal)
+      .then((result) => {
+        if (active && (!result.ok || !isSessionAlignedWithPortal(result.session, portal))) {
+          setFailedPortalAlignmentKey(portalAlignmentKey);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsPortalRestorePending(false);
+        }
+      });
 
     return () => {
       active = false;
     };
-  }, [canRestoreRememberedPortal, hasAccess, isPortalRestorePending, isRestoring, portal, switchPortal]);
+  }, [
+    isPortalRestorePending,
+    isRestoring,
+    portal,
+    portalAlignmentFailed,
+    portalAlignmentKey,
+    shouldSwitchPortal,
+    switchPortal
+  ]);
 
-  if (isRestoring || isPortalRestorePending || (!hasAccess && canRestoreRememberedPortal)) {
+  if (isRestoring || isPortalRestorePending || (shouldSwitchPortal && !portalAlignmentFailed)) {
     return null;
   }
 
-  if (!isAuthenticated || !hasAccess || hasBlockedFrontendBypass) {
+  if (!isAuthenticated || !hasAccess || hasBlockedFrontendBypass || portalAlignmentFailed) {
     const redirect = `${location.pathname}${location.search}${location.hash}`;
     const loginPath = portal === "merchant" && location.pathname.startsWith("/merchant-admin")
       ? "/login/merchant-admin"

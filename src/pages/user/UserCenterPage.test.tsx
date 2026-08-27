@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import source from "./UserCenterPage.tsx?raw";
 
 describe("UserCenterPage", () => {
+  it("has no legacy mock or static-preview fallback in the formal user center", () => {
+    expect(source).not.toContain('from "../../data/mock"');
+    expect(source).not.toContain("legacyOrderShortcuts");
+    expect(source).not.toContain("frontend-bypass");
+    expect(source).not.toContain("customers[0]");
+    expect(source).not.toContain("?? 18420");
+    expect(source).not.toContain('|| "Mia"');
+  });
+
   it("does not show the recent user feedback section", () => {
     expect(source).not.toContain("近期用户反馈");
     expect(source).not.toContain("userStories.map");

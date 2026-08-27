@@ -5,6 +5,7 @@ import {
   canUseUserSessionForClientPortal,
   canAccessPortalFromSession,
   hasPermissionInSession,
+  isSessionAlignedWithPortal,
   type AuthMePayload
 } from "./rbac";
 
@@ -64,6 +65,26 @@ describe("frontend RBAC session helpers", () => {
     expect(session.portal).toBe("user");
     expect(session.allowedPortals).toEqual(["admin", "user"]);
     expect(canAccessPortalFromSession(session, "user")).toBe(true);
+  });
+
+  it("distinguishes portal authorization from the active backend identity", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        identities: [
+          ...baseMe.identities,
+          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }
+        ],
+        roles: ["admin", "customer"],
+        permissions: [...baseMe.permissions, "page:client-app"],
+        menus: [...baseMe.menus, "menu:client-app"]
+      },
+      "user",
+      "password"
+    );
+
+    expect(canAccessPortalFromSession(session, "user")).toBe(true);
+    expect(isSessionAlignedWithPortal(session, "user")).toBe(false);
   });
 
   it("maps formal numeric scoped identities to the local client entity ids", () => {
