@@ -22,7 +22,7 @@ import { cn } from "../../lib/utils";
 import { CustomerMembershipBadge } from "../../shared/profile-card";
 import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
 import { IdentityBadge, VerificationBadge } from "../social/components/SocialUi";
-import { getDisplayName, getImContactSignatureCaption, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
+import { getDisplayName, getImContactSignatureCaption, getRecallResidueLabel, type ContactRelation, type Conversation, type ConversationMessage, type ImMessageType, type ImUser, type MessageExt } from "./model";
 
 export function ImIcon({
   name,
@@ -2493,7 +2493,7 @@ export function MessageBubble({
   const quotedAuthor = quotedSenderName ?? (quotedMessage?.senderId === message.senderId ? (isMine ? "我" : senderName ?? "对方") : "前文消息");
 
   if (message.type === "system" || message.type === "recalled") {
-    const label = message.type === "recalled" ? (isMine ? "你已经撤回" : "对方已经撤回") : message.content;
+    const label = message.type === "recalled" ? getRecallResidueLabel(isMine) : message.content;
     return <div className="px-8 py-2 text-center text-xs font-bold text-[color:var(--client-muted)]">{label}</div>;
   }
 

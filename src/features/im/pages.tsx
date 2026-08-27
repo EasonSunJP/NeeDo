@@ -111,6 +111,7 @@ import {
   getDisplayName,
   getImContactSignatureCaption,
   getMessageDisappearingExpiresAt,
+  getStandardRecallAvailability,
   getVisibleIndexLetters,
   getUserById,
   resolveIndexLetterFromTouchY,
@@ -4084,8 +4085,6 @@ type MessageMenuState = {
 type ImReactionPerson = ImMessageReactionSummary["people"][number];
 type ImMessageReactionState = Record<string, Record<string, ImReactionPerson[]>>;
 
-const messageRecallTraceThresholdMs = 180_000;
-
 export function ImConversationRoomRoutePage() {
   const { conversationId } = useParams();
   return conversationId ? <ImConversationRoomPage conversationId={conversationId} /> : null;
@@ -4110,6 +4109,8 @@ export function ImConversationRoomPage({
   const [voiceMode, setVoiceMode] = useState(false);
   const [recording, setRecording] = useState<VoiceRecordingState>(idleVoiceRecordingState);
   const [recordingNotice, setRecordingNotice] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [recallPending, setRecallPending] = useState(false);
   const [menuState, setMenuState] = useState<MessageMenuState | null>(null);
   const [messageMenuExpanded, setMessageMenuExpanded] = useState(false);
   const [messageReactions, setMessageReactions] = useState<ImMessageReactionState>({});
@@ -4277,6 +4278,15 @@ export function ImConversationRoomPage({
     const timer = window.setTimeout(() => setRecordingNotice(null), 2_600);
     return () => window.clearTimeout(timer);
   }, [recordingNotice]);
+
+  useEffect(() => {
+    if (!actionNotice || typeof window === "undefined") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setActionNotice(null), 2_600);
+    return () => window.clearTimeout(timer);
+  }, [actionNotice]);
 
   useEffect(
     () => () => {
@@ -5246,19 +5256,6 @@ export function ImConversationRoomPage({
     closeMessageMenu();
   };
 
-  const isOwnRecallableMessage = (message: ConversationMessage) =>
-    message.senderId === store.currentUserId && message.type !== "system" && message.type !== "recalled" && message.status !== "failed";
-
-  const isQuickRecallMessage = (message: ConversationMessage) => {
-    const sentAt = new Date(message.sentAt).getTime();
-
-    if (!Number.isFinite(sentAt)) {
-      return false;
-    }
-
-    return Date.now() - sentAt <= messageRecallTraceThresholdMs;
-  };
-
   const scrollToMessage = (messageId: string) => {
     messageRefs.current[messageId]?.scrollIntoView({ block: "center", behavior: "smooth" });
     setFlashMessageId(messageId);
@@ -5275,24 +5272,55 @@ export function ImConversationRoomPage({
   };
 
   const recallMessage = (message: ConversationMessage) => {
-    if (!isOwnRecallableMessage(message)) {
+    const availability = getStandardRecallAvailability(
+      message,
+      store.currentUserId ?? "",
+    );
+
+    if (availability === "unavailable" || recallPending) {
       return;
     }
 
-    setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
-
-    if (isQuickRecallMessage(message)) {
-      setHiddenMessageIds((current) => current.includes(message.id) ? current : [...current, message.id]);
+    if (availability === "expired") {
+      setActionNotice("发送超过3分钟后无法撤回");
       closeMessageMenu();
       return;
     }
 
-    void store.recallMessage(message.id).catch(() => undefined);
-    closeMessageMenu();
+    const originalContent = message.type === "text" ? message.content : "";
+    setRecallPending(true);
+    setActionNotice(null);
+
+    void store.recallMessage(message.conversationId, message.id, "standard")
+      .then(() => {
+        setPinnedMessageIds((current) => current.filter((messageId) => messageId !== message.id));
+        closeMessageMenu();
+
+        if (!originalContent) {
+          return;
+        }
+
+        setDraft(originalContent);
+        store.setDraft(conversationId, originalContent);
+        window.requestAnimationFrame(() => {
+          textareaRef.current?.focus();
+          textareaRef.current?.setSelectionRange(originalContent.length, originalContent.length);
+        });
+      })
+      .catch((error: unknown) => {
+        setActionNotice(
+          error instanceof Error && error.message.includes("error.im.recall_window_expired")
+            ? "发送超过3分钟后无法撤回"
+            : "撤回失败，请稍后重试",
+        );
+      })
+      .finally(() => setRecallPending(false));
   };
 
   const createMessageActions = (message: ConversationMessage) => {
-    const canRecall = isOwnRecallableMessage(message);
+    const canRecall =
+      getStandardRecallAvailability(message, store.currentUserId ?? "") !==
+      "unavailable";
     const pinned = pinnedMessageIds.includes(message.id);
     const primaryActions: ImMessageActionSheetItem[] = [
       {
@@ -5342,7 +5370,7 @@ export function ImConversationRoomPage({
         key: "recall",
         label: "撤回",
         icon: "delete",
-        disabled: !canRecall,
+        disabled: !canRecall || recallPending,
         onClick: () => recallMessage(message)
       }
     ];
@@ -5623,6 +5651,12 @@ export function ImConversationRoomPage({
           {recordingNotice ? (
             <div className={cn("relative z-10 px-4 py-2 text-xs", recordingHintClass)}>
               <p>{recordingNotice}</p>
+            </div>
+          ) : null}
+
+          {actionNotice ? (
+            <div aria-live="assertive" className={cn("relative z-10 px-4 py-2 text-xs", recordingHintClass)}>
+              <p>{actionNotice}</p>
             </div>
           ) : null}
 
@@ -6798,7 +6832,7 @@ export function ImMediaRecordsPage() {
     config: store.config ?? {
       allowStrangerMessaging: true,
       preserveConversationAfterDelete: true,
-      recallWindowMs: 120_000,
+      recallWindowMs: 180_000,
       separatorThresholdMs: 300_000,
       syncDraftAcrossDevices: false
     },

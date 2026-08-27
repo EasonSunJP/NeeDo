@@ -119,6 +119,38 @@ describe("IM pages", () => {
     expect(componentSource).toContain("im-conversation-wallpaper pointer-events-none absolute inset-0");
   });
 
+  it("uses confirmed standard recall and restores text only after success", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationRoomPage");
+    const componentEnd = pagesSource.indexOf("function ImMessageSelectionHandles");
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const recallStart = componentSource.indexOf(
+      "const recallMessage = (message: ConversationMessage) =>",
+    );
+    const actionsStart = componentSource.indexOf(
+      "const createMessageActions",
+      recallStart,
+    );
+    const recallSource = componentSource.slice(recallStart, actionsStart);
+
+    expect(componentSource).not.toContain("messageRecallTraceThresholdMs");
+    expect(recallSource).not.toContain("setHiddenMessageIds");
+    expect(recallSource).toContain(
+      'store.recallMessage(message.conversationId, message.id, "standard")',
+    );
+    expect(recallSource).toContain(".then(() => {");
+    expect(recallSource.indexOf("setDraft(originalContent)")).toBeGreaterThan(
+      recallSource.indexOf(".then(() => {"),
+    );
+    expect(recallSource).toContain("store.setDraft(conversationId, originalContent)");
+    expect(recallSource).toContain("textareaRef.current?.focus()");
+    expect(recallSource).toContain(
+      "textareaRef.current?.setSelectionRange(originalContent.length, originalContent.length)",
+    );
+    expect(recallSource).toContain("发送超过3分钟后无法撤回");
+    expect(recallSource).toContain("撤回失败，请稍后重试");
+    expect(componentSource).toContain('aria-live="assertive"');
+  });
+
   it("keeps the hide member profiles switch independent from privacy mode in group creation", () => {
     const componentStart = pagesSource.indexOf("export function ImNewConversationPage");
     const componentEnd = pagesSource.length;

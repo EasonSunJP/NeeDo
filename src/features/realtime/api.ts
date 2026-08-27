@@ -15,14 +15,27 @@ export type RealtimeParticipant = {
 };
 
 export type RealtimeMessage = {
+  availableRecallModes?: Array<"standard">;
   content: string | null;
+  contentPurgedAt?: string | null;
   conversationId: number;
   createdAt: string;
   id: number;
+  lifecycleVersion?: number;
   metadata: unknown;
   reactions?: RealtimeMessageReaction[];
+  recallDeadlineAt?: string | null;
+  recalledAt?: string | null;
+  recallMode?: "standard" | "traceless" | null;
   senderUserId: number | null;
   type: "text" | "system" | "orderStatus";
+};
+
+export type RealtimeRecallResult = {
+  action: "standard_recall";
+  conversationId: number;
+  message: RealtimeMessage;
+  messageId: number;
 };
 
 export type RealtimeMessageReaction = {
@@ -134,6 +147,12 @@ export const realtimeApi = {
   },
   createMessage(conversationId: number, input: { content: string; metadata?: Record<string, unknown>; type?: RealtimeMessage["type"] }) {
     return httpClient.request<RealtimeMessage>(`/im/conversations/${conversationId}/messages`, { body: input, method: "POST" });
+  },
+  recallMessage(conversationId: number, messageId: number, mode: "standard") {
+    return httpClient.request<RealtimeRecallResult>(
+      `/im/conversations/${conversationId}/messages/${messageId}/recall`,
+      { body: { mode }, method: "POST" }
+    );
   },
   setMessageReaction(conversationId: number, messageId: number, emoji: string) {
     return httpClient.request<RealtimeMessage>(

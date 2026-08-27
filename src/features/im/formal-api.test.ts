@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { httpClient } from "../../api/httpClient";
 import { realtimeApi } from "../realtime/api";
-import { createFormalImApi } from "./formal-api";
+import { createFormalImApi, toFormalImStoreUpdate } from "./formal-api";
 
 const now = "2026-08-25T10:00:00.000Z";
 
@@ -382,6 +382,124 @@ describe("formal IM adapter", () => {
         ],
       },
     ]);
+  });
+
+  it("maps a confirmed standard recall to a content-free terminal message", async () => {
+    const recallMessage = vi.spyOn(realtimeApi, "recallMessage").mockResolvedValue({
+      action: "standard_recall",
+      conversationId: 91,
+      messageId: 700,
+      message: {
+        id: 700,
+        conversationId: 91,
+        senderUserId: 100,
+        type: "text",
+        content: "明文不得从撤回响应重新进入状态",
+        metadata: { needoMessageType: "text" },
+        reactions: [],
+        recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+        recalledAt: "2026-08-25T10:01:00.000Z",
+        recallMode: "standard",
+        contentPurgedAt: "2026-08-25T10:01:00.000Z",
+        lifecycleVersion: 2,
+        availableRecallModes: [],
+        createdAt: now,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "n0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.recallMessage("91", "700", "standard")).resolves.toMatchObject({
+      conversationId: "91",
+      messageId: "700",
+      mode: "standard",
+      message: {
+        id: "700",
+        type: "recalled",
+        content: "",
+        status: "recalled",
+        serverState: "recalled",
+        availableRecallModes: [],
+      },
+    });
+    expect(recallMessage).toHaveBeenCalledWith(91, 700, "standard");
+  });
+
+  it("rejects a recall response that does not contain a terminal tombstone", async () => {
+    vi.spyOn(realtimeApi, "recallMessage").mockResolvedValue({
+      action: "standard_recall",
+      conversationId: 91,
+      messageId: 700,
+      message: {
+        id: 700,
+        conversationId: 91,
+        senderUserId: 100,
+        type: "text",
+        content: "still active",
+        metadata: null,
+        reactions: [],
+        recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+        recalledAt: null,
+        recallMode: null,
+        contentPurgedAt: null,
+        lifecycleVersion: 1,
+        availableRecallModes: ["standard"],
+        createdAt: now,
+      },
+    });
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "n0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(api.recallMessage("91", "700", "standard")).rejects.toThrow(
+      "error.response.invalid_recall_result",
+    );
+  });
+
+  it("maps message.recalled SSE payloads to the same content-free terminal shape", () => {
+    expect(
+      toFormalImStoreUpdate({
+        id: "evt-1",
+        type: "message.recalled",
+        payload: {
+          id: 700,
+          conversationId: 91,
+          senderUserId: 100,
+          type: "text",
+          content: "stale transport plaintext",
+          metadata: null,
+          reactions: [],
+          recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+          recalledAt: "2026-08-25T10:01:00.000Z",
+          recallMode: "standard",
+          contentPurgedAt: "2026-08-25T10:01:00.000Z",
+          lifecycleVersion: 2,
+          availableRecallModes: [],
+          createdAt: now,
+        },
+      }),
+    ).toMatchObject({
+      type: "message.recalled",
+      message: {
+        id: "700",
+        type: "recalled",
+        content: "",
+        serverState: "recalled",
+      },
+    });
   });
 
   it("persists conversation pin, mute, unread, and personal deletion state", async () => {

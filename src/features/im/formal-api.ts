@@ -10,6 +10,7 @@ import {
   realtimeApi,
   subscribeRealtimeEvents,
   type PaginatedRealtimeData,
+  type FormalRealtimeEvent,
   type RealtimeContact,
   type RealtimeConversation,
   type RealtimeFriendRequest,
@@ -26,6 +27,7 @@ import type {
   ImBootstrapPayload,
   ImMessageType,
   ImProfileKind,
+  ImStoreUpdate,
   ImRoleType,
   ImUser,
   MessageExt,
@@ -49,7 +51,7 @@ const formalRuntimeConfig = {
   allowStrangerMessaging: false,
   preserveConversationAfterDelete: true,
   syncDraftAcrossDevices: false,
-  recallWindowMs: 120_000,
+  recallWindowMs: 180_000,
   separatorThresholdMs: 300_000,
 } as const;
 
@@ -252,11 +254,15 @@ function toOrganizationContact(
 }
 
 function toConversationMessage(message: RealtimeMessage): ConversationMessage {
-  const metadata = readMetadata(message.metadata);
+  const isRecalled = Boolean(
+    message.recalledAt || message.recallMode || message.contentPurgedAt,
+  );
+  const metadata = isRecalled ? {} : readMetadata(message.metadata);
   const storedType = metadata.needoMessageType;
-  const type =
-    typeof storedType === "string" &&
-    richMessageTypes.has(storedType as ImMessageType)
+  const type: ImMessageType = isRecalled
+    ? "recalled"
+    : typeof storedType === "string" &&
+        richMessageTypes.has(storedType as ImMessageType)
       ? (storedType as ImMessageType)
       : message.type === "text"
         ? "text"
@@ -270,11 +276,22 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
     conversationId: String(message.conversationId),
     senderId: message.senderUserId === null ? "" : String(message.senderUserId),
     type,
-    content: message.content ?? "",
+    content: isRecalled ? "" : (message.content ?? ""),
     quotedMessageId:
       typeof quotedMessageId === "string" ? quotedMessageId : undefined,
     status: type === "recalled" ? "recalled" : "sent",
     sentAt: message.createdAt,
+    serverState: isRecalled ? "recalled" : "active",
+    recallDeadlineAt: message.recallDeadlineAt ?? undefined,
+    recalledAt: message.recalledAt ?? undefined,
+    recallMode: message.recallMode ?? undefined,
+    contentPurgedAt: message.contentPurgedAt ?? undefined,
+    lifecycleVersion: message.lifecycleVersion,
+    availableRecallModes: isRecalled
+      ? []
+      : (message.availableRecallModes ?? []).filter(
+          (mode): mode is "standard" => mode === "standard",
+        ),
     clientSeq: message.id,
     reactions: (message.reactions ?? []).map((reaction) => ({
       emoji: reaction.emoji,
@@ -290,6 +307,30 @@ function toConversationMessage(message: RealtimeMessage): ConversationMessage {
         ? (ext as MessageExt)
         : undefined,
   };
+}
+
+function isRealtimeMessagePayload(payload: unknown): payload is RealtimeMessage {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+
+  const candidate = payload as Partial<RealtimeMessage>;
+  return (
+    typeof candidate.id === "number" &&
+    typeof candidate.conversationId === "number" &&
+    typeof candidate.createdAt === "string"
+  );
+}
+
+export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate {
+  if (event.type !== "message.recalled" || !isRealtimeMessagePayload(event.payload)) {
+    return { type: "refresh" };
+  }
+
+  const message = toConversationMessage(event.payload);
+  return message.serverState === "recalled"
+    ? { type: "message.recalled", message }
+    : { type: "refresh" };
 }
 
 function getOtherParticipant(
@@ -728,7 +769,29 @@ export function createFormalImApi({
     },
     estimateTagMessageCampaign: featureUnavailable,
     sendTagMessageCampaign: featureUnavailable,
-    recallMessage: featureUnavailable,
+    async recallMessage(
+      conversationId: string,
+      messageId: string,
+      mode: "standard",
+    ) {
+      const response = await realtimeApi.recallMessage(
+        toNumericId(conversationId),
+        toNumericId(messageId),
+        mode,
+      );
+      const message = toConversationMessage(response.message);
+
+      if (
+        response.action !== "standard_recall" ||
+        String(response.conversationId) !== conversationId ||
+        String(response.messageId) !== messageId ||
+        message.serverState !== "recalled"
+      ) {
+        throw new Error("error.response.invalid_recall_result");
+      }
+
+      return { conversationId, messageId, message, mode };
+    },
     resendMessage: featureUnavailable,
     forwardMessage: featureUnavailable,
     async search(query: string, conversationId?: string) {
@@ -773,7 +836,7 @@ export function createFormalImApi({
   return api;
 }
 
-export function subscribeFormalImUpdates(onUpdate: () => void) {
+export function subscribeFormalImUpdates(onUpdate: (update: ImStoreUpdate) => void) {
   return subscribeRealtimeEvents({
     onEvent(event) {
       if (
@@ -782,7 +845,7 @@ export function subscribeFormalImUpdates(onUpdate: () => void) {
         event.type.startsWith("friend_request.") ||
         event.type.startsWith("contact.")
       ) {
-        onUpdate();
+        onUpdate(toFormalImStoreUpdate(event));
       }
     },
   });

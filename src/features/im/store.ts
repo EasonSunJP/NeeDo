@@ -23,6 +23,7 @@ import {
   type ImRoleType,
   type ImRuntimeConfig,
   type ImSearchResult,
+  type ImStoreUpdate,
   type ImUser,
   type MessageExt,
   type TagMessageCampaignEstimate,
@@ -52,6 +53,67 @@ type PaginationState = Record<
 >;
 
 const emptyConversationMessages: ConversationMessage[] = [];
+
+function sortConversationMessages(messages: ConversationMessage[]) {
+  return [...messages].sort(
+    (left, right) =>
+      new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime(),
+  );
+}
+
+export function preferTerminalMessage(
+  current: ConversationMessage | undefined,
+  incoming: ConversationMessage,
+) {
+  if (
+    current?.serverState === "recalled" &&
+    incoming.serverState !== "recalled"
+  ) {
+    return current;
+  }
+
+  return incoming;
+}
+
+export function upsertConversationMessage(
+  messages: ConversationMessage[],
+  incoming: ConversationMessage,
+) {
+  const index = messages.findIndex(
+    (message) =>
+      message.id === incoming.id || message.localId === incoming.localId,
+  );
+
+  if (index === -1) {
+    return sortConversationMessages([...messages, incoming]);
+  }
+
+  const next = [...messages];
+  next[index] = preferTerminalMessage(next[index], incoming);
+  return sortConversationMessages(next);
+}
+
+export function mergeConversationMessageHistory(
+  current: ConversationMessage[],
+  incoming: ConversationMessage[],
+  reset: boolean,
+) {
+  const merged = incoming.reduce(
+    (messages, message) => upsertConversationMessage(messages, message),
+    reset ? [] : current,
+  );
+
+  if (!reset) {
+    return merged;
+  }
+
+  return current
+    .filter((message) => message.serverState === "recalled")
+    .reduce(
+      (messages, message) => upsertConversationMessage(messages, message),
+      merged,
+    );
+}
 
 type ImSnapshot = {
   status: StoreStatus;
@@ -100,7 +162,7 @@ function getUiStorageKey(scope: ImRoleType) {
 type ScopedStoreBackend = {
   api: ReturnType<typeof createImApi>;
   installMockServer: boolean;
-  subscribeUpdates?: (onUpdate: () => void) => () => void;
+  subscribeUpdates?: (onUpdate: (update: ImStoreUpdate) => void) => () => void;
   syncAccountEntities: boolean;
 };
 
@@ -200,16 +262,13 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
   function upsertMessage(message: ConversationMessage) {
     const current = snapshot.messagesByConversation[message.conversationId] ?? [];
-    const exists = current.some((item) => item.id === message.id || item.localId === message.localId);
-    const nextMessages = exists
-      ? current.map((item) => (item.id === message.id || item.localId === message.localId ? message : item))
-      : [...current, message];
+    const nextMessages = upsertConversationMessage(current, message);
 
     snapshot = {
       ...snapshot,
       messagesByConversation: {
         ...snapshot.messagesByConversation,
-        [message.conversationId]: nextMessages.sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime())
+        [message.conversationId]: nextMessages
       }
     };
   }
@@ -349,7 +408,15 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
 
         if (!realtimeUnsubscribe) {
           realtimeUnsubscribe = backend.subscribeUpdates
-            ? backend.subscribeUpdates(() => void refreshBootstrap())
+            ? backend.subscribeUpdates((update) => {
+                if (update.type === "message.recalled") {
+                  upsertMessage(update.message);
+                  emit();
+                  return;
+                }
+
+                void refreshBootstrap();
+              })
             : subscribeImRealtime(scope, syncRealtime);
         }
 
@@ -448,17 +515,17 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
 
     const response = await api.listMessages(conversationId, options?.reset ? null : pagination?.nextCursor ?? null, options?.limit ?? 30);
-    const nextMessages = options?.reset
-      ? response.messages
-      : [...(snapshot.messagesByConversation[conversationId] ?? []), ...response.messages].filter(
-          (message, index, array) => array.findIndex((item) => item.id === message.id) === index
-        );
+    const nextMessages = mergeConversationMessageHistory(
+      snapshot.messagesByConversation[conversationId] ?? [],
+      response.messages,
+      options?.reset ?? false,
+    );
 
     snapshot = {
       ...snapshot,
       messagesByConversation: {
         ...snapshot.messagesByConversation,
-        [conversationId]: nextMessages.sort((left, right) => new Date(left.sentAt).getTime() - new Date(right.sentAt).getTime())
+        [conversationId]: nextMessages
       },
       paginationByConversation: {
         ...snapshot.paginationByConversation,
@@ -581,12 +648,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     emit();
   }
 
-  async function recallMessage(messageId: string) {
+  async function recallMessage(conversationId: string, messageId: string, mode: "standard") {
     await hydrateStore();
-    const response = await api.recallMessage(messageId);
-    upsertConversation(response.conversation);
+    const response = await api.recallMessage(conversationId, messageId, mode);
     upsertMessage(response.message);
     emit();
+    return response;
   }
 
   async function forwardMessage(messageId: string, conversationId: string) {

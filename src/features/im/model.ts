@@ -27,6 +27,8 @@ export type ImMessageType =
   | "system"
   | "recalled";
 export type ImMessageStatus = "sending" | "sent" | "delivered" | "failed" | "recalled";
+export type ImMessageServerState = "active" | "recalled";
+export type ImRecallMode = "standard";
 export type ConversationDisappearingStartMode = "sent" | "read_by_all";
 export type GroupInfoEditPolicy = "owner" | "members";
 export type MessageCampaignType = "marketing" | "crm" | "transactional" | "system" | "risk";
@@ -264,6 +266,7 @@ export type MessageExt = {
 };
 
 export type ConversationMessage = {
+  availableRecallModes?: ImRecallMode[];
   id: string;
   localId: string;
   conversationId: string;
@@ -274,7 +277,12 @@ export type ConversationMessage = {
   status: ImMessageStatus;
   sentAt: string;
   editedAt?: string;
+  contentPurgedAt?: string;
+  lifecycleVersion?: number;
+  recallDeadlineAt?: string;
   recalledAt?: string;
+  recallMode?: "standard" | "traceless";
+  serverState?: ImMessageServerState;
   clientSeq: number;
   ext?: MessageExt;
   reactions?: Array<{
@@ -287,6 +295,17 @@ export type ConversationMessage = {
     reactedByMe?: boolean;
   }>;
 };
+
+export type ImRecallMessageResult = {
+  conversationId: string;
+  message: ConversationMessage;
+  messageId: string;
+  mode: ImRecallMode;
+};
+
+export type ImStoreUpdate =
+  | { type: "message.recalled"; message: ConversationMessage }
+  | { type: "refresh" };
 
 export type ReadCursor = {
   id: string;
@@ -948,7 +967,7 @@ export function formatConversationTime(value: string, now = new Date()) {
 
 export function buildMessagePreview(message: ConversationMessage, currentUserId: string, users: Record<string, ImUser>) {
   if (message.type === "recalled" || message.status === "recalled") {
-    return message.senderId === currentUserId ? "你撤回了一条消息" : `${users[message.senderId]?.nickname ?? "对方"}撤回了一条消息`;
+    return getRecallResidueLabel(message.senderId === currentUserId);
   }
 
   if (message.type === "text" || message.type === "emoji") {
@@ -1096,6 +1115,44 @@ export function canRecallMessage(message: ConversationMessage, currentUserId: st
   }
 
   return now - new Date(message.sentAt).getTime() <= config.recallWindowMs;
+}
+
+export type StandardRecallAvailability = "available" | "expired" | "unavailable";
+
+export function getStandardRecallAvailability(
+  message: ConversationMessage,
+  currentUserId: string,
+  now = Date.now(),
+): StandardRecallAvailability {
+  if (
+    message.senderId !== currentUserId ||
+    message.type === "system" ||
+    message.type === "recalled" ||
+    message.status === "failed" ||
+    message.serverState === "recalled"
+  ) {
+    return "unavailable";
+  }
+
+  const deadline = message.recallDeadlineAt
+    ? new Date(message.recallDeadlineAt).getTime()
+    : Number.NaN;
+
+  if (!Number.isFinite(deadline)) {
+    return "unavailable";
+  }
+
+  if (now > deadline) {
+    return "expired";
+  }
+
+  return message.availableRecallModes?.includes("standard")
+    ? "available"
+    : "unavailable";
+}
+
+export function getRecallResidueLabel(isMine: boolean) {
+  return isMine ? "你撤回了一条消息" : "对方撤回了一条消息";
 }
 
 export function buildSearchResults(database: ImDatabase, query: string, conversationId?: string): ImSearchResult {

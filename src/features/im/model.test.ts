@@ -10,6 +10,8 @@ import {
   expireDisappearingMessagesMutation,
   getContactIndexLetter,
   getImContactSignatureCaption,
+  getRecallResidueLabel,
+  getStandardRecallAvailability,
   getAnonymousGroupConversationTitle,
   getAnonymousGroupMemberIdentity,
   getVisibleIndexLetters,
@@ -27,6 +29,45 @@ import {
 } from "./model";
 
 describe("im model", () => {
+  it("uses the authoritative deadline and standard mode for recall availability", () => {
+    const deadline = Date.parse("2026-08-25T10:03:00.000Z");
+    const ownMessage = {
+      id: "700",
+      localId: "700",
+      conversationId: "91",
+      senderId: "100",
+      type: "text" as const,
+      content: "可重新编辑",
+      status: "sent" as const,
+      sentAt: "2026-08-25T10:00:00.000Z",
+      clientSeq: 700,
+      serverState: "active" as const,
+      recallDeadlineAt: "2026-08-25T10:03:00.000Z",
+      availableRecallModes: ["standard" as const],
+    };
+
+    expect(getStandardRecallAvailability(ownMessage, "100", deadline - 1)).toBe(
+      "available",
+    );
+    expect(getStandardRecallAvailability(ownMessage, "100", deadline + 1)).toBe(
+      "expired",
+    );
+    expect(
+      getStandardRecallAvailability({ ...ownMessage, senderId: "201" }, "100", deadline - 1),
+    ).toBe("unavailable");
+    expect(
+      getStandardRecallAvailability({ ...ownMessage, availableRecallModes: [] }, "100", deadline - 1),
+    ).toBe("unavailable");
+    expect(
+      getStandardRecallAvailability({ ...ownMessage, type: "recalled", status: "recalled" }, "100", deadline - 1),
+    ).toBe("unavailable");
+  });
+
+  it("uses the exact standard recall residue for sender and recipient", () => {
+    expect(getRecallResidueLabel(true)).toBe("你撤回了一条消息");
+    expect(getRecallResidueLabel(false)).toBe("对方撤回了一条消息");
+  });
+
   it("sorts conversations with pinned items first and then by last message time desc", () => {
     const database = makeSeedImDatabase();
     const ordered = sortConversations(database.conversations);
