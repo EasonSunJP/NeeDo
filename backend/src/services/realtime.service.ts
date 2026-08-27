@@ -195,6 +195,28 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return this.repository.listContacts(auth.userId, input);
   }
 
+  public async setContactBlocked(
+    auth: AuthenticatedAccessContext,
+    contactId: number,
+    isBlocked: boolean
+  ) {
+    const contact = await this.repository.setContactBlocked({
+      contactId,
+      ownerUserId: auth.userId,
+      isBlocked
+    });
+    if (!contact) throw this.notFoundError("error.realtime.contact_not_found");
+
+    this.eventGateway.publish({
+      id: this.createEventId(),
+      type: "contact.updated",
+      recipientUserId: auth.userId,
+      payload: contact,
+      createdAt: new Date().toISOString()
+    });
+    return contact;
+  }
+
   public async createFriendRequest(
     auth: AuthenticatedAccessContext,
     input: Omit<CreateFriendRequestInput, "requesterUserId">

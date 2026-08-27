@@ -72,7 +72,14 @@ export interface ContactPayload {
   contactUser: ParticipantPayload;
   nickname: string | null;
   source: string;
+  isBlocked: boolean;
   createdAt: Date;
+}
+
+export interface SetContactBlockedInput {
+  contactId: number;
+  ownerUserId: number;
+  isBlocked: boolean;
 }
 
 export interface FriendRequestPayload {
@@ -263,6 +270,7 @@ export interface RealtimeRepositoryPort {
     userId: number,
     input: PaginationInput
   ) => Promise<PaginatedResponse<ContactPayload>>;
+  setContactBlocked: (input: SetContactBlockedInput) => Promise<ContactPayload | null>;
   ensureDirectContactConversation: (
     input: EnsureTechnicianApplicationContactInput
   ) => Promise<{ conversationId: number }>;
@@ -774,6 +782,31 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       total,
       pagination
     );
+  }
+
+  public async setContactBlocked(input: SetContactBlockedInput): Promise<ContactPayload | null> {
+    const contact = await this.client.contact.findFirst({
+      where: {
+        id: input.contactId,
+        ownerUserId: input.ownerUserId,
+        deletedAt: null,
+        contactUser: {
+          deletedAt: null,
+          isActive: true
+        }
+      },
+      select: { id: true, blockedAt: true }
+    });
+    if (!contact) return null;
+
+    const updated = await this.client.contact.update({
+      where: { id: contact.id },
+      data: {
+        blockedAt: input.isBlocked ? (contact.blockedAt ?? new Date()) : null
+      },
+      include: contactInclude
+    });
+    return this.mapContact(updated);
   }
 
   public ensureDirectContactConversation(
@@ -1452,6 +1485,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       contactUser: this.mapParticipant(contact.contactUser),
       nickname: contact.nickname,
       source: contact.source,
+      isBlocked: contact.blockedAt !== null,
       createdAt: contact.createdAt
     };
   }

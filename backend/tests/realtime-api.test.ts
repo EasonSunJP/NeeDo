@@ -968,6 +968,43 @@ describe("Step 13 realtime IM / Social / Notification API", () => {
       .expect(403);
   });
 
+  it("blocks and unblocks only a contact owned by the authenticated user", async () => {
+    const fixture = await createFixture();
+    const ayaToken = await fixture.login("aya@example.com");
+    const mikaToken = await fixture.login("mika@example.com");
+
+    await request(fixture.app)
+      .post("/api/v1/im/friend-requests")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .send({ targetUserId: 2 })
+      .expect(201);
+    await request(fixture.app)
+      .post("/api/v1/im/friend-requests/1/accept")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(200);
+
+    await request(fixture.app)
+      .post("/api/v1/im/contacts/1/block")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ id: 1, isBlocked: true });
+      });
+
+    await request(fixture.app)
+      .post("/api/v1/im/contacts/1/block")
+      .set("Authorization", `Bearer ${mikaToken}`)
+      .expect(404);
+
+    await request(fixture.app)
+      .delete("/api/v1/im/contacts/1/block")
+      .set("Authorization", `Bearer ${ayaToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({ id: 1, isBlocked: false });
+      });
+  });
+
   it("creates conversations, paginates messages with a cursor, and clears unread counts", async () => {
     const fixture = await createFixture();
     const ayaToken = await fixture.login("aya@example.com");

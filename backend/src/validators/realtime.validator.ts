@@ -87,6 +87,10 @@ export const contactListQuerySchema = z.object({
   ...paginationQuerySchema
 });
 
+export const contactIdParamSchema = z.object({
+  contactId: z.coerce.number().int().positive()
+});
+
 export const friendRequestListQuerySchema = z.object({
   ...paginationQuerySchema,
   status: z.enum(["pending", "accepted", "rejected"]).optional(),
