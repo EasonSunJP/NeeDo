@@ -92,6 +92,12 @@ enum TechnicianServiceReviewStatus {
   @@map("technician_service_review_status")
 }
 
+enum TechnicianEmploymentType {
+  INDEPENDENT
+  FULL_TIME
+  TEMPORARY
+}
+
 enum WalletOwnerType {
   USER             @map("user")
   SHOP             @map("shop")
@@ -575,20 +581,22 @@ model TechnicianCompensationProfile {
 }
 
 model TechnicianProfile {
-  id              Int       @id @default(autoincrement())
-  userId          Int       @unique @map("user_id")
-  shopId          Int?      @map("shop_id")
-  displayName     String    @map("display_name") @db.VarChar(120)
-  bio             String?   @db.Text
-  city            String    @db.VarChar(100)
-  serviceArea     String?   @map("service_area") @db.VarChar(255)
-  yearsExperience Int       @default(0) @map("years_experience")
-  status          String    @default("published") @db.VarChar(50)
-  isRecommended   Boolean   @default(false) @map("is_recommended")
-  verifiedAt      DateTime? @map("verified_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  deletedAt       DateTime? @map("deleted_at")
+  id                  Int                      @id @default(autoincrement())
+  userId              Int                      @unique @map("user_id")
+  shopId              Int?                     @map("shop_id")
+  displayName         String                   @map("display_name") @db.VarChar(120)
+  bio                 String?                  @db.Text
+  city                String                   @db.VarChar(100)
+  serviceArea         String?                  @map("service_area") @db.VarChar(255)
+  yearsExperience     Int                      @default(0) @map("years_experience")
+  employmentType      TechnicianEmploymentType @default(INDEPENDENT) @map("employment_type")
+  employmentStartedAt DateTime?                @map("employment_started_at")
+  status              String                   @default("published") @db.VarChar(50)
+  isRecommended       Boolean                  @default(false) @map("is_recommended")
+  verifiedAt          DateTime?                @map("verified_at")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  deletedAt           DateTime?                @map("deleted_at")
 
   user                  User                            @relation(fields: [userId], references: [id], onDelete: Restrict)
   shop                  Shop?                           @relation(fields: [shopId], references: [id], onDelete: SetNull)
@@ -607,6 +615,7 @@ model TechnicianProfile {
   backofficeProfileTags BackofficeProfileTag[]          @relation("BackofficeProfileTagTechnician")
 
   @@index([shopId])
+  @@index([shopId, employmentType])
   @@index([city])
   @@index([status])
   @@index([isRecommended])

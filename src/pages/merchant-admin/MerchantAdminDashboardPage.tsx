@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
-import {
-  backofficeRealDataApi,
-  mapBackofficeOrder,
-  type BackofficeDashboardPayload
-} from "../../api/backofficeRealData";
+import { mapBackofficeOrder } from "../../api/backofficeRealData";
 import { ModuleShell } from "../../components/admin/ModuleShell";
-import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
+import {
+  MerchantAdminLayout,
+  type MerchantAdminDashboardResource
+} from "../../components/merchant-admin/MerchantAdminLayout";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
@@ -24,36 +23,14 @@ function describeMerchantDashboardError(error: unknown) {
   return "本店经营数据加载失败，请检查网络后重试";
 }
 
-export function MerchantAdminDashboardPage() {
-  const [dashboard, setDashboard] = useState<BackofficeDashboardPayload | null>(null);
-  const [loadStatus, setLoadStatus] = useState<"loading" | "success" | "error">("loading");
-  const [loadError, setLoadError] = useState("");
-  const [revision, setRevision] = useState(0);
+function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDashboardResource }) {
+  const { dashboard, error, status: loadStatus } = resource;
+  const reload = resource.reload;
+  const loadError = error ? describeMerchantDashboardError(error) : "";
   const todayOrders = useMemo<Order[]>(
     () => dashboard ? dashboard.orders.map(mapBackofficeOrder).slice(0, 8) : [],
     [dashboard]
   );
-
-  useEffect(() => {
-    let activeRequest = true;
-    setLoadStatus("loading");
-    setLoadError("");
-    backofficeRealDataApi.dashboard("merchant-admin")
-      .then((payload) => {
-        if (!activeRequest) return;
-        setDashboard(payload);
-        setLoadStatus("success");
-      })
-      .catch((error: unknown) => {
-        if (!activeRequest) return;
-        setDashboard(null);
-        setLoadError(describeMerchantDashboardError(error));
-        setLoadStatus("error");
-      });
-    return () => {
-      activeRequest = false;
-    };
-  }, [revision]);
 
   const currentShop = dashboard?.shops[0] ?? null;
   const dashboardMetrics: Metric[] = dashboard
@@ -64,8 +41,7 @@ export function MerchantAdminDashboardPage() {
     : [];
 
   return (
-    <MerchantAdminLayout>
-      <ModuleShell
+    <ModuleShell
         actions={
           <div className="flex flex-wrap gap-2">
             <Link className="rounded-full border border-line bg-white px-4 py-2 text-sm font-black text-ink" to="/merchant-admin/orders">去处理订单</Link>
@@ -85,7 +61,7 @@ export function MerchantAdminDashboardPage() {
           <section className="rounded-lg border border-coral/30 bg-coral/5 px-5 py-8 text-center shadow-panel" role="alert">
             <h2 className="text-lg font-black text-ink">本店数据加载失败</h2>
             <p className="mt-2 text-sm font-bold text-ink/55">{loadError}</p>
-            <Button className="mt-4" onClick={() => setRevision((current) => current + 1)}>重新加载本店数据</Button>
+            <Button className="mt-4" onClick={reload}>重新加载本店数据</Button>
           </section>
         ) : null}
 
@@ -204,7 +180,14 @@ export function MerchantAdminDashboardPage() {
             </section>
           </>
         ) : null}
-      </ModuleShell>
+    </ModuleShell>
+  );
+}
+
+export function MerchantAdminDashboardPage() {
+  return (
+    <MerchantAdminLayout>
+      {(resource) => <MerchantAdminDashboardContent resource={resource} />}
     </MerchantAdminLayout>
   );
 }

@@ -9,7 +9,8 @@ describe("MerchantAdminLayout formal shop summary", () => {
   });
 
   it("loads shop identity and operating totals from the scoped dashboard", () => {
-    expect(source).toContain('backofficeRealDataApi.dashboard("merchant-admin")');
+    expect(source).toContain("loadMerchantAdminDashboard");
+    expect(source).not.toContain('backofficeRealDataApi.dashboard("merchant-admin")');
     expect(source).toContain("dashboard.orders.filter");
     expect(source).toContain("dashboard.finance.estimatedServiceGmvJpy");
     expect(source).toContain("session?.avatarUrl");
@@ -20,6 +21,13 @@ describe("MerchantAdminLayout formal shop summary", () => {
     expect(source).toContain("正在加载正式店铺资料");
     expect(source).toContain("店铺摘要加载失败");
     expect(source).toContain("重新加载店铺摘要");
+    expect(source).toContain("invalidateMerchantAdminDashboard");
+  });
+
+  it("shares the scoped dashboard state with data pages instead of making them reload it", () => {
+    expect(source).toContain("MerchantAdminDashboardResource");
+    expect(source).toContain('typeof children === "function"');
+    expect(source).toContain("children(dashboardResource)");
   });
 
   it("shows the operations preview banner, shop selector, and explicit return action", () => {

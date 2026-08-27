@@ -761,6 +761,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "shopName",
           "city",
           "serviceArea",
+          "employmentType",
+          "employmentStartedAt",
           "status",
           "verifiedAt",
           "completedServiceAmountJpy",
@@ -778,6 +780,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           shopName: { type: ["string", "null"] },
           city: { type: "string" },
           serviceArea: { type: ["string", "null"] },
+          employmentType: {
+            type: "string",
+            enum: ["independent", "full_time", "temporary"]
+          },
+          employmentStartedAt: { type: ["string", "null"], format: "date-time" },
           status: { type: "string" },
           verifiedAt: { type: ["string", "null"], format: "date-time" },
           completedServiceAmountJpy: {
@@ -1299,6 +1306,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           city: { type: "string", minLength: 1, maxLength: 100 },
           serviceArea: { type: ["string", "null"], maxLength: 255 },
           shopId: { type: ["integer", "null"], minimum: 1 },
+          employmentType: {
+            type: "string",
+            enum: ["independent", "full_time", "temporary"]
+          },
+          employmentStartedAt: { type: ["string", "null"], format: "date-time" },
           isRecommended: { type: "boolean" }
         }
       },
