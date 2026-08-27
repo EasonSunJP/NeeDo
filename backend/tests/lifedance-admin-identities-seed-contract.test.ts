@@ -13,6 +13,10 @@ const checkerSource = readFileSync(
   resolve(__dirname, "../scripts/check-three-month-simulation.ts"),
   "utf8"
 );
+const formalSocialSeedSource = readFileSync(
+  resolve(__dirname, "../scripts/seed-formal-social-test.ts"),
+  "utf8"
+);
 
 describe("LifeDance administrator cross-portal seed contract", () => {
   it("keeps the existing admin password while attaching real merchant ownership", () => {
@@ -22,7 +26,14 @@ describe("LifeDance administrator cross-portal seed contract", () => {
     expect(ownershipSource).toContain("merchantShopMembership.upsert");
     expect(ownershipSource).toContain('code: "lifedance-real-ops"');
     expect(ownershipSource).toContain('type: "merchant_owner"');
-    expect(seedSource).not.toContain("passwordHash: getRequiredId(passwordHashes, LIFEDANCE_ADMIN_EMAIL");
+    expect(seedSource).not.toContain(
+      "passwordHash: getRequiredId(passwordHashes, LIFEDANCE_ADMIN_EMAIL"
+    );
+    expect(seedSource).toContain("credentialAccounts");
+    expect(seedSource).toContain("account.email !== LIFEDANCE_ADMIN_EMAIL");
+    expect(seedSource).not.toContain("ADMIN_DEFAULT_PASSWORD");
+    expect(formalSocialSeedSource).toContain("credentialUserIds");
+    expect(formalSocialSeedSource).toContain("account.email !== LIFEDANCE_ADMIN_EMAIL");
   });
 
   it("creates a private, independent, non-bookable administrator technician profile", () => {

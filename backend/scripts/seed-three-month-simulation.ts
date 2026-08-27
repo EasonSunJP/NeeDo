@@ -27,6 +27,7 @@ import { dirname, resolve } from "node:path";
 import {
   LIFEDANCE_ADMIN_EMAIL,
   LIFEDANCE_SHOP_KEY,
+  LIFEDANCE_SHOP_NAME,
   SIMULATION_END_AT,
   SIMULATION_AS_OF_AT,
   SIMULATION_NAMESPACE,
@@ -46,10 +47,17 @@ import {
   buildSimulationIdentityGrants,
   simulationIdentityActiveKey
 } from "../src/simulation/simulation-identity-matrix";
-import {
-  getSimulationSeedConfig
-} from "../src/simulation/simulation-seed-config";
+import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 import { NeedoIdAllocator } from "../src/services/needo-id.service";
+import {
+  resetLifeDancePayrollPeriods,
+  runLifeDancePayrollWorkflow,
+  upsertLifeDanceCompensationProfiles
+} from "../src/simulation/lifedance-payroll-seed";
+import { PayrollRepository } from "../src/repositories/payroll.repository";
+import { AuditLogRepository } from "../src/repositories/audit-log.repository";
+import { AuditLogService } from "../src/services/audit-log.service";
+import { PayrollService } from "../src/services/payroll.service";
 
 const BCRYPT_ROUNDS = 12;
 const LEGACY_SIMULATION_NAMESPACE = "needo_three_month_v1";
@@ -107,14 +115,12 @@ const main = async (): Promise<void> => {
   const [{ prisma, disconnectPrisma }] = await Promise.all([import("../src/prisma/client")]);
   const plan = buildThreeMonthSimulationPlan();
   const socialPlan = buildSocialSimulationPlan();
-  const accountEmails = socialPlan.accounts.map((account) => account.email);
-  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
-  assert(adminPassword, "ADMIN_DEFAULT_PASSWORD is required for the LifeDance administrator export.");
+  const credentialAccounts = socialPlan.accounts.filter(
+    (account) => account.email !== LIFEDANCE_ADMIN_EMAIL
+  );
+  const accountEmails = credentialAccounts.map((account) => account.email);
   const accountPasswords = new Map(
-    accountEmails.map((email) => [
-      email,
-      email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword
-    ])
+    accountEmails.map((email) => [email, seedConfig.defaultPassword])
   );
   const passwordHashes = new Map(
     await Promise.all(
@@ -127,6 +133,13 @@ const main = async (): Promise<void> => {
   );
 
   try {
+    const existingLifeDanceShop = await prisma.shop.findFirst({
+      where: { name: LIFEDANCE_SHOP_NAME, deletedAt: null },
+      select: { id: true }
+    });
+    if (existingLifeDanceShop) {
+      await resetLifeDancePayrollPeriods(prisma, existingLifeDanceShop.id);
+    }
     const summary = await prisma.$transaction(
       async (tx) => {
         const roles = await tx.role.findMany({
@@ -168,74 +181,80 @@ const main = async (): Promise<void> => {
             ownerUserIds.set(shop.key, lifeDanceOwnership.adminUserId);
             continue;
           }
-          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-            where: { email: shop.ownerEmail },
-            create: {
-              needoId,
-              email: shop.ownerEmail,
-              emailVerifiedAt: new Date("2026-05-15T00:00:00.000Z"),
-              passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
-              username: shop.ownerUsername,
-              avatarUrl: shop.avatarUrl,
-              isActive: true,
-              createdAt: new Date("2026-05-15T00:00:00.000Z")
-            },
-            update: {
-              passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
-              username: shop.ownerUsername,
-              avatarUrl: shop.avatarUrl,
-              isActive: true,
-              deletedAt: null
-            }
-          }));
+          const user = await needoIdAllocator.withNewId((needoId) =>
+            tx.user.upsert({
+              where: { email: shop.ownerEmail },
+              create: {
+                needoId,
+                email: shop.ownerEmail,
+                emailVerifiedAt: new Date("2026-05-15T00:00:00.000Z"),
+                passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
+                username: shop.ownerUsername,
+                avatarUrl: shop.avatarUrl,
+                isActive: true,
+                createdAt: new Date("2026-05-15T00:00:00.000Z")
+              },
+              update: {
+                passwordHash: getRequiredId(passwordHashes, shop.ownerEmail, "password hash"),
+                username: shop.ownerUsername,
+                avatarUrl: shop.avatarUrl,
+                isActive: true,
+                deletedAt: null
+              }
+            })
+          );
           ownerUserIds.set(shop.key, user.id);
         }
 
         for (const technician of plan.technicians) {
-          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-            where: { email: technician.email },
-            create: {
-              needoId,
-              email: technician.email,
-              emailVerifiedAt: new Date("2026-05-20T00:00:00.000Z"),
-              passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
-              username: technician.username,
-              avatarUrl: technician.avatarUrl,
-              isActive: true,
-              createdAt: new Date("2026-05-20T00:00:00.000Z")
-            },
-            update: {
-              passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
-              username: technician.username,
-              avatarUrl: technician.avatarUrl,
-              isActive: true,
-              deletedAt: null
-            }
-          }));
+          const user = await needoIdAllocator.withNewId((needoId) =>
+            tx.user.upsert({
+              where: { email: technician.email },
+              create: {
+                needoId,
+                email: technician.email,
+                emailVerifiedAt: new Date("2026-05-20T00:00:00.000Z"),
+                passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
+                username: technician.username,
+                avatarUrl: technician.avatarUrl,
+                isActive: true,
+                createdAt: new Date("2026-05-20T00:00:00.000Z")
+              },
+              update: {
+                passwordHash: getRequiredId(passwordHashes, technician.email, "password hash"),
+                username: technician.username,
+                avatarUrl: technician.avatarUrl,
+                isActive: true,
+                deletedAt: null
+              }
+            })
+          );
           technicianUserIds.set(technician.key, user.id);
         }
 
         for (const customer of plan.customers) {
-          const user = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-            where: { email: customer.email },
-            create: {
-              needoId,
-              email: customer.email,
-              emailVerifiedAt: new Date("2026-05-25T00:00:00.000Z"),
-              passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
-              username: customer.username,
-              avatarUrl: customer.avatarUrl,
-              isActive: true,
-              createdAt: new Date("2026-05-25T00:00:00.000Z")
-            },
-            update: {
-              passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
-              username: customer.username,
-              avatarUrl: customer.avatarUrl,
-              isActive: true,
-              deletedAt: null
-            }
-          }));
+          const user = await needoIdAllocator.withNewId((needoId) =>
+            tx.user.upsert({
+              where: { email: customer.email },
+              create: {
+                needoId,
+                email: customer.email,
+                emailVerifiedAt: new Date("2026-05-25T00:00:00.000Z"),
+                passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
+                username: customer.username,
+                avatarUrl: customer.avatarUrl,
+                isActive: true,
+                createdAt: new Date("2026-05-25T00:00:00.000Z")
+              },
+              update: {
+                passwordHash: getRequiredId(passwordHashes, customer.email, "password hash"),
+                username: customer.username,
+                avatarUrl: customer.avatarUrl,
+                isActive: true,
+                deletedAt: null
+              }
+            })
+          );
           customerUserIds.set(customer.key, user.id);
         }
 
@@ -520,12 +539,7 @@ const main = async (): Promise<void> => {
         }): Promise<void> => {
           const grants = buildSimulationIdentityGrants(input);
           for (const grant of grants) {
-            await ensureRole(
-              input.userId,
-              grant.roleCode,
-              grant.scopeType,
-              grant.scopeId
-            );
+            await ensureRole(input.userId, grant.roleCode, grant.scopeType, grant.scopeId);
             await ensureIdentity(
               input.userId,
               grant.identityType,
@@ -801,19 +815,14 @@ const main = async (): Promise<void> => {
           formalSocialUsers.map((user) => [user.email, user])
         );
         for (const account of socialPlan.accounts) {
-          const user = getRequiredId(
-            formalSocialUserByEmail,
-            account.email,
-            "formal social user"
-          );
+          const user = getRequiredId(formalSocialUserByEmail, account.email, "formal social user");
           await syncFormalSocialAccountProfile(tx, user.id, account);
         }
 
         const previewSourceConversations = hasPreviewCustomer
           ? plan.conversations.filter(
               (conversation) =>
-                conversation.firstType === "customer" &&
-                conversation.firstKey === "customer-001"
+                conversation.firstType === "customer" && conversation.firstKey === "customer-001"
             )
           : [];
         const previewConversations = previewSourceConversations.map((conversation) => ({
@@ -925,11 +934,7 @@ const main = async (): Promise<void> => {
         await tx.contact.deleteMany({
           where: {
             source: {
-              in: [
-                "simulation_seed",
-                "lifedance_customer_service_seed",
-                "lifedance_staff_seed"
-              ]
+              in: ["simulation_seed", "lifedance_customer_service_seed", "lifedance_staff_seed"]
             },
             OR: [
               { ownerUserId: { in: simulationParticipantUserIds } },
@@ -983,10 +988,7 @@ const main = async (): Promise<void> => {
           ]);
         }
         for (const [conversationIndex, conversation] of conversationsToSeed.entries()) {
-          const firstUserId = getParticipantUserId(
-            conversation.firstType,
-            conversation.firstKey
-          );
+          const firstUserId = getParticipantUserId(conversation.firstType, conversation.firstKey);
           const secondUserId = getParticipantUserId(
             conversation.secondType,
             conversation.secondKey
@@ -1091,16 +1093,22 @@ const main = async (): Promise<void> => {
         const nonQuotePosts = socialPlan.posts.filter((post) => post.kind !== "quote");
         for (const rows of chunkRows(nonQuotePosts)) {
           await tx.socialPost.createMany({
-            data: rows.map((post): Prisma.SocialPostCreateManyInput => ({
-              authorUserId: getRequiredId(socialUserIdByKey, post.authorKey, "social post author"),
-              content: post.content,
-              media: post.media as unknown as Prisma.InputJsonValue,
-              visibility:
-                post.visibility === "followers"
-                  ? SocialPostVisibility.FOLLOWERS
-                  : SocialPostVisibility.PUBLIC,
-              createdAt: new Date(post.createdAt)
-            }))
+            data: rows.map(
+              (post): Prisma.SocialPostCreateManyInput => ({
+                authorUserId: getRequiredId(
+                  socialUserIdByKey,
+                  post.authorKey,
+                  "social post author"
+                ),
+                content: post.content,
+                media: post.media as unknown as Prisma.InputJsonValue,
+                visibility:
+                  post.visibility === "followers"
+                    ? SocialPostVisibility.FOLLOWERS
+                    : SocialPostVisibility.PUBLIC,
+                createdAt: new Date(post.createdAt)
+              })
+            )
           });
         }
 
@@ -1652,17 +1660,137 @@ const main = async (): Promise<void> => {
       { maxWait: 20_000, timeout: 180_000 }
     );
 
+    const [payrollAdmin, payrollShop, payrollTechnicians] = await Promise.all([
+      prisma.user.findUnique({
+        where: { email: LIFEDANCE_ADMIN_EMAIL },
+        select: {
+          id: true,
+          email: true,
+          identities: {
+            where: { type: "merchant_owner", isActive: true, deletedAt: null },
+            select: { id: true, scopeType: true, scopeId: true }
+          }
+        }
+      }),
+      prisma.shop.findFirst({
+        where: { name: LIFEDANCE_SHOP_NAME, deletedAt: null },
+        select: { id: true }
+      }),
+      prisma.user.findMany({
+        where: {
+          email: {
+            in: plan.technicians
+              .filter((technician) => technician.shopKey === LIFEDANCE_SHOP_KEY)
+              .map((technician) => technician.email)
+          },
+          isActive: true,
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          email: true,
+          technicianProfile: {
+            select: { id: true, employmentType: true }
+          },
+          identities: {
+            where: { type: "technician", isActive: true, deletedAt: null },
+            select: { id: true, scopeType: true, scopeId: true }
+          }
+        }
+      })
+    ]);
+    assert(payrollAdmin, "LifeDance payroll administrator is missing.");
+    assert(payrollShop, "LifeDance payroll shop is missing.");
+    const merchantIdentity = payrollAdmin.identities.find(
+      (identity) => identity.scopeType === "shop" && identity.scopeId === payrollShop.id
+    );
+    assert(merchantIdentity, "LifeDance merchant identity is missing for payroll.");
+    assert(payrollTechnicians.length === 20, "LifeDance payroll requires exactly 20 technicians.");
+    const compensationTechnicians = payrollTechnicians.map((technician) => {
+      assert(technician.technicianProfile, `${technician.email} technician profile is missing.`);
+      assert(
+        technician.technicianProfile.employmentType === TechnicianEmploymentType.FULL_TIME ||
+          technician.technicianProfile.employmentType === TechnicianEmploymentType.TEMPORARY,
+        `${technician.email} payroll employment type is invalid.`
+      );
+      return {
+        technicianProfileId: technician.technicianProfile.id,
+        employmentType: technician.technicianProfile.employmentType
+      };
+    });
+    const compensationProfileIds = await upsertLifeDanceCompensationProfiles(prisma, {
+      shopId: payrollShop.id,
+      adminUserId: payrollAdmin.id,
+      technicians: compensationTechnicians
+    });
+    const merchantActor = {
+      userId: payrollAdmin.id,
+      email: payrollAdmin.email,
+      accessTokenJti: "lifedance-payroll-seed",
+      accessTokenExpiresAt: Date.now() + 900_000,
+      currentIdentityId: merchantIdentity.id,
+      currentIdentityType: "merchant_owner",
+      currentIdentityScopeType: "shop",
+      currentIdentityScopeId: payrollShop.id,
+      roles: ["merchant_owner"],
+      permissions: [
+        "merchant-admin:payroll:write",
+        "merchant-admin:payroll:publish",
+        "merchant-admin:payroll:payout-record:write"
+      ]
+    };
+    const technicianActors = payrollTechnicians.map((technician) => {
+      assert(technician.technicianProfile, `${technician.email} technician profile is missing.`);
+      const identity = technician.identities.find(
+        (candidate) =>
+          candidate.scopeType === "technician_profile" &&
+          candidate.scopeId === technician.technicianProfile?.id
+      );
+      assert(identity, `${technician.email} technician identity is missing for payroll.`);
+      return {
+        technicianProfileId: technician.technicianProfile.id,
+        actor: {
+          userId: technician.id,
+          email: technician.email,
+          accessTokenJti: `lifedance-payroll-${technician.id}`,
+          accessTokenExpiresAt: Date.now() + 900_000,
+          currentIdentityId: identity.id,
+          currentIdentityType: "technician",
+          currentIdentityScopeType: "technician_profile",
+          currentIdentityScopeId: technician.technicianProfile.id,
+          roles: ["technician"],
+          permissions: ["technician:payslip:confirm", "technician:payout-record:confirm"]
+        }
+      };
+    });
+    const payrollRepository = new PayrollRepository(prisma);
+    const payrollService = new PayrollService(
+      payrollRepository,
+      new AuditLogService(new AuditLogRepository(prisma))
+    );
+    try {
+      await runLifeDancePayrollWorkflow(payrollService, {
+        shopId: payrollShop.id,
+        merchantActor,
+        technicianActors,
+        context: { ip: "127.0.0.1", userAgent: "lifedance-payroll-seed" }
+      });
+    } catch (error) {
+      await resetLifeDancePayrollPeriods(prisma, payrollShop.id);
+      throw error;
+    }
+
     const exportedUsers = await prisma.user.findMany({
-      where: { email: { in: socialPlan.accounts.map((account) => account.email) } },
+      where: { email: { in: credentialAccounts.map((account) => account.email) } },
       select: {
         id: true,
         needoId: true,
-        email: true,
+        email: true
       }
     });
     const exportedUserByEmail = new Map(exportedUsers.map((user) => [user.email, user]));
     const accountRows = orderFormalTestAccountExports(
-      socialPlan.accounts.map((account) => {
+      credentialAccounts.map((account) => {
         const user = getRequiredId(exportedUserByEmail, account.email, "exported NeeDo user");
         return buildFormalTestAccountExportRow(
           {
@@ -1672,17 +1800,8 @@ const main = async (): Promise<void> => {
           getRequiredId(accountPasswords, account.email, "account password")
         );
       })
-    ).map((row) => [
-      row.accountType,
-      row.needoId,
-      row.nickname,
-      row.email,
-      row.password
-    ]);
-    const csv = [
-      ["account_type", "needo_id", "nickname", "email", "password"],
-      ...accountRows
-    ]
+    ).map((row) => [row.accountType, row.needoId, row.nickname, row.email, row.password]);
+    const csv = [["account_type", "needo_id", "nickname", "email", "password"], ...accountRows]
       .map((row) => row.map(escapeCsv).join(","))
       .join("\n");
     const accountExportPath = resolve(
@@ -1702,9 +1821,12 @@ const main = async (): Promise<void> => {
             merchantOwners: plan.shops.length,
             technicians: plan.technicians.length,
             customers: plan.customers.length,
+            exportedCredentials: accountRows.length,
             exportPath: accountExportPath
           },
           ...summary,
+          compensationProfiles: compensationProfileIds.length,
+          payrollPeriods: 3,
           status: "ok"
         },
         null,
@@ -1717,6 +1839,6 @@ const main = async (): Promise<void> => {
 };
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
   process.exitCode = 1;
 });

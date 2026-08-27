@@ -171,6 +171,7 @@ export class PayrollRepository implements PayrollRepositoryPort {
           orderType: "booking",
           technicianProfileId: { not: null },
           serviceIncomeStatus: { in: ["reported", "confirmed"] },
+          settlementStatus: "ready_for_payroll",
           deletedAt: null,
           bookingOrder: {
             status: "COMPLETED",
@@ -357,6 +358,30 @@ export class PayrollRepository implements PayrollRepositoryPort {
           data: { status: input.status }
         });
       }
+      if (input.status === "approved") {
+        const orderLines = await transaction.payslipLine.findMany({
+          where: {
+            payslip: { payRunId: input.payRunId, deletedAt: null },
+            sourceType: "order",
+            orderId: { not: null },
+            deletedAt: null
+          },
+          select: { orderId: true }
+        });
+        const orderIds = [
+          ...new Set(orderLines.flatMap((line) => (line.orderId ? [line.orderId] : [])))
+        ];
+        if (orderIds.length > 0) {
+          await transaction.orderFinancial.updateMany({
+            where: {
+              bookingOrderId: { in: orderIds },
+              settlementStatus: "ready_for_payroll",
+              deletedAt: null
+            },
+            data: { settlementStatus: "payroll_approved" }
+          });
+        }
+      }
 
       return transaction.payRun.findUniqueOrThrow({
         where: { id: payRun.id },
@@ -467,6 +492,30 @@ export class PayrollRepository implements PayrollRepositoryPort {
           status: (totals._sum.unpaidAmountJpy ?? 0) === 0 ? "paid" : "scheduled"
         }
       });
+      if (input.nextUnpaidAmountJpy === 0) {
+        const orderLines = await transaction.payslipLine.findMany({
+          where: {
+            payslipId: input.payslipId,
+            sourceType: "order",
+            orderId: { not: null },
+            deletedAt: null
+          },
+          select: { orderId: true }
+        });
+        const orderIds = [
+          ...new Set(orderLines.flatMap((line) => (line.orderId ? [line.orderId] : [])))
+        ];
+        if (orderIds.length > 0) {
+          await transaction.orderFinancial.updateMany({
+            where: {
+              bookingOrderId: { in: orderIds },
+              settlementStatus: "payroll_approved",
+              deletedAt: null
+            },
+            data: { settlementStatus: "settled" }
+          });
+        }
+      }
 
       return payslip;
     });

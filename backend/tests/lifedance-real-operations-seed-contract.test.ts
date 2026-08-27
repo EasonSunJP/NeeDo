@@ -13,6 +13,10 @@ const checkerSource = readFileSync(
   resolve(__dirname, "../scripts/check-three-month-simulation.ts"),
   "utf8"
 );
+const payrollSeedSource = readFileSync(
+  resolve(__dirname, "../src/simulation/lifedance-payroll-seed.ts"),
+  "utf8"
+);
 
 describe("LifeDance real operations persistence contract", () => {
   it("persists plan-derived shop employment and formal order ownership", () => {
@@ -44,14 +48,18 @@ describe("LifeDance real operations persistence contract", () => {
     expect(financial).toBeLessThan(orders);
     expect(history).toBeLessThan(orders);
     expect(slots).toBeLessThan(availabilities);
-    expect(seedSource).not.toMatch(/(?:bookingOrder|orderFinancial|scheduleSlot|availability)\.deleteMany\(\{\s*\}\)/);
+    expect(seedSource).not.toMatch(
+      /(?:bookingOrder|orderFinancial|scheduleSlot|availability)\.deleteMany\(\{\s*\}\)/
+    );
   });
 
   it("creates confirmed income only from completed orders with reconcilable fields", () => {
     expect(seedSource).toContain(
       'const completedBookings = plan.bookings.filter((booking) => booking.status === "COMPLETED")'
     );
-    expect(seedSource).toContain('paymentChannel: ordinal % 2 === 0 ? "offline_card" : "onsite_cash"');
+    expect(seedSource).toContain(
+      'paymentChannel: ordinal % 2 === 0 ? "offline_card" : "onsite_cash"'
+    );
     expect(seedSource).toContain("serviceIncomeConfirmedById: lifeDanceOwnership.adminUserId");
     expect(seedSource).toContain('settlementStatus: "ready_for_payroll"');
     expect(seedSource).toContain("bookingOrderId: getRequiredId(orderIds, booking.orderNo");
@@ -64,5 +72,20 @@ describe("LifeDance real operations persistence contract", () => {
     expect(checkerSource).toContain("ready_for_payroll");
     expect(checkerSource).toContain("bookingsByStatus");
     expect(checkerSource).toContain("orderFinancials");
+  });
+
+  it("runs three formal payroll periods and verifies payslip-to-order settlement", () => {
+    expect(seedSource).toContain("resetLifeDancePayrollPeriods");
+    expect(seedSource).toContain("runLifeDancePayrollWorkflow");
+    expect(seedSource).toContain("upsertLifeDanceCompensationProfiles");
+    expect(payrollSeedSource).toContain('month: "2026-06"');
+    expect(payrollSeedSource).toContain('month: "2026-07"');
+    expect(payrollSeedSource).toContain('month: "2026-08"');
+    expect(checkerSource).toContain("compensationProfiles");
+    expect(checkerSource).toContain("payRuns");
+    expect(checkerSource).toContain("payslips");
+    expect(checkerSource).toContain("payslipOrderLines");
+    expect(checkerSource).toContain("payoutRecords");
+    expect(checkerSource).toContain("settlementReconciliation");
   });
 });

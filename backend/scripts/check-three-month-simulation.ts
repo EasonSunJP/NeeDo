@@ -18,6 +18,7 @@ import {
 } from "../src/simulation/three-month-simulation-plan";
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
 import { BackofficeRepository } from "../src/repositories/backoffice.repository";
+import { LIFEDANCE_PAYROLL_PERIODS } from "../src/simulation/lifedance-payroll-seed";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -37,7 +38,10 @@ const main = async (): Promise<void> => {
   loadDotenv({ path: envFile });
   const seedConfig = getSimulationSeedConfig(process.env);
   const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD?.trim();
-  assert(adminPassword, "ADMIN_DEFAULT_PASSWORD is required to verify the LifeDance administrator.");
+  assert(
+    adminPassword,
+    "ADMIN_DEFAULT_PASSWORD is required to verify the LifeDance administrator."
+  );
   const [{ prisma, disconnectPrisma }] = await Promise.all([import("../src/prisma/client")]);
   const plan = buildThreeMonthSimulationPlan();
 
@@ -260,9 +264,7 @@ const main = async (): Promise<void> => {
     const adminIdentities = identitiesByUser.get(admin.id) ?? [];
     assert(
       adminIdentities.filter((identity) => identity.isDefault).length === 1 &&
-        adminIdentities.some(
-          (identity) => identity.type === "platform" && identity.isDefault
-        ),
+        adminIdentities.some((identity) => identity.type === "platform" && identity.isDefault),
       "only the LifeDance platform identity may be the default identity"
     );
     assert(
@@ -347,7 +349,10 @@ const main = async (): Promise<void> => {
         where: { technicianProfileId: admin.technicianProfile.id, deletedAt: null }
       })
     ]);
-    assert(!activeLegacyAdministrator, "legacy administrator email must not resolve to an active user");
+    assert(
+      !activeLegacyAdministrator,
+      "legacy administrator email must not resolve to an active user"
+    );
     assert(
       lifeDanceMerchantAccounts.length === 1 &&
         lifeDanceMerchantAccounts[0]?.memberships.length === 1,
@@ -551,6 +556,21 @@ const main = async (): Promise<void> => {
       if (booking.status === BookingOrderStatus.COMPLETED) {
         const financial = booking.financial;
         assert(financial && !financial.deletedAt, `${booking.orderNo} has no active financial`);
+        const payrollPeriod = LIFEDANCE_PAYROLL_PERIODS.find(
+          (period) =>
+            booking.endsAt >= new Date(period.periodStart) &&
+            booking.endsAt <= new Date(period.periodEnd)
+        );
+        assert(
+          booking.shopId !== lifeDanceShop.id || payrollPeriod,
+          `${booking.orderNo} completed outside the three approved payroll periods`
+        );
+        const expectedSettlementStatus =
+          booking.shopId !== lifeDanceShop.id
+            ? "ready_for_payroll"
+            : payrollPeriod?.shouldPay
+              ? "settled"
+              : "payroll_approved";
         assert(
           booking.paymentStatus === "CONFIRMED" &&
             booking.paymentAmountJpy === Number(booking.priceAmount),
@@ -563,7 +583,7 @@ const main = async (): Promise<void> => {
             ["offline_card", "onsite_cash"].includes(financial.paymentChannel) &&
             financial.serviceIncomeConfirmedById === admin.id &&
             financial.serviceIncomeConfirmedAt &&
-            financial.settlementStatus === "ready_for_payroll" &&
+            financial.settlementStatus === expectedSettlementStatus &&
             Array.isArray(financial.moneyTimelineJson) &&
             financial.moneyTimelineJson.length > 0,
           `${booking.orderNo} income or settlement fields do not reconcile`
@@ -839,8 +859,7 @@ const main = async (): Promise<void> => {
     assert(
       lifeDanceStaffContacts.every(
         (contact) =>
-          (contact.ownerUserId === admin.id &&
-            lifeDanceStaffUserIds.has(contact.contactUserId)) ||
+          (contact.ownerUserId === admin.id && lifeDanceStaffUserIds.has(contact.contactUserId)) ||
           (lifeDanceStaffUserIds.has(contact.ownerUserId) && contact.contactUserId === admin.id)
       ),
       "LifeDance staff contacts must not include technicians from other shops"
@@ -929,6 +948,228 @@ const main = async (): Promise<void> => {
       "LifeDance organization directory contains an outsider or invalid employment type"
     );
 
+    const lifeDanceTechnicianProfileIds = lifeDanceTechnicians.map(({ profile }) => profile.id);
+    const [compensationProfiles, payRuns] = await Promise.all([
+      prisma.technicianCompensationProfile.findMany({
+        where: {
+          shopId: lifeDanceShop.id,
+          technicianProfileId: { in: lifeDanceTechnicianProfileIds },
+          status: "active",
+          deletedAt: null
+        },
+        select: {
+          id: true,
+          technicianProfileId: true,
+          name: true,
+          wageMode: true,
+          baseSalaryJpy: true,
+          hourlyRateJpy: true,
+          fixedOrderPayJpy: true,
+          commissionRateBps: true,
+          ndpFeeBearer: true,
+          technicianNdpShareBps: true,
+          effectiveFrom: true,
+          effectiveTo: true
+        }
+      }),
+      prisma.payRun.findMany({
+        where: {
+          shopId: lifeDanceShop.id,
+          OR: LIFEDANCE_PAYROLL_PERIODS.map((period) => ({
+            periodStart: new Date(period.periodStart),
+            periodEnd: new Date(period.periodEnd)
+          })),
+          deletedAt: null
+        },
+        include: {
+          payslips: {
+            where: { deletedAt: null },
+            include: {
+              lines: { where: { deletedAt: null }, orderBy: [{ id: "asc" }] },
+              payoutRecords: { where: { deletedAt: null }, orderBy: [{ id: "asc" }] }
+            },
+            orderBy: [{ technicianProfileId: "asc" }]
+          }
+        },
+        orderBy: [{ periodStart: "asc" }]
+      })
+    ]);
+    assert(
+      compensationProfiles.length === 20,
+      `expected 20 active compensation profiles, found ${compensationProfiles.length}`
+    );
+    const employmentByTechnicianProfileId = new Map(
+      lifeDanceTechnicians.map(({ profile }) => [profile.id, profile.employmentType])
+    );
+    const compensationProfileByTechnicianId = new Map(
+      compensationProfiles.map((profile) => [profile.technicianProfileId, profile])
+    );
+    for (const technicianProfileId of lifeDanceTechnicianProfileIds) {
+      const profile = compensationProfileByTechnicianId.get(technicianProfileId);
+      assert(profile, `technician ${technicianProfileId} has no active compensation profile`);
+      const employmentType = employmentByTechnicianProfileId.get(technicianProfileId);
+      const fullTime = employmentType === TechnicianEmploymentType.FULL_TIME;
+      assert(
+        profile.name ===
+          (fullTime ? "LifeDance 2026 正社員給与" : "LifeDance 2026 臨時スタッフ給与") &&
+          profile.wageMode === (fullTime ? "base_plus_commission" : "hourly") &&
+          profile.baseSalaryJpy === (fullTime ? 230_000 : 0) &&
+          profile.hourlyRateJpy === (fullTime ? 0 : 1_500) &&
+          profile.fixedOrderPayJpy === 0 &&
+          profile.commissionRateBps === (fullTime ? 2_000 : 0) &&
+          profile.ndpFeeBearer === "shop" &&
+          profile.technicianNdpShareBps === 0 &&
+          profile.effectiveFrom?.toISOString() === "2026-06-01T00:00:00.000Z" &&
+          profile.effectiveTo === null,
+        `technician ${technicianProfileId} compensation rule does not match employment type`
+      );
+    }
+    assert(payRuns.length === 3, `expected 3 LifeDance pay runs, found ${payRuns.length}`);
+    const payrollOrderIds = new Set<number>();
+    let payslipOrderLines = 0;
+    let payoutRecords = 0;
+    let payslips = 0;
+    for (const payRun of payRuns) {
+      const period = LIFEDANCE_PAYROLL_PERIODS.find(
+        (candidate) =>
+          payRun.periodStart.toISOString() === candidate.periodStart &&
+          payRun.periodEnd.toISOString() === candidate.periodEnd
+      );
+      assert(period, `pay run ${payRun.id} does not match an approved LifeDance period`);
+      assert(
+        payRun.generatedById === admin.id && payRun.approvedById === admin.id,
+        `pay run ${payRun.id} must be generated and approved by the LifeDance administrator`
+      );
+      assert(
+        payRun.status === (period.shouldPay ? "paid" : "approved"),
+        `pay run ${payRun.id} has invalid status ${payRun.status}`
+      );
+      assert(
+        payRun.payslips.length === 20,
+        `pay run ${payRun.id} expected 20 payslips, found ${payRun.payslips.length}`
+      );
+      assert(
+        new Set(payRun.payslips.map((payslip) => payslip.technicianProfileId)).size === 20 &&
+          payRun.payslips.every((payslip) =>
+            lifeDanceTechnicianProfileIds.includes(payslip.technicianProfileId)
+          ),
+        `pay run ${payRun.id} does not cover the exact LifeDance employee cohort`
+      );
+      const expectedPeriodOrders = bookings.filter(
+        (booking) =>
+          booking.shopId === lifeDanceShop.id &&
+          booking.status === BookingOrderStatus.COMPLETED &&
+          booking.endsAt >= new Date(period.periodStart) &&
+          booking.endsAt <= new Date(period.periodEnd)
+      );
+      const orderLines = payRun.payslips.flatMap((payslip) =>
+        payslip.lines.filter((line) => line.sourceType === "order" && line.orderId)
+      );
+      const orderLineIds = orderLines.flatMap((line) => (line.orderId ? [line.orderId] : []));
+      assert(
+        orderLineIds.length === expectedPeriodOrders.length &&
+          new Set(orderLineIds).size === expectedPeriodOrders.length &&
+          expectedPeriodOrders.every((booking) => orderLineIds.includes(booking.id)),
+        `pay run ${payRun.id} order lines do not exactly match completed orders in ${period.month}`
+      );
+      orderLineIds.forEach((orderId) => payrollOrderIds.add(orderId));
+      payslipOrderLines += orderLineIds.length;
+      payslips += payRun.payslips.length;
+
+      const totals = payRun.payslips.reduce(
+        (summary, payslip) => {
+          const employmentType = employmentByTechnicianProfileId.get(payslip.technicianProfileId);
+          const fullTime = employmentType === TechnicianEmploymentType.FULL_TIME;
+          const compensationProfile = compensationProfileByTechnicianId.get(
+            payslip.technicianProfileId
+          );
+          assert(
+            compensationProfile && payslip.compensationProfileId === compensationProfile.id,
+            `payslip ${payslip.id} compensation profile is missing or stale`
+          );
+          const signedLineTotal = payslip.lines.reduce((total, line) => total + line.amountJpy, 0);
+          const ruleBaseLines = payslip.lines.filter(
+            (line) => line.sourceType === "rule" && line.lineType === "base_salary"
+          );
+          assert(
+            signedLineTotal === payslip.netPayJpy,
+            `payslip ${payslip.id} net pay does not reconcile to signed lines`
+          );
+          assert(
+            fullTime
+              ? payslip.baseSalaryJpy === 230_000 &&
+                  ruleBaseLines.length === 1 &&
+                  ruleBaseLines[0]?.amountJpy === 230_000
+              : payslip.baseSalaryJpy > 0 && ruleBaseLines.length === 0,
+            `payslip ${payslip.id} base or hourly wage is invalid`
+          );
+          if (period.shouldPay) {
+            assert(
+              payslip.status === "paid" &&
+                payslip.paidAmountJpy === payslip.netPayJpy &&
+                payslip.unpaidAmountJpy === 0 &&
+                payslip.payoutRecords.length === 1 &&
+                payslip.payoutRecords[0]?.amountJpy === payslip.netPayJpy &&
+                payslip.payoutRecords[0]?.status === "completed" &&
+                payslip.payoutRecords[0]?.confirmedByTechnician === true &&
+                Boolean(payslip.payoutRecords[0]?.technicianConfirmedAt),
+              `payslip ${payslip.id} paid-month evidence is incomplete`
+            );
+          } else {
+            assert(
+              payslip.status === "approved" &&
+                payslip.paidAmountJpy === 0 &&
+                payslip.unpaidAmountJpy === payslip.netPayJpy &&
+                payslip.payoutRecords.length === 0,
+              `payslip ${payslip.id} approved-month unpaid balance is invalid`
+            );
+          }
+          payoutRecords += payslip.payoutRecords.length;
+          return {
+            base: summary.base + payslip.baseSalaryJpy,
+            commission: summary.commission + payslip.commissionJpy,
+            bonus: summary.bonus + payslip.bonusJpy,
+            allowance: summary.allowance + payslip.allowanceJpy,
+            deduction: summary.deduction + payslip.deductionJpy,
+            net: summary.net + payslip.netPayJpy,
+            paid: summary.paid + payslip.paidAmountJpy,
+            unpaid: summary.unpaid + payslip.unpaidAmountJpy
+          };
+        },
+        { base: 0, commission: 0, bonus: 0, allowance: 0, deduction: 0, net: 0, paid: 0, unpaid: 0 }
+      );
+      assert(
+        payRun.totalBaseSalaryJpy === totals.base &&
+          payRun.totalCommissionJpy === totals.commission &&
+          payRun.totalBonusJpy === totals.bonus &&
+          payRun.totalAllowanceJpy === totals.allowance &&
+          payRun.totalDeductionJpy === totals.deduction &&
+          payRun.totalNetPayJpy === totals.net &&
+          payRun.paidAmountJpy === totals.paid &&
+          payRun.unpaidAmountJpy === totals.unpaid,
+        `pay run ${payRun.id} totals do not reconcile to payslips`
+      );
+    }
+    const lifeDanceCompletedOrders = bookings.filter(
+      (booking) =>
+        booking.shopId === lifeDanceShop.id && booking.status === BookingOrderStatus.COMPLETED
+    );
+    assert(
+      payrollOrderIds.size === lifeDanceCompletedOrders.length &&
+        lifeDanceCompletedOrders.every((booking) => payrollOrderIds.has(booking.id)),
+      "every completed LifeDance order must appear exactly once in payroll"
+    );
+    assert(payslips === 60, `expected 60 payslips, found ${payslips}`);
+    assert(payoutRecords === 40, `expected 40 payout records, found ${payoutRecords}`);
+    const settlementReconciliation = {
+      settled: lifeDanceCompletedOrders.filter(
+        (booking) => booking.financial?.settlementStatus === "settled"
+      ).length,
+      payrollApproved: lifeDanceCompletedOrders.filter(
+        (booking) => booking.financial?.settlementStatus === "payroll_approved"
+      ).length
+    };
+
     for (const { technicianPlan, profile } of lifeDanceTechnicians) {
       const technicianSlots = scheduleSlots
         .filter((slot) => slot.technicianProfileId === profile.id)
@@ -941,8 +1182,7 @@ const main = async (): Promise<void> => {
       );
       const completedTokyoMonths = new Set(
         completed.map(
-          (booking) =>
-            new Date(booking.startsAt.getTime() + 9 * 60 * 60 * 1_000).getUTCMonth() + 1
+          (booking) => new Date(booking.startsAt.getTime() + 9 * 60 * 60 * 1_000).getUTCMonth() + 1
         )
       );
       assert(technicianSlots.length >= 26, `${technicianPlan.key} has fewer than 26 shifts`);
@@ -973,9 +1213,7 @@ const main = async (): Promise<void> => {
     const passwordChecks = await Promise.all(
       representativeAccounts.map((account) =>
         compare(
-          account.email === LIFEDANCE_ADMIN_EMAIL
-            ? adminPassword
-            : seedConfig.defaultPassword,
+          account.email === LIFEDANCE_ADMIN_EMAIL ? adminPassword : seedConfig.defaultPassword,
           account.passwordHash
         )
       )
@@ -1055,6 +1293,12 @@ const main = async (): Promise<void> => {
               0
             )
           },
+          compensationProfiles: compensationProfiles.length,
+          payRuns: payRuns.length,
+          payslips,
+          payslipOrderLines,
+          payoutRecords,
+          settlementReconciliation,
           notifications,
           simulationConversations: simulationConversations.length,
           simulationMessages: simulationMessages.length,

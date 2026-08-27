@@ -5,7 +5,10 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { SIMULATION_NAMESPACE } from "../src/simulation/three-month-simulation-plan";
+import {
+  LIFEDANCE_ADMIN_EMAIL,
+  SIMULATION_NAMESPACE
+} from "../src/simulation/three-month-simulation-plan";
 import {
   buildFormalTestAccountExportRow,
   orderFormalTestAccountExports
@@ -47,6 +50,9 @@ const main = async (): Promise<void> => {
 
   const seedConfig = getSimulationSeedConfig(process.env);
   const socialPlan = buildSocialSimulationPlan();
+  const credentialAccounts = socialPlan.accounts.filter(
+    (account) => account.email !== LIFEDANCE_ADMIN_EMAIL
+  );
   const passwordHash = await hash(seedConfig.defaultPassword, BCRYPT_ROUNDS);
   const { prisma, disconnectPrisma } = await import("../src/prisma/client");
 
@@ -58,7 +64,7 @@ const main = async (): Promise<void> => {
           select: {
             id: true,
             needoId: true,
-            email: true,
+            email: true
           }
         });
         assert(
@@ -75,21 +81,26 @@ const main = async (): Promise<void> => {
           ])
         );
         const userIds = [...userIdByKey.values()];
+        const credentialUserIds = credentialAccounts.map((account) =>
+          getRequired(userIdByEmail, account.email, "formal credential user")
+        );
 
         await tx.user.updateMany({
-          where: { id: { in: userIds } },
+          where: { id: { in: credentialUserIds } },
           data: { passwordHash, isActive: true, deletedAt: null }
         });
         for (const account of socialPlan.accounts) {
           const userId = getRequired(userIdByKey, account.key, "formal test user");
-          await tx.user.update({
-            where: { id: userId },
-            data: { username: account.displayName, avatarUrl: account.avatarUrl }
-          });
-          await tx.userIdentity.updateMany({
-            where: { userId, deletedAt: null },
-            data: { displayName: account.displayName }
-          });
+          if (account.email !== LIFEDANCE_ADMIN_EMAIL) {
+            await tx.user.update({
+              where: { id: userId },
+              data: { username: account.displayName, avatarUrl: account.avatarUrl }
+            });
+            await tx.userIdentity.updateMany({
+              where: { userId, deletedAt: null },
+              data: { displayName: account.displayName }
+            });
+          }
           await syncFormalSocialAccountProfile(tx, userId, account);
         }
 
@@ -113,16 +124,18 @@ const main = async (): Promise<void> => {
         const basePosts = socialPlan.posts.filter((post) => post.kind !== "quote");
         for (const rows of chunkRows(basePosts)) {
           await tx.socialPost.createMany({
-            data: rows.map((post): Prisma.SocialPostCreateManyInput => ({
-              authorUserId: getRequired(userIdByKey, post.authorKey, "social post author"),
-              content: post.content,
-              media: post.media as unknown as Prisma.InputJsonValue,
-              visibility:
-                post.visibility === "followers"
-                  ? SocialPostVisibility.FOLLOWERS
-                  : SocialPostVisibility.PUBLIC,
-              createdAt: new Date(post.createdAt)
-            }))
+            data: rows.map(
+              (post): Prisma.SocialPostCreateManyInput => ({
+                authorUserId: getRequired(userIdByKey, post.authorKey, "social post author"),
+                content: post.content,
+                media: post.media as unknown as Prisma.InputJsonValue,
+                visibility:
+                  post.visibility === "followers"
+                    ? SocialPostVisibility.FOLLOWERS
+                    : SocialPostVisibility.PUBLIC,
+                createdAt: new Date(post.createdAt)
+              })
+            )
           });
         }
 
@@ -179,10 +192,7 @@ const main = async (): Promise<void> => {
         );
         const existingFollows = await tx.follow.findMany({
           where: {
-            OR: [
-              { followerUserId: { in: userIds } },
-              { followingUserId: { in: userIds } }
-            ]
+            OR: [{ followerUserId: { in: userIds } }, { followingUserId: { in: userIds } }]
           },
           select: { id: true, followerUserId: true, followingUserId: true, deletedAt: true }
         });
@@ -234,15 +244,11 @@ const main = async (): Promise<void> => {
     );
 
     const exportRows = orderFormalTestAccountExports(
-      socialPlan.accounts.map((account) =>
+      credentialAccounts.map((account) =>
         buildFormalTestAccountExportRow(
           {
             ...account,
-            needoId: getRequired(
-              result.needoIdByEmail,
-              account.email,
-              "NeeDo ID"
-            ),
+            needoId: getRequired(result.needoIdByEmail, account.email, "NeeDo ID"),
             userId: getRequired(result.userIdByEmail, account.email, "formal test user")
           },
           seedConfig.defaultPassword
@@ -286,6 +292,6 @@ const main = async (): Promise<void> => {
 };
 
 void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
   process.exitCode = 1;
 });
