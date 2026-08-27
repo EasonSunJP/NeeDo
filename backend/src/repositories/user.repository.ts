@@ -1,16 +1,26 @@
-import type { Prisma, PrismaClient, Role, User, UserIdentity, UserRole } from "@prisma/client";
+import type {
+  Prisma,
+  PrismaClient,
+  PublicIdentifier,
+  Role,
+  User,
+  UserIdentity,
+  UserRole
+} from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { NeedoIdAllocator } from "../services/needo-id.service";
+import { IdentifierAllocator } from "../services/public-identifier.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
 import type { RoleRecord } from "./role.repository";
+import { PublicIdentifierRepository } from "./public-identifier.repository";
 
 export interface UserRoleRecord extends UserRole {
   role: RoleRecord;
 }
 
 export interface UserRecord extends User {
-  identities: UserIdentity[];
+  identities: Array<UserIdentity & { publicIdentifier: PublicIdentifier | null }>;
   userRoles: UserRoleRecord[];
 }
 
@@ -60,7 +70,8 @@ export interface UserRepositoryPort {
 const userInclude = {
   identities: {
     where: { deletedAt: null },
-    orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
+    orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }],
+    include: { publicIdentifier: true }
   },
   userRoles: {
     where: { deletedAt: null },
@@ -81,7 +92,9 @@ const userInclude = {
 export class UserRepository implements UserRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly needoIdAllocator = new NeedoIdAllocator()
+    private readonly needoIdAllocator = new NeedoIdAllocator(),
+    private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
+      new IdentifierAllocator(new PublicIdentifierRepository(client))
   ) {}
 
   public async list(input: UserListInput): Promise<PaginatedResponse<UserRecord>> {
@@ -123,20 +136,63 @@ export class UserRepository implements UserRepositoryPort {
   }
 
   public async create(input: UserCreateData): Promise<UserRecord> {
-    const user = await this.needoIdAllocator.withNewId((needoId) => this.client.user.create({
-      data: {
-        needoId,
-        email: input.email,
-        phone: input.phone ?? null,
-        emailVerifiedAt: new Date(),
-        passwordHash: input.passwordHash,
-        username: input.username,
-        avatarUrl: input.avatarUrl ?? null,
-        isActive: input.isActive
-      }
-    }));
+    return this.needoIdAllocator.withNewId((temporaryNeedoId) =>
+      this.client.$transaction(async (transaction) => {
+        const customerRole = await transaction.role.findFirst({
+          where: { code: "customer", deletedAt: null },
+          select: { id: true }
+        });
+        if (!customerRole) throw new Error("Registration role is missing: customer");
 
-    return { ...user, identities: [], userRoles: [] };
+        const user = await transaction.user.create({
+          data: {
+            needoId: temporaryNeedoId,
+            email: input.email,
+            phone: input.phone ?? null,
+            emailVerifiedAt: new Date(),
+            passwordHash: input.passwordHash,
+            username: input.username,
+            avatarUrl: input.avatarUrl ?? null,
+            isActive: input.isActive
+          }
+        });
+        const profile = await transaction.customerProfile.create({
+          data: { userId: user.id, displayName: input.username }
+        });
+        const identity = await transaction.userIdentity.create({
+          data: {
+            userId: user.id,
+            type: "customer",
+            scopeType: "customer_profile",
+            scopeId: profile.id,
+            displayName: input.username,
+            isDefault: true,
+            isActive: true
+          }
+        });
+        const identifier = await this.createIdentifierAllocator(transaction).allocate({
+          kind: "U",
+          userIdentityId: identity.id
+        });
+        await transaction.user.update({
+          where: { id: user.id },
+          data: { needoId: identifier.publicId }
+        });
+        await transaction.userRole.create({
+          data: {
+            userId: user.id,
+            roleId: customerRole.id,
+            scopeType: "customer_profile",
+            scopeId: profile.id
+          }
+        });
+
+        return transaction.user.findUniqueOrThrow({
+          where: { id: user.id },
+          include: userInclude
+        });
+      })
+    );
   }
 
   public async update(id: number, input: UserUpdateData): Promise<UserRecord | null> {
