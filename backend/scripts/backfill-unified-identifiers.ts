@@ -82,9 +82,12 @@ export type UnifiedIdentifierBackfillOperation =
   | {
       type: "ASSIGN_PRIMARY";
       userId: number;
-      identityId: number;
+      identityId: number | null;
       primaryKind: UnifiedIdentifierPrimaryKind;
       existingNumberPart?: string;
+      createIdentity?: {
+        type: "customer" | "platform";
+      };
     }
   | {
       type: "ASSIGN_ALIAS";
@@ -236,10 +239,6 @@ const chooseSinglePrimaryIdentity = (
     primaryKind === "NEEDO" ? PLATFORM_IDENTITY_TYPES : CUSTOMER_IDENTITY_TYPES;
   const preferred = identities.filter((identity) => preferredTypes.has(identity.type));
   if (preferred.length === 1) return preferred[0] ?? null;
-
-  const defaults = identities.filter((identity) => identity.isDefault);
-  if (defaults.length === 1) return defaults[0] ?? null;
-  if (identities.length === 1) return identities[0] ?? null;
   return null;
 };
 
@@ -334,7 +333,16 @@ const planPrimaryIdentifier = (
   const existingPrimary = primaryIdentifiers[0];
   const primaryIdentity =
     existingPrimary?.identity ?? chooseSinglePrimaryIdentity(user, primaryKind);
-  if (!primaryIdentity) {
+  const primaryIdentityTypes =
+    primaryKind === "NEEDO" ? PLATFORM_IDENTITY_TYPES : CUSTOMER_IDENTITY_TYPES;
+  const primaryIdentityCandidates = activeIdentities(user).filter((identity) =>
+    primaryIdentityTypes.has(identity.type)
+  );
+  const createIdentity =
+    !existingPrimary && primaryIdentityCandidates.length === 0
+      ? { type: primaryKind === "NEEDO" ? ("platform" as const) : ("customer" as const) }
+      : undefined;
+  if (!primaryIdentity && !createIdentity) {
     issues.push(
       issue(
         "User",
@@ -347,17 +355,20 @@ const planPrimaryIdentifier = (
   }
 
   const primaryComplete =
+    primaryIdentity !== null &&
     user.accountNo !== null &&
     user.primaryIdentityType === primaryKind &&
     existingPrimary?.identity.id === primaryIdentity.id &&
-    existingPrimary.identifier.numberPart === user.accountNo;
+    existingPrimary.identifier.numberPart === user.accountNo &&
+    primaryIdentity.isDefault;
   if (!primaryComplete) {
     operations.push({
       type: "ASSIGN_PRIMARY",
       userId: user.id,
-      identityId: primaryIdentity.id,
+      identityId: primaryIdentity?.id ?? null,
       primaryKind,
-      ...(knownNumberPart ? { existingNumberPart: knownNumberPart } : {})
+      ...(knownNumberPart ? { existingNumberPart: knownNumberPart } : {}),
+      ...(createIdentity ? { createIdentity } : {})
     });
   }
 
@@ -1102,25 +1113,108 @@ export class PrismaUnifiedIdentifierBackfillRuntime implements UnifiedIdentifier
     if (operation.type === "ASSIGN_PRIMARY") {
       const user = await transaction.user.findFirst({
         where: { id: operation.userId, deletedAt: null },
-        select: { accountNo: true, primaryIdentityType: true }
+        select: { accountNo: true, primaryIdentityType: true, username: true }
       });
       if (!user) throw new Error(`Backfill user not found: ${operation.userId}`);
+      let identityId = operation.identityId;
+      let mutatedRows = 0;
+      if (identityId === null && operation.createIdentity?.type === "customer") {
+        const customerRole = await transaction.role.findFirst({
+          where: { code: "customer", deletedAt: null },
+          select: { id: true }
+        });
+        if (!customerRole) throw new Error("Backfill customer role not found");
+        const existingProfile = await transaction.customerProfile.findUnique({
+          where: { userId: operation.userId },
+          select: { id: true, deletedAt: true }
+        });
+        const customerProfile = existingProfile
+          ? await transaction.customerProfile.update({
+              where: { id: existingProfile.id },
+              data: { deletedAt: null },
+              select: { id: true }
+            })
+          : await transaction.customerProfile.create({
+              data: { userId: operation.userId, displayName: user.username },
+              select: { id: true }
+            });
+        mutatedRows += 1;
+        const identity = await transaction.userIdentity.create({
+          data: {
+            userId: operation.userId,
+            type: "customer",
+            scopeType: "customer_profile",
+            scopeId: customerProfile.id,
+            displayName: user.username,
+            isDefault: false,
+            isActive: true
+          },
+          select: { id: true }
+        });
+        identityId = identity.id;
+        mutatedRows += 1;
+        await transaction.userRole.upsert({
+          where: {
+            userId_roleId_scopeType_scopeId: {
+              userId: operation.userId,
+              roleId: customerRole.id,
+              scopeType: "customer_profile",
+              scopeId: customerProfile.id
+            }
+          },
+          create: {
+            userId: operation.userId,
+            roleId: customerRole.id,
+            scopeType: "customer_profile",
+            scopeId: customerProfile.id
+          },
+          update: { deletedAt: null }
+        });
+        mutatedRows += 1;
+      } else if (identityId === null && operation.createIdentity?.type === "platform") {
+        const identity = await transaction.userIdentity.create({
+          data: {
+            userId: operation.userId,
+            type: "platform",
+            scopeType: "global",
+            scopeId: null,
+            displayName: user.username,
+            isDefault: false,
+            isActive: true
+          },
+          select: { id: true }
+        });
+        identityId = identity.id;
+        mutatedRows += 1;
+      }
+      if (identityId === null)
+        throw new Error(`Backfill primary identity missing: User ${operation.userId}`);
+      const defaultsCleared = await transaction.userIdentity.updateMany({
+        where: { userId: operation.userId, isDefault: true, id: { not: identityId } },
+        data: { isDefault: false }
+      });
+      mutatedRows += defaultsCleared.count;
+      await transaction.userIdentity.update({
+        where: { id: identityId },
+        data: { isDefault: true }
+      });
+      mutatedRows += 1;
       let numberPart = operation.existingNumberPart;
       let identifierCreated = false;
       const existingIdentifier = await transaction.publicIdentifier.findFirst({
-        where: { userIdentityId: operation.identityId, deletedAt: null }
+        where: { userIdentityId: identityId, deletedAt: null }
       });
       if (existingIdentifier) {
         numberPart = existingIdentifier.numberPart;
       } else if (numberPart) {
         await repository.createIdentifier(
-          this.personnelIdentifierInput(operation.primaryKind, numberPart, operation.identityId)
+          this.personnelIdentifierInput(operation.primaryKind, numberPart, identityId)
         );
         identifierCreated = true;
       } else {
         const identifier = await allocator.allocate({
           kind: operation.primaryKind,
-          userIdentityId: operation.identityId
+          userIdentityId: identityId
         });
         numberPart = identifier.numberPart;
         identifierCreated = true;
@@ -1131,7 +1225,7 @@ export class PrismaUnifiedIdentifierBackfillRuntime implements UnifiedIdentifier
         where: { id: operation.userId },
         data: { accountNo: numberPart, primaryIdentityType: operation.primaryKind }
       });
-      return 1 + (identifierCreated ? 1 : 0);
+      return mutatedRows + 1 + (identifierCreated ? 1 : 0);
     }
 
     if (operation.type === "ASSIGN_ALIAS") {

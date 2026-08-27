@@ -14,7 +14,8 @@ const ordinaryNumberByUserId = new Map<number, string>([
   [2, "3141592653"],
   [3, "2718281828"],
   [4, "6029384751"],
-  [5, "4901726385"]
+  [5, "4901726385"],
+  [6, "9182736450"]
 ]);
 
 const fixture = (): UnifiedIdentifierBackfillBatch => ({
@@ -188,8 +189,25 @@ const applyOperationsToFixture = (
       if (!numberPart) throw new Error("fixture number missing");
       user.accountNo = numberPart;
       user.primaryIdentityType = operation.primaryKind;
-      const identity = user.identities.find((candidate) => candidate.id === operation.identityId);
+      let identity = user.identities.find((candidate) => candidate.id === operation.identityId);
+      if (!identity && operation.identityId === null && operation.createIdentity) {
+        identity = {
+          id: nextIdentityId,
+          type: operation.createIdentity.type,
+          scopeType: operation.createIdentity.type === "customer" ? "customer_profile" : "global",
+          scopeId: operation.createIdentity.type === "customer" ? nextIdentityId : null,
+          isDefault: false,
+          isActive: true,
+          publicIdentifier: null
+        };
+        nextIdentityId += 1;
+        user.identities.push(identity);
+        mutatedRows += operation.createIdentity.type === "customer" ? 3 : 1;
+      }
       if (!identity) throw new Error("fixture primary identity missing");
+      user.identities.forEach((candidate) => {
+        candidate.isDefault = candidate.id === identity?.id;
+      });
       identity.publicIdentifier = {
         kind: operation.primaryKind,
         numberPart,
@@ -283,6 +301,110 @@ class FixtureRuntime implements UnifiedIdentifierBackfillRuntime {
 }
 
 describe("unified identifier backfill", () => {
+  it("creates a distinct customer primary identity when a legacy user only has a technician identity", () => {
+    const batch = fixture();
+    batch.users = [
+      {
+        id: 6,
+        needoId: "n0000000006",
+        accountNo: null,
+        primaryIdentityType: null,
+        identities: [
+          {
+            id: 61,
+            type: "technician",
+            scopeType: "technician_profile",
+            scopeId: 206,
+            isDefault: true,
+            isActive: true,
+            publicIdentifier: null
+          }
+        ],
+        roleAssignments: [
+          { code: "technician", scopeType: "technician_profile", scopeId: 206 }
+        ],
+        hasActiveTechnicianProfile: true,
+        ownedMerchantAccountIds: []
+      }
+    ];
+    batch.shops = [];
+    batch.merchantAccounts = [];
+
+    const plan = buildUnifiedIdentifierBackfillPlan(batch);
+
+    expect(plan.issues).toEqual([]);
+    expect(plan.operations).toContainEqual(
+      expect.objectContaining({
+        type: "ASSIGN_PRIMARY",
+        userId: 6,
+        identityId: null,
+        primaryKind: "U",
+        createIdentity: { type: "customer" }
+      })
+    );
+    expect(plan.operations).toContainEqual(
+      expect.objectContaining({
+        type: "ASSIGN_ALIAS",
+        userId: 6,
+        identityId: 61,
+        aliasKind: "S"
+      })
+    );
+  });
+
+  it("applies the missing customer identity repair atomically and remains idempotent", async () => {
+    const batch = fixture();
+    batch.users = [
+      {
+        id: 6,
+        needoId: "n0000000006",
+        accountNo: null,
+        primaryIdentityType: null,
+        identities: [
+          {
+            id: 61,
+            type: "technician",
+            scopeType: "technician_profile",
+            scopeId: 206,
+            isDefault: true,
+            isActive: true,
+            publicIdentifier: null
+          }
+        ],
+        roleAssignments: [
+          { code: "technician", scopeType: "technician_profile", scopeId: 206 }
+        ],
+        hasActiveTechnicianProfile: true,
+        ownedMerchantAccountIds: []
+      }
+    ];
+    batch.shops = [];
+    batch.merchantAccounts = [];
+    const runtime = new FixtureRuntime(batch);
+
+    const first = await runUnifiedIdentifierBackfill(runtime, {
+      mode: "apply",
+      batchSize: 20
+    });
+    const second = await runUnifiedIdentifierBackfill(runtime, {
+      mode: "apply",
+      batchSize: 20
+    });
+    const customerIdentity = batch.users[0]?.identities.find(
+      (identity) => identity.type === "customer"
+    );
+    const technicianIdentity = batch.users[0]?.identities.find(
+      (identity) => identity.type === "technician"
+    );
+
+    expect(first.mutatedRows).toBeGreaterThan(0);
+    expect(customerIdentity?.publicIdentifier?.kind).toBe("U");
+    expect(customerIdentity?.isDefault).toBe(true);
+    expect(technicianIdentity?.publicIdentifier?.kind).toBe("S");
+    expect(customerIdentity?.id).not.toBe(technicianIdentity?.id);
+    expect(second).toMatchObject({ plannedOperations: 0, mutatedRows: 0 });
+  });
+
   it("plans fresh U/NEEDO numbers, shared S/B/O aliases, and independent entities", () => {
     const batch = fixture();
     const plan = buildUnifiedIdentifierBackfillPlan(batch);
