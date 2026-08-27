@@ -22,6 +22,8 @@ import {
   friendRequestListQuerySchema,
   messageCreateBodySchema,
   messageListQuerySchema,
+  messageRecallBodySchema,
+  messageRecallParamSchema,
   messageReactionBodySchema,
   messageReactionParamSchema,
   notificationIdParamSchema,
@@ -38,6 +40,7 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   createConversation: "conversation:create",
   listMessages: "message:list",
   createMessage: "message:create",
+  recallMessage: "message:recall",
   reactToMessage: "message:react",
   markConversationRead: "message:read",
   markConversationUnread: "message:read",
@@ -98,6 +101,13 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.createMessage),
     validateRequest({ params: conversationIdParamSchema, body: messageCreateBodySchema }),
     controller.createMessage
+  );
+  router.post(
+    "/im/conversations/:conversationId/messages/:messageId/recall",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.recallMessage),
+    validateRequest({ params: messageRecallParamSchema, body: messageRecallBodySchema }),
+    controller.recallMessage
   );
   router.put(
     "/im/conversations/:conversationId/messages/:messageId/reactions",

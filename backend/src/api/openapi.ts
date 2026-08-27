@@ -470,6 +470,12 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "content",
           "metadata",
           "reactions",
+          "recallDeadlineAt",
+          "recalledAt",
+          "recallMode",
+          "contentPurgedAt",
+          "lifecycleVersion",
+          "availableRecallModes",
           "createdAt"
         ],
         properties: {
@@ -482,6 +488,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           reactions: {
             type: "array",
             items: { $ref: "#/components/schemas/RealtimeMessageReaction" }
+          },
+          recallDeadlineAt: { type: ["string", "null"], format: "date-time" },
+          recalledAt: { type: ["string", "null"], format: "date-time" },
+          recallMode: {
+            type: ["string", "null"],
+            enum: ["standard", "traceless", null]
+          },
+          contentPurgedAt: { type: ["string", "null"], format: "date-time" },
+          lifecycleVersion: { type: "integer", minimum: 0 },
+          availableRecallModes: {
+            type: "array",
+            items: { type: "string", enum: ["standard"] }
           },
           createdAt: { type: "string", format: "date-time" }
         }
@@ -8221,6 +8239,72 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": { description: "Created message" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}/recall`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Recall the current user's IM message within the authoritative window",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "messageId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["mode"],
+                additionalProperties: false,
+                properties: {
+                  mode: { type: "string", enum: ["standard"] }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Content-free standard recall tombstone",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: {
+                      type: "object",
+                      required: ["action", "conversationId", "messageId", "message"],
+                      properties: {
+                        action: { type: "string", enum: ["standard_recall"] },
+                        conversationId: { type: "integer" },
+                        messageId: { type: "integer" },
+                        message: { $ref: "#/components/schemas/RealtimeMessage" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "Recall window expired or request mode invalid" },
+          "403": { description: "Missing message:recall permission" },
+          "404": { description: "Conversation or owned message not found" }
         }
       }
     },

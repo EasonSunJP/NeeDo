@@ -413,6 +413,25 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty(
       "/api/v1/im/conversations/{conversationId}/messages/{messageId}/reactions"
     );
+    expect(response.body.paths).toHaveProperty(
+      "/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"
+    );
+    expect(
+      response.body.paths[
+        "/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"
+      ]
+    ).toMatchObject({
+      post: expect.objectContaining({
+        security: [{ bearerAuth: [] }],
+        requestBody: expect.any(Object),
+        responses: expect.objectContaining({
+          "200": expect.any(Object),
+          "400": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object)
+        })
+      })
+    });
     expect(
       response.body.paths[
         "/api/v1/im/conversations/{conversationId}/messages/{messageId}/reactions"
@@ -459,6 +478,16 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas).toHaveProperty("BookingOrder");
     expect(response.body.components.schemas).toHaveProperty("Wallet");
     expect(response.body.components.schemas).toHaveProperty("LedgerTransaction");
+    expect(response.body.components.schemas.RealtimeMessage.required).toEqual(
+      expect.arrayContaining([
+        "recallDeadlineAt",
+        "recalledAt",
+        "recallMode",
+        "contentPurgedAt",
+        "lifecycleVersion",
+        "availableRecallModes"
+      ])
+    );
     expect(response.body.components.schemas.LedgerTransaction.properties.type.enum).toEqual(
       expect.arrayContaining([
         "manual_topup_approved",

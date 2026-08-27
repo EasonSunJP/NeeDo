@@ -140,6 +140,44 @@ export class RealtimeService implements OrderStatusNotificationPort {
     return message;
   }
 
+  public async recallMessage(
+    auth: AuthenticatedAccessContext,
+    input: { conversationId: number; messageId: number; mode: "standard" }
+  ) {
+    const outcome = await this.repository.recallMessage({
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      senderUserId: auth.userId,
+      now: new Date()
+    });
+
+    if (outcome.status === "not_found") {
+      throw this.notFoundError("error.realtime.message_not_found");
+    }
+    if (outcome.status === "window_expired") {
+      throw this.validationError("error.im.recall_window_expired");
+    }
+    if (!("message" in outcome)) {
+      throw this.notFoundError("error.realtime.message_not_found");
+    }
+
+    if (outcome.status === "recalled") {
+      await this.publishToConversation(
+        input.conversationId,
+        "message.recalled",
+        outcome.message,
+        auth.userId
+      );
+    }
+
+    return {
+      action: "standard_recall" as const,
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      message: outcome.message
+    };
+  }
+
   public async markConversationRead(auth: AuthenticatedAccessContext, conversationId: number) {
     const result = await this.repository.markConversationRead({
       conversationId,

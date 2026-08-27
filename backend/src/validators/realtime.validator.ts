@@ -29,6 +29,10 @@ export const messageReactionParamSchema = conversationIdParamSchema.extend({
   messageId: z.coerce.number().int().positive()
 });
 
+export const messageRecallParamSchema = conversationIdParamSchema.extend({
+  messageId: z.coerce.number().int().positive()
+});
+
 export const friendRequestIdParamSchema = z.object({
   id: z.coerce.number().int().positive()
 });
@@ -81,6 +85,10 @@ export const messageCreateBodySchema = z.object({
 
 export const messageReactionBodySchema = z.object({
   emoji: z.string().trim().min(1).max(32)
+});
+
+export const messageRecallBodySchema = z.object({
+  mode: z.literal("standard")
 });
 
 export const contactListQuerySchema = z.object({
@@ -154,6 +162,7 @@ export type ConversationListQuery = z.infer<typeof conversationListQuerySchema>;
 export type MessageCreateBody = z.infer<typeof messageCreateBodySchema>;
 export type MessageListQuery = z.infer<typeof messageListQuerySchema>;
 export type MessageReactionBody = z.infer<typeof messageReactionBodySchema>;
+export type MessageRecallBody = z.infer<typeof messageRecallBodySchema>;
 export type ContactListQuery = z.infer<typeof contactListQuerySchema>;
 export type FriendRequestCreateBody = z.infer<typeof friendRequestCreateBodySchema>;
 export type FriendRequestListQuery = z.infer<typeof friendRequestListQuerySchema>;
