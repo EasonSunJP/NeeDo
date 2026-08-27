@@ -27,6 +27,99 @@ Paginated list APIs return:
 }
 ```
 
+## Formal Registration, Password Login, And Google Authentication
+
+These endpoints are database-backed formal APIs. OTP and Google nonce values
+are never returned by an API response or written to application logs. Unless a
+row below says public, send `Authorization: Bearer <access-token>` and satisfy
+the listed RBAC permission. All request bodies are strict JSON objects.
+
+### Public registration and login
+
+| Method | Path | Request | Success `data` | Auth |
+|---|---|---|---|---|
+| `POST` | `/api/v1/auth/register` | `{ "email": "user@example.com", "password": "<strong-password>" }` | `{ challengeId, maskedEmail, expiresIn, cooldownSeconds }` | Public, rate limited |
+| `POST` | `/api/v1/auth/register/verify` | `{ "challengeId": "<uuid>", "otp": "123456" }` | `{ accessToken, refreshToken, expiresIn, needoId }` | Public, rate limited |
+| `POST` | `/api/v1/auth/login` | `{ "loginIdentifier": "<verified-email-or-NeeDoID>", "password": "<password>" }` | `{ accessToken, refreshToken, expiresIn }` | Public, rate limited |
+
+`POST /api/v1/auth/register` only stores a time-limited verification challenge.
+It does not create a `User`. The verify call atomically creates one active
+baseline customer with a verified email, the default customer identity and
+role, a bcrypt cost-12 password hash, profile records, and an immutable
+NeeDoID. A NeeDoID is lowercase `n` plus ten decimal digits. The initial
+nickname/profile display name equals the NeeDoID; later display-name edits do
+not change the NeeDoID. Subsequent password login does not send another OTP.
+
+`loginIdentifier` accepts the normalized verified email address or immutable
+NeeDoID. It does not accept an editable nickname. Invalid email/NeeDoID/password
+combinations use the same generic invalid-credentials response.
+
+### Google sign-in and first use
+
+| Method | Path | Request | Success `data` | Auth |
+|---|---|---|---|---|
+| `POST` | `/api/v1/auth/google/init` | `{}` | `{ clientId, nonce, nonceChallengeId, expiresIn }` | Public, rate limited |
+| `POST` | `/api/v1/auth/google` | `{ credential, nonceChallengeId }` | Linked: `{ status: "authenticated", accessToken, refreshToken, expiresIn }`; first use: `{ status: "verification_required", challengeId, maskedEmail, expiresIn, cooldownSeconds }` | Public, rate limited |
+| `POST` | `/api/v1/auth/google/verify` | `{ challengeId, otp }` | `{ accessToken, refreshToken, expiresIn }`, plus `needoId` only when this verification creates a new account | Public, rate limited |
+
+The browser must pass the nonce from `/auth/google/init` to Google Identity
+Services and return Google's ID-token `credential` with its
+`nonceChallengeId`. The backend verifies signature, issuer, audience, nonce,
+expiry, email, and Google's `email_verified` claim. A nonce is one-time use.
+
+When the Google subject is already linked, the submit call signs in directly.
+On first use, NeeDo sends a six-digit OTP to the verified Google email. OTP
+verification links an existing NeeDo account with the same verified email, or
+creates a distinct Google-only baseline customer when none exists. It never
+silently merges a Google subject already owned by another user. NeeDo issues
+its own JWT/session pair; Google access tokens and refresh tokens are not
+stored.
+
+### Authenticated account security
+
+| Method | Path | Request | Success `data` | Permission |
+|---|---|---|---|---|
+| `GET` | `/api/v1/auth/google/link` | none | `{ linked, maskedEmail, hasPassword, canUnlink }` | `auth:google:read` |
+| `POST` | `/api/v1/auth/google/link/init` | `{}` | `{ clientId, nonce, nonceChallengeId, expiresIn }` | `auth:google:link` |
+| `POST` | `/api/v1/auth/google/link` | `{ credential, nonceChallengeId }` | `{ challengeId, maskedEmail, expiresIn, cooldownSeconds }` | `auth:google:link` |
+| `POST` | `/api/v1/auth/google/link/verify` | `{ challengeId, otp }` | `{ linked: true }` | `auth:google:link` |
+| `POST` | `/api/v1/auth/password/setup` | `{ password: "<strong-password>" }` | `{ challengeId, maskedEmail, expiresIn, cooldownSeconds }` | `auth:password:setup` |
+| `POST` | `/api/v1/auth/password/setup/verify` | `{ challengeId, otp }` | `{ hasPassword: true }` | `auth:password:setup` |
+| `POST` | `/api/v1/auth/google/unlink` | `{}` | `{ challengeId, maskedEmail, expiresIn, cooldownSeconds }` | `auth:google:unlink` |
+| `POST` | `/api/v1/auth/google/unlink/verify` | `{ challengeId, otp }` | `{ signedOut: true }` | `auth:google:unlink` |
+
+Linking Google always uses an authenticated, user-bound nonce and then an OTP
+sent to the NeeDo account email. A Google-only account must complete password
+setup before unlink is permitted, so an account cannot lose its final login
+credential. Successful unlink deletes the Google binding, increments the
+authoritative session generation, revokes every refresh session, blacklists
+the current access token for its remaining lifetime, and returns
+`signedOut: true`. The client must clear its local session immediately. The
+unlink verification endpoint is retry-safe through a short-lived completion
+receipt even after the access token has been invalidated.
+
+### Stable authentication errors
+
+| Message key | HTTP | Meaning |
+|---|---:|---|
+| `error.auth.google_credential_invalid` | `401` | Invalid/replayed credential, consumed or unknown nonce, or rejected Google claims |
+| `error.auth.google_nonce_invalid` | `401` | Google ID token nonce does not match the expected one-time nonce |
+| `error.auth.google_conflict` | `409` | Google subject/credential ownership conflict, password already exists, or unlink would remove the last credential |
+| `error.auth.verification_challenge_expired` | `401` | Challenge is absent, expired, cancelled, reserved, mismatched, or already finalized |
+| `error.auth.verification_code_invalid` | `401` | OTP is incorrect but attempts remain |
+| `error.auth.verification_attempts_exhausted` | `429` | Final allowed OTP attempt failed; the challenge is destroyed |
+| `error.auth.otp_cooldown` | `429` | A new challenge for the protected email/purpose is temporarily blocked |
+| `error.dependency.google_auth_unavailable` | `503` | Required Google-capable repository wiring is unavailable or outdated |
+| `error.auth.otp_delivery_not_configured` | `503` | No configured email delivery webhook is available |
+| `error.auth.otp_delivery_failed` | `502` | Configured email webhook timed out, failed, or returned a non-2xx response |
+
+Google ID-token verification exceptions, timeouts, and rejected claims collapse
+to `error.auth.google_credential_invalid` with `401`; the API does not disclose
+whether a credential, key fetch, or provider call failed. Provider errors never
+include a credential, subject, nonce, OTP, provider token, or raw exception in
+the response. The machine-readable OpenAPI document remains authoritative for
+schemas and the shared `{ code, message, data }` envelope.
+
 ## Step 08 Core Read APIs
 
 These APIs are read-only and database-backed. They do not create bookings, schedules, wallets, IM, Social records, or frontend mock replacements.
