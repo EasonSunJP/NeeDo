@@ -941,7 +941,7 @@ const scopedStores = new Map<string, ReturnType<typeof createScopedStore>>();
 function getScopedStore(
   scope: ImRoleType,
   legacyEnabled: boolean,
-  currentUser: { avatarUrl: string | null; id: number; username: string }
+  currentUser: { avatarUrl: string | null; id: number; needoId: string; username: string }
 ) {
   const key = legacyEnabled ? `${scope}:static-demo` : `${scope}:formal:${currentUser.id}`;
   const existing = scopedStores.get(key);
@@ -1016,6 +1016,7 @@ export function useImStore(scope: ImRoleType = "user") {
   const legacyEnabled = isStaticDemoMode() && isFrontendBypassSession(session);
   const currentUser = {
     id: session?.id ?? 0,
+    needoId: session?.needoId ?? "",
     username: session?.username ?? "",
     avatarUrl: session?.avatarUrl ?? null
   };

@@ -115,6 +115,7 @@ type TechnicianRecord = Prisma.TechnicianProfileGetPayload<{
   include: {
     user: {
       select: {
+        needoId: true;
         email: true;
         avatarUrl: true;
       };
@@ -1203,6 +1204,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       user: {
         select: {
+          needoId: true,
           email: true,
           _count: {
             select: {
@@ -1439,6 +1441,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
         : {};
 
     return {
+      needoId: true,
       username: true,
       email: true,
       phone: true,
@@ -1547,6 +1550,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       user: {
         select: {
+          needoId: true,
           email: true,
           avatarUrl: true
         }
@@ -1662,6 +1666,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
     return {
       id: technician.id,
       userId: technician.userId,
+      needoId: technician.user.needoId,
       displayName: technician.displayName,
       email: technician.user.email,
       avatarUrl: technician.user.avatarUrl,

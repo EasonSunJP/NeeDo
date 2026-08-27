@@ -32,6 +32,7 @@ type ImApi = ReturnType<typeof createImApi>;
 type FormalCurrentUser = {
   avatarUrl: string | null;
   id: number;
+  needoId: string;
   username: string;
 };
 
@@ -132,13 +133,13 @@ function toImUser(participant: RealtimeParticipant): ImUser {
 
   return {
     id,
-    accountId: id,
+    accountId: participant.needoId,
     nickname: participant.username,
     avatar:
       participant.avatarUrl ??
       buildInitialAvatar(participant.username, profileKind),
     status: "active",
-    searchableFields: [participant.username, id],
+    searchableFields: [participant.username, participant.needoId],
     sortKey: participant.username,
     profileKind,
     entityType:
@@ -149,18 +150,32 @@ function toImUser(participant: RealtimeParticipant): ImUser {
           : "user",
     source: "formal_api",
     tags: [],
-    userIdLabel: id,
+    userIdLabel: participant.needoId,
     canCall: false,
     canVideoCall: false,
   };
 }
 
 function toPlaceholderUser(userId: number): ImUser {
-  return toImUser({
-    userId,
-    username: `用户 ${userId}`,
-    avatarUrl: null,
-  });
+  const id = String(userId);
+  const nickname = `用户 ${userId}`;
+
+  return {
+    id,
+    accountId: "",
+    nickname,
+    avatar: buildInitialAvatar(nickname, "person"),
+    status: "active",
+    searchableFields: [nickname],
+    sortKey: nickname,
+    profileKind: "person",
+    entityType: "user",
+    source: "formal_api",
+    tags: [],
+    userIdLabel: "",
+    canCall: false,
+    canVideoCall: false,
+  };
 }
 
 function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
@@ -168,7 +183,7 @@ function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
 
   return {
     id,
-    accountId: technician.email,
+    accountId: technician.needoId,
     nickname: technician.displayName,
     avatar:
       technician.avatarUrl ??
@@ -177,6 +192,7 @@ function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
     status: "active",
     searchableFields: [
       technician.displayName,
+      technician.needoId,
       technician.email,
       technician.city,
       technician.serviceArea ?? "",
@@ -188,7 +204,7 @@ function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
     entityId: `tech-${technician.id}`,
     source: "merchant_technician_profile",
     tags: ["员工", "正社员", "技师"],
-    userIdLabel: id,
+    userIdLabel: technician.needoId,
     canCall: false,
     canVideoCall: false,
   };
@@ -373,6 +389,7 @@ function buildBootstrap(
   const userMap = new Map<string, ImUser>();
   const currentParticipant: RealtimeParticipant = {
     userId: currentUser.id,
+    needoId: currentUser.needoId,
     username: currentUser.username,
     avatarUrl: currentUser.avatarUrl,
   };
@@ -386,9 +403,7 @@ function buildBootstrap(
     userMap.set(String(technician.userId), toOrganizationUser(technician));
   });
   contacts.forEach((contact) => {
-    const id = String(contact.contactUserId);
-    if (!userMap.has(id))
-      userMap.set(id, toPlaceholderUser(contact.contactUserId));
+    userMap.set(String(contact.contactUserId), toImUser(contact.contactUser));
   });
   friendRequests.forEach((friendRequest) => {
     [friendRequest.requesterUserId, friendRequest.targetUserId].forEach(

@@ -9,6 +9,7 @@ export type PaginatedRealtimeData<TItem> = {
 
 export type RealtimeParticipant = {
   avatarUrl: string | null;
+  needoId: string;
   userId: number;
   username: string;
 };
@@ -53,6 +54,7 @@ export type RealtimeMessageHistory = PaginatedRealtimeData<RealtimeMessage> & {
 };
 
 export type RealtimeContact = {
+  contactUser: RealtimeParticipant;
   contactUserId: number;
   createdAt: string;
   id: number;

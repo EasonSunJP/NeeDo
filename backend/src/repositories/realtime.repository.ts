@@ -19,6 +19,7 @@ export type NotificationTypePayload = "orderStatus" | "friendRequest" | "system"
 
 export interface ParticipantPayload {
   userId: number;
+  needoId: string;
   username: string;
   avatarUrl: string | null;
 }
@@ -68,6 +69,7 @@ export interface ContactPayload {
   id: number;
   ownerUserId: number;
   contactUserId: number;
+  contactUser: ParticipantPayload;
   nickname: string | null;
   source: string;
   createdAt: Date;
@@ -312,6 +314,17 @@ const socialPostInclude = {
   }
 } satisfies Prisma.SocialPostInclude;
 
+const contactInclude = {
+  contactUser: {
+    select: {
+      id: true,
+      needoId: true,
+      username: true,
+      avatarUrl: true
+    }
+  }
+} satisfies Prisma.ContactInclude;
+
 type ConversationRecord = Prisma.ConversationGetPayload<{
   include: {
     participants: {
@@ -319,6 +332,7 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
         user: {
           select: {
             id: true;
+            needoId: true;
             username: true;
             avatarUrl: true;
           };
@@ -332,7 +346,7 @@ type ConversationRecord = Prisma.ConversationGetPayload<{
 }>;
 
 type MessageRecord = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
-type ContactRecord = Prisma.ContactGetPayload<Record<string, never>>;
+type ContactRecord = Prisma.ContactGetPayload<{ include: typeof contactInclude }>;
 type FriendRequestRecord = Prisma.FriendRequestGetPayload<Record<string, never>>;
 type SocialPostRecord = Prisma.SocialPostGetPayload<{ include: typeof socialPostInclude }>;
 type FollowRecord = Prisma.FollowGetPayload<Record<string, never>>;
@@ -706,6 +720,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
     const [list, total] = await Promise.all([
       this.client.contact.findMany({
         where,
+        include: contactInclude,
         skip: pagination.skip,
         take: pagination.take,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
@@ -1280,6 +1295,7 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
           user: {
             select: {
               id: true,
+              needoId: true,
               username: true,
               avatarUrl: true
             }
@@ -1307,11 +1323,9 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: conversation.id,
       type: this.conversationTypeFromDb(conversation.type),
       title: conversation.title,
-      participants: conversation.participants.map((participant) => ({
-        userId: participant.user.id,
-        username: participant.user.username,
-        avatarUrl: participant.user.avatarUrl
-      })),
+      participants: conversation.participants.map((participant) =>
+        this.mapParticipant(participant.user)
+      ),
       lastMessage: conversation.messages[0]
         ? this.mapMessage(conversation.messages[0], viewerUserId)
         : null,
@@ -1357,9 +1371,24 @@ export class RealtimeRepository implements RealtimeRepositoryPort {
       id: contact.id,
       ownerUserId: contact.ownerUserId,
       contactUserId: contact.contactUserId,
+      contactUser: this.mapParticipant(contact.contactUser),
       nickname: contact.nickname,
       source: contact.source,
       createdAt: contact.createdAt
+    };
+  }
+
+  private mapParticipant(user: {
+    id: number;
+    needoId: string;
+    username: string;
+    avatarUrl: string | null;
+  }): ParticipantPayload {
+    return {
+      userId: user.id,
+      needoId: user.needoId,
+      username: user.username,
+      avatarUrl: user.avatarUrl
     };
   }
 

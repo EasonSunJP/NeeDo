@@ -1968,6 +1968,7 @@ function technicianPayload(index: number): BackofficeTechnicianPayload {
   return {
     id: index + 1,
     userId: index + 10,
+    needoId: technician.systemId,
     displayName: technician.name,
     email: technician.accountUsername ?? `${technician.id}@static-demo.needo.jp`,
     avatarUrl: technician.avatar,
