@@ -652,8 +652,40 @@ describe("GET /api/v1/openapi.json", () => {
   });
 
   it("documents immutable realtime identities and the friend activity status contract", () => {
-    const document = createOpenApiDocument(env);
+    const document = createOpenApiDocument(env) as {
+      paths: Record<
+        string,
+        {
+          get?: {
+            security: unknown;
+            parameters: unknown;
+            responses: Record<
+              string,
+              {
+                content: Record<
+                  string,
+                  { schema: { properties: Record<string, unknown> } }
+                >;
+              }
+            >;
+          };
+        }
+      >;
+      components: {
+        schemas: Record<
+          string,
+          {
+            required: string[];
+            properties: Record<string, Record<string, unknown>>;
+          }
+        >;
+      };
+    };
     const activityPath = document.paths["/api/v1/social/users/{userId}/activity-status"]?.get;
+
+    if (!activityPath) {
+      throw new Error("Missing friend activity status OpenAPI operation");
+    }
 
     expect(activityPath).toMatchObject({
       security: [{ bearerAuth: [] }],
