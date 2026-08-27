@@ -150,6 +150,8 @@ describe("formal IM adapter", () => {
             shopName: "Tokyo Relax Shibuya",
             city: "Tokyo",
             serviceArea: "Shibuya",
+            employmentType: "full_time",
+            employmentStartedAt: "2026-07-01T00:00:00.000Z",
             status: "published",
             verifiedAt: now,
             createdAt: now,
