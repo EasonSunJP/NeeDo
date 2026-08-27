@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ApiClientError } from "../../api/httpClient";
 import { mapBackofficeOrder } from "../../api/backofficeRealData";
 import { ModuleShell } from "../../components/admin/ModuleShell";
 import {
@@ -11,22 +10,16 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { MetricCard } from "../../components/ui/MetricCard";
+import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { statusLabel, yen } from "../../lib/utils";
 import type { Metric, Order } from "../../types/domain";
 
-function describeMerchantDashboardError(error: unknown) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录";
-    if (error.status === 403) return "当前身份没有查看本店经营数据的权限";
-    if (error.status >= 500) return "本店经营数据服务暂时不可用，请稍后重试";
-  }
-  return "本店经营数据加载失败，请检查网络后重试";
-}
-
 function MerchantAdminDashboardContent({ resource }: { resource: MerchantAdminDashboardResource }) {
+  const { language } = useOptionalI18n();
   const { dashboard, error, status: loadStatus } = resource;
   const reload = resource.reload;
-  const loadError = error ? describeMerchantDashboardError(error) : "";
+  const loadError = error ? describeMerchantReadError(error, language) : "";
   const todayOrders = useMemo<Order[]>(
     () => dashboard ? dashboard.orders.map(mapBackofficeOrder).slice(0, 8) : [],
     [dashboard]

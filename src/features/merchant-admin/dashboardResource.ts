@@ -2,6 +2,7 @@ import {
   backofficeRealDataApi,
   type BackofficeDashboardPayload
 } from "../../api/backofficeRealData";
+import { loadCoreReadWithTransientRetry } from "../core-read/transientRetry";
 
 type MerchantAdminDashboardCacheEntry = {
   expiresAt: number;
@@ -28,7 +29,9 @@ export function loadMerchantAdminDashboard(scopeKey: string): Promise<Backoffice
   }
 
   let entry: MerchantAdminDashboardCacheEntry;
-  const request = backofficeRealDataApi.dashboard("merchant-admin")
+  const request = loadCoreReadWithTransientRetry(
+    () => backofficeRealDataApi.dashboard("merchant-admin")
+  )
     .then((payload) => {
       if (dashboardCache.get(scopeKey) === entry) {
         dashboardCache.set(scopeKey, {

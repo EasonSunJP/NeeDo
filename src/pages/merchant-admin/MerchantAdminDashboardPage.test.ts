@@ -22,10 +22,13 @@ describe("merchant dashboard real data", () => {
     expect(source).toContain("尚未启用的商户模块");
   });
 
-  it("has loading, permission failure, retry, and empty order states", () => {
+  it("has loading, localized failure, retry, and empty order states", () => {
     expect(source).toContain("正在加载本店真实数据");
+    expect(source).toContain("useOptionalI18n");
+    expect(source).toContain("describeMerchantReadError(error, language)");
     expect(source).toContain("重新加载本店数据");
     expect(source).toContain("本店当前没有真实订单");
-    expect(source).toContain("当前身份没有查看本店经营数据的权限");
+    expect(source).not.toContain("function describeMerchantDashboardError");
+    expect(source).not.toContain("error.message");
   });
 });

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiClientError } from "../../api/httpClient";
 
 const mocked = vi.hoisted(() => ({
   dashboard: vi.fn()
@@ -17,7 +18,7 @@ import {
 
 describe("merchant admin dashboard resource", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mocked.dashboard.mockReset();
     invalidateMerchantAdminDashboard("merchant:1:shop:1");
     invalidateMerchantAdminDashboard("merchant:2:shop:2");
   });
@@ -66,6 +67,30 @@ describe("merchant admin dashboard resource", () => {
     await expect(loadMerchantAdminDashboard("merchant:1:shop:1")).resolves.toEqual({ shops: [{ id: 1 }] });
     await expect(loadMerchantAdminDashboard("merchant:2:shop:2")).resolves.toEqual({ shops: [{ id: 2 }] });
     expect(mocked.dashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one bounded retry sequence after a transient timeout", async () => {
+    mocked.dashboard
+      .mockRejectedValueOnce(new ApiClientError("error.network.timeout", 408, 408))
+      .mockResolvedValueOnce({ shops: [{ id: 1 }] });
+
+    const first = loadMerchantAdminDashboard("merchant:1:shop:1");
+    const second = loadMerchantAdminDashboard("merchant:1:shop:1");
+
+    expect(first).toBe(second);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { shops: [{ id: 1 }] },
+      { shops: [{ id: 1 }] }
+    ]);
+    expect(mocked.dashboard).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a deterministic dashboard rejection", async () => {
+    const error = new ApiClientError("error.forbidden", 403, 403);
+    mocked.dashboard.mockRejectedValue(error);
+
+    await expect(loadMerchantAdminDashboard("merchant:1:shop:1")).rejects.toBe(error);
+    expect(mocked.dashboard).toHaveBeenCalledTimes(1);
   });
 
   it("clears a failed request so an explicit retry can reach the formal API", async () => {
