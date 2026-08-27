@@ -13696,7 +13696,7 @@ export const translations: TranslationMap = {
   "重新发送": { "zh-Hant": "重新發送", ja: "重新送信", en: "Send", ko: "전송" },
   "重新获取": { "zh-Hant": "重新獲取", ja: "再取得", en: "Reacquire", ko: "다시 획득" },
   "重新计算预测、技师可用性和候补队列。": { "zh-Hant": "重新计算預測、技師可用性和候補隊列。", ja: "重新计算预测、スタッフ可用性和候補队列。", en: "Forecast / Staff Standby Available.", ko: "예측 / 스태프 대기 사용 가능" },
-  "重新加载": { "zh-Hant": "重新載入", ja: "リロード", en: "Reload", ko: "재장전" },
+  "重新加载": { "zh-Hant": "重新載入", ja: "再読み込み", en: "Reload", ko: "다시 불러오기" },
   "重新开放": { "zh-Hant": "重新開放", ja: "再開", en: "Reopening", ko: "재공석" },
   "重新派单": { "zh-Hant": "重新派單", ja: "重新割当", en: "Dispatch", ko: "배정" },
   "重新扫码": { "zh-Hant": "重新掃碼", ja: "再スキャン", en: "Scan again", ko: "다시 스캔" },

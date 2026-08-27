@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { translateText, type Language } from "../../i18n/translations";
 import homePageSource from "./HomePage.tsx?raw";
 
 describe("HomePage appointment reminder", () => {
@@ -26,6 +27,24 @@ describe("HomePage technician recommendations", () => {
     expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyStores : []");
     expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyTechnicians : []");
     expect(homePageSource).toContain("if (!allowLegacyCoreReadData)");
+  });
+
+  it("recovers a transient formal read failure and exposes a manual reload action", () => {
+    expect(homePageSource).toContain("loadCoreReadWithTransientRetry");
+    expect(homePageSource).toContain("homeRecommendationsRevision");
+    expect(homePageSource).toContain("[homeRecommendationsRevision]");
+    expect(homePageSource).toContain("onRetry={() => setHomeRecommendationsRevision");
+    expect(homePageSource).toContain("重新加载");
+  });
+
+  it.each([
+    ["zh", "重新加载"],
+    ["zh-Hant", "重新載入"],
+    ["ja", "再読み込み"],
+    ["en", "Reload"],
+    ["ko", "다시 불러오기"]
+  ] as Array<[Language, string]>)('translates the reload action for %s', (language, expected) => {
+    expect(translateText("重新加载", language)).toBe(expected);
   });
 });
 

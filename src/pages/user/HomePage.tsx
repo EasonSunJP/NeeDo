@@ -27,6 +27,7 @@ import {
   mapCoreTechnicianToTechnician
 } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
+import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
@@ -563,15 +564,26 @@ function CurrentAppointmentFloatingButton({ count, latestOrder }: { count: numbe
 
 function HomeCoreReadState({
   description,
+  onRetry,
   title
 }: {
   description: string;
+  onRetry?: () => void;
   title: string;
 }) {
   return (
     <div className="rounded-[22px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_74%,transparent)] px-4 py-6 text-center">
       <p className="text-[15px] font-black text-[color:var(--client-text)]">{title}</p>
       <p className="mt-2 text-[12px] leading-5 text-[color:var(--client-muted)]">{description}</p>
+      {onRetry ? (
+        <button
+          className="mt-4 inline-flex min-h-10 items-center justify-center rounded-full bg-[color:var(--client-primary)] px-5 text-[13px] font-black text-[color:var(--client-on-primary)]"
+          onClick={onRetry}
+          type="button"
+        >
+          重新加载
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -672,7 +684,11 @@ export function HomePage() {
     ? mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)
     : legacyCurrentCustomer;
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
-  const homeRecommendationsQuery = useCoreReadQuery(() => coreReadApi.getHomeRecommendations({ limit: 20 }), []);
+  const [homeRecommendationsRevision, setHomeRecommendationsRevision] = useState(0);
+  const homeRecommendationsQuery = useCoreReadQuery(
+    () => loadCoreReadWithTransientRetry(() => coreReadApi.getHomeRecommendations({ limit: 20 })),
+    [homeRecommendationsRevision]
+  );
   const apiServices = useMemo(
     () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? (allowLegacyCoreReadData ? legacyServices : []),
     [allowLegacyCoreReadData, homeRecommendationsQuery.data]
@@ -1065,7 +1081,11 @@ export function HomePage() {
           {homeCoreLoading ? (
             <HomeCoreReadState description="正在从 /api/v1/home/recommendations 读取首页推荐。" title="正在载入真实推荐" />
           ) : homeCoreError ? (
-            <HomeCoreReadState description={homeCoreError} title="推荐读取失败" />
+            <HomeCoreReadState
+              description={homeCoreError}
+              onRetry={() => setHomeRecommendationsRevision((current) => current + 1)}
+              title="推荐读取失败"
+            />
           ) : visibleRecommendationList.length > 0 ? (
             recommendationTab === "technicians" ? (
               <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
@@ -1115,7 +1135,11 @@ export function HomePage() {
           {homeCoreLoading ? (
             <HomeCoreReadState description="正在读取真实技师列表。" title="正在载入附近技师" />
           ) : homeCoreError ? (
-            <HomeCoreReadState description={homeCoreError} title="技师读取失败" />
+            <HomeCoreReadState
+              description={homeCoreError}
+              onRetry={() => setHomeRecommendationsRevision((current) => current + 1)}
+              title="技师读取失败"
+            />
           ) : nearbyTechnicians.length > 0 ? (
             <div className="scrollbar-none flex gap-3 overflow-x-auto pb-1">
               {nearbyTechnicians.map((technician, index) => (
