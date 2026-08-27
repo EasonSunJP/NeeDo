@@ -535,6 +535,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           "contactUser",
           "nickname",
           "source",
+          "isBlocked",
           "createdAt"
         ],
         properties: {
@@ -544,6 +545,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           contactUser: { $ref: "#/components/schemas/RealtimeParticipant" },
           nickname: { type: ["string", "null"] },
           source: { type: "string" },
+          isBlocked: { type: "boolean" },
           createdAt: { type: "string", format: "date-time" }
         }
       },
@@ -8338,6 +8340,44 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Paginated contacts" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/contacts/{contactId}/block`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Block one contact owned by the current user",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "contactId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Blocked contact" },
+          "403": { description: "Missing contact:block permission" },
+          "404": { description: "Contact not found for current user" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Unblock one contact owned by the current user",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "contactId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Unblocked contact" },
+          "403": { description: "Missing contact:block permission" },
+          "404": { description: "Contact not found for current user" }
         }
       }
     },

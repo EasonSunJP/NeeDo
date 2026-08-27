@@ -61,6 +61,7 @@ export type RealtimeContact = {
   nickname: string | null;
   ownerUserId: number;
   source: string;
+  isBlocked: boolean;
 };
 
 export type RealtimeFriendRequest = {
@@ -166,6 +167,12 @@ export const realtimeApi = {
   },
   listContacts(query: PageQuery = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeContact>>("/im/contacts", { query });
+  },
+  blockContact(contactId: number) {
+    return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "POST" });
+  },
+  unblockContact(contactId: number) {
+    return httpClient.request<RealtimeContact>(`/im/contacts/${contactId}/block`, { method: "DELETE" });
   },
   listFriendRequests(query: PageQuery & { direction?: "incoming" | "outgoing" | "all"; status?: RealtimeFriendRequest["status"] } = {}) {
     return httpClient.request<PaginatedRealtimeData<RealtimeFriendRequest>>("/im/friend-requests", { query });

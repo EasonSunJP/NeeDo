@@ -64,6 +64,7 @@ describe("formal IM adapter", () => {
           },
           nickname: "小林技师",
           source: "simulation_seed",
+          isBlocked: false,
           createdAt: now,
         },
       ],

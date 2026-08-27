@@ -360,7 +360,7 @@ function toContact(contact: RealtimeContact): ContactRelation {
     remarkName: contact.nickname ?? undefined,
     tags: [],
     isStarred: false,
-    isBlocked: false,
+    isBlocked: contact.isBlocked,
     createdAt: contact.createdAt,
     updatedAt: contact.createdAt,
   };
@@ -550,8 +550,20 @@ export function createFormalImApi({
     },
     updateRemark: featureUnavailable,
     updateContactTags: featureUnavailable,
-    blockContact: featureUnavailable,
-    unblockContact: featureUnavailable,
+    async blockContact(contactId: string) {
+      return {
+        contact: toContact(
+          await realtimeApi.blockContact(toNumericId(contactId)),
+        ),
+      };
+    },
+    async unblockContact(contactId: string) {
+      return {
+        contact: toContact(
+          await realtimeApi.unblockContact(toNumericId(contactId)),
+        ),
+      };
+    },
     deleteContact: featureUnavailable,
     async listFriendRequests() {
       const friendRequests = await loadFriendRequests();
