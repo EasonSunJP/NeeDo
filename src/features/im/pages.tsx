@@ -144,10 +144,10 @@ import {
   useImStore
 } from "./store";
 import { useSocial } from "../social/context";
-import { MediaPlayGlyph } from "../social/components/SocialUi";
 import { socialPaths } from "../social/paths";
-import type { SocialMediaItem, SocialPortalScope } from "../social/types";
+import type { SocialPortalScope } from "../social/types";
 import { profileKey } from "../social/utils";
+import { realtimeApi, type RealtimeSocialActivityStatus } from "../realtime/api";
 import { useDineInStore } from "../dine-in/store";
 import type { ServiceItem, Store, Technician } from "../../types/domain";
 
@@ -1159,68 +1159,35 @@ function resolveImUserSocialKey(user?: ImUser) {
   return profileKey({ entityType, id: user.entityId });
 }
 
-function ImContactMomentsEntry({
-  media,
+export function ImContactActivityEntry({
+  status,
   to
 }: {
-  media: SocialMediaItem[];
+  status: RealtimeSocialActivityStatus["status"] | "error" | "loading";
   to: string;
 }) {
+  const statusLabel = status === "recent_posts"
+    ? "前往好友的动态页"
+    : status === "no_recent_posts"
+      ? "好友近期无动态"
+      : status === "error"
+        ? "动态暂时无法加载"
+        : "正在查看好友近期动态";
+
   return (
     <Link
-      aria-label="查看动态"
+      aria-label={statusLabel}
       className="focus-ring flex min-h-[84px] items-center gap-4 rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 text-[color:var(--client-text)] shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)] transition hover:border-[color:color-mix(in_srgb,var(--client-primary)_46%,var(--client-line))] hover:bg-[color:color-mix(in_srgb,var(--client-primary)_8%,var(--client-surface))]"
       to={to}
     >
       <span className="shrink-0 text-[15px] font-black">动态</span>
       <span className="ml-auto flex min-w-0 items-center justify-end gap-2">
-        {media.length > 0 ? (
-          <span className="flex min-w-0 items-center justify-end gap-1.5 overflow-hidden">
-            {media.slice(0, 5).map((item, index) => (
-              <ImContactMomentsMediaTile index={index} key={item.id} media={item} />
-            ))}
-          </span>
-        ) : (
-          <span className="truncate text-xs font-semibold text-[color:var(--client-muted)]">暂无动态</span>
-        )}
+        <span className="truncate text-xs font-semibold text-[color:var(--client-muted)]">{statusLabel}</span>
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[color:var(--client-muted)]">
           <ImIcon className="h-4 w-4 -rotate-90" name="chevron-down" />
         </span>
       </span>
     </Link>
-  );
-}
-
-function ImContactMomentsMediaTile({
-  index,
-  media
-}: {
-  index: number;
-  media: SocialMediaItem;
-}) {
-  const previewUrl = media.type === "video" ? media.thumbnailUrl ?? media.url : media.url;
-  const label = media.type === "video" ? "视频" : "图片";
-
-  return (
-    <span
-      className={cn(
-        "relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-[color:color-mix(in_srgb,var(--client-elevated)_72%,var(--client-surface))]",
-        index >= 4 ? "hidden min-[430px]:block" : ""
-      )}
-    >
-      {media.type === "video" && !media.thumbnailUrl ? (
-        <video className="h-full w-full object-cover" muted playsInline preload="metadata" src={media.url} />
-      ) : (
-        <img alt={media.alt ?? `动态${label}${index + 1}`} className="h-full w-full object-cover" src={previewUrl} />
-      )}
-      {media.type === "video" ? (
-        <span className="pointer-events-none absolute inset-0 grid place-items-center bg-black/18 text-white">
-          <span className="grid h-5 w-5 place-items-center rounded-full bg-black/58">
-            <MediaPlayGlyph className="ml-0.5 h-2.5 w-2.5" />
-          </span>
-        </span>
-      ) : null}
-    </span>
   );
 }
 
@@ -6078,6 +6045,15 @@ export function ImConversationInfoPage() {
   const conversation = conversationId ? store.conversations.find((item) => item.id === conversationId) : undefined;
   const contact = conversation?.contactUserId ? store.contacts.find((item) => item.targetUserId === conversation.contactUserId) : undefined;
   const user = conversation?.contactUserId ? store.usersById[conversation.contactUserId] : undefined;
+  const numericContactUserId = Number(user?.id);
+  const formalActivityTargetUserId = conversation?.type === "single"
+    && !isStaticDemoMode()
+    && /^n\d{10}$/.test(user?.userIdLabel ?? "")
+    && Number.isSafeInteger(numericContactUserId)
+    && numericContactUserId > 0
+    ? numericContactUserId
+    : undefined;
+  const [formalActivityStatus, setFormalActivityStatus] = useState<RealtimeSocialActivityStatus["status"] | "error" | "loading">("loading");
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(Boolean(conversation?.privacyModeEnabled));
   const [hideMemberProfilesEnabled, setHideMemberProfilesEnabled] = useState(Boolean(conversation?.hideMemberProfiles));
   const [privacyCountdownInput, setPrivacyCountdownInput] = useState<GroupPrivacyCountdownInput>(() => createCountdownInput(conversation?.disappearingCountdown));
@@ -6149,6 +6125,31 @@ export function ImConversationInfoPage() {
       });
     }
   }, [config.routes.messages, conversationId, navigate]);
+
+  useEffect(() => {
+    if (!formalActivityTargetUserId) {
+      setFormalActivityStatus("no_recent_posts");
+      return;
+    }
+
+    let cancelled = false;
+    setFormalActivityStatus("loading");
+    void realtimeApi.getSocialActivityStatus(formalActivityTargetUserId)
+      .then((result) => {
+        if (!cancelled) {
+          setFormalActivityStatus(result.status);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFormalActivityStatus("error");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formalActivityTargetUserId]);
 
   useEffect(() => {
     if (!conversation) {
@@ -6344,9 +6345,19 @@ export function ImConversationInfoPage() {
   const infoSocialProfile = infoSocialProfileKey ? social.profiles[infoSocialProfileKey] : undefined;
   const infoSocialProfileTo = infoCardProfileRef && infoSocialProfile ? socialPaths.profile(socialScope, infoCardProfileRef) : undefined;
   const infoSocialActorKey = social.getActorForScope(socialScope);
-  const infoSocialPreviewMedia = infoSocialProfileKey && infoSocialProfile
-    ? social.getProfilePosts(infoSocialProfileKey, "media", infoSocialActorKey).flatMap((post) => post.media).slice(0, 5)
-    : [];
+  const recentActivityCutoffMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const hasLegacyRecentActivity = infoSocialProfileKey && infoSocialProfile
+    ? social.getProfilePosts(infoSocialProfileKey, "posts", infoSocialActorKey)
+      .some((post) => Date.parse(post.createdAt) >= recentActivityCutoffMs)
+    : false;
+  const infoActivityTo = formalActivityTargetUserId
+    ? socialPaths.accountProfile(socialScope, formalActivityTargetUserId)
+    : infoSocialProfileTo;
+  const infoActivityStatus = formalActivityTargetUserId
+    ? formalActivityStatus
+    : hasLegacyRecentActivity
+      ? "recent_posts"
+      : "no_recent_posts";
   const startChatTarget = getConversationInfoStartChatTarget(config, conversation);
 
   return (
@@ -6356,7 +6367,6 @@ export function ImConversationInfoPage() {
       </div>
       <div className={cn("space-y-4 px-4 pt-4", startChatTarget ? "pb-32" : "pb-4")}>
         {infoMiniCard ?? (user ? <ContactSummaryCard contact={contact} detailTo={infoCardDetailTo} showTags={false} user={user} /> : null)}
-        {infoSocialProfileTo ? <ImContactMomentsEntry media={infoSocialPreviewMedia} to={infoSocialProfileTo} /> : null}
 
         <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">
           <div className="flex items-center justify-between gap-3">
@@ -6390,6 +6400,8 @@ export function ImConversationInfoPage() {
             <p className="mt-3 text-sm font-semibold text-[color:var(--client-muted)]">还没有添加标签</p>
           )}
         </section>
+
+        {infoActivityTo ? <ImContactActivityEntry status={infoActivityStatus} to={infoActivityTo} /> : null}
 
         {conversation.type === "group" ? (
           <section className="rounded-[26px] border border-[color:color-mix(in_srgb,var(--client-line)_66%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] px-5 py-4 shadow-[0_18px_44px_color-mix(in_srgb,var(--client-shadow)_18%,transparent)]">

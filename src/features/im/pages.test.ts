@@ -1,9 +1,63 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import { getConversationInfoStartChatTarget, imConversationQuickSearchItems } from "./pages";
+import { ImContactActivityEntry, getConversationInfoStartChatTarget, imConversationQuickSearchItems } from "./pages";
 import { getImRoleConfig } from "./role-config";
 import pagesSource from "./pages.tsx?raw";
 
 describe("IM pages", () => {
+  it("renders the recent friend activity state as a text-only link", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(ImContactActivityEntry, {
+          status: "recent_posts",
+          to: "/moments/users/237"
+        })
+      )
+    );
+
+    expect(markup).toContain('href="/moments/users/237"');
+    expect(markup).toContain("前往好友的动态页");
+    expect(markup).not.toContain("<img");
+    expect(markup).not.toContain("<video");
+  });
+
+  it("renders the no-recent-post state as the same clickable text-only entry", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        MemoryRouter,
+        null,
+        createElement(ImContactActivityEntry, {
+          status: "no_recent_posts",
+          to: "/moments/users/237"
+        })
+      )
+    );
+
+    expect(markup).toContain('href="/moments/users/237"');
+    expect(markup).toContain("好友近期无动态");
+    expect(markup).not.toContain("暂无动态");
+    expect(markup).not.toContain("<img");
+    expect(markup).not.toContain("<video");
+  });
+
+  it("places the friend activity entry immediately after the contact tags section", () => {
+    const componentStart = pagesSource.indexOf("export function ImConversationInfoPage");
+    const componentEnd = pagesSource.indexOf("export function ImConversationSearchPage", componentStart);
+    const componentSource = pagesSource.slice(componentStart, componentEnd);
+    const tagsIndex = componentSource.indexOf('>标签</h2>');
+    const activityIndex = componentSource.indexOf("<ImContactActivityEntry");
+
+    expect(tagsIndex).toBeGreaterThan(-1);
+    expect(activityIndex).toBeGreaterThan(tagsIndex);
+    expect(componentSource.slice(tagsIndex, activityIndex)).toContain("</section>");
+    expect(componentSource).not.toContain("ImContactMomentsEntry");
+    expect(componentSource).not.toContain("infoSocialPreviewMedia");
+  });
+
   it("defines icon-backed quick search entries for conversation search", () => {
     expect(imConversationQuickSearchItems.map((item) => item.label)).toEqual([
       "群成员",

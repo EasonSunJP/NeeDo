@@ -41,6 +41,28 @@ describe("formal realtime API", () => {
     );
   });
 
+  it("loads one friend's rolling activity status without listing or downloading post media", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({
+      status: "recent_posts",
+      latestVisiblePostAt: "2026-08-27T08:00:00.000Z",
+      profile: {
+        userId: 237,
+        username: "sim-friend-237",
+        displayName: "柴田 阳菜",
+        avatarUrl: null,
+        entityType: "user",
+        joinedAt: "2026-01-02T03:04:05.000Z"
+      }
+    }));
+
+    await realtimeApi.getSocialActivityStatus(237);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/social/users/237/activity-status",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("parses authenticated SSE events and sends the last event id on reconnect", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
