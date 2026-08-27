@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FormalAccountSecurityPanel, getPortalEntry, resolveSettingsSelectedPortal, shouldKeepSettingsRoutePortal } from "./UnifiedSettingsPages";
 import { translateText, type Language } from "../../i18n/translations";
+import backendPortalSource from "./TestOnlyBackendPortalEntries.tsx?raw";
 import source from "./UnifiedSettingsPages.tsx?raw";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -423,10 +424,10 @@ describe("UnifiedSettingsPortalPage", () => {
     expect(source).toContain("function SettingsPortalActionRow");
     expect(source).toContain('className="h-4 w-4 text-[10px]"');
     expect(portalPageSource).toContain("t(compactPortalLabels[row.portal].caption)");
-    expect(portalPageSource).toContain("info={t(entry.subtitle)}");
-    expect(portalPageSource).toContain("trailing={<SettingsArrow />}");
+    expect(backendPortalSource).toContain("content={t(entry.subtitle)}");
+    expect(backendPortalSource).toContain('<SettingsArrow className="pointer-events-none relative z-20" />');
     expect(portalPageSource).not.toContain("{t(compactPortalLabels[item].caption)}</p>");
-    expect(portalPageSource).not.toContain("subtitle={t(entry.subtitle)}");
+    expect(backendPortalSource).not.toContain("subtitle={t(entry.subtitle)}");
   });
 
   it("waits for a formal identity switch before navigating", () => {
@@ -448,7 +449,15 @@ describe("UnifiedSettingsPortalPage", () => {
   it("keeps merchant identity switching on the merchant app instead of technician", () => {
     expect(getPortalEntry("merchant")).toBe("/merchant");
     expect(getPortalEntry("technician")).toBe("/technician");
-    expect(source).toContain('href: "/store-admin.html#/login/merchant-admin"');
+    expect(backendPortalSource).toContain('href: "/store-admin.html#/login/merchant-admin"');
+  });
+
+  it("keeps temporary backend entries behind one removable component boundary", () => {
+    expect(source).toContain('import { TestOnlyBackendPortalEntries } from "./TestOnlyBackendPortalEntries";');
+    expect(portalPageSource).toContain("<TestOnlyBackendPortalEntries t={t} />");
+    expect(source).not.toContain("const backendSettingsPortalEntries");
+    expect(portalPageSource).not.toContain("window.location.assign");
+    expect(portalPageSource).not.toContain("openBackendPortal");
   });
 });
 
