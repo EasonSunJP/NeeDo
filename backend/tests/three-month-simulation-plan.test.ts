@@ -2,7 +2,9 @@ import {
   LIFEDANCE_ADMIN_EMAIL,
   LIFEDANCE_SHOP_KEY,
   LIFEDANCE_SHOP_NAME,
+  SIMULATION_AS_OF_AT,
   SIMULATION_END_AT,
+  SIMULATION_NAMESPACE,
   SIMULATION_ORDER_PREFIX,
   SIMULATION_START_AT,
   buildThreeMonthSimulationPlan
@@ -11,16 +13,20 @@ import {
 describe("three-month simulation plan", () => {
   const plan = buildThreeMonthSimulationPlan();
 
+  it("uses the stable LifeDance operating dataset namespace", () => {
+    expect(SIMULATION_NAMESPACE).toBe("lifedance_real_ops_v1");
+  });
+
   it("creates the requested isolated account cohort", () => {
     expect(plan.shops).toHaveLength(10);
     expect(plan.technicians).toHaveLength(100);
     expect(plan.customers).toHaveLength(100);
 
-    for (const shop of plan.shops) {
-      expect(plan.technicians.filter((technician) => technician.shopKey === shop.key)).toHaveLength(
-        10
-      );
-    }
+    const technicianCounts = plan.shops.map(
+      (shop) => plan.technicians.filter((technician) => technician.shopKey === shop.key).length
+    );
+    expect(technicianCounts[0]).toBe(20);
+    expect(technicianCounts.slice(1).every((count) => count === 8 || count === 9)).toBe(true);
 
     const accountEmails = [
       ...plan.shops.map((shop) => shop.ownerEmail),
@@ -31,6 +37,32 @@ describe("three-month simulation plan", () => {
     expect(accountEmails.filter((email) => !email.startsWith("sim."))).toEqual([
       LIFEDANCE_ADMIN_EMAIL
     ]);
+  });
+
+  it("assigns technicians 001-020 to LifeDance with persisted employment contracts", () => {
+    const lifeDanceStaff = plan.technicians.filter(
+      (technician) => technician.shopKey === LIFEDANCE_SHOP_KEY
+    );
+
+    expect(lifeDanceStaff).toHaveLength(20);
+    expect(
+      lifeDanceStaff.slice(0, 10).every((technician) => technician.employmentType === "FULL_TIME")
+    ).toBe(true);
+    expect(
+      lifeDanceStaff.slice(10).every((technician) => technician.employmentType === "TEMPORARY")
+    ).toBe(true);
+    expect(
+      lifeDanceStaff.every(
+        (technician) => technician.employmentStartedAt === "2026-06-01T00:00:00.000Z"
+      )
+    ).toBe(true);
+    expect(
+      plan.technicians.slice(20).every(
+        (technician) =>
+          technician.employmentType === "FULL_TIME" ||
+          technician.employmentType === "TEMPORARY"
+      )
+    ).toBe(true);
   });
 
   it("updates the first stable shop slot into the administrator-owned LifeDance shop", () => {
@@ -119,7 +151,61 @@ describe("three-month simulation plan", () => {
     }
   });
 
+  it("gives every LifeDance employee non-overlapping work, completed monthly orders and a future reservation", () => {
+    const toTokyoMonth = (iso: string): string =>
+      new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1_000).toISOString().slice(0, 7);
+    const lifeDanceStaff = plan.technicians.filter(
+      (technician) => technician.shopKey === LIFEDANCE_SHOP_KEY
+    );
+    const technicianServiceByTechnician = new Map(
+      plan.technicianServices.map((service) => [service.technicianKey, service])
+    );
+    const serviceByKey = new Map(plan.services.map((service) => [service.key, service]));
+
+    for (const technician of lifeDanceStaff) {
+      const slots = plan.scheduleSlots
+        .filter((slot) => slot.technicianKey === technician.key)
+        .sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+      const bookings = plan.bookings.filter(
+        (booking) => booking.technicianKey === technician.key
+      );
+      expect(slots.length).toBeGreaterThanOrEqual(26);
+      expect(bookings.length).toBeGreaterThanOrEqual(12);
+      expect(bookings.filter((booking) => booking.status === "COMPLETED").length).toBeGreaterThanOrEqual(6);
+      expect(
+        bookings.some(
+          (booking) =>
+            booking.status === "CONFIRMED" && booking.startsAt > SIMULATION_AS_OF_AT
+        )
+      ).toBe(true);
+      for (const month of ["2026-06", "2026-07", "2026-08"]) {
+        expect(
+          bookings.some(
+            (booking) =>
+              booking.status === "COMPLETED" && toTokyoMonth(booking.endsAt) === month
+          )
+        ).toBe(true);
+      }
+      for (let index = 1; index < slots.length; index += 1) {
+        expect(new Date(slots[index]!.startsAt).getTime()).toBeGreaterThanOrEqual(
+          new Date(slots[index - 1]!.endsAt).getTime()
+        );
+      }
+
+      const technicianService = technicianServiceByTechnician.get(technician.key);
+      expect(technicianService).toBeDefined();
+      for (const booking of bookings) {
+        const service = serviceByKey.get(booking.serviceKey);
+        expect(booking.shopKey).toBe(technician.shopKey);
+        expect(booking.technicianServiceKey).toBe(technicianService?.key);
+        expect(technicianService?.shopKey).toBe(booking.shopKey);
+        expect(service?.shopKey).toBe(booking.shopKey);
+      }
+    }
+  });
+
   it("includes bookings, completed service, cancellations and future reservations", () => {
+    expect(SIMULATION_ORDER_PREFIX).toBe("LD2026-");
     expect(plan.bookings.length).toBeGreaterThan(1_000);
     expect(new Set(plan.bookings.map((booking) => booking.orderNo)).size).toBe(
       plan.bookings.length

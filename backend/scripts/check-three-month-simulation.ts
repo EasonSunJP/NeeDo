@@ -7,7 +7,9 @@ import { resolve } from "node:path";
 import {
   LIFEDANCE_ADMIN_EMAIL,
   LIFEDANCE_LEGACY_OWNER_EMAIL,
+  LIFEDANCE_SHOP_KEY,
   LIFEDANCE_SHOP_NAME,
+  SIMULATION_AS_OF_AT,
   SIMULATION_END_AT,
   SIMULATION_NAMESPACE,
   SIMULATION_ORDER_PREFIX,
@@ -15,6 +17,7 @@ import {
   buildThreeMonthSimulationPlan
 } from "../src/simulation/three-month-simulation-plan";
 import { getSimulationSeedConfig } from "../src/simulation/simulation-seed-config";
+import { BackofficeRepository } from "../src/repositories/backoffice.repository";
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) {
@@ -63,7 +66,15 @@ const main = async (): Promise<void> => {
           email: true,
           passwordHash: true,
           avatarUrl: true,
-          technicianProfile: { select: { id: true, shopId: true, status: true } },
+          technicianProfile: {
+            select: {
+              id: true,
+              shopId: true,
+              status: true,
+              employmentType: true,
+              employmentStartedAt: true
+            }
+          },
           customerProfile: { select: { id: true } }
         }
       }),
@@ -386,7 +397,6 @@ const main = async (): Promise<void> => {
       technicianServices,
       scheduleSlots,
       bookings,
-      financials,
       customerWallets,
       seedLedgerTransactions,
       seedWalletLedgers,
@@ -402,20 +412,40 @@ const main = async (): Promise<void> => {
           startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) },
           deletedAt: null
         },
-        select: { id: true, startsAt: true, endsAt: true }
+        select: { id: true, technicianProfileId: true, startsAt: true, endsAt: true }
       }),
       prisma.bookingOrder.findMany({
         where: { orderNo: { startsWith: SIMULATION_ORDER_PREFIX }, deletedAt: null },
-        select: { id: true, orderNo: true, status: true, startsAt: true, endsAt: true }
-      }),
-      prisma.orderFinancial.count({
-        where: {
-          bookingOrder: {
-            orderNo: { startsWith: SIMULATION_ORDER_PREFIX },
-            status: BookingOrderStatus.COMPLETED,
-            deletedAt: null
+        select: {
+          id: true,
+          orderNo: true,
+          shopId: true,
+          technicianProfileId: true,
+          status: true,
+          priceAmount: true,
+          paymentStatus: true,
+          paymentAmountJpy: true,
+          serviceSnapshotJson: true,
+          startsAt: true,
+          endsAt: true,
+          statusHistory: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "asc" },
+            select: { toStatus: true, createdAt: true }
           },
-          deletedAt: null
+          financial: {
+            select: {
+              serviceAmountJpy: true,
+              offlineReportedServiceAmountJpy: true,
+              paymentChannel: true,
+              serviceIncomeStatus: true,
+              moneyTimelineJson: true,
+              serviceIncomeConfirmedById: true,
+              serviceIncomeConfirmedAt: true,
+              settlementStatus: true,
+              deletedAt: true
+            }
+          }
         }
       }),
       prisma.wallet.findMany({
@@ -439,7 +469,7 @@ const main = async (): Promise<void> => {
       prisma.notification.count({
         where: {
           recipientUserId: { in: customerUsers.map((user) => user.id) },
-          title: "Simulation booking update",
+          title: "ご予約状況のお知らせ",
           deletedAt: null
         }
       })
@@ -498,19 +528,82 @@ const main = async (): Promise<void> => {
     }
 
     const completedBookings = expectedStatusCounts.get("COMPLETED") ?? 0;
-    assert(
-      financials === completedBookings,
-      `expected ${completedBookings} completed-order financials, found ${financials}`
+    const orderFinancials = bookings.flatMap((booking) =>
+      booking.financial && !booking.financial.deletedAt ? [booking.financial] : []
     );
-    const historyCount = await prisma.orderStatusHistory.count({
-      where: {
-        bookingOrder: { orderNo: { startsWith: SIMULATION_ORDER_PREFIX }, deletedAt: null },
-        deletedAt: null
+    assert(
+      orderFinancials.length === completedBookings,
+      `expected ${completedBookings} completed-order financials, found ${orderFinancials.length}`
+    );
+    for (const booking of bookings) {
+      const snapshot = readJsonRecord(booking.serviceSnapshotJson);
+      assert(
+        snapshot?.namespace === SIMULATION_NAMESPACE &&
+          snapshot.dataset === "lifedance_real_operations",
+        `${booking.orderNo} is missing the formal dataset marker`
+      );
+      const latestHistory = booking.statusHistory.at(-1);
+      assert(latestHistory, `${booking.orderNo} has no status history`);
+      assert(
+        latestHistory.toStatus === booking.status,
+        `${booking.orderNo} latest history does not match its order status`
+      );
+      if (booking.status === BookingOrderStatus.COMPLETED) {
+        const financial = booking.financial;
+        assert(financial && !financial.deletedAt, `${booking.orderNo} has no active financial`);
+        assert(
+          booking.paymentStatus === "CONFIRMED" &&
+            booking.paymentAmountJpy === Number(booking.priceAmount),
+          `${booking.orderNo} payment is not confirmed or reconciled`
+        );
+        assert(
+          financial.serviceAmountJpy === Number(booking.priceAmount) &&
+            financial.offlineReportedServiceAmountJpy === Number(booking.priceAmount) &&
+            financial.serviceIncomeStatus === "confirmed" &&
+            ["offline_card", "onsite_cash"].includes(financial.paymentChannel) &&
+            financial.serviceIncomeConfirmedById === admin.id &&
+            financial.serviceIncomeConfirmedAt &&
+            financial.settlementStatus === "ready_for_payroll" &&
+            Array.isArray(financial.moneyTimelineJson) &&
+            financial.moneyTimelineJson.length > 0,
+          `${booking.orderNo} income or settlement fields do not reconcile`
+        );
+      } else {
+        assert(!booking.financial, `${booking.orderNo} must not have confirmed income`);
       }
-    });
+    }
+    const historyCount = bookings.reduce(
+      (total, booking) => total + booking.statusHistory.length,
+      0
+    );
     assert(
       historyCount === plan.histories.length,
       `expected ${plan.histories.length} status-history rows, found ${historyCount}`
+    );
+    const representativeLifeDanceOrder = bookings.find(
+      (booking) => booking.shopId === lifeDanceShop.id
+    );
+    assert(representativeLifeDanceOrder, "LifeDance has no representative order");
+    const backofficeRepository = new BackofficeRepository(prisma);
+    const [platformOrderResult, merchantOrderResult] = await Promise.all([
+      backofficeRepository.listOrders({
+        scope: "platform",
+        page: 1,
+        pageSize: 1,
+        keyword: representativeLifeDanceOrder.orderNo
+      }),
+      backofficeRepository.listOrders({
+        scope: "merchant",
+        shopId: lifeDanceShop.id,
+        page: 1,
+        pageSize: 1,
+        keyword: representativeLifeDanceOrder.orderNo
+      })
+    ]);
+    assert(
+      platformOrderResult.list[0]?.id === representativeLifeDanceOrder.id &&
+        merchantOrderResult.list[0]?.id === representativeLifeDanceOrder.id,
+      "the same LifeDance order must be visible in platform and merchant repository scopes"
     );
 
     const candidateMessages = await prisma.message.findMany({
@@ -658,10 +751,97 @@ const main = async (): Promise<void> => {
       assert(shopId, `technician ${user.email} has no shop`);
       techniciansPerShop.set(shopId, (techniciansPerShop.get(shopId) ?? 0) + 1);
     }
-    assert(
-      shops.every((shop) => techniciansPerShop.get(shop.id) === 10),
-      "every simulation shop must have exactly 10 technicians"
+    const shopIdByKey = new Map(
+      plan.shops.flatMap((shopPlan) => {
+        const ownerId = ownerIdByKey.get(shopPlan.key);
+        const shop = shops.find((candidate) => candidate.ownerUserId === ownerId);
+        return shop ? [[shopPlan.key, shop.id] as const] : [];
+      })
     );
+    const expectedTechniciansPerShop = new Map<string, number>();
+    for (const technician of plan.technicians) {
+      expectedTechniciansPerShop.set(
+        technician.shopKey,
+        (expectedTechniciansPerShop.get(technician.shopKey) ?? 0) + 1
+      );
+    }
+    for (const [shopKey, expectedCount] of expectedTechniciansPerShop) {
+      const shopId = shopIdByKey.get(shopKey);
+      assert(shopId, `shop id is missing for ${shopKey}`);
+      assert(
+        techniciansPerShop.get(shopId) === expectedCount,
+        `${shopKey} expected ${expectedCount} technicians, found ${techniciansPerShop.get(shopId) ?? 0}`
+      );
+    }
+
+    const lifeDanceTechnicianPlans = plan.technicians.filter(
+      (technician) => technician.shopKey === LIFEDANCE_SHOP_KEY
+    );
+    const lifeDanceTechnicians = lifeDanceTechnicianPlans.map((technicianPlan) => {
+      const user = technicianUsers.find((candidate) => candidate.email === technicianPlan.email);
+      assert(user?.technicianProfile, `${technicianPlan.email} profile is missing`);
+      const expectedEmploymentType =
+        technicianPlan.employmentType === "FULL_TIME"
+          ? TechnicianEmploymentType.FULL_TIME
+          : TechnicianEmploymentType.TEMPORARY;
+      assert(
+        user.technicianProfile.shopId === lifeDanceShop.id &&
+          user.technicianProfile.employmentType === expectedEmploymentType &&
+          user.technicianProfile.employmentStartedAt?.toISOString() ===
+            technicianPlan.employmentStartedAt,
+        `${technicianPlan.email} employment does not match the LifeDance plan`
+      );
+      return { technicianPlan, user, profile: user.technicianProfile };
+    });
+    assert(lifeDanceTechnicians.length === 20, "LifeDance must have exactly 20 active employees");
+    assert(
+      lifeDanceTechnicians.filter(
+        ({ profile }) => profile.employmentType === TechnicianEmploymentType.FULL_TIME
+      ).length === 10 &&
+        lifeDanceTechnicians.filter(
+          ({ profile }) => profile.employmentType === TechnicianEmploymentType.TEMPORARY
+        ).length === 10,
+      "LifeDance employment must be 10 full-time and 10 temporary technicians"
+    );
+
+    for (const { technicianPlan, profile } of lifeDanceTechnicians) {
+      const technicianSlots = scheduleSlots
+        .filter((slot) => slot.technicianProfileId === profile.id)
+        .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime());
+      const technicianBookings = bookings.filter(
+        (booking) => booking.technicianProfileId === profile.id
+      );
+      const completed = technicianBookings.filter(
+        (booking) => booking.status === BookingOrderStatus.COMPLETED
+      );
+      const completedTokyoMonths = new Set(
+        completed.map(
+          (booking) =>
+            new Date(booking.startsAt.getTime() + 9 * 60 * 60 * 1_000).getUTCMonth() + 1
+        )
+      );
+      assert(technicianSlots.length >= 26, `${technicianPlan.key} has fewer than 26 shifts`);
+      assert(technicianBookings.length >= 12, `${technicianPlan.key} has fewer than 12 bookings`);
+      assert(completed.length >= 6, `${technicianPlan.key} has fewer than 6 completed bookings`);
+      assert(
+        [6, 7, 8].every((month) => completedTokyoMonths.has(month)),
+        `${technicianPlan.key} needs completed work in June, July and August`
+      );
+      assert(
+        technicianBookings.some(
+          (booking) =>
+            booking.status === BookingOrderStatus.CONFIRMED &&
+            booking.startsAt > new Date(SIMULATION_AS_OF_AT)
+        ),
+        `${technicianPlan.key} has no future confirmed booking`
+      );
+      assert(
+        technicianSlots.every(
+          (slot, index) => index === 0 || technicianSlots[index - 1]!.endsAt <= slot.startsAt
+        ),
+        `${technicianPlan.key} has overlapping shifts`
+      );
+    }
 
     const representativeAccounts = [owners[0], technicianUsers[0], customerUsers[0]];
     assert(representativeAccounts.every(Boolean), "representative login accounts are missing");
@@ -692,7 +872,7 @@ const main = async (): Promise<void> => {
       JSON.stringify(
         {
           database: seedConfig.databaseName,
-          accounts: {
+          account: {
             merchantOwners: owners.length,
             technicians: technicianUsers.length,
             customers: customerUsers.length,
@@ -703,7 +883,20 @@ const main = async (): Promise<void> => {
             unique: new Set(simulationUsers.map((user) => user.avatarUrl)).size,
             shopUnique: new Set(owners.map((owner) => owner.avatarUrl)).size
           },
-          shops: shops.length,
+          shop: {
+            total: shops.length,
+            lifeDanceShopId: lifeDanceShop.id,
+            lifeDanceName: lifeDanceShop.name
+          },
+          employment: {
+            lifeDanceEmployees: lifeDanceTechnicians.length,
+            fullTime: lifeDanceTechnicians.filter(
+              ({ profile }) => profile.employmentType === TechnicianEmploymentType.FULL_TIME
+            ).length,
+            temporary: lifeDanceTechnicians.filter(
+              ({ profile }) => profile.employmentType === TechnicianEmploymentType.TEMPORARY
+            ).length
+          },
           techniciansPerShop: Object.fromEntries(
             shops.map((shop) => [shop.id, techniciansPerShop.get(shop.id) ?? 0])
           ),
@@ -717,15 +910,26 @@ const main = async (): Promise<void> => {
           },
           seedLedgerTransactions,
           seedWalletLedgers,
-          scheduleSlots: scheduleSlots.length,
-          scheduleRange: {
-            first: firstSlot.startsAt.toISOString(),
-            last: lastSlot.endsAt.toISOString()
+          schedule: {
+            slots: scheduleSlots.length,
+            range: {
+              first: firstSlot.startsAt.toISOString(),
+              last: lastSlot.endsAt.toISOString()
+            }
           },
           bookings: bookings.length,
-          bookingStatuses: Object.fromEntries(actualStatusCounts),
+          bookingsByStatus: Object.fromEntries(actualStatusCounts),
           statusHistories: historyCount,
-          completedOrderFinancials: financials,
+          orderFinancials: {
+            count: orderFinancials.length,
+            readyForPayroll: orderFinancials.filter(
+              (financial) => financial.settlementStatus === "ready_for_payroll"
+            ).length,
+            serviceIncomeJpy: orderFinancials.reduce(
+              (total, financial) => total + financial.serviceAmountJpy,
+              0
+            )
+          },
           notifications,
           simulationConversations: simulationConversations.length,
           simulationMessages: simulationMessages.length,

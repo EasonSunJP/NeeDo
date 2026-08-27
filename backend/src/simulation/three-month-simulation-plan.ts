@@ -1,8 +1,8 @@
-export const SIMULATION_NAMESPACE = "needo_three_month_v1";
+export const SIMULATION_NAMESPACE = "lifedance_real_ops_v1";
 export const SIMULATION_START_AT = "2026-06-01T00:00:00.000Z";
 export const SIMULATION_END_AT = "2026-08-31T14:59:59.999Z";
 export const SIMULATION_AS_OF_AT = "2026-08-25T00:00:00.000Z";
-export const SIMULATION_ORDER_PREFIX = "SIM3M-";
+export const SIMULATION_ORDER_PREFIX = "LD2026-";
 export const LIFEDANCE_SHOP_KEY = "shop-001";
 export const LIFEDANCE_ADMIN_EMAIL = "admin@lifedance.com";
 export const LIFEDANCE_LEGACY_OWNER_EMAIL = "sim.shop.001@needo.local";
@@ -39,6 +39,8 @@ export interface SimulationTechnicianPlan {
   city: string;
   serviceArea: string;
   yearsExperience: number;
+  employmentType: "FULL_TIME" | "TEMPORARY";
+  employmentStartedAt: string;
   avatarUrl: string;
 }
 
@@ -252,7 +254,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
       fromStatus: null,
       toStatus: "PENDING",
       actorType: "customer",
-      reason: "simulation_booking_created",
+      reason: "予約を受け付けました。",
       createdAt: requestedAt
     }
   ];
@@ -269,7 +271,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
         fromStatus: "PENDING",
         toStatus: "CANCELLED",
         actorType: "customer",
-        reason: booking.cancelReason ?? "customer_schedule_changed",
+        reason: booking.cancelReason ?? "お客様の予定変更によりキャンセルしました。",
         createdAt: addMinutes(requestedAt, 120)
       }
     ];
@@ -280,7 +282,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
     fromStatus: "PENDING",
     toStatus: "CONFIRMED",
     actorType: "merchant",
-    reason: "simulation_booking_confirmed",
+    reason: "店舗が予約内容を確認しました。",
     createdAt: confirmedAt
   };
 
@@ -293,7 +295,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
     fromStatus: "CONFIRMED",
     toStatus: "IN_SERVICE",
     actorType: "merchant",
-    reason: "simulation_service_started",
+    reason: "担当技師が施術を開始しました。",
     createdAt: inServiceAt
   };
 
@@ -310,7 +312,7 @@ const buildHistories = (booking: SimulationBookingPlan): SimulationOrderHistoryP
       fromStatus: "IN_SERVICE",
       toStatus: "COMPLETED",
       actorType: "merchant",
-      reason: "simulation_service_completed",
+      reason: "施術完了とお支払いを確認しました。",
       createdAt: completedAt
     }
   ];
@@ -342,7 +344,7 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         city,
         address,
         phone: `050-91${pad(sequence, 2)}-${pad(1000 + sequence, 4)}`,
-        description: `${SIMULATION_NAMESPACE} の正式ローカル検証用店舗データです。`,
+        description: `${city}で予約制のボディケアと訪問リラクゼーションを提供しています。`,
         avatarUrl: SHOP_AVATAR_URLS[index]!
       };
     }
@@ -352,7 +354,10 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
     { length: 100 },
     (_, index): SimulationTechnicianPlan => {
       const sequence = index + 1;
-      const shop = shops[Math.floor(index / 10)];
+      const shop =
+        sequence <= 20
+          ? shops[0]
+          : shops[1 + ((sequence - 21) % Math.max(shops.length - 1, 1))];
       if (!shop) {
         throw new Error(`Simulation shop assignment is missing for technician ${sequence}.`);
       }
@@ -365,6 +370,15 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         city: shop.city,
         serviceArea: `${shop.city}および周辺地域`,
         yearsExperience: 1 + (index % 12),
+        employmentType:
+          sequence <= 10
+            ? "FULL_TIME"
+            : sequence <= 20
+              ? "TEMPORARY"
+              : sequence % 3 === 0
+                ? "TEMPORARY"
+                : "FULL_TIME",
+        employmentStartedAt: "2026-06-01T00:00:00.000Z",
         avatarUrl: buildProfileAvatarUrl(sequence, 7)
       };
     }
@@ -479,15 +493,22 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
         const isHistorical = startsAt < SIMULATION_AS_OF_AT;
         const isServiceDay =
           startsAt >= SIMULATION_AS_OF_AT && startsAt < "2026-08-26T00:00:00.000Z";
-        const shouldBook = isServiceDay
+        const isLifeDanceStaff = technician.shopKey === LIFEDANCE_SHOP_KEY;
+        const guaranteedFutureReservation =
+          isLifeDanceStaff && weekIndex === 12 && weeklySlotIndex === 1;
+        const shouldBook = guaranteedFutureReservation
           ? true
-          : isHistorical
-            ? slotSequence % 10 < 7
-            : slotSequence % 4 < 2;
+          : isServiceDay
+            ? true
+            : isHistorical
+              ? isLifeDanceStaff || slotSequence % 10 < 7
+              : slotSequence % 4 < 2;
         let bookingStatus: SimulationBookingStatus | null = null;
 
         if (shouldBook) {
-          if (isServiceDay) {
+          if (guaranteedFutureReservation) {
+            bookingStatus = "CONFIRMED";
+          } else if (isServiceDay) {
             bookingStatus =
               slotSequence % 3 === 0
                 ? "IN_SERVICE"
@@ -495,7 +516,13 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
                   ? "CONFIRMED"
                   : "PENDING";
           } else if (isHistorical) {
-            bookingStatus = slotSequence % 10 < 5 ? "COMPLETED" : "CANCELLED";
+            bookingStatus = isLifeDanceStaff
+              ? weeklySlotIndex === 0 || weekIndex % 4 !== 0
+                ? "COMPLETED"
+                : "CANCELLED"
+              : slotSequence % 10 < 5
+                ? "COMPLETED"
+                : "CANCELLED";
           } else {
             bookingStatus = slotSequence % 4 === 0 ? "PENDING" : "CONFIRMED";
           }
@@ -547,7 +574,10 @@ export const buildThreeMonthSimulationPlan = (): ThreeMonthSimulationPlan => {
           startsAt,
           endsAt,
           createdAt,
-          cancelReason: bookingStatus === "CANCELLED" ? "customer_schedule_changed" : null
+          cancelReason:
+            bookingStatus === "CANCELLED"
+              ? "お客様の予定変更によりキャンセルしました。"
+              : null
         };
         bookings.push(booking);
       }

@@ -52,6 +52,7 @@ import {
 import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const BCRYPT_ROUNDS = 12;
+const LEGACY_SIMULATION_NAMESPACE = "needo_three_month_v1";
 const needoIdAllocator = new NeedoIdAllocator();
 const DEFAULT_ACCOUNT_EXPORT_PATH = "../outputs/NeeDo_正式测试账号_2026-08-25.csv";
 
@@ -141,16 +142,16 @@ const main = async (): Promise<void> => {
           where: { code: "sim3m-wellness" },
           create: {
             code: "sim3m-wellness",
-            name: "Simulation Wellness",
-            nameJa: "シミュレーション・ウェルネス",
-            nameEn: "Simulation Wellness",
+            name: "ボディケア・ウェルネス",
+            nameJa: "ボディケア・ウェルネス",
+            nameEn: "Body Care & Wellness",
             sortOrder: 900,
             isActive: true
           },
           update: {
-            name: "Simulation Wellness",
-            nameJa: "シミュレーション・ウェルネス",
-            nameEn: "Simulation Wellness",
+            name: "ボディケア・ウェルネス",
+            nameJa: "ボディケア・ウェルネス",
+            nameEn: "Body Care & Wellness",
             sortOrder: 900,
             isActive: true,
             deletedAt: null
@@ -290,10 +291,12 @@ const main = async (): Promise<void> => {
               userId,
               shopId: getRequiredId(shopIds, technician.shopKey, "shop"),
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用技師プロフィールです。`,
+              bio: "お客様の体調やご希望を丁寧に伺い、安心できる施術を心がけています。",
               city: technician.city,
               serviceArea: technician.serviceArea,
               yearsExperience: technician.yearsExperience,
+              employmentType: technician.employmentType,
+              employmentStartedAt: new Date(technician.employmentStartedAt),
               status: "published",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
               createdAt: new Date("2026-05-20T00:00:00.000Z")
@@ -301,10 +304,12 @@ const main = async (): Promise<void> => {
             update: {
               shopId: getRequiredId(shopIds, technician.shopKey, "shop"),
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用技師プロフィールです。`,
+              bio: "お客様の体調やご希望を丁寧に伺い、安心できる施術を心がけています。",
               city: technician.city,
               serviceArea: technician.serviceArea,
               yearsExperience: technician.yearsExperience,
+              employmentType: technician.employmentType,
+              employmentStartedAt: new Date(technician.employmentStartedAt),
               status: "published",
               verifiedAt: new Date("2026-05-25T00:00:00.000Z"),
               deletedAt: null
@@ -322,7 +327,7 @@ const main = async (): Promise<void> => {
             create: {
               userId,
               displayName: customer.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用顧客プロフィールです。`,
+              bio: "休日には地域のお店やウェルネスサービスを楽しんでいます。",
               city: customer.city,
               membershipLevel: customer.membershipLevel,
               isPublic: true,
@@ -330,7 +335,7 @@ const main = async (): Promise<void> => {
             },
             update: {
               displayName: customer.displayName,
-              bio: `${SIMULATION_NAMESPACE} の検証用顧客プロフィールです。`,
+              bio: "休日には地域のお店やウェルネスサービスを楽しんでいます。",
               city: customer.city,
               membershipLevel: customer.membershipLevel,
               isPublic: true,
@@ -348,14 +353,14 @@ const main = async (): Promise<void> => {
             create: {
               userId,
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の技師兼顧客プロフィールです。`,
+              bio: "施術の仕事をしながら、地域の新しいサービスも利用しています。",
               city: technician.city,
               membershipLevel: "standard",
               isPublic: true
             },
             update: {
               displayName: technician.displayName,
-              bio: `${SIMULATION_NAMESPACE} の技師兼顧客プロフィールです。`,
+              bio: "施術の仕事をしながら、地域の新しいサービスも利用しています。",
               city: technician.city,
               membershipLevel: "standard",
               isPublic: true,
@@ -378,14 +383,14 @@ const main = async (): Promise<void> => {
             create: {
               userId,
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者兼顧客プロフィールです。`,
+              bio: "地域のお客様に安心して利用いただける店舗運営を心がけています。",
               city: shop.city,
               membershipLevel: "standard",
               isPublic: true
             },
             update: {
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者兼顧客プロフィールです。`,
+              bio: "地域のお客様に安心して利用いただける店舗運営を心がけています。",
               city: shop.city,
               membershipLevel: "standard",
               isPublic: true,
@@ -399,7 +404,7 @@ const main = async (): Promise<void> => {
               userId,
               shopId: getRequiredId(shopIds, shop.key, "shop"),
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。`,
+              bio: "店舗運営と予約管理を担当しています。",
               city: shop.city,
               serviceArea: shop.city,
               yearsExperience: 0,
@@ -411,7 +416,7 @@ const main = async (): Promise<void> => {
             update: {
               shopId: getRequiredId(shopIds, shop.key, "shop"),
               displayName: shop.ownerUsername,
-              bio: `${SIMULATION_NAMESPACE} の店舗運営者用技師プロフィールです。`,
+              bio: "店舗運営と予約管理を担当しています。",
               city: shop.city,
               serviceArea: shop.city,
               yearsExperience: 0,
@@ -872,7 +877,9 @@ const main = async (): Promise<void> => {
           ...new Set(
             existingSimulationMessages.flatMap((message) => {
               const metadata = readJsonRecord(message.metadata);
-              return metadata?.namespace === SIMULATION_NAMESPACE && metadata.dataset === "im"
+              return [SIMULATION_NAMESPACE, LEGACY_SIMULATION_NAMESPACE].includes(
+                String(metadata?.namespace)
+              ) && metadata?.dataset === "im"
                 ? [message.conversationId]
                 : [];
             })
@@ -1032,7 +1039,9 @@ const main = async (): Promise<void> => {
         });
         const simulationSocialPostIds = existingSocialPosts.flatMap((post) => {
           const media = readJsonRecord(post.media);
-          return media?.namespace === SIMULATION_NAMESPACE && media.dataset === "social"
+          return [SIMULATION_NAMESPACE, LEGACY_SIMULATION_NAMESPACE].includes(
+            String(media?.namespace)
+          ) && media?.dataset === "social"
             ? [post.id]
             : [];
         });
@@ -1174,9 +1183,21 @@ const main = async (): Promise<void> => {
           });
         }
 
-        const existingOrders = await tx.bookingOrder.findMany({
-          where: { orderNo: { startsWith: SIMULATION_ORDER_PREFIX } },
-          select: { id: true }
+        const technicianIds = [...technicianProfileIds.values()];
+        const existingOrderCandidates = await tx.bookingOrder.findMany({
+          where: {
+            technicianProfileId: { in: technicianIds },
+            startsAt: { gte: new Date(SIMULATION_START_AT), lte: new Date(SIMULATION_END_AT) }
+          },
+          select: { id: true, orderNo: true, serviceSnapshotJson: true }
+        });
+        const existingOrders = existingOrderCandidates.filter((order) => {
+          const snapshot = readJsonRecord(order.serviceSnapshotJson);
+          return (
+            snapshot?.namespace === SIMULATION_NAMESPACE ||
+            order.orderNo.startsWith(SIMULATION_ORDER_PREFIX) ||
+            order.orderNo.startsWith("SIM3M-")
+          );
         });
         const existingOrderIds = existingOrders.map((order) => order.id);
         if (existingOrderIds.length > 0) {
@@ -1225,7 +1246,6 @@ const main = async (): Promise<void> => {
           await tx.bookingOrder.deleteMany({ where: { id: { in: existingOrderIds } } });
         }
 
-        const technicianIds = [...technicianProfileIds.values()];
         const retiredAt = new Date(SIMULATION_AS_OF_AT);
         await tx.scheduleSlot.updateMany({
           where: {
@@ -1286,7 +1306,7 @@ const main = async (): Promise<void> => {
               ),
               sourceShopServiceId: getRequiredId(serviceIds, service.serviceKey, "service"),
               name: service.name,
-              description: `${SIMULATION_NAMESPACE} の技師別予約メニューです。`,
+              description: "担当技師の経験と施術方針に合わせた予約メニューです。",
               categoryId: category.id,
               priceAmount: service.priceAmountJpy,
               currency: "JPY",
@@ -1426,12 +1446,13 @@ const main = async (): Promise<void> => {
               serviceDurationSnapshot: booking.durationMinutes,
               serviceSnapshotJson: {
                 namespace: SIMULATION_NAMESPACE,
+                dataset: "lifedance_real_operations",
                 serviceKey: booking.serviceKey,
                 slotKey: booking.slotKey
               },
               startsAt: new Date(booking.startsAt),
               endsAt: new Date(booking.endsAt),
-              note: `${SIMULATION_NAMESPACE} deterministic booking`,
+              note: "ご予約ありがとうございます。当日の体調に合わせて施術内容を調整します。",
               cancelReason: booking.cancelReason,
               paymentMethod: ServicePaymentMethod.ONSITE,
               paymentStatus: completed
@@ -1442,8 +1463,8 @@ const main = async (): Promise<void> => {
                 ? getRequiredId(ownerUserIds, booking.shopKey, "shop owner")
                 : null,
               paymentConfirmedAt: completed ? new Date(booking.endsAt) : null,
-              paymentReference: completed ? `SIM-CASH-${booking.orderNo}` : null,
-              paymentNote: completed ? "Simulation onsite payment confirmed." : null,
+              paymentReference: completed ? `POS-${booking.orderNo}` : null,
+              paymentNote: completed ? "店頭でのお支払いを確認しました。" : null,
               createdAt: new Date(booking.createdAt)
             };
           })
@@ -1478,7 +1499,7 @@ const main = async (): Promise<void> => {
         await tx.notification.deleteMany({
           where: {
             recipientUserId: { in: [...customerUserIds.values()] },
-            title: "Simulation booking update"
+            title: { in: ["Simulation booking update", "ご予約状況のお知らせ"] }
           }
         });
         const latestHistoryAt = new Map<string, string>();
@@ -1491,10 +1512,11 @@ const main = async (): Promise<void> => {
               recipientUserId: getRequiredId(customerUserIds, booking.customerKey, "customer user"),
               actorUserId: getRequiredId(ownerUserIds, booking.shopKey, "shop owner"),
               type: NotificationType.ORDER_STATUS,
-              title: "Simulation booking update",
-              body: `${booking.orderNo} status changed to ${booking.status}.`,
+              title: "ご予約状況のお知らせ",
+              body: `${booking.orderNo} の予約状況が更新されました。`,
               payload: {
                 namespace: SIMULATION_NAMESPACE,
+                dataset: "lifedance_real_operations",
                 orderNo: booking.orderNo,
                 status: booking.status
               },
@@ -1513,7 +1535,6 @@ const main = async (): Promise<void> => {
           data: completedBookings.map((booking): Prisma.OrderFinancialCreateManyInput => {
             const ordinal = (completedOrdinalByShop.get(booking.shopKey) ?? 0) + 1;
             completedOrdinalByShop.set(booking.shopKey, ordinal);
-            const ownerUserId = getRequiredId(ownerUserIds, booking.shopKey, "shop owner");
             return {
               bookingOrderId: getRequiredId(orderIds, booking.orderNo, "booking order"),
               orderType: "booking",
@@ -1526,7 +1547,7 @@ const main = async (): Promise<void> => {
               ),
               serviceAmountJpy: booking.priceAmountJpy,
               offlineReportedServiceAmountJpy: booking.priceAmountJpy,
-              paymentChannel: ordinal % 3 === 0 ? "offline_card" : "onsite_cash",
+              paymentChannel: ordinal % 2 === 0 ? "offline_card" : "onsite_cash",
               serviceIncomeStatus: "confirmed",
               bPlatformFeeActualNdp: 500,
               userRewardNdp: ordinal % 5 === 0 ? 100 : 0,
@@ -1534,16 +1555,16 @@ const main = async (): Promise<void> => {
               platformFeePayerId: getRequiredId(shopIds, booking.shopKey, "shop"),
               platformFeeBearerForPayroll: "shop",
               completedOrderOrdinalInPeriod: ordinal,
-              appliedFeeRuleIdsJson: ["simulation:b_platform_fee"],
+              appliedFeeRuleIdsJson: ["lifedance:b_platform_fee"],
               moneyTimelineJson: [
                 { type: "service_income_confirmed", amountJpy: booking.priceAmountJpy },
                 { type: "b_platform_fee_recorded", amountNdp: 500 }
               ],
-              serviceIncomeReportedById: ownerUserId,
+              serviceIncomeReportedById: lifeDanceOwnership.adminUserId,
               serviceIncomeReportedAt: new Date(booking.endsAt),
-              serviceIncomeConfirmedById: ownerUserId,
+              serviceIncomeConfirmedById: lifeDanceOwnership.adminUserId,
               serviceIncomeConfirmedAt: new Date(booking.endsAt),
-              serviceIncomeNote: "Three-month local simulation income record.",
+              serviceIncomeNote: "店頭決済の入金確認済み。給与計算対象として確定しました。",
               settlementStatus: "ready_for_payroll",
               createdAt: new Date(booking.endsAt)
             };
