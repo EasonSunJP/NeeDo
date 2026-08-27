@@ -8,7 +8,7 @@ import type {
   UserRole
 } from "@prisma/client";
 import { prisma } from "../prisma/client";
-import { NeedoIdAllocator } from "../services/needo-id.service";
+import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.service";
 import { IdentifierAllocator } from "../services/public-identifier.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
@@ -92,7 +92,7 @@ const userInclude = {
 export class UserRepository implements UserRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly needoIdAllocator = new NeedoIdAllocator(),
+    private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
     private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
       new IdentifierAllocator(new PublicIdentifierRepository(client))
   ) {}
@@ -136,7 +136,7 @@ export class UserRepository implements UserRepositoryPort {
   }
 
   public async create(input: UserCreateData): Promise<UserRecord> {
-    return this.needoIdAllocator.withNewId((temporaryNeedoId) =>
+    return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
       this.client.$transaction(async (transaction) => {
         const customerRole = await transaction.role.findFirst({
           where: { code: "customer", deletedAt: null },
@@ -146,7 +146,7 @@ export class UserRepository implements UserRepositoryPort {
 
         const user = await transaction.user.create({
           data: {
-            needoId: temporaryNeedoId,
+            needoId: bootstrapKey,
             email: input.email,
             phone: input.phone ?? null,
             emailVerifiedAt: new Date(),

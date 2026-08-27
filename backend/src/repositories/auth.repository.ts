@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env";
 import { prisma } from "../prisma/client";
-import { NeedoIdAllocator } from "../services/needo-id.service";
+import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.service";
 import { IdentifierAllocator } from "../services/public-identifier.service";
 import { PublicIdentifierRepository } from "./public-identifier.repository";
 
@@ -337,7 +337,7 @@ const toAuthUserRecord = (
 export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly needoIdAllocator = new NeedoIdAllocator(),
+    private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
     private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
       new IdentifierAllocator(new PublicIdentifierRepository(client))
   ) {}
@@ -420,7 +420,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   ): Promise<AuthUserRecord> {
     const email = input.email.trim().toLowerCase();
 
-    return this.needoIdAllocator.withNewId(async (needoId) => {
+    return this.bootstrapKeyAllocator.withNewKey(async (bootstrapKey) => {
       try {
         return await this.client.$transaction(async (transaction) => {
           const customerRole = await transaction.role.findFirst({
@@ -431,16 +431,16 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
 
           const user = await transaction.user.create({
             data: {
-              needoId,
+              needoId: bootstrapKey,
               email,
               emailVerifiedAt: input.emailVerifiedAt,
               passwordHash: input.passwordHash,
-              username: needoId,
+              username: bootstrapKey,
               isActive: true
             }
           });
           const customerProfile = await transaction.customerProfile.create({
-            data: { userId: user.id, displayName: needoId }
+            data: { userId: user.id, displayName: bootstrapKey }
           });
           const customerIdentity = await transaction.userIdentity.create({
             data: {
@@ -448,7 +448,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
               type: "customer",
               scopeType: "customer_profile",
               scopeId: customerProfile.id,
-              displayName: needoId,
+              displayName: bootstrapKey,
               isDefault: true,
               isActive: true
             }

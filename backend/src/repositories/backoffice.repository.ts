@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
-import { NeedoIdAllocator } from "../services/needo-id.service";
+import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.service";
 import {
   IdentifierAllocator,
   formatPersonId
@@ -171,7 +171,7 @@ type ServiceRecord = Prisma.ServiceGetPayload<{
 export class BackofficeRepository implements BackofficeRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly needoIdAllocator = new NeedoIdAllocator(),
+    private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
     private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
       new IdentifierAllocator(new PublicIdentifierRepository(client))
   ) {}
@@ -873,7 +873,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public createShop(input: BackofficeShopCreateData): Promise<BackofficeShopPayload> {
-    return this.needoIdAllocator.withNewId((temporaryNeedoId) => this.client.$transaction(async (transaction) => {
+    return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) => this.client.$transaction(async (transaction) => {
       const roles = await transaction.role.findMany({
         where: { code: { in: ["customer", "merchant_owner"] }, deletedAt: null },
         select: { id: true, code: true }
@@ -885,7 +885,7 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
       }
       const owner = await transaction.user.create({
         data: {
-          needoId: temporaryNeedoId,
+          needoId: bootstrapKey,
           email: input.ownerEmail,
           emailVerifiedAt: new Date(),
           passwordHash: input.ownerPasswordHash,

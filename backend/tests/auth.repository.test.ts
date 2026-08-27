@@ -22,7 +22,7 @@ const publicIdentifier = (id: number, publicId: string, kind: "U" | "S", userIde
 });
 const repositoryUser = {
   id: 7,
-  needoId: "n0000000007",
+  needoId: "u1234567890",
   accountNo: "1234567890",
   primaryIdentityType: "U",
   email: "user@example.com",
@@ -143,7 +143,7 @@ describe("AuthRepository formal login identifiers", () => {
         create: jest.fn(async () => ({
           id: 8,
           email: "new@example.com",
-          username: "n0000000008"
+          username: "pending:89abcdef0123456701234567"
         })),
         update: updateUser,
         findUniqueOrThrow: jest.fn(async () => registeredUser)
@@ -166,14 +166,14 @@ describe("AuthRepository formal login identifiers", () => {
         handler(transaction)
       )
     };
-    const legacyAllocator = {
-      withNewId: jest.fn(async (create: (needoId: string) => unknown) =>
-        create("n0000000008")
+    const bootstrapKeyAllocator = {
+      withNewKey: jest.fn(async (create: (bootstrapKey: string) => unknown) =>
+        create("pending:89abcdef0123456701234567")
       )
     };
     const repository = new AuthRepository(
       client as never,
-      legacyAllocator as never,
+      bootstrapKeyAllocator as never,
       (tx) =>
         new IdentifierAllocator(
           new PublicIdentifierRepository(tx),

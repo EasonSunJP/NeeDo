@@ -1,6 +1,6 @@
 import { ERROR_CODES } from "../src/constants/error-codes";
 import { BackofficeService } from "../src/services/backoffice.service";
-import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
+import { UserBootstrapKeyAllocationExhaustedError } from "../src/services/user-bootstrap-key.service";
 
 const context = { ip: "127.0.0.1", userAgent: "jest" };
 const actor = {
@@ -67,7 +67,7 @@ describe("BackofficeService merchant shop updates", () => {
 
   it("maps exhausted NeeDo ID allocation during merchant-owner creation to a stable error", async () => {
     const createShop = jest.fn(async () => {
-      throw new NeedoIdAllocationExhaustedError();
+      throw new UserBootstrapKeyAllocationExhaustedError();
     });
     const service = new BackofficeService(
       {

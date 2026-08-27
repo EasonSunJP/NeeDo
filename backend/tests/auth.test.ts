@@ -4,7 +4,7 @@ import request from "supertest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { ERROR_CODES } from "../src/constants/error-codes";
-import { NeedoIdAllocationExhaustedError } from "../src/services/needo-id.service";
+import { UserBootstrapKeyAllocationExhaustedError } from "../src/services/user-bootstrap-key.service";
 import { AppError } from "../src/utils/app-error";
 import type {
   ConsumeVerificationChallengeInput,
@@ -902,7 +902,7 @@ describe("verified email registration and formal password authentication", () =>
   it.each([
     {
       name: "Needo ID allocation error",
-      originalError: new NeedoIdAllocationExhaustedError(),
+      originalError: new UserBootstrapKeyAllocationExhaustedError(),
       expectedStatus: 503,
       expectedCode: ERROR_CODES.NEEDO_ID_ALLOCATION_UNAVAILABLE,
       expectedMessage: "error.auth.needo_id_allocation_unavailable"
@@ -1043,7 +1043,7 @@ describe("verified email registration and formal password authentication", () =>
   it("maps exhausted NeeDo ID allocation to a stable verified-registration error", async () => {
     const fixture = await createAuthFixture();
     fixture.repository.createVerifiedBaselineCustomer.mockRejectedValueOnce(
-      new NeedoIdAllocationExhaustedError()
+      new UserBootstrapKeyAllocationExhaustedError()
     );
     const started = await request(fixture.app).post("/api/v1/auth/register").send({
       email: "allocation-failure@example.com",

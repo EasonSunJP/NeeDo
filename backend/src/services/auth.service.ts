@@ -1,6 +1,6 @@
 import { randomInt, timingSafeEqual } from "crypto";
 import { compare, hash } from "bcryptjs";
-import { NeedoIdAllocationExhaustedError } from "./needo-id.service";
+import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
 import {
@@ -604,7 +604,7 @@ export class AuthService {
       }
       if (originalError instanceof ExternalAuthAccountConflictError)
         throw this.googleConflictError();
-      if (originalError instanceof NeedoIdAllocationExhaustedError) {
+      if (originalError instanceof UserBootstrapKeyAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
       throw originalError;
@@ -806,7 +806,7 @@ export class AuthService {
       } catch {
         // The original failure remains authoritative; no challenge data is logged here.
       }
-      if (originalError instanceof NeedoIdAllocationExhaustedError) {
+      if (originalError instanceof UserBootstrapKeyAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
       if (this.isUniqueConstraintError(originalError)) {

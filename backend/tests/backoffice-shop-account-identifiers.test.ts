@@ -59,14 +59,14 @@ describe("BackofficeRepository shop owner account identifiers", () => {
         handler(transaction)
       )
     };
-    const legacyAllocator = {
-      withNewId: jest.fn(async (create: (needoId: string) => unknown) =>
-        create("n0000000007")
+    const bootstrapKeyAllocator = {
+      withNewKey: jest.fn(async (create: (bootstrapKey: string) => unknown) =>
+        create("pending:0123456789abcdef01234567")
       )
     };
     const repository = new BackofficeRepository(
       client as never,
-      legacyAllocator as never,
+      bootstrapKeyAllocator as never,
       (tx) =>
         new IdentifierAllocator(
           new PublicIdentifierRepository(tx),
