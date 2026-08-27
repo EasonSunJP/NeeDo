@@ -32,6 +32,7 @@ const mocked = vi.hoisted(() => ({
   },
   isStaticDemo: false,
   navigateToPortal: vi.fn(),
+  requestBrowserPasswordSave: vi.fn(async () => undefined),
   requestGoogleCredential: vi.fn(),
 }));
 
@@ -54,6 +55,15 @@ vi.mock("../../auth/googleIdentity", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../auth/googleIdentity")>();
   return { ...actual, requestGoogleCredential: mocked.requestGoogleCredential };
+});
+
+vi.mock("../../auth/browserPasswordSave", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../auth/browserPasswordSave")>();
+  return {
+    ...actual,
+    requestBrowserPasswordSave: mocked.requestBrowserPasswordSave,
+  };
 });
 
 vi.mock("../../i18n/I18nProvider", async (importOriginal) => {
@@ -137,6 +147,8 @@ describe("LoginPage verified identity behavior", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
     mocked.isStaticDemo = false;
     mocked.auth.isAuthenticated = false;
     mocked.auth.session = null;
@@ -235,14 +247,34 @@ describe("LoginPage verified identity behavior", () => {
     expect(container.querySelector("main")?.style.maxWidth).toBe("440px");
   });
 
-  it("uses browser password-manager semantics without custom credential storage", async () => {
+  it("keeps browser password saving opt-in and stores only the portal preference", async () => {
     await act(async () =>
       container
         .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
         ?.click(),
     );
 
-    expect(container.querySelector('[role="switch"]')).toBeNull();
+    const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]');
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-identifier"]',
+      )?.autocomplete,
+    ).toBe("off");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-password"]',
+      )?.autocomplete,
+    ).toBe("off");
+
+    await act(async () => toggle?.click());
+
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    expect(
+      localStorage.getItem(
+        "needo.auth.browser-password-save.frontend:user",
+      ),
+    ).toBe("true");
     expect(
       container.querySelector<HTMLInputElement>(
         '[data-testid="login-identifier"]',
@@ -253,6 +285,39 @@ describe("LoginPage verified identity behavior", () => {
         '[data-testid="login-password"]',
       )?.autocomplete,
     ).toBe("current-password");
+  });
+
+  it("requests browser-managed password storage only after successful login", async () => {
+    mocked.auth.login.mockResolvedValueOnce({ ok: true, session });
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
+        ?.click(),
+    );
+
+    const identifier = container.querySelector<HTMLInputElement>(
+      '[data-testid="login-identifier"]',
+    )!;
+    const password = container.querySelector<HTMLInputElement>(
+      '[data-testid="login-password"]',
+    )!;
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[role="switch"]')?.click();
+      setInput(identifier, "user@example.com");
+      setInput(password, "Strong.Password.2026");
+    });
+    await act(async () =>
+      container
+        .querySelector<HTMLFormElement>('[data-testid="password-login-form"]')
+        ?.requestSubmit(),
+    );
+
+    expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
+      id: "user@example.com",
+      name: "NeeDo",
+      password: "Strong.Password.2026",
+    });
+    expect(mocked.navigateToPortal).toHaveBeenCalledWith("user", "/");
   });
 
   it("ignores a stale Google initialization failure after switching to registration", async () => {
@@ -718,6 +783,7 @@ describe("LoginPage formal flow guardrails", () => {
       "登录中…",
       "退出登录",
       "密码",
+      "保存密码",
       "输入密码",
       "邮箱",
       "输入邮箱",

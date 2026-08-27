@@ -35,6 +35,12 @@ const translationLookupOrder: Record<TargetLanguage, TargetLanguage[]> = {
 type TranslationMap = Record<string, TranslationEntry>;
 
 export const authTrustGatewayTranslations: TranslationMap = {
+  保存密码: {
+    "zh-Hant": "儲存密碼",
+    ja: "パスワードを保存",
+    en: "Save password",
+    ko: "비밀번호 저장",
+  },
   返回: {
     "zh-Hant": "返回",
     ja: "戻る",
