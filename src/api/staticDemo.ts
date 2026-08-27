@@ -953,7 +953,10 @@ let staticUsers: UserPayload[] = [
 
 const staticAuthMe: AuthMePayload = {
   id: 1,
-  needoId: "n0000000001",
+  needoId: "needo0000000001",
+  primaryPublicId: "needo0000000001",
+  activeIdentityId: 1,
+  activePublicId: "needo0000000001",
   email: demoAuthAccount.adminEmail,
   emailVerifiedAt: staticTimestamp,
   hasPassword: true,
@@ -962,16 +965,17 @@ const staticAuthMe: AuthMePayload = {
   isActive: true,
   currentIdentity: {
     id: 1,
+    publicId: "needo0000000001",
     scopeId: 1,
     scopeType: "platform",
     type: "platform_admin"
   },
   identities: [
-    { id: 1, scopeId: 1, scopeType: "platform", type: "platform_admin" },
-    { id: 2, scopeId: 1, scopeType: "store", type: "merchant_owner" },
-    { id: 3, scopeId: 1, scopeType: "technician_profile", type: "technician" },
-    { id: 4, scopeId: 1, scopeType: "customer_profile", type: "customer" },
-    { id: 5, scopeId: null, scopeType: "global", type: "scout" }
+    { id: 1, publicId: "needo0000000001", scopeId: 1, scopeType: "platform", type: "platform_admin" },
+    { id: 2, publicId: "b0000000001", scopeId: 1, scopeType: "store", type: "merchant_owner" },
+    { id: 3, publicId: "s0000000001", scopeId: 1, scopeType: "technician_profile", type: "technician" },
+    { id: 4, publicId: null, scopeId: 1, scopeType: "customer_profile", type: "customer" },
+    { id: 5, publicId: null, scopeId: null, scopeType: "global", type: "scout" }
   ],
   roles: ["admin", "merchant_owner", "technician", "customer", "scout"],
   permissions: allPermissionCodes(),

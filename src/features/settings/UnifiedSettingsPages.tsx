@@ -761,7 +761,7 @@ type FormalAccountSecurityPanelProps = {
   language: Language;
   onSessionRefresh: () => Promise<void>;
   onSignedOut: () => Promise<void>;
-  session: Pick<AuthSession, "email" | "emailVerifiedAt" | "needoId" | "username">;
+  session: Pick<AuthSession, "activePublicId" | "email" | "emailVerifiedAt" | "needoId" | "primaryPublicId" | "username">;
 };
 
 const googleBrandIconSrc = "/icons/google-g-logo-2026.png";
@@ -1033,7 +1033,7 @@ export function FormalAccountSecurityPanel({ autoFocus, language, onSessionRefre
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
             <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-soft-muted)]">{t("NeeDo ID（不可修改）")}</span>
-            <strong className="mt-2 block break-all font-mono text-[15px] font-black text-[color:var(--client-text)]">{session.needoId}</strong>
+            <strong className="mt-2 block break-all font-mono text-[15px] font-black text-[color:var(--client-text)]">{session.activePublicId ?? session.primaryPublicId}</strong>
           </div>
           <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
             <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-soft-muted)]">{t("NeeDo 主邮箱")}</span>
@@ -3321,7 +3321,7 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
         <SettingsSection description={portal === "business" ? "这里展示 NeeDoAfirieito 推广账号的基础绑定信息，不展示普通用户会员等级。" : "首页只显示摘要，这里承接三端账户、安全与主体绑定相关内容。"} panelClassName={settingsListDividerClassName} title="账户信息">
           {portal === "business" ? (
             <>
-              <SettingsListItem subtitle={session?.needoId ?? t("正在读取账户身份…")} title="NeeDo ID" value={t("不可修改")} />
+              <SettingsListItem subtitle={session?.activePublicId ?? session?.primaryPublicId ?? t("正在读取账户身份…")} title="NeeDo ID" value={t("不可修改")} />
               <SettingsListItem subtitle={businessPromoter?.inviteCode ?? "未分配推广码"} title="专属推广码" value="已绑定" />
               <SettingsListItem subtitle={businessPromoter?.primaryChannel ?? "待设置"} title="默认推广渠道" value="可使用" />
               <SettingsListItem subtitle="提现、税务与银行资料后续接入正式接口" title="收款身份" value="待复核" />

@@ -91,6 +91,7 @@ const challenge: VerificationChallengePayload = {
 
 const customerIdentity = {
   id: 12,
+  publicId: "u0000000007",
   scopeId: 41,
   scopeType: "customer_profile",
   type: "customer"
@@ -98,6 +99,7 @@ const customerIdentity = {
 
 const technicianIdentity = {
   id: 13,
+  publicId: "s0000000007",
   scopeId: 42,
   scopeType: "technician_profile",
   type: "technician"
@@ -105,6 +107,7 @@ const technicianIdentity = {
 
 const merchantStoreIdentity = {
   id: 14,
+  publicId: "b0000000007",
   scopeId: 43,
   scopeType: "shop",
   type: "merchant_owner"
@@ -112,6 +115,7 @@ const merchantStoreIdentity = {
 
 const merchantOrganizationIdentity = {
   id: 15,
+  publicId: "o0000000007",
   scopeId: 9,
   scopeType: "merchant_account",
   type: "merchant_organization"
@@ -119,11 +123,14 @@ const merchantOrganizationIdentity = {
 
 const customerMe: AuthMePayload = {
   id: 7,
-  needoId: "n0000000007",
+  needoId: "u0000000007",
+  primaryPublicId: "u0000000007",
+  activeIdentityId: customerIdentity.id,
+  activePublicId: customerIdentity.publicId,
   email: "user@example.com",
   emailVerifiedAt: "2026-08-27T00:00:00.000Z",
   hasPassword: true,
-  username: "n0000000007",
+  username: "u0000000007",
   avatarUrl: null,
   isActive: true,
   currentIdentity: customerIdentity,
@@ -200,11 +207,26 @@ function authenticatedGoogleResult(): Extract<GoogleCredentialResult, { status: 
   };
 }
 
+function withCurrentIdentity(
+  me: AuthMePayload,
+  currentIdentity: AuthMePayload["currentIdentity"]
+): AuthMePayload {
+  return {
+    ...me,
+    currentIdentity,
+    activeIdentityId: currentIdentity.id,
+    activePublicId: currentIdentity.publicId ?? null
+  };
+}
+
 function storedCustomerSession(overrides: Partial<AuthSession> = {}): AuthSession {
   return {
-    authVersion: 6,
+    authVersion: 7,
     id: customerMe.id,
     needoId: customerMe.needoId,
+    primaryPublicId: customerMe.primaryPublicId ?? customerMe.needoId,
+    activeIdentityId: customerIdentity.id,
+    activePublicId: customerIdentity.publicId,
     username: customerMe.username,
     email: customerMe.email,
     emailVerifiedAt: customerMe.emailVerifiedAt,
@@ -280,8 +302,9 @@ describe("AuthProvider formal registration and Google sessions", () => {
       ok: true,
       status: "authenticated",
       session: {
-        authVersion: 6,
-        needoId: "n0000000007",
+        authVersion: 7,
+        needoId: "u0000000007",
+        activePublicId: "u0000000007",
         emailVerifiedAt: "2026-08-27T00:00:00.000Z",
         hasPassword: true,
         loginMethod: "google",
@@ -341,7 +364,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
         accessToken: "verified-google-access",
         expiresIn: 900,
         refreshToken: "verified-google-refresh",
-        needoId: "n0000000007"
+        needoId: "u0000000007"
       };
     });
     mocked.authApi.me.mockResolvedValue(customerMe);
@@ -352,7 +375,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(result).toMatchObject({
       ok: true,
       status: "authenticated",
-      needoId: "n0000000007",
+      needoId: "u0000000007",
       session: { loginMethod: "google" }
     });
     expect(auth.session?.loginMethod).toBe("google");
@@ -366,7 +389,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
         accessToken: "registration-access",
         expiresIn: 900,
         refreshToken: "registration-refresh",
-        needoId: "n0000000007"
+        needoId: "u0000000007"
       };
     });
     mocked.authApi.me.mockResolvedValue(customerMe);
@@ -398,7 +421,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     expect(verified).toMatchObject({
       ok: true,
       status: "authenticated",
-      needoId: "n0000000007",
+      needoId: "u0000000007",
       session: {
         allowedPortals: ["user"],
         loginMethod: "password",
@@ -420,6 +443,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
   it("rejects registration when the response has no current customer identity", async () => {
     const platformIdentity = {
       id: 99,
+      publicId: null,
       scopeId: null,
       scopeType: "global",
       type: "platform"
@@ -430,12 +454,11 @@ describe("AuthProvider formal registration and Google sessions", () => {
         accessToken: "registration-access",
         expiresIn: 900,
         refreshToken: "registration-refresh",
-        needoId: "n0000000007"
+        needoId: "u0000000007"
       };
     });
     mocked.authApi.me.mockResolvedValue({
-      ...customerMe,
-      currentIdentity: platformIdentity,
+      ...withCurrentIdentity(customerMe, platformIdentity),
       identities: [platformIdentity],
       roles: ["customer"]
     });
@@ -525,7 +548,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
       accessToken: "switched-access",
       expiresIn: 900,
       refreshToken: "switched-refresh",
-      me: { ...multiPortalMe, currentIdentity: technicianIdentity }
+      me: withCurrentIdentity(multiPortalMe, technicianIdentity)
     });
     await renderProvider();
     persistTokens("google-access", "google-refresh");
@@ -546,8 +569,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
 
   it("keeps the O identity selected by prefixed login instead of replacing it with B", async () => {
     const organizationMe: AuthMePayload = {
-      ...customerMe,
-      currentIdentity: merchantOrganizationIdentity,
+      ...withCurrentIdentity(customerMe, merchantOrganizationIdentity),
       identities: [
         customerIdentity,
         merchantStoreIdentity,
@@ -587,7 +609,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     const refreshed = await invoke(() => auth.refreshSession());
 
     expect(refreshed).toEqual({ ok: false, message: "error.api" });
-    expect(auth.session).toMatchObject({ needoId: "n0000000007", hasPassword: true });
+    expect(auth.session).toMatchObject({ needoId: "u0000000007", hasPassword: true });
   });
 
   it("does not persist an incomplete switched-identity response", async () => {
@@ -596,8 +618,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     persistTokens("google-access", "google-refresh");
     await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
     const incompleteMe = {
-      ...multiPortalMe,
-      currentIdentity: technicianIdentity
+      ...withCurrentIdentity(multiPortalMe, technicianIdentity)
     } as Partial<AuthMePayload>;
     delete incompleteMe.emailVerifiedAt;
     mocked.authApi.switchIdentity.mockImplementation(async () => {
@@ -623,8 +644,7 @@ describe("AuthProvider formal registration and Google sessions", () => {
     persistTokens("google-access", "google-refresh");
     await invoke(() => auth.loginWithGoogle(authenticatedGoogleResult(), "user"));
     const incompleteMe = {
-      ...multiPortalMe,
-      currentIdentity: technicianIdentity
+      ...withCurrentIdentity(multiPortalMe, technicianIdentity)
     } as Partial<AuthMePayload>;
     delete incompleteMe.needoId;
     mocked.authApi.switchIdentity.mockImplementation(async () => {

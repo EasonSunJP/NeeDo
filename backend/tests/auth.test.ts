@@ -1604,8 +1604,12 @@ describe("verified email registration and formal password authentication", () =>
         id: 10,
         type: "platform",
         scopeType: "global",
-        scopeId: null
+        scopeId: null,
+        publicId: "needo1234567890"
       },
+      activeIdentityId: 10,
+      activePublicId: "needo1234567890",
+      primaryPublicId: "needo1234567890",
       roles: ["admin"],
       permissions: expect.arrayContaining(["auth:me", "auth:logout", "user:list"]),
       menus: expect.arrayContaining(["menu:dashboard", "menu:user-management"])

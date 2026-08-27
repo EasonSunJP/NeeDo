@@ -1,7 +1,7 @@
 import type { PortalScope } from "./demoAccount";
 import type { IdentityAvailability, IdentityKind } from "../features/identity-applications/model";
 
-export const authSessionVersion = 6;
+export const authSessionVersion = 7;
 
 export type LoginMethod = "frontend-bypass" | "google" | "password";
 
@@ -13,6 +13,7 @@ export function isLoginMethod(value: unknown): value is LoginMethod {
 
 export type AuthIdentityPayload = {
   id: number;
+  publicId?: string | null;
   scopeId: number | null;
   scopeType: string | null;
   type: string;
@@ -21,6 +22,9 @@ export type AuthIdentityPayload = {
 export type AuthMePayload = {
   id: number;
   needoId: string;
+  primaryPublicId?: string;
+  activeIdentityId?: number;
+  activePublicId?: string | null;
   email: string;
   emailVerifiedAt: string | null;
   hasPassword: boolean;
@@ -39,6 +43,9 @@ export type AuthSession = {
   authVersion: number;
   id: number;
   needoId: string;
+  primaryPublicId: string;
+  activeIdentityId: number;
+  activePublicId: string | null;
   username: string;
   email: string;
   emailVerifiedAt: string | null;
@@ -207,6 +214,9 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     authVersion: authSessionVersion,
     id: me.id,
     needoId: me.needoId,
+    primaryPublicId: me.primaryPublicId ?? me.needoId,
+    activeIdentityId: me.currentIdentity.id,
+    activePublicId: me.currentIdentity.publicId ?? null,
     username: me.username,
     email: me.email,
     emailVerifiedAt: me.emailVerifiedAt,

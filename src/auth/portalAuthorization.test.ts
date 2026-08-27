@@ -29,10 +29,14 @@ function createStorage() {
 }
 
 function createSession(portal: AuthSession["portal"]): AuthSession {
+  const publicId = `${portal === "technician" ? "s" : portal === "merchant" ? "b" : "u"}0000000009`;
   return {
-    authVersion: 6,
+    authVersion: 7,
     id: 9,
-    needoId: "n0000000009",
+    needoId: "u0000000009",
+    primaryPublicId: "u0000000009",
+    activeIdentityId: 90,
+    activePublicId: publicId,
     username: `${portal}-user`,
     email: `${portal}@needo.local`,
     emailVerifiedAt: "2026-08-27T00:00:00.000Z",
@@ -50,6 +54,7 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
     menus: [`menu:${portal}-app`],
     currentIdentity: {
       id: 90,
+      publicId,
       type: portal === "user" ? "customer" : portal,
       scopeId: 9,
       scopeType: `${portal}_profile`
@@ -57,6 +62,7 @@ function createSession(portal: AuthSession["portal"]): AuthSession {
     identities: [
       {
         id: 90,
+        publicId,
         type: portal === "user" ? "customer" : portal,
         scopeId: 9,
         scopeType: `${portal}_profile`

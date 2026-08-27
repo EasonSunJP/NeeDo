@@ -455,7 +455,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: ["userId", "needoId", "username", "avatarUrl"],
         properties: {
           userId: { type: "integer" },
-          needoId: { type: "string", pattern: "^n[0-9]{10}$" },
+          needoId: {
+            type: "string",
+            pattern: "^(?:u|s|b|o|needo)[0-9]{10}$"
+          },
           username: { type: "string" },
           avatarUrl: { type: ["string", "null"] }
         }
@@ -673,7 +676,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           accessToken: { type: "string" },
           refreshToken: { type: "string" },
           expiresIn: { type: "integer", enum: [config.AUTH_ACCESS_TOKEN_TTL_SECONDS] },
-          needoId: { type: "string", pattern: "^n[0-9]{10}$" }
+          needoId: { type: "string", pattern: "^u[0-9]{10}$" }
         }
       },
       AuthChallengeMetadata: {
@@ -1378,6 +1381,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         required: [
           "id",
           "needoId",
+          "primaryPublicId",
+          "activeIdentityId",
+          "activePublicId",
           "email",
           "emailVerifiedAt",
           "hasPassword",
@@ -1393,7 +1399,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         properties: {
           id: { type: "integer" },
-          needoId: { type: "string", pattern: "^n[0-9]{10}$" },
+          needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          primaryPublicId: {
+            type: "string",
+            pattern: "^(?:u|needo)[0-9]{10}$"
+          },
+          activeIdentityId: { type: "integer", minimum: 1 },
+          activePublicId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|s|b|o|needo)[0-9]{10}$"
+          },
           email: { type: "string", format: "email" },
           emailVerifiedAt: { type: ["string", "null"], format: "date-time" },
           hasPassword: { type: "boolean" },
@@ -1416,9 +1431,13 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       AuthIdentity: {
         type: "object",
-        required: ["id", "type", "scopeType", "scopeId"],
+        required: ["id", "publicId", "type", "scopeType", "scopeId"],
         properties: {
           id: { type: "integer" },
+          publicId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|s|b|o|needo)[0-9]{10}$"
+          },
           type: { type: "string" },
           scopeType: { type: ["string", "null"] },
           scopeId: { type: ["integer", "null"] }

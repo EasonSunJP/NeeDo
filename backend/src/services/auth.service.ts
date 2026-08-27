@@ -62,6 +62,7 @@ export interface AuthenticatedAccessContext {
   accessTokenExpiresAt: number;
   sessionGeneration?: number;
   currentIdentityId?: number;
+  currentPublicId?: string | null;
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
@@ -76,6 +77,7 @@ export interface AuthIdentityPayload {
   type: string;
   scopeType: string | null;
   scopeId: number | null;
+  publicId: string | null;
 }
 
 export type AuthIdentityAvailabilityKind = "customer" | "technician" | "merchant" | "affiliate";
@@ -97,6 +99,9 @@ export interface AuthIdentityAvailabilityPayload {
 export interface AuthMePayload {
   id: number;
   needoId: string;
+  primaryPublicId: string;
+  activeIdentityId: number;
+  activePublicId: string | null;
   email: string;
   emailVerifiedAt: string | null;
   hasPassword: boolean;
@@ -1102,6 +1107,7 @@ export class AuthService {
       accessTokenExpiresAt: payload.exp,
       sessionGeneration: payload.sessionGeneration,
       currentIdentityId: me.currentIdentity.id,
+      currentPublicId: me.currentIdentity.publicId,
       currentIdentityType: me.currentIdentity.type,
       currentIdentityScopeType: me.currentIdentity.scopeType,
       currentIdentityScopeId: me.currentIdentity.scopeId,
@@ -1665,7 +1671,16 @@ export class AuthService {
         id: identity.id,
         type: identity.type,
         scopeType: identity.scopeType,
-        scopeId: identity.scopeId
+        scopeId: identity.scopeId,
+        publicId:
+          identity.publicIdentifier?.status === "ACTIVE" &&
+          identity.publicIdentifier.deletedAt === null
+            ? identity.publicIdentifier.publicId
+            : identity.isDefault ||
+                (["customer", "user", "u"].includes(identity.type) &&
+                  user.needoId.startsWith("needo"))
+              ? user.needoId
+              : null
       }));
     const currentIdentity =
       identities.find((identity) => identity.id === currentIdentityId) ??
@@ -1704,6 +1719,9 @@ export class AuthService {
     return {
       id: user.id,
       needoId: user.needoId,
+      primaryPublicId: user.needoId,
+      activeIdentityId: currentIdentity.id,
+      activePublicId: currentIdentity.publicId,
       email: user.email,
       emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
       hasPassword: Boolean(user.passwordHash),
@@ -1726,7 +1744,14 @@ export class AuthService {
     const identityTypes: Readonly<Record<AuthIdentityAvailabilityKind, readonly string[]>> = {
       customer: ["customer"],
       technician: ["technician"],
-      merchant: ["merchant", "merchant_owner", "merchant_staff"],
+      merchant: [
+        "merchant",
+        "merchant_organization",
+        "merchant_owner",
+        "merchant_staff",
+        "o",
+        "owner"
+      ],
       affiliate: ["affiliate", "scout"]
     };
     const customerIdentity = identities.find((identity) =>

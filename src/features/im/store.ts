@@ -1016,7 +1016,7 @@ export function useImStore(scope: ImRoleType = "user") {
   const legacyEnabled = isStaticDemoMode() && isFrontendBypassSession(session);
   const currentUser = {
     id: session?.id ?? 0,
-    needoId: session?.needoId ?? "",
+    needoId: session?.activePublicId ?? session?.primaryPublicId ?? "",
     username: session?.username ?? "",
     avatarUrl: session?.avatarUrl ?? null
   };

@@ -178,6 +178,10 @@ function isStoredAuthSession(value: unknown): value is AuthSession {
     typeof session.id === "number" &&
     typeof session.needoId === "string" &&
     session.needoId.length > 0 &&
+    typeof session.primaryPublicId === "string" &&
+    session.primaryPublicId.length > 0 &&
+    typeof session.activeIdentityId === "number" &&
+    (session.activePublicId === null || typeof session.activePublicId === "string") &&
     typeof session.username === "string" &&
     typeof session.email === "string" &&
     (session.emailVerifiedAt === null || typeof session.emailVerifiedAt === "string") &&
@@ -257,6 +261,7 @@ function isAuthIdentityPayload(value: unknown): value is AuthMePayload["currentI
   return (
     typeof identity.id === "number" &&
     Number.isInteger(identity.id) &&
+    (identity.publicId === null || typeof identity.publicId === "string") &&
     typeof identity.type === "string" &&
     identity.type.length > 0 &&
     (identity.scopeId === null || (typeof identity.scopeId === "number" && Number.isInteger(identity.scopeId))) &&
@@ -279,6 +284,10 @@ function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
     typeof me.id === "number" &&
     typeof me.needoId === "string" &&
     me.needoId.length > 0 &&
+    typeof me.primaryPublicId === "string" &&
+    me.primaryPublicId.length > 0 &&
+    typeof me.activeIdentityId === "number" &&
+    (me.activePublicId === null || typeof me.activePublicId === "string") &&
     typeof me.email === "string" &&
     (me.emailVerifiedAt === null || typeof me.emailVerifiedAt === "string") &&
     typeof me.hasPassword === "boolean" &&
@@ -290,6 +299,8 @@ function isFormalAuthMePayload(value: unknown): value is AuthMePayload {
     me.identities.length > 0 &&
     me.identities.every(isAuthIdentityPayload) &&
     me.identities.some((identity) => identity.id === me.currentIdentity?.id) &&
+    me.activeIdentityId === me.currentIdentity?.id &&
+    me.activePublicId === me.currentIdentity?.publicId &&
     isStringArray(me.roles) &&
     isStringArray(me.permissions) &&
     isStringArray(me.menus) &&
@@ -323,6 +334,7 @@ function createFrontendBypassMe(portal: Exclude<PortalScope, "admin">): AuthMePa
   const config = frontendBypassIdentityConfig[portal];
   const identity = {
     id: 260417,
+    publicId: `${portal === "technician" ? "s" : portal === "merchant" ? "b" : "u"}0000260417`,
     scopeId: config.scopeId,
     scopeType: config.scopeType,
     type: config.identityType
@@ -330,7 +342,10 @@ function createFrontendBypassMe(portal: Exclude<PortalScope, "admin">): AuthMePa
 
   return {
     id: 260417,
-    needoId: "n0000260417",
+    needoId: "u0000260417",
+    primaryPublicId: "u0000260417",
+    activeIdentityId: identity.id,
+    activePublicId: identity.publicId,
     email: `${portal}.preview@needo.local`,
     emailVerifiedAt: null,
     hasPassword: false,

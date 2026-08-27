@@ -100,7 +100,19 @@ describe("GET /api/v1/openapi.json", () => {
       })
     );
     expect(response.body.components.schemas.AuthMe.required).toEqual(
-      expect.arrayContaining(["needoId", "emailVerifiedAt", "hasPassword", "identityAvailability"])
+      expect.arrayContaining([
+        "needoId",
+        "primaryPublicId",
+        "activeIdentityId",
+        "activePublicId",
+        "emailVerifiedAt",
+        "hasPassword",
+        "identityAvailability"
+      ])
+    );
+    expect(response.body.components.schemas.AuthIdentity.required).toContain("publicId");
+    expect(response.body.components.schemas.AuthMe.properties.needoId.pattern).toBe(
+      "^(?:u|needo)[0-9]{10}$"
     );
     expect(response.body.components.schemas.AuthMe.properties.identityAvailability).toMatchObject({
       type: "array",

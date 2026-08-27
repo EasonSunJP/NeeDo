@@ -12,7 +12,10 @@ import {
 
 const baseMe = {
   id: 1,
-  needoId: "n0000000001",
+  needoId: "needo0000000001",
+  primaryPublicId: "needo0000000001",
+  activeIdentityId: 1,
+  activePublicId: "needo0000000001",
   email: "admin@example.com",
   emailVerifiedAt: "2026-08-27T00:00:00.000Z",
   hasPassword: true,
@@ -21,6 +24,7 @@ const baseMe = {
   isActive: true,
   currentIdentity: {
     id: 1,
+    publicId: "needo0000000001",
     type: "platform",
     scopeType: "global",
     scopeId: null
@@ -28,6 +32,7 @@ const baseMe = {
   identities: [
     {
       id: 1,
+      publicId: "needo0000000001",
       type: "platform",
       scopeType: "global",
       scopeId: null
@@ -175,9 +180,9 @@ describe("frontend RBAC session helpers", () => {
     ] as const;
     const session = buildAuthSessionFromMe({ ...baseMe, identityAvailability: [...identityAvailability] }, "admin", "password");
 
-    expect(session.authVersion).toBe(6);
+    expect(session.authVersion).toBe(7);
     expect(session).toMatchObject({
-      needoId: "n0000000001",
+      needoId: "needo0000000001",
       emailVerifiedAt: "2026-08-27T00:00:00.000Z",
       hasPassword: true
     });
