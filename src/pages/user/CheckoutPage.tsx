@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
 import {
   AppTopBar,
@@ -1987,5 +1986,5 @@ export function CheckoutPage() {
     return <FormalCheckoutPage serviceId={Number(serviceId)} />;
   }
 
-  return isStaticDemoMode() ? <LegacyCheckoutPage /> : <Navigate replace to="/categories" />;
+  return <Navigate replace to="/categories" />;
 }

@@ -50,8 +50,8 @@ describe("CategoryPage technician showcase card", () => {
     expect(categoryPageSource).toContain("getTechnicianDynamicPath(item.technician)");
   });
 
-  it("keeps legacy category content exclusive to explicit static-demo mode", () => {
-    expect(categoryPageSource).toContain("const allowLegacyCoreReadData = isStaticDemoMode();");
+  it("disables legacy category content", () => {
+    expect(categoryPageSource).toContain("const allowLegacyCoreReadData = false;");
     expect(categoryPageSource).toContain("allowLegacyCoreReadData ? legacyServices : []");
     expect(categoryPageSource).toContain("return allowLegacyCoreReadData ? legacyStores : [];");
     expect(categoryPageSource).toContain("return allowLegacyCoreReadData ? legacyTechnicians : [];");

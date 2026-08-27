@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-当前仓库的开发启动方式已经拆分为：
+当前仓库只保留正式运行方式：
 
 ```bash
 # 默认：同时启动前端 + 正式 backend（MySQL / Redis / /api/v1）
@@ -21,20 +21,14 @@ npm run dev:formal
 # 只启动前端
 npm run dev:frontend
 
-# 旧的本地 mock backend 状态服务（仅兼容）
-npm run dev:backend
-
-# 旧的前端 + mock backend 组合（仅兼容）
-npm run dev:legacy
 ```
 
 说明：
 
 - 当前仓库已包含正式 `backend/` 工程；登录、Auth、RBAC、User Management 必须走真实 `/api/v1` 后端。
-- 部分旧业务页面仍保留 legacy mock compatibility，例如 `src/features/im/api.ts`，不得继续扩张为新的正式实现。
+- 所有正式页面必须通过 `/api/v1`、Prisma 与真实数据库读取数据；禁止新增或启用浏览器 mock、静态演示 API、免登录账号。
 - 首次运行前把 `backend/.env.dev.example` 复制为未跟踪的 `backend/.env.dev`，并启动本地 MySQL/Redis、应用 migration 与 seed。
 - `npm run dev:formal` 会检查端口上是否已经是 NeeDo 正式后端/前端，安全复用正确服务，拒绝覆盖无关进程；可用 `FORMAL_BACKEND_PORT`、`FRONTEND_PORT`、`FORMAL_BACKEND_ENV_FILE` 覆盖本地配置。
-- `npm run dev:backend` 提供的是旧 mock backend 状态服务，只为静态兼容保留，不代表真实业务后端。
 - 本项目默认前端端口已改为 `5180`，避免占用其他项目正在使用的 `5173`、`5175` 和 `5176`。
 - 如果 `5180` 已被占用，Vite 会自动切到下一个可用端口。
 - Chrome 直接双击打开 `dist/*.html` 时，`file://` 模式通常不会正常执行 Vite 的 ES module 入口，表现就是白屏、进入页/聊天页/错误页背景都像“没了”。请改用 `npm run dev` 或 `npm run preview` 通过本地 HTTP 服务访问。
@@ -45,41 +39,21 @@ npm run dev:legacy
 npm run build
 ```
 
-## Static Demo Build
-
-需要一个不依赖后端、数据库、Redis 或外部 API 的演示包时，使用静态演示模式：
-
-```bash
-npm run dev:static
-npm run build:static
-npm run preview:static
-```
-
-静态演示脚本会注入 `VITE_NEEDO_STATIC_DEMO=true`。该模式只影响前端运行时：
-
-- `/api/v1/*`、登录/RBAC、核心浏览、Booking、运营后台、商户后台读请求会在浏览器内返回静态演示数据。
-- Google 账号、Google Calendar、Afirieito 翻译等本地辅助 API 不再访问 `4176` 或外部服务。
-- 正式 `backend/`、Prisma migration、seed、真实 API 代码和普通 `npm run dev` / `npm run build` 不受影响。
-- `dist/*.html` 仍需通过 `npm run preview:static` 或其他 HTTP 静态服务访问，不建议直接用 `file://` 双击打开。
-- 当前线上静态演示默认保持宽松兜底；本地验收缺失接口时可额外设置 `VITE_NEEDO_STATIC_DEMO_STRICT=true`，让未知静态 `/api/v1` 请求走真实网络请求，而不是返回空对象或空列表。
-
 ## Formal Auth Frontend
 
 Step 07 has added the frontend side of formal Auth / RBAC while keeping the existing React / TSX / Vite stack. The frontend now calls `/api/v1/auth/*`, `/api/v1/users`, `/api/v1/roles`, and `/api/v1/permissions` through `src/api/httpClient.ts`.
 
 Auth behavior:
 
-- Normal development and production frontends use formal password login by
-  default. Captcha/legacy login is available only through `npm run dev:static`
-  or the dedicated static-demo build.
+- Development and production frontends use the same formal password or Google login chain. There is no passwordless or static-demo login path.
 - Access Token is kept in memory only.
 - Refresh Token is persisted under `needo.auth.refresh-token` so a page refresh can restore the session through `/api/v1/auth/refresh` and `/api/v1/auth/me`.
 - User / Role / Permission admin pages are backed by real APIs and gated by `menu:*`, `page:*`, and `button:*` permissions.
 - Public email registration is a two-step verified flow: `POST /api/v1/auth/register`
   creates an email challenge and `POST /api/v1/auth/register/verify` creates the
   baseline customer only after the six-digit OTP is accepted.
-  No User row is created before OTP verification. A new account receives an immutable NeeDoID
-  (`n` plus ten digits); its initial nickname/display name equals that NeeDoID
+  No User row is created before OTP verification. A normal account receives an immutable public ID
+  (`u` plus ten digits); its initial nickname/display name equals that public ID
   and may later be edited without changing the login identifier.
 - `POST /api/v1/auth/login` accepts `loginIdentifier` as either the verified
   email address or immutable NeeDoID plus password. A successful verification
@@ -161,7 +135,7 @@ are in `docs/production-release-checklist.md`. Local acceptance is a release
 candidate check; it is not evidence of a public deployment or any 1k–100k
 capacity tier.
 
-Temporary frontend bypass: set `VITE_NEEDO_FRONTEND_AUTH_BYPASS=true` to let the public client login page immediately enter the frontend portals (`/`, `/merchant`, `/technician`, `/afirieito`) without calling an auth API. This is only for short-term preview access while API routing is unstable; backend routes such as `/admin` and `/merchant-admin` still reject the temporary frontend session.
+All portals require a formal authenticated session. Local preview, acceptance, and production use the same authorization path.
 
 ## Operations Technician Ranking
 
@@ -237,7 +211,7 @@ The technician portal's visible order tab is also identity-scoped to the formal 
 
 Authenticated customer identities now receive an API-backed “My” page. `GET /api/v1/customer-profile/me` resolves the profile solely from the active customer identity, and `PATCH /api/v1/customer-profile/me` persists a non-empty, Zod-validated partial edit with `customer-profile:read` / `customer-profile:write` permissions. Clients cannot select a profile ID. Successful writes use the `customer_profile.self_update` audit action and return the current persisted profile so the card updates without a browser-storage merge. Each reservation-status counter uses the paginated API `total`, and available/frozen NDP balances come from `GET /api/v1/wallets/me`.
 
-On `/me`, the information card switches in place between normal and editable state. The top-right control is an edit action normally and a red X while editing; cancelling discards only the current draft. The ordinary user bottom navigation is disabled for the view, loading, error, editing, and saving states. Editing shows the single viewport-fixed “保存并退出编辑模式” action with safe-area spacing, while NDP, usage count, credit score, NeeDo ID, and membership level remain read-only. Explicit `frontend-bypass` sessions retain the isolated preview compatibility persistence path; they do not replace the formal API path.
+On `/me`, the information card switches in place between normal and editable state. The top-right control is an edit action normally and a red X while editing; cancelling discards only the current draft. The ordinary user bottom navigation is disabled for the view, loading, error, editing, and saving states. Editing shows the single viewport-fixed “保存并退出编辑模式” action with safe-area spacing, while NDP, usage count, credit score, NeeDo ID, and membership level remain read-only. Profile reads and writes always use the formal authenticated API.
 
 Customer avatars are accepted only as bounded JPEG, PNG, or WebP data URLs, stored under a SHA-256 content hash, and exposed as immutable files under `/media/customer-avatars/:contentHash.ext`; original browser data URLs are never stored in MySQL. Configure `CUSTOMER_AVATAR_STORAGE_DIR` (local default: `runtime/customer-avatars`) and `CUSTOMER_AVATAR_PUBLIC_BASE_URL` (local default: `http://localhost:3000/media/customer-avatars`). Production requires an HTTPS avatar public base URL.
 

@@ -36,7 +36,6 @@ import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { appendNeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
@@ -4180,8 +4179,7 @@ export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant
     return <FormalStoreDetailPage scope={scope} shopId={apiId} />;
   }
 
-  const allowLegacyStore = isStaticDemoMode();
-  const legacyStore = allowLegacyStore ? stores.find((item) => item.id === id) ?? null : null;
+  const legacyStore = null;
 
   if (!legacyStore) {
     const unavailableCopy = formalStoreLinkCopy[language];

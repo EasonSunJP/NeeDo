@@ -1,7 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
-import { isFrontendBypassSession } from "../../auth/rbac";
 import { useEntityStore } from "../../state/entityStore";
 import { createImApi, installImMockServer, subscribeImRealtime } from "./api";
 import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
@@ -1013,7 +1011,6 @@ export function canRecall(snapshotData: ImSnapshot, message: ConversationMessage
 
 export function useImStore(scope: ImRoleType = "user") {
   const { session } = useAuth();
-  const legacyEnabled = isStaticDemoMode() && isFrontendBypassSession(session);
   const currentUser = {
     id: session?.id ?? 0,
     needoId: session?.activePublicId ?? session?.primaryPublicId ?? "",
@@ -1021,7 +1018,7 @@ export function useImStore(scope: ImRoleType = "user") {
     avatarUrl: session?.avatarUrl ?? null
   };
 
-  return getScopedStore(scope, legacyEnabled, currentUser).useStore();
+  return getScopedStore(scope, false, currentUser).useStore();
 }
 
 export type ImStoreHook = ReturnType<typeof useImStore>;

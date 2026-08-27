@@ -34,9 +34,9 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).toContain("const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);");
   });
 
-  it("does not let a temporary frontend bypass session enter direct-access routes", () => {
-    expect(requirePortalAuthSource).toContain("const hasBlockedFrontendBypass = requiresDirectPortalAccess && isFrontendBypassSession(session);");
-    expect(requirePortalAuthSource).toContain("!isAuthenticated || !hasAccess || hasBlockedFrontendBypass");
+  it("does not include a temporary frontend bypass session", () => {
+    expect(requirePortalAuthSource).not.toContain("FrontendBypass");
+    expect(requirePortalAuthSource).not.toContain("frontend-bypass");
   });
 
   it("admits an authenticated operations admin only when a read-only merchant preview is active", () => {

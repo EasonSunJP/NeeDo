@@ -1,7 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
-import { isFrontendBypassSession } from "../../auth/rbac";
 import { demoTechnicianAvatar, imageBank } from "../../data/mock";
 import { getTechnicianReviewDisplayTags } from "../../lib/detailProfiles";
 import { useEntityStore } from "../../state/entityStore";
@@ -2266,12 +2264,6 @@ function FormalSocialProvider({ children }: { children: ReactNode }) {
 }
 
 export function SocialProvider({ children }: { children: ReactNode }) {
-  const { session } = useAuth();
-
-  if (isStaticDemoMode() && isFrontendBypassSession(session)) {
-    return <LegacySocialProvider>{children}</LegacySocialProvider>;
-  }
-
   return <FormalSocialProvider>{children}</FormalSocialProvider>;
 }
 

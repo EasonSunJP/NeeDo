@@ -5,10 +5,6 @@ import {
   getMerchantAdminPreview,
   merchantAdminPreviewShopHeader
 } from "../auth/merchantAdminPreview";
-import {
-  resolveLoadedStaticDemoDataUrl,
-  resolveLoadedStaticDemoRequest
-} from "./staticDemoLoader";
 
 export type ApiSuccessResponse<TData> = {
   code: 0;
@@ -283,11 +279,6 @@ async function sendRequest<TData>(
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
-  const staticResult = await resolveLoadedStaticDemoRequest<TData>(path, options);
-
-  if (staticResult.handled) {
-    return staticResult.data;
-  }
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
@@ -347,11 +338,6 @@ async function sendCsvExportRequest(
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
-  const staticResult = await resolveLoadedStaticDemoRequest<HttpClientCsvExportPayload>(path, options);
-
-  if (staticResult.handled) {
-    return staticResult.data;
-  }
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),
@@ -416,11 +402,6 @@ async function sendDataUrlRequest(
   const method = resolveRequestMethod(options);
   const previewShopId = getPreviewShopId(options);
   assertMerchantPreviewAllows(method, previewShopId);
-  const staticResult = await resolveLoadedStaticDemoDataUrl(path);
-
-  if (staticResult.handled) {
-    return staticResult.data;
-  }
 
   const response = await fetchWithTimeout(buildApiUrl(path, options.query, options.baseUrl), {
     body: createRequestBody(options.body),

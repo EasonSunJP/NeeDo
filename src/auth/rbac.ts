@@ -3,9 +3,9 @@ import type { IdentityAvailability, IdentityKind } from "../features/identity-ap
 
 export const authSessionVersion = 7;
 
-export type LoginMethod = "frontend-bypass" | "google" | "password";
+export type LoginMethod = "google" | "password";
 
-const loginMethods = new Set<LoginMethod>(["frontend-bypass", "google", "password"]);
+const loginMethods = new Set<LoginMethod>(["google", "password"]);
 
 export function isLoginMethod(value: unknown): value is LoginMethod {
   return typeof value === "string" && loginMethods.has(value as LoginMethod);
@@ -269,8 +269,4 @@ export function canAccessFeatureFromSession(
 
 export function canAccessMenuFromSession(session: AuthSession | null, menuPermission: string) {
   return Boolean(session && (session.menus.includes(menuPermission) || hasPermissionInSession(session, menuPermission)));
-}
-
-export function isFrontendBypassSession(session: AuthSession | null) {
-  return session?.loginMethod === "frontend-bypass";
 }

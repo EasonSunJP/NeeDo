@@ -1,5 +1,3 @@
-import { resolveLoadedStaticDemoGoogleAccountApi } from "../api/staticDemoLoader";
-
 export const googleAccountIconSrc = "/icons/google-g-logo-2026.png";
 
 export type GoogleAccountScope = "user" | "technician" | "merchant" | "business" | "admin";
@@ -43,12 +41,6 @@ function getGoogleAccountApiCandidates(path: string) {
 }
 
 export async function fetchGoogleAccountApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const staticResult = await resolveLoadedStaticDemoGoogleAccountApi<T>(path);
-
-  if (staticResult.handled) {
-    return staticResult.data;
-  }
-
   let lastError: unknown = null;
 
   for (const url of getGoogleAccountApiCandidates(path)) {

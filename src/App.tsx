@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, type PortalScope, useAuth } from "./auth/AuthProvider";
 import type { FeaturePermission } from "./auth/featurePermissions";
 import { getMerchantAdminPreview } from "./auth/merchantAdminPreview";
-import { isFrontendBypassSession, isSessionAlignedWithPortal } from "./auth/rbac";
+import { isSessionAlignedWithPortal } from "./auth/rbac";
 import { I18nProvider, I18nRuntime } from "./i18n/I18nProvider";
 import { ClientThemeProvider, getClientThemeClassName, getClientThemeModeClassName, getInitialClientThemeState, isNightClientTheme, useClientTheme } from "./theme/ClientThemeProvider";
 import { defaultDayAdminTheme, defaultNightAdminTheme, detectSystemAdminTheme, isDarkAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, sharedAdminThemeOptions, type AdminTheme, type AdminThemeOption } from "./theme/AdminTheme";
@@ -836,13 +836,11 @@ function RequirePortalAuth({
   const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;
   const hasAccess = hasDirectAccess || isOperationsMerchantPreview || (!requiresDirectPortalAccess && canEnterPortal(portal));
   const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);
-  const hasBlockedFrontendBypass = requiresDirectPortalAccess && isFrontendBypassSession(session);
   const isPortalAligned = isSessionAlignedWithPortal(session, portal);
   const needsPortalAlignment = Boolean(
     isAuthenticated &&
       hasAccess &&
       !isOperationsMerchantPreview &&
-      !hasBlockedFrontendBypass &&
       !isPortalAligned
   );
   const portalAlignmentKey = `${session?.id ?? "anonymous"}:${session?.currentIdentity.id ?? "none"}:${portal}`;
@@ -886,7 +884,7 @@ function RequirePortalAuth({
     return null;
   }
 
-  if (!isAuthenticated || !hasAccess || hasBlockedFrontendBypass || portalAlignmentFailed) {
+  if (!isAuthenticated || !hasAccess || portalAlignmentFailed) {
     const redirect = `${location.pathname}${location.search}${location.hash}`;
     const loginPath = portal === "merchant" && location.pathname.startsWith("/merchant-admin")
       ? "/login/merchant-admin"

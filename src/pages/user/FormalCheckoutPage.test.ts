@@ -14,7 +14,7 @@ describe("formal customer checkout", () => {
   });
 
   it("keeps mock checkout data exclusive to explicit static-demo mode", () => {
-    expect(checkoutSource).toContain("isStaticDemoMode() ? <LegacyCheckoutPage />");
+    expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
   });
 

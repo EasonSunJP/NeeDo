@@ -56,21 +56,6 @@ describe("business CPS plan category translation", () => {
     expect(translated.zh).toBe("测试类别");
   });
 
-  it("fills arbitrary category text locally in static demo mode without calling translation APIs", async () => {
-    vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
-    const fetchMock = vi.spyOn(globalThis, "fetch");
-    const draft: PlanWizardLocalizedText = { ja: "", en: "", ko: "", "zh-Hant": "", zh: "线下体验联动" };
-    const translated = await translatePlanCategoryDraft(draft, []);
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(translated).toMatchObject({
-      ja: "线下体验联动",
-      en: "线下体验联动",
-      ko: "线下体验联动",
-      "zh-Hant": "线下体验联动",
-      zh: "线下体验联动"
-    });
-  });
 });
 
 describe("business CPS flat-rate payout fields", () => {

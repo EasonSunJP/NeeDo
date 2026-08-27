@@ -18,7 +18,7 @@ describe("TechnicianPortalPage profile card", () => {
     expect(source).toContain("coreReadApi.getTechnicianDetail(formalTechnicianProfileId)");
     expect(source).toContain("mapCoreTechnicianToTechnician(formalTechnicianProfileQuery.data)");
     expect(source).toContain("mapCoreShopToStore(formalTechnicianProfileQuery.data.shop)");
-    expect(source).toContain("isStaticDemoMode()");
+    expect(source).not.toContain("isStaticDemoMode()");
   });
 
   it("keeps the info/data tabs and places privacy plus tags in the info card", () => {

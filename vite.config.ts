@@ -21,30 +21,13 @@ type EnvMap = Record<string, string | undefined>;
 export const defaultNeedoApiProxyTarget = "http://127.0.0.1:3000";
 export const defaultLegacyAuthProxyPrefix = "/legacy-auth";
 export const productionBuildTarget = "production";
-export const staticDemoBuildTarget = "static-demo";
-
-export function shouldIncludeStaticDemoRuntime(
-  env: EnvMap,
-  command: "build" | "serve",
-  mode: string
-) {
-  return (
-    mode === "test" ||
-    command === "serve" ||
-    resolveBuildTarget(env, command) === staticDemoBuildTarget
-  );
-}
-
-function isEnabledFlag(value: string | undefined) {
-  return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
-}
 
 function resolveBuildTarget(env: EnvMap, command: "build" | "serve") {
   return env.NEEDO_BUILD_TARGET?.trim() || env.VITE_NEEDO_BUILD_TARGET?.trim() || (command === "build" ? productionBuildTarget : "development");
 }
 
 export function assertSafeFrontendBuild(env: EnvMap, command: "build" | "serve") {
-  if (command !== "build" || resolveBuildTarget(env, command) === staticDemoBuildTarget) {
+  if (command !== "build") {
     return;
   }
 
@@ -60,10 +43,6 @@ export function assertSafeFrontendBuild(env: EnvMap, command: "build" | "serve")
 
     if (["VITE_LEGACY_AUTH_BASE_URL", "VITE_LEGACY_AUTH_PROXY_TARGET", "NEEDO_LEGACY_AUTH_PROXY_TARGET", "VITE_LEGACY_AUTHORIZATION"].includes(key)) {
       return true;
-    }
-
-    if (["VITE_NEEDO_STATIC_DEMO", "VITE_STATIC_DEMO", "VITE_NEEDO_STATIC_DEMO_STRICT", "VITE_STATIC_DEMO_STRICT", "VITE_NEEDO_FRONTEND_AUTH_BYPASS"].includes(key)) {
-      return isEnabledFlag(value);
     }
 
     return false;
@@ -224,11 +203,6 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     base: "./",
-    define: {
-      __NEEDO_STATIC_DEMO_BUILD__: JSON.stringify(
-        shouldIncludeStaticDemoRuntime(env, command, mode)
-      )
-    },
     plugins: [needoPortalEntryFallbackPlugin(), react()],
     build: {
       chunkSizeWarningLimit: 3600,

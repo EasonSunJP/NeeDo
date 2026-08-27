@@ -52,8 +52,6 @@ vi.mock("../api/httpClient", () => ({
     mocked.tokenState.refreshToken = token;
   })
 }));
-vi.mock("../api/staticDemoMode", () => ({ isStaticDemoMode: () => false }));
-
 type ChallengeSuccess = {
   challenge: VerificationChallengePayload;
   ok: true;

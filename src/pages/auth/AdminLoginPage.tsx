@@ -10,7 +10,6 @@ import {
 import type { PortalScope } from "../../auth/demoAccount";
 import { useAuth } from "../../auth/AuthProvider";
 import { purgeLegacyRememberedCredentials } from "../../auth/rememberCredentials";
-import { isFrontendBypassSession } from "../../auth/rbac";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
 import { AdminToggleSwitch } from "../../components/admin/AdminToggleSwitch";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
@@ -460,7 +459,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [notice, setNotice] = useState("");
   const redirectPath = searchParams.get("redirect");
   const nextPath = redirectPath || config.entryPath;
-  const hasAccess = isAuthenticated && canAccess(config.authPortal) && !isFrontendBypassSession(session);
+  const hasAccess = isAuthenticated && canAccess(config.authPortal);
   const qrToken = adminLoginQrTokens[portal];
   const navigateToBackendSession = useCallback(
     (sessionPortal: PortalScope) => {

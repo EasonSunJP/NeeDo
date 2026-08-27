@@ -17,7 +17,6 @@ import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { CloseIconButton } from "../../components/ui/CloseIconButton";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { serviceCategories, services as legacyServices } from "../../data/mock";
 import {
   coreReadApi,
@@ -90,7 +89,6 @@ function normalizeText(value: string) {
 
 function getFormalCustomerProfileId(session: AuthSession | null) {
   if (
-    isStaticDemoMode() ||
     session?.portal !== "user" ||
     session.currentIdentity.scopeType !== "customer_profile"
   ) {
@@ -673,7 +671,7 @@ export function HomePage() {
   const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
   const { customers, stores: legacyStores, technicians: legacyTechnicians, revision: entityRevision } = useEntityStore();
   const userOrders = useUserOrders();
-  const allowLegacyCoreReadData = isStaticDemoMode();
+  const allowLegacyCoreReadData = false;
   const formalCustomerProfileId = getFormalCustomerProfileId(session);
   const formalCustomerProfileQuery = useCoreReadQuery(
     () => formalCustomerProfileId ? coreReadApi.getCustomerProfile(formalCustomerProfileId) : null,

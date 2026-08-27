@@ -15,8 +15,9 @@ describe("formal realtime unread-count hook", () => {
     expect(source).toContain("!isRestoring");
   });
 
-  it("does not call the backend for the explicit static demo bypass", () => {
-    expect(source).toContain("isStaticDemoMode() && isFrontendBypassSession(session)");
+  it("does not contain a static demo bypass", () => {
+    expect(source).not.toContain("isStaticDemoMode");
+    expect(source).not.toContain("isFrontendBypassSession");
     expect(source).not.toContain("localStorage");
     expect(source).not.toContain("useImStore");
     expect(source).not.toContain("useSocial");

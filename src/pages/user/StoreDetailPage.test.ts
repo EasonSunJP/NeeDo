@@ -526,10 +526,10 @@ describe("StoreDetailPage formal route isolation", () => {
     expect(pageSource).toContain("return <FormalStoreDetailPage scope={scope} shopId={apiId} />;");
   });
 
-  it("keeps nonnumeric legacy records inside static-demo mode", () => {
-    expect(pageSource).toContain("const allowLegacyStore = isStaticDemoMode();");
-    expect(pageSource).toContain("allowLegacyStore ? stores.find((item) => item.id === id) ?? null : null");
-    expect(pageSource).not.toContain("stores.find((item) => item.id === id) ?? stores[0]");
+  it("rejects nonnumeric legacy records", () => {
+    expect(pageSource).not.toContain("isStaticDemoMode()");
+    expect(pageSource).toContain("const legacyStore = null");
+    expect(pageSource).not.toContain("stores.find((item) => item.id === id)");
   });
 
   it("localizes the formal invalid-link state", () => {

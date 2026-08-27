@@ -14,7 +14,6 @@ import {
 const mocked = vi.hoisted(() => ({
   auth: {
     canAccess: vi.fn(() => false),
-    enterFrontendWithoutAuthentication: vi.fn(),
     hasRememberedPortalAuthorization: vi.fn(() => false),
     isAuthenticated: false,
     login: vi.fn(),
@@ -30,7 +29,6 @@ const mocked = vi.hoisted(() => ({
     initializeGoogleLogin: vi.fn(),
     submitGoogleCredential: vi.fn(),
   },
-  isStaticDemo: false,
   navigateToPortal: vi.fn(),
   requestBrowserPasswordSave: vi.fn(async () => undefined),
   requestGoogleCredential: vi.fn(),
@@ -46,10 +44,6 @@ vi.mock("../../api/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/auth")>();
   return { ...actual, authApi: { ...actual.authApi, ...mocked.authApi } };
 });
-
-vi.mock("../../api/staticDemoMode", () => ({
-  isStaticDemoMode: () => mocked.isStaticDemo,
-}));
 
 vi.mock("../../auth/googleIdentity", async (importOriginal) => {
   const actual =
@@ -149,7 +143,6 @@ describe("LoginPage verified identity behavior", () => {
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
-    mocked.isStaticDemo = false;
     mocked.auth.isAuthenticated = false;
     mocked.auth.session = null;
     mocked.auth.canAccess.mockReturnValue(false);
@@ -663,7 +656,7 @@ describe("LoginPage verified identity behavior", () => {
     ).not.toBeNull();
   });
 
-  it("localizes Google conflict/provider failures and fails closed in static demo", async () => {
+  it("localizes Google conflict and provider failures", async () => {
     mocked.requestGoogleCredential.mockRejectedValueOnce(
       new Error("error.auth.google_conflict"),
     );
@@ -679,18 +672,6 @@ describe("LoginPage verified identity behavior", () => {
       "Google 账号已绑定到其他 NeeDo 账号",
     );
 
-    mocked.isStaticDemo = true;
-    mocked.requestGoogleCredential.mockClear();
-    await act(async () => {
-      await root.unmount();
-      root = createRoot(container);
-      root.render(
-        createElement(LoginPage, { navigateToPortal: mocked.navigateToPortal }),
-      );
-    });
-    await flushUi();
-    expect(container.textContent).toContain("静态演示模式不提供 Google 登录");
-    expect(mocked.requestGoogleCredential).not.toHaveBeenCalled();
   });
 });
 
@@ -883,12 +864,7 @@ describe("LoginPage formal flow guardrails", () => {
       "/merchant/orders",
     );
     expect(getPostLoginRoute("user", "/admin")).toBe("/");
-    expect(
-      requiresFormalFrontendLogin("technician", "/technician", false, false),
-    ).toBe(true);
-    expect(
-      requiresFormalFrontendLogin("technician", "/technician", false, true),
-    ).toBe(false);
+    expect(requiresFormalFrontendLogin("technician", "/technician")).toBe(true);
   });
 
   it("audits the current checkout instead of a hard-coded sibling workspace", () => {

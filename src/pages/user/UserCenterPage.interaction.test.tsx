@@ -360,19 +360,4 @@ describe("UserCenterPage inline profile editing", () => {
     expect(testState.updateMine).not.toHaveBeenCalled();
   });
 
-  it("does not expose legacy profile data through a frontend-bypass session", async () => {
-    testState.loginMethod = "frontend-bypass";
-
-    await act(async () => {
-      root.render(
-        <MemoryRouter>
-          <UserCenterPage />
-        </MemoryRouter>
-      );
-    });
-
-    await waitFor(() => expect(container.textContent).toContain("登录状态已失效，请重新登录"));
-    expect(testState.getMine).not.toHaveBeenCalled();
-    expect(container.textContent).not.toContain("Mia");
-  });
 });

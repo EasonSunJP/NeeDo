@@ -13,7 +13,6 @@ import {
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { services as legacyServices, stores as legacyStores, technicians as legacyTechnicians } from "../../data/mock";
 import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
@@ -433,7 +432,7 @@ export function CategoryPage() {
   const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0;
   const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");
   const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;
-  const allowLegacyCoreReadData = isStaticDemoMode();
+  const allowLegacyCoreReadData = false;
   const searchQuery = useCoreReadQuery(
     () =>
       coreReadApi.search({

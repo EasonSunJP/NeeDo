@@ -11,7 +11,6 @@ type AdminAccountMenuProps = {
 };
 
 const loginMethodLabels = {
-  "frontend-bypass": "前台临时",
   google: "Google",
   password: "账号密码"
 } as const;

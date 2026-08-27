@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
 import { ApiClientError } from "../../api/httpClient";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import {
   createCustomContactCategoryDraft,
   CustomContactCategoryEditor,
@@ -2189,7 +2188,6 @@ function getTechnicianView(view?: string): TechnicianView {
 
 function getFormalTechnicianProfileId(session: AuthSession | null) {
   if (
-    isStaticDemoMode() ||
     session?.portal !== "technician" ||
     session.currentIdentity.scopeType !== "technician_profile"
   ) {

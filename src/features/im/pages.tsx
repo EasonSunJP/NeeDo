@@ -64,7 +64,6 @@ import {
   padNumber,
   timeToMinutes
 } from "../technician-schedule/model";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import {
   ContactSummaryCard,
   ContactRow,
@@ -5195,10 +5194,6 @@ export function ImConversationRoomPage({
       closeMessageMenu();
     }
 
-    if (isStaticDemoMode()) {
-      return;
-    }
-
     void api
       .setMessageReaction(conversationId, message.id, reaction, !reactedByMe)
       .then(({ message: savedMessage }) => {
@@ -6047,7 +6042,6 @@ export function ImConversationInfoPage() {
   const user = conversation?.contactUserId ? store.usersById[conversation.contactUserId] : undefined;
   const numericContactUserId = Number(user?.id);
   const formalActivityTargetUserId = conversation?.type === "single"
-    && !isStaticDemoMode()
     && /^(?:u|s|b|o|needo)\d{10}$/.test(user?.userIdLabel ?? "")
     && Number.isSafeInteger(numericContactUserId)
     && numericContactUserId > 0
