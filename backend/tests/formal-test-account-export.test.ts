@@ -33,7 +33,7 @@ describe("formal test account export", () => {
 
   it("exports the persisted immutable NeeDo ID", () => {
     const rows = accounts.map((account) =>
-      buildFormalTestAccountExportRow(account, "needotest")
+      buildFormalTestAccountExportRow(account, "ExportFixturePassword-2026!")
     );
 
     expect(rows.map((row) => row.needoId)).toEqual([
@@ -52,21 +52,21 @@ describe("formal test account export", () => {
           ...accounts[0],
           needoId: "u0000000003"
         },
-        "needotest"
+        "ExportFixturePassword-2026!"
       )
     ).toThrow("NeeDo ID must match n plus ten digits");
   });
 
   it("labels and places the operations super administrator first", () => {
     const rows = orderFormalTestAccountExports(
-      accounts.map((account) => buildFormalTestAccountExportRow(account, "needotest"))
+      accounts.map((account) => buildFormalTestAccountExportRow(account, "ExportFixturePassword-2026!"))
     );
 
     expect(rows[0]).toEqual(
       expect.objectContaining({
         accountType: "运营后台超级管理员",
         email: "admin@lifedance.com",
-        password: "needotest"
+        password: "ExportFixturePassword-2026!"
       })
     );
   });

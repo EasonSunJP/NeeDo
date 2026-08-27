@@ -3,6 +3,10 @@ import {
   type BackofficeTechnicianPayload,
 } from "../../api/backofficeRealData";
 import {
+  getMerchantStaffEmploymentLabel,
+  toMerchantStaffEmploymentType,
+} from "../../lib/merchantStaffRoles";
+import {
   realtimeApi,
   subscribeRealtimeEvents,
   type PaginatedRealtimeData,
@@ -178,6 +182,24 @@ function toPlaceholderUser(userId: number): ImUser {
   };
 }
 
+function getOrganizationTechnicianTags(
+  technician: BackofficeTechnicianPayload,
+) {
+  const employmentType = toMerchantStaffEmploymentType(
+    technician.employmentType,
+  );
+
+  if (!employmentType) {
+    throw new Error("error.validation.invalid_employment_type");
+  }
+
+  return [
+    "员工",
+    getMerchantStaffEmploymentLabel(employmentType),
+    "技师",
+  ];
+}
+
 function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
   const id = String(technician.userId);
 
@@ -203,7 +225,7 @@ function toOrganizationUser(technician: BackofficeTechnicianPayload): ImUser {
     entityType: "technician",
     entityId: `tech-${technician.id}`,
     source: "merchant_technician_profile",
-    tags: ["员工", "正社员", "技师"],
+    tags: getOrganizationTechnicianTags(technician),
     userIdLabel: technician.needoId,
     canCall: false,
     canVideoCall: false,
@@ -220,7 +242,7 @@ function toOrganizationContact(
     targetUserId: String(technician.userId),
     relationStatus: "active",
     source: "merchant_technician_profile",
-    tags: ["员工", "正社员", "技师"],
+    tags: getOrganizationTechnicianTags(technician),
     isStarred: false,
     isBlocked: false,
     description: technician.shopName ?? undefined,
