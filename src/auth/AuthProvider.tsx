@@ -27,6 +27,7 @@ import {
   readRememberedPortalSession,
   rememberPortalAuthorization
 } from "./portalAuthorization";
+import { purgeLegacyRememberedCredentials } from "./rememberCredentials";
 import {
   buildAuthSessionFromMe,
   authSessionVersion,
@@ -91,8 +92,6 @@ type AuthContextValue = {
   sendVerificationCode: (email: string) => Promise<{ message?: string; ok: boolean }>;
   /** @deprecated Task 11 removes the obsolete generic verification-code page. */
   loginWithVerificationCode: (portal: PortalScope, email: string, code: string) => Promise<AuthActionResult>;
-  /** @deprecated Task 11 connects the official Google Identity Services result. */
-  loginWithProvider: (portal: PortalScope, provider: "gmail", email?: string) => Promise<AuthActionResult>;
   loginWithQr: (portal: PortalScope, token: string) => Promise<AuthActionResult>;
   enterFrontendWithoutAuthentication: (portal: PortalScope) => Promise<AuthActionResult>;
   logout: () => Promise<void>;
@@ -455,6 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    purgeLegacyRememberedCredentials();
     setAuthExpiredHandler(clearSession);
 
     return () => setAuthExpiredHandler(null);
@@ -655,14 +655,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: false, message: "error.auth.legacy_otp_unavailable" };
   }, []);
 
-  const loginWithProvider = useCallback(
-    async (): Promise<AuthActionResult> => ({
-      ok: false,
-      message: "error.auth.provider_unavailable"
-    }),
-    []
-  );
-
   const loginWithQr = useCallback(
     async (): Promise<AuthActionResult> => ({
       ok: false,
@@ -808,7 +800,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyGoogleRegistrationOrLink,
       sendVerificationCode,
       loginWithVerificationCode,
-      loginWithProvider,
       loginWithQr,
       enterFrontendWithoutAuthentication,
       logout,
@@ -835,7 +826,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithFormalPassword,
       loginWithGoogle,
       enterFrontendWithoutAuthentication,
-      loginWithProvider,
       loginWithQr,
       loginWithVerificationCode,
       logout,

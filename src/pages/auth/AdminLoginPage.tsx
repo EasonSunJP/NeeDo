@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
 import type { PortalScope } from "../../auth/demoAccount";
 import { useAuth } from "../../auth/AuthProvider";
-import { clearRememberedCredentials, readRememberedCredentials, writeRememberedCredentials } from "../../auth/rememberCredentials";
+import { purgeLegacyRememberedCredentials } from "../../auth/rememberCredentials";
 import { isFrontendBypassSession } from "../../auth/rbac";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
 import { PasswordInput } from "../../components/ui/PasswordInput";
@@ -33,14 +33,12 @@ type BackendLoginCopy = {
   accountPlaceholder: string;
   passwordLabel: string;
   passwordPlaceholder: string;
-  rememberCredentials: string;
   codeEmailLabel: string;
   codeEmailPlaceholder: string;
   codeLabel: string;
   codePlaceholder: string;
   sendCode: string;
   codeSent: string;
-  gmailLogin: string;
   login: string;
   continue: string;
   loggedIn: string;
@@ -85,14 +83,12 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "密码",
     passwordPlaceholder: "请输入密码",
-    rememberCredentials: "记录账号密码",
     codeEmailLabel: "登录邮箱",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "验证码",
     codePlaceholder: "6 位验证码",
     sendCode: "获取验证码",
     codeSent: "验证码已发送，请查看对应邮箱或开发环境 OTP 交付日志。",
-    gmailLogin: "使用 Gmail 登录",
     login: "登录",
     continue: "进入后台",
     loggedIn: "当前已登录",
@@ -133,14 +129,12 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "密碼",
     passwordPlaceholder: "請輸入密碼",
-    rememberCredentials: "記錄帳號密碼",
     codeEmailLabel: "登入信箱",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "驗證碼",
     codePlaceholder: "6 位驗證碼",
     sendCode: "取得驗證碼",
     codeSent: "驗證碼已發送，請查看對應信箱或開發環境 OTP 交付日誌。",
-    gmailLogin: "使用 Gmail 登入",
     login: "登入",
     continue: "進入後台",
     loggedIn: "目前已登入",
@@ -181,14 +175,12 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "パスワード",
     passwordPlaceholder: "パスワードを入力",
-    rememberCredentials: "アカウントとパスワードを保存",
     codeEmailLabel: "ログインメール",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "認証コード",
     codePlaceholder: "6桁のコード",
     sendCode: "コードを取得",
     codeSent: "認証コードを送信しました。メールまたは開発環境の OTP 配信ログを確認してください。",
-    gmailLogin: "Gmail でログイン",
     login: "ログイン",
     continue: "管理画面へ",
     loggedIn: "ログイン済み",
@@ -229,14 +221,12 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "Password",
     passwordPlaceholder: "Enter password",
-    rememberCredentials: "Remember account and password",
     codeEmailLabel: "Login email",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "Verification code",
     codePlaceholder: "6-digit code",
     sendCode: "Send code",
     codeSent: "Code sent. Check the mailbox or development OTP delivery logs.",
-    gmailLogin: "Continue with Gmail",
     login: "Log in",
     continue: "Enter Admin",
     loggedIn: "Already signed in",
@@ -277,14 +267,12 @@ const adminLoginCopy = {
     accountPlaceholder: "admin@example.com",
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호 입력",
-    rememberCredentials: "계정과 비밀번호 저장",
     codeEmailLabel: "로그인 이메일",
     codeEmailPlaceholder: "admin@needo.jp",
     codeLabel: "인증코드",
     codePlaceholder: "6자리 코드",
     sendCode: "코드 받기",
     codeSent: "인증코드를 보냈습니다. 메일함 또는 개발 환경 OTP 전달 로그를 확인하세요.",
-    gmailLogin: "Gmail로 로그인",
     login: "로그인",
     continue: "관리자로 이동",
     loggedIn: "이미 로그인됨",
@@ -310,17 +298,10 @@ const backendDefaultLoginEmails = {
   "afirieito-admin": "affiliate@example.com"
 } as const satisfies Record<AdminLoginPortal, string>;
 
-const backendPortalAccountAliases = {
-  admin: ["admin", "admin@example.com", "admin@needo.jp"],
-  "merchant-admin": ["merchant@example.com", "merchant-owner@example.com", "store-admin", "store-admin@needo.jp"],
-  "afirieito-admin": ["affiliate@example.com", "afirieito", "afirieito@needo.jp"]
-} as const satisfies Record<AdminLoginPortal, readonly string[]>;
-
 const backendLoginConfig = {
   admin: {
     authPortal: getAdminLoginPortalScope("admin"),
     defaultEmail: backendDefaultLoginEmails.admin,
-    gmailEmail: "needo.ops@gmail.com",
     entryPath: "/admin",
     background: backendManagementSystemBgUrl,
     mark: "N",
@@ -334,7 +315,6 @@ const backendLoginConfig = {
   "merchant-admin": {
     authPortal: getAdminLoginPortalScope("merchant-admin"),
     defaultEmail: backendDefaultLoginEmails["merchant-admin"],
-    gmailEmail: "needo.store@gmail.com",
     entryPath: "/merchant-admin",
     background: backendManagementSystemBgUrl,
     mark: "S",
@@ -348,7 +328,6 @@ const backendLoginConfig = {
   "afirieito-admin": {
     authPortal: getAdminLoginPortalScope("afirieito-admin"),
     defaultEmail: backendDefaultLoginEmails["afirieito-admin"],
-    gmailEmail: "needo.afirieito@gmail.com",
     entryPath: "/NDA-admin",
     background: backendManagementSystemBgUrl,
     mark: "A",
@@ -360,23 +339,6 @@ const backendLoginConfig = {
     legacyDarkTheme: defaultNightAdminTheme
   }
 } as const;
-
-function normalizeAccountAlias(value: string) {
-  return value.trim().toLowerCase();
-}
-
-export function isBackendAccountForAnotherPortal(portal: AdminLoginPortal, account: string) {
-  const normalizedAccount = normalizeAccountAlias(account);
-
-  if (!normalizedAccount) {
-    return false;
-  }
-
-  return (Object.entries(backendPortalAccountAliases) as Array<[AdminLoginPortal, readonly string[]]>).some(
-    ([aliasPortal, aliases]) =>
-      aliasPortal !== portal && aliases.map(normalizeAccountAlias).includes(normalizedAccount)
-  );
-}
 
 export function resolveBackendLoginTarget(sessionPortal: PortalScope, requestedPortal: PortalScope, nextPath: string) {
   return sessionPortal === requestedPortal ? nextPath : null;
@@ -412,10 +374,6 @@ function getInitialBackendLoginTheme(portal: AdminLoginPortal): AdminTheme {
   return detectSystemAdminTheme(config.dayTheme, config.nightTheme, config.themeOptions);
 }
 
-function getAdminRememberCredentialsScope(portal: AdminLoginPortal) {
-  return `admin.${portal}`;
-}
-
 function QrLoginGraphic({ mark }: { mark: string }) {
   return (
     <div className="admin-login-qr-card relative mx-auto grid aspect-square w-full max-w-[260px] grid-cols-9 gap-1 p-4">
@@ -440,7 +398,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     canAccess,
     isAuthenticated,
     loginWithFormalPassword,
-    loginWithProvider,
     loginWithQr,
     loginWithVerificationCode,
     logout,
@@ -457,7 +414,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [mode, setMode] = useState<LoginMode>(requestedMode);
   const [account, setAccount] = useState<string>(config.defaultEmail);
   const [password, setPassword] = useState<string>("");
-  const [rememberCredentials, setRememberCredentials] = useState(false);
   const [codeEmail, setCodeEmail] = useState<string>(config.defaultEmail);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
@@ -467,7 +423,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const nextPath = redirectPath || config.entryPath;
   const hasAccess = isAuthenticated && canAccess(config.authPortal) && !isFrontendBypassSession(session);
   const qrToken = adminLoginQrTokens[portal];
-  const rememberCredentialsScope = useMemo(() => getAdminRememberCredentialsScope(portal), [portal]);
   const navigateToBackendSession = useCallback(
     (sessionPortal: PortalScope) => {
       const target = resolveBackendLoginTarget(sessionPortal, config.authPortal, nextPath);
@@ -487,31 +442,11 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   }, [requestedMode]);
 
   useEffect(() => {
-    const remembered = readRememberedCredentials(rememberCredentialsScope);
-    const hasRememberedCredentials = remembered.enabled && Boolean(remembered.account.trim() || remembered.password.trim());
-    const rememberedAccountBelongsToAnotherPortal =
-      hasRememberedCredentials && remembered.account.trim()
-        ? isBackendAccountForAnotherPortal(portal, remembered.account)
-        : false;
-    const canUseRememberedCredentials = hasRememberedCredentials && !rememberedAccountBelongsToAnotherPortal;
-
-    if (remembered.enabled && (!hasRememberedCredentials || rememberedAccountBelongsToAnotherPortal)) {
-      clearRememberedCredentials(rememberCredentialsScope);
-    }
-
-    setRememberCredentials(canUseRememberedCredentials);
-    setAccount(canUseRememberedCredentials && remembered.account.trim() ? remembered.account : config.defaultEmail);
-    setPassword(canUseRememberedCredentials && remembered.password.trim() ? remembered.password : "");
+    purgeLegacyRememberedCredentials();
+    setAccount(config.defaultEmail);
+    setPassword("");
     setCodeEmail(config.defaultEmail);
-  }, [config.defaultEmail, portal, rememberCredentialsScope]);
-
-  useEffect(() => {
-    if (!rememberCredentials) {
-      return;
-    }
-
-    writeRememberedCredentials(rememberCredentialsScope, account, password);
-  }, [account, password, rememberCredentials, rememberCredentialsScope]);
+  }, [config.defaultEmail]);
 
   useEffect(() => {
     if (scanStatus !== "approved") {
@@ -556,17 +491,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     navigateToBackendSession(result.session.portal);
   };
 
-  const toggleRememberCredentials = (checked: boolean) => {
-    setRememberCredentials(checked);
-
-    if (checked) {
-      writeRememberedCredentials(rememberCredentialsScope, account, password);
-      return;
-    }
-
-    clearRememberedCredentials(rememberCredentialsScope);
-  };
-
   const submitCodeLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
@@ -595,18 +519,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     }
 
     setNotice(copy.qrApproved);
-    navigateToBackendSession(result.session.portal);
-  };
-
-  const continueWithGmail = async () => {
-    setError("");
-
-    const result = await loginWithProvider(config.authPortal, "gmail", config.gmailEmail);
-    if (!result.ok) {
-      setError(result.message || copy.accountError);
-      return;
-    }
-
     navigateToBackendSession(result.session.portal);
   };
 
@@ -693,7 +605,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       <div className="admin-login-field">
                         <span className="admin-login-field-icon">@</span>
                         <input
-                          autoComplete="username email"
+                          autoComplete="username"
                           onChange={(event) => setAccount(event.target.value)}
                           placeholder={copy.accountPlaceholder}
                           value={account}
@@ -701,32 +613,9 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       </div>
                     </label>
                     <label className="block">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <span className="admin-login-label text-sm font-black">{copy.passwordLabel}</span>
-                        <button
-                          aria-checked={rememberCredentials}
-                          className="inline-flex items-center gap-2 rounded-full px-1 py-1 text-xs font-black text-[color:var(--admin-muted)] transition hover:text-[color:var(--admin-text)]"
-                          onClick={() => toggleRememberCredentials(!rememberCredentials)}
-                          role="switch"
-                          type="button"
-                        >
-                          <span>{copy.rememberCredentials}</span>
-                          <span
-                            className={cn(
-                              "relative inline-flex h-6 w-11 items-center rounded-full border border-[color:var(--admin-line)] transition",
-                              rememberCredentials ? "bg-[color:color-mix(in_srgb,var(--admin-accent)_45%,var(--admin-surface))]" : "bg-[color:var(--admin-elevated)]"
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "h-5 w-5 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.24)] transition",
-                                rememberCredentials ? "translate-x-[19px]" : "translate-x-[2px]"
-                              )}
-                            />
-                          </span>
-                        </button>
-                      </div>
+                      <span className="admin-login-label mb-2 block text-sm font-black">{copy.passwordLabel}</span>
                       <PasswordInput
+                        autoComplete="current-password"
                         inputClassName="pr-10"
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder={copy.passwordPlaceholder}
@@ -739,10 +628,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                     {error ? <p className="admin-login-error px-4 py-3 text-sm font-bold">{error}</p> : null}
                     <button className="admin-login-primary w-full text-base" type="submit">
                       {copy.login}
-                    </button>
-                    <button className="admin-login-secondary flex w-full items-center justify-center gap-3 px-4 text-base" onClick={continueWithGmail} type="button">
-                      <span className="grid h-8 w-8 place-items-center rounded-md bg-[color:color-mix(in_srgb,var(--admin-muted-surface)_86%,var(--admin-surface))] text-base font-black text-[color:var(--admin-danger)]">G</span>
-                      {copy.gmailLogin}
                     </button>
                   </form>
                 ) : null}

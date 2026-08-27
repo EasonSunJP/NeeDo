@@ -236,6 +236,25 @@ describe("AuthProvider formal registration and Google sessions", () => {
     container.remove();
   });
 
+  it("does not expose the retired generic provider fallback", async () => {
+    await renderProvider();
+
+    expect("loginWithProvider" in (auth as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it("purges every legacy plaintext credential record during auth bootstrap without touching unrelated storage", async () => {
+    window.localStorage.setItem("needo.auth.remember-credentials.admin.admin", "admin-secret");
+    window.localStorage.setItem("needo.auth.remember-credentials.admin.merchant-admin", "merchant-secret");
+    window.localStorage.setItem("needo.auth.portal", "user");
+    window.localStorage.setItem("needo.admin.theme", "classic-white-black");
+
+    await renderProvider();
+
+    expect(Object.keys(window.localStorage).filter((key) => key.startsWith("needo.auth.remember-credentials."))).toEqual([]);
+    expect(window.localStorage.getItem("needo.auth.portal")).toBe("user");
+    expect(window.localStorage.getItem("needo.admin.theme")).toBe("classic-white-black");
+  });
+
   it("completes an authenticated backend Google result through /auth/me", async () => {
     mocked.authApi.me.mockResolvedValue(customerMe);
     await renderProvider();
