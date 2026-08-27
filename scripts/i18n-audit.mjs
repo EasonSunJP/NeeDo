@@ -1,11 +1,22 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const workspaceRoot = "/Users/eason/Documents/New project";
+const workspaceRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const translationsPath = path.join(workspaceRoot, "src/i18n/translations.ts");
-const sourceDirectories = [path.join(workspaceRoot, "src"), path.join(workspaceRoot, "scripts")];
+const identityTranslationsPath = path.join(
+  workspaceRoot,
+  "src/features/identity-applications/i18n.ts",
+);
+const sourceDirectories = [
+  path.join(workspaceRoot, "src"),
+  path.join(workspaceRoot, "scripts"),
+];
 
 const codeFileExtensions = new Set([".ts", ".tsx", ".mjs"]);
 const excludedFilePatterns = [/src\/i18n\/translations\.ts$/u];
@@ -61,7 +72,9 @@ function classifySourceText(value) {
     return "ignore";
   }
 
-  return containsKana(text) || containsHangul(text) ? "non_zh_source" : "zh_source";
+  return containsKana(text) || containsHangul(text)
+    ? "non_zh_source"
+    : "zh_source";
 }
 
 async function readCodeFiles(directory) {
@@ -94,13 +107,42 @@ async function readCodeFiles(directory) {
   return files.sort();
 }
 
+let identityTranslationsPromise;
+
+async function loadIdentityTranslations() {
+  identityTranslationsPromise ??= (async () => {
+    const source = await fs.readFile(identityTranslationsPath, "utf8");
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText;
+    const encoded = Buffer.from(transpiled, "utf8").toString("base64");
+    const loaded = await import(`data:text/javascript;base64,${encoded}`);
+    return loaded.identityApplicationTranslations ?? {};
+  })();
+
+  return identityTranslationsPromise;
+}
+
 async function loadTranslationsFromSource(sourceCode) {
-  const tempFile = path.join(workspaceRoot, "exports", "i18n", `translations-audit-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
-  const transpiled = ts.transpileModule(sourceCode, {
+  const identityTranslations = await loadIdentityTranslations();
+  const standaloneSource = sourceCode.replace(
+    /import\s+\{\s*identityApplicationTranslations\s*\}\s+from\s+["'][^"']+["'];?/u,
+    `const identityApplicationTranslations = ${JSON.stringify(identityTranslations)};`,
+  );
+  const tempFile = path.join(
+    workspaceRoot,
+    "exports",
+    "i18n",
+    `translations-audit-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`,
+  );
+  const transpiled = ts.transpileModule(standaloneSource, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
-      target: ts.ScriptTarget.ES2022
-    }
+      target: ts.ScriptTarget.ES2022,
+    },
   }).outputText;
 
   await fs.mkdir(path.dirname(tempFile), { recursive: true });
@@ -123,7 +165,7 @@ async function loadIndexedTranslations() {
   const source = execFileSync("git", ["show", ":src/i18n/translations.ts"], {
     cwd: workspaceRoot,
     encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024
+    maxBuffer: 64 * 1024 * 1024,
   });
   return loadTranslationsFromSource(source);
 }
@@ -133,7 +175,12 @@ function addOccurrence(map, text, filePath, line) {
 
   if (existing) {
     existing.count += 1;
-    if (existing.examples.length < 5 && !existing.examples.some((item) => item.file === filePath && item.line === line)) {
+    if (
+      existing.examples.length < 5 &&
+      !existing.examples.some(
+        (item) => item.file === filePath && item.line === line,
+      )
+    ) {
       existing.examples.push({ file: filePath, line });
     }
     return;
@@ -142,7 +189,7 @@ function addOccurrence(map, text, filePath, line) {
   map.set(text, {
     text,
     count: 1,
-    examples: [{ file: filePath, line }]
+    examples: [{ file: filePath, line }],
   });
 }
 
@@ -157,14 +204,27 @@ function collectUiStrings(sourceFile, sourceText, output) {
       const kind = classifySourceText(value);
 
       if (kind !== "ignore") {
-        addOccurrence(kind === "zh_source" ? output.zhSource : output.nonZhSource, value, sourceFile.fileName, lineOfPosition(sourceFile, node.getStart(sourceFile)));
+        addOccurrence(
+          kind === "zh_source" ? output.zhSource : output.nonZhSource,
+          value,
+          sourceFile.fileName,
+          lineOfPosition(sourceFile, node.getStart(sourceFile)),
+        );
       }
-    } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    } else if (
+      ts.isStringLiteral(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node)
+    ) {
       const value = normalizeText(node.text);
       const kind = classifySourceText(value);
 
       if (kind !== "ignore") {
-        addOccurrence(kind === "zh_source" ? output.zhSource : output.nonZhSource, value, sourceFile.fileName, lineOfPosition(sourceFile, node.getStart(sourceFile)));
+        addOccurrence(
+          kind === "zh_source" ? output.zhSource : output.nonZhSource,
+          value,
+          sourceFile.fileName,
+          lineOfPosition(sourceFile, node.getStart(sourceFile)),
+        );
       }
     } else if (ts.isTemplateExpression(node)) {
       for (const span of node.templateSpans) {
@@ -172,7 +232,12 @@ function collectUiStrings(sourceFile, sourceText, output) {
         const kind = classifySourceText(value);
 
         if (kind !== "ignore") {
-          addOccurrence(kind === "zh_source" ? output.zhSource : output.nonZhSource, value, sourceFile.fileName, lineOfPosition(sourceFile, span.literal.getStart(sourceFile)));
+          addOccurrence(
+            kind === "zh_source" ? output.zhSource : output.nonZhSource,
+            value,
+            sourceFile.fileName,
+            lineOfPosition(sourceFile, span.literal.getStart(sourceFile)),
+          );
         }
       }
 
@@ -180,7 +245,12 @@ function collectUiStrings(sourceFile, sourceText, output) {
       const headKind = classifySourceText(headValue);
 
       if (headKind !== "ignore") {
-        addOccurrence(headKind === "zh_source" ? output.zhSource : output.nonZhSource, headValue, sourceFile.fileName, lineOfPosition(sourceFile, node.head.getStart(sourceFile)));
+        addOccurrence(
+          headKind === "zh_source" ? output.zhSource : output.nonZhSource,
+          headValue,
+          sourceFile.fileName,
+          lineOfPosition(sourceFile, node.head.getStart(sourceFile)),
+        );
       }
     }
 
@@ -196,7 +266,12 @@ function sortOccurrences(values) {
     .sort((left, right) => left.text.localeCompare(right.text, "zh-Hans-CN"));
 }
 
-function evaluateCoverage({ currentTranslations, indexedTranslations, zhSourceValues, nonZhSourceValues }) {
+function evaluateCoverage({
+  currentTranslations,
+  indexedTranslations,
+  zhSourceValues,
+  nonZhSourceValues,
+}) {
   const covered = [];
   const recoverableFromIndexed = [];
   const missing = [];
@@ -208,13 +283,13 @@ function evaluateCoverage({ currentTranslations, indexedTranslations, zhSourceVa
     }
 
     if (indexedTranslations[item.text]) {
-        recoverableFromIndexed.push({
-          ...item,
-          ja: indexedTranslations[item.text].ja,
-          en: indexedTranslations[item.text].en,
-          ko: indexedTranslations[item.text].ko ?? ""
-        });
-        continue;
+      recoverableFromIndexed.push({
+        ...item,
+        ja: indexedTranslations[item.text].ja,
+        en: indexedTranslations[item.text].en,
+        ko: indexedTranslations[item.text].ko ?? "",
+      });
+      continue;
     }
 
     missing.push(item);
@@ -224,33 +299,51 @@ function evaluateCoverage({ currentTranslations, indexedTranslations, zhSourceVa
     covered,
     recoverableFromIndexed,
     missing,
-    nonZhSource: nonZhSourceValues
+    nonZhSource: nonZhSourceValues,
   };
 }
 
 async function main() {
   const currentTranslations = await loadCurrentTranslations();
   const indexedTranslations = await loadIndexedTranslations();
-  const files = (await Promise.all(sourceDirectories.map((directory) => readCodeFiles(directory)))).flat().sort();
+  const files = (
+    await Promise.all(
+      sourceDirectories.map((directory) => readCodeFiles(directory)),
+    )
+  )
+    .flat()
+    .sort();
   const collected = {
     zhSource: new Map(),
-    nonZhSource: new Map()
+    nonZhSource: new Map(),
   };
 
   for (const filePath of files) {
     const sourceText = await fs.readFile(filePath, "utf8");
-    const scriptKind = filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : filePath.endsWith(".mjs") ? ts.ScriptKind.JS : ts.ScriptKind.TS;
-    const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, scriptKind);
+    const scriptKind = filePath.endsWith(".tsx")
+      ? ts.ScriptKind.TSX
+      : filePath.endsWith(".mjs")
+        ? ts.ScriptKind.JS
+        : ts.ScriptKind.TS;
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKind,
+    );
     collectUiStrings(sourceFile, sourceText, collected);
   }
 
   const zhSourceValues = sortOccurrences([...collected.zhSource.values()]);
-  const nonZhSourceValues = sortOccurrences([...collected.nonZhSource.values()]);
+  const nonZhSourceValues = sortOccurrences([
+    ...collected.nonZhSource.values(),
+  ]);
   const report = evaluateCoverage({
     currentTranslations,
     indexedTranslations,
     zhSourceValues,
-    nonZhSourceValues
+    nonZhSourceValues,
   });
 
   console.log(
@@ -261,15 +354,15 @@ async function main() {
           nonZhSourceCount: nonZhSourceValues.length,
           coveredCount: report.covered.length,
           recoverableFromIndexedCount: report.recoverableFromIndexed.length,
-          missingCount: report.missing.length
+          missingCount: report.missing.length,
         },
         recoverableFromIndexed: report.recoverableFromIndexed.slice(0, 200),
         missing: report.missing.slice(0, 200),
-        nonZhSource: report.nonZhSource.slice(0, 200)
+        nonZhSource: report.nonZhSource.slice(0, 200),
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 }
 
