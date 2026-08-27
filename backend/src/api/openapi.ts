@@ -452,9 +452,10 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       RealtimeParticipant: {
         type: "object",
-        required: ["userId", "username", "avatarUrl"],
+        required: ["userId", "needoId", "username", "avatarUrl"],
         properties: {
           userId: { type: "integer" },
+          needoId: { type: "string", pattern: "^n[0-9]{10}$" },
           username: { type: "string" },
           avatarUrl: { type: ["string", "null"] }
         }
@@ -527,11 +528,20 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       RealtimeContact: {
         type: "object",
-        required: ["id", "ownerUserId", "contactUserId", "nickname", "source", "createdAt"],
+        required: [
+          "id",
+          "ownerUserId",
+          "contactUserId",
+          "contactUser",
+          "nickname",
+          "source",
+          "createdAt"
+        ],
         properties: {
           id: { type: "integer" },
           ownerUserId: { type: "integer" },
           contactUserId: { type: "integer" },
+          contactUser: { $ref: "#/components/schemas/RealtimeParticipant" },
           nickname: { type: ["string", "null"] },
           source: { type: "string" },
           createdAt: { type: "string", format: "date-time" }
@@ -560,14 +570,45 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       },
       SocialPost: {
         type: "object",
-        required: ["id", "authorUserId", "content", "media", "visibility", "createdAt"],
+        required: ["id", "authorUserId", "content", "media", "visibility", "createdAt", "author"],
         properties: {
           id: { type: "integer" },
           authorUserId: { type: "integer" },
           content: { type: "string" },
           media: {},
           visibility: { type: "string", enum: ["public", "followers"] },
-          createdAt: { type: "string", format: "date-time" }
+          createdAt: { type: "string", format: "date-time" },
+          author: { $ref: "#/components/schemas/SocialProfileSummary" }
+        }
+      },
+      SocialProfileSummary: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "userId",
+          "username",
+          "displayName",
+          "avatarUrl",
+          "entityType",
+          "joinedAt"
+        ],
+        properties: {
+          userId: { type: "integer" },
+          username: { type: "string" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"] },
+          entityType: { type: "string", enum: ["user", "technician", "shop"] },
+          joinedAt: { type: "string", format: "date-time" }
+        }
+      },
+      SocialActivityStatus: {
+        type: "object",
+        additionalProperties: false,
+        required: ["status", "profile", "latestVisiblePostAt"],
+        properties: {
+          status: { type: "string", enum: ["recent_posts", "no_recent_posts"] },
+          profile: { $ref: "#/components/schemas/SocialProfileSummary" },
+          latestVisiblePostAt: { type: ["string", "null"], format: "date-time" }
         }
       },
       Follow: {
@@ -8356,6 +8397,43 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         ],
         responses: {
           "200": { description: "Rejected friend request" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/social/users/{userId}/activity-status`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Check whether one user has a viewer-visible post in the rolling last 30 days",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "userId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Text-only friend activity status and non-sensitive profile summary",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer", enum: [0] },
+                    message: { type: "string", enum: ["success"] },
+                    data: { $ref: "#/components/schemas/SocialActivityStatus" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { description: "Invalid userId" },
+          "401": { description: "Missing or invalid access token" },
+          "403": { description: "Missing social-post:list permission" },
+          "404": { description: "Target Social profile is unavailable" }
         }
       }
     },

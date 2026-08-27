@@ -651,6 +651,39 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/media/customer-avatars/{filename}");
   });
 
+  it("documents immutable realtime identities and the friend activity status contract", () => {
+    const document = createOpenApiDocument(env);
+    const activityPath = document.paths["/api/v1/social/users/{userId}/activity-status"]?.get;
+
+    expect(activityPath).toMatchObject({
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        expect.objectContaining({
+          name: "userId",
+          in: "path",
+          required: true,
+          schema: { type: "integer", minimum: 1 }
+        })
+      ]
+    });
+    expect(
+      activityPath.responses["200"].content["application/json"].schema.properties.data
+    ).toEqual({ $ref: "#/components/schemas/SocialActivityStatus" });
+    expect(document.components.schemas.RealtimeParticipant.required).toContain("needoId");
+    expect(document.components.schemas.RealtimeContact.required).toContain("contactUser");
+    expect(document.components.schemas.RealtimeContact.properties.contactUser).toEqual({
+      $ref: "#/components/schemas/RealtimeParticipant"
+    });
+    expect(document.components.schemas.SocialProfileSummary.required).toContain("joinedAt");
+    expect(document.components.schemas.SocialPost.properties.author).toEqual({
+      $ref: "#/components/schemas/SocialProfileSummary"
+    });
+    expect(document.components.schemas.SocialActivityStatus.properties.status.enum).toEqual([
+      "recent_posts",
+      "no_recent_posts"
+    ]);
+  });
+
   it("documents the configured access-token lifetime instead of a fixed default", () => {
     const document = createOpenApiDocument({
       ...env,
