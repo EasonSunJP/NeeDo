@@ -5,6 +5,7 @@ import {
   type BackofficeCustomerDetailPayload,
   type BackofficeCustomerPayload
 } from "../../api/backofficeRealData";
+import { ApiClientError } from "../../api/httpClient";
 import { AdminLayout } from "../../components/admin/AdminLayout";
 import { FormalCustomerDetailPanel } from "../../components/admin/FormalProfileDetailPanels";
 import { ModuleShell } from "../../components/admin/ModuleShell";
@@ -13,7 +14,8 @@ import { Button } from "../../components/ui/Button";
 import { DataTable } from "../../components/ui/DataTable";
 import { Drawer } from "../../components/ui/Drawer";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { translateText } from "../../i18n/translations";
+import { translateText, type Language } from "../../i18n/translations";
+import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
 import {
   createFormalDetailRequestCoordinator,
   hasFormalDetailRefreshFailure,
@@ -22,6 +24,26 @@ import {
 import { UserManagementWorkspace } from "./UserManagementWorkspace";
 
 const inputClassName = "h-11 w-full rounded-lg border border-line bg-paper px-3 text-sm font-bold outline-none focus:border-moss";
+
+function describeBackofficeReadError(error: unknown, language: Language) {
+  let message = "客户正式资料加载失败，请稍后重试";
+
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) {
+      message = "登录状态已失效，请重新登录";
+    } else if (error.status === 403) {
+      message = "当前身份没有查看客户资料的权限";
+    } else if (error.status === 408 || error.message === "error.network.timeout") {
+      message = "网络响应超时，请稍后重试。";
+    } else if (error.status >= 500) {
+      message = "客户资料服务暂时不可用，请稍后重试";
+    }
+  } else if (error instanceof Error && error.message === "error.network.timeout") {
+    message = "网络响应超时，请稍后重试。";
+  }
+
+  return translateText(message, language);
+}
 
 function CustomerProfilesWorkspace() {
   const { language } = useOptionalI18n();
@@ -42,10 +64,13 @@ function CustomerProfilesWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const page = await backofficeRealDataApi.customers("backoffice", { keyword: keyword || undefined, page: 1, pageSize: 100 });
+      const query = { keyword: keyword || undefined, page: 1, pageSize: 100 };
+      const page = await loadCoreReadWithTransientRetry(
+        () => backofficeRealDataApi.customers("backoffice", query)
+      );
       setCustomers(page.list);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
+      setError(describeBackofficeReadError(loadError, languageRef.current));
       if (rejectOnError) throw loadError;
     } finally {
       setLoading(false);
@@ -136,16 +161,21 @@ function CustomerProfilesWorkspace() {
     <AdminLayout>
       <ModuleShell title="客户资料" description="运营人员查看和维护正式客户档案；账号、角色及权限仍在账号管理中维护。" actions={<Button onClick={() => void load()} variant="secondary">刷新</Button>}>
         <div className="mb-4 flex gap-2 rounded-lg border border-line bg-white p-2 shadow-panel"><input className="h-9 min-w-0 flex-1 bg-transparent px-2 text-sm font-bold outline-none" onChange={(event) => setKeyword(event.target.value)} placeholder="按姓名、城市或邮箱搜索" value={keyword} /><Button onClick={() => void load()} size="sm" variant="dark">搜索</Button></div>
-        {error ? <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
+        {error ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+            <span>{error}</span>
+            <Button onClick={() => void load()} size="sm" variant="secondary">{translateText("重试", language)}</Button>
+          </div>
+        ) : null}
         {loading ? <p className="mb-4 text-sm font-bold text-ink/50">正在读取正式客户资料...</p> : null}
-        <DataTable columns={[
+        {!loading && !error ? <DataTable columns={[
           { key: "name", title: "客户", render: (row: BackofficeCustomerPayload) => row.displayName },
           { key: "email", title: "邮箱", render: (row: BackofficeCustomerPayload) => row.email },
           { key: "city", title: "城市", render: (row: BackofficeCustomerPayload) => row.city ?? "未设置" },
           { key: "level", title: "会员等级", render: (row: BackofficeCustomerPayload) => row.membershipLevel },
           { key: "orders", title: "预约数", render: (row: BackofficeCustomerPayload) => row.bookingCount },
           { key: "public", title: "公开资料", render: (row: BackofficeCustomerPayload) => <Badge tone={row.isPublic ? "green" : "neutral"}>{row.isPublic ? "公开" : "不公开"}</Badge> }
-        ]} footerPlacement="inline" onView={openCustomer} rows={customers} />
+        ]} footerPlacement="inline" onView={openCustomer} rows={customers} /> : null}
       </ModuleShell>
 
       <Drawer onClose={closeCustomer} open={selectedCustomerId !== null} title="客户集中详情">
