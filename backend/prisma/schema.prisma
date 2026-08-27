@@ -302,21 +302,67 @@ enum NotificationType {
   @@map("notification_type")
 }
 
+enum PrimaryIdentityType {
+  U     @map("u")
+  NEEDO @map("needo")
+
+  @@map("primary_identity_type")
+}
+
+enum PublicIdentifierKind {
+  U                @map("u")
+  NEEDO            @map("needo")
+  S                @map("s")
+  B                @map("b")
+  O                @map("o")
+  SHOP             @map("shop")
+  OWNER            @map("owner")
+  CUSTOMER_SUPPORT @map("cs")
+
+  @@map("public_identifier_kind")
+}
+
+enum PublicIdentifierStatus {
+  ACTIVE     @map("active")
+  DISABLED   @map("disabled")
+  TOMBSTONED @map("tombstoned")
+
+  @@map("public_identifier_status")
+}
+
+enum CustomerSupportAccountType {
+  SHOP           @map("shop")
+  NEEDO_OFFICIAL @map("needo_official")
+
+  @@map("customer_support_account_type")
+}
+
+enum VanityNumberRuleKind {
+  REPEATED_DIGIT      @map("repeated_digit")
+  ASCENDING_SEQUENCE  @map("ascending_sequence")
+  DESCENDING_SEQUENCE @map("descending_sequence")
+  REPEATED_BLOCK      @map("repeated_block")
+
+  @@map("vanity_number_rule_kind")
+}
+
 model User {
-  id                Int       @id @default(autoincrement())
-  needoId           String    @unique @map("needo_id") @db.VarChar(32)
-  email             String    @unique @db.VarChar(255)
-  phone             String?   @unique @db.VarChar(32)
-  emailVerifiedAt   DateTime? @map("email_verified_at")
-  passwordHash      String?   @map("password_hash") @db.VarChar(255)
-  username          String    @db.VarChar(100)
-  avatarUrl         String?   @map("avatar_url") @db.VarChar(500)
-  isActive          Boolean   @default(true) @map("is_active")
-  sessionGeneration Int       @default(0) @map("session_generation")
-  lastLoginAt       DateTime? @map("last_login_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  deletedAt         DateTime? @map("deleted_at")
+  id                  Int                  @id @default(autoincrement())
+  needoId             String               @unique @map("needo_id") @db.VarChar(32)
+  accountNo           String?              @unique @map("account_no") @db.Char(10)
+  primaryIdentityType PrimaryIdentityType? @map("primary_identity_type")
+  email               String               @unique @db.VarChar(255)
+  phone               String?              @unique @db.VarChar(32)
+  emailVerifiedAt     DateTime?            @map("email_verified_at")
+  passwordHash        String?              @map("password_hash") @db.VarChar(255)
+  username            String               @db.VarChar(100)
+  avatarUrl           String?              @map("avatar_url") @db.VarChar(500)
+  isActive            Boolean              @default(true) @map("is_active")
+  sessionGeneration   Int                  @default(0) @map("session_generation")
+  lastLoginAt         DateTime?            @map("last_login_at")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  deletedAt           DateTime?            @map("deleted_at")
 
   identities                      UserIdentity[]
   userRoles                       UserRole[]
@@ -384,6 +430,7 @@ model User {
 
   @@index([email])
   @@index([phone])
+  @@index([primaryIdentityType])
   @@index([isActive])
   @@index([deletedAt])
   @@map("users")
@@ -438,6 +485,7 @@ model Category {
 
 model Shop {
   id                           Int             @id @default(autoincrement())
+  shopNo                       String?         @unique @map("shop_no") @db.Char(10)
   ownerUserId                  Int?            @map("owner_user_id")
   name                         String          @db.VarChar(160)
   description                  String?         @db.Text
@@ -483,6 +531,8 @@ model Shop {
   affiliateTouches        AffiliateTouch[]
   affiliateAttributions   AffiliateAttribution[]
   technicianApplications  TechnicianApplicationDetail[]
+  publicIdentifier        PublicIdentifier?
+  customerSupportAccount  CustomerSupportAccount?
 
   @@index([ownerUserId])
   @@index([city])
@@ -1284,7 +1334,8 @@ model UserIdentity {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  publicIdentifier PublicIdentifier?
 
   @@index([userId])
   @@index([type])
@@ -1292,6 +1343,88 @@ model UserIdentity {
   @@index([isActive])
   @@index([deletedAt])
   @@map("user_identities")
+}
+
+model CustomerSupportAccount {
+  id          Int                        @id @default(autoincrement())
+  shopId      Int?                       @unique @map("shop_id")
+  type        CustomerSupportAccountType
+  displayName String                     @map("display_name") @db.VarChar(160)
+  isActive    Boolean                    @default(true) @map("is_active")
+  createdAt   DateTime                   @default(now()) @map("created_at")
+  updatedAt   DateTime                   @updatedAt @map("updated_at")
+  deletedAt   DateTime?                  @map("deleted_at")
+
+  shop             Shop?             @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publicIdentifier PublicIdentifier?
+
+  @@index([type, isActive])
+  @@index([deletedAt])
+  @@map("customer_support_accounts")
+}
+
+model PublicIdentifier {
+  id                       Int                    @id @default(autoincrement())
+  publicId                 String                 @unique @map("public_id") @db.VarChar(32)
+  numberPart               String                 @map("number_part") @db.Char(10)
+  kind                     PublicIdentifierKind
+  userIdentityId           Int?                   @unique @map("user_identity_id")
+  shopId                   Int?                   @unique @map("shop_id")
+  merchantAccountId        Int?                   @unique @map("merchant_account_id")
+  customerSupportAccountId Int?                   @unique @map("customer_support_account_id")
+  loginAllowed             Boolean                @default(false) @map("login_allowed")
+  searchable               Boolean                @default(false)
+  status                   PublicIdentifierStatus @default(ACTIVE)
+  createdAt                DateTime               @default(now()) @map("created_at")
+  updatedAt                DateTime               @updatedAt @map("updated_at")
+  deletedAt                DateTime?              @map("deleted_at")
+
+  userIdentity           UserIdentity?           @relation(fields: [userIdentityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shop                   Shop?                   @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  merchantAccount        MerchantAccount?        @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customerSupportAccount CustomerSupportAccount? @relation(fields: [customerSupportAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([kind, numberPart], map: "public_identifiers_kind_number_part_key")
+  @@index([numberPart])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("public_identifiers")
+}
+
+model VanityNumberRule {
+  id            Int                  @id @default(autoincrement())
+  code          String               @unique @db.VarChar(80)
+  kind          VanityNumberRuleKind
+  minimumLength Int                  @default(6) @map("minimum_length")
+  configuration Json?
+  isActive      Boolean              @default(true) @map("is_active")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  deletedAt     DateTime?            @map("deleted_at")
+
+  reservations VanityNumberReservation[]
+
+  @@index([kind, isActive])
+  @@index([deletedAt])
+  @@map("vanity_number_rules")
+}
+
+model VanityNumberReservation {
+  id         Int       @id @default(autoincrement())
+  numberPart String    @unique @map("number_part") @db.Char(10)
+  ruleId     Int?      @map("rule_id")
+  status     String    @default("sealed") @db.VarChar(30)
+  reason     String?   @db.VarChar(500)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  rule VanityNumberRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@index([ruleId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("vanity_number_reservations")
 }
 
 model IdentityApplication {
@@ -2232,6 +2365,7 @@ model PayoutRecord {
 model MerchantAccount {
   id                      Int       @id @default(autoincrement())
   code                    String    @unique @db.VarChar(100)
+  ownerNo                 String?   @unique @map("owner_no") @db.Char(10)
   ownerUserId             Int?      @map("owner_user_id")
   settlementBankAccountId Int?      @map("settlement_bank_account_id")
   name                    String    @db.VarChar(160)
@@ -2249,6 +2383,7 @@ model MerchantAccount {
   invoiceLines            SaasInvoiceLine[]
   entitySuspensions       EntitySuspension[]
   publishedAffiliateTasks AffiliateTask[]          @relation("AffiliateMerchantPublisher")
+  publicIdentifier        PublicIdentifier?
 
   @@index([ownerUserId])
   @@index([settlementBankAccountId])
