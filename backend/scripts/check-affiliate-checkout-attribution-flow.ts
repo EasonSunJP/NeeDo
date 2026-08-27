@@ -2,7 +2,6 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
-import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const REWARD_NDP = 1_000;
 const SERVICE_PRICE_JPY = 8_800;
@@ -59,6 +58,7 @@ const main = async (): Promise<void> => {
     { AffiliateLinkTokenService },
     { BookingRepository },
     { BookingService },
+    { createFormalTestUser, deleteFormalTestUserFoundations },
     { prisma, disconnectPrisma }
   ] = await Promise.all([
     import("../src/repositories/affiliate-checkout.repository"),
@@ -66,6 +66,7 @@ const main = async (): Promise<void> => {
     import("../src/services/affiliate-link-token.service"),
     import("../src/repositories/booking.repository"),
     import("../src/services/booking.service"),
+    import("./support/formal-test-user"),
     import("../src/prisma/client")
   ]);
 
@@ -82,17 +83,12 @@ const main = async (): Promise<void> => {
 
   try {
     const passwordHash = await hash("AffiliateCheckoutFlow.2026!", 12);
-    const needoIdAllocator = new NeedoIdAllocator();
     const createUser = async (label: string) => {
-      const user = await needoIdAllocator.withNewId((needoId) => prisma.user.create({
-        data: {
-          needoId,
-          email: `${marker}-${label}@needo.test`,
-          emailVerifiedAt: new Date(),
-          username: `${marker} ${label}`,
-          passwordHash
-        }
-      }));
+      const user = await createFormalTestUser(prisma, {
+        email: `${marker}-${label}@needo.test`,
+        passwordHash,
+        username: `${marker} ${label}`
+      });
       userIds.push(user.id);
       return user;
     };
@@ -606,6 +602,7 @@ const main = async (): Promise<void> => {
       if (shopId) await transaction.shop.deleteMany({ where: { id: shopId } });
       if (categoryId) await transaction.category.deleteMany({ where: { id: categoryId } });
       if (userIds.length > 0) {
+        await deleteFormalTestUserFoundations(transaction, userIds);
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });
       }
     });

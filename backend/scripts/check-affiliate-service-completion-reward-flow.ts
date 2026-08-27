@@ -3,7 +3,6 @@ import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
 import { assertSafeAffiliateCompletionDatabase } from "./lib/assert-safe-affiliate-completion-database";
-import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const REWARD_NDP = 1_000;
 const BOOKING_FEE_NDP = 100;
@@ -30,6 +29,7 @@ const main = async (): Promise<void> => {
     { FeeCalculationService },
     { LedgerRepository },
     { LedgerService },
+    { createFormalTestUser, deleteFormalTestUserFoundations },
     { prisma, disconnectPrisma }
   ] = await Promise.all([
     import("../src/repositories/affiliate-checkout.repository"),
@@ -41,6 +41,7 @@ const main = async (): Promise<void> => {
     import("../src/services/fee-calculation.service"),
     import("../src/repositories/ledger.repository"),
     import("../src/services/ledger.service"),
+    import("./support/formal-test-user"),
     import("../src/prisma/client")
   ]);
 
@@ -60,17 +61,12 @@ const main = async (): Promise<void> => {
 
   try {
     const passwordHash = await hash("AffiliateCompletionFlow.2026!", 12);
-    const needoIdAllocator = new NeedoIdAllocator();
     const createUser = async (label: string) => {
-      const user = await needoIdAllocator.withNewId((needoId) => prisma.user.create({
-        data: {
-          needoId,
-          email: `${marker}-${label}@needo.test`,
-          emailVerifiedAt: new Date(),
-          username: `${marker} ${label}`,
-          passwordHash
-        }
-      }));
+      const user = await createFormalTestUser(prisma, {
+        email: `${marker}-${label}@needo.test`,
+        passwordHash,
+        username: `${marker} ${label}`
+      });
       userIds.push(user.id);
       return user;
     };
@@ -907,6 +903,7 @@ const main = async (): Promise<void> => {
       }
       if (userIds.length > 0) {
         await transaction.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
+        await deleteFormalTestUserFoundations(transaction, userIds);
         await transaction.user.deleteMany({ where: { id: { in: userIds } } });
       }
     });

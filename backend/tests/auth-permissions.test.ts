@@ -18,7 +18,7 @@ const accountSecurityPermissions = [
 
 const makeUser = (permissions: readonly string[], hasPassword = true) => ({
   id: 77,
-  needoId: "n0000000077",
+  needoId: "u0000000077",
   email: "route-permission@example.com",
   emailVerifiedAt: new Date("2026-08-26T00:00:00.000Z"),
   phone: null,

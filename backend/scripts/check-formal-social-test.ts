@@ -104,7 +104,7 @@ const main = async (): Promise<void> => {
     const needoIds = plan.accounts.map((account) => {
       const user = userByEmail.get(account.email);
       assert(user, `User is missing for ${account.email}.`);
-      assert(/^n\d{10}$/.test(user.needoId), `NeeDo ID format mismatch for ${account.email}.`);
+      assert(/^(?:u|needo)\d{10}$/.test(user.needoId), `Primary public ID format mismatch for ${account.email}.`);
       return user.needoId;
     });
     const uniqueNeeDoIds = new Set(needoIds);

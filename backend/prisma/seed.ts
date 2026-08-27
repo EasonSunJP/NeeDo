@@ -13,7 +13,9 @@ import {
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
-import { NeedoIdAllocator } from "../src/services/needo-id.service";
+import { PublicIdentifierRepository } from "../src/repositories/public-identifier.repository";
+import { IdentifierAllocator } from "../src/services/public-identifier.service";
+import { UserBootstrapKeyAllocator } from "../src/services/user-bootstrap-key.service";
 
 import {
   SYSTEM_PERMISSIONS,
@@ -27,7 +29,7 @@ import {
 } from "../src/constants/test-login.constants";
 
 const BCRYPT_ROUNDS = 12;
-const needoIdAllocator = new NeedoIdAllocator();
+const bootstrapKeyAllocator = new UserBootstrapKeyAllocator();
 const DEFAULT_ADMIN_EMAIL = "admin@example.com";
 const DEFAULT_ADMIN_USERNAME = "admin";
 const SEED_PRISMA_LOG_LEVELS: Prisma.LogLevel[] = ["error"];
@@ -65,6 +67,8 @@ export interface SeedUserInput {
   username: string;
   phone?: string;
   avatarUrl?: string;
+  createdAt?: Date;
+  emailVerifiedAt?: Date;
 }
 
 interface SeedIdentityInput {
@@ -1103,7 +1107,7 @@ const createSeedPrismaClient = (): PrismaClient =>
 
 export const buildSeedUserUpdateData = (input: SeedUserInput, passwordHash: string) => ({
   phone: input.phone ?? null,
-  emailVerifiedAt: new Date(),
+  emailVerifiedAt: input.emailVerifiedAt ?? new Date(),
   passwordHash,
   username: input.username,
   ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
@@ -1111,21 +1115,104 @@ export const buildSeedUserUpdateData = (input: SeedUserInput, passwordHash: stri
   deletedAt: null
 });
 
-const upsertSeedUser = (tx: Prisma.TransactionClient, input: SeedUserInput, passwordHash: string) =>
-  needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-    where: { email: input.email },
-    create: {
-      needoId,
-      email: input.email,
-      phone: input.phone ?? null,
-      emailVerifiedAt: new Date(),
-      passwordHash,
-      username: input.username,
-      avatarUrl: input.avatarUrl ?? null,
-      isActive: true
-    },
-    update: buildSeedUserUpdateData(input, passwordHash)
-  }));
+const ensureSeedCustomerFoundation = async (
+  tx: Prisma.TransactionClient,
+  input: { userId: number; displayName: string }
+) => {
+  const customerProfile = await tx.customerProfile.upsert({
+    where: { userId: input.userId },
+    create: { userId: input.userId, displayName: input.displayName },
+    update: { deletedAt: null }
+  });
+  const existingIdentity = await tx.userIdentity.findFirst({
+    where: { userId: input.userId, type: "customer", deletedAt: null },
+    include: { publicIdentifier: true }
+  });
+  const identity = existingIdentity
+    ? await tx.userIdentity.update({
+        where: { id: existingIdentity.id },
+        data: {
+          displayName: input.displayName,
+          isActive: true,
+          isDefault: true,
+          scopeId: customerProfile.id,
+          scopeType: "customer_profile"
+        },
+        include: { publicIdentifier: true }
+      })
+    : await tx.userIdentity.create({
+        data: {
+          userId: input.userId,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: customerProfile.id,
+          displayName: input.displayName,
+          isDefault: true,
+          isActive: true
+        },
+        include: { publicIdentifier: true }
+      });
+  const identifier =
+    identity.publicIdentifier?.kind === "U" &&
+    identity.publicIdentifier.status === "ACTIVE" &&
+    identity.publicIdentifier.deletedAt === null
+      ? identity.publicIdentifier
+      : await new IdentifierAllocator(new PublicIdentifierRepository(tx)).allocate({
+          kind: "U",
+          userIdentityId: identity.id
+        });
+  const customerRole = await tx.role.findFirst({
+    where: { code: "customer", deletedAt: null },
+    select: { id: true }
+  });
+  if (!customerRole) throw new Error("Seed requires the customer role before creating accounts.");
+  await assignSeedRole(tx, {
+    userId: input.userId,
+    roleId: customerRole.id,
+    scopeType: "customer_profile",
+    scopeId: customerProfile.id
+  });
+  return tx.user.update({
+    where: { id: input.userId },
+    data: {
+      accountNo: identifier.numberPart,
+      needoId: identifier.publicId,
+      primaryIdentityType: "U"
+    }
+  });
+};
+
+export const upsertSeedUser = async (
+  tx: Prisma.TransactionClient,
+  input: SeedUserInput,
+  passwordHash: string
+) => {
+  const existing = await tx.user.findUnique({ where: { email: input.email } });
+  if (existing?.primaryIdentityType === "NEEDO") {
+    throw new Error(`Company NEEDO account cannot be reused as an ordinary seed user: ${input.email}`);
+  }
+  const user = existing
+    ? await tx.user.update({
+        where: { id: existing.id },
+        data: buildSeedUserUpdateData(input, passwordHash)
+      })
+    : await bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
+        tx.user.create({
+          data: {
+            needoId: bootstrapKey,
+            email: input.email,
+            phone: input.phone ?? null,
+            emailVerifiedAt: input.emailVerifiedAt ?? new Date(),
+            passwordHash,
+            username: input.username,
+            avatarUrl: input.avatarUrl ?? null,
+            isActive: true,
+            ...(input.createdAt ? { createdAt: input.createdAt } : {})
+          }
+        })
+      );
+  return ensureSeedCustomerFoundation(tx, { userId: user.id, displayName: input.username });
+};
 
 const upsertSeedIdentity = async (
   tx: Prisma.TransactionClient,
@@ -1140,8 +1227,8 @@ const upsertSeedIdentity = async (
     }
   });
 
-  if (existing) {
-    await tx.userIdentity.update({
+  const identity = existing
+    ? await tx.userIdentity.update({
       where: { id: existing.id },
       data: {
         displayName: input.displayName,
@@ -1149,22 +1236,102 @@ const upsertSeedIdentity = async (
         isActive: true,
         deletedAt: null,
         ...(input.activeKey ? { activeKey: input.activeKey } : {})
-      }
+      },
+      include: { publicIdentifier: true }
+    })
+    : await tx.userIdentity.create({
+        data: {
+          userId: input.userId,
+          type: input.type,
+          activeKey: input.activeKey,
+          scopeType: input.scopeType,
+          scopeId: input.scopeId,
+          displayName: input.displayName,
+          isDefault: input.isDefault ?? true,
+          isActive: true
+        },
+        include: { publicIdentifier: true }
+      });
+  const aliasKind = ["technician", "service", "s"].includes(input.type)
+    ? "S"
+    : ["merchant", "merchant_owner", "merchant_staff", "business", "b"].includes(input.type)
+      ? "B"
+      : ["merchant_organization", "owner", "o"].includes(input.type)
+        ? "O"
+        : null;
+  if (!aliasKind) return;
+  if (identity.publicIdentifier && identity.publicIdentifier.kind !== aliasKind) {
+    throw new Error(`Seed identity ${identity.id} has the wrong public identifier kind.`);
+  }
+  if (!identity.publicIdentifier) {
+    await new IdentifierAllocator(new PublicIdentifierRepository(tx)).registerPersonAlias({
+      kind: aliasKind,
+      userIdentityId: identity.id
+    });
+  }
+};
+
+const ensureSeedShopIdentifiers = async (
+  tx: Prisma.TransactionClient,
+  shop: { id: number; name: string }
+): Promise<void> => {
+  const supportAccount = await tx.customerSupportAccount.upsert({
+    where: { shopId: shop.id },
+    create: { shopId: shop.id, type: "SHOP", displayName: `${shop.name} Customer Support` },
+    update: { displayName: `${shop.name} Customer Support`, isActive: true, deletedAt: null },
+    include: { publicIdentifier: true }
+  });
+  const persistedShop = await tx.shop.findUniqueOrThrow({
+    where: { id: shop.id },
+    include: { publicIdentifier: true }
+  });
+  if (persistedShop.publicIdentifier || supportAccount.publicIdentifier) {
+    if (
+      persistedShop.publicIdentifier?.kind !== "SHOP" ||
+      supportAccount.publicIdentifier?.kind !== "CUSTOMER_SUPPORT" ||
+      persistedShop.publicIdentifier.numberPart !== supportAccount.publicIdentifier.numberPart
+    ) {
+      throw new Error(`Shop ${shop.id} has an incomplete public identifier pair.`);
+    }
+    await tx.shop.update({
+      where: { id: shop.id },
+      data: { shopNo: persistedShop.publicIdentifier.numberPart }
     });
     return;
   }
+  const pair = await new IdentifierAllocator(
+    new PublicIdentifierRepository(tx)
+  ).allocateShopSupportPair({ shopId: shop.id, customerSupportAccountId: supportAccount.id });
+  await tx.shop.update({
+    where: { id: shop.id },
+    data: { shopNo: pair.shopIdentifier.numberPart }
+  });
+};
 
-  await tx.userIdentity.create({
-    data: {
-      userId: input.userId,
-      type: input.type,
-      activeKey: input.activeKey,
-      scopeType: input.scopeType,
-      scopeId: input.scopeId,
-      displayName: input.displayName,
-      isDefault: input.isDefault ?? true,
-      isActive: true
+const ensureSeedMerchantIdentifier = async (
+  tx: Prisma.TransactionClient,
+  merchantAccountId: number
+): Promise<void> => {
+  const merchant = await tx.merchantAccount.findUniqueOrThrow({
+    where: { id: merchantAccountId },
+    include: { publicIdentifier: true }
+  });
+  if (merchant.publicIdentifier) {
+    if (merchant.publicIdentifier.kind !== "OWNER") {
+      throw new Error(`Merchant account ${merchant.id} has the wrong public identifier kind.`);
     }
+    await tx.merchantAccount.update({
+      where: { id: merchant.id },
+      data: { ownerNo: merchant.publicIdentifier.numberPart }
+    });
+    return;
+  }
+  const identifier = await new IdentifierAllocator(
+    new PublicIdentifierRepository(tx)
+  ).allocate({ kind: "OWNER", merchantAccountId: merchant.id });
+  await tx.merchantAccount.update({
+    where: { id: merchant.id },
+    data: { ownerNo: identifier.numberPart }
   });
 };
 
@@ -1207,6 +1374,94 @@ const getRequiredRole = (roleByCode: Map<string, { id: number }>, code: string):
   }
 
   return role;
+};
+
+const upsertSeedCompanyUser = async (
+  tx: Prisma.TransactionClient,
+  input: SeedUserInput,
+  passwordHash: string,
+  roleByCode: Map<string, { id: number }>
+) => {
+  const existing = await tx.user.findUnique({ where: { email: input.email } });
+  if (existing?.primaryIdentityType === "U") {
+    throw new Error(`Ordinary U account cannot be converted into a company NEEDO account by Seed: ${input.email}`);
+  }
+  const provisional = existing
+    ? await tx.user.update({
+        where: { id: existing.id },
+        data: buildSeedUserUpdateData(input, passwordHash)
+      })
+    : await bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
+        tx.user.create({
+          data: {
+            needoId: bootstrapKey,
+            email: input.email,
+            emailVerifiedAt: input.emailVerifiedAt ?? new Date(),
+            passwordHash,
+            username: input.username,
+            avatarUrl: input.avatarUrl ?? null,
+            isActive: true,
+            ...(input.createdAt ? { createdAt: input.createdAt } : {})
+          }
+        })
+      );
+  const existingPlatformIdentity = await tx.userIdentity.findFirst({
+    where: { userId: provisional.id, type: "platform", deletedAt: null },
+    include: { publicIdentifier: true }
+  });
+  const platformIdentity = existingPlatformIdentity
+    ? await tx.userIdentity.update({
+        where: { id: existingPlatformIdentity.id },
+        data: { displayName: input.username, isActive: true, isDefault: true, deletedAt: null },
+        include: { publicIdentifier: true }
+      })
+    : await tx.userIdentity.create({
+        data: {
+          userId: provisional.id,
+          type: "platform",
+          scopeType: "global",
+          displayName: input.username,
+          isDefault: true,
+          isActive: true
+        },
+        include: { publicIdentifier: true }
+      });
+  if (platformIdentity.publicIdentifier && platformIdentity.publicIdentifier.kind !== "NEEDO") {
+    throw new Error(`Company identity ${platformIdentity.id} has the wrong public identifier kind.`);
+  }
+  const identifier = platformIdentity.publicIdentifier ??
+    await new IdentifierAllocator(new PublicIdentifierRepository(tx)).allocate({
+      kind: "NEEDO",
+      userIdentityId: platformIdentity.id
+    });
+  const user = await tx.user.update({
+    where: { id: provisional.id },
+    data: {
+      accountNo: identifier.numberPart,
+      needoId: identifier.publicId,
+      primaryIdentityType: "NEEDO"
+    }
+  });
+  const customerProfile = await tx.customerProfile.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, displayName: input.username, isPublic: false },
+    update: { displayName: input.username, isPublic: false, deletedAt: null }
+  });
+  await upsertSeedIdentity(tx, {
+    userId: user.id,
+    type: "customer",
+    scopeType: "customer_profile",
+    scopeId: customerProfile.id,
+    displayName: input.username,
+    isDefault: false
+  });
+  await assignSeedRole(tx, {
+    userId: user.id,
+    roleId: getRequiredRole(roleByCode, "customer").id,
+    scopeType: "customer_profile",
+    scopeId: customerProfile.id
+  });
+  return user;
 };
 
 const upsertTestAccountProfile = async (
@@ -1309,15 +1564,23 @@ const seedRequiredTestAccounts = async (
   }
 ): Promise<void> => {
   for (const account of TEST_USER_ACCOUNTS) {
-    const user = await upsertSeedUser(
-      tx,
-      {
-        email: account.email,
-        username: account.username,
-        avatarUrl: account.avatarUrl
-      },
-      input.passwordHash
-    );
+    const seedUserInput = {
+      email: account.email,
+      username: account.username,
+      avatarUrl: account.avatarUrl
+    };
+    const user = account.identityType === "platform"
+      ? await upsertSeedCompanyUser(tx, seedUserInput, input.passwordHash, input.roleByCode)
+      : await upsertSeedUser(tx, seedUserInput, input.passwordHash);
+    if (account.identityType === "platform") {
+      await assignSeedRole(tx, {
+        userId: user.id,
+        roleId: getRequiredRole(input.roleByCode, account.roleCode).id,
+        scopeType: "global",
+        scopeId: null
+      });
+      continue;
+    }
     const identity = await upsertTestAccountProfile(tx, {
       account,
       userId: user.id,
@@ -1332,7 +1595,7 @@ const seedRequiredTestAccounts = async (
       scopeType: identity.scopeType,
       scopeId: identity.scopeId,
       displayName: identity.displayName,
-      isDefault: !switchable
+      isDefault: account.identityType === "customer"
     });
     await assignSeedRole(tx, {
       userId: user.id,
@@ -1487,6 +1750,15 @@ const seedMerchantSaasBillingData = async (
       paymentResponsibility: "group_consolidated",
       deletedAt: null
     }
+  });
+  await ensureSeedMerchantIdentifier(tx, merchantAccount.id);
+  await upsertSeedIdentity(tx, {
+    userId: input.ownerUserId,
+    type: "merchant_organization",
+    scopeType: "merchant_account",
+    scopeId: merchantAccount.id,
+    displayName: "Tokyo Wellness Group",
+    isDefault: false
   });
 
   for (const linkedShop of groupShops) {
@@ -1829,6 +2101,7 @@ const seedCoreReadData = async (
           isRecommended: true
         }
       });
+  await ensureSeedShopIdentifiers(tx, shop);
 
   await upsertSeedShopFinanceRuleSet(tx, {
     shopId: shop.id,
@@ -1977,6 +2250,7 @@ const seedCoreReadData = async (
             isRecommended: true
           }
         });
+    await ensureSeedShopIdentifiers(tx, demoShop);
 
     await upsertSeedShopFinanceRuleSet(tx, {
       shopId: demoShop.id,
@@ -3513,56 +3787,81 @@ export const seedUserManagement = async (
       }
     }
 
-    const adminUser = await needoIdAllocator.withNewId((needoId) => tx.user.upsert({
-      where: { email: adminConfig.email },
-      create: {
-        needoId,
-        email: adminConfig.email,
-        emailVerifiedAt: new Date(),
-        passwordHash: adminPasswordHash,
-        username: adminConfig.username,
-        isActive: true
-      },
-      update: {
-        emailVerifiedAt: new Date(),
-        passwordHash: adminPasswordHash,
-        username: adminConfig.username,
-        isActive: true,
-        deletedAt: null
-      }
-    }));
+    const existingAdmin = await tx.user.findUnique({ where: { email: adminConfig.email } });
+    const provisionalAdmin = existingAdmin
+      ? await tx.user.update({
+          where: { id: existingAdmin.id },
+          data: {
+            emailVerifiedAt: new Date(),
+            passwordHash: adminPasswordHash,
+            username: adminConfig.username,
+            isActive: true,
+            deletedAt: null
+          }
+        })
+      : await bootstrapKeyAllocator.withNewKey((bootstrapKey) =>
+          tx.user.create({
+            data: {
+              needoId: bootstrapKey,
+              email: adminConfig.email,
+              emailVerifiedAt: new Date(),
+              passwordHash: adminPasswordHash,
+              username: adminConfig.username,
+              isActive: true
+            }
+          })
+        );
 
-    const adminIdentity = await tx.userIdentity.findFirst({
+    const existingAdminIdentity = await tx.userIdentity.findFirst({
       where: {
-        userId: adminUser.id,
+        userId: provisionalAdmin.id,
         type: "platform",
         scopeType: "global",
         scopeId: null
-      }
+      },
+      include: { publicIdentifier: true }
     });
-
-    if (adminIdentity) {
-      await tx.userIdentity.update({
-        where: { id: adminIdentity.id },
+    const adminIdentity = existingAdminIdentity
+      ? await tx.userIdentity.update({
+        where: { id: existingAdminIdentity.id },
         data: {
           displayName: adminConfig.username,
           isDefault: true,
           isActive: true,
           deletedAt: null
-        }
-      });
-    } else {
-      await tx.userIdentity.create({
+        },
+        include: { publicIdentifier: true }
+      })
+      : await tx.userIdentity.create({
         data: {
-          userId: adminUser.id,
+          userId: provisionalAdmin.id,
           type: "platform",
           scopeType: "global",
           displayName: adminConfig.username,
           isDefault: true,
           isActive: true
-        }
+        },
+        include: { publicIdentifier: true }
       });
+    if (adminIdentity.publicIdentifier && adminIdentity.publicIdentifier.kind !== "NEEDO") {
+      throw new Error("Admin platform identity is linked to a non-NEEDO public identifier.");
     }
+    const adminIdentifier =
+      adminIdentity.publicIdentifier?.status === "ACTIVE" &&
+      adminIdentity.publicIdentifier.deletedAt === null
+        ? adminIdentity.publicIdentifier
+        : await new IdentifierAllocator(new PublicIdentifierRepository(tx)).allocate({
+            kind: "NEEDO",
+            userIdentityId: adminIdentity.id
+          });
+    const adminUser = await tx.user.update({
+      where: { id: provisionalAdmin.id },
+      data: {
+        accountNo: adminIdentifier.numberPart,
+        needoId: adminIdentifier.publicId,
+        primaryIdentityType: "NEEDO"
+      }
+    });
 
     const adminRole = roleByCode.get("admin");
     if (!adminRole) {
@@ -3593,13 +3892,12 @@ export const seedUserManagement = async (
       });
     }
 
-    if (seedCoreReadDemo || seedTestAccounts) {
-      const customerRole = roleByCode.get("customer");
-      if (!customerRole) {
-        throw new Error("Admin user seed failed: missing customer role.");
-      }
+    const customerRole = roleByCode.get("customer");
+    if (!customerRole) {
+      throw new Error("Admin user seed failed: missing customer role.");
+    }
 
-      const adminCustomerProfile = await tx.customerProfile.upsert({
+    const adminCustomerProfile = await tx.customerProfile.upsert({
         where: { userId: adminUser.id },
         create: {
           userId: adminUser.id,
@@ -3619,7 +3917,7 @@ export const seedUserManagement = async (
         }
       });
 
-      await upsertSeedIdentity(tx, {
+    await upsertSeedIdentity(tx, {
         userId: adminUser.id,
         type: "customer",
         scopeType: "customer_profile",
@@ -3628,13 +3926,14 @@ export const seedUserManagement = async (
         isDefault: false
       });
 
-      await assignSeedRole(tx, {
+    await assignSeedRole(tx, {
         userId: adminUser.id,
         roleId: customerRole.id,
         scopeType: "customer_profile",
         scopeId: adminCustomerProfile.id
       });
 
+    if (seedCoreReadDemo || seedTestAccounts) {
       await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
         seedRequiredTestAccounts: seedTestAccounts,
         testUserPasswordHash

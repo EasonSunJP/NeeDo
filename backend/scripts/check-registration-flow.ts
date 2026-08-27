@@ -150,7 +150,7 @@ const main = async (): Promise<void> => {
     });
     assert(storedCustomer?.customerProfile, "customer profile was not persisted");
     assert(storedCustomer.emailVerifiedAt, "customer email must be verified");
-    assert(/^n\d{10}$/.test(storedCustomer.needoId), "customer must receive a valid NeeDo ID");
+    assert(/^u\d{10}$/.test(storedCustomer.needoId), "customer must receive a valid U public ID");
     assert(
       verified.needoId === storedCustomer.needoId,
       "verified result returned the wrong NeeDo ID"

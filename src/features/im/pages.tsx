@@ -6048,7 +6048,7 @@ export function ImConversationInfoPage() {
   const numericContactUserId = Number(user?.id);
   const formalActivityTargetUserId = conversation?.type === "single"
     && !isStaticDemoMode()
-    && /^n\d{10}$/.test(user?.userIdLabel ?? "")
+    && /^(?:u|s|b|o|needo)\d{10}$/.test(user?.userIdLabel ?? "")
     && Number.isSafeInteger(numericContactUserId)
     && numericContactUserId > 0
     ? numericContactUserId

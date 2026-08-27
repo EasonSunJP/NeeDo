@@ -30,7 +30,7 @@ describe("RealtimeRepository formal identity payloads", () => {
                 deletedAt: null,
                 user: {
                   id: 237,
-                  needoId: "n0000000237",
+                  needoId: "u0000000237",
                   username: "柴田 陽菜",
                   avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
                 }
@@ -50,7 +50,7 @@ describe("RealtimeRepository formal identity payloads", () => {
 
     expect(result.list[0]?.participants[0]).toEqual({
       userId: 237,
-      needoId: "n0000000237",
+      needoId: "u0000000237",
       username: "柴田 陽菜",
       avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
     });
@@ -90,7 +90,7 @@ describe("RealtimeRepository formal identity payloads", () => {
             deletedAt: null,
             contactUser: {
               id: 237,
-              needoId: "n0000000237",
+              needoId: "u0000000237",
               username: "柴田 陽菜",
               avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
             }
@@ -110,7 +110,7 @@ describe("RealtimeRepository formal identity payloads", () => {
       contactUserId: 237,
       contactUser: {
         userId: 237,
-        needoId: "n0000000237",
+        needoId: "u0000000237",
         username: "柴田 陽菜",
         avatarUrl: "/images/generated/profiles/cartoon-profile-03.png"
       }

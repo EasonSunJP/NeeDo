@@ -70,12 +70,12 @@ describe("formal auth API", () => {
     vi.stubEnv("VITE_LEGACY_AUTH_BASE_URL", "/legacy-auth");
     vi.mocked(httpClient.request).mockResolvedValueOnce(tokenPair);
 
-    await authApi.login("n0000000042", "Password.2026!");
+    await authApi.login("u0000000042", "Password.2026!");
 
     expect(httpClient.request).toHaveBeenCalledWith("/auth/login", {
       auth: false,
       body: {
-        loginIdentifier: "n0000000042",
+        loginIdentifier: "u0000000042",
         password: "Password.2026!",
       },
       method: "POST",
@@ -110,7 +110,7 @@ describe("formal auth API", () => {
   });
 
   it("verifies registration and persists the authenticated token pair", async () => {
-    const registered = { ...tokenPair, needoId: "n0000000042" };
+    const registered = { ...tokenPair, needoId: "u0000000042" };
     vi.mocked(httpClient.request).mockResolvedValueOnce(registered);
 
     await expect(
@@ -181,7 +181,7 @@ describe("formal auth API", () => {
   });
 
   it("verifies first-use Google registration and persists its token pair", async () => {
-    const registered = { ...tokenPair, needoId: "n0000000042" };
+    const registered = { ...tokenPair, needoId: "u0000000042" };
     vi.mocked(httpClient.request).mockResolvedValueOnce(registered);
 
     await authApi.verifyGoogleRegistrationOrLink({
