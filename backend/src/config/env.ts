@@ -109,6 +109,10 @@ const envSchema = z
     REDIS_RECONNECT_MAX_RETRIES: z.coerce.number().int().min(0).default(0),
     REDIS_RECONNECT_BASE_DELAY_MS: z.coerce.number().int().positive().default(100),
     REDIS_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().positive().default(3000),
+    REALTIME_REDIS_CHANNEL: z
+      .string()
+      .regex(/^[A-Za-z0-9:_-]{1,128}$/)
+      .default("needo:realtime:events:v1"),
     AUTH_ACCESS_TOKEN_SECRET: z.string().min(32),
     AUTH_REFRESH_TOKEN_SECRET: z.string().min(32),
     AUTH_VERIFICATION_SECRET: z.string().min(32),
