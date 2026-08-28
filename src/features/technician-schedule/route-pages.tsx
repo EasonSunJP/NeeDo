@@ -1,3023 +1,614 @@
-import { useDeferredValue, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
-import { MobileShell } from "../../components/mobile/MobileShell";
-import { ScheduleViewSegmentedTabs } from "../../components/client-ui/AppScaffold";
-import { AvatarImage } from "../../components/ui/AvatarImage";
-import { Badge, type BadgeTone } from "../../components/ui/Badge";
-import { Button } from "../../components/ui/Button";
-import { Drawer } from "../../components/ui/Drawer";
-import { NotificationBadge } from "../../components/ui/NotificationBadge";
-import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { HolidayCornerBadge } from "../../components/scheduling/HolidayCornerBadge";
-import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ApiClientError } from "../../api/httpClient";
 import { useAuth } from "../../auth/AuthProvider";
-import { emptyOrders as orders, emptyServices as services } from "../../data/formalRuntimeFallbacks";
-import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
-import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
-import { useEntityStore } from "../../state/entityStore";
-import { getClientThemeClassName, useClientTheme } from "../../theme/ClientThemeProvider";
-import { getScheduleOrderDetailRoute, resolveScheduleEventDetailTarget } from "../../lib/scheduleDetailTarget";
-import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
-import { buildCurrentRoute, readNavigationReturnTarget, withReturnTo } from "../../lib/navigationReturn";
+import { Button } from "../../components/ui/Button";
 import {
-  cancelTechnicianScheduleTransferRequest,
-  createTechnicianScheduleTransferRequest,
-  deleteTechnicianScheduleEvent,
-  getTechnicianScheduleStoreSnapshot,
-  getTechnicianScheduleTransferPreview,
-  getTechnicianShiftConflictState,
-  saveTechnicianScheduleEvent,
-  useTechnicianScheduleStore
-} from "../../state/technicianScheduleStore";
-import { cn, hasLocalizedTitleText } from "../../lib/utils";
-import { ArrangementDetailContent } from "../dispatch-center/components/ArrangementDetailContent";
-import { getDispatchArrangementByOrderId, useDispatchCenterStore } from "../dispatch-center/store";
-import type {
-  MinuteRange,
-  TechnicianCalendarItem,
-  TechnicianDutyShift,
-  TechnicianScheduleBooking,
-  TechnicianScheduleCustomEvent,
-  TechnicianScheduleDensityMode,
-  TechnicianScheduleEventPreset,
-  TechnicianSchedulePeriod,
-  TechnicianScheduleSnapshot,
-  TechnicianScheduleSummary,
-  TechnicianScheduleSyncTarget,
-  TechnicianScheduleTransferInvitationStatus,
-  TechnicianScheduleTransferRequest,
-  TechnicianScheduleTransferStatus,
-  TechnicianScheduleView
-} from "./model";
+  bookingApi,
+  type BookingOrder,
+  type BookingOrderStatus,
+  type BookingScheduleSlot
+} from "../booking/api";
+import { schedulingApi } from "../scheduling/api";
+import { FormalScheduleRangeEditor } from "./FormalScheduleRangeEditor";
 import {
-  containsRange,
-  formatCurrency,
-  formatHours,
-  formatLongDate,
-  formatShortDate,
-  getEventKindLabel,
-  getInvitationStatusLabel,
-  getMonthGridDates,
-  getPeriod,
-  getTodayDateKey,
-  getTransferStatusLabel,
-  getWeekDates,
-  getWeekdayHeaderLabel,
-  getWeekdayLabel,
-  intersectRange,
-  intervalToRange,
-  isDateInPeriod,
-  minutesToTime,
-  padNumber,
-  resolveScheduleEventPreset,
-  getScheduleEventKindForPreset,
-  getScheduleEventPresetLabel,
-  resolveSelectedScheduleDate,
-  shiftScheduleSelection,
-  sortByDateTime,
-  subtractRanges,
-  totalHoursFromRanges
-} from "./model";
-
-type ResolvedShift = TechnicianDutyShift & {
-  assignmentKind: "owned" | "accepted";
-  ownerTechnicianId: string;
-  transferRequest?: TechnicianScheduleTransferRequest | null;
-  acceptedInvitationId?: string;
-};
-
-type ScheduleBannerMessage = {
-  tone: BadgeTone;
-  text: string;
-};
-
-type ScheduleSelectableSyncTarget = Omit<TechnicianScheduleSyncTarget, "type"> & {
-  type: "store" | "technician" | "friend";
-};
-
-type ResolvedScheduleSyncTarget = TechnicianScheduleSyncTarget & {
-  avatarSrc?: string;
-  typeLabel?: string;
-  metaLine?: string;
-  detailLine?: string;
-  remark?: string;
-  badgeLabel?: string;
-  badgeTone?: BadgeTone;
-};
-
-type ScheduleContactTarget = ScheduleSelectableSyncTarget & ResolvedScheduleSyncTarget;
-type ScheduleSyncTargetFilterTag = "all" | ScheduleSelectableSyncTarget["type"];
-
-const scheduleSyncTargetFilterOptions: Array<{ value: ScheduleSyncTargetFilterTag; label: string }> = [
-  { value: "all", label: "全部" },
-  { value: "store", label: "店铺" },
-  { value: "technician", label: "技师" },
-  { value: "friend", label: "好友" }
-];
-
-const schedulePanelClass =
-  "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_84%,transparent)] shadow-[var(--client-shadow)]";
-const scheduleInsetClass =
-  "rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)]";
-const scheduleInputClass =
-  "focus-ring mt-2 h-11 w-full rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-4 text-sm font-black text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-muted)]";
-const scheduleSelectClass = scheduleInputClass;
-const scheduleTextareaClass =
-  "focus-ring mt-2 min-h-[112px] w-full rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-4 py-3 text-sm leading-6 text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-muted)]";
-
-type ScheduleSemanticTone = "availability" | "confirmed" | "booked" | "conflict" | "tentative" | "other" | "travel";
-type ScheduleToneCssKey = "available" | "scheduled" | "booked" | "conflict-pending" | "other" | "travel";
-
-const scheduleSemanticToneCssKeyMap: Record<ScheduleSemanticTone, ScheduleToneCssKey> = {
-  availability: "available",
-  confirmed: "scheduled",
-  booked: "booked",
-  conflict: "conflict-pending",
-  tentative: "conflict-pending",
-  other: "other",
-  travel: "travel"
-};
-
-const scheduleBadgeToneClassMap: Record<BadgeTone, string> = {
-  green:
-    "border-[color:var(--schedule-tone-scheduled-border)] bg-[color:var(--schedule-tone-scheduled-bg)] text-[color:var(--schedule-tone-scheduled-text)]",
-  yellow:
-    "border-[color:var(--schedule-tone-other-border)] bg-[color:var(--schedule-tone-other-bg)] text-[color:var(--schedule-tone-other-text)] [text-shadow:var(--schedule-tone-other-text-shadow)]",
-  red:
-    "border-[color:var(--schedule-tone-conflict-pending-border)] bg-[color:var(--schedule-tone-conflict-pending-bg)] text-[color:var(--schedule-tone-conflict-pending-text)] [text-shadow:var(--schedule-tone-conflict-pending-text-shadow)]",
-  blue:
-    "border-[color:var(--schedule-tone-available-border)] bg-[color:var(--schedule-tone-available-bg)] text-[color:var(--schedule-tone-available-text)]",
-  neutral:
-    "border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-muted)]",
-  dark:
-    "border-[color:var(--schedule-tone-booked-border)] bg-[color:var(--schedule-tone-booked-bg)] text-[color:var(--schedule-tone-booked-text)] [text-shadow:var(--schedule-tone-booked-text-shadow)]"
-};
-
-function useScheduleThemeRootClassName() {
-  const { theme, isNight } = useClientTheme();
-  return [
-    isNight ? "client-theme-night" : "client-theme-day",
-    getClientThemeClassName(theme)
-  ].join(" ");
-}
-
-function buildScheduleSemanticStyle(
-  tone: ScheduleSemanticTone,
-  options?: {
-    past?: boolean;
-    badge?: boolean;
-  }
-) {
-  const cssTone = scheduleSemanticToneCssKeyMap[tone];
-  const fillOpacity = options?.past ? 72 : 100;
-
-  return {
-    "--schedule-semantic-fill": options?.past
-      ? `color-mix(in srgb, var(--schedule-tone-${cssTone}-bg) ${fillOpacity}%, var(--client-surface) ${100 - fillOpacity}%)`
-      : `var(--schedule-tone-${cssTone}-bg)`,
-    "--schedule-semantic-fill-strong": `var(--schedule-tone-${cssTone}-bg)`,
-    "--schedule-semantic-border": `var(--schedule-tone-${cssTone}-border)`,
-    "--schedule-semantic-text": `var(--schedule-tone-${cssTone}-text)`,
-    "--schedule-semantic-text-shadow": `var(--schedule-tone-${cssTone}-text-shadow, none)`,
-    "--schedule-semantic-shadow": `color-mix(in srgb, var(--schedule-tone-${cssTone}-border) 18%, transparent)`
-  } as CSSProperties;
-}
-
-function getScheduleSemanticTone(item: TechnicianCalendarItem, hasConflict: boolean): ScheduleSemanticTone {
-  if (hasConflict) {
-    return "conflict";
-  }
-
-  if (item.kind === "leave" || item.kind === "locked") {
-    return "conflict";
-  }
-
-  if (item.kind === "travel" || item.preset === "travel") {
-    return "travel";
-  }
-
-  switch (item.kind) {
-    case "availability":
-      return "availability";
-    case "confirmed":
-      return "confirmed";
-    case "booked":
-      return "booked";
-    case "tentative":
-      return "tentative";
-    default:
-      return "other";
-  }
-}
-
-function getItemDisplayLabel(item: TechnicianCalendarItem) {
-  if (item.eventType === "extension") {
-    return "加钟";
-  }
-
-  if (item.eventType === "reschedule") {
-    return "移动预约";
-  }
-
-  return item.preset ? getScheduleEventPresetLabel(item.preset) : getEventKindLabel(item.kind);
-}
-
-function isPastCalendarItem(item: TechnicianCalendarItem) {
-  const endDateTime = new Date(`${item.date}T${item.endTime}:00`);
-  return endDateTime.getTime() < Date.now();
-}
-
-function buildConflictItemIdSet(items: TechnicianCalendarItem[]) {
-  const grouped = items.reduce<Record<string, TechnicianCalendarItem[]>>((accumulator, item) => {
-    const current = accumulator[item.date] ?? [];
-    current.push(item);
-    accumulator[item.date] = current;
-    return accumulator;
-  }, {});
-  const conflictItemIds = new Set<string>();
-
-  Object.values(grouped).forEach((dateItems) => {
-    const actionableItems = dateItems.filter((item) => item.kind !== "confirmed" && item.kind !== "availability");
-
-    for (let index = 0; index < actionableItems.length; index += 1) {
-      for (let nextIndex = index + 1; nextIndex < actionableItems.length; nextIndex += 1) {
-        const current = actionableItems[index];
-        const next = actionableItems[nextIndex];
-        if (intersectRange(intervalToRange(current), intervalToRange(next))) {
-          conflictItemIds.add(current.id);
-          conflictItemIds.add(next.id);
-        }
-      }
-    }
-  });
-
-  return conflictItemIds;
-}
-
-function getItemSurfacePresentation(item: TechnicianCalendarItem, hasConflict: boolean) {
-  if (item.transferStatus === "transfer_completed") {
-    return {
-      className:
-        "border-[color:color-mix(in_srgb,var(--client-line)_82%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,var(--client-bg)_14%)] text-[color:var(--client-muted)]",
-      style: undefined as CSSProperties | undefined
-    };
-  }
-
-  const tone = getScheduleSemanticTone(item, hasConflict);
-  return {
-    className: [
-      "border-[color:var(--schedule-semantic-border)]",
-      "bg-[linear-gradient(180deg,var(--schedule-semantic-fill),var(--schedule-semantic-fill-strong))]",
-      "text-[color:var(--schedule-semantic-text)]",
-      "[text-shadow:var(--schedule-semantic-text-shadow)]",
-      tone === "tentative" ? "border-dashed" : ""
-    ]
-      .filter(Boolean)
-      .join(" "),
-    style: buildScheduleSemanticStyle(tone, { past: isPastCalendarItem(item) })
-  };
-}
-
-function getItemBadgePresentation(item: TechnicianCalendarItem, hasConflict: boolean) {
-  if (item.transferStatus === "transfer_completed") {
-    return {
-      tone: "neutral",
-      style: undefined
-    } satisfies { tone: BadgeTone; style: CSSProperties | undefined };
-  }
-
-  const tone = getScheduleSemanticTone(item, hasConflict);
-
-  return {
-    tone: tone === "booked" ? "dark" : tone === "confirmed" ? "green" : tone === "other" ? "yellow" : tone === "conflict" || tone === "tentative" ? "red" : "blue",
-    style: buildScheduleSemanticStyle(tone, { badge: true, past: isPastCalendarItem(item) })
-  } satisfies { tone: BadgeTone; style: CSSProperties | undefined };
-}
-
-function ScheduleBadge({
-  children,
-  tone = "neutral",
-  className,
-  style
-}: {
-  children: ReactNode;
-  tone?: BadgeTone;
-  className?: string;
-  style?: CSSProperties;
-}) {
-  return (
-    <Badge
-      className={cn(
-        "border px-2.5 py-1 text-[11px] font-black backdrop-blur",
-        style
-          ? "border-[color:var(--schedule-semantic-border)] bg-[color:var(--schedule-semantic-fill)] text-[color:var(--schedule-semantic-text)] [text-shadow:var(--schedule-semantic-text-shadow)]"
-          : scheduleBadgeToneClassMap[tone],
-        className
-      )}
-      style={style}
-      tone={tone}
-    >
-      {children}
-    </Badge>
-  );
-}
-
-function getScheduleButtonClassName(variant: "primary" | "secondary" = "primary") {
-  return variant === "primary"
-    ? "bg-[color:var(--client-primary)] text-[#090806] shadow-[0_16px_34px_color-mix(in_srgb,var(--client-primary)_22%,transparent)] hover:brightness-105"
-    : "border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-text)] hover:border-[color:color-mix(in_srgb,var(--client-primary)_28%,transparent)]";
-}
-
-function getScheduleShiftButtonLabel(view: TechnicianScheduleView, direction: -1 | 1) {
-  const unit = view === "day" ? "天" : view === "week" ? "周" : "月";
-  return `${direction === -1 ? "前" : "后"}一${unit}`;
-}
-
-function ScheduleDynamicText({ children }: { children: ReactNode }) {
-  return <span data-no-i18n>{children}</span>;
-}
-
-function ScheduleSectionHeading({
-  title,
-  info,
-  label,
-  eyebrow,
-  right,
-  className
-}: {
-  title: ReactNode;
-  info?: ReactNode;
-  label?: string;
-  eyebrow?: string;
-  right?: ReactNode;
-  className?: string;
-}) {
-  const showEyebrow = Boolean(eyebrow && hasLocalizedTitleText(eyebrow));
-
-  return (
-    <div className={cn("flex flex-wrap items-center justify-between gap-3", className)}>
-      <div className="min-w-0">
-        {showEyebrow ? (
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[color:var(--client-primary)]">{eyebrow}</p>
-        ) : null}
-        <TitleWithInfo
-          info={info}
-          infoClassName="h-5 w-5 border-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-muted)]"
-          label={label}
-          title={<span className="truncate text-[18px] font-black tracking-[-0.02em] text-[color:var(--client-text)]">{title}</span>}
-          titleClassName="min-w-0"
-          variant="client"
-        />
-      </div>
-      {right}
-    </div>
-  );
-}
-
-function getLatestRequestForShift(snapshot: TechnicianScheduleSnapshot, shiftId: string) {
-  return snapshot.transferRequests
-    .filter((request) => request.shiftId === shiftId)
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
-}
-
-function getRequestInvitations(snapshot: TechnicianScheduleSnapshot, requestId: string) {
-  return snapshot.transferInvitations.filter((invitation) => invitation.requestId === requestId);
-}
-
-function resolveAssignedShifts(snapshot: TechnicianScheduleSnapshot, technicianId: string) {
-  const directShifts = snapshot.dutyShifts
-    .filter((shift) => shift.technicianId === technicianId)
-    .filter((shift) => getLatestRequestForShift(snapshot, shift.id)?.status !== "transfer_completed")
-    .map(
-      (shift): ResolvedShift => ({
-        ...shift,
-        assignmentKind: "owned",
-        ownerTechnicianId: shift.technicianId,
-        transferRequest: getLatestRequestForShift(snapshot, shift.id)
-      })
-    );
-
-  const acceptedShifts = snapshot.transferInvitations
-    .filter((invitation) => invitation.candidateId === technicianId && invitation.status === "accepted")
-    .flatMap((invitation) => {
-      const request = snapshot.transferRequests.find((item) => item.id === invitation.requestId);
-      const shift = request ? snapshot.dutyShifts.find((item) => item.id === request.shiftId) : null;
-      return request && shift
-        ? [{
-            ...shift,
-            id: `${shift.id}__accepted__${invitation.id}`,
-            technicianId,
-            title: `${shift.title} · 接手班次`,
-            shiftLabel: request.status === "transfer_completed" ? "已接手" : "转让中",
-            assignmentKind: "accepted",
-            ownerTechnicianId: shift.technicianId,
-            transferRequest: request,
-            acceptedInvitationId: invitation.id
-          } satisfies ResolvedShift]
-        : [];
-    });
-
-  return [...directShifts, ...acceptedShifts].sort((left, right) => {
-    const dateCompare = left.date.localeCompare(right.date);
-    if (dateCompare !== 0) {
-      return dateCompare;
-    }
-    const startCompare = left.startTime.localeCompare(right.startTime);
-    if (startCompare !== 0) {
-      return startCompare;
-    }
-    return left.endTime.localeCompare(right.endTime);
-  });
-}
-
-function resolveTransferredAwayShifts(snapshot: TechnicianScheduleSnapshot, technicianId: string) {
-  return snapshot.dutyShifts.filter(
-    (shift) => shift.technicianId === technicianId && getLatestRequestForShift(snapshot, shift.id)?.status === "transfer_completed"
-  );
-}
-
-function findContainingShift(shifts: ResolvedShift[], date: string, startTime: string, endTime: string) {
-  const targetRange = intervalToRange({ date, startTime, endTime });
-  return (
-    shifts.find((shift) => shift.date === date && containsRange(intervalToRange(shift), targetRange)) ??
-    shifts.find((shift) => shift.date === date && Boolean(intersectRange(intervalToRange(shift), targetRange))) ??
-    null
-  );
-}
-
-function resolveVisibleBookings(
-  snapshot: TechnicianScheduleSnapshot,
-  technicianId: string,
-  assignedShifts: ResolvedShift[]
-) {
-  const transferredAwayShifts = resolveTransferredAwayShifts(snapshot, technicianId);
-
-  return sortByDateTime(
-    snapshot.bookings.filter((booking) => {
-      if (booking.technicianId !== technicianId) {
-        return false;
-      }
-
-      const bookingRange = intervalToRange(booking);
-      return !transferredAwayShifts.some((shift) => shift.date === booking.date && Boolean(intersectRange(intervalToRange(shift), bookingRange)));
-    })
-  ).map((booking) => ({
-    booking,
-    shift: findContainingShift(assignedShifts, booking.date, booking.startTime, booking.endTime)
-  }));
-}
-
-function resolveVisibleCustomEvents(snapshot: TechnicianScheduleSnapshot, technicianId: string, assignedShifts: ResolvedShift[]) {
-  return sortByDateTime(snapshot.customEvents.filter((event) => event.technicianId === technicianId)).map((event) => ({
-    event,
-    shift: findContainingShift(assignedShifts, event.date, event.startTime, event.endTime)
-  }));
-}
-
-function getTechnicianDisplayName(techniciansList: ReturnType<typeof useEntityStore>["technicians"], technicianId: string) {
-  const technician = techniciansList.find((item) => item.id === technicianId);
-  return technician?.nickname?.trim() || technician?.name || "未分配员工";
-}
-
-function resolveStoreShifts(
-  snapshot: TechnicianScheduleSnapshot,
-  storeId: string,
-  techniciansList: ReturnType<typeof useEntityStore>["technicians"]
-) {
-  return sortByDateTime(
-    snapshot.dutyShifts
-      .filter((shift) => shift.storeId === storeId)
-      .map(
-        (shift): ResolvedShift => ({
-          ...shift,
-          title: `${getTechnicianDisplayName(techniciansList, shift.technicianId)} · ${shift.shiftLabel}`,
-          assignmentKind: "owned",
-          ownerTechnicianId: shift.technicianId,
-          transferRequest: getLatestRequestForShift(snapshot, shift.id)
-        })
-      )
-  );
-}
-
-function resolveStoreBookings(snapshot: TechnicianScheduleSnapshot, storeId: string, storeShifts: ResolvedShift[]) {
-  return sortByDateTime(snapshot.bookings.filter((booking) => booking.storeId === storeId)).map((booking) => {
-    const technicianShifts = storeShifts.filter((shift) => shift.technicianId === booking.technicianId);
-    return {
-      booking,
-      shift: findContainingShift(technicianShifts, booking.date, booking.startTime, booking.endTime)
-    };
-  });
-}
-
-function buildStoreAppointmentCalendarItems(
-  storeShifts: ResolvedShift[],
-  storeBookings: ReturnType<typeof resolveStoreBookings>,
-  techniciansList: ReturnType<typeof useEntityStore>["technicians"]
-) {
-  const shiftItems: TechnicianCalendarItem[] = storeShifts.map((shift) => {
-    const technicianName = getTechnicianDisplayName(techniciansList, shift.technicianId);
-    return {
-      id: `merchant-calendar-shift-${shift.id}`,
-      sourceId: shift.id,
-      sourceType: "shift",
-      date: shift.date,
-      startTime: shift.startTime,
-      endTime: shift.endTime,
-      title: shift.title,
-      subtitle: technicianName,
-      kind: "confirmed",
-      readOnly: true,
-      withinConfirmedShift: true,
-      transferStatus: shift.transferRequest?.status,
-      requestId: shift.transferRequest?.id,
-      linkedShiftId: shift.id,
-      badgeLabel: "班次"
-    };
-  });
-
-  const bookingItems: TechnicianCalendarItem[] = storeBookings.map(({ booking, shift }) => {
-    const technicianName = getTechnicianDisplayName(techniciansList, booking.technicianId);
-    return {
-      id: `merchant-calendar-booking-${booking.id}`,
-      sourceId: booking.orderId ?? booking.id,
-      sourceType: "booking",
-      date: booking.date,
-      startTime: booking.startTime,
-      endTime: booking.endTime,
-      title: getNeedoAppBookingTitle(booking.orderId, booking.title) ?? booking.title,
-      subtitle: `${booking.customerName} · ${technicianName}`,
-      amount: booking.amount ?? null,
-      orderId: booking.orderId,
-      parentOrderId: booking.parentOrderId,
-      appointmentId: booking.appointmentId ?? booking.id,
-      eventType: booking.eventType ?? "booking",
-      isClickable: booking.isClickable ?? Boolean(booking.orderId ?? booking.detailTargetId),
-      detailTargetType: booking.detailTargetType ?? "order_detail",
-      detailTargetId: booking.detailTargetId ?? booking.orderId,
-      kind: shift ? "booked" : "tentative",
-      readOnly: true,
-      withinConfirmedShift: Boolean(shift),
-      transferStatus: shift?.transferRequest?.status,
-      linkedShiftId: shift?.id,
-      note: booking.note,
-      badgeLabel: shift ? technicianName : "待确认"
-    };
-  });
-
-  return sortByDateTime([...shiftItems, ...bookingItems]);
-}
-
-function buildCalendarItems(
-  assignedShifts: ResolvedShift[],
-  visibleBookings: ReturnType<typeof resolveVisibleBookings>,
-  visibleCustomEvents: ReturnType<typeof resolveVisibleCustomEvents>
-) {
-  const shiftItems: TechnicianCalendarItem[] = assignedShifts.map((shift) => ({
-    id: `calendar-${shift.id}`,
-    sourceId: shift.assignmentKind === "accepted" ? shift.id.split("__accepted__")[0] : shift.id,
-    sourceType: "shift",
-    date: shift.date,
-    startTime: shift.startTime,
-    endTime: shift.endTime,
-    title: shift.title,
-    subtitle: shift.shiftLabel,
-    kind: "confirmed",
-    readOnly: true,
-    withinConfirmedShift: true,
-    transferStatus: shift.transferRequest?.status,
-    requestId: shift.transferRequest?.id,
-    linkedShiftId: shift.assignmentKind === "accepted" ? shift.id.split("__accepted__")[0] : shift.id,
-    badgeLabel: shift.assignmentKind === "accepted" ? "接手" : undefined
-  }));
-
-  const bookingItems: TechnicianCalendarItem[] = visibleBookings.map(({ booking, shift }) => ({
-    id: `calendar-${booking.id}`,
-    sourceId: booking.orderId ?? booking.id,
-    sourceType: "booking",
-    date: booking.date,
-    startTime: booking.startTime,
-    endTime: booking.endTime,
-    title: getNeedoAppBookingTitle(booking.orderId, booking.title) ?? booking.title,
-    subtitle: booking.customerName,
-    amount: booking.amount ?? null,
-    orderId: booking.orderId,
-    parentOrderId: booking.parentOrderId,
-    appointmentId: booking.appointmentId ?? booking.id,
-    eventType: booking.eventType ?? "booking",
-    isClickable: booking.isClickable ?? Boolean(booking.orderId ?? booking.detailTargetId),
-    detailTargetType: booking.detailTargetType ?? "order_detail",
-    detailTargetId: booking.detailTargetId ?? booking.orderId,
-    kind: shift ? "booked" : "tentative",
-    readOnly: true,
-    withinConfirmedShift: Boolean(shift),
-    transferStatus: shift?.transferRequest?.status,
-    linkedShiftId: shift?.assignmentKind === "accepted" ? shift.id.split("__accepted__")[0] : shift?.id,
-    note: booking.note,
-    badgeLabel: shift ? undefined : "待确认"
-  }));
-
-  const customItems: TechnicianCalendarItem[] = visibleCustomEvents.map(({ event, shift }) => {
-    const preset = resolveScheduleEventPreset(event.kind, event.title, event.preset);
-
-    return {
-      id: `calendar-${event.id}`,
-      sourceId: event.id,
-      sourceType: "custom",
-      date: event.date,
-      startTime: event.startTime,
-      endTime: event.endTime,
-      title: event.title,
-      subtitle: event.location || getScheduleEventPresetLabel(preset),
-      kind: event.kind,
-      preset,
-      readOnly: Boolean(shift),
-      withinConfirmedShift: Boolean(shift),
-      transferStatus: shift?.transferRequest?.status,
-      linkedShiftId: shift?.assignmentKind === "accepted" ? shift.id.split("__accepted__")[0] : shift?.id,
-      note: event.note,
-      syncTargets: event.syncTargets
-    };
-  });
-
-  return sortByDateTime([...shiftItems, ...bookingItems, ...customItems]);
-}
-
-function computeStoreScheduleSummary(
-  storeShifts: ResolvedShift[],
-  storeBookings: ReturnType<typeof resolveStoreBookings>,
-  period: TechnicianSchedulePeriod
-): TechnicianScheduleSummary {
-  const periodShifts = storeShifts.filter((shift) => isDateInPeriod(shift.date, period));
-  const periodBookings = storeBookings.map((item) => item.booking).filter((booking) => isDateInPeriod(booking.date, period));
-  const groupByTechnicianDate = (items: Array<{ technicianId: string; date: string; startTime: string; endTime: string }>) =>
-    items.reduce<Record<string, MinuteRange[]>>((accumulator, item) => {
-      const key = `${item.technicianId}:${item.date}`;
-      const current = accumulator[key] ?? [];
-      current.push(intervalToRange(item));
-      accumulator[key] = current;
-      return accumulator;
-    }, {});
-  const confirmedRanges = groupByTechnicianDate(periodShifts);
-  const bookingRanges = groupByTechnicianDate(periodBookings);
-  const groupKeys = Array.from(new Set([...Object.keys(confirmedRanges), ...Object.keys(bookingRanges)]));
-
-  const tentativeHours = groupKeys.reduce((sum, key) => {
-    const technicianBookings = bookingRanges[key] ?? [];
-    const technicianConfirmed = confirmedRanges[key] ?? [];
-    return sum + totalHoursFromRanges(subtractRanges(technicianBookings, technicianConfirmed));
-  }, 0);
-
-  const freeHours = groupKeys.reduce((sum, key) => {
-    const technicianConfirmed = confirmedRanges[key] ?? [];
-    const technicianBookings = bookingRanges[key] ?? [];
-    return sum + totalHoursFromRanges(subtractRanges(technicianConfirmed, technicianBookings));
-  }, 0);
-
-  return {
-    confirmedHours: Object.values(confirmedRanges).reduce((sum, ranges) => sum + totalHoursFromRanges(ranges), 0),
-    bookedHours: Object.values(bookingRanges).reduce((sum, ranges) => sum + totalHoursFromRanges(ranges), 0),
-    freeHours,
-    tentativeHours
-  };
-}
-
-function buildStoreBookingConflictItemIdSet(storeBookings: ReturnType<typeof resolveStoreBookings>) {
-  const grouped = storeBookings.reduce<Record<string, TechnicianScheduleBooking[]>>((accumulator, { booking }) => {
-    const key = `${booking.technicianId}:${booking.date}`;
-    const current = accumulator[key] ?? [];
-    current.push(booking);
-    accumulator[key] = current;
-    return accumulator;
-  }, {});
-  const conflictItemIds = new Set<string>();
-
-  Object.values(grouped).forEach((dateBookings) => {
-    for (let index = 0; index < dateBookings.length; index += 1) {
-      for (let nextIndex = index + 1; nextIndex < dateBookings.length; nextIndex += 1) {
-        const current = dateBookings[index];
-        const next = dateBookings[nextIndex];
-        if (intersectRange(intervalToRange(current), intervalToRange(next))) {
-          conflictItemIds.add(`merchant-calendar-booking-${current.id}`);
-          conflictItemIds.add(`merchant-calendar-booking-${next.id}`);
-        }
-      }
-    }
-  });
-
-  return conflictItemIds;
-}
-
-function computeStoreAppointmentBrief(
-  items: TechnicianCalendarItem[],
-  storeBookings: ReturnType<typeof resolveStoreBookings>,
-  period: TechnicianSchedulePeriod
-) {
-  const periodItems = items.filter((item) => isDateInPeriod(item.date, period));
-  const bookingItems = periodItems.filter((item) => item.sourceType === "booking");
-  const revenueItems = bookingItems.filter((item) => typeof item.amount === "number");
-  const periodConflictIds = buildStoreBookingConflictItemIdSet(
-    storeBookings.filter(({ booking }) => isDateInPeriod(booking.date, period))
-  );
-
-  return {
-    orderCount: bookingItems.length,
-    hasConflict: periodConflictIds.size > 0,
-    estimatedRevenue:
-      revenueItems.length > 0
-        ? revenueItems.reduce((sum, item) => sum + (typeof item.amount === "number" ? item.amount : 0), 0)
-        : null
-  };
-}
-
-function getTransferTone(status?: TechnicianScheduleTransferStatus): BadgeTone {
-  switch (status) {
-    case "transfer_pending":
-      return "yellow";
-    case "transfer_completed":
-      return "neutral";
-    case "transfer_failed":
-      return "red";
-    case "transfer_cancelled":
-      return "neutral";
-    default:
-      return "neutral";
-  }
-}
-
-function getInvitationTone(status: TechnicianScheduleTransferInvitationStatus): BadgeTone {
-  switch (status) {
-    case "accepted":
-      return "green";
-    case "rejected":
-      return "neutral";
-    case "failed_conflict":
-    case "failed_capacity":
-      return "red";
-    case "cancelled":
-      return "neutral";
-    default:
-      return "yellow";
-  }
-}
-
-function groupItemsByDate(items: TechnicianCalendarItem[]) {
-  return items.reduce<Record<string, TechnicianCalendarItem[]>>((accumulator, item) => {
-    const current = accumulator[item.date] ?? [];
-    current.push(item);
-    accumulator[item.date] = sortByDateTime(current);
-    return accumulator;
-  }, {});
-}
-
-function buildTimelineLayouts(items: TechnicianCalendarItem[]) {
-  const foregroundItems = items.filter((item) => item.kind !== "confirmed" && item.kind !== "availability");
-  const backgroundItems = items.filter((item) => item.kind === "confirmed" || item.kind === "availability");
-  let maxLanes = 1;
-  let active: Array<{ lane: number; end: number }> = [];
-
-  const foregroundLayouts = foregroundItems.map((item) => {
-    const range = intervalToRange(item);
-    active = active.filter((entry) => entry.end > range.start);
-    const usedLanes = new Set(active.map((entry) => entry.lane));
-    let lane = 0;
-    while (usedLanes.has(lane)) {
-      lane += 1;
-    }
-    active.push({ lane, end: range.end });
-    maxLanes = Math.max(maxLanes, active.length);
-    return { item, lane, range };
-  });
-
-  return {
-    backgroundItems,
-    foregroundLayouts,
-    laneCount: maxLanes
-  };
-}
-
-function getStoreOpenStatusLabel(status: "open" | "resting" | "closed") {
-  switch (status) {
-    case "open":
-      return "营业中";
-    case "resting":
-      return "休息中";
-    case "closed":
-      return "已打烊";
-    default:
-      return "营业状态";
-  }
-}
-
-function getTechnicianPresenceLabel(status: "available" | "busy" | "off") {
-  switch (status) {
-    case "available":
-      return "当前可用";
-    case "busy":
-      return "当前繁忙";
-    case "off":
-      return "当前休息";
-    default:
-      return "技师";
-  }
-}
-
-function resolveScheduleContactTarget(
-  target: TechnicianScheduleSyncTarget,
-  currentStore: ReturnType<typeof useEntityStore>["stores"][number],
-  techniciansList: ReturnType<typeof useEntityStore>["technicians"],
-  customersList: ReturnType<typeof useEntityStore>["customers"]
-): ResolvedScheduleSyncTarget {
-  if (target.type === "store") {
-    return {
-      ...target,
-      label: currentStore.name,
-      avatarSrc: currentStore.cover,
-      typeLabel: "店铺",
-      metaLine: currentStore.address,
-      detailLine: `营业时间 · ${currentStore.businessHours}`,
-      badgeLabel: `★ ${currentStore.rating.toFixed(1)}`,
-      badgeTone: "yellow"
-    };
-  }
-
-  if (target.type === "technician") {
-    const technician = techniciansList.find((item) => item.id === target.id);
-    if (technician) {
-      return {
-        ...target,
-        label: technician.nickname?.trim() || technician.name,
-        avatarSrc: technician.avatar,
-        typeLabel: "技师",
-        remark: technician.bio?.trim() || "",
-        badgeLabel: `★ ${technician.rating.toFixed(1)}`,
-        badgeTone: "blue"
-      };
-    }
-  }
-
-  if (target.type === "friend") {
-    const customer = customersList.find((item) => item.id === target.id);
-    if (customer) {
-      return {
-        ...target,
-        label: customer.nickname?.trim() || customer.name,
-        avatarSrc: customer.avatar,
-        remark: customer.bio?.trim() || ""
-      };
-    }
-  }
-
-  return {
-    ...target,
-    typeLabel: target.type === "technician" ? "技师" : undefined,
-    remark: ""
-  };
-}
-
-function buildContactTargets(
-  currentStore: ReturnType<typeof useEntityStore>["stores"][number],
-  technicianId: string,
-  techniciansList: ReturnType<typeof useEntityStore>["technicians"],
-  customersList: ReturnType<typeof useEntityStore>["customers"]
-) {
-  const storeTarget = [
-    resolveScheduleContactTarget(
-      { id: currentStore.id, type: "store", label: currentStore.name },
-      currentStore,
-      techniciansList,
-      customersList
-    ) as ScheduleContactTarget
-  ];
-  const colleagueTargets = techniciansList
-    .filter((technician) => technician.storeId === currentStore.id && technician.id !== technicianId)
-    .map((technician) =>
-      resolveScheduleContactTarget(
-        { id: technician.id, type: "technician", label: technician.nickname?.trim() || technician.name },
-        currentStore,
-        techniciansList,
-        customersList
-      ) as ScheduleContactTarget
-    );
-  const friendTargets = customersList.slice(0, 8).map((customer) =>
-    resolveScheduleContactTarget(
-      { id: customer.id, type: "friend", label: customer.nickname?.trim() || customer.name },
-      currentStore,
-      techniciansList,
-      customersList
-    ) as ScheduleContactTarget
-  );
-
-  return [...storeTarget, ...colleagueTargets, ...friendTargets];
-}
-
-function SyncTargetProfileCard({
-  target,
-  selected = false,
-  actionLabel,
-  onClick
-}: {
-  target: ResolvedScheduleSyncTarget;
-  selected?: boolean;
-  actionLabel?: string;
-  onClick?: () => void;
-}) {
-  const avatarFallback = target.type === "store" ? "店" : target.type === "technician" ? "技" : "友";
-  const avatarNode = target.avatarSrc ? (
-    <AvatarImage
-      alt={target.label}
-      className="h-10 w-10 rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)]"
-      src={target.avatarSrc}
-    />
-  ) : (
-    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-sm font-black text-[color:var(--client-primary)]">
-      {avatarFallback}
-    </div>
-  );
-  const detailNode = (
-    <div className="min-w-0 overflow-hidden">
-      <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-        <strong className="min-w-0 flex-1 truncate text-sm font-black text-[color:var(--client-text)]">{target.label}</strong>
-        {(target.typeLabel || target.badgeLabel) ? (
-          <div className="flex shrink-0 items-center gap-1">
-            {target.typeLabel ? (
-              <ScheduleBadge className="px-1.5 py-0.5 text-[10px] leading-4" tone="neutral">
-                {target.typeLabel}
-              </ScheduleBadge>
-            ) : null}
-            {target.badgeLabel ? (
-              <ScheduleBadge className="px-1.5 py-0.5 text-[10px] leading-4" tone={target.badgeTone ?? "neutral"}>
-                {target.badgeLabel}
-              </ScheduleBadge>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      {target.type === "store" ? (
-        <>
-          <p className="mt-0.5 truncate text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">{target.metaLine}</p>
-          <p className="mt-0.5 truncate text-[11px] font-bold leading-4 text-[color:var(--client-muted)] opacity-85">{target.detailLine}</p>
-        </>
-      ) : (
-        <p className="mt-0.5 min-h-4 truncate text-[11px] font-bold leading-4 text-[color:var(--client-muted)]">
-          {target.remark || "\u00A0"}
-        </p>
-      )}
-    </div>
-  );
-  const actionNode = actionLabel ? (
-    <ScheduleBadge className="shrink-0 self-center px-1.5 py-0.5 text-[10px] leading-4" tone={selected ? "green" : "neutral"}>
-      {actionLabel}
-    </ScheduleBadge>
-  ) : null;
-
-  if (onClick) {
-    return (
-      <button
-        className={cn(
-          "grid w-full max-w-full items-start gap-2.5 overflow-hidden rounded-[16px] border px-3.5 py-2.5 text-left transition",
-          actionLabel ? "grid-cols-[40px_minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)]",
-          selected
-            ? "border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:var(--client-primary-soft)]"
-            : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)]"
-        )}
-        onClick={onClick}
-        type="button"
-      >
-        {avatarNode}
-        {detailNode}
-        {actionNode}
-      </button>
-    );
-  }
-
-  return (
-    <div className="grid w-full max-w-full grid-cols-[40px_minmax(0,1fr)] items-start gap-2.5 overflow-hidden rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] px-3.5 py-2.5">
-      {avatarNode}
-      {detailNode}
-    </div>
-  );
-}
-
-function formatShiftSummary(shift: TechnicianDutyShift) {
-  return `${formatLongDate(shift.date)} ${shift.startTime} - ${shift.endTime}`;
-}
-
-function useTechnicianScheduleContext() {
-  const { session } = useAuth();
-  const { customers, stores, technicians } = useEntityStore();
-  const snapshot = useTechnicianScheduleStore();
-  const technicianId = session?.linkedTechnicianId ?? technicians[0]?.id ?? "";
-  const storeId = session?.linkedStoreId ?? technicians.find((item) => item.id === technicianId)?.storeId ?? stores[0]?.id ?? "";
-  const currentTechnician = technicians.find((technician) => technician.id === technicianId) ?? technicians[0];
-  const currentStore = stores.find((store) => store.id === storeId) ?? stores[0];
-
-  if (!currentTechnician || !currentStore) {
-    throw new Error("Technician schedule context requires seeded technician and store data.");
-  }
-
-  const sameStoreColleagues = technicians.filter(
-    (technician) => technician.storeId === currentStore.id && technician.id !== currentTechnician.id
-  );
-  const assignedShifts = resolveAssignedShifts(snapshot, currentTechnician.id);
-  const visibleBookings = resolveVisibleBookings(snapshot, currentTechnician.id, assignedShifts);
-  const visibleCustomEvents = resolveVisibleCustomEvents(snapshot, currentTechnician.id, assignedShifts);
-  const items = buildCalendarItems(assignedShifts, visibleBookings, visibleCustomEvents);
-
-  return {
-    customers,
-    stores,
-    technicians,
-    snapshot,
-    currentTechnician,
-    currentStore,
-    sameStoreColleagues,
-    assignedShifts,
-    visibleBookings,
-    visibleCustomEvents,
-    items
-  };
-}
-
-function StandaloneSchedulePage({
+  parsePositiveRouteId,
+  useFormalTechnicianOrderResource,
+  useFormalTechnicianScheduleResource
+} from "./formal-resource";
+
+const panelClass =
+  "rounded-[24px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_88%,transparent)] p-4 shadow-[var(--client-shadow)]";
+const fieldClass =
+  "mt-2 h-11 w-full rounded-[16px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 text-sm font-bold text-[color:var(--client-text)] outline-none";
+
+function FormalRoutePage({
   title,
   subtitle,
-  action,
-  onBack,
+  backTo = "/technician/schedule",
   children
 }: {
   title: string;
   subtitle?: string;
-  action?: ReactNode;
-  onBack?: () => void;
+  backTo?: string;
   children: ReactNode;
 }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { isNight } = useClientTheme();
-  const scheduleThemeRootClass = useScheduleThemeRootClassName();
-  const fallbackBackPath = location.pathname.startsWith("/schedule") ? "/schedule" : "/technician/schedule";
-
   return (
-    <MobileShell navItems={[]}>
-      <div
-        className={cn(
-          scheduleThemeRootClass,
-          "mx-auto flex h-[100dvh] min-h-[100dvh] w-full max-w-[960px] flex-col overflow-hidden bg-[color:var(--client-bg)] text-[color:var(--client-text)]"
-        )}
-      >
-        <MobileFullscreenHeader
-          action={action}
-          className="sticky top-0 z-50 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-bg)_96%,transparent)] text-[color:var(--client-text)] backdrop-blur-xl"
-          dark={isNight}
-          onBack={onBack ?? (() => navigate(fallbackBackPath))}
-          subtitle={subtitle}
-          title={title}
-        />
-        <main className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3 pb-8">{children}</main>
-      </div>
-    </MobileShell>
-  );
-}
-
-function useScheduleBasePath() {
-  const location = useLocation();
-  return location.pathname.startsWith("/schedule") ? "/schedule" : "/technician/schedule";
-}
-
-function SummaryCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className={cn(scheduleInsetClass, "min-w-0 px-2.5 py-2.5 sm:px-3")}>
-      <p className="truncate text-[10px] font-black tracking-[0.02em] text-[color:var(--client-muted)] sm:text-[11px]">{label}</p>
-      <div className="mt-1.5 flex items-end gap-1 whitespace-nowrap">
-        <strong className="min-w-0 text-[17px] font-black leading-none tracking-[-0.04em] text-[color:var(--client-text)] tabular-nums min-[360px]:text-[18px] sm:text-[21px]">
-          {formatHours(value)}
-        </strong>
-        <span className="shrink-0 pb-0.5 text-[10px] font-black text-[color:var(--client-muted)]">小时</span>
-      </div>
-    </div>
-  );
-}
-
-function BriefCard({
-  label,
-  value,
-  tone,
-  wide = false
-}: {
-  label: string;
-  value: string;
-  tone?: BadgeTone;
-  wide?: boolean;
-}) {
-  const statusDotClassName =
-    tone === "green"
-      ? "schedule-status-dot--scheduled"
-      : tone === "red"
-        ? "schedule-status-dot--conflict-pending"
-        : tone === "blue"
-          ? "schedule-status-dot--available"
-          : tone === "dark"
-            ? "schedule-status-dot--booked"
-            : "schedule-status-dot--other";
-  const statusTextClassName =
-    tone === "green"
-      ? "text-[color:var(--client-text)]"
-      : tone === "red"
-        ? "text-[color:var(--schedule-tone-conflict-pending-text)] [text-shadow:var(--schedule-tone-conflict-pending-text-shadow)]"
-        : tone === "blue"
-          ? "text-[color:var(--client-text)]"
-          : tone === "dark"
-            ? "text-[color:var(--schedule-tone-booked-text)] [text-shadow:var(--schedule-tone-booked-text-shadow)]"
-            : "text-[color:var(--schedule-tone-other-text)] [text-shadow:var(--schedule-tone-other-text-shadow)]";
-
-  return (
-    <div className={cn(scheduleInsetClass, "min-w-0 px-3 py-2.5", wide && "px-3.5")}>
-      <p className="truncate text-[11px] font-black tracking-[0.02em] text-[color:var(--client-muted)]">{label}</p>
-      {tone ? (
-        <div className="mt-2 flex items-center gap-2">
-          <span className={cn("schedule-status-dot h-2.5 w-2.5 rounded-full", statusDotClassName)} />
-          <strong className={cn("truncate text-[14px] font-black", statusTextClassName)}>{value}</strong>
-        </div>
-      ) : (
-        <strong className={cn("mt-2 block truncate text-[15px] font-black text-[color:var(--client-text)]", wide && "text-base")}>
-          {value}
-        </strong>
-      )}
-    </div>
-  );
-}
-
-function AgendaItemCard({
-  item,
-  hasConflict,
-  onOpen,
-  onInvite
-}: {
-  item: TechnicianCalendarItem;
-  hasConflict: boolean;
-  onOpen: (item: TechnicianCalendarItem) => void;
-  onInvite?: (item: TechnicianCalendarItem) => void;
-}) {
-  const itemSurface = getItemSurfacePresentation(item, hasConflict);
-  const itemBadge = getItemBadgePresentation(item, hasConflict);
-
-  return (
-    <article
-      className={cn("w-full rounded-[18px] border px-3.5 py-3 text-left transition", itemSurface.className)}
-      style={itemSurface.style}
-    >
-      <button className="block w-full text-left" onClick={() => onOpen(item)} type="button">
-        <div className="flex flex-wrap items-center gap-2">
-          <ScheduleBadge style={itemBadge.style} tone={itemBadge.tone}>{getItemDisplayLabel(item)}</ScheduleBadge>
-          {item.transferStatus ? <ScheduleBadge tone={getTransferTone(item.transferStatus)}>{getTransferStatusLabel(item.transferStatus)}</ScheduleBadge> : null}
-          {item.badgeLabel ? <ScheduleBadge tone="neutral">{item.badgeLabel}</ScheduleBadge> : null}
-        </div>
-        <div className="mt-2.5 flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate text-sm font-black">{item.title}</h3>
-            <p className="mt-1 text-xs font-bold opacity-75">
-              {item.startTime} - {item.endTime} · {item.subtitle}
-            </p>
-            {item.note ? <p className="mt-2 text-xs leading-5 opacity-80">{item.note}</p> : null}
-          </div>
-          {typeof item.amount === "number" ? <strong className="text-sm font-black">{formatCurrency(item.amount)}</strong> : null}
-        </div>
-      </button>
-      {onInvite ? (
-        <button
-          className="mt-3 inline-flex items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,transparent)] px-3 py-1.5 text-[11px] font-black"
-          onClick={() => onInvite(item)}
-          type="button"
-        >
-          邀请
-        </button>
-      ) : null}
-    </article>
-  );
-}
-
-const scheduleDraftSnapMinutes = 15;
-const scheduleDraftMinDurationMinutes = 30;
-
-type ScheduleDraftDragMode = "resize-start" | "resize-end";
-
-function snapScheduleDraftMinute(value: number) {
-  return Math.round(value / scheduleDraftSnapMinutes) * scheduleDraftSnapMinutes;
-}
-
-function clampScheduleDraftMinute(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function getScheduleDraftPointerMinute(event: { clientY: number }, element: HTMLElement, rowHeight: number) {
-  const rect = element.getBoundingClientRect();
-  const relativeY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-  const rawMinute = (relativeY / rowHeight) * 60;
-
-  return clampScheduleDraftMinute(snapScheduleDraftMinute(rawMinute), 0, 24 * 60 - 1);
-}
-
-function normalizeScheduleDraftRange(startMinute: number, endCandidate: number) {
-  const clampedEnd = clampScheduleDraftMinute(snapScheduleDraftMinute(endCandidate), 0, 24 * 60 - 1);
-
-  if (clampedEnd >= startMinute) {
-    return {
-      start: startMinute,
-      end: clampScheduleDraftMinute(Math.max(clampedEnd, startMinute + scheduleDraftMinDurationMinutes), 0, 24 * 60 - 1)
-    };
-  }
-
-  return {
-    start: clampScheduleDraftMinute(Math.min(clampedEnd, startMinute - scheduleDraftMinDurationMinutes), 0, 24 * 60 - 1),
-    end: startMinute
-  };
-}
-
-function DayTimeline({
-  date,
-  items,
-  conflictItemIds,
-  onOpenItem,
-  onCreate
-}: {
-  date: string;
-  items: TechnicianCalendarItem[];
-  conflictItemIds: Set<string>;
-  onOpenItem: (item: TechnicianCalendarItem) => void;
-  onCreate?: (date: string, startTime: string, endTime: string) => void;
-}) {
-  const { backgroundItems, foregroundLayouts, laneCount } = buildTimelineLayouts(items);
-  const rowHeight = 64;
-  const totalHeight = rowHeight * 24;
-  const [draftRange, setDraftRange] = useState<MinuteRange | null>(null);
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-  const canvasPressRef = useRef<{ moved: boolean; x: number; y: number } | null>(null);
-  const dragModeRef = useRef<ScheduleDraftDragMode | null>(null);
-  const dragRangeRef = useRef<MinuteRange | null>(null);
-  const resizeBaseRangeRef = useRef<MinuteRange | null>(null);
-  const setActiveDraftRange = (range: MinuteRange | null) => {
-    dragRangeRef.current = range;
-    setDraftRange(range);
-  };
-
-  useEffect(() => {
-    dragModeRef.current = null;
-    resizeBaseRangeRef.current = null;
-    canvasPressRef.current = null;
-    setActiveDraftRange(null);
-  }, [date]);
-
-  const updateDraftRangeFromPointer = (event: ReactPointerEvent<HTMLElement>) => {
-    const canvas = canvasRef.current;
-    const mode = dragModeRef.current;
-
-    if (!canvas || !mode) {
-      return;
-    }
-
-    const pointerMinute = getScheduleDraftPointerMinute(event, canvas, rowHeight);
-
-    const baseRange = resizeBaseRangeRef.current ?? dragRangeRef.current;
-
-    if (!baseRange) {
-      return;
-    }
-
-    if (mode === "resize-start") {
-      setActiveDraftRange({
-        end: baseRange.end,
-        start: clampScheduleDraftMinute(pointerMinute, 0, baseRange.end - scheduleDraftMinDurationMinutes)
-      });
-      return;
-    }
-
-    setActiveDraftRange({
-      end: clampScheduleDraftMinute(pointerMinute, baseRange.start + scheduleDraftMinDurationMinutes, 24 * 60 - 1),
-      start: baseRange.start
-    });
-  };
-  const handleDraftCanvasClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!onCreate || event.button !== 0) {
-      return;
-    }
-
-    if (event.target instanceof HTMLElement && event.target.closest("button,a,input,textarea,[data-schedule-range-handle],[data-schedule-create-action],[data-schedule-draft-range-block]")) {
-      return;
-    }
-
-    if (canvasPressRef.current?.moved) {
-      canvasPressRef.current = null;
-      return;
-    }
-
-    canvasPressRef.current = null;
-    const startMinute = clampScheduleDraftMinute(getScheduleDraftPointerMinute(event, event.currentTarget, rowHeight), 0, 24 * 60 - scheduleDraftMinDurationMinutes);
-    const range = normalizeScheduleDraftRange(startMinute, startMinute + scheduleDraftMinDurationMinutes);
-
-    resizeBaseRangeRef.current = range;
-    setActiveDraftRange(range);
-  };
-  const handleDraftCanvasPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!onCreate || (event.button !== 0 && event.pointerType === "mouse")) {
-      canvasPressRef.current = null;
-      return;
-    }
-
-    if (event.target instanceof HTMLElement && event.target.closest("button,a,input,textarea,[data-schedule-range-handle],[data-schedule-create-action],[data-schedule-draft-range-block]")) {
-      canvasPressRef.current = null;
-      return;
-    }
-
-    canvasPressRef.current = {
-      moved: false,
-      x: event.clientX,
-      y: event.clientY
-    };
-  };
-  const handleDraftCanvasPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const press = canvasPressRef.current;
-
-    if (!press || press.moved) {
-      return;
-    }
-
-    const deltaX = event.clientX - press.x;
-    const deltaY = event.clientY - press.y;
-
-    if (Math.hypot(deltaX, deltaY) > 8) {
-      press.moved = true;
-    }
-  };
-  const handleDraftPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!dragModeRef.current) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    updateDraftRangeFromPointer(event);
-  };
-  const handleDraftPointerUp = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!dragModeRef.current) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-
-    dragModeRef.current = null;
-    resizeBaseRangeRef.current = dragRangeRef.current;
-  };
-  const handleDraftPointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-
-    dragModeRef.current = null;
-    resizeBaseRangeRef.current = dragRangeRef.current;
-  };
-  const handleDraftResizePointerDown = (mode: ScheduleDraftDragMode, event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (!draftRange || (event.button !== 0 && event.pointerType === "mouse")) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    dragModeRef.current = mode;
-    resizeBaseRangeRef.current = draftRange;
-    dragRangeRef.current = draftRange;
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-  const createDraftEvent = () => {
-    if (!draftRange || !onCreate) {
-      return;
-    }
-
-    onCreate(date, minutesToTime(draftRange.start), minutesToTime(draftRange.end));
-  };
-
-  return (
-    <div className="overflow-hidden rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_82%,transparent)]">
-      <div className="grid grid-cols-[68px,1fr]">
-        <div className="border-r border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)]">
-          {Array.from({ length: 24 }, (_, hour) => (
-            <div
-              className="flex h-16 w-full items-start justify-center border-b border-[color:color-mix(in_srgb,var(--client-line)_62%,transparent)] px-2 py-2.5 text-[11px] font-black text-[color:var(--client-muted)] last:border-b-0"
-              key={hour}
-            >
-              {padNumber(hour)}:00
-            </div>
-          ))}
-        </div>
-        <div
-          aria-label={onCreate ? "点击创建新行程时间，拖动手柄调整时长" : "日程时间轴"}
-          className="relative select-none touch-pan-y"
-          data-schedule-create-canvas="true"
-          onClick={handleDraftCanvasClick}
-          onPointerCancel={() => {
-            canvasPressRef.current = null;
-          }}
-          onPointerDown={handleDraftCanvasPointerDown}
-          onPointerMove={handleDraftCanvasPointerMove}
-          ref={canvasRef}
-          style={{ height: totalHeight }}
-        >
-          {Array.from({ length: 24 }, (_, hour) => (
-            <div
-              className={cn(
-                "absolute inset-x-0 border-b border-[color:color-mix(in_srgb,var(--client-line)_56%,transparent)] px-3 text-left last:border-b-0",
-                onCreate && "hover:bg-[color:color-mix(in_srgb,var(--client-elevated)_58%,transparent)]"
-              )}
-              key={hour}
-              style={{ top: hour * rowHeight, height: rowHeight }}
-            >
-              <span className="sr-only">{onCreate ? `点击添加 ${padNumber(hour)}:00 行程` : `${padNumber(hour)}:00 时段`}</span>
-            </div>
-          ))}
-
-          {backgroundItems.map((item) => {
-            const range = intervalToRange(item);
-            const hasConflict = conflictItemIds.has(item.id);
-            const itemSurface = getItemSurfacePresentation(item, hasConflict);
-            const itemBadge = getItemBadgePresentation(item, hasConflict);
-            return (
-              <button
-                className={cn("absolute left-2 right-2 rounded-[18px] border px-3 py-2.5 text-left", itemSurface.className)}
-                key={item.id}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpenItem(item);
-                }}
-                style={{
-                  ...itemSurface.style,
-                  top: (range.start / 60) * rowHeight + 6,
-                  height: Math.max((Math.max(range.end - range.start, 30) / 60) * rowHeight - 12, 54),
-                  opacity: item.kind === "availability" ? 0.82 : 0.9
-                }}
-                type="button"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <ScheduleBadge style={itemBadge.style} tone={itemBadge.tone}>{getItemDisplayLabel(item)}</ScheduleBadge>
-                  {item.transferStatus ? <ScheduleBadge tone={getTransferTone(item.transferStatus)}>{getTransferStatusLabel(item.transferStatus)}</ScheduleBadge> : null}
-                </div>
-                <h3 className="mt-2 text-sm font-black">{item.title}</h3>
-                <p className="mt-1 text-xs font-bold opacity-75">
-                  {item.startTime} - {item.endTime}
-                </p>
-              </button>
-            );
-          })}
-
-          {foregroundLayouts.map(({ item, lane, range }) => {
-            const width = laneCount > 1 ? `calc((100% - 16px) / ${laneCount})` : "calc(100% - 16px)";
-            const left = laneCount > 1 ? `calc(8px + (${lane} * (100% - 16px) / ${laneCount}))` : "8px";
-            const hasConflict = conflictItemIds.has(item.id);
-            const itemSurface = getItemSurfacePresentation(item, hasConflict);
-            const itemBadge = getItemBadgePresentation(item, hasConflict);
-            return (
-              <button
-                className={cn(
-                  "absolute overflow-hidden rounded-[16px] border px-3 py-2.5 text-left shadow-[0_12px_28px_var(--schedule-semantic-shadow)]",
-                  itemSurface.className
-                )}
-                key={item.id}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpenItem(item);
-                }}
-                style={{
-                  ...itemSurface.style,
-                  left,
-                  width,
-                  top: (range.start / 60) * rowHeight + 6,
-                  height: Math.max((Math.max(range.end - range.start, 30) / 60) * rowHeight - 12, 56)
-                }}
-                type="button"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <ScheduleBadge style={itemBadge.style} tone={itemBadge.tone}>{getItemDisplayLabel(item)}</ScheduleBadge>
-                  {item.transferStatus ? <ScheduleBadge tone={getTransferTone(item.transferStatus)}>{getTransferStatusLabel(item.transferStatus)}</ScheduleBadge> : null}
-                </div>
-                <h3 className="mt-2 text-sm font-black leading-5">{item.title}</h3>
-                <p className="mt-1 text-xs font-bold opacity-75">
-                  {item.startTime} - {item.endTime}
-                </p>
-                <p className="mt-2 truncate text-xs leading-5 opacity-80">{item.subtitle}</p>
-              </button>
-            );
-          })}
-
-          {draftRange && onCreate ? (
-            <ScheduleDraftRangeBlock
-              action={(
-                <button
-                  className="rounded-full bg-[color:var(--client-primary)] px-3 py-1.5 text-[11px] font-black text-[color:var(--client-primary-contrast)] shadow-[0_10px_20px_color-mix(in_srgb,var(--client-primary)_26%,transparent)]"
-                  data-schedule-create-action="true"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    createDraftEvent();
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  type="button"
-                >
-                  创建
-                </button>
-              )}
-              className="left-2 right-2"
-              onEndHandlePointerDown={(event) => handleDraftResizePointerDown("resize-end", event)}
-              onHandlePointerCancel={handleDraftPointerCancel}
-              onHandlePointerMove={handleDraftPointerMove}
-              onHandlePointerUp={handleDraftPointerUp}
-              onStartHandlePointerDown={(event) => handleDraftResizePointerDown("resize-start", event)}
-              style={{
-                top: (draftRange.start / 60) * rowHeight + 6,
-                height: Math.max((Math.max(draftRange.end - draftRange.start, scheduleDraftMinDurationMinutes) / 60) * rowHeight - 12, scheduleDraftRangeVisualMinHeight)
-              }}
-              subtitle="拖动上下手柄调整时间"
-              timeRange={`${minutesToTime(draftRange.start)} - ${minutesToTime(draftRange.end)}`}
-              title="新建行程"
-            />
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const scheduleEventCategoryOptions: Array<{ preset: TechnicianScheduleEventPreset; label: string }> = [
-  { preset: "availability", label: "可排班" },
-  { preset: "leave", label: "请假" },
-  { preset: "locked", label: "锁定" },
-  { preset: "rest", label: "休息" },
-  { preset: "travel", label: "移动" },
-  { preset: "meeting", label: "会议" },
-  { preset: "meal", label: "会食" },
-  { preset: "date", label: "约会" },
-  { preset: "holiday", label: "假期" }
-];
-
-function ScheduleCategoryIcon({ preset, className }: { preset: TechnicianScheduleEventPreset; className?: string }) {
-  const sharedProps = {
-    className: cn("h-4 w-4", className),
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeWidth: 1.8,
-    viewBox: "0 0 20 20"
-  };
-
-  switch (preset) {
-    case "availability":
-      return (
-        <svg {...sharedProps}>
-          <circle cx="10" cy="10" r="6.2" />
-          <path d="M10 6.7v3.7l2.4 1.6" />
-        </svg>
-      );
-    case "leave":
-      return (
-        <svg {...sharedProps}>
-          <circle cx="10" cy="10" r="6.2" />
-          <path d="M6.8 13.2 13.2 6.8" />
-        </svg>
-      );
-    case "locked":
-      return (
-        <svg {...sharedProps}>
-          <rect height="6.6" rx="1.7" width="8.2" x="5.9" y="9.1" />
-          <path d="M7.4 9.1V7.6A2.6 2.6 0 0 1 10 5a2.6 2.6 0 0 1 2.6 2.6v1.5" />
-        </svg>
-      );
-    case "rest":
-      return (
-        <svg {...sharedProps}>
-          <path d="M6.2 6.2h5.2v4.1a2.6 2.6 0 0 1-2.6 2.6h0a2.6 2.6 0 0 1-2.6-2.6Z" />
-          <path d="M11.4 7.2h1.8a1.8 1.8 0 0 1 0 3.6h-1.8" />
-          <path d="M5.8 15.2h8.4" />
-        </svg>
-      );
-    case "travel":
-      return (
-        <svg {...sharedProps}>
-          <path d="M10 15.5s4-3.9 4-7.2A4 4 0 0 0 6 8.3c0 3.3 4 7.2 4 7.2Z" />
-          <circle cx="10" cy="8.4" r="1.5" />
-        </svg>
-      );
-    case "meeting":
-      return (
-        <svg {...sharedProps}>
-          <circle cx="7.1" cy="8" r="1.8" />
-          <circle cx="12.9" cy="8" r="1.8" />
-          <path d="M4.9 14.4c.5-1.7 1.8-2.6 3.7-2.6s3.2.9 3.7 2.6" />
-          <path d="M10.2 14.4c.4-1.3 1.4-2 2.7-2 1.4 0 2.4.7 2.9 2" />
-        </svg>
-      );
-    case "meal":
-      return (
-        <svg {...sharedProps}>
-          <path d="M7 4.8v5.7" />
-          <path d="M5.6 4.8v3.1" />
-          <path d="M8.4 4.8v3.1" />
-          <path d="M7 10.5v4.7" />
-          <path d="M12.8 4.8c1.4 1.6 1.4 4.1 0 5.7v4.7" />
-        </svg>
-      );
-    case "date":
-      return (
-        <svg {...sharedProps}>
-          <path d="M10 15.2 5.2 10.5a3 3 0 0 1 4.2-4.2L10 6.9l.6-.6a3 3 0 0 1 4.2 4.2Z" />
-        </svg>
-      );
-    case "holiday":
-      return (
-        <svg {...sharedProps}>
-          <circle cx="10" cy="10" r="2.6" />
-          <path d="M10 4.4v1.7M10 13.9v1.7M4.4 10h1.7M13.9 10h1.7M6.1 6.1l1.2 1.2M12.7 12.7l1.2 1.2M13.9 6.1l-1.2 1.2M7.3 12.7l-1.2 1.2" />
-        </svg>
-      );
-    default:
-      return null;
-  }
-}
-
-function EmptyAppointmentState({ date }: { date: string }) {
-  return (
-    <div className="rounded-[20px] border border-dashed border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-4 text-sm leading-6 text-[color:var(--client-muted)]">
-      <strong className="block text-[color:var(--client-text)]">
-        <ScheduleDynamicText>{formatLongDate(date)}</ScheduleDynamicText> 暂无预约
-      </strong>
-      <p className="mt-1">切换日期或视图后，可以继续查看全店预约、班次背景和待确认时段。</p>
-    </div>
-  );
-}
-
-type MerchantAppointmentScheduleSurface = "desktop" | "mobile";
-
-export function MerchantAppointmentScheduleWorkspace({
-  storeId,
-  surface = "mobile"
-}: {
-  storeId?: string;
-  surface?: MerchantAppointmentScheduleSurface;
-}) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { session } = useAuth();
-  const { stores, technicians } = useEntityStore();
-  const snapshot = useTechnicianScheduleStore();
-  const dispatchSnapshot = useDispatchCenterStore();
-  const activeStoreId = storeId ?? session?.linkedStoreId ?? stores[0]?.id ?? "";
-  const currentStore = stores.find((store) => store.id === activeStoreId) ?? stores[0];
-  const isDesktopSurface = surface === "desktop";
-  const [view, setView] = useState<TechnicianScheduleView>("day");
-  const [densityMode, setDensityMode] = useState<TechnicianScheduleDensityMode>("entries");
-  const [anchorDate, setAnchorDate] = useState(getTodayDateKey());
-  const [selectedDate, setSelectedDate] = useState(getTodayDateKey());
-  const [banner, setBanner] = useState<ScheduleBannerMessage | null>(null);
-  const [selectedArrangementOrderId, setSelectedArrangementOrderId] = useState<string | null>(null);
-  const [hasAutoFocusedAppointments, setHasAutoFocusedAppointments] = useState(false);
-  const period = getPeriod(view, anchorDate);
-  const storeShifts = currentStore ? resolveStoreShifts(snapshot, currentStore.id, technicians) : [];
-  const scheduleStoreBookings = currentStore ? resolveStoreBookings(snapshot, currentStore.id, storeShifts) : [];
-  const scheduleBookingKeys = new Set(scheduleStoreBookings.map(({ booking }) => booking.orderId ?? booking.id));
-  const arrangementBackfillBookings = currentStore
-    ? dispatchSnapshot.arrangements
-        .filter((arrangement) => arrangement.storeId === currentStore.id && arrangement.status !== "cancelled" && !scheduleBookingKeys.has(arrangement.orderId))
-        .map((arrangement) => {
-          const technicianShifts = arrangement.technicianId
-            ? storeShifts.filter((shift) => shift.technicianId === arrangement.technicianId)
-            : [];
-          return {
-            booking: {
-              id: `dispatch-${arrangement.id}`,
-              technicianId: arrangement.technicianId ?? "unassigned",
-              storeId: arrangement.storeId,
-              date: arrangement.date,
-              startTime: arrangement.startTime,
-              endTime: arrangement.endTime,
-              title: getNeedoAppBookingTitle(arrangement.orderId, arrangement.serviceName) ?? arrangement.serviceName,
-              customerName: arrangement.customerName,
-              amount: arrangement.amount,
-              orderId: arrangement.orderId,
-              note: arrangement.internalNote || arrangement.note || "调度中心预约安排"
-            } satisfies TechnicianScheduleBooking,
-            shift: arrangement.technicianId
-              ? findContainingShift(technicianShifts, arrangement.date, arrangement.startTime, arrangement.endTime)
-              : null
-          };
-        })
-    : [];
-  const storeBookings = [...scheduleStoreBookings, ...arrangementBackfillBookings].sort((left, right) =>
-    `${left.booking.date} ${left.booking.startTime}`.localeCompare(`${right.booking.date} ${right.booking.startTime}`)
-  );
-  const firstBookingDate = storeBookings[0]?.booking.date ?? null;
-  const hasSelectedDateAppointments = storeBookings.some(({ booking }) => booking.date === selectedDate);
-  const items = buildStoreAppointmentCalendarItems(storeShifts, storeBookings, technicians);
-  const summary = computeStoreScheduleSummary(storeShifts, storeBookings, period);
-  const brief = computeStoreAppointmentBrief(items, storeBookings, period);
-  const periodItems = items.filter((item) => isDateInPeriod(item.date, period));
-  const periodAppointmentItems = periodItems.filter((item) => item.sourceType === "booking");
-  const selectedDateItems = periodItems.filter((item) => item.date === selectedDate);
-  const selectedDateAppointmentItems = periodAppointmentItems.filter((item) => item.date === selectedDate);
-  const groupedPeriodAppointments = groupItemsByDate(periodAppointmentItems);
-  const selectedDateConflictItemIds = buildStoreBookingConflictItemIdSet(
-    storeBookings.filter(({ booking }) => booking.date === selectedDate)
-  );
-  const selectedArrangement =
-    currentStore && selectedArrangementOrderId
-      ? getDispatchArrangementByOrderId(currentStore.id, selectedArrangementOrderId)
-      : null;
-
-  useEffect(() => {
-    const nextSelectedDate = resolveSelectedScheduleDate(view, anchorDate, selectedDate);
-    if (nextSelectedDate !== selectedDate) {
-      setSelectedDate(nextSelectedDate);
-    }
-  }, [anchorDate, selectedDate, view]);
-
-  useEffect(() => {
-    if (hasAutoFocusedAppointments || !firstBookingDate) {
-      return;
-    }
-
-    setHasAutoFocusedAppointments(true);
-
-    if (!hasSelectedDateAppointments) {
-      setAnchorDate(firstBookingDate);
-      setSelectedDate(firstBookingDate);
-    }
-  }, [firstBookingDate, hasAutoFocusedAppointments, hasSelectedDateAppointments]);
-
-  const changeView = (nextView: TechnicianScheduleView) => {
-    setView(nextView);
-    setSelectedDate(resolveSelectedScheduleDate(nextView, anchorDate, selectedDate));
-  };
-
-  const shiftPeriod = (direction: -1 | 1) => {
-    const nextSelection = shiftScheduleSelection(view, anchorDate, selectedDate, direction);
-    setAnchorDate(nextSelection.anchorDate);
-    setSelectedDate(nextSelection.selectedDate);
-  };
-
-  const openItem = (item: TechnicianCalendarItem) => {
-    if (item.sourceType !== "booking") {
-      setBanner({ tone: "neutral", text: "班次背景用于辅助判断预约容量，请从排班页调整班次。" });
-      return;
-    }
-
-    const target = resolveScheduleEventDetailTarget(item, isDesktopSurface ? "merchant-admin" : "merchant");
-
-    if (target.action === "open" && target.targetType === "order_detail") {
-      const returnTo = buildCurrentRoute(location);
-      navigate(withReturnTo(target.route, returnTo), { state: { returnTo } });
-      return;
-    }
-
-    const booking = storeBookings.find(({ booking: current }) => current.orderId === item.sourceId || current.id === item.appointmentId);
-    if (!booking?.booking.orderId) {
-      setBanner({ tone: "yellow", text: "这条预约暂未绑定订单详情。" });
-      return;
-    }
-
-    if (isDesktopSurface) {
-      const arrangement = currentStore ? getDispatchArrangementByOrderId(currentStore.id, booking.booking.orderId) : null;
-      if (!arrangement) {
-        setSelectedArrangementOrderId(null);
-        setBanner({ tone: "yellow", text: "这条预约暂未绑定后台预约安排详情。" });
-        return;
-      }
-
-      setBanner(null);
-      setSelectedArrangementOrderId(booking.booking.orderId);
-      return;
-    }
-
-    navigate(`/merchant/schedule/arrangements/${booking.booking.orderId}`);
-  };
-
-  const renderSelectedDateContent = () => {
-    if (densityMode === "all") {
-      if (selectedDateItems.length === 0) {
-        return <EmptyAppointmentState date={selectedDate} />;
-      }
-
-      return (
-        <DayTimeline
-          conflictItemIds={selectedDateConflictItemIds}
-          date={selectedDate}
-          items={selectedDateItems}
-          onOpenItem={openItem}
-        />
-      );
-    }
-
-    if (selectedDateAppointmentItems.length === 0) {
-      return <EmptyAppointmentState date={selectedDate} />;
-    }
-
-    return (
-      <div className="space-y-3">
-        {selectedDateAppointmentItems.map((item) => (
-          <AgendaItemCard hasConflict={selectedDateConflictItemIds.has(item.id)} item={item} key={item.id} onOpen={openItem} />
-        ))}
-      </div>
-    );
-  };
-
-  if (!currentStore) {
-    return (
-      <div className={cn(schedulePanelClass, "p-4 text-sm font-black text-[color:var(--client-muted)]")}>
-        暂无可展示的门店预约数据。
-      </div>
-    );
-  }
-
-  return (
-    <div className={cn("space-y-3", isDesktopSurface && "merchant-admin-schedule-parity")}>
-      <section className={cn(isDesktopSurface ? "merchant-dispatch-surface rounded-[26px] border p-4" : schedulePanelClass, !isDesktopSurface && "p-3")}>
-        <div className={cn("grid gap-2", isDesktopSurface ? "md:grid-cols-4" : "grid-cols-4")}>
-          <SummaryCard label="确认班次" value={summary.confirmedHours} />
-          <SummaryCard label="已定预约" value={summary.bookedHours} />
-          <SummaryCard label="可预约" value={summary.freeHours} />
-          <SummaryCard label="待确认" value={summary.tentativeHours} />
-        </div>
-      </section>
-
-      <section className={cn(isDesktopSurface ? "merchant-dispatch-surface rounded-[26px] border p-4" : schedulePanelClass, !isDesktopSurface && "p-3")}>
-        <ScheduleSectionHeading
-          info="按日、周、月查看全店预约，班次会作为时间轴背景辅助判断预约容量。"
-          label="查看预约一览说明"
-          right={
-            <ScheduleViewSegmentedTabs onChange={(nextView) => changeView(nextView as TechnicianScheduleView)} value={view} />
-          }
-          title="预约一览"
-        />
-
-        <div className="client-sticky-control-panel mt-3">
-          <div className="grid grid-cols-[auto,1fr,auto] items-center gap-2">
-            <button
-              aria-label={getScheduleShiftButtonLabel(view, -1)}
-              className="grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-sm font-black text-[color:var(--client-text)]"
-              onClick={() => shiftPeriod(-1)}
-              type="button"
+    <main className="min-h-screen bg-[color:var(--client-bg)] px-4 pb-12 pt-4 text-[color:var(--client-text)]">
+      <div className="mx-auto max-w-[720px]">
+        <header className="mb-5 rounded-[24px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 py-4">
+          <div className="flex items-center gap-3">
+            <Link
+              aria-label="返回"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[color:var(--client-line)] font-black"
+              to={backTo}
             >
               ‹
-            </button>
-            <div className="text-center">
-              <strong className="block text-sm font-black text-[color:var(--client-text)]">
-                <ScheduleDynamicText>{period.label}</ScheduleDynamicText>
-              </strong>
-              <span className="mt-0.5 block text-[11px] font-bold text-[color:var(--client-muted)]">{currentStore.name} · 全店预约</span>
+            </Link>
+            <div className="min-w-0">
+              <h1 className="text-xl font-black">{title}</h1>
+              {subtitle ? <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{subtitle}</p> : null}
             </div>
-            <button
-              aria-label={getScheduleShiftButtonLabel(view, 1)}
-              className="grid h-9 w-9 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-sm font-black text-[color:var(--client-text)]"
-              onClick={() => shiftPeriod(1)}
-              type="button"
-            >
-              ›
-            </button>
           </div>
-        </div>
+        </header>
+        {children}
+      </div>
+    </main>
+  );
+}
 
-        <div className={cn("mt-3 grid gap-2", isDesktopSurface ? "md:grid-cols-[0.9fr_0.9fr_1.35fr]" : "grid-cols-[0.9fr_0.9fr_1.35fr]")}>
-          <BriefCard label="预约单数" value={`${brief.orderCount} 单`} />
-          <BriefCard
-            label="状态"
-            tone={brief.hasConflict ? "red" : "green"}
-            value={brief.hasConflict ? "有冲突" : "正常"}
-          />
-          <BriefCard label="预计流水" value={formatCurrency(brief.estimatedRevenue)} wide />
-        </div>
-
-        {banner ? (
-          <div className="mt-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-3 py-2.5">
-            <ScheduleBadge tone={banner.tone}>{banner.text}</ScheduleBadge>
-          </div>
-        ) : null}
-
-        <div className={cn(
-          "mt-4 rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_92%,transparent)]",
-          isDesktopSurface ? "p-4" : "p-3"
-        )}>
-          <ScheduleSectionHeading
-            info={densityMode === "entries" ? "只展示预约记录，列表更适合前台快速核对。" : "显示完整时间轴，确认班次会作为背景一起展示。"}
-            label="查看展示区说明"
-            right={
-              <div className="client-segmented-tabs inline-flex rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] p-1">
-                {([
-                  ["entries", "仅预约"],
-                  ["all", "全时间"]
-                ] as Array<[TechnicianScheduleDensityMode, string]>).map(([mode, label]) => (
-                  <button
-                    className={cn(
-                      "client-segmented-tab rounded-full px-3.5 py-1.5 text-sm font-black transition",
-                      densityMode === mode
-                        ? "bg-[color:var(--client-primary)] text-[#090806] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
-                        : "text-[color:var(--client-muted)]"
-                    )}
-                    key={mode}
-                    onClick={() => setDensityMode(mode)}
-                    type="button"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            }
-            title="排班展示区"
-          />
-
-          {view === "day" ? (
-            <div className="mt-3">{renderSelectedDateContent()}</div>
-          ) : view === "week" ? (
-            <div className="mt-3 space-y-3">
-              <div className="sticky top-[var(--client-schedule-substicky-top)] z-[8] grid grid-cols-7 gap-1.5 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)] p-1.5 backdrop-blur-xl">
-                {getWeekDates(anchorDate).map((date) => {
-                  const count = groupedPeriodAppointments[date]?.length ?? 0;
-                  const isSelected = selectedDate === date;
-                  return (
-                    <button
-                      className={cn(
-                        "relative flex min-h-[72px] min-w-0 flex-col items-center justify-center rounded-[16px] border px-1 py-2 text-center transition",
-                        isSelected
-                          ? "border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)]"
-                          : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)] text-[color:var(--client-muted)]"
-                      )}
-                      key={date}
-                      onClick={() => setSelectedDate(date)}
-                      type="button"
-                    >
-                      <HolidayCornerBadge date={date} />
-                      <span className="block text-[11px] font-bold">{getWeekdayLabel(date)}</span>
-                      <strong className="mt-1 block w-full text-center text-[13px] font-black leading-none tabular-nums sm:text-[14px] md:text-[15px]">
-                        <ScheduleDynamicText>{formatShortDate(date)}</ScheduleDynamicText>
-                      </strong>
-                      {count > 0 ? (
-                        <NotificationBadge className="absolute right-[-6px] top-[-6px] z-10" count={count} size="sm" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-              <section className={cn("space-y-3", isDesktopSurface && "rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,transparent)] p-3")}>
-                <h3 className="text-base font-black text-[color:var(--client-text)]">
-                  <ScheduleDynamicText>{formatLongDate(selectedDate)}</ScheduleDynamicText> 预约
-                </h3>
-                {renderSelectedDateContent()}
-              </section>
-            </div>
-          ) : (
-            <div className="mt-3 space-y-3">
-              <div className="sticky top-[var(--client-schedule-substicky-top)] z-[8] grid grid-cols-7 gap-1 rounded-[16px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_94%,transparent)] px-2 py-2 text-center text-[11px] font-black text-[color:var(--client-muted)] backdrop-blur-xl">
-                {getWeekdayHeaderLabel().map((label) => (
-                  <span key={label}>{label}</span>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-1">
-                {getMonthGridDates(anchorDate).map((date) => {
-                  const inMonth = date.slice(0, 7) === anchorDate.slice(0, 7);
-                  const dateItems = groupedPeriodAppointments[date] ?? [];
-                  const isSelected = selectedDate === date;
-                  return (
-                    <button
-                      className={cn(
-                        "relative min-h-[56px] rounded-[12px] border px-2 py-1.5 text-left transition",
-                        isSelected
-                          ? "border-[color:color-mix(in_srgb,var(--client-primary)_36%,transparent)] bg-[color:var(--client-primary-soft)]"
-                          : "border-[color:color-mix(in_srgb,var(--client-line)_76%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_78%,transparent)]",
-                        !inMonth && "opacity-35"
-                      )}
-                      key={date}
-                      onClick={() => setSelectedDate(date)}
-                      type="button"
-                    >
-                      <HolidayCornerBadge date={date} />
-                      <strong className="block text-[13px] font-black leading-none text-[color:var(--client-text)] sm:text-[14px]">
-                        {Number(date.slice(-2))}
-                      </strong>
-                      {dateItems.length > 0 ? (
-                        <NotificationBadge className="absolute right-[-6px] top-[-6px] z-10" count={dateItems.length} size="sm" />
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-              <section className={cn("space-y-3", isDesktopSurface && "rounded-[22px] border border-[color:color-mix(in_srgb,var(--client-line)_68%,transparent)] bg-[color:color-mix(in_srgb,var(--client-surface)_62%,transparent)] p-3")}>
-                <h3 className="text-base font-black text-[color:var(--client-text)]">
-                  <ScheduleDynamicText>{formatLongDate(selectedDate)}</ScheduleDynamicText> 预约
-                </h3>
-                {renderSelectedDateContent()}
-              </section>
-            </div>
-          )}
-        </div>
+function RouteUnavailable({ kind }: { kind: "order" | "schedule" }) {
+  return (
+    <FormalRoutePage title={kind === "schedule" ? "排班记录不可用" : "订单记录不可用"}>
+      <section className={panelClass} role="alert">
+        <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">
+          路由中的记录编号无效，未读取任何演示或浏览器缓存数据。
+        </p>
+        <Button className="mt-4" to="/technician/schedule">返回正式排班</Button>
       </section>
+    </FormalRoutePage>
+  );
+}
 
-      {isDesktopSurface ? (
-        <Drawer onClose={() => setSelectedArrangementOrderId(null)} open={Boolean(selectedArrangementOrderId)} title="预约安排详情">
-          {selectedArrangement && currentStore ? (
-            <ArrangementDetailContent
-              arrangement={selectedArrangement}
-              onActionComplete={(result) => setBanner(result.ok ? { tone: "green", text: "已同步到共享调度数据。" } : { tone: "yellow", text: result.message ?? "操作失败。" })}
-              operatorId={currentStore.id}
-              storeId={currentStore.id}
-              surface="desktop"
-            />
-          ) : (
-            <div className="rounded-[22px] border border-dashed border-line bg-white/80 p-4 text-sm leading-6 text-ink/60">
-              当前预约安排不存在，可能已被调整或不属于当前门店。
-            </div>
-          )}
-        </Drawer>
-      ) : null}
+function LoadingPanel({ label }: { label: string }) {
+  return (
+    <section aria-live="polite" className={panelClass}>
+      <p className="text-sm font-black">{label}</p>
+    </section>
+  );
+}
+
+function ErrorPanel({
+  title,
+  error,
+  onRetry
+}: {
+  title: string;
+  error: string;
+  onRetry: () => void;
+}) {
+  return (
+    <section className={panelClass} role="alert">
+      <h2 className="text-base font-black">{title}</h2>
+      <p className="mt-2 break-words text-xs font-bold leading-5 text-[color:var(--client-muted)]">{error}</p>
+      <Button className="mt-4" onClick={onRetry}>重新加载</Button>
+    </section>
+  );
+}
+
+function localDateLabel(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function localTimeLabel(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return "--:--";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function timeRangeLabel(startsAt: string | Date, endsAt: string | Date): string {
+  return `${localTimeLabel(startsAt)}–${localTimeLabel(endsAt)}`;
+}
+
+function slotStatusLabel(status: BookingScheduleSlot["status"]): string {
+  if (status === "available") return "可预约";
+  if (status === "blocked") return "已锁定";
+  return "已有预约";
+}
+
+function scheduleMutationError(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    if (error.code === 40911 || error.message === "error.schedule.conflict") {
+      return "时间与已有排班冲突，请调整后重试";
+    }
+    if (error.code === 40912 || error.message === "error.schedule.slot_in_use") {
+      return "该时段已有预约，无法修改或删除";
+    }
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前技师身份没有操作该排班的权限";
+    if (error.status === 404) return "排班不存在或已不属于当前技师";
+  }
+  return "正式排班操作失败，请检查网络后重试";
+}
+
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3">
+      <dt className="text-[11px] font-bold text-[color:var(--client-muted)]">{label}</dt>
+      <dd className="mt-1 text-sm font-black">{value}</dd>
     </div>
   );
 }
 
-function findScheduleBookingByOrderId(orderId?: string) {
-  if (!orderId) {
-    return null;
-  }
-
-  return getTechnicianScheduleStoreSnapshot().bookings.find(
-    (booking) => booking.orderId === orderId || booking.detailTargetId === orderId
-  ) ?? null;
-}
-
-function findServiceForOrderName(itemName?: string) {
-  if (!itemName) {
-    return services[0];
-  }
-
-  return services.find((service) => itemName.includes(service.name) || service.name.includes(itemName)) ?? services[0];
-}
-
-export function TechnicianOrderDetailRoutePage() {
-  const { orderId } = useParams<{ orderId: string }>();
+function TechnicianScheduleDetailBody({ slotId }: { slotId: number }) {
+  const { session } = useAuth();
+  const resource = useFormalTechnicianScheduleResource(session, slotId);
   const navigate = useNavigate();
-  const location = useLocation();
-  const { stores, technicians, customers } = useEntityStore();
-  const order = orders.find((item) => item.id === orderId);
-  const booking = findScheduleBookingByOrderId(orderId);
-  const parentOrder = booking?.parentOrderId ? orders.find((item) => item.id === booking.parentOrderId) : null;
-  const returnTarget = readNavigationReturnTarget(location.search, location.state);
-  const backToScheduleSource = () => {
-    if (returnTarget) {
-      navigate(returnTarget.to, { state: returnTarget.state });
-      return;
-    }
+  const [slot, setSlot] = useState<BookingScheduleSlot | null>(null);
+  const [pending, setPending] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
-    navigate("/technician/schedule");
-  };
+  useEffect(() => {
+    setSlot(resource.data?.slot ?? null);
+  }, [resource.data?.slot]);
 
-  if (!order) {
+  if (resource.loading) {
+    return <FormalRoutePage title="正式排班详情"><LoadingPanel label="正在读取正式排班" /></FormalRoutePage>;
+  }
+  if (resource.error || !resource.data || !slot) {
     return (
-      <StandaloneSchedulePage onBack={backToScheduleSource} subtitle="找不到对应预约订单。" title="预约订单详情">
-        <div className={cn(schedulePanelClass, "px-4 py-4 text-sm leading-6 text-[color:var(--client-muted)]")}>
-          这条排班事件没有绑定可访问的订单，或订单已经不在当前技师权限范围内。
-        </div>
-      </StandaloneSchedulePage>
+      <FormalRoutePage title="正式排班详情">
+        <ErrorPanel
+          error={resource.error ?? "error.schedule.slot_not_found"}
+          onRetry={resource.retry}
+          title="正式排班加载失败"
+        />
+      </FormalRoutePage>
     );
   }
 
-  const store = stores.find((item) => item.name === order.storeName) ?? stores[0];
-  const technician = technicians.find((item) => item.name === order.technicianName) ?? technicians.find((item) => item.id === booking?.technicianId) ?? technicians[0];
-  const customer = customers.find((item) => item.id === order.customerId);
-  const service = findServiceForOrderName(order.itemName);
+  const updateStatus = async () => {
+    if (pending || slot.status === "booked") return;
+    setPending(true);
+    setActionError("");
+    try {
+      const updated = await schedulingApi.updateSlot("technician", slot.id, {
+        status: slot.status === "blocked" ? "available" : "blocked"
+      });
+      setSlot(updated);
+      setDeleteArmed(false);
+    } catch (error) {
+      setActionError(scheduleMutationError(error));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const deleteSlot = async () => {
+    if (pending || slot.status === "booked") return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+    setPending(true);
+    setActionError("");
+    try {
+      await schedulingApi.deleteSlot("technician", slot.id);
+      navigate("/technician/schedule");
+    } catch (error) {
+      setActionError(scheduleMutationError(error));
+      setDeleteArmed(false);
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
-    <StandaloneSchedulePage
-      action={<Button className={getScheduleButtonClassName("secondary")} size="sm" to="/technician/schedule" variant="secondary">回排班表</Button>}
-      onBack={backToScheduleSource}
-      subtitle={`${order.bookedAt} · ${booking?.eventType === "extension" ? "加钟订单" : booking?.eventType === "reschedule" ? "移动后当前订单" : "普通预约"}`}
-      title="预约订单详情"
+    <FormalRoutePage
+      subtitle={`${localDateLabel(slot.startsAt)} · ${timeRangeLabel(slot.startsAt, slot.endsAt)}`}
+      title="正式排班详情"
     >
-      <section className="space-y-4">
-        <OrderDynamicStatusCard order={order} providerName={order.storeName ?? store?.name} />
-
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <div className="flex flex-wrap items-center gap-2">
-            <ScheduleBadge tone={booking?.eventType === "extension" ? "red" : booking?.eventType === "reschedule" ? "blue" : "green"}>
-              {booking?.eventType === "extension" ? "加钟" : booking?.eventType === "reschedule" ? "移动预约" : "普通预约"}
-            </ScheduleBadge>
-            <ScheduleBadge tone="neutral">{order.orderNo}</ScheduleBadge>
-          </div>
-          <h2 className="mt-3 text-xl font-black text-[color:var(--client-text)]">{order.itemName}</h2>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            {[
-              ["预约时间", order.bookedAt],
-              ["预约金额", formatCurrency(order.amount)],
-              ["支付状态", order.paymentStatus]
-            ].map(([label, value]) => (
-              <div className={cn(scheduleInsetClass, "px-3 py-3")} key={label}>
-                <p className="text-[11px] font-black text-[color:var(--client-muted)]">{label}</p>
-                <strong className="mt-1 block truncate text-sm font-black text-[color:var(--client-text)]">{value}</strong>
-              </div>
-            ))}
-          </div>
-          {booking?.note ? <p className="mt-3 text-sm leading-6 text-[color:var(--client-muted)]">{booking.note}</p> : null}
-        </article>
-
-        {parentOrder ? (
-          <article className={cn(schedulePanelClass, "px-4 py-4")}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-black text-[color:var(--client-text)]">原订单入口</h3>
-                <p className="mt-1 text-sm text-[color:var(--client-muted)]">{parentOrder.orderNo} · {parentOrder.itemName}</p>
-              </div>
-              <Button
-                className={getScheduleButtonClassName("primary")}
-                size="sm"
-                to={getScheduleOrderDetailRoute(parentOrder.id, "technician")}
-              >
-                打开
-              </Button>
+      <div className="space-y-4">
+        <section className={panelClass}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1 text-xs font-black">
+                {slotStatusLabel(slot.status)}
+              </span>
+              <h2 className="mt-3 text-xl font-black">{slot.serviceName}</h2>
+              <p className="mt-1 text-sm font-bold text-[color:var(--client-muted)]">
+                {localDateLabel(slot.startsAt)} · {timeRangeLabel(slot.startsAt, slot.endsAt)}
+              </p>
             </div>
-          </article>
-        ) : null}
-
-        <section>
-          <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">服务</h2>
-          {service && store ? (
-            <SocialProfileMiniCard
-              data={buildServiceMiniCardData(service, store)}
-              detailTo={`/technician/profiles/shop/${store.id}`}
-              showAction={false}
-              topTags={[{ label: order.mode === "store" ? "到店预约" : "上门预约", tone: "purple" }]}
-            />
-          ) : null}
+            <span className="text-xs font-bold text-[color:var(--client-muted)]">ID {slot.id}</span>
+          </div>
+          <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+            <DetailRow label="店铺" value={slot.shopName} />
+            <DetailRow label="技师" value={slot.technicianName ?? resource.data.profile.displayName} />
+            <DetailRow label="服务时长" value={`${slot.durationMinutes} 分钟`} />
+            <DetailRow label="容量 / 已预约" value={`${slot.capacity} / ${slot.bookedCount}`} />
+          </dl>
         </section>
 
-        {store ? (
-          <section>
-            <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">店铺 / 服务方</h2>
-            <SocialProfileMiniCard detailTo={`/technician/profiles/shop/${store.id}`} showAction={false} store={store} />
-          </section>
-        ) : null}
+        {actionError ? <section className={panelClass} role="alert"><p className="text-sm font-black text-red-500">{actionError}</p></section> : null}
 
-        {customer ? (
-          <section>
-            <h2 className="mb-2 text-sm font-black text-[color:var(--client-muted)]">预约用户</h2>
-            <SocialProfileMiniCard customer={customer} detailTo={`/technician/profiles/user/${customer.id}`} showAction={false} />
+        {slot.status === "booked" ? (
+          <section className={panelClass}>
+            <p className="text-sm font-bold text-[color:var(--client-muted)]">该时段已有预约，时间、状态和删除操作均由服务端锁定。</p>
           </section>
-        ) : null}
-      </section>
-    </StandaloneSchedulePage>
+        ) : (
+          <section className="grid gap-2 sm:grid-cols-3">
+            <Button disabled={pending} to={`/technician/schedule/events/${slot.id}/edit`} variant="secondary">编辑时段</Button>
+            <Button disabled={pending} onClick={() => void updateStatus()} variant="secondary">
+              {slot.status === "blocked" ? "恢复可预约" : "锁定时段"}
+            </Button>
+            <Button disabled={pending} onClick={() => void deleteSlot()} variant="danger">
+              {deleteArmed ? "再次点击确认删除" : "删除时段"}
+            </Button>
+          </section>
+        )}
+      </div>
+    </FormalRoutePage>
   );
-}
-
-function useRouteItem(itemId?: string) {
-  const { snapshot, items, assignedShifts, visibleBookings, visibleCustomEvents, currentTechnician, currentStore, sameStoreColleagues, technicians } =
-    useTechnicianScheduleContext();
-  const sourceItem = items.find((item) => item.sourceId === itemId) ?? null;
-  const customEvent = visibleCustomEvents.find((item) => item.event.id === itemId)?.event ?? null;
-  const booking = visibleBookings.find((item) => item.booking.id === itemId)?.booking ?? null;
-  const shift =
-    assignedShifts.find((item) => (item.assignmentKind === "accepted" ? item.id.split("__accepted__")[0] === itemId : item.id === itemId)) ??
-    snapshot.dutyShifts.find((item) => item.id === itemId) ??
-    null;
-  const resolvedShiftId = shift
-    ? "assignmentKind" in shift && shift.assignmentKind === "accepted"
-      ? shift.id.split("__accepted__")[0]
-      : shift.id
-    : null;
-  const owningShift = sourceItem?.linkedShiftId
-    ? snapshot.dutyShifts.find((candidate) => candidate.id === sourceItem.linkedShiftId) ?? null
-    : resolvedShiftId
-      ? snapshot.dutyShifts.find((candidate) => candidate.id === resolvedShiftId) ?? null
-      : null;
-  const transferPreview = owningShift
-    ? getTechnicianScheduleTransferPreview(owningShift.id)
-    : resolvedShiftId
-      ? getTechnicianScheduleTransferPreview(resolvedShiftId)
-      : null;
-  const relatedInvitations = transferPreview?.invitations ?? [];
-  const acceptedCount = relatedInvitations.filter((invitation) => invitation.status === "accepted").length;
-
-  return {
-    snapshot,
-    item: sourceItem,
-    customEvent,
-    booking,
-    shift,
-    owningShift,
-    transferPreview,
-    acceptedCount,
-    currentTechnician,
-    currentStore,
-    sameStoreColleagues,
-    technicians
-  };
 }
 
 export function TechnicianScheduleDetailRoutePage() {
-  const navigate = useNavigate();
-  const scheduleBasePath = useScheduleBasePath();
   const { eventId } = useParams<{ eventId: string }>();
-  const { snapshot, item, customEvent, booking, shift, owningShift, transferPreview, acceptedCount, currentTechnician, technicians } = useRouteItem(eventId);
+  const slotId = parsePositiveRouteId(eventId);
+  if (!slotId) return <RouteUnavailable kind="schedule" />;
+  return <TechnicianScheduleDetailBody slotId={slotId} />;
+}
 
-  if (!item && !customEvent && !booking && !shift) {
+function createDefaultScheduleRange() {
+  const startsAt = new Date(Date.now() + 24 * 60 * 60_000);
+  startsAt.setSeconds(0, 0);
+  startsAt.setMinutes(Math.ceil(startsAt.getMinutes() / 15) * 15);
+  const endsAt = new Date(startsAt.getTime() + 60 * 60_000);
+  return { startsAt, endsAt };
+}
+
+function TechnicianScheduleEditorBody({ slotId }: { slotId: number | null }) {
+  const { session } = useAuth();
+  const resource = useFormalTechnicianScheduleResource(session, slotId);
+  const navigate = useNavigate();
+  const defaultRange = useMemo(createDefaultScheduleRange, []);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [startsAt, setStartsAt] = useState(defaultRange.startsAt);
+  const [endsAt, setEndsAt] = useState(defaultRange.endsAt);
+  const [capacity, setCapacity] = useState(1);
+  const [pending, setPending] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  useEffect(() => {
+    if (!resource.data) return;
+    if (resource.data.slot) {
+      setSelectedServiceId(resource.data.slot.technicianServiceId);
+      setStartsAt(new Date(resource.data.slot.startsAt));
+      setEndsAt(new Date(resource.data.slot.endsAt));
+      setCapacity(resource.data.slot.capacity);
+      return;
+    }
+    const firstService = resource.data.services[0];
+    if (firstService && selectedServiceId === null) {
+      setSelectedServiceId(firstService.id);
+      setEndsAt(new Date(startsAt.getTime() + firstService.durationMinutes * 60_000));
+    }
+  }, [resource.data, slotId]);
+
+  if (resource.loading) {
+    return <FormalRoutePage title={slotId ? "编辑正式排班" : "新建正式排班"}><LoadingPanel label="正在读取技师服务与排班" /></FormalRoutePage>;
+  }
+  if (resource.error || !resource.data) {
     return (
-      <StandaloneSchedulePage subtitle="找不到这条排班记录。" title="排班信息">
-        <div className="rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-4 py-4 text-sm leading-6 text-[color:var(--client-muted)]">
-          当前记录不存在，可能已经被删除或转让状态已变化。
-        </div>
-      </StandaloneSchedulePage>
+      <FormalRoutePage title={slotId ? "编辑正式排班" : "新建正式排班"}>
+        <ErrorPanel error={resource.error ?? "error.api"} onRetry={resource.retry} title="正式排班资源加载失败" />
+      </FormalRoutePage>
+    );
+  }
+  if (slotId && !resource.data.slot) {
+    return (
+      <FormalRoutePage title="编辑正式排班">
+        <ErrorPanel error="error.schedule.slot_not_found" onRetry={resource.retry} title="正式排班加载失败" />
+      </FormalRoutePage>
     );
   }
 
-  const displayTitle = item?.title ?? customEvent?.title ?? booking?.title ?? shift?.title ?? "排班信息";
-  const displayDate = item?.date ?? customEvent?.date ?? booking?.date ?? shift?.date ?? getTodayDateKey();
-  const displayStart = item?.startTime ?? customEvent?.startTime ?? booking?.startTime ?? shift?.startTime ?? "00:00";
-  const displayEnd = item?.endTime ?? customEvent?.endTime ?? booking?.endTime ?? shift?.endTime ?? "00:00";
-  const isEditableCustomEvent = Boolean(customEvent) && !item?.withinConfirmedShift;
-  const activeShift = owningShift ?? (shift ? snapshot.dutyShifts.find((candidate) => candidate.id === eventId) ?? null : null);
-  const latestRequest = transferPreview?.request ?? null;
-  const detailItemBadge = item ? getItemBadgePresentation(item, false) : null;
-  const requestCandidates = latestRequest
-    ? transferPreview?.invitations.map((invitation) => {
-        const technician = technicians.find((candidate) => candidate.id === invitation.candidateId);
-        return {
-          invitation,
-          technicianName: technician?.nickname?.trim() || technician?.name || "同事"
-        };
-      }) ?? []
-    : [];
+  const selectedService = resource.data.services.find((item) => item.id === selectedServiceId) ?? null;
+  const requiredDuration = resource.data.slot?.durationMinutes ?? selectedService?.durationMinutes ?? 0;
+  const actualDuration = Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000);
+  const validCapacity = Number.isInteger(capacity) && capacity >= 1 && capacity <= 100;
+  const validFuture = Boolean(slotId) || startsAt.getTime() > Date.now();
+  const canSave = Boolean(selectedServiceId) && requiredDuration > 0 && actualDuration === requiredDuration && validCapacity && validFuture && !pending;
+
+  const save = async () => {
+    if (!canSave || !selectedServiceId) return;
+    setPending(true);
+    setActionError("");
+    try {
+      const saved = slotId
+        ? await schedulingApi.updateSlot("technician", slotId, { startsAt, endsAt, capacity })
+        : await schedulingApi.createSlot("technician", {
+            technicianServiceId: selectedServiceId,
+            startsAt,
+            endsAt,
+            capacity
+          });
+      navigate(`/technician/schedule/events/${saved.id}`);
+    } catch (error) {
+      setActionError(scheduleMutationError(error));
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
-    <StandaloneSchedulePage
-      subtitle={`${formatLongDate(displayDate)} · ${displayStart} - ${displayEnd}`}
-      title={displayTitle}
+    <FormalRoutePage
+      subtitle={resource.data.profile.displayName}
+      title={slotId ? "编辑正式排班" : "新建正式排班"}
     >
-      <section className="space-y-4">
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <div className="flex flex-wrap items-center gap-2">
-            {item && detailItemBadge ? (
-              <ScheduleBadge style={detailItemBadge.style} tone={detailItemBadge.tone}>
-                {getItemDisplayLabel(item)}
-              </ScheduleBadge>
-            ) : null}
-            {item?.transferStatus ? <ScheduleBadge tone={getTransferTone(item.transferStatus)}>{getTransferStatusLabel(item.transferStatus)}</ScheduleBadge> : null}
-            {item?.withinConfirmedShift ? <ScheduleBadge tone="neutral">确认班次内</ScheduleBadge> : null}
-          </div>
-          <h2 className="mt-3 text-xl font-black text-[color:var(--client-text)]">{displayTitle}</h2>
-          <p className="mt-2 text-sm font-bold text-[color:var(--client-muted)]">
-            {formatLongDate(displayDate)} · {displayStart} - {displayEnd}
-          </p>
-          {booking ? (
-            <div className="mt-4 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-3 text-sm leading-6 text-[color:var(--client-muted)]">
-              <p>
-                <strong className="text-[color:var(--client-text)]">预约客人：</strong>
-                {booking.customerName}
-              </p>
-              <p>
-                <strong className="text-[color:var(--client-text)]">预约金额：</strong>
-                {formatCurrency(booking.amount ?? null)}
-              </p>
-              {booking.note ? <p>{booking.note}</p> : null}
-            </div>
+      <div className="space-y-4">
+        <section className={panelClass}>
+          <label className="block text-sm font-black">
+            服务
+            {slotId ? (
+              <span className="mt-2 block rounded-[16px] bg-[color:var(--client-elevated)] px-4 py-3">
+                {resource.data.slot?.serviceName}
+              </span>
+            ) : (
+              <select
+                className={fieldClass}
+                onChange={(event) => {
+                  const nextId = Number(event.target.value);
+                  const nextService = resource.data?.services.find((item) => item.id === nextId);
+                  setSelectedServiceId(nextId);
+                  if (nextService) setEndsAt(new Date(startsAt.getTime() + nextService.durationMinutes * 60_000));
+                }}
+                value={selectedServiceId ?? ""}
+              >
+                {resource.data.services.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name} · {item.durationMinutes} 分钟</option>
+                ))}
+              </select>
+            )}
+          </label>
+          {resource.data.services.length === 0 ? (
+            <p className="mt-3 text-sm font-bold text-[color:var(--client-muted)]">当前没有已启用且可预约的正式技师服务，无法创建排班。</p>
           ) : null}
-          {customEvent ? (
-            <div className="mt-4 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-3 text-sm leading-6 text-[color:var(--client-muted)]">
-              <p>
-                <strong className="text-[color:var(--client-text)]">行程类型：</strong>
-                {getScheduleEventPresetLabel(resolveScheduleEventPreset(customEvent.kind, customEvent.title, customEvent.preset))}
-              </p>
-              {customEvent.location ? (
-                <p>
-                  <strong className="text-[color:var(--client-text)]">地点：</strong>
-                  {customEvent.location}
-                </p>
-              ) : null}
-              {customEvent.note ? (
-                <p>
-                  <strong className="text-[color:var(--client-text)]">备注：</strong>
-                  {customEvent.note}
-                </p>
-              ) : null}
-              {customEvent.syncTargets.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {customEvent.syncTargets.map((target) => (
-                    <ScheduleBadge key={`${target.type}-${target.id}`} tone="neutral">
-                      同步给 {target.label}
-                    </ScheduleBadge>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </article>
-
-        {item?.withinConfirmedShift || item?.kind === "confirmed" ? (
-          <article className={cn(schedulePanelClass, "px-4 py-4")}>
-            <ScheduleSectionHeading
-              info="这段时间属于店铺已最终确认的上班时间，当前只提供查看模式，不能直接修改时间、类型或同步对象。"
-              label="查看确认班次规则"
-              title="确认班次规则"
+          <label className="mt-4 block text-sm font-black">
+            容量
+            <input
+              className={fieldClass}
+              max={100}
+              min={1}
+              name="capacity"
+              onChange={(event) => setCapacity(Number(event.target.value))}
+              type="number"
+              value={capacity}
             />
-            {activeShift ? (
-              <div className="mt-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-3 text-sm leading-6 text-[color:var(--client-muted)]">
-                <p>
-                  <strong className="text-[color:var(--client-text)]">班次摘要：</strong>
-                  {formatShiftSummary(activeShift)}
-                </p>
-                <p>
-                  <strong className="text-[color:var(--client-text)]">班次标签：</strong>
-                  {activeShift.shiftLabel}
-                </p>
-              </div>
-            ) : null}
-            {activeShift && activeShift.technicianId === currentTechnician.id ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button className={getScheduleButtonClassName("primary")} onClick={() => navigate(`/technician/schedule/shifts/${activeShift.id}/transfer`)} size="sm">
-                  {latestRequest?.status === "transfer_pending" ? "继续处理转让" : "转让给同事"}
-                </Button>
-                {latestRequest?.status === "transfer_pending" ? (
-                  <Button
-                    className={getScheduleButtonClassName("secondary")}
-                    onClick={() => {
-                      cancelTechnicianScheduleTransferRequest(latestRequest.id);
-                      navigate(`${scheduleBasePath}/events/${eventId}`);
-                    }}
-                    size="sm"
-                    variant="secondary"
-                  >
-                    取消转让
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </article>
-        ) : null}
+          </label>
+        </section>
 
-        {transferPreview ? (
-          <article className={cn(schedulePanelClass, "px-4 py-4")}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-black text-[color:var(--client-text)]">转让状态</h3>
-                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
-                  {acceptedCount} / {transferPreview.request.requestedCount} 人已接受
-                </p>
-              </div>
-              <ScheduleBadge tone={getTransferTone(transferPreview.request.status)}>{getTransferStatusLabel(transferPreview.request.status)}</ScheduleBadge>
-            </div>
-            <div className="mt-3 space-y-2.5">
-              {requestCandidates.map(({ invitation, technicianName }) => (
-                <div className="rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-3" key={invitation.id}>
-                  <div className="flex items-center justify-between gap-3">
-                    <strong className="text-sm font-black text-[color:var(--client-text)]">{technicianName}</strong>
-                    <ScheduleBadge tone={getInvitationTone(invitation.status)}>{getInvitationStatusLabel(invitation.status)}</ScheduleBadge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
-        ) : null}
+        <section className={panelClass}>
+          <h2 className="mb-3 text-sm font-black">选择日期内的时间范围</h2>
+          <FormalScheduleRangeEditor
+            disabled={pending}
+            durationMinutes={requiredDuration || 60}
+            endsAt={endsAt}
+            onChange={(nextStart, nextEnd) => {
+              setStartsAt(nextStart);
+              setEndsAt(nextEnd);
+            }}
+            startsAt={startsAt}
+          />
+        </section>
 
-        {isEditableCustomEvent && customEvent ? (
-          <div className="flex gap-2">
-            <Button className={getScheduleButtonClassName("primary")} onClick={() => navigate(`${scheduleBasePath}/events/${customEvent.id}/edit`)} size="sm">
-              编辑行程
-            </Button>
-            <Button
-              className={getScheduleButtonClassName("secondary")}
-              onClick={() => {
-                deleteTechnicianScheduleEvent(customEvent.id);
-                navigate(scheduleBasePath);
-              }}
-              size="sm"
-              variant="secondary"
-            >
-              删除
-            </Button>
-          </div>
+        {!validFuture ? <p className="text-sm font-black text-red-500">新排班的开始时间必须在未来</p> : null}
+        {!validCapacity ? <p className="text-sm font-black text-red-500">容量必须为 1 到 100 的整数</p> : null}
+        {requiredDuration > 0 && actualDuration !== requiredDuration ? (
+          <p className="text-sm font-black text-red-500">时间范围必须与服务时长 {requiredDuration} 分钟一致</p>
         ) : null}
-      </section>
-    </StandaloneSchedulePage>
+        {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
+
+        <Button className="w-full" disabled={!canSave} onClick={() => void save()}>
+          {pending ? "保存中" : "保存正式排班"}
+        </Button>
+      </div>
+    </FormalRoutePage>
   );
 }
 
 export function TechnicianScheduleEditorRoutePage() {
-  const navigate = useNavigate();
-  const scheduleBasePath = useScheduleBasePath();
-  const [searchParams] = useSearchParams();
   const { eventId } = useParams<{ eventId: string }>();
-  const { customers, technicians, currentStore, currentTechnician, assignedShifts, visibleCustomEvents } = useTechnicianScheduleContext();
-  const editingEvent = visibleCustomEvents.find((item) => item.event.id === eventId)?.event ?? null;
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const [syncTargetFilter, setSyncTargetFilter] = useState<ScheduleSyncTargetFilterTag>("all");
-  const deferredSearchKeyword = useDeferredValue(searchKeyword);
-
-  const initialDate = editingEvent?.date ?? searchParams.get("date") ?? getTodayDateKey();
-  const initialStartTime = editingEvent?.startTime ?? searchParams.get("start") ?? "10:00";
-  const initialEndTime = editingEvent?.endTime ?? searchParams.get("end") ?? "11:00";
-  const initialPreset = resolveScheduleEventPreset(editingEvent?.kind ?? "availability", editingEvent?.title, editingEvent?.preset);
-  const [title, setTitle] = useState(editingEvent?.title ?? "");
-  const [date, setDate] = useState(initialDate);
-  const [startTime, setStartTime] = useState(initialStartTime);
-  const [endTime, setEndTime] = useState(initialEndTime);
-  const [allDay, setAllDay] = useState(Boolean(editingEvent?.allDay));
-  const [eventPreset, setEventPreset] = useState<TechnicianScheduleEventPreset>(initialPreset);
-  const [note, setNote] = useState(editingEvent?.note ?? "");
-  const [location, setLocation] = useState(editingEvent?.location ?? "");
-  const [repeatRule, setRepeatRule] = useState(editingEvent?.repeatRule ?? "不重复");
-  const [reminder, setReminder] = useState(editingEvent?.reminder ?? "不提醒");
-  const [visibility, setVisibility] = useState(editingEvent?.visibility ?? "默认");
-  const [syncTargets, setSyncTargets] = useState(editingEvent?.syncTargets ?? []);
-  const [banner, setBanner] = useState<ScheduleBannerMessage | null>(null);
-  const [autoStoreSync, setAutoStoreSync] = useState(true);
-  const [syncExpanded, setSyncExpanded] = useState(false);
-  const kind = getScheduleEventKindForPreset(eventPreset);
-
-  const storeTarget = {
-    id: currentStore.id,
-    type: "store" as const,
-    label: currentStore.name
-  };
-  const normalizedSearchKeyword = deferredSearchKeyword.trim().toLowerCase();
-  const candidateTargets = buildContactTargets(currentStore, currentTechnician.id, technicians, customers).filter((target) => {
-    const matchesFilter = syncTargetFilter === "all" || target.type === syncTargetFilter;
-    const matchesKeyword =
-      normalizedSearchKeyword.length === 0 ||
-      [target.label, target.typeLabel, target.metaLine, target.detailLine, target.remark]
-        .filter((value): value is string => Boolean(value))
-        .some((value) => value.toLowerCase().includes(normalizedSearchKeyword));
-
-    return matchesFilter && matchesKeyword;
-  });
-  const selectedTargetCards = syncTargets.map((target) => resolveScheduleContactTarget(target, currentStore, technicians, customers));
-  const coveringShift = findContainingShift(assignedShifts, date, allDay ? "00:00" : startTime, allDay ? "23:59" : endTime);
-  const withinConfirmedShift = Boolean(coveringShift);
-  const hasStoreSelected = syncTargets.some((target) => target.type === "store" && target.id === currentStore.id);
-  const syncSummary =
-    syncTargets.length > 1
-      ? `已选择 ${syncTargets.length} 个对象`
-      : hasStoreSelected
-        ? withinConfirmedShift && autoStoreSync
-          ? "默认同步店铺"
-          : "已同步给店铺"
-        : syncTargets.length === 1
-          ? "已选择 1 个对象"
-          : "未设置";
-
-  useEffect(() => {
-    const hasStoreTarget = syncTargets.some((target) => target.type === "store" && target.id === currentStore.id);
-    if (withinConfirmedShift && autoStoreSync && !hasStoreTarget) {
-      setSyncTargets((current) => [storeTarget, ...current.filter((target) => !(target.type === "store" && target.id === currentStore.id))]);
-      return;
-    }
-
-    if (!withinConfirmedShift && autoStoreSync && hasStoreTarget) {
-      setSyncTargets((current) => current.filter((target) => !(target.type === "store" && target.id === currentStore.id)));
-    }
-  }, [autoStoreSync, currentStore.id, storeTarget, syncTargets, withinConfirmedShift]);
-
-  const toggleSyncTarget = (target: ScheduleSelectableSyncTarget) => {
-    if (target.type === "store") {
-      setAutoStoreSync(false);
-    }
-
-    setSyncTargets((current) =>
-      current.some((item) => item.id === target.id && item.type === target.type)
-        ? current.filter((item) => !(item.id === target.id && item.type === target.type))
-        : [...current, target]
-    );
-  };
-
-  const saveEvent = () => {
-    if ((allDay ? "00:00" : startTime) >= (allDay ? "23:59" : endTime)) {
-      setBanner({ tone: "red", text: "结束时间需要晚于开始时间。" });
-      return;
-    }
-
-    const nextId = saveTechnicianScheduleEvent({
-      id: editingEvent?.id,
-      technicianId: currentTechnician.id,
-      storeId: currentStore.id,
-      date,
-      startTime: allDay ? "00:00" : startTime,
-      endTime: allDay ? "23:59" : endTime,
-      title: title.trim() || getScheduleEventPresetLabel(eventPreset),
-      kind,
-      preset: eventPreset,
-      note: note.trim() || undefined,
-      location: location.trim() || undefined,
-      allDay,
-      repeatRule,
-      reminder,
-      visibility,
-      syncTargets
-    });
-
-    navigate(`${scheduleBasePath}/events/${nextId}`);
-  };
-
-  return (
-    <StandaloneSchedulePage
-      action={
-        <Button
-          className={cn("rounded-full px-5", getScheduleButtonClassName("primary"))}
-          onClick={saveEvent}
-          size="sm"
-        >
-          保存
-        </Button>
-      }
-      subtitle={editingEvent ? "编辑完整行程信息" : "新建完整行程信息"}
-      title={editingEvent ? "编辑行程" : "添加行程"}
-    >
-      <section className="space-y-4 pb-6">
-        {banner ? <ScheduleBadge tone={banner.tone}>{banner.text}</ScheduleBadge> : null}
-
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <label className="block">
-            <span className="text-xs font-bold text-[color:var(--client-muted)]">添加标题</span>
-            <input
-              className={cn(scheduleInputClass, "h-12 rounded-[18px] text-base")}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="例如：可排班、会议、会食或私人安排"
-              value={title}
-            />
-          </label>
-        </article>
-
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <div className="flex items-center justify-between gap-3">
-            <ScheduleSectionHeading
-              info="设置日期、起止时间、全天与重复规则，不改变现有新建逻辑，只压缩布局和显色。"
-              label="查看时间设置说明"
-              title="时间设置"
-            />
-            <label className="inline-flex items-center gap-2 text-sm font-bold text-[color:var(--client-muted)]">
-              <input checked={allDay} onChange={(event) => setAllDay(event.target.checked)} type="checkbox" />
-              全天
-            </label>
-          </div>
-          <div className="mt-4 grid gap-3">
-            <label>
-              <span className="text-xs font-bold text-[color:var(--client-muted)]">日期</span>
-              <input
-                className={scheduleInputClass}
-                onChange={(event) => setDate(event.target.value)}
-                type="date"
-                value={date}
-              />
-            </label>
-            {!allDay ? (
-              <div className="grid grid-cols-2 gap-3">
-                <label>
-                  <span className="text-xs font-bold text-[color:var(--client-muted)]">开始时间</span>
-                  <input
-                    className={scheduleInputClass}
-                    onChange={(event) => setStartTime(event.target.value)}
-                    step={1800}
-                    type="time"
-                    value={startTime}
-                  />
-                </label>
-                <label>
-                  <span className="text-xs font-bold text-[color:var(--client-muted)]">结束时间</span>
-                  <input
-                    className={scheduleInputClass}
-                    onChange={(event) => setEndTime(event.target.value)}
-                    step={1800}
-                    type="time"
-                    value={endTime}
-                  />
-                </label>
-              </div>
-            ) : null}
-            <div className="grid grid-cols-2 gap-3">
-              <label>
-                <span className="text-xs font-bold text-[color:var(--client-muted)]">重复规则</span>
-                <select
-                  className={scheduleSelectClass}
-                  onChange={(event) => setRepeatRule(event.target.value)}
-                  value={repeatRule}
-                >
-                  <option value="不重复">不重复</option>
-                  <option value="每天">每天</option>
-                  <option value="每周">每周</option>
-                </select>
-              </label>
-              <label>
-                <span className="text-xs font-bold text-[color:var(--client-muted)]">提醒</span>
-                <select
-                  className={scheduleSelectClass}
-                  onChange={(event) => setReminder(event.target.value)}
-                  value={reminder}
-                >
-                  <option value="不提醒">不提醒</option>
-                  <option value="提前10分钟">提前10分钟</option>
-                  <option value="提前30分钟">提前30分钟</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        </article>
-
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <h3 className="text-base font-black text-[color:var(--client-text)]">行程种类</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {scheduleEventCategoryOptions.map(({ preset, label }) => (
-              <button
-                className={cn(
-                  "inline-flex h-10 items-center gap-2 rounded-full border px-3.5 text-xs font-black transition",
-                  eventPreset === preset
-                    ? "border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-primary-strong)] shadow-[0_10px_22px_color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
-                    : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_86%,transparent)] text-[color:var(--client-muted)]"
-                )}
-                key={preset}
-                onClick={() => setEventPreset(preset)}
-                type="button"
-              >
-                <span
-                  className={cn(
-                    "inline-flex h-6 w-6 items-center justify-center rounded-full",
-                    eventPreset === preset
-                      ? "bg-[color:color-mix(in_srgb,var(--client-primary)_16%,transparent)]"
-                      : "bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)]"
-                  )}
-                >
-                  <ScheduleCategoryIcon preset={preset} />
-                </span>
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        </article>
-
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <ScheduleSectionHeading
-            info="补充备注、地点与可见性信息，说明不再常驻占位。"
-            label="查看备注与其他字段说明"
-            title="备注与其他字段"
-          />
-          <div className="mt-3 grid gap-3">
-            <label>
-              <span className="text-xs font-bold text-[color:var(--client-muted)]">备注 / 说明</span>
-              <textarea
-                className={scheduleTextareaClass}
-                onChange={(event) => setNote(event.target.value)}
-                placeholder="补充这段行程的说明、交接信息或注意事项"
-                value={note}
-              />
-            </label>
-            <label>
-              <span className="text-xs font-bold text-[color:var(--client-muted)]">地点</span>
-              <input
-                className={scheduleInputClass}
-                onChange={(event) => setLocation(event.target.value)}
-                placeholder="可选"
-                value={location}
-              />
-            </label>
-            <label>
-              <span className="text-xs font-bold text-[color:var(--client-muted)]">可见性</span>
-              <select
-                className={scheduleSelectClass}
-                onChange={(event) => setVisibility(event.target.value)}
-                value={visibility}
-              >
-                <option value="默认">默认</option>
-                <option value="仅自己">仅自己</option>
-                <option value="同步对象可见">同步对象可见</option>
-              </select>
-            </label>
-          </div>
-        </article>
-
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <TitleWithInfo
-                  info={
-                    withinConfirmedShift
-                      ? "在店铺已确认班次内会优先同步店铺，也可继续添加其他对象。"
-                      : "当前不在店铺确认班次内，可按需要手动选择同步对象。"
-                  }
-                  infoClassName="h-5 w-5 border-[color:color-mix(in_srgb,var(--client-line)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_82%,transparent)] text-[color:var(--client-muted)]"
-                  label="查看同步对象说明"
-                  title={<span className="text-base font-black text-[color:var(--client-text)]">同步对象</span>}
-                  variant="client"
-                />
-                {withinConfirmedShift ? <ScheduleBadge tone="blue">默认同步店铺</ScheduleBadge> : null}
-              </div>
-            </div>
-            <button
-              className="flex shrink-0 items-center gap-2 text-right"
-              onClick={() => setSyncExpanded((current) => !current)}
-              type="button"
-            >
-              <span className="text-[11px] font-black text-[color:var(--client-muted)]">{syncSummary}</span>
-              <span
-                className={cn(
-                  "inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_74%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_84%,transparent)] text-[color:var(--client-muted)] transition",
-                  syncExpanded && "rotate-180"
-                )}
-              >
-                ⌄
-              </span>
-            </button>
-          </div>
-
-          {syncExpanded ? (
-            <div className="mt-4 space-y-3">
-              <div className={cn(scheduleInsetClass, "px-3.5 py-3 text-sm leading-6 text-[color:var(--client-muted)]")}>
-                <p>
-                  <strong className="text-[color:var(--client-text)]">当前默认：</strong>
-                  {withinConfirmedShift ? "店铺会作为默认同步对象" : "当前没有默认同步对象"}
-                </p>
-                <p className="mt-1">
-                  <strong className="text-[color:var(--client-text)]">已选对象：</strong>
-                  {syncTargets.length > 0 ? `${syncTargets.length} 个` : "未设置"}
-                </p>
-              </div>
-
-              {selectedTargetCards.length > 0 ? (
-                <div className="grid gap-2">
-                  {selectedTargetCards.map((target) => (
-                    <SyncTargetProfileCard key={`${target.type}-${target.id}`} selected target={target} />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-[color:var(--client-muted)]">当前还没有选中同步对象。</p>
-              )}
-
-              <div className="flex items-center gap-2">
-                <input
-                  className={cn(scheduleInputClass, "mt-0 flex-1")}
-                  onChange={(event) => setSearchKeyword(event.target.value)}
-                  placeholder="搜索店铺、同事或好友"
-                  value={searchKeyword}
-                />
-                <div className="relative shrink-0">
-                  <select
-                    aria-label="同步对象标签筛选"
-                    className={cn(scheduleSelectClass, "mt-0 h-11 w-[104px] appearance-none px-3 pr-8 text-xs")}
-                    onChange={(event) => setSyncTargetFilter(event.target.value as ScheduleSyncTargetFilterTag)}
-                    value={syncTargetFilter}
-                  >
-                    {scheduleSyncTargetFilterOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-[color:var(--client-muted)]">
-                    ⌄
-                  </span>
-                </div>
-              </div>
-
-              {candidateTargets.length > 0 ? (
-                <div className="grid gap-2">
-                  {candidateTargets.map((target) => {
-                    const selected = syncTargets.some((item) => item.id === target.id && item.type === target.type);
-                    return (
-                      <SyncTargetProfileCard
-                        actionLabel={selected ? "已选" : "可选"}
-                        key={`${target.type}-${target.id}`}
-                        onClick={() => toggleSyncTarget(target)}
-                        selected={selected}
-                        target={target}
-                      />
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className={cn(scheduleInsetClass, "px-3.5 py-3 text-sm font-bold text-[color:var(--client-muted)]")}>
-                  当前筛选条件下没有可选对象，请尝试切换标签或调整搜索关键词。
-                </div>
-              )}
-            </div>
-          ) : null}
-        </article>
-      </section>
-
-    </StandaloneSchedulePage>
-  );
+  if (eventId) {
+    const slotId = parsePositiveRouteId(eventId);
+    if (!slotId) return <RouteUnavailable kind="schedule" />;
+    return <TechnicianScheduleEditorBody slotId={slotId} />;
+  }
+  return <TechnicianScheduleEditorBody slotId={null} />;
 }
 
 export function TechnicianScheduleTransferRoutePage() {
-  const navigate = useNavigate();
-  const { shiftId } = useParams<{ shiftId: string }>();
-  const { currentTechnician, currentStore, sameStoreColleagues, technicians } = useTechnicianScheduleContext();
-  const snapshot = getTechnicianScheduleStoreSnapshot();
-  const shift = snapshot.dutyShifts.find((item) => item.id === shiftId && item.technicianId === currentTechnician.id) ?? null;
-  const existingPreview = shift ? getTechnicianScheduleTransferPreview(shift.id) : null;
-  const existingRequest = existingPreview?.request ?? null;
-  const [requestedCount, setRequestedCount] = useState(1);
-  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
-  const [searchKeyword, setSearchKeyword] = useState("");
-  const deferredSearchKeyword = useDeferredValue(searchKeyword);
-  const [banner, setBanner] = useState<ScheduleBannerMessage | null>(null);
+  return (
+    <FormalRoutePage title="班次转让暂未开放">
+      <section className={panelClass}>
+        <p className="text-sm font-bold leading-6 text-[color:var(--client-muted)]">
+          正式班次转让状态机尚未启用。当前页面不会创建浏览器记录，也不会写入数据库；请返回排班页继续管理正式时段。
+        </p>
+        <Button className="mt-4" to="/technician/schedule">返回正式排班</Button>
+      </section>
+    </FormalRoutePage>
+  );
+}
 
-  if (!shift) {
+function orderStatusLabel(status: BookingOrderStatus): string {
+  if (status === "pending") return "待确认";
+  if (status === "confirmed") return "已确认";
+  if (status === "inService") return "服务中";
+  if (status === "completed") return "已完成";
+  return "已取消";
+}
+
+function orderPaymentLabel(order: BookingOrder): string {
+  const method = order.paymentMethod === "onsite" ? "现场支付" : "银行转账";
+  const status = order.paymentStatus === "confirmed"
+    ? "已确认收款"
+    : order.paymentStatus === "refundPending"
+      ? "退款处理中"
+      : order.paymentStatus === "refunded"
+        ? "已退款"
+        : "待确认收款";
+  return `${method} · ${status}`;
+}
+
+function orderMutationError(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    if (error.status === 401) return "登录状态已失效，请重新登录";
+    if (error.status === 403) return "当前技师身份没有处理该订单的权限";
+    if (error.status === 404) return "订单不存在或已不属于当前技师";
+    if (error.status === 409) return "订单状态已变化，请重新加载后再操作";
+  }
+  return "正式订单操作失败，请检查网络后重试";
+}
+
+function primaryOrderAction(status: BookingOrderStatus): { label: string; run: (id: number) => Promise<BookingOrder> } | null {
+  if (status === "pending") return { label: "确认接单", run: bookingApi.confirmOrder };
+  if (status === "confirmed") return { label: "开始服务", run: bookingApi.startOrder };
+  if (status === "inService") return { label: "完成服务", run: bookingApi.completeOrder };
+  return null;
+}
+
+function TechnicianOrderDetailBody({ orderId }: { orderId: number }) {
+  const { session } = useAuth();
+  const resource = useFormalTechnicianOrderResource(session, orderId);
+  const [order, setOrder] = useState<BookingOrder | null>(null);
+  const [pending, setPending] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [cancelArmed, setCancelArmed] = useState(false);
+
+  useEffect(() => {
+    setOrder(resource.data);
+  }, [resource.data]);
+
+  if (resource.loading) {
+    return <FormalRoutePage title="正式预约订单"><LoadingPanel label="正在读取正式订单" /></FormalRoutePage>;
+  }
+  if (resource.error || !order) {
     return (
-      <StandaloneSchedulePage subtitle="当前班次不存在或不属于你。" title="转让给同事">
-        <div className="rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] px-4 py-4 text-sm leading-6 text-[color:var(--client-muted)]">
-          只能对自己当前持有的已确认班次发起转让。
-        </div>
-      </StandaloneSchedulePage>
+      <FormalRoutePage title="正式预约订单">
+        <ErrorPanel error={resource.error ?? "error.order.not_found"} onRetry={resource.retry} title="正式订单加载失败" />
+      </FormalRoutePage>
     );
   }
 
-  const candidateOptions = sameStoreColleagues
-    .filter((technician) => (technician.nickname?.trim() || technician.name).toLowerCase().includes(deferredSearchKeyword.trim().toLowerCase()))
-    .map((technician) => {
-      const hasConflict = getTechnicianShiftConflictState(technician.id, shift);
-      return {
-        technician,
-        hasConflict
-      };
-    });
+  const primary = primaryOrderAction(order.status);
+  const canCancel = order.status === "pending" || order.status === "confirmed";
 
-  const toggleCandidate = (candidateId: string, disabled: boolean) => {
-    if (disabled) {
-      return;
+  const runPrimary = async () => {
+    if (!primary || pending) return;
+    setPending(true);
+    setActionError("");
+    try {
+      setOrder(await primary.run(order.id));
+      setCancelArmed(false);
+    } catch (error) {
+      setActionError(orderMutationError(error));
+    } finally {
+      setPending(false);
     }
-
-    setSelectedCandidateIds((current) =>
-      current.includes(candidateId) ? current.filter((item) => item !== candidateId) : [...current, candidateId]
-    );
   };
 
-  const submitTransfer = () => {
-    if (selectedCandidateIds.length === 0) {
-      setBanner({ tone: "red", text: "请先选择至少一位可接手的同事。" });
+  const cancel = async () => {
+    if (pending || !canCancel) return;
+    if (!cancelArmed) {
+      setCancelArmed(true);
       return;
     }
-
-    const requestId = createTechnicianScheduleTransferRequest({
-      shiftId: shift.id,
-      requesterId: currentTechnician.id,
-      storeId: currentStore.id,
-      requestedCount,
-      candidateIds: selectedCandidateIds
-    });
-
-    if (!requestId) {
-      setBanner({ tone: "red", text: "转让发起失败，请检查候选人范围和当前班次状态。" });
-      return;
+    setPending(true);
+    setActionError("");
+    try {
+      setOrder(await bookingApi.cancelOrder(order.id, "技师端取消正式预约"));
+      setCancelArmed(false);
+    } catch (error) {
+      setActionError(orderMutationError(error));
+    } finally {
+      setPending(false);
     }
-
-    navigate(`/technician/schedule/events/${shift.id}`);
   };
 
   return (
-    <StandaloneSchedulePage subtitle={formatShiftSummary(shift)} title="转让给同事">
-      <section className="space-y-4">
-        {banner ? <ScheduleBadge tone={banner.tone}>{banner.text}</ScheduleBadge> : null}
-
-        <article className={cn(schedulePanelClass, "px-4 py-4")}>
-          <h3 className="text-base font-black text-[color:var(--client-text)]">班次摘要</h3>
-          <div className="mt-3 rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-3 text-sm leading-6 text-[color:var(--client-muted)]">
-            <p>
-              <strong className="text-[color:var(--client-text)]">店铺：</strong>
-              {currentStore.name}
-            </p>
-            <p>
-              <strong className="text-[color:var(--client-text)]">班次：</strong>
-              {shift.shiftLabel}
-            </p>
-            <p>
-              <strong className="text-[color:var(--client-text)]">时间：</strong>
-              {formatShiftSummary(shift)}
-            </p>
+    <FormalRoutePage
+      backTo="/technician/schedule"
+      subtitle={`${order.orderNo} · ${timeRangeLabel(order.startsAt, order.endsAt)}`}
+      title="正式预约订单"
+    >
+      <div className="space-y-4">
+        <section className={panelClass}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <span className="rounded-full bg-[color:var(--client-primary-soft)] px-3 py-1 text-xs font-black">
+                {orderStatusLabel(order.status)}
+              </span>
+              <h2 className="mt-3 text-xl font-black">{order.serviceName}</h2>
+              <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{order.orderNo}</p>
+            </div>
+            <strong className="text-lg font-black">¥{Number(order.priceAmount).toLocaleString("ja-JP")}</strong>
           </div>
-        </article>
+          <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+            <DetailRow label="店铺" value={order.shopName} />
+            <DetailRow label="预约时间" value={`${localDateLabel(order.startsAt)} · ${timeRangeLabel(order.startsAt, order.endsAt)}`} />
+            <DetailRow label="支付" value={orderPaymentLabel(order)} />
+            <DetailRow label="客户账号" value={`#${order.customerUserId}`} />
+          </dl>
+          {order.note ? (
+            <div className="mt-3 rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3 text-sm">
+              <strong>备注：</strong>{order.note}
+            </div>
+          ) : null}
+        </section>
 
-        {existingRequest && (existingRequest.status === "transfer_pending" || existingRequest.status === "transfer_completed") ? (
-          <article className={cn(schedulePanelClass, "px-4 py-4")}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-black text-[color:var(--client-text)]">当前转让流程</h3>
-                <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">
-                  已选 {existingRequest.candidateIds.length} 位候选，定员 {existingRequest.requestedCount} 人
-                </p>
-              </div>
-              <ScheduleBadge tone={getTransferTone(existingRequest.status)}>{getTransferStatusLabel(existingRequest.status)}</ScheduleBadge>
-            </div>
-            <div className="mt-3 space-y-2.5">
-              {(existingPreview?.invitations ?? []).map((invitation) => {
-                const technician = technicians.find((candidate) => candidate.id === invitation.candidateId);
-                return (
-                  <div className="rounded-[18px] bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-3" key={invitation.id}>
-                    <div className="flex items-center justify-between gap-3">
-                      <strong className="text-sm font-black text-[color:var(--client-text)]">{technician?.nickname?.trim() || technician?.name || "同事"}</strong>
-                      <ScheduleBadge tone={getInvitationTone(invitation.status)}>{getInvitationStatusLabel(invitation.status)}</ScheduleBadge>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {existingRequest.status === "transfer_pending" ? (
-              <div className="mt-3">
-                <Button
-                  className={getScheduleButtonClassName("secondary")}
-                  onClick={() => {
-                    cancelTechnicianScheduleTransferRequest(existingRequest.id);
-                    navigate(`/technician/schedule/events/${shift.id}`);
-                  }}
-                  size="sm"
-                  variant="secondary"
-                >
-                  取消当前转让
-                </Button>
-              </div>
+        <section className={panelClass}>
+          <h2 className="text-base font-black">状态记录</h2>
+          <ol className="mt-3 space-y-2">
+            {order.statusHistory.map((history) => (
+              <li className="rounded-[16px] bg-[color:var(--client-elevated)] px-3 py-3" key={history.id}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong className="text-sm">{orderStatusLabel(history.toStatus)}</strong>
+                  <span className="text-xs font-bold text-[color:var(--client-muted)]">
+                    {localDateLabel(history.createdAt)} {localTimeLabel(history.createdAt)}
+                  </span>
+                </div>
+                {history.reason ? <p className="mt-1 text-xs font-bold text-[color:var(--client-muted)]">{history.reason}</p> : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {actionError ? <p className="text-sm font-black text-red-500" role="alert">{actionError}</p> : null}
+        {primary || canCancel ? (
+          <section className="grid gap-2 sm:grid-cols-2">
+            {canCancel ? (
+              <Button disabled={pending} onClick={() => void cancel()} variant="danger">
+                {cancelArmed ? "再次点击确认取消" : "取消预约"}
+              </Button>
             ) : null}
-          </article>
-        ) : (
-          <>
-            <article className={cn(schedulePanelClass, "px-4 py-4")}>
-              <ScheduleSectionHeading
-                info="你可以设置需要转让给几个人，也可以勾选超过定员的人数作为候选，系统会按最快确认接受的顺序占位。"
-                label="查看转让定员说明"
-                title="转让定员"
-              />
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  className="grid h-10 w-10 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-lg font-black text-[color:var(--client-text)]"
-                  onClick={() => setRequestedCount((current) => Math.max(1, current - 1))}
-                  type="button"
-                >
-                  −
-                </button>
-                <div className="min-w-[72px] rounded-full bg-[color:color-mix(in_srgb,var(--client-elevated)_90%,transparent)] px-4 py-2 text-center text-lg font-black text-[color:var(--client-text)]">{requestedCount}</div>
-                <button
-                  className="grid h-10 w-10 place-items-center rounded-full border border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-lg font-black text-[color:var(--client-text)]"
-                  onClick={() => setRequestedCount((current) => Math.min(Math.max(candidateOptions.length, 1), current + 1))}
-                  type="button"
-                >
-                  +
-                </button>
-              </div>
-            </article>
-
-            <article className={cn(schedulePanelClass, "px-4 py-4")}>
-              <div className="flex items-center justify-between gap-3">
-                <ScheduleSectionHeading
-                  info="仅限同一家商户的员工 / 技师，可多选。"
-                  label="查看候选同事说明"
-                  title="候选同事"
-                />
-                <ScheduleBadge tone="neutral">已选 {selectedCandidateIds.length}</ScheduleBadge>
-              </div>
-
-              <input
-                className={scheduleInputClass}
-                onChange={(event) => setSearchKeyword(event.target.value)}
-                placeholder="搜索同事"
-                value={searchKeyword}
-              />
-
-              <div className="mt-3 space-y-2.5">
-                {candidateOptions.map(({ technician, hasConflict }) => {
-                  const selected = selectedCandidateIds.includes(technician.id);
-                  return (
-                    <button
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-[18px] border px-4 py-3 text-left transition",
-                        hasConflict
-                          ? "cursor-not-allowed border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-[color:var(--client-muted)]"
-                          : selected
-                            ? "border-[color:color-mix(in_srgb,var(--client-primary)_34%,transparent)] bg-[color:var(--client-primary-soft)] text-[color:var(--client-text)]"
-                            : "border-[color:color-mix(in_srgb,var(--client-line)_78%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_88%,transparent)] text-[color:var(--client-text)]"
-                      )}
-                      key={technician.id}
-                      onClick={() => toggleCandidate(technician.id, hasConflict)}
-                      type="button"
-                    >
-                      <AvatarImage alt={technician.name} className="h-12 w-12" src={technician.avatar} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <strong className="truncate text-sm font-black">{technician.nickname?.trim() || technician.name}</strong>
-                          <ScheduleBadge tone={hasConflict ? "neutral" : "green"}>{hasConflict ? "时间冲突" : "可接手"}</ScheduleBadge>
-                        </div>
-                        <p className="mt-1 text-xs font-bold opacity-70">{technician.status === "busy" ? "当前繁忙" : technician.status === "off" ? "当前休息" : "当前可用"}</p>
-                      </div>
-                      <ScheduleBadge tone={selected ? "green" : "neutral"}>{selected ? "已选" : hasConflict ? "不可选" : "可选"}</ScheduleBadge>
-                    </button>
-                  );
-                })}
-              </div>
-            </article>
-
-            <div className="flex justify-end">
-              <Button className={getScheduleButtonClassName("primary")} onClick={submitTransfer}>发送转让邀请</Button>
-            </div>
-          </>
-        )}
-      </section>
-    </StandaloneSchedulePage>
+            {primary ? <Button disabled={pending} onClick={() => void runPrimary()}>{primary.label}</Button> : null}
+          </section>
+        ) : null}
+      </div>
+    </FormalRoutePage>
   );
+}
+
+export function TechnicianOrderDetailRoutePage() {
+  const { orderId } = useParams<{ orderId: string }>();
+  const orderIdValue = parsePositiveRouteId(orderId);
+  if (!orderIdValue) return <RouteUnavailable kind="order" />;
+  return <TechnicianOrderDetailBody orderId={orderIdValue} />;
 }
