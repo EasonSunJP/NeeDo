@@ -5,7 +5,7 @@ import technicianSource from "../../pages/mobile/TechnicianPortalPage.tsx?raw";
 
 describe("FormalScheduleInventoryPanel", () => {
   it("uses identity-scoped formal APIs for all bookable inventory mutations", () => {
-    expect(source).toContain("schedulingApi.listSlots(scope");
+    expect(source).toContain("loadManagedScheduleWindow(scope");
     expect(source).toContain("schedulingApi.createSlot(scope");
     expect(source).toContain("schedulingApi.updateSlot(scope");
     expect(source).toContain("schedulingApi.deleteSlot(scope");
@@ -15,6 +15,12 @@ describe("FormalScheduleInventoryPanel", () => {
     expect(source).toContain("pricingModeApi.listTechnicianServices");
     expect(source).not.toContain("localStorage");
     expect(source).not.toContain("../../data/mock");
+  });
+
+  it("links technician rows to numeric formal detail routes without exposing them to merchants", () => {
+    expect(source).toContain('scope === "technician"');
+    expect(source).toContain('`/technician/schedule/events/${slot.id}`');
+    expect(source).toContain("查看详情");
   });
 
   it("supports loading, empty, error, conflict and two-step deletion states", () => {

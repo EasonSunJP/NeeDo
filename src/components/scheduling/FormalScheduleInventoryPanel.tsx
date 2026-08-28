@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import { backofficeRealDataApi } from "../../api/backofficeRealData";
 import { pricingModeApi } from "../../features/pricing-mode/api";
 import { schedulingApi, type SchedulingScope } from "../../features/scheduling/api";
+import { loadManagedScheduleWindow } from "../../features/scheduling/window-loader";
 import type { BookingScheduleSlot } from "../../features/booking/api";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
@@ -107,10 +109,8 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
     setInventoryError("");
 
     try {
-      const slotPromise = schedulingApi.listSlots(scope, {
+      const slotPromise = loadManagedScheduleWindow(scope, {
         from: today,
-        page: 1,
-        pageSize: 100,
         to: rangeEnd
       });
 
@@ -120,7 +120,7 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
           backofficeRealDataApi.services("merchant-admin", { page: 1, pageSize: 100 }),
           backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100 })
         ]);
-        setSlots(slotResult.list);
+        setSlots(slotResult);
         setServices(serviceResult.list.map((service) => ({
           durationMinutes: service.durationMinutes,
           id: service.id,
@@ -133,7 +133,7 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
           slotPromise,
           pricingModeApi.listTechnicianServices(shopId as number, { activeOnly: true, page: 1, pageSize: 100 })
         ]);
-        setSlots(slotResult.list);
+        setSlots(slotResult);
         setServices(serviceResult.list.filter((service) => service.isBookable).map((service) => ({
           durationMinutes: service.durationMinutes,
           id: service.id,
@@ -308,7 +308,15 @@ export function FormalScheduleInventoryPanel({ scope, shopId = null }: FormalSch
                 {slot.status === "booked" ? t("已预约") : slot.status === "blocked" ? t("已锁定") : t("可预约")}
               </span>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className={`mt-3 grid gap-2 ${scope === "technician" ? "grid-cols-3" : "grid-cols-2"}`}>
+              {scope === "technician" ? (
+                <Link
+                  className="grid h-9 place-items-center rounded-full border border-[color:var(--client-line)] text-xs font-black text-[color:var(--client-text)]"
+                  to={`/technician/schedule/events/${slot.id}`}
+                >
+                  {t("查看详情")}
+                </Link>
+              ) : null}
               <button className="h-9 rounded-full border border-[color:var(--client-line)] text-xs font-black text-[color:var(--client-text)] disabled:opacity-40" disabled={inventorySaving || slot.status === "booked" || slot.bookedCount > 0} onClick={() => void updateSlotStatus(slot)} type="button">
                 {slot.status === "blocked" ? t("恢复可预约") : t("锁定时段")}
               </button>

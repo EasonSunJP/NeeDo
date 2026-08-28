@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiClientError } from "../../api/httpClient";
 import {
   bookingApi,
@@ -6,6 +7,7 @@ import {
   type BookingOrder,
   type BookingOrderStatus
 } from "../../features/booking/api";
+import { loadEveryTechnicianOrder } from "../../features/scheduling/window-loader";
 import { cn, statusLabel, yen } from "../../lib/utils";
 import { Button } from "../ui/Button";
 
@@ -64,10 +66,10 @@ export function FormalTechnicianOrdersPanel() {
     setLoadStatus("loading");
     setLoadError("");
 
-    bookingApi.listOrders({ page: 1, pageSize: 100 })
+    loadEveryTechnicianOrder()
       .then((data) => {
         if (!active) return;
-        setOrders(data.list);
+        setOrders(data);
         setLoadStatus("success");
       })
       .catch((error: unknown) => {
@@ -223,6 +225,13 @@ export function FormalTechnicianOrdersPanel() {
                   ))}
                 </div>
               </div>
+
+              <Link
+                className="mt-4 grid h-9 place-items-center rounded-full border border-white/15 text-xs font-black text-white"
+                to={`/technician/orders/${order.id}`}
+              >
+                查看详情
+              </Link>
 
               {primaryLabel || canCancel ? (
                 <div className={cn("mt-4 grid gap-2", primaryLabel && canCancel ? "grid-cols-2" : "grid-cols-1")}>
