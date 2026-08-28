@@ -274,6 +274,11 @@ describe("AffiliateAlliancePage", () => {
     expect(container.textContent).toContain("邀请成员");
     expect(container.textContent).not.toContain("转账");
     expect(container.textContent).not.toContain("GMV");
+    expect(
+      Array.from(container.querySelectorAll("nav a")).some(
+        (link) => link.textContent === "联盟营销"
+      )
+    ).toBe(true);
   });
 
   it("loads owner management data and refreshes authoritative lists after an invitation", async () => {
