@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import type {
   AuditLogCreateInput,
-  AuditLogRepositoryPort
+  TransactionAwareAuditLogRepositoryPort
 } from "../repositories/audit-log.repository";
 
 export type ContentPublicationAggregateType = "official_announcement" | "carousel";
@@ -35,7 +35,7 @@ export interface ContentPublicationFailureRecordInput {
   errorKey: string;
   runId: string;
   audit: AuditLogCreateInput;
-  auditLogRepository: AuditLogRepositoryPort;
+  auditLogRepository: TransactionAwareAuditLogRepositoryPort;
 }
 
 export interface ContentPublicationFailureRecordOutcome {
@@ -70,17 +70,21 @@ export interface ContentPublicationFailure {
   releaseId: number;
   errorKey: string;
   runId: string;
+  recorded: boolean;
+  persistenceErrorKey: string | null;
   activationAttempts: number;
   disabled: boolean;
 }
 
 const ACTIVATION_ERROR_KEY = "error.content.schedule_activation_failed";
+const FAILURE_PERSISTENCE_ERROR_KEY = "error.content.schedule_failure_persistence_failed";
+const FAILURE_NOT_RECORDED_ERROR_KEY = "error.content.schedule_failure_not_recorded";
 
 export class ContentPublicationSchedulerService {
   public constructor(
     private readonly announcementRepository: ContentPublicationActivationRepositoryPort,
     private readonly carouselRepository: ContentPublicationActivationRepositoryPort,
-    private readonly auditLogRepository: AuditLogRepositoryPort,
+    private readonly auditLogRepository: TransactionAwareAuditLogRepositoryPort,
     private readonly maxActivationAttempts: number,
     private readonly onFailure?: (failure: ContentPublicationFailure) => void,
     private readonly createRunId: () => string = randomUUID
@@ -137,6 +141,7 @@ export class ContentPublicationSchedulerService {
           activationAttempts: 0,
           disabled: false
         };
+        let persistenceErrorKey: string | null = null;
         try {
           record = await repository.recordDueScheduledReleaseFailure({
             release,
@@ -148,7 +153,10 @@ export class ContentPublicationSchedulerService {
             auditLogRepository: this.auditLogRepository
           });
         } catch {
-          // Per-release persistence failures remain isolated so later due work can proceed.
+          persistenceErrorKey = FAILURE_PERSISTENCE_ERROR_KEY;
+        }
+        if (!record.recorded && persistenceErrorKey === null) {
+          persistenceErrorKey = FAILURE_NOT_RECORDED_ERROR_KEY;
         }
         try {
           this.onFailure?.({
@@ -157,6 +165,8 @@ export class ContentPublicationSchedulerService {
             releaseId: release.releaseId,
             errorKey: ACTIVATION_ERROR_KEY,
             runId,
+            recorded: record.recorded,
+            persistenceErrorKey,
             activationAttempts: record.activationAttempts,
             disabled: record.disabled
           });

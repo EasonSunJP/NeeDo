@@ -250,9 +250,6 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
         }
       });
       if (updated.count !== 1) return this.unrecordedFailure(release.activationAttempts);
-      if (!input.auditLogRepository.createInTransaction) {
-        throw new Error("AuditLogRepository must support transaction-scoped writes");
-      }
       await input.auditLogRepository.createInTransaction(transaction, input.audit);
       return { recorded: true, activationAttempts, disabled };
     });

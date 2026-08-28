@@ -1,7 +1,10 @@
 import type {
   AuditLogCreateInput,
-  AuditLogRepositoryPort
+  AuditLogRepositoryPort,
+  TransactionAwareAuditLogRepositoryPort
 } from "../src/repositories/audit-log.repository";
+import { AuditLogRepository } from "../src/repositories/audit-log.repository";
+import { OfficialAnnouncementRepository } from "../src/repositories/official-announcement.repository";
 import {
   ContentPublicationSchedulerService,
   type ContentPublicationDueRelease,
@@ -25,10 +28,17 @@ const due = (
   publishAt: new Date(publishAt)
 });
 
-class AuditSpy implements AuditLogRepositoryPort {
+class AuditSpy implements TransactionAwareAuditLogRepositoryPort {
   public readonly entries: AuditLogCreateInput[] = [];
 
   public async create(input: AuditLogCreateInput): Promise<void> {
+    this.entries.push(input);
+  }
+
+  public async createInTransaction(
+    _client: Parameters<TransactionAwareAuditLogRepositoryPort["createInTransaction"]>[0],
+    input: AuditLogCreateInput
+  ): Promise<void> {
     this.entries.push(input);
   }
 }
@@ -59,6 +69,38 @@ class ScheduledRepositorySpy {
 }
 
 describe("ContentPublicationSchedulerService", () => {
+  it("requires a transaction-aware audit writer at every failure persistence boundary", () => {
+    const repository = new ScheduledRepositorySpy([]);
+    const createOnlyAuditLogRepository: AuditLogRepositoryPort = {
+      create: jest.fn(async () => undefined)
+    };
+
+    new ContentPublicationSchedulerService(
+      repository,
+      repository,
+      // @ts-expect-error scheduled failure persistence requires transaction-scoped audit writes
+      createOnlyAuditLogRepository,
+      3
+    );
+    const release = due("carousel", "USER_HOME", 21, 7, "2026-08-29T08:00:00.000Z");
+    const failureInput: ContentPublicationFailureRecordInput = {
+      release,
+      now,
+      maxAttempts: 3,
+      errorKey: "error.content.schedule_activation_failed",
+      runId: "run-contract",
+      audit: {
+        actorId: null,
+        action: "content_publication.schedule_failed",
+        targetType: "CarouselRelease",
+        targetId: 7
+      },
+      // @ts-expect-error release failure state and audit must share one transaction
+      auditLogRepository: createOnlyAuditLogRepository
+    };
+    expect(failureInput).toBeDefined();
+  });
+
   it("activates due releases in deterministic publishAt/id order and isolates one failure", async () => {
     const announcement = new ScheduledRepositorySpy([
       due("official_announcement", "announcement-a", 11, 3, "2026-08-29T08:00:00.000Z"),
@@ -95,7 +137,9 @@ describe("ContentPublicationSchedulerService", () => {
         aggregateKey: "USER_HOME",
         releaseId: 5,
         errorKey: "error.content.schedule_activation_failed",
-        runId: "run-0001"
+        runId: "run-0001",
+        recorded: true,
+        persistenceErrorKey: null
       })
     );
     expect(announcement.activations).toHaveLength(2);
@@ -225,5 +269,81 @@ describe("ContentPublicationSchedulerService", () => {
       failed: 1
     });
     expect(announcement.activations).toHaveLength(1);
+  });
+
+  it("reports a rejected transactional audit as unrecorded and continues later work", async () => {
+    const failed = due(
+      "official_announcement",
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      12,
+      7,
+      "2026-08-29T08:00:00.000Z"
+    );
+    const later = due(
+      "official_announcement",
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      13,
+      8,
+      "2026-08-29T08:01:00.000Z"
+    );
+    const persistenceFailure = new Error("audit transaction unavailable");
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 7 }]),
+      officialAnnouncementRelease: {
+        findFirst: jest.fn(async () => ({
+          status: "SCHEDULED",
+          scheduledSlotKey: "announcement:12:scheduled",
+          publishAt: failed.publishAt,
+          activationAttempts: 0
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      },
+      auditLog: {
+        create: jest.fn(async () => {
+          throw persistenceFailure;
+        })
+      }
+    };
+    const repository = new OfficialAnnouncementRepository({
+      $transaction: jest.fn(async (operation: (client: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+    jest.spyOn(repository, "listDueScheduledReleases").mockResolvedValue([failed, later]);
+    const activate = jest
+      .spyOn(repository, "activateDueScheduledRelease")
+      .mockImplementation(async (input) => {
+        if (input.release.releaseId === failed.releaseId) {
+          throw new Error("activation failed");
+        }
+        return { activated: true, replayed: false };
+      });
+    const observer = jest.fn();
+    const service = new ContentPublicationSchedulerService(
+      repository,
+      new ScheduledRepositorySpy([]),
+      new AuditLogRepository({} as never),
+      3,
+      observer,
+      () => "run-audit-rejected"
+    );
+
+    await expect(service.activateDue({ now, batchSize: 50 })).resolves.toEqual({
+      scanned: 2,
+      activated: 1,
+      failed: 1
+    });
+    expect(activate).toHaveBeenCalledTimes(2);
+    expect(transaction.officialAnnouncementRelease.updateMany).toHaveBeenCalledTimes(1);
+    expect(transaction.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(observer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aggregateType: "official_announcement",
+        releaseId: 7,
+        runId: "run-audit-rejected",
+        recorded: false,
+        persistenceErrorKey: "error.content.schedule_failure_persistence_failed"
+      })
+    );
   });
 });
