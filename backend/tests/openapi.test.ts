@@ -190,6 +190,9 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/profiles/customers/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/schedule/availability");
+    expect(response.body.paths["/api/v1/schedule/availability"].get.description).toEqual(
+      expect.stringMatching(/technicianId.*without a service filter/i)
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/bookings");
     expect(response.body.paths).toHaveProperty("/api/v1/orders");
     expect(response.body.paths["/api/v1/orders"].get.parameters).toEqual(

@@ -21,9 +21,28 @@ export const availabilityListQuerySchema = z
     from: isoDateSchema,
     to: isoDateSchema
   })
-  .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
-    message: "Exactly one of serviceId or technicianServiceId is required",
-    path: ["serviceId"]
+  .superRefine((value, context) => {
+    if (value.serviceId && value.technicianServiceId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "serviceId and technicianServiceId are mutually exclusive",
+        path: ["serviceId"]
+      });
+    }
+    if (!value.serviceId && !value.technicianServiceId && !value.technicianId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "serviceId, technicianServiceId, or technicianId is required",
+        path: ["technicianId"]
+      });
+    }
+    if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "date range must not exceed 93 days",
+        path: ["to"]
+      });
+    }
   })
   .refine((value) => value.from.getTime() < value.to.getTime(), {
     message: "from must be earlier than to",

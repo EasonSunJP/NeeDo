@@ -406,6 +406,41 @@ const createFixture = async () => {
 };
 
 describe("Step 10 Booking / Schedule / Order state machine API", () => {
+  it("lists a published technician availability window without a service filter", async () => {
+    const fixture = await createFixture();
+
+    await request(fixture.app)
+      .get(
+        "/api/v1/schedule/availability?technicianId=1&from=2026-05-26T00:00:00.000Z&to=2026-05-27T00:00:00.000Z&page=1&pageSize=100"
+      )
+      .expect(200);
+
+    expect(fixture.bookingRepository.listAvailableSlots).toHaveBeenCalledWith({
+      technicianId: 1,
+      from: new Date("2026-05-26T00:00:00.000Z"),
+      to: new Date("2026-05-27T00:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+  });
+
+  it("rejects unscoped and longer-than-93-day public availability windows", async () => {
+    const fixture = await createFixture();
+
+    await request(fixture.app)
+      .get(
+        "/api/v1/schedule/availability?from=2026-05-26T00:00:00.000Z&to=2026-05-27T00:00:00.000Z"
+      )
+      .expect(400);
+    await request(fixture.app)
+      .get(
+        "/api/v1/schedule/availability?technicianId=1&from=2026-05-26T00:00:00.000Z&to=2026-08-27T00:00:00.001Z"
+      )
+      .expect(400);
+
+    expect(fixture.bookingRepository.listAvailableSlots).not.toHaveBeenCalled();
+  });
+
   it("rejects client-selected customer scope and unknown checkout fields", async () => {
     const fixture = await createFixture();
     const token = await fixture.login();
