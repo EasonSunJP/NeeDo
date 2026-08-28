@@ -12,6 +12,7 @@ describe("future operations dataset contract", () => {
     "../src/simulation/future-six-month-operations-dataset.ts"
   );
   const commandPath = resolve(__dirname, "../scripts/seed-future-six-month-operations.ts");
+  const checkerPath = resolve(__dirname, "../scripts/check-future-six-month-operations.ts");
 
   it("resolves the existing cohort and never creates identity entities", () => {
     expect(typeof loadFutureOperationsCohort).toBe("function");
@@ -56,9 +57,22 @@ describe("future operations dataset contract", () => {
     const source = readFileSync(datasetPath, "utf8");
     expect(source).toContain("serviceSnapshotJson");
     expect(source).toContain("metadata: { namespace: FUTURE_OPERATIONS_NAMESPACE }");
-    expect(source).toMatch(
-      /payload:\s*\{[\s\S]*?namespace:\s*FUTURE_OPERATIONS_NAMESPACE/
-    );
+    expect(source).toMatch(/payload:\s*\{[\s\S]*?namespace:\s*FUTURE_OPERATIONS_NAMESPACE/);
     expect(source).toContain('action: "simulation.future_operations.applied"');
+  });
+
+  it("has an independent checker for exact database reconciliation", () => {
+    const checker = readFileSync(checkerPath, "utf8");
+    for (const required of [
+      "months",
+      "technicianOverlapCount",
+      "customerOverlapCount",
+      "duplicateOrderNoCount",
+      "invalidRelationshipCount",
+      "futureTerminalStatusCount",
+      "historicalBaseline"
+    ]) {
+      expect(checker).toContain(required);
+    }
   });
 });
