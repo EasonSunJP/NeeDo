@@ -25,6 +25,13 @@ export interface CreateContentMediaRepositoryInput {
 }
 
 export interface ContentMediaRepositoryPort {
+  withChecksumLock<T>(
+    checksumSha256: string,
+    operation: (locked: ContentMediaLockedRepositoryPort) => Promise<T>
+  ): Promise<T>;
+}
+
+export interface ContentMediaLockedRepositoryPort {
   create(input: CreateContentMediaRepositoryInput): Promise<ContentMediaProjection>;
 }
 
@@ -46,39 +53,38 @@ export class ContentMediaService {
     context: AuthRequestContext,
     input: UploadContentMediaInput
   ): Promise<ContentMediaProjection> {
-    return this.storage.withChecksumLock(
-      { bytes: input.bytes, mimeType: input.mimeType },
-      async (stored) => {
-        try {
-          return await this.repository.create({
-            entityType: "content_publication_upload",
-            entityId: actor.userId,
-            ownerUserId: actor.userId,
-            url: `/media/content/${stored.fileKey}`,
-            mimeType: stored.mimeType,
-            altText: input.altText,
-            checksumSha256: stored.checksumSha256,
-            createdAt: input.now,
-            context
-          });
-        } catch (persistenceError) {
-          if (stored.created) {
-            try {
-              await this.storage.delete(stored.fileKey);
-            } catch (cleanupError) {
-              logger.warn(
-                {
-                  cleanupErrorName:
-                    cleanupError instanceof Error ? cleanupError.name : typeof cleanupError,
-                  publicId: stored.checksumSha256
-                },
-                "Content media compensation cleanup failed"
-              );
-            }
+    const prepared = this.storage.prepare({ bytes: input.bytes, mimeType: input.mimeType });
+    return this.repository.withChecksumLock(prepared.checksumSha256, async (locked) => {
+      const stored = await this.storage.save({ bytes: input.bytes, mimeType: input.mimeType });
+      try {
+        return await locked.create({
+          entityType: "content_publication_upload",
+          entityId: actor.userId,
+          ownerUserId: actor.userId,
+          url: `/media/content/${stored.fileKey}`,
+          mimeType: stored.mimeType,
+          altText: input.altText,
+          checksumSha256: stored.checksumSha256,
+          createdAt: input.now,
+          context
+        });
+      } catch (persistenceError) {
+        if (stored.created) {
+          try {
+            await this.storage.delete(stored.fileKey);
+          } catch (cleanupError) {
+            logger.warn(
+              {
+                cleanupErrorName:
+                  cleanupError instanceof Error ? cleanupError.name : typeof cleanupError,
+                publicId: stored.checksumSha256
+              },
+              "Content media compensation cleanup failed"
+            );
           }
-          throw persistenceError;
         }
+        throw persistenceError;
       }
-    );
+    });
   }
 }

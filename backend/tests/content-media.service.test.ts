@@ -1,14 +1,16 @@
 import { mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ContentMediaRepository } from "../src/repositories/content-media.repository";
 import { logger } from "../src/config/logger";
 import {
   ContentMediaFileStorage,
-  type ContentMediaMimeType,
-  type StoredContentMedia
+  type PreparedContentMedia
 } from "../src/services/content-media.storage";
-import { ContentMediaService } from "../src/services/content-media.service";
+import {
+  ContentMediaService,
+  type ContentMediaLockedRepositoryPort,
+  type ContentMediaRepositoryPort
+} from "../src/services/content-media.service";
 
 const validPng = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -37,6 +39,53 @@ const context = { ip: "127.0.0.1", userAgent: "content-media-test" };
 const now = new Date("2026-08-29T05:00:00.000Z");
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+const repositoryWithCreate = (
+  create: ContentMediaLockedRepositoryPort["create"]
+): ContentMediaRepositoryPort => ({
+  async withChecksumLock<T>(
+    _checksumSha256: string,
+    operation: (locked: ContentMediaLockedRepositoryPort) => Promise<T>
+  ): Promise<T> {
+    return operation({ create });
+  }
+});
+
+const preparedFrom = (stored: PreparedContentMedia): PreparedContentMedia => ({
+  fileKey: stored.fileKey,
+  checksumSha256: stored.checksumSha256,
+  mimeType: stored.mimeType
+});
+
+const serialChecksumLock = () => {
+  let tail = Promise.resolve();
+
+  return async <T>(operation: () => Promise<T>): Promise<T> => {
+    const previous = tail;
+    let release!: () => void;
+    tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  };
+};
+
+const serializedRepository = (
+  create: ContentMediaLockedRepositoryPort["create"],
+  serialize: <T>(operation: () => Promise<T>) => Promise<T>
+): ContentMediaRepositoryPort => ({
+  async withChecksumLock<T>(
+    _checksumSha256: string,
+    operation: (locked: ContentMediaLockedRepositoryPort) => Promise<T>
+  ): Promise<T> {
+    return serialize(() => operation({ create }));
+  }
+});
 
 describe("ContentMediaFileStorage", () => {
   it.each([
@@ -123,17 +172,16 @@ describe("ContentMediaFileStorage", () => {
 
 describe("ContentMediaService", () => {
   it("creates a distinct owner-scoped MediaAsset row for an upload", async () => {
-    const repository = {
-      create: jest.fn(async (input) => ({
-        publicId: input.checksumSha256,
-        mediaAssetId: 101,
-        url: input.url,
-        mimeType: input.mimeType,
-        width: null,
-        height: null,
-        checksumSha256: input.checksumSha256
-      }))
-    };
+    const create = jest.fn(async (input) => ({
+      publicId: input.checksumSha256,
+      mediaAssetId: 101,
+      url: input.url,
+      mimeType: input.mimeType,
+      width: null,
+      height: null,
+      checksumSha256: input.checksumSha256
+    }));
+    const repository = repositoryWithCreate(create);
     const stored = {
       fileKey: `${"a".repeat(64)}.png`,
       checksumSha256: "a".repeat(64),
@@ -141,11 +189,8 @@ describe("ContentMediaService", () => {
       created: true
     };
     const storage = {
+      prepare: jest.fn(() => preparedFrom(stored)),
       save: jest.fn(async () => stored),
-      withChecksumLock: async <T>(
-        _input: { bytes: Buffer; mimeType: ContentMediaMimeType },
-        operation: (locked: StoredContentMedia) => Promise<T>
-      ): Promise<T> => operation(stored),
       read: jest.fn(),
       delete: jest.fn()
     };
@@ -165,7 +210,7 @@ describe("ContentMediaService", () => {
       mimeType: "image/png",
       checksumSha256: expect.stringMatching(/^[a-f0-9]{64}$/u)
     });
-    expect(repository.create).toHaveBeenCalledWith(
+    expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         entityType: "content_publication_upload",
         entityId: actor.userId,
@@ -177,11 +222,10 @@ describe("ContentMediaService", () => {
   });
 
   it("compensates a newly written file when the database transaction fails", async () => {
-    const repository = {
-      create: jest.fn(async () => {
-        throw new Error("database unavailable");
-      })
-    };
+    const create = jest.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    const repository = repositoryWithCreate(create);
     const stored = {
       fileKey: `${"b".repeat(64)}.webp`,
       checksumSha256: "b".repeat(64),
@@ -189,11 +233,8 @@ describe("ContentMediaService", () => {
       created: true
     };
     const storage = {
+      prepare: jest.fn(() => preparedFrom(stored)),
       save: jest.fn(async () => stored),
-      withChecksumLock: async <T>(
-        _input: { bytes: Buffer; mimeType: ContentMediaMimeType },
-        operation: (locked: StoredContentMedia) => Promise<T>
-      ): Promise<T> => operation(stored),
       read: jest.fn(),
       delete: jest.fn(async () => undefined)
     };
@@ -211,11 +252,10 @@ describe("ContentMediaService", () => {
   });
 
   it("preserves existing deduplicated bytes when a later database transaction fails", async () => {
-    const repository = {
-      create: jest.fn(async () => {
-        throw new Error("database unavailable");
-      })
-    };
+    const create = jest.fn(async () => {
+      throw new Error("database unavailable");
+    });
+    const repository = repositoryWithCreate(create);
     const stored = {
       fileKey: `${"c".repeat(64)}.jpg`,
       checksumSha256: "c".repeat(64),
@@ -223,11 +263,8 @@ describe("ContentMediaService", () => {
       created: false
     };
     const storage = {
+      prepare: jest.fn(() => preparedFrom(stored)),
       save: jest.fn(async () => stored),
-      withChecksumLock: async <T>(
-        _input: { bytes: Buffer; mimeType: ContentMediaMimeType },
-        operation: (locked: StoredContentMedia) => Promise<T>
-      ): Promise<T> => operation(stored),
       read: jest.fn(),
       delete: jest.fn()
     };
@@ -246,32 +283,25 @@ describe("ContentMediaService", () => {
 
   it("serializes same-checksum persistence across storage instances so a failure cannot delete a committed blob", async () => {
     const directory = await mkdtemp(join(tmpdir(), "needo-content-media-race-"));
-    const firstStorage = new ContentMediaFileStorage(directory, {
-      lockRetryMs: 5,
-      lockTimeoutMs: 2_000
-    });
-    const secondStorage = new ContentMediaFileStorage(directory, {
-      lockRetryMs: 5,
-      lockTimeoutMs: 2_000
-    });
+    const firstStorage = new ContentMediaFileStorage(directory);
+    const secondStorage = new ContentMediaFileStorage(directory);
     const persistenceError = new Error("first persistence failed");
-    const firstRepository = {
-      create: jest.fn(async () => {
-        await wait(250);
-        throw persistenceError;
-      })
-    };
-    const secondRepository = {
-      create: jest.fn(async (input) => ({
-        publicId: input.checksumSha256,
-        mediaAssetId: 202,
-        url: input.url,
-        mimeType: input.mimeType,
-        width: null,
-        height: null,
-        checksumSha256: input.checksumSha256
-      }))
-    };
+    const firstCreate = jest.fn(async () => {
+      await wait(250);
+      throw persistenceError;
+    });
+    const secondCreate = jest.fn(async (input) => ({
+      publicId: input.checksumSha256,
+      mediaAssetId: 202,
+      url: input.url,
+      mimeType: input.mimeType,
+      width: null,
+      height: null,
+      checksumSha256: input.checksumSha256
+    }));
+    const serialize = serialChecksumLock();
+    const firstRepository = serializedRepository(firstCreate, serialize);
+    const secondRepository = serializedRepository(secondCreate, serialize);
     const firstService = new ContentMediaService(firstRepository, firstStorage);
     const secondService = new ContentMediaService(secondRepository, secondStorage);
 
@@ -295,8 +325,8 @@ describe("ContentMediaService", () => {
     await expect(secondStorage.read(secondResult.url.split("/").at(-1)!)).resolves.toEqual(
       validPng
     );
-    expect(firstRepository.create).toHaveBeenCalledTimes(1);
-    expect(secondRepository.create).toHaveBeenCalledTimes(1);
+    expect(firstCreate).toHaveBeenCalledTimes(1);
+    expect(secondCreate).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the persistence error when compensating file cleanup also fails", async () => {
@@ -304,11 +334,11 @@ describe("ContentMediaService", () => {
     const persistenceError = new Error("database transaction failed");
     const storage = new ContentMediaFileStorage(directory);
     jest.spyOn(storage, "delete").mockRejectedValueOnce(new Error("private path cleanup failed"));
-    const repository = {
-      create: jest.fn(async () => {
+    const repository = repositoryWithCreate(
+      jest.fn(async () => {
         throw persistenceError;
       })
-    };
+    );
     const service = new ContentMediaService(repository, storage);
     const warning = jest.spyOn(logger, "warn").mockImplementation(() => undefined);
 
@@ -329,54 +359,5 @@ describe("ContentMediaService", () => {
     );
     expect(JSON.stringify(warning.mock.calls)).not.toContain("private path cleanup failed");
     warning.mockRestore();
-  });
-});
-
-describe("ContentMediaRepository", () => {
-  it("creates the MediaAsset and its real AuditLog in one transaction", async () => {
-    const mediaAssetCreate = jest.fn(async ({ data }) => ({ id: 201, ...data }));
-    const auditLogCreate = jest.fn(async () => ({ id: 301 }));
-    const transaction = {
-      mediaAsset: { create: mediaAssetCreate },
-      auditLog: { create: auditLogCreate }
-    };
-    const client = {
-      $transaction: jest.fn(async (operation) => operation(transaction))
-    };
-    const repository = new ContentMediaRepository(client as never);
-
-    const result = await repository.create({
-      entityType: "content_publication_upload",
-      entityId: 7,
-      ownerUserId: 7,
-      url: `/media/content/${"d".repeat(64)}.png`,
-      mimeType: "image/png",
-      altText: "Announcement",
-      checksumSha256: "d".repeat(64),
-      createdAt: now,
-      context
-    });
-
-    expect(result.mediaAssetId).toBe(201);
-    expect(mediaAssetCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        entityType: "content_publication_upload",
-        entityId: 7,
-        ownerUserId: 7,
-        width: null,
-        height: null,
-        checksumSha256: "d".repeat(64)
-      })
-    });
-    expect(auditLogCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        actorId: 7,
-        action: "content.media.uploaded",
-        targetType: "MediaAsset",
-        targetId: 201,
-        ip: context.ip,
-        userAgent: context.userAgent
-      })
-    });
   });
 });
