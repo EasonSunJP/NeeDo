@@ -190,7 +190,8 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.paths["/api/v1/im/contacts"].post).toBeDefined();
     expect(response.body.paths).toHaveProperty("/api/v1/im/conversations/{conversationId}/media");
     expect(
-      response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody.content
+      response.body.paths["/api/v1/im/conversations/{conversationId}/media"].post.requestBody
+        .content
     ).toHaveProperty("image/png");
     expect(response.body.paths).toHaveProperty("/api/v1/shops/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/technicians/{id}");
@@ -1061,5 +1062,112 @@ describe("GET /api/v1/openapi.json", () => {
         ShopPlatformFeePolicyPage: expect.any(Object)
       })
     );
+  });
+
+  it("documents the formal order acceptance pause contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<string, unknown>;
+      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
+      parameters?: Array<{ name: string; in: string }>;
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties: Record<string, { type?: string; enum?: string[] }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "post", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const basePaths = [
+      "/api/v1/backoffice/order-acceptance-pauses",
+      "/api/v1/merchant-admin/order-acceptance-pauses"
+    ];
+    const operations = basePaths.flatMap((path) => [
+      document.paths[path].get,
+      document.paths[path].post,
+      document.paths[`${path}/{id}/release`].post
+    ]);
+
+    for (const operation of operations) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+    for (const path of basePaths) {
+      expect(document.paths[path].get.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "page", in: "query" }),
+          expect.objectContaining({ name: "pageSize", in: "query" }),
+          expect.objectContaining({ name: "status", in: "query" }),
+          expect.objectContaining({ name: "subjectType", in: "query" })
+        ])
+      );
+      expect(document.paths[path].post.requestBody?.content["application/json"].schema).toEqual({
+        $ref: "#/components/schemas/OrderAcceptancePauseCreateRequest"
+      });
+      expect(
+        document.paths[`${path}/{id}/release`].post.requestBody?.content["application/json"].schema
+      ).toEqual({ $ref: "#/components/schemas/OrderAcceptancePauseReleaseRequest" });
+    }
+    expect(document.components.schemas.OrderAcceptancePause.required).toEqual(
+      expect.arrayContaining([
+        "id",
+        "subjectType",
+        "subjectId",
+        "authorityType",
+        "status",
+        "reasonCode",
+        "reasonDetail",
+        "startsAt"
+      ])
+    );
+    expect(document.components.schemas.OrderAcceptancePause.properties.subjectType.enum).toEqual([
+      "merchant_account",
+      "shop"
+    ]);
+    expect(document.components.schemas.OrderAcceptancePause.properties.authorityType.enum).toEqual([
+      "operations",
+      "merchant",
+      "shop"
+    ]);
+    for (const schemaName of [
+      "OrderAcceptancePauseCreateRequest",
+      "OrderAcceptancePauseReleaseRequest"
+    ]) {
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    expect(document.components.schemas.OrderAcceptancePauseSummary.properties).not.toHaveProperty(
+      "reasonDetail"
+    );
+    const confirmationConflict = document.paths["/api/v1/orders/{id}/confirm"].post.responses[
+      "409"
+    ] as {
+      content: {
+        "application/json": {
+          schema: {
+            properties: {
+              message: { enum: string[] };
+              data: { properties: { pauses: { items: { $ref: string } } } };
+            };
+          };
+        };
+      };
+    };
+    expect(
+      confirmationConflict.content["application/json"].schema.properties.message.enum
+    ).toContain("error.order.acceptance_paused");
+    expect(
+      confirmationConflict.content["application/json"].schema.properties.data.properties.pauses
+        .items
+    ).toEqual({ $ref: "#/components/schemas/OrderAcceptancePauseSummary" });
   });
 });

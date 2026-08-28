@@ -24,6 +24,8 @@
     "check:affiliate-service-completion-reward-flow": "tsx scripts/check-affiliate-service-completion-reward-flow.ts",
     "check:affiliate-task-expiry-flow": "tsx scripts/check-affiliate-task-expiry-flow.ts",
     "check:booking-platform-fee-debt-flow": "tsx scripts/check-booking-platform-fee-debt-flow.ts",
+    "check:order-acceptance-control-flow": "tsx scripts/check-order-acceptance-control-flow.ts",
+    "check:order-acceptance-control-migration": "tsx scripts/check-order-acceptance-control-migration.ts",
     "check:registration-flow": "tsx scripts/check-registration-flow.ts",
     "check:google-auth-flow": "tsx scripts/check-google-auth-flow.ts",
     "check:technician-ranking-flow": "tsx scripts/check-technician-ranking-flow.ts",

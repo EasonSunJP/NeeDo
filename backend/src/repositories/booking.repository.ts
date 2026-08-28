@@ -33,7 +33,6 @@ export interface AvailabilityListInput extends PaginationInput {
   from: Date;
   to: Date;
 }
-
 export interface BookingCreateRepositoryInput {
   customerUserId: number;
   orderType?: BookingOrderTypePayload;
@@ -54,20 +53,47 @@ export interface BookingCreateAffiliatePreparationContext {
   scheduledStartAt: Date;
 }
 
-export interface BookingCreateAffiliatePersistenceContext
-  extends Omit<BookingCreateAffiliatePreparationContext, "serviceId"> {
+export interface BookingCreateAffiliatePersistenceContext extends Omit<
+  BookingCreateAffiliatePreparationContext,
+  "serviceId"
+> {
   serviceId: number;
   bookingOrderId: number;
   prepared: AffiliateCheckoutPrepared;
+}
+
+export interface BookingSupersededAffiliateInvalidationContext {
+  transactionClient: LedgerTransactionClient;
+  bookingOrderId: number;
+  actorUserId: number;
 }
 
 export interface BookingCreateRepositoryOptions {
   prepareAffiliate?: (
     context: BookingCreateAffiliatePreparationContext
   ) => Promise<AffiliateCheckoutPrepared>;
-  persistAffiliate?: (
-    context: BookingCreateAffiliatePersistenceContext
+  persistAffiliate?: (context: BookingCreateAffiliatePersistenceContext) => Promise<void>;
+  invalidateSupersededAffiliate?: (
+    context: BookingSupersededAffiliateInvalidationContext
   ) => Promise<void>;
+}
+
+class BookingPendingReplacementUnavailableError extends Error {
+  public constructor() {
+    super("error.booking.pending_replacement_unavailable");
+    this.name = "BookingPendingReplacementUnavailableError";
+  }
+}
+
+export interface BookingSupersededOrderNotification {
+  order: BookingOrderPayload;
+  recipientUserIds: number[];
+}
+
+export interface BookingCreateMutationResult {
+  order: BookingOrderPayload;
+  recipientUserIds: number[];
+  supersededOrders: BookingSupersededOrderNotification[];
 }
 
 export type ManualPaymentScope =
@@ -154,6 +180,23 @@ export interface OrderTransitionRepositoryOptions {
   settle?: (context: OrderTransitionSettlementContext) => Promise<void>;
 }
 
+export interface ActiveOrderAcceptancePauseSummary {
+  subjectType: "merchant_account" | "shop";
+  authorityType: "operations" | "merchant" | "shop";
+  reasonCode: string;
+  startsAt: Date;
+}
+
+export interface OrderAcceptancePausedResult {
+  kind: "acceptance_paused";
+  pauses: ActiveOrderAcceptancePauseSummary[];
+}
+
+export type OrderTransitionMutationResult =
+  | BookingOrderPayload
+  | OrderAcceptancePausedResult
+  | null;
+
 export interface ScheduleSlotPayload {
   id: number;
   serviceId: number | null;
@@ -239,7 +282,7 @@ export interface BookingRepositoryPort {
   createBooking: (
     input: BookingCreateRepositoryInput,
     options?: BookingCreateRepositoryOptions
-  ) => Promise<BookingOrderPayload | null>;
+  ) => Promise<BookingCreateMutationResult | BookingOrderPayload | null>;
   findScheduleSlotShopId?: (scheduleSlotId: number) => Promise<number | null>;
   findTechnicianShopId?: (technicianProfileId: number) => Promise<number | null>;
   isShopSuspended?: (shopId: number) => Promise<boolean>;
@@ -248,7 +291,7 @@ export interface BookingRepositoryPort {
   transitionOrder: (
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
-  ) => Promise<BookingOrderPayload | null>;
+  ) => Promise<OrderTransitionMutationResult>;
   findScheduleSlotById: (input: ScheduleSlotReadInput) => Promise<ScheduleSlotPayload | null>;
   listScheduleSlots: (input: ScheduleListInput) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   createScheduleSlot: (input: ScheduleSlotCreateInput) => Promise<ScheduleMutationResult>;
@@ -534,184 +577,349 @@ export class BookingRepository implements BookingRepositoryPort {
   public async createBooking(
     input: BookingCreateRepositoryInput,
     options: BookingCreateRepositoryOptions = {}
-  ): Promise<BookingOrderPayload | null> {
+  ): Promise<BookingCreateMutationResult | null> {
     if (Boolean(options.prepareAffiliate) !== Boolean(options.persistAffiliate)) {
       throw new Error("error.affiliate.checkout_hook_invalid");
     }
-    return this.client.$transaction(async (tx) => {
-      const slot = await tx.scheduleSlot.findFirst({
-        where: {
-          id: input.scheduleSlotId,
-          ...(input.serviceId ? { serviceId: input.serviceId } : {}),
-          ...(input.technicianServiceId ? { technicianServiceId: input.technicianServiceId } : {}),
-          deletedAt: null,
-          status: "AVAILABLE",
-          ...(input.serviceId
-            ? {
-                service: {
-                  deletedAt: null,
-                  status: "published"
-                }
-              }
-            : {}),
-          ...(input.technicianServiceId
-            ? {
-                technicianService: {
-                  deletedAt: null,
-                  isActive: true,
-                  isBookable: true
-                }
-              }
-            : {}),
-          shop: {
-            deletedAt: null,
-            status: "published",
-            entitySuspensions: {
-              none: { activeKey: { not: null }, status: "active", deletedAt: null }
+    try {
+      return await runWithTransactionConflictRetry(() =>
+        this.client.$transaction(
+          async (tx) => {
+            if (!(await this.lockCustomerUser(tx, input.customerUserId))) {
+              return null;
             }
-          }
-        },
-        include: this.slotInclude()
-      });
+            const customerProfile = await tx.customerProfile.findFirst({
+              where: { userId: input.customerUserId, deletedAt: null },
+              select: { membershipLevel: true }
+            });
+            const isBlackMember = customerProfile?.membershipLevel.toLowerCase() === "black";
 
-      if (!slot || slot.bookedCount >= slot.capacity) {
-        return null;
-      }
+            let slot = await tx.scheduleSlot.findFirst({
+              where: {
+                id: input.scheduleSlotId,
+                ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+                ...(input.technicianServiceId
+                  ? { technicianServiceId: input.technicianServiceId }
+                  : {}),
+                deletedAt: null,
+                status: { in: ["AVAILABLE", "BOOKED"] },
+                ...(input.serviceId
+                  ? {
+                      service: {
+                        deletedAt: null,
+                        status: "published"
+                      }
+                    }
+                  : {}),
+                ...(input.technicianServiceId
+                  ? {
+                      technicianService: {
+                        deletedAt: null,
+                        isActive: true,
+                        isBookable: true
+                      }
+                    }
+                  : {}),
+                shop: {
+                  deletedAt: null,
+                  status: "published",
+                  entitySuspensions: {
+                    none: { activeKey: { not: null }, status: "active", deletedAt: null }
+                  }
+                }
+              },
+              include: this.slotInclude()
+            });
 
-      const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
-      const serviceSource =
-        pricingMode === "technician"
-          ? this.createTechnicianServiceSource(slot, input.technicianServiceId)
-          : this.createShopServiceSource(slot, input.serviceId);
+            if (!slot) {
+              return null;
+            }
 
-      if (!serviceSource) {
-        return null;
-      }
+            await this.lockScheduleOwner(tx, slot.shopId, slot.technicianProfileId);
 
-      await this.lockScheduleOwner(tx, slot.shopId, slot.technicianProfileId);
+            const supersededPendingOrders = !isBlackMember
+              ? await tx.bookingOrder.findMany({
+                  where: {
+                    customerUserId: input.customerUserId,
+                    status: "PENDING",
+                    deletedAt: null
+                  },
+                  include: this.orderInclude(),
+                  orderBy: { id: "asc" }
+                })
+              : [];
+            const supersededOrderIds = supersededPendingOrders.map((order) => order.id);
 
-      const conflict = await tx.bookingOrder.findFirst({
-        where: {
-          deletedAt: null,
-          status: { in: [...ACTIVE_ORDER_DB_STATUSES] },
-          OR: [
-            {
-              customerUserId: input.customerUserId,
-              startsAt: { lt: slot.endsAt },
-              endsAt: { gt: slot.startsAt }
-            },
-            ...(slot.technicianProfileId
-              ? [
+            if (supersededOrderIds.length > 0) {
+              const cancelled = await tx.bookingOrder.updateMany({
+                where: {
+                  id: { in: supersededOrderIds },
+                  customerUserId: input.customerUserId,
+                  status: "PENDING",
+                  deletedAt: null
+                },
+                data: {
+                  status: "CANCELLED",
+                  cancelReason: "superseded_by_new_pending_order"
+                }
+              });
+              if (cancelled.count !== supersededOrderIds.length) {
+                throw new Error("error.booking.pending_replacement_conflict");
+              }
+
+              const slotReleaseCounts = new Map<number, number>();
+              for (const pendingOrder of supersededPendingOrders) {
+                slotReleaseCounts.set(
+                  pendingOrder.scheduleSlotId,
+                  (slotReleaseCounts.get(pendingOrder.scheduleSlotId) ?? 0) + 1
+                );
+              }
+              for (const [scheduleSlotId, releaseCount] of slotReleaseCounts) {
+                const released = await tx.scheduleSlot.updateMany({
+                  where: {
+                    id: scheduleSlotId,
+                    bookedCount: { gte: releaseCount },
+                    deletedAt: null
+                  },
+                  data: {
+                    bookedCount: { decrement: releaseCount },
+                    status: "AVAILABLE"
+                  }
+                });
+                if (released.count !== 1) {
+                  throw new BookingPendingReplacementUnavailableError();
+                }
+              }
+            }
+
+            slot = await tx.scheduleSlot.findFirst({
+              where: {
+                id: input.scheduleSlotId,
+                ...(input.serviceId ? { serviceId: input.serviceId } : {}),
+                ...(input.technicianServiceId
+                  ? { technicianServiceId: input.technicianServiceId }
+                  : {}),
+                deletedAt: null,
+                status: "AVAILABLE",
+                ...(input.serviceId ? { service: { deletedAt: null, status: "published" } } : {}),
+                ...(input.technicianServiceId
+                  ? {
+                      technicianService: {
+                        deletedAt: null,
+                        isActive: true,
+                        isBookable: true
+                      }
+                    }
+                  : {}),
+                shop: {
+                  deletedAt: null,
+                  status: "published",
+                  entitySuspensions: {
+                    none: { activeKey: { not: null }, status: "active", deletedAt: null }
+                  }
+                }
+              },
+              include: this.slotInclude()
+            });
+            if (!slot || slot.bookedCount >= slot.capacity) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
+
+            const pricingMode = this.pricingModeFromDb(slot.shop.pricingMode);
+            const serviceSource =
+              pricingMode === "technician"
+                ? this.createTechnicianServiceSource(slot, input.technicianServiceId)
+                : this.createShopServiceSource(slot, input.serviceId);
+
+            if (!serviceSource) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
+
+            const conflict = await tx.bookingOrder.findFirst({
+              where: {
+                deletedAt: null,
+                status: {
+                  in: isBlackMember ? [...ACTIVE_ORDER_DB_STATUSES] : ["CONFIRMED", "IN_SERVICE"]
+                },
+                OR: [
                   {
-                    scheduleSlotId: { not: slot.id },
-                    technicianProfileId: slot.technicianProfileId,
+                    customerUserId: input.customerUserId,
                     startsAt: { lt: slot.endsAt },
                     endsAt: { gt: slot.startsAt }
-                  }
+                  },
+                  ...(slot.technicianProfileId
+                    ? [
+                        {
+                          scheduleSlotId: { not: slot.id },
+                          technicianProfileId: slot.technicianProfileId,
+                          startsAt: { lt: slot.endsAt },
+                          endsAt: { gt: slot.startsAt }
+                        }
+                      ]
+                    : [])
                 ]
-              : [])
-          ]
-        },
-        select: { id: true }
-      });
+              },
+              select: { id: true }
+            });
 
-      if (conflict) {
-        return null;
-      }
-
-      const originalPriceJpy = Math.round(
-        Number(serviceSource.priceAmount.toString())
-      );
-      const affiliateContext: BookingCreateAffiliatePreparationContext = {
-        transactionClient: tx,
-        customerUserId: input.customerUserId,
-        shopId: slot.shopId,
-        serviceId: serviceSource.affiliateServiceId,
-        originalPriceJpy,
-        scheduledStartAt: slot.startsAt
-      };
-      const preparedAffiliate = options.prepareAffiliate
-        ? await options.prepareAffiliate(affiliateContext)
-        : null;
-      const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
-
-      const nextBookedCount = slot.bookedCount + 1;
-      const slotUpdate = await tx.scheduleSlot.updateMany({
-        where: {
-          id: slot.id,
-          deletedAt: null,
-          status: "AVAILABLE",
-          bookedCount: { lt: slot.capacity }
-        },
-        data: {
-          bookedCount: { increment: 1 },
-          status: nextBookedCount >= slot.capacity ? "BOOKED" : "AVAILABLE"
-        }
-      });
-
-      if (slotUpdate.count !== 1) {
-        return null;
-      }
-
-      const order = await tx.bookingOrder.create({
-        data: {
-          orderNo: this.createOrderNo(),
-          orderType: this.orderTypeToDb(input.orderType ?? "booking"),
-          customerUserId: input.customerUserId,
-          serviceId: serviceSource.serviceId,
-          technicianServiceId: serviceSource.technicianServiceId,
-          shopId: slot.shopId,
-          technicianProfileId: slot.technicianProfileId,
-          scheduleSlotId: slot.id,
-          status: "PENDING",
-          fulfillmentMode: input.fulfillmentMode,
-          priceAmount: finalPriceJpy,
-          currency: serviceSource.currency,
-          pricingModeSnapshot: pricingMode === "technician" ? "TECHNICIAN" : "MERCHANT",
-          serviceOwnerType: serviceSource.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
-          serviceOwnerId: serviceSource.ownerId,
-          serviceNameSnapshot: serviceSource.name,
-          servicePriceSnapshot: serviceSource.priceAmount,
-          serviceDurationSnapshot: serviceSource.durationMinutes,
-          serviceSnapshotJson: serviceSource.snapshot,
-          startsAt: slot.startsAt,
-          endsAt: slot.endsAt,
-          paymentMethod: this.paymentMethodToDb(input.paymentMethod ?? "onsite"),
-          paymentAmountJpy: finalPriceJpy,
-          note: input.note?.trim() || null,
-          statusHistory: {
-            create: {
-              fromStatus: null,
-              toStatus: "PENDING",
-              actorUserId: input.customerUserId
+            if (conflict) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
             }
-          }
-        },
-        include: this.orderInclude()
-      });
 
-      if (preparedAffiliate && options.persistAffiliate) {
-        if (!serviceSource.affiliateServiceId) {
-          throw new Error("error.affiliate.promotion_scope_mismatch");
-        }
-        await options.persistAffiliate({
-          ...affiliateContext,
-          serviceId: serviceSource.affiliateServiceId,
-          bookingOrderId: order.id,
-          prepared: preparedAffiliate
-        });
-        const attributedOrder = await tx.bookingOrder.findFirst({
-          where: { id: order.id, deletedAt: null },
-          include: this.orderInclude()
-        });
-        if (!attributedOrder) {
-          throw new Error("error.order.not_found");
-        }
-        return this.mapOrder(attributedOrder);
+            const originalPriceJpy = Math.round(Number(serviceSource.priceAmount.toString()));
+            const affiliateContext: BookingCreateAffiliatePreparationContext = {
+              transactionClient: tx,
+              customerUserId: input.customerUserId,
+              shopId: slot.shopId,
+              serviceId: serviceSource.affiliateServiceId,
+              originalPriceJpy,
+              scheduledStartAt: slot.startsAt
+            };
+            const preparedAffiliate = options.prepareAffiliate
+              ? await options.prepareAffiliate(affiliateContext)
+              : null;
+            const finalPriceJpy = preparedAffiliate?.finalPriceJpy ?? originalPriceJpy;
+
+            const nextBookedCount = slot.bookedCount + 1;
+            const slotUpdate = await tx.scheduleSlot.updateMany({
+              where: {
+                id: slot.id,
+                deletedAt: null,
+                status: "AVAILABLE",
+                bookedCount: { lt: slot.capacity }
+              },
+              data: {
+                bookedCount: { increment: 1 },
+                status: nextBookedCount >= slot.capacity ? "BOOKED" : "AVAILABLE"
+              }
+            });
+
+            if (slotUpdate.count !== 1) {
+              if (supersededOrderIds.length > 0) {
+                throw new BookingPendingReplacementUnavailableError();
+              }
+              return null;
+            }
+
+            const order = await tx.bookingOrder.create({
+              data: {
+                orderNo: this.createOrderNo(),
+                orderType: this.orderTypeToDb(input.orderType ?? "booking"),
+                customerUserId: input.customerUserId,
+                serviceId: serviceSource.serviceId,
+                technicianServiceId: serviceSource.technicianServiceId,
+                shopId: slot.shopId,
+                technicianProfileId: slot.technicianProfileId,
+                scheduleSlotId: slot.id,
+                status: "PENDING",
+                fulfillmentMode: input.fulfillmentMode,
+                priceAmount: finalPriceJpy,
+                currency: serviceSource.currency,
+                pricingModeSnapshot: pricingMode === "technician" ? "TECHNICIAN" : "MERCHANT",
+                serviceOwnerType: serviceSource.ownerType === "technician" ? "TECHNICIAN" : "SHOP",
+                serviceOwnerId: serviceSource.ownerId,
+                serviceNameSnapshot: serviceSource.name,
+                servicePriceSnapshot: serviceSource.priceAmount,
+                serviceDurationSnapshot: serviceSource.durationMinutes,
+                serviceSnapshotJson: serviceSource.snapshot,
+                startsAt: slot.startsAt,
+                endsAt: slot.endsAt,
+                paymentMethod: this.paymentMethodToDb(input.paymentMethod ?? "onsite"),
+                paymentAmountJpy: finalPriceJpy,
+                note: input.note?.trim() || null,
+                statusHistory: {
+                  create: {
+                    fromStatus: null,
+                    toStatus: "PENDING",
+                    actorUserId: input.customerUserId
+                  }
+                }
+              },
+              include: this.orderInclude()
+            });
+
+            if (supersededOrderIds.length > 0) {
+              await tx.orderStatusHistory.createMany({
+                data: supersededOrderIds.map((bookingOrderId) => ({
+                  bookingOrderId,
+                  fromStatus: "PENDING" as const,
+                  toStatus: "CANCELLED" as const,
+                  actorUserId: input.customerUserId,
+                  reason: "superseded_by_new_pending_order",
+                  metadata: {
+                    supersededByBookingOrderId: order.id
+                  }
+                }))
+              });
+              if (options.invalidateSupersededAffiliate) {
+                for (const bookingOrderId of supersededOrderIds) {
+                  await options.invalidateSupersededAffiliate({
+                    transactionClient: tx,
+                    bookingOrderId,
+                    actorUserId: input.customerUserId
+                  });
+                }
+              }
+            }
+
+            const cancelledOrders =
+              supersededOrderIds.length > 0
+                ? await tx.bookingOrder.findMany({
+                    where: { id: { in: supersededOrderIds }, deletedAt: null },
+                    include: this.orderInclude(),
+                    orderBy: { id: "asc" }
+                  })
+                : [];
+
+            const buildResult = (createdOrder: OrderRecord): BookingCreateMutationResult => ({
+              order: this.mapOrder(createdOrder),
+              recipientUserIds: this.providerUserIds(createdOrder),
+              supersededOrders: cancelledOrders.map((cancelledOrder) => ({
+                order: this.mapOrder(cancelledOrder),
+                recipientUserIds: this.providerUserIds(cancelledOrder)
+              }))
+            });
+
+            if (preparedAffiliate && options.persistAffiliate) {
+              if (!serviceSource.affiliateServiceId) {
+                throw new Error("error.affiliate.promotion_scope_mismatch");
+              }
+              await options.persistAffiliate({
+                ...affiliateContext,
+                serviceId: serviceSource.affiliateServiceId,
+                bookingOrderId: order.id,
+                prepared: preparedAffiliate
+              });
+              const attributedOrder = await tx.bookingOrder.findFirst({
+                where: { id: order.id, deletedAt: null },
+                include: this.orderInclude()
+              });
+              if (!attributedOrder) {
+                throw new Error("error.order.not_found");
+              }
+              return buildResult(attributedOrder);
+            }
+
+            return buildResult(order);
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+        )
+      );
+    } catch (error) {
+      if (error instanceof BookingPendingReplacementUnavailableError) {
+        return null;
       }
-
-      return this.mapOrder(order);
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+      throw error;
+    }
   }
 
   private async isShopSuspendedInTransaction(
@@ -774,80 +982,89 @@ export class BookingRepository implements BookingRepositoryPort {
   public async transitionOrder(
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
-  ): Promise<BookingOrderPayload | null> {
-    return runWithTransactionConflictRetry(() => this.client.$transaction(async (tx) => {
-      const current = await tx.bookingOrder.findFirst({
-        where: {
-          id: input.id,
-          deletedAt: null
-        },
-        include: this.orderInclude()
-      });
-
-      if (!current || this.statusFromDb(current.status) !== input.fromStatus) {
-        return null;
-      }
-
-      const update = await tx.bookingOrder.updateMany({
-        where: {
-          id: input.id,
-          deletedAt: null,
-          status: this.statusToDb(input.fromStatus)
-        },
-        data: {
-          status: this.statusToDb(input.toStatus),
-          cancelReason: input.toStatus === "cancelled" ? input.reason?.trim() || null : undefined,
-          paymentStatus:
-            input.toStatus === "cancelled" && current.paymentStatus === "CONFIRMED"
-              ? "REFUND_PENDING"
-              : undefined
-        }
-      });
-
-      if (update.count !== 1) {
-        return null;
-      }
-
-      if (input.toStatus === "cancelled") {
-        await tx.scheduleSlot.updateMany({
+  ): Promise<OrderTransitionMutationResult> {
+    return runWithTransactionConflictRetry(() =>
+      this.client.$transaction(async (tx) => {
+        const current = await tx.bookingOrder.findFirst({
           where: {
-            id: current.scheduleSlotId,
-            bookedCount: { gt: 0 }
+            id: input.id,
+            deletedAt: null
+          },
+          include: this.orderInclude()
+        });
+
+        if (!current || this.statusFromDb(current.status) !== input.fromStatus) {
+          return null;
+        }
+
+        if (input.toStatus === "confirmed") {
+          const pauses = await this.findActiveAcceptancePauses(tx, current.shopId);
+          if (pauses.length > 0) {
+            return { kind: "acceptance_paused", pauses } as const;
+          }
+        }
+
+        const update = await tx.bookingOrder.updateMany({
+          where: {
+            id: input.id,
+            deletedAt: null,
+            status: this.statusToDb(input.fromStatus)
           },
           data: {
-            bookedCount: { decrement: 1 },
-            status: "AVAILABLE"
+            status: this.statusToDb(input.toStatus),
+            cancelReason: input.toStatus === "cancelled" ? input.reason?.trim() || null : undefined,
+            paymentStatus:
+              input.toStatus === "cancelled" && current.paymentStatus === "CONFIRMED"
+                ? "REFUND_PENDING"
+                : undefined
           }
         });
-      }
 
-      await tx.orderStatusHistory.create({
-        data: {
-          bookingOrderId: input.id,
-          fromStatus: this.statusToDb(input.fromStatus),
-          toStatus: this.statusToDb(input.toStatus),
-          actorUserId: input.actorUserId,
-          reason: input.reason?.trim() || null
+        if (update.count !== 1) {
+          return null;
         }
-      });
 
-      if (options.settle) {
-        await options.settle({
-          transactionClient: tx,
-          order: this.mapOrder(current)
+        if (input.toStatus === "cancelled") {
+          await tx.scheduleSlot.updateMany({
+            where: {
+              id: current.scheduleSlotId,
+              bookedCount: { gt: 0 }
+            },
+            data: {
+              bookedCount: { decrement: 1 },
+              status: "AVAILABLE"
+            }
+          });
+        }
+
+        await tx.orderStatusHistory.create({
+          data: {
+            bookingOrderId: input.id,
+            fromStatus: this.statusToDb(input.fromStatus),
+            toStatus: this.statusToDb(input.toStatus),
+            actorUserId: input.actorUserId,
+            reason: input.reason?.trim() || null
+          }
         });
-      }
 
-      const next = await tx.bookingOrder.findFirst({
-        where: {
-          id: input.id,
-          deletedAt: null
-        },
-        include: this.orderInclude()
-      });
+        if (options.settle) {
+          await options.settle({
+            transactionClient: tx,
+            order: this.mapOrder(current)
+          });
+        }
 
-      return next ? this.mapOrder(next) : null;
-    }));
+        const next = await tx.bookingOrder.findFirst({
+          where: {
+            id: input.id,
+            deletedAt: null
+          },
+          include: this.orderInclude()
+        });
+
+        return next ? this.mapOrder(next) : null;
+      })
+    );
   }
 
   public confirmManualPayment(
@@ -1135,6 +1352,91 @@ export class BookingRepository implements BookingRepositoryPort {
       return;
     }
     await transaction.shop.update({ where: { id: shopId }, data: { updatedAt } });
+  }
+
+  private async lockCustomerUser(
+    transaction: Prisma.TransactionClient,
+    userId: number
+  ): Promise<boolean> {
+    const rows = await transaction.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`SELECT \`id\` FROM \`users\` WHERE \`id\` = ${userId} AND \`deleted_at\` IS NULL FOR UPDATE`
+    );
+    return rows.length === 1;
+  }
+
+  private async findActiveAcceptancePauses(
+    transaction: Prisma.TransactionClient,
+    shopId: number
+  ): Promise<ActiveOrderAcceptancePauseSummary[]> {
+    await transaction.$queryRaw<Array<{ id: number }>>(
+      Prisma.sql`SELECT \`id\` FROM \`shops\` WHERE \`id\` = ${shopId} AND \`deleted_at\` IS NULL FOR UPDATE`
+    );
+    const at = new Date();
+    const memberships = await transaction.merchantShopMembership.findMany({
+      where: {
+        shopId,
+        activeKey: { not: null },
+        deletedAt: null,
+        startsAt: { lte: at },
+        OR: [{ endsAt: null }, { endsAt: { gt: at } }]
+      },
+      select: { merchantAccountId: true },
+      orderBy: { merchantAccountId: "asc" }
+    });
+    const merchantAccountIds = Array.from(
+      new Set(memberships.map((membership) => membership.merchantAccountId))
+    );
+    if (merchantAccountIds.length > 0) {
+      await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT \`id\` FROM \`merchant_accounts\` WHERE \`id\` IN (${Prisma.join(merchantAccountIds)}) AND \`deleted_at\` IS NULL ORDER BY \`id\` FOR UPDATE`
+      );
+    }
+    const pauses = await transaction.orderAcceptancePause.findMany({
+      where: {
+        status: "ACTIVE",
+        activeKey: { not: null },
+        deletedAt: null,
+        OR: [
+          { subjectType: "SHOP", shopId },
+          ...(merchantAccountIds.length > 0
+            ? [
+                {
+                  subjectType: "MERCHANT_ACCOUNT" as const,
+                  merchantAccountId: { in: merchantAccountIds }
+                }
+              ]
+            : [])
+        ]
+      },
+      select: {
+        subjectType: true,
+        authorityType: true,
+        reasonCode: true,
+        startsAt: true
+      },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }]
+    });
+    return pauses.map((pause) => ({
+      subjectType: pause.subjectType === "SHOP" ? "shop" : "merchant_account",
+      authorityType:
+        pause.authorityType === "OPERATIONS"
+          ? "operations"
+          : pause.authorityType === "MERCHANT"
+            ? "merchant"
+            : "shop",
+      reasonCode: pause.reasonCode,
+      startsAt: pause.startsAt
+    }));
+  }
+
+  private providerUserIds(order: OrderRecord): number[] {
+    return Array.from(
+      new Set(
+        [order.shop.ownerUserId, order.technicianProfile?.userId].filter(
+          (userId): userId is number => typeof userId === "number"
+        )
+      )
+    );
   }
 
   private matchesServiceDuration(startsAt: Date, endsAt: Date, durationMinutes: number): boolean {

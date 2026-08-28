@@ -1,12 +1,14 @@
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   AvailabilityListInput,
+  BookingCreateRepositoryOptions,
   BookingCreateRepositoryInput,
   BookingOrderPayload,
   BookingOrderStatusPayload,
   BookingRepositoryPort,
   ManualPaymentMutationResult,
   ManualPaymentScope,
+  OrderAcceptancePausedResult,
   OrderTransitionRepositoryOptions,
   OrderListInput,
   ScheduleListInput,
@@ -35,7 +37,6 @@ export interface AuthenticatedBookingActor {
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
 }
-
 export interface BookingCreateInput
   extends Omit<BookingCreateRepositoryInput, "customerUserId">,
     AffiliatePromotionInput {
@@ -205,30 +206,74 @@ export class BookingService {
         statusCode: 503
       });
     }
-    const order = selector
-      ? await this.repository.createBooking(repositoryInput, {
-          prepareAffiliate: (context) =>
-            this.affiliateCheckoutService!.prepareCheckout({
-              ...context,
-              selector
-            }),
-          persistAffiliate: (context) =>
-            this.affiliateCheckoutService!.persistAttribution({
-              bookingOrderId: context.bookingOrderId,
-              customerUserId: context.customerUserId,
-              shopId: context.shopId,
-              serviceId: context.serviceId,
-              prepared: context.prepared,
-              transactionClient: context.transactionClient
-            })
-        })
+    const repositoryOptions = {
+      ...(selector
+        ? {
+            prepareAffiliate: (context: Parameters<
+              NonNullable<BookingCreateRepositoryOptions["prepareAffiliate"]>
+            >[0]) =>
+              this.affiliateCheckoutService!.prepareCheckout({
+                ...context,
+                selector
+              }),
+            persistAffiliate: (context: Parameters<
+              NonNullable<BookingCreateRepositoryOptions["persistAffiliate"]>
+            >[0]) =>
+              this.affiliateCheckoutService!.persistAttribution({
+                bookingOrderId: context.bookingOrderId,
+                customerUserId: context.customerUserId,
+                shopId: context.shopId,
+                serviceId: context.serviceId,
+                prepared: context.prepared,
+                transactionClient: context.transactionClient
+              })
+          }
+        : {}),
+      ...(this.affiliateCheckoutService
+        ? {
+            invalidateSupersededAffiliate: (context: Parameters<
+              NonNullable<BookingCreateRepositoryOptions["invalidateSupersededAffiliate"]>
+            >[0]) =>
+              this.affiliateCheckoutService!.invalidateCancelledBooking({
+                bookingOrderId: context.bookingOrderId,
+                actorUserId: context.actorUserId,
+                transactionClient: context.transactionClient
+              })
+          }
+        : {})
+    };
+    const result = Object.keys(repositoryOptions).length > 0
+      ? await this.repository.createBooking(repositoryInput, repositoryOptions)
       : await this.repository.createBooking(repositoryInput);
 
-    if (!order) {
+    if (!result) {
       throw this.slotUnavailableError();
     }
+    if (!("order" in result) || !("supersededOrders" in result)) {
+      return result;
+    }
 
-    return order;
+    for (const superseded of result.supersededOrders) {
+      await this.notificationService?.notifyOrderStatusChanged({
+        actorUserId: actor.userId,
+        orderId: superseded.order.id,
+        orderNo: superseded.order.orderNo,
+        fromStatus: "pending",
+        toStatus: "cancelled",
+        serviceName: superseded.order.serviceName,
+        recipientUserIds: superseded.recipientUserIds
+      });
+    }
+    await this.notificationService?.notifyOrderStatusChanged({
+      actorUserId: actor.userId,
+      orderId: result.order.id,
+      orderNo: result.order.orderNo,
+      fromStatus: "none",
+      toStatus: "pending",
+      serviceName: result.order.serviceName,
+      recipientUserIds: result.recipientUserIds
+    });
+    return result.order;
   }
 
   public listOrders(
@@ -343,6 +388,15 @@ export class BookingService {
       throw this.invalidTransitionError();
     }
 
+    if (this.isAcceptancePausedResult(next)) {
+      throw new AppError({
+        code: ERROR_CODES.ORDER_ACCEPTANCE_PAUSED,
+        message: "error.order.acceptance_paused",
+        statusCode: 409,
+        data: { pauses: next.pauses }
+      });
+    }
+
     await this.notificationService?.notifyOrderStatusChanged({
       actorUserId: actor.userId,
       orderId: next.id,
@@ -354,6 +408,12 @@ export class BookingService {
     });
 
     return next;
+  }
+
+  private isAcceptancePausedResult(
+    result: BookingOrderPayload | OrderAcceptancePausedResult
+  ): result is OrderAcceptancePausedResult {
+    return "kind" in result && result.kind === "acceptance_paused";
   }
 
   private slotUnavailableError(): AppError {

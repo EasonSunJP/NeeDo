@@ -179,6 +179,44 @@ describe("BookingService state machine", () => {
     });
   });
 
+  it("returns a structured conflict when an active acceptance pause blocks confirmation", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.transitionOrder.mockResolvedValue({
+      kind: "acceptance_paused",
+      pauses: [
+        {
+          subjectType: "merchant_account",
+          authorityType: "operations",
+          reasonCode: "risk_review",
+          startsAt: new Date("2026-08-29T01:00:00.000Z")
+        }
+      ]
+    } as never);
+    const ledgerService: jest.Mocked<BookingLedgerSettlementPort> = {
+      freezeBookingAcceptance: jest.fn(),
+      releaseBookingHold: jest.fn(),
+      settleBookingCompletion: jest.fn(),
+      compensateCustomerForMerchantCancellation: jest.fn()
+    };
+    const service = new BookingService(repository, ledgerService);
+
+    await expect(service.transitionOrder(actor, 1, "confirm")).rejects.toMatchObject({
+      code: ERROR_CODES.ORDER_ACCEPTANCE_PAUSED,
+      message: "error.order.acceptance_paused",
+      statusCode: 409,
+      data: {
+        pauses: [
+          expect.objectContaining({
+            subjectType: "merchant_account",
+            authorityType: "operations",
+            reasonCode: "risk_review"
+          })
+        ]
+      }
+    });
+    expect(ledgerService.freezeBookingAcceptance).not.toHaveBeenCalled();
+  });
+
   it("rejects only new bookings for a suspended shop and keeps existing order transitions available", async () => {
     const repository = createRepository(makeOrder("confirmed"));
     repository.findScheduleSlotShopId = jest.fn(async () => 1);
@@ -296,7 +334,8 @@ describe("BookingService state machine", () => {
     const [, options] = repository.createBooking.mock.calls[0];
     expect(options).toEqual({
       prepareAffiliate: expect.any(Function),
-      persistAffiliate: expect.any(Function)
+      persistAffiliate: expect.any(Function),
+      invalidateSupersededAffiliate: expect.any(Function)
     });
     const transactionClient = { booking: "transaction" };
     const context = {
@@ -356,7 +395,8 @@ describe("BookingService state machine", () => {
     });
 
     expect(repository.createBooking).toHaveBeenCalledWith(
-      expect.objectContaining({ customerUserId: actor.userId })
+      expect.objectContaining({ customerUserId: actor.userId }),
+      { invalidateSupersededAffiliate: expect.any(Function) }
     );
     expect(affiliateCheckout.prepareCheckout).not.toHaveBeenCalled();
   });

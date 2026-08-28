@@ -351,6 +351,22 @@ enum ShopPlatformFeePayerType {
   TECHNICIAN
 }
 
+enum OrderAcceptancePauseSubjectType {
+  MERCHANT_ACCOUNT
+  SHOP
+}
+
+enum OrderAcceptancePauseAuthorityType {
+  OPERATIONS
+  MERCHANT
+  SHOP
+}
+
+enum OrderAcceptancePauseStatus {
+  ACTIVE
+  RELEASED
+}
+
 enum ConversationType {
   DIRECT @map("direct")
   GROUP  @map("group")
@@ -580,6 +596,8 @@ model User {
   updatedTechnicianShopAffiliations     TechnicianShopAffiliation[]   @relation("TechnicianShopAffiliationUpdatedBy")
   createdShopPlatformFeePolicies        ShopPlatformFeePolicy[]       @relation("ShopPlatformFeePolicyCreatedBy")
   updatedShopPlatformFeePolicies        ShopPlatformFeePolicy[]       @relation("ShopPlatformFeePolicyUpdatedBy")
+  createdOrderAcceptancePauses          OrderAcceptancePause[]        @relation("OrderAcceptancePauseCreatedBy")
+  releasedOrderAcceptancePauses         OrderAcceptancePause[]        @relation("OrderAcceptancePauseReleasedBy")
   createdOfficialAnnouncements          OfficialAnnouncement[]        @relation("OfficialAnnouncementCreatedBy")
   createdOfficialAnnouncementReleases   OfficialAnnouncementRelease[] @relation("OfficialAnnouncementReleaseCreatedBy")
   updatedOfficialAnnouncementReleases   OfficialAnnouncementRelease[] @relation("OfficialAnnouncementReleaseUpdatedBy")
@@ -699,6 +717,7 @@ model Shop {
   publicIdentifier           PublicIdentifier?
   customerSupportAccount     CustomerSupportAccount?
   platformFeePolicy          ShopPlatformFeePolicy?
+  orderAcceptancePauses      OrderAcceptancePause[]
 
   @@index([ownerUserId])
   @@index([city])
@@ -2428,6 +2447,40 @@ model ShopPlatformFeePolicy {
   @@map("shop_platform_fee_policies")
 }
 
+model OrderAcceptancePause {
+  id                Int                               @id @default(autoincrement())
+  subjectType       OrderAcceptancePauseSubjectType   @map("subject_type")
+  merchantAccountId Int?                              @map("merchant_account_id")
+  shopId            Int?                              @map("shop_id")
+  authorityType     OrderAcceptancePauseAuthorityType @map("authority_type")
+  status            OrderAcceptancePauseStatus        @default(ACTIVE)
+  reasonCode        String                            @map("reason_code") @db.VarChar(80)
+  reasonDetail      String                            @map("reason_detail") @db.VarChar(500)
+  createdById       Int                               @map("created_by_id")
+  releasedById      Int?                              @map("released_by_id")
+  startsAt          DateTime                          @default(now()) @map("starts_at")
+  releasedAt        DateTime?                         @map("released_at")
+  releaseReason     String?                           @map("release_reason") @db.VarChar(500)
+  activeKey         String?                           @unique @map("active_key") @db.VarChar(191)
+  createdAt         DateTime                          @default(now()) @map("created_at")
+  updatedAt         DateTime                          @updatedAt @map("updated_at")
+  deletedAt         DateTime?                         @map("deleted_at")
+
+  merchantAccount MerchantAccount? @relation(fields: [merchantAccountId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  shop            Shop?            @relation(fields: [shopId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdBy       User             @relation("OrderAcceptancePauseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  releasedBy      User?            @relation("OrderAcceptancePauseReleasedBy", fields: [releasedById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([subjectType, merchantAccountId, shopId, status, deletedAt], map: "order_acceptance_pauses_subject_active_idx")
+  @@index([authorityType, status, deletedAt], map: "order_acceptance_pauses_authority_active_idx")
+  @@index([createdById], map: "order_acceptance_pauses_created_by_idx")
+  @@index([releasedById], map: "order_acceptance_pauses_released_by_idx")
+  @@index([startsAt], map: "order_acceptance_pauses_starts_at_idx")
+  @@index([releasedAt], map: "order_acceptance_pauses_released_at_idx")
+  @@index([deletedAt], map: "order_acceptance_pauses_deleted_idx")
+  @@map("order_acceptance_pauses")
+}
+
 model PlatformFeeRule {
   id              Int       @id @default(autoincrement())
   ruleSetId       Int       @map("rule_set_id")
@@ -2911,6 +2964,7 @@ model MerchantAccount {
   payerInvoices           SaasInvoice[]
   invoiceLines            SaasInvoiceLine[]
   entitySuspensions       EntitySuspension[]
+  orderAcceptancePauses   OrderAcceptancePause[]
   publishedAffiliateTasks AffiliateTask[]          @relation("AffiliateMerchantPublisher")
   publicIdentifier        PublicIdentifier?
 

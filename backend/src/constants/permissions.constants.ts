@@ -460,6 +460,20 @@ export const SYSTEM_PERMISSIONS = [
     "修改全局平台费金额与店铺收费状态"
   ),
   createPermission(
+    "backoffice:order-acceptance-pause:read",
+    "运营接单暂停读取",
+    "api",
+    "backoffice",
+    "分页读取集团和店铺接单暂停记录"
+  ),
+  createPermission(
+    "backoffice:order-acceptance-pause:write",
+    "运营接单暂停管理",
+    "api",
+    "backoffice",
+    "创建或解除集团和店铺接单暂停"
+  ),
+  createPermission(
     "backoffice:orders:list",
     "运营后台订单列表",
     "api",
@@ -633,6 +647,20 @@ export const SYSTEM_PERMISSIONS = [
     "api",
     "merchant-admin",
     "设置当前商户身份可管理店铺的平台费承担者"
+  ),
+  createPermission(
+    "merchant-admin:order-acceptance-pause:read",
+    "商户接单暂停读取",
+    "api",
+    "merchant-admin",
+    "读取当前商户或店铺身份可见的接单暂停记录"
+  ),
+  createPermission(
+    "merchant-admin:order-acceptance-pause:write",
+    "商户接单暂停管理",
+    "api",
+    "merchant-admin",
+    "在当前商户或店铺身份范围内创建或解除接单暂停"
   ),
   createPermission(
     "merchant-admin:orders:list",
@@ -1196,6 +1224,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   "backoffice:dashboard:read",
   "backoffice:platform-fee-policy:read",
   "backoffice:platform-fee-policy:write",
+  "backoffice:order-acceptance-pause:read",
+  "backoffice:order-acceptance-pause:write",
   "backoffice:orders:list",
   "backoffice:schedule:list",
   "backoffice:finance:list",
@@ -1233,6 +1263,8 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:dashboard:read",
   "merchant-admin:platform-fee-policy:read",
   "merchant-admin:platform-fee-policy:write",
+  "merchant-admin:order-acceptance-pause:read",
+  "merchant-admin:order-acceptance-pause:write",
   "merchant-admin:orders:list",
   "merchant-admin:schedule:list",
   "merchant-admin:finance:list",
