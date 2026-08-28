@@ -797,7 +797,7 @@ git commit -m "feat: expose merchant platform fee payer policy"
 - Consumes: reviewed migration and existing local formal MySQL.
 - Produces: applied schema evidence, canonical global fee evidence, zero unintended shop overrides, and a documented boundary for the next microstep.
 
-- [ ] **Step 1: Run migration preflight without business writes**
+- [x] **Step 1: Run migration preflight without business writes**
 
 Run:
 
@@ -819,7 +819,7 @@ shop_platform_fee_policies: table absent before apply
 
 Stop if the active default family/rule count is not exactly one; do not guess which rule is canonical.
 
-- [ ] **Step 2: Apply the migration to the local formal database**
+- [x] **Step 2: Apply the migration to the local formal database**
 
 Run:
 
@@ -831,7 +831,7 @@ npm run prisma:status
 
 Expected: migration applies once and status reports the schema up to date.
 
-- [ ] **Step 3: Reconcile post-apply state**
+- [x] **Step 3: Reconcile post-apply state**
 
 Read-only reconciliation must prove:
 
@@ -846,7 +846,7 @@ wallet balances/holds/ledger/order financial counts: unchanged by this migration
 
 Do not create the “all real test shops disabled” rows here; that is microstep 6 from the approved design and requires its own dry-run/apply plan after Booking consumes the policy safely.
 
-- [ ] **Step 4: Run the full backend gate**
+- [x] **Step 4: Run the full backend gate**
 
 Run:
 
@@ -861,7 +861,7 @@ npm test
 
 Expected: all commands PASS. If full Jest exposes an unrelated pre-existing failure, capture the exact failing suite and prove focused platform-fee suites remain green; do not claim the global gate passed.
 
-- [ ] **Step 5: Scan for prohibited placeholders and accidental mock expansion**
+- [x] **Step 5: Scan for prohibited placeholders and accidental mock expansion**
 
 Run:
 
@@ -872,7 +872,7 @@ git diff --check
 
 Expected: no prohibited implementation placeholders; `git diff --check` is clean. Test-file mocks used only for unit isolation are allowed and must not appear in production source.
 
-- [ ] **Step 6: Update the finance reconciliation documentation**
+- [x] **Step 6: Update the finance reconciliation documentation**
 
 Document:
 
@@ -883,14 +883,14 @@ Document:
 - shop policies are persisted and API-visible but are not yet consumed by Booking/Ledger.
 - the next microstep must add payer wallet snapshot, zero-fee no-hold behavior, negative balance/debt, and 7-day reward state before enabling shop overrides in real test data.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add docs/11_NDP_LEDGER_FINANCE_RECONCILIATION.md
 git commit -m "docs: record platform fee policy foundation"
 ```
 
-- [ ] **Step 8: Report the microstep gate honestly**
+- [x] **Step 8: Report the microstep gate honestly**
 
 Report separately:
 
@@ -909,13 +909,13 @@ Do not describe this backend foundation as the completed platform-fee feature.
 
 ## Plan Self-Review Checklist
 
-- [ ] Every approved microstep-1 rule maps to a model, service, repository, API, permission, test, or reconciliation step.
-- [ ] Global amount history is immutable after use and capture resolves by acceptance time.
-- [ ] Operations and merchant field ownership cannot be bypassed with a shared mutation body.
-- [ ] Merchant scope is current-identity scoped and rechecked transactionally.
-- [ ] Missing policy has one explicit safe fallback; no mock fallback exists.
-- [ ] Every write has Zod, RBAC, optimistic versioning, transactional audit, OpenAPI, and tests.
-- [ ] Lists are paginated and expose real public shop IDs for display.
-- [ ] Migration apply is preceded by dry-run SQL review and deterministic data-count checks.
-- [ ] The plan does not mutate wallets, orders, real test-shop policy rows, or membership data.
-- [ ] The plan explicitly preserves the boundary to microsteps 2–6.
+- [x] Every approved microstep-1 rule maps to a model, service, repository, API, permission, test, or reconciliation step.
+- [x] Global amount history is immutable after use and capture resolves by acceptance time.
+- [x] Operations and merchant field ownership cannot be bypassed with a shared mutation body.
+- [x] Merchant scope is current-identity scoped and rechecked transactionally.
+- [x] Missing policy has one explicit safe fallback; no mock fallback exists.
+- [x] Every write has Zod, RBAC, optimistic versioning, transactional audit, OpenAPI, and tests.
+- [x] Lists are paginated and expose real public shop IDs for display.
+- [x] Migration apply is preceded by dry-run SQL review and deterministic data-count checks.
+- [x] The plan does not mutate wallets, orders, real test-shop policy rows, or membership data.
+- [x] The plan explicitly preserves the boundary to microsteps 2–6.
