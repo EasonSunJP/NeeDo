@@ -1701,9 +1701,17 @@ export class AuthService {
         publicIdentityById.set(identity.publicId, identity);
       }
     }
+    const customerPublicId = allActiveIdentities.find(
+      (identity) => ["customer", "user", "u"].includes(identity.type) && identity.publicId !== null
+    )?.publicId;
+    const customerActivatedAffiliateIdentities = customerPublicId
+      ? allActiveIdentities
+          .filter((identity) => identity.type === "scout" && identity.publicId === null)
+          .map((identity) => ({ ...identity, publicId: customerPublicId }))
+      : [];
     const identities =
       publicIdentityById.size > 0
-        ? Array.from(publicIdentityById.values())
+        ? [...Array.from(publicIdentityById.values()), ...customerActivatedAffiliateIdentities]
         : this.allowLegacyAuthAdaptersForTest
           ? allActiveIdentities
           : [];

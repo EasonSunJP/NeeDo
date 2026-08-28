@@ -1740,6 +1740,59 @@ describe("verified email registration and formal password authentication", () =>
       });
   });
 
+  it("exposes a customer-activated scout identity with the same immutable NeeDo user ID", async () => {
+    const fixture = await createAuthFixture();
+    (fixture.multiPortalUser.identities as Array<Record<string, unknown>>).push({
+      id: 52,
+      userId: fixture.multiPortalUser.id,
+      type: "scout",
+      scopeType: "global",
+      scopeId: null,
+      displayName: "Multi Affiliate",
+      isDefault: false,
+      isActive: true,
+      deletedAt: null
+    });
+
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "multi@example.com", password: "Abcd@1234" })
+      .expect(200);
+    const { accessToken, refreshToken } = loginResponse.body.data;
+
+    const meResponse = await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(meResponse.body.data.identities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 50, type: "customer", publicId: "u1234567894" }),
+        expect.objectContaining({ id: 52, type: "scout", publicId: "u1234567894" })
+      ])
+    );
+    expect(meResponse.body.data.identityAvailability).toContainEqual({
+      kind: "affiliate",
+      state: "active",
+      identityId: 52,
+      applicationId: null,
+      rejectionReason: null
+    });
+
+    await request(fixture.app)
+      .post("/api/v1/auth/switch-identity")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ refreshToken, identityId: 52 })
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.me.currentIdentity).toMatchObject({
+          id: 52,
+          type: "scout",
+          publicId: "u1234567894"
+        });
+      });
+  });
+
   it("returns server-computed identity availability for active, draft, pending, rejected, and contract activation states", async () => {
     const fixture = await createAuthFixture();
     const customerLogin = await request(fixture.app)

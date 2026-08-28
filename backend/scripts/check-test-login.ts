@@ -1,6 +1,10 @@
+import { compare } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "fs";
-import { TEST_USER_ACCOUNTS, type TestUserAccountDefinition } from "../src/constants/test-login.constants";
+import {
+  TEST_USER_ACCOUNTS,
+  type TestUserAccountDefinition
+} from "../src/constants/test-login.constants";
 
 type CliOptions = {
   all: boolean;
@@ -52,15 +56,31 @@ const joinUrl = (baseUrl: string, path: string): string =>
 const tokenPreview = (token: string | undefined): string =>
   token ? `${token.slice(0, 8)}***` : "<missing>";
 
-const getPassword = (): string => {
-  const password =
-    process.env.TEST_USER_DEFAULT_PASSWORD?.trim() || process.env.ADMIN_DEFAULT_PASSWORD?.trim();
-
-  if (!password) {
-    throw new Error("TEST_USER_DEFAULT_PASSWORD or ADMIN_DEFAULT_PASSWORD is required.");
+const getPasswordCandidates = (allowAdminFallback: boolean): string[] => {
+  const candidates = [
+    process.env.TEST_USER_DEFAULT_PASSWORD?.trim(),
+    ...(allowAdminFallback ? [process.env.ADMIN_DEFAULT_PASSWORD?.trim()] : [])
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  const uniqueCandidates = Array.from(new Set(candidates));
+  if (uniqueCandidates.length === 0) {
+    throw new Error(
+      allowAdminFallback
+        ? "TEST_USER_DEFAULT_PASSWORD or ADMIN_DEFAULT_PASSWORD is required."
+        : "TEST_USER_DEFAULT_PASSWORD is required."
+    );
   }
+  return uniqueCandidates;
+};
 
-  return password;
+const resolvePasswordForUser = async (
+  passwordHash: string | null,
+  candidates: string[]
+): Promise<string | null> => {
+  if (!passwordHash) return null;
+  for (const candidate of candidates) {
+    if (await compare(candidate, passwordHash)) return candidate;
+  }
+  return null;
 };
 
 const expectedPortalPermission = (account: TestUserAccountDefinition): string => {
@@ -83,7 +103,9 @@ const main = async (): Promise<void> => {
   const options = parseArgs();
   process.env.ENV_FILE = options.envFile;
   if (!existsSync(options.envFile)) {
-    throw new Error(`Env file ${options.envFile} was not found. Copy backend/.env.dev.example to backend/.env.dev and fill real local values.`);
+    throw new Error(
+      `Env file ${options.envFile} was not found. Copy backend/.env.dev.example to backend/.env.dev and fill real local values.`
+    );
   }
   loadDotenv({ path: options.envFile });
 
@@ -93,8 +115,9 @@ const main = async (): Promise<void> => {
       import("../src/prisma/client"),
       import("../src/config/redis")
     ]);
-  const baseUrl = options.baseUrl || process.env.API_BASE_URL || `http://localhost:${env.PORT}${env.API_PREFIX}`;
-  const password = getPassword();
+  const baseUrl =
+    options.baseUrl || process.env.API_BASE_URL || `http://localhost:${env.PORT}${env.API_PREFIX}`;
+  const passwordCandidates = getPasswordCandidates(env.NODE_ENV === "development");
   const accounts = options.email
     ? TEST_USER_ACCOUNTS.filter((account) => account.email === options.email)
     : TEST_USER_ACCOUNTS;
@@ -169,6 +192,20 @@ const main = async (): Promise<void> => {
         continue;
       }
 
+      const password = await resolvePasswordForUser(user.passwordHash, passwordCandidates);
+      if (!password) {
+        hasFailure = true;
+        results.push({
+          email: account.email,
+          role: account.roleCode,
+          loginOk: false,
+          permissionsCount: 0,
+          canEnterExpectedPortal: false,
+          reason: "configured password does not match; rerun seed"
+        });
+        continue;
+      }
+
       const role = user.userRoles.find((item) => item.role.code === account.roleCode);
       const permissions = new Set(
         role?.role.rolePermissions
@@ -180,13 +217,19 @@ const main = async (): Promise<void> => {
       );
       const canEnterExpectedPortal = permissions.has(expectedPortalPermission(account));
 
-      if (!user.isActive || !role || permissions.size === 0 || !identityOk || !canEnterExpectedPortal) {
+      if (
+        !user.isActive ||
+        !role ||
+        permissions.size === 0 ||
+        !identityOk ||
+        !canEnterExpectedPortal
+      ) {
         hasFailure = true;
       }
 
       try {
         const loginResponse = await fetch(joinUrl(baseUrl, "/auth/login"), {
-          body: JSON.stringify({ email: account.email, password }),
+          body: JSON.stringify({ loginIdentifier: account.email, password }),
           headers: {
             "Content-Type": "application/json"
           },
