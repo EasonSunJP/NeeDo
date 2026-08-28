@@ -14,6 +14,13 @@ import {
 } from "../../api/backofficeRealData";
 import { ApiClientError } from "../../api/httpClient";
 import {
+  employeeCompensationApi,
+  type CompensationProfilePreviewInput,
+  type EmployeeCompensationPreviewResult,
+  type EmployeeCompensationResult,
+  type TechnicianCompensationProfileInput,
+} from "../../api/employeeCompensation";
+import {
   payrollSchedulePolicyApi,
   type EmployeePayrollSchedulePolicyInput,
   type PayrollSchedulePolicyResult,
@@ -146,6 +153,18 @@ export function MerchantAdminPeoplePage() {
     useState(false);
   const [employeePayrollPolicyError, setEmployeePayrollPolicyError] =
     useState("");
+  const [employeeCompensation, setEmployeeCompensation] =
+    useState<EmployeeCompensationResult | null>(null);
+  const [employeeCompensationPreview, setEmployeeCompensationPreview] =
+    useState<EmployeeCompensationPreviewResult | null>(null);
+  const [employeeCompensationLoading, setEmployeeCompensationLoading] =
+    useState(false);
+  const [employeeCompensationSaving, setEmployeeCompensationSaving] =
+    useState(false);
+  const [employeeCompensationPreviewing, setEmployeeCompensationPreviewing] =
+    useState(false);
+  const [employeeCompensationError, setEmployeeCompensationError] =
+    useState("");
   const [keywordInput, setKeywordInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -220,6 +239,31 @@ export function MerchantAdminPeoplePage() {
     [],
   );
 
+  const employeeCompensationRequest = useMemo(
+    () =>
+      createFormalDetailRequestCoordinator<EmployeeCompensationResult, string>({
+        onError: (compensationError) => {
+          setEmployeeCompensationError(
+            describeDetailError(
+              compensationError,
+              languageRef.current,
+              "员工薪酬与工资统计读取失败",
+            ),
+          );
+        },
+        onFinally: () => setEmployeeCompensationLoading(false),
+        onStart: () => {
+          setEmployeeCompensation(null);
+          setEmployeeCompensationPreview(null);
+          setEmployeeCompensationLoading(true);
+          setEmployeeCompensationError("");
+        },
+        onSuccess: setEmployeeCompensation,
+        request: (needoId) => employeeCompensationApi.get(needoId),
+      }),
+    [],
+  );
+
   const employeeDetailRequest = useMemo(
     () =>
       createFormalDetailRequestCoordinator<MerchantEmployee, string>({
@@ -242,10 +286,11 @@ export function MerchantAdminPeoplePage() {
         onSuccess: (employee) => {
           setEmployeeDetail(employee);
           void employeePayrollPolicyRequest.load(employee.needoId);
+          void employeeCompensationRequest.load(employee.needoId);
         },
         request: (needoId) => merchantEmployeeApi.detail(needoId),
       }),
-    [employeePayrollPolicyRequest],
+    [employeeCompensationRequest, employeePayrollPolicyRequest],
   );
 
   const customerDetailRequest = useMemo(
@@ -274,17 +319,25 @@ export function MerchantAdminPeoplePage() {
   );
 
   useEffect(() => {
+    employeeCompensationRequest.activate();
     employeePayrollPolicyRequest.activate();
     employeeDetailRequest.activate();
     customerDetailRequest.activate();
     return () => {
+      employeeCompensationRequest.dispose();
       employeePayrollPolicyRequest.dispose();
       employeeDetailRequest.dispose();
       customerDetailRequest.dispose();
     };
-  }, [customerDetailRequest, employeeDetailRequest, employeePayrollPolicyRequest]);
+  }, [
+    customerDetailRequest,
+    employeeCompensationRequest,
+    employeeDetailRequest,
+    employeePayrollPolicyRequest,
+  ]);
 
   const closeEmployee = useCallback(() => {
+    employeeCompensationRequest.invalidate();
     employeePayrollPolicyRequest.invalidate();
     employeeDetailRequest.invalidate();
     setSelectedEmployeeNeedoId(null);
@@ -297,7 +350,17 @@ export function MerchantAdminPeoplePage() {
     setEmployeePayrollPolicyLoading(false);
     setEmployeePayrollPolicySaving(false);
     setEmployeePayrollPolicyError("");
-  }, [employeeDetailRequest, employeePayrollPolicyRequest]);
+    setEmployeeCompensation(null);
+    setEmployeeCompensationPreview(null);
+    setEmployeeCompensationLoading(false);
+    setEmployeeCompensationSaving(false);
+    setEmployeeCompensationPreviewing(false);
+    setEmployeeCompensationError("");
+  }, [
+    employeeCompensationRequest,
+    employeeDetailRequest,
+    employeePayrollPolicyRequest,
+  ]);
 
   const closeCustomer = useCallback(() => {
     customerDetailRequest.invalidate();
@@ -414,6 +477,59 @@ export function MerchantAdminPeoplePage() {
       throw policyError;
     } finally {
       setEmployeePayrollPolicySaving(false);
+    }
+  };
+
+  const saveEmployeeCompensation = async (
+    input: TechnicianCompensationProfileInput,
+  ): Promise<void> => {
+    if (!selectedEmployeeNeedoId) return;
+    const needoId = selectedEmployeeNeedoId;
+    setEmployeeCompensationSaving(true);
+    setEmployeeCompensationError("");
+    try {
+      const updated = await employeeCompensationApi.update(needoId, input);
+      if (employeeCompensationRequest.getSelectedId() === needoId) {
+        setEmployeeCompensation(updated);
+        setEmployeeCompensationPreview(null);
+      }
+    } catch (compensationError) {
+      setEmployeeCompensationError(
+        describeDetailError(
+          compensationError,
+          language,
+          "员工薪酬规则保存失败，请重试",
+        ),
+      );
+      throw compensationError;
+    } finally {
+      setEmployeeCompensationSaving(false);
+    }
+  };
+
+  const previewEmployeeCompensation = async (
+    input: CompensationProfilePreviewInput,
+  ): Promise<void> => {
+    if (!selectedEmployeeNeedoId) return;
+    const needoId = selectedEmployeeNeedoId;
+    setEmployeeCompensationPreviewing(true);
+    setEmployeeCompensationError("");
+    try {
+      const preview = await employeeCompensationApi.preview(needoId, input);
+      if (employeeCompensationRequest.getSelectedId() === needoId) {
+        setEmployeeCompensationPreview(preview);
+      }
+    } catch (compensationError) {
+      setEmployeeCompensationError(
+        describeDetailError(
+          compensationError,
+          language,
+          "员工薪酬预估失败，请重试",
+        ),
+      );
+      throw compensationError;
+    } finally {
+      setEmployeeCompensationPreviewing(false);
     }
   };
 
@@ -685,8 +801,19 @@ export function MerchantAdminPeoplePage() {
           ) : null}
           {!employeeDetailLoading && !employeeDetailError && employeeDetail ? (
             <EmployeeDetailCard
+              compensation={employeeCompensation}
+              compensationError={employeeCompensationError}
+              compensationLoading={employeeCompensationLoading}
+              compensationPreview={employeeCompensationPreview}
+              compensationPreviewing={employeeCompensationPreviewing}
+              compensationSaving={employeeCompensationSaving}
               employee={employeeDetail}
               error={employeeMutationError}
+              onPreviewCompensation={previewEmployeeCompensation}
+              onRetryCompensation={() =>
+                void employeeCompensationRequest.retry()
+              }
+              onSaveCompensation={saveEmployeeCompensation}
               onRetryPayrollPolicy={() =>
                 void employeePayrollPolicyRequest.retry()
               }

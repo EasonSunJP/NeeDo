@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MerchantEmployee } from "../../features/merchant-admin/employeeApi";
 import type { PayrollSchedulePolicyResult } from "../../api/payrollSchedulePolicy";
+import type { EmployeeCompensationResult } from "../../api/employeeCompensation";
 import { translateText } from "../../i18n/translations";
 import { EmployeeDetailCard } from "./EmployeeDetailCard";
 
@@ -20,6 +21,18 @@ vi.mock("./EmployeeSchedulePanel", () => ({
   EmployeeSchedulePanel: ({ employee }: { employee: MerchantEmployee }) => (
     <section data-testid="employee-schedule-panel">
       员工日程 · {employee.needoId}
+    </section>
+  ),
+}));
+
+vi.mock("./EmployeeCompensationPanel", () => ({
+  EmployeeCompensationPanel: ({
+    result,
+  }: {
+    result: EmployeeCompensationResult | null;
+  }) => (
+    <section data-testid="employee-compensation-panel">
+      薪酬与结算 · {result?.employee.needoId}
     </section>
   ),
 }));
@@ -99,6 +112,51 @@ const payrollPolicy: PayrollSchedulePolicyResult = {
   },
 };
 
+const compensation: EmployeeCompensationResult = {
+  employee: { needoId: "NEEDO-S-47" },
+  profile: {
+    sourceType: "shop_default",
+    name: "店铺默认薪酬规则",
+    wageMode: "commission",
+    baseSalaryJpy: 0,
+    hourlyRateJpy: 0,
+    dailyRateJpy: 0,
+    fixedOrderPayJpy: 0,
+    commissionRatePercent: 30,
+    guaranteedMinimumJpy: 0,
+    ndpFeeBearer: "shop",
+    technicianNdpSharePercent: 0,
+    bonusRules: [],
+    deductionRules: [],
+    version: 1,
+    status: "active",
+    effectiveFrom: "2026-08-01T00:00:00.000Z",
+    effectiveTo: null,
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+  },
+  payrollSummary: {
+    payslipId: null,
+    periodStart: null,
+    periodEnd: null,
+    status: null,
+    disputeStatus: null,
+    completedOrderCount: 0,
+    workedMinutes: 0,
+    serviceIncomeJpy: 0,
+    basePayJpy: 0,
+    commissionJpy: 0,
+    bonusJpy: 0,
+    allowanceJpy: 0,
+    deductionJpy: 0,
+    platformFeeShareDeductionJpy: 0,
+    netPayJpy: 0,
+    paidAmountJpy: 0,
+    unpaidAmountJpy: 0,
+    payoutRecordCount: 0,
+  },
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -108,8 +166,17 @@ async function renderCard(
   await act(async () => {
     root.render(
       <EmployeeDetailCard
+        compensation={compensation}
+        compensationError=""
+        compensationLoading={false}
+        compensationPreview={null}
+        compensationPreviewing={false}
+        compensationSaving={false}
         employee={employee}
         error=""
+        onPreviewCompensation={vi.fn(async () => undefined)}
+        onRetryCompensation={vi.fn()}
+        onSaveCompensation={vi.fn(async () => undefined)}
         payrollPolicy={payrollPolicy}
         payrollPolicyError=""
         payrollPolicyLoading={false}
@@ -177,6 +244,7 @@ describe("EmployeeDetailCard", () => {
     expect(container.textContent).not.toContain("987");
     expect(container.textContent).not.toContain("654");
     expect(container.textContent).not.toContain("薪酬设置");
+    expect(container.textContent).toContain("薪酬与结算 · NEEDO-S-47");
     expect(container.textContent).not.toContain("时间线");
     expect(container.textContent).toContain("员工日程 · NEEDO-S-47");
   });

@@ -162,7 +162,7 @@ All portals require a formal authenticated session. Local preview, acceptance, a
 
 Merchant employee identity is now founded on one global technician profile, its canonical `s##########` NeeDoID, and shop-scoped `TechnicianShopAffiliation` rows. The protected `/api/v1/merchant-admin/employees` list/detail/profile/affiliation routes derive the shop only from the active authenticated identity; profile edits are field-limited and audited, while affiliation writes enforce exclusive-versus-partner rules inside a locked database transaction and preserve ended relationships as history.
 
-The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page.
+The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page. The same employee card reads, edits, and previews the current shop-scoped compensation rule through `/api/v1/merchant-admin/employees/:needoId/compensation-profile`, and shows the latest persisted payslip totals without exposing internal shop, technician, or actor IDs. Actual payment is still a manual finance record; this workflow never initiates a bank transfer.
 
 ## Operations Technician Ranking
 
@@ -1920,7 +1920,7 @@ npm test
 
 商户店铺基础资料现支持 `PATCH /api/v1/merchant-admin/shop`：店铺 ID 只从当前活动店铺身份取得，商户可更新名称、简介、城市、地址和电话，不能通过请求体切换店铺或修改平台推荐状态；每次修改都经过 Zod、RBAC 和审计日志。图片、营业时段、证件和展示装修仍需独立数据表及文件接口，当前不写入浏览器伪数据。
 
-商户后台“人员与顾客”的员工列表现使用当前店铺范围的 `/api/v1/merchant-admin/employees` 正式分页 API，并以员工 NeeDoID 打开“员工详细信息卡”。基础资料与本店从属关系均通过真实、受权限保护且有审计的接口编辑；商户页已移除旧技师全局审核、软删除和数字档案号展示。客户仍只显示后端已有档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
+商户后台“人员与顾客”的员工列表现使用当前店铺范围的 `/api/v1/merchant-admin/employees` 正式分页 API，并以员工 NeeDoID 打开“员工详细信息卡”。基础资料、本店从属关系、日程、工资结算周期和薪酬规则均通过真实、受权限保护且有审计的接口读写；卡内工资统计来自当前店铺该员工最新的正式工资单及其订单财务来源，不回填演示金额，也不暴露内部店铺或技师 ID。商户页已移除旧技师全局审核、软删除和数字档案号展示。实际支付仍由财务人员在财务结算页手工登记，系统不会发起自动转账。客户仍只显示后端已有档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
 
 运营“营销中心”已移除模拟优惠券、活动量、GMV、ROI、归因和页面内存创建。现有 `FeeCampaign` 只参与平台费用计算，不被冒充为用户营销模型；通用营销将在 Campaign/Coupon/Redemption 数据表、状态机、领取核销、归因审计和聚合导出合同完成后开放。
 

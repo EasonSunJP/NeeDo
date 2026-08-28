@@ -272,15 +272,27 @@ export class CompensationProfileService {
   private toEmployeeProfile(
     profile: CompensationProfilePayload
   ): EmployeeCompensationProfilePayload {
-    const {
-      id: _id,
-      shopId: _shopId,
-      technicianProfileId: _technicianProfileId,
-      createdById: _createdById,
-      updatedById: _updatedById,
-      ...publicProfile
-    } = profile;
-    return publicProfile;
+    return {
+      sourceType: profile.sourceType,
+      name: profile.name,
+      wageMode: profile.wageMode,
+      baseSalaryJpy: profile.baseSalaryJpy,
+      hourlyRateJpy: profile.hourlyRateJpy,
+      dailyRateJpy: profile.dailyRateJpy,
+      fixedOrderPayJpy: profile.fixedOrderPayJpy,
+      commissionRatePercent: profile.commissionRatePercent,
+      guaranteedMinimumJpy: profile.guaranteedMinimumJpy,
+      ndpFeeBearer: profile.ndpFeeBearer,
+      technicianNdpSharePercent: profile.technicianNdpSharePercent,
+      bonusRules: profile.bonusRules,
+      deductionRules: profile.deductionRules,
+      version: profile.version,
+      status: profile.status,
+      effectiveFrom: profile.effectiveFrom,
+      effectiveTo: profile.effectiveTo,
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt
+    };
   }
 
   private async getProfileOrFallback(

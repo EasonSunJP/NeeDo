@@ -4,6 +4,12 @@ import type {
   PayrollSchedulePolicyResult,
 } from "../../api/payrollSchedulePolicy";
 import type {
+  CompensationProfilePreviewInput,
+  EmployeeCompensationPreviewResult,
+  EmployeeCompensationResult,
+  TechnicianCompensationProfileInput,
+} from "../../api/employeeCompensation";
+import type {
   EmployeeRelationshipType,
   EmployeeWorkStatus,
   MerchantEmployee,
@@ -15,6 +21,7 @@ import { translateText } from "../../i18n/translations";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { PayrollSchedulePolicyEditor } from "./PayrollSchedulePolicyEditor";
+import { EmployeeCompensationPanel } from "./EmployeeCompensationPanel";
 import { EmployeeSchedulePanel } from "./EmployeeSchedulePanel";
 
 type SavingSection = "profile" | "affiliation" | null;
@@ -23,11 +30,24 @@ interface EmployeeDetailCardProps {
   employee: MerchantEmployee;
   saving: SavingSection;
   error: string;
+  compensation: EmployeeCompensationResult | null;
+  compensationError: string;
+  compensationLoading: boolean;
+  compensationPreview: EmployeeCompensationPreviewResult | null;
+  compensationPreviewing: boolean;
+  compensationSaving: boolean;
   payrollPolicy: PayrollSchedulePolicyResult | null;
   payrollPolicyError: string;
   payrollPolicyLoading: boolean;
   payrollPolicySaving: boolean;
   onRetryPayrollPolicy: () => void;
+  onRetryCompensation: () => void;
+  onSaveCompensation: (
+    input: TechnicianCompensationProfileInput,
+  ) => Promise<void>;
+  onPreviewCompensation: (
+    input: CompensationProfilePreviewInput,
+  ) => Promise<void>;
   onSavePayrollPolicy: (
     input: EmployeePayrollSchedulePolicyInput,
   ) => Promise<void>;
@@ -104,8 +124,17 @@ function compactDate(value: string, locale: string) {
 }
 
 export function EmployeeDetailCard({
+  compensation,
+  compensationError,
+  compensationLoading,
+  compensationPreview,
+  compensationPreviewing,
+  compensationSaving,
   employee,
   error,
+  onPreviewCompensation,
+  onRetryCompensation,
+  onSaveCompensation,
   onSaveAffiliation,
   onRetryPayrollPolicy,
   onSavePayrollPolicy,
@@ -197,7 +226,7 @@ export function EmployeeDetailCard({
 
   const profileSaving = saving === "profile";
   const affiliationSaving = saving === "affiliation";
-  const blocked = saving !== null || payrollPolicySaving;
+  const blocked = saving !== null || payrollPolicySaving || compensationSaving;
 
   return (
     <article className="space-y-5" data-testid="employee-detail-card">
@@ -584,6 +613,18 @@ export function EmployeeDetailCard({
       </section>
 
       <EmployeeSchedulePanel employee={employee} />
+
+      <EmployeeCompensationPanel
+        error={compensationError}
+        loading={compensationLoading}
+        onPreview={onPreviewCompensation}
+        onRetry={onRetryCompensation}
+        onSave={onSaveCompensation}
+        preview={compensationPreview}
+        previewing={compensationPreviewing}
+        result={compensation}
+        saving={compensationSaving}
+      />
 
       <PayrollSchedulePolicyEditor
         description="继承店铺默认规则，或为该员工设置独立结算周期与休息日处理方式。"

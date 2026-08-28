@@ -174,3 +174,17 @@ Migration 为 `20260829123000_employee_payroll_schedule_policy`。日本日期�
 - 店铺各自建立的排班计划可重叠且互不可见；订单从 `pending` 确认时才在事务中建立跨店硬锁，避免两个店铺同时确认同一技师同一时间。
 
 Migration 为 `20260829150000_employee_schedule_privacy`，为 `availabilities` 增加来源与可见范围枚举，并补充技师跨店时段查询索引。前端灰色锁定样式沿用商户后台既有色板、圆角和日历组件，没有新增 mock 数据或自动转账逻辑。
+
+## 13. 2026-08-29 员工薪酬连接
+
+员工详细信息卡新增正式“薪酬与结算”面板，以公开 NeeDoID 调用：
+
+- `GET /api/v1/merchant-admin/employees/:needoId/compensation-profile`
+- `PUT /api/v1/merchant-admin/employees/:needoId/compensation-profile`
+- `POST /api/v1/merchant-admin/employees/:needoId/compensation-profile/preview`
+
+店铺范围只从当前 JWT 身份取得，后端要求当前有效从属并复用现有版本化薪酬规则、店铺默认规则、工资单、工资行项目、订单财务及计算引擎。响应不返回内部 `shopId`、`technicianProfileId`、从属 ID 或操作人 ID。读取、更新和预估沿用既有薪酬 RBAC；更新继续写入 `merchant_admin.compensation_profile.update` 审计记录。
+
+卡片可查看并编辑计薪模式、基础月薪、时薪、日薪、单次报酬、分成、保障最低额和 NDP 分摊，并显示最新工资单的订单数、工时、服务收入、工资构成、净应付、已付及未付。失败保存保留用户草稿，员工切换或关闭抽屉会使旧请求失效。预估只计算展示，不生成工资单、不登记支付；实际支付仍由财务人员手工处理，系统不发起自动转账。
+
+本微步骤没有新增 schema 或 migration，没有新增 mock，也没有修改旧财务工作区仍在使用的内部 ID 兼容路由。

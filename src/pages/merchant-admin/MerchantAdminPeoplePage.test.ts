@@ -84,6 +84,10 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain("payrollSchedulePolicyApi.getEmployee(");
     expect(source).toContain("payrollSchedulePolicyApi.updateEmployee(");
     expect(source).toContain("employeePayrollPolicyRequest");
+    expect(source).toContain("employeeCompensationApi.get(");
+    expect(source).toContain("employeeCompensationApi.update(");
+    expect(source).toContain("employeeCompensationApi.preview(");
+    expect(source).toContain("employeeCompensationRequest");
   });
 
   it("uses the shared request coordinator with canonical string employee identifiers", () => {
@@ -121,8 +125,9 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).not.toContain("LTV");
     expect(source).not.toContain("churnRisk");
     expect(source).not.toContain("activeScore");
-    expect(source).not.toContain("baseSalaryJpy");
-    expect(source).not.toContain("commissionRatePercent");
+    expect(source).not.toContain('baseSalaryJpy: 230000');
+    expect(source).not.toContain('commissionRatePercent: 20');
+    expect(source).toContain("compensation={employeeCompensation}");
     expect(source).toContain("工资结算周期");
     expect(source).not.toContain("时间线");
     expect(source).not.toContain("UnifiedUserCalendar");
@@ -156,4 +161,18 @@ describe("employee detail drawer translations", () => {
       translateText("员工详细信息卡读取失败", language),
     ]).toEqual(expected);
   });
+
+  it.each([
+    ["zh", "薪酬与结算", "前往财务结算"],
+    ["zh-Hant", "薪酬與結算", "前往財務結算"],
+    ["ja", "報酬と給与精算", "給与精算へ"],
+    ["en", "Compensation and payroll", "Go to payroll settlement"],
+    ["ko", "보상 및 급여 정산", "급여 정산으로 이동"],
+  ] as Array<[Language, string, string]>)(
+    "localizes employee compensation copy for %s",
+    (language, title, financeLink) => {
+      expect(translateText("薪酬与结算", language)).toBe(title);
+      expect(translateText("前往财务结算", language)).toBe(financeLink);
+    },
+  );
 });
