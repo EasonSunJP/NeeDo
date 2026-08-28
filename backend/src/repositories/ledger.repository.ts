@@ -865,6 +865,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private ownerTypeToDb(ownerType: WalletOwnerType) {
+    if (ownerType === "alliance") {
+      return "ALLIANCE" as const;
+    }
     if (ownerType === "merchant_account") {
       return "MERCHANT_ACCOUNT" as const;
     }
@@ -879,6 +882,9 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   private ownerTypeFromDb(ownerType: string): WalletOwnerType {
+    if (ownerType === "ALLIANCE") {
+      return "alliance";
+    }
     if (ownerType === "MERCHANT_ACCOUNT") {
       return "merchant_account";
     }

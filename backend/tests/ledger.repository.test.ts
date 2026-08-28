@@ -37,6 +37,40 @@ describe("LedgerRepository wallet creation", () => {
       }
     });
   });
+
+  it("round-trips an alliance wallet through the Prisma owner enum", async () => {
+    const wallet = {
+      id: 92,
+      ownerType: "ALLIANCE",
+      ownerId: 42,
+      currency: "NDP",
+      availableBalance: 0,
+      frozenBalance: 0,
+      createdAt: new Date("2026-08-28T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-28T00:00:00.000Z"),
+      deletedAt: null
+    };
+    const client = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
+      wallet: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue(wallet)
+      }
+    };
+    const repository = new LedgerRepository(client as never);
+
+    await expect(
+      repository.getOrCreateWallet({ ownerType: "alliance", ownerId: 42, currency: "NDP" })
+    ).resolves.toMatchObject({ id: 92, ownerType: "alliance", ownerId: 42 });
+    expect(client.wallet.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: {
+        ownerType_ownerId_currency: {
+          ownerType: "ALLIANCE",
+          ownerId: 42,
+          currency: "NDP"
+        }
+      }
+    });
+  });
 });
 
 describe("LedgerRepository transaction mapping", () => {

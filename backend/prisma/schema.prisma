@@ -119,6 +119,7 @@ enum WalletOwnerType {
   SHOP             @map("shop")
   PLATFORM         @map("platform")
   MERCHANT_ACCOUNT @map("merchant_account")
+  ALLIANCE         @map("alliance")
 
   @@map("wallet_owner_type")
 }
@@ -304,6 +305,22 @@ enum AffiliateChannelPlatform {
   @@map("affiliate_channel_platform")
 }
 
+enum AffiliateAllianceStatus {
+  ACTIVE    @map("active")
+  SUSPENDED @map("suspended")
+  CLOSED    @map("closed")
+
+  @@map("affiliate_alliance_status")
+}
+
+enum AffiliateAllianceMemberRole {
+  OWNER       @map("owner")
+  PARTNER     @map("partner")
+  SUBORDINATE @map("subordinate")
+
+  @@map("affiliate_alliance_member_role")
+}
+
 enum FinanceReconciliationStatus {
   PENDING  @map("pending")
   EXPORTED @map("exported")
@@ -436,6 +453,8 @@ model User {
   technicianProfile               TechnicianProfile?
   customerProfile                 CustomerProfile?
   affiliateProfile                AffiliateProfile?
+  ownedAffiliateAlliances         AffiliateAlliance[]       @relation("AffiliateAllianceOwner")
+  affiliateAllianceMemberships    AffiliateAllianceMember[] @relation("AffiliateAllianceMemberUser")
   bookingOrders                   BookingOrder[]             @relation("BookingOrderCustomer")
   orderHistories                  OrderStatusHistory[]       @relation("OrderStatusHistoryActor")
   orderReviewsGiven               OrderReview[]              @relation("OrderReviewReviewer")
@@ -2814,6 +2833,74 @@ model AffiliateProfileChannel {
   @@index([platform])
   @@index([deletedAt])
   @@map("affiliate_profile_channels")
+}
+
+model AffiliateAlliance {
+  id                      Int                     @id @default(autoincrement())
+  ownerUserId             Int                     @map("owner_user_id")
+  name                    String                  @db.VarChar(120)
+  description             String?                 @db.VarChar(500)
+  status                  AffiliateAllianceStatus @default(ACTIVE)
+  defaultPromoterShareBps Int                     @map("default_promoter_share_bps")
+  version                 Int                     @default(1)
+  createdAt               DateTime                @default(now()) @map("created_at")
+  updatedAt               DateTime                @updatedAt @map("updated_at")
+  deletedAt               DateTime?               @map("deleted_at")
+
+  owner   User                      @relation("AffiliateAllianceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  members AffiliateAllianceMember[]
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("affiliate_alliances")
+}
+
+model AffiliateAllianceMember {
+  id                       Int                         @id @default(autoincrement())
+  allianceId               Int                         @map("alliance_id")
+  userId                   Int                         @map("user_id")
+  role                     AffiliateAllianceMemberRole
+  parentMemberId           Int?                        @map("parent_member_id")
+  promoterShareBpsOverride Int?                        @map("promoter_share_bps_override")
+  activeKey                String?                     @unique @map("active_key") @db.VarChar(191)
+  version                  Int                         @default(1)
+  joinedAt                 DateTime                    @default(now()) @map("joined_at")
+  leftAt                   DateTime?                   @map("left_at")
+  leftReason               String?                     @map("left_reason") @db.VarChar(500)
+  createdAt                DateTime                    @default(now()) @map("created_at")
+  updatedAt                DateTime                    @updatedAt @map("updated_at")
+  deletedAt                DateTime?                   @map("deleted_at")
+
+  alliance   AffiliateAlliance            @relation(fields: [allianceId], references: [id], onDelete: Restrict)
+  user       User                         @relation("AffiliateAllianceMemberUser", fields: [userId], references: [id], onDelete: Restrict)
+  parent     AffiliateAllianceMember?     @relation("AffiliateAllianceMemberTree", fields: [parentMemberId], references: [id], onDelete: SetNull)
+  children   AffiliateAllianceMember[]    @relation("AffiliateAllianceMemberTree")
+  permission AffiliateAlliancePermission?
+
+  @@index([allianceId, role])
+  @@index([userId])
+  @@index([parentMemberId])
+  @@index([deletedAt])
+  @@map("affiliate_alliance_members")
+}
+
+model AffiliateAlliancePermission {
+  id                       Int       @id @default(autoincrement())
+  memberId                 Int       @unique @map("member_id")
+  canClaimTasks            Boolean   @default(false) @map("can_claim_tasks")
+  canViewAllianceOverview  Boolean   @default(false) @map("can_view_alliance_overview")
+  canViewMemberDetails     Boolean   @default(false) @map("can_view_member_details")
+  canManageOwnSubordinates Boolean   @default(false) @map("can_manage_own_subordinates")
+  canViewAllianceWallet    Boolean   @default(false) @map("can_view_alliance_wallet")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+  deletedAt                DateTime? @map("deleted_at")
+
+  member AffiliateAllianceMember @relation(fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@index([deletedAt])
+  @@map("affiliate_alliance_permissions")
 }
 
 model AffiliateTask {

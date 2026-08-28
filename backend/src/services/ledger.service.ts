@@ -9,7 +9,12 @@ import type {
   FinanceOrderType
 } from "./fee-calculation.service";
 
-export type WalletOwnerType = "user" | "shop" | "platform" | "merchant_account";
+export type WalletOwnerType =
+  | "user"
+  | "shop"
+  | "platform"
+  | "merchant_account"
+  | "alliance";
 export type LedgerCurrency = "NDP";
 export type WalletLedgerDirection =
   | "available_credit"
