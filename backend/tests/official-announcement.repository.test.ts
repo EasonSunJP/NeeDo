@@ -90,6 +90,8 @@ const draftRelease = (window: { visibleFrom: Date | null; visibleUntil: Date | n
   }))
 });
 
+const sqlText = (query: { strings?: readonly string[] }): string => query.strings?.join(" ") ?? "";
+
 describe("OfficialAnnouncementRepository", () => {
   it("exposes the complete announcement transaction boundary", () => {
     const repository = new OfficialAnnouncementRepository({} as never);
@@ -105,7 +107,10 @@ describe("OfficialAnnouncementRepository", () => {
         disable: expect.any(Function),
         cloneForRollback: expect.any(Function),
         listHistory: expect.any(Function),
-        findPublished: expect.any(Function)
+        findPublished: expect.any(Function),
+        listDueScheduledReleases: expect.any(Function),
+        activateDueScheduledRelease: expect.any(Function),
+        recordDueScheduledReleaseFailure: expect.any(Function)
       })
     );
   });
@@ -224,6 +229,259 @@ describe("OfficialAnnouncementRepository", () => {
       message: "error.idempotency_key_reused",
       statusCode: 409
     });
+  });
+
+  it("enumerates bounded due scheduled releases in publishAt/id order", async () => {
+    const publishAt = new Date("2026-08-29T02:00:00.000Z");
+    const findMany = jest.fn(async () => [
+      {
+        id: 71,
+        publishAt,
+        announcement: { id: 12, publicId: input.publicId }
+      }
+    ]);
+    const repository = new OfficialAnnouncementRepository({
+      officialAnnouncementRelease: { findMany }
+    } as never);
+
+    await expect(
+      repository.listDueScheduledReleases({ now, batchSize: 25, maxAttempts: 3 })
+    ).resolves.toEqual([
+      {
+        aggregateType: "official_announcement",
+        aggregateKey: input.publicId,
+        aggregateTargetId: 12,
+        releaseId: 71,
+        publishAt
+      }
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        status: "SCHEDULED",
+        scheduledSlotKey: { not: null },
+        publishAt: { lte: now },
+        activationAttempts: { lt: 3 },
+        deletedAt: null,
+        announcement: { deletedAt: null }
+      },
+      orderBy: [{ publishAt: "asc" }, { id: "asc" }],
+      take: 25,
+      select: {
+        id: true,
+        publishAt: true,
+        announcement: { select: { id: true, publicId: true } }
+      }
+    });
+  });
+
+  it("locks the exact due release with parameterized SQL and atomically switches its slot", async () => {
+    const publishAt = new Date("2026-08-29T02:00:00.000Z");
+    const queryRaw = jest.fn(async () => [{ id: 71 }]);
+    const transaction = {
+      $queryRaw: queryRaw,
+      contentPublicationCommand: {
+        findUnique: jest.fn(async () => null),
+        create: jest.fn(async () => ({}))
+      },
+      officialAnnouncementRelease: {
+        findFirst: jest.fn(async () => ({
+          id: 71,
+          announcementId: 12,
+          status: "SCHEDULED",
+          scheduledSlotKey: "announcement:12:scheduled",
+          publishAt,
+          activationAttempts: 0,
+          deletedAt: null,
+          announcement: { id: 12, publicId: input.publicId, deletedAt: null }
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      }
+    };
+    const repository = new OfficialAnnouncementRepository({
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+    const commandKey = `content-publication:official_announcement:${input.publicId}:release:71:activate`;
+
+    await expect(
+      repository.activateDueScheduledRelease({
+        release: {
+          aggregateType: "official_announcement",
+          aggregateKey: input.publicId,
+          aggregateTargetId: 12,
+          releaseId: 71,
+          publishAt
+        },
+        now,
+        maxAttempts: 3,
+        sequence: 0,
+        commandKey,
+        requestFingerprint: "f".repeat(64)
+      })
+    ).resolves.toEqual({ activated: true, replayed: false });
+
+    const lockedQuery = (queryRaw.mock.calls as unknown[][])[0]?.[0] as {
+      strings?: readonly string[];
+      values?: unknown[];
+    };
+    expect(sqlText(lockedQuery)).toContain(
+      "SELECT id FROM official_announcement_releases WHERE id ="
+    );
+    expect(sqlText(lockedQuery)).toContain("FOR UPDATE");
+    expect(lockedQuery.values).toEqual([71]);
+    expect(transaction.officialAnnouncementRelease.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { announcementId: 12, publishedSlotKey: { not: null }, deletedAt: null },
+        data: expect.objectContaining({ status: "ARCHIVED", publishedSlotKey: null })
+      })
+    );
+    expect(transaction.officialAnnouncementRelease.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 71,
+          status: "SCHEDULED",
+          scheduledSlotKey: "announcement:12:scheduled",
+          activationAttempts: { lt: 3 }
+        }),
+        data: expect.objectContaining({
+          status: "PUBLISHED",
+          scheduledSlotKey: null,
+          publishedSlotKey: "announcement:12:published",
+          activatedAt: now,
+          lastActivationAttemptAt: now,
+          lockVersion: { increment: 1 }
+        })
+      })
+    );
+    expect(transaction.contentPublicationCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotencyKey: commandKey,
+        aggregateType: "OFFICIAL_ANNOUNCEMENT",
+        aggregateKey: input.publicId,
+        releaseId: 71,
+        action: "activate",
+        actorUserId: null
+      })
+    });
+  });
+
+  it("replays a concurrent activation command after taking the release lock", async () => {
+    const events: string[] = [];
+    const transaction = {
+      $queryRaw: jest.fn(async () => {
+        events.push("lock");
+        return [{ id: 71 }];
+      }),
+      contentPublicationCommand: {
+        findUnique: jest.fn(async () => {
+          events.push("replay");
+          return { requestFingerprint: "f".repeat(64), result: { activated: true } };
+        })
+      },
+      officialAnnouncementRelease: { updateMany: jest.fn() }
+    };
+    const repository = new OfficialAnnouncementRepository({
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+
+    await expect(
+      repository.activateDueScheduledRelease({
+        release: {
+          aggregateType: "official_announcement",
+          aggregateKey: input.publicId,
+          aggregateTargetId: 12,
+          releaseId: 71,
+          publishAt: now
+        },
+        now,
+        maxAttempts: 3,
+        sequence: 0,
+        commandKey: `content-publication:official_announcement:${input.publicId}:release:71:activate`,
+        requestFingerprint: "f".repeat(64)
+      })
+    ).resolves.toEqual({ activated: true, replayed: true });
+    expect(events).toEqual(["lock", "replay"]);
+    expect(transaction.officialAnnouncementRelease.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("atomically disables a final-attempt failure and writes its audit in the same transaction", async () => {
+    const publishAt = new Date("2026-08-29T02:00:00.000Z");
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      officialAnnouncementRelease: {
+        findFirst: jest.fn(async () => ({
+          id: 71,
+          announcementId: 12,
+          status: "SCHEDULED",
+          scheduledSlotKey: "announcement:12:scheduled",
+          publishAt,
+          activationAttempts: 2,
+          deletedAt: null,
+          announcement: { id: 12, publicId: input.publicId, deletedAt: null }
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      }
+    };
+    const audit = {
+      actorId: null,
+      action: "content_publication.schedule_failed",
+      targetType: "OfficialAnnouncementRelease",
+      targetId: 71,
+      metadata: { releaseId: 71 }
+    };
+    const auditLogRepository = {
+      create: jest.fn(async () => undefined),
+      createInTransaction: jest.fn(async () => undefined)
+    };
+    const repository = new OfficialAnnouncementRepository({
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+
+    await expect(
+      repository.recordDueScheduledReleaseFailure({
+        release: {
+          aggregateType: "official_announcement",
+          aggregateKey: input.publicId,
+          aggregateTargetId: 12,
+          releaseId: 71,
+          publishAt
+        },
+        now,
+        maxAttempts: 3,
+        errorKey: "error.content.schedule_activation_failed",
+        runId: "run-final",
+        audit,
+        auditLogRepository
+      })
+    ).resolves.toEqual({ recorded: true, activationAttempts: 3, disabled: true });
+    expect(transaction.officialAnnouncementRelease.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 71,
+        status: "SCHEDULED",
+        scheduledSlotKey: "announcement:12:scheduled",
+        activationAttempts: 2,
+        deletedAt: null
+      },
+      data: {
+        status: "DISABLED",
+        scheduledSlotKey: null,
+        disabledAt: now,
+        activationAttempts: { increment: 1 },
+        lastActivationAttemptAt: now,
+        lastActivationError: "error.content.schedule_activation_failed",
+        lockVersion: { increment: 1 },
+        updatedAt: now
+      }
+    });
+    expect(auditLogRepository.createInTransaction).toHaveBeenCalledWith(transaction, audit);
+    expect(auditLogRepository.create).not.toHaveBeenCalled();
   });
 
   it("checks replay before volatile publication policy validation", async () => {

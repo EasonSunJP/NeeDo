@@ -40,6 +40,8 @@ const createInput: CreateCarouselDraftMutation = {
   now
 };
 
+const sqlText = (query: { strings?: readonly string[] }): string => query.strings?.join(" ") ?? "";
+
 describe("CarouselPublicationRepository", () => {
   it("exposes the complete atomic lifecycle boundary", () => {
     expect(new CarouselPublicationRepository({} as never)).toEqual(
@@ -55,7 +57,10 @@ describe("CarouselPublicationRepository", () => {
         cloneForRollback: expect.any(Function),
         listHistory: expect.any(Function),
         findPublishedScene: expect.any(Function),
-        searchTargets: expect.any(Function)
+        searchTargets: expect.any(Function),
+        listDueScheduledReleases: expect.any(Function),
+        activateDueScheduledRelease: expect.any(Function),
+        recordDueScheduledReleaseFailure: expect.any(Function)
       })
     );
   });
@@ -172,6 +177,190 @@ describe("CarouselPublicationRepository", () => {
     expect(JSON.stringify((findFirst.mock.calls as unknown[][])[0]?.[0])).not.toContain(
       "SCHEDULED"
     );
+  });
+
+  it("enumerates due carousel releases in deterministic publishAt/id order", async () => {
+    const publishAt = new Date("2026-08-29T05:00:00.000Z");
+    const findMany = jest.fn(async () => [{ id: 71, scene: "USER_HOME", publishAt }]);
+    const repository = new CarouselPublicationRepository({
+      carouselRelease: { findMany }
+    } as never);
+
+    await expect(
+      repository.listDueScheduledReleases({ now, batchSize: 25, maxAttempts: 3 })
+    ).resolves.toEqual([
+      {
+        aggregateType: "carousel",
+        aggregateKey: "USER_HOME",
+        aggregateTargetId: 71,
+        releaseId: 71,
+        publishAt
+      }
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        status: "SCHEDULED",
+        scheduledSlotKey: { not: null },
+        publishAt: { lte: now },
+        activationAttempts: { lt: 3 },
+        deletedAt: null
+      },
+      orderBy: [{ publishAt: "asc" }, { id: "asc" }],
+      take: 25,
+      select: { id: true, scene: true, publishAt: true }
+    });
+  });
+
+  it("locks and activates the exact carousel release without double switching", async () => {
+    const publishAt = new Date("2026-08-29T05:00:00.000Z");
+    const queryRaw = jest.fn(async () => [{ id: 71 }]);
+    const transaction = {
+      $queryRaw: queryRaw,
+      contentPublicationCommand: {
+        findUnique: jest.fn(async () => null),
+        create: jest.fn(async () => ({}))
+      },
+      carouselRelease: {
+        findFirst: jest.fn(async () => ({
+          id: 71,
+          scene: "USER_HOME",
+          status: "SCHEDULED",
+          scheduledSlotKey: "carousel:USER_HOME:scheduled",
+          publishAt,
+          activationAttempts: 0,
+          deletedAt: null
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      }
+    };
+    const repository = new CarouselPublicationRepository({
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+    const commandKey = "content-publication:carousel:USER_HOME:release:71:activate";
+
+    await expect(
+      repository.activateDueScheduledRelease({
+        release: {
+          aggregateType: "carousel",
+          aggregateKey: "USER_HOME",
+          aggregateTargetId: 71,
+          releaseId: 71,
+          publishAt
+        },
+        now,
+        maxAttempts: 3,
+        sequence: 0,
+        commandKey,
+        requestFingerprint: "c".repeat(64)
+      })
+    ).resolves.toEqual({ activated: true, replayed: false });
+    const lockedQuery = (queryRaw.mock.calls as unknown[][])[0]?.[0] as {
+      strings?: readonly string[];
+      values?: unknown[];
+    };
+    expect(sqlText(lockedQuery)).toContain(
+      "SELECT id FROM carousel_releases WHERE id ="
+    );
+    expect(sqlText(lockedQuery)).toContain("FOR UPDATE");
+    expect(lockedQuery.values).toEqual([71]);
+    expect(transaction.carouselRelease.updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { scene: "USER_HOME", publishedSlotKey: { not: null }, deletedAt: null },
+        data: expect.objectContaining({ status: "ARCHIVED", publishedSlotKey: null })
+      })
+    );
+    expect(transaction.carouselRelease.updateMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 71,
+          status: "SCHEDULED",
+          scheduledSlotKey: "carousel:USER_HOME:scheduled",
+          activationAttempts: { lt: 3 }
+        }),
+        data: expect.objectContaining({
+          status: "PUBLISHED",
+          scheduledSlotKey: null,
+          publishedSlotKey: "carousel:USER_HOME:published",
+          activatedAt: now,
+          lastActivationAttemptAt: now
+        })
+      })
+    );
+  });
+
+  it("keeps a non-final failed carousel release scheduled and audits with the transaction client", async () => {
+    const publishAt = new Date("2026-08-29T05:00:00.000Z");
+    const transaction = {
+      $queryRaw: jest.fn(async () => [{ id: 71 }]),
+      carouselRelease: {
+        findFirst: jest.fn(async () => ({
+          id: 71,
+          scene: "USER_HOME",
+          status: "SCHEDULED",
+          scheduledSlotKey: "carousel:USER_HOME:scheduled",
+          publishAt,
+          activationAttempts: 0,
+          deletedAt: null
+        })),
+        updateMany: jest.fn(async () => ({ count: 1 }))
+      }
+    };
+    const audit = {
+      actorId: null,
+      action: "content_publication.schedule_failed",
+      targetType: "CarouselRelease",
+      targetId: 71,
+      metadata: { releaseId: 71 }
+    };
+    const auditLogRepository = {
+      create: jest.fn(async () => undefined),
+      createInTransaction: jest.fn(async () => undefined)
+    };
+    const repository = new CarouselPublicationRepository({
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    } as never);
+
+    await expect(
+      repository.recordDueScheduledReleaseFailure({
+        release: {
+          aggregateType: "carousel",
+          aggregateKey: "USER_HOME",
+          aggregateTargetId: 71,
+          releaseId: 71,
+          publishAt
+        },
+        now,
+        maxAttempts: 3,
+        errorKey: "error.content.schedule_activation_failed",
+        runId: "run-retry",
+        audit,
+        auditLogRepository
+      })
+    ).resolves.toEqual({ recorded: true, activationAttempts: 1, disabled: false });
+    expect(transaction.carouselRelease.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 71,
+        status: "SCHEDULED",
+        scheduledSlotKey: "carousel:USER_HOME:scheduled",
+        activationAttempts: 0,
+        deletedAt: null
+      },
+      data: {
+        activationAttempts: { increment: 1 },
+        lastActivationAttemptAt: now,
+        lastActivationError: "error.content.schedule_activation_failed",
+        lockVersion: { increment: 1 },
+        updatedAt: now
+      }
+    });
+    expect(auditLogRepository.createInTransaction).toHaveBeenCalledWith(transaction, audit);
+    expect(auditLogRepository.create).not.toHaveBeenCalled();
   });
 
   it("revalidates every slide target and media before changing publication slots", async () => {

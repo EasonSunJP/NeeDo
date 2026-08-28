@@ -16,6 +16,7 @@ import type {
 import { AppError } from "../utils/app-error";
 import { normalizePagination, type PaginationInput } from "../utils/pagination";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { ContentPublicationActivationRepositoryPort } from "./content-publication-scheduler.service";
 
 export type OfficialAnnouncementStatus =
   | "draft"
@@ -140,7 +141,8 @@ export interface RollbackAnnouncementMutation extends IdempotentReleaseMutation 
   reason: string;
 }
 
-export interface OfficialAnnouncementRepositoryPort {
+export interface OfficialAnnouncementRepositoryPort
+  extends ContentPublicationActivationRepositoryPort {
   createDraft(input: CreateAnnouncementDraftMutation): Promise<OfficialAnnouncementPayload>;
   list(input: { page: number; pageSize: number }): Promise<{
     list: OfficialAnnouncementPayload[];

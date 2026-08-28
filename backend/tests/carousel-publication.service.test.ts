@@ -112,7 +112,10 @@ const repository = (): jest.Mocked<CarouselPublicationRepositoryPort> => ({
   cloneForRollback: jest.fn(),
   listHistory: jest.fn(),
   findPublishedScene: jest.fn(),
-  searchTargets: jest.fn()
+  searchTargets: jest.fn(),
+  listDueScheduledReleases: jest.fn(),
+  activateDueScheduledRelease: jest.fn(),
+  recordDueScheduledReleaseFailure: jest.fn()
 });
 
 const marketplace = () => ({

@@ -6,7 +6,7 @@ import {
   ContentPublicationAggregateType,
   ContentReleaseStatus,
   PublicIdentifierStatus,
-  type Prisma,
+  Prisma,
   type PrismaClient
 } from "@prisma/client";
 import { CONTENT_LOCALES, type ContentLocaleCode } from "../constants/content-locales";
@@ -31,6 +31,11 @@ import type {
   StoredCarouselSlide,
   UpdateCarouselLocaleMutation
 } from "../services/carousel-publication.service";
+import type {
+  ContentPublicationActivationInput,
+  ContentPublicationDueRelease,
+  ContentPublicationFailureRecordInput
+} from "../services/content-publication-scheduler.service";
 import { AppError } from "../utils/app-error";
 import { toPrismaPagination } from "../utils/pagination";
 
@@ -108,6 +113,179 @@ interface MutationAuditInput {
 
 export class CarouselPublicationRepository implements CarouselPublicationRepositoryPort {
   public constructor(private readonly client: CarouselClient = prisma) {}
+
+  public async listDueScheduledReleases(input: {
+    now: Date;
+    batchSize: number;
+    maxAttempts: number;
+  }): Promise<ContentPublicationDueRelease[]> {
+    const releases = await this.client.carouselRelease.findMany({
+      where: {
+        status: ContentReleaseStatus.SCHEDULED,
+        scheduledSlotKey: { not: null },
+        publishAt: { lte: input.now },
+        activationAttempts: { lt: input.maxAttempts },
+        deletedAt: null
+      },
+      orderBy: [{ publishAt: "asc" }, { id: "asc" }],
+      take: input.batchSize,
+      select: { id: true, scene: true, publishAt: true }
+    });
+    return releases.flatMap((release) =>
+      release.publishAt
+        ? [
+            {
+              aggregateType: "carousel" as const,
+              aggregateKey: sceneFromDb[release.scene],
+              aggregateTargetId: release.id,
+              releaseId: release.id,
+              publishAt: release.publishAt
+            }
+          ]
+        : []
+    );
+  }
+
+  public async activateDueScheduledRelease(input: ContentPublicationActivationInput) {
+    return this.transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM carousel_releases WHERE id = ${input.release.releaseId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      if (locked.length !== 1) return { activated: false, replayed: false };
+
+      const replay = await transaction.contentPublicationCommand.findUnique({
+        where: { idempotencyKey: input.commandKey }
+      });
+      if (replay) {
+        if (replay.requestFingerprint !== input.requestFingerprint) {
+          throw this.contentError("error.idempotency_key_reused", 409);
+        }
+        return { activated: true, replayed: true };
+      }
+
+      const scene = this.activationScene(input.release.aggregateKey);
+      const release = await transaction.carouselRelease.findFirst({
+        where: { id: input.release.releaseId, scene, deletedAt: null },
+        select: {
+          id: true,
+          scene: true,
+          status: true,
+          scheduledSlotKey: true,
+          publishAt: true,
+          activationAttempts: true
+        }
+      });
+      const sceneCode = sceneFromDb[scene];
+      const scheduledSlotKey = this.slotKey(sceneCode, "scheduled");
+      if (!this.isDueActivationCandidate(release, scheduledSlotKey, input)) {
+        return { activated: false, replayed: false };
+      }
+
+      await transaction.carouselRelease.updateMany({
+        where: { scene, publishedSlotKey: { not: null }, deletedAt: null },
+        data: {
+          status: ContentReleaseStatus.ARCHIVED,
+          publishedSlotKey: null,
+          archivedAt: input.now,
+          updatedAt: input.now
+        }
+      });
+      const activated = await transaction.carouselRelease.updateMany({
+        where: {
+          id: input.release.releaseId,
+          status: ContentReleaseStatus.SCHEDULED,
+          scheduledSlotKey,
+          publishAt: { lte: input.now },
+          activationAttempts: { lt: input.maxAttempts },
+          deletedAt: null
+        },
+        data: {
+          status: ContentReleaseStatus.PUBLISHED,
+          scheduledSlotKey: null,
+          publishedSlotKey: this.slotKey(sceneCode, "published"),
+          activatedAt: input.now,
+          lastActivationAttemptAt: input.now,
+          lastActivationError: null,
+          lockVersion: { increment: 1 },
+          updatedAt: input.now
+        }
+      });
+      if (activated.count !== 1) throw this.contentError("error.content.lock_conflict", 409);
+      await transaction.contentPublicationCommand.create({
+        data: {
+          idempotencyKey: input.commandKey,
+          requestFingerprint: input.requestFingerprint,
+          aggregateType: ContentPublicationAggregateType.CAROUSEL,
+          aggregateKey: input.release.aggregateKey,
+          releaseId: input.release.releaseId,
+          action: "activate",
+          actorUserId: null,
+          result: {
+            activated: true,
+            releaseId: input.release.releaseId,
+            activatedAt: input.now.toISOString()
+          },
+          createdAt: input.now
+        }
+      });
+      return { activated: true, replayed: false };
+    });
+  }
+
+  public async recordDueScheduledReleaseFailure(input: ContentPublicationFailureRecordInput) {
+    return this.transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM carousel_releases WHERE id = ${input.release.releaseId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      if (locked.length !== 1) return this.unrecordedFailure();
+      const scene = this.activationScene(input.release.aggregateKey);
+      const release = await transaction.carouselRelease.findFirst({
+        where: { id: input.release.releaseId, scene, deletedAt: null },
+        select: {
+          status: true,
+          scheduledSlotKey: true,
+          publishAt: true,
+          activationAttempts: true
+        }
+      });
+      const scheduledSlotKey = this.slotKey(sceneFromDb[scene], "scheduled");
+      const currentActivationAttempts = release?.activationAttempts ?? 0;
+      if (!this.isFailureCandidate(release, scheduledSlotKey, input)) {
+        return this.unrecordedFailure(currentActivationAttempts);
+      }
+      const activationAttempts = release.activationAttempts + 1;
+      const disabled = activationAttempts >= input.maxAttempts;
+      const updated = await transaction.carouselRelease.updateMany({
+        where: {
+          id: input.release.releaseId,
+          status: ContentReleaseStatus.SCHEDULED,
+          scheduledSlotKey,
+          activationAttempts: release.activationAttempts,
+          deletedAt: null
+        },
+        data: {
+          ...(disabled
+            ? {
+                status: ContentReleaseStatus.DISABLED,
+                scheduledSlotKey: null,
+                disabledAt: input.now
+              }
+            : {}),
+          activationAttempts: { increment: 1 },
+          lastActivationAttemptAt: input.now,
+          lastActivationError: input.errorKey,
+          lockVersion: { increment: 1 },
+          updatedAt: input.now
+        }
+      });
+      if (updated.count !== 1) return this.unrecordedFailure(release.activationAttempts);
+      if (!input.auditLogRepository.createInTransaction) {
+        throw new Error("AuditLogRepository must support transaction-scoped writes");
+      }
+      await input.auditLogRepository.createInTransaction(transaction, input.audit);
+      return { recorded: true, activationAttempts, disabled };
+    });
+  }
 
   public async getScene(scene: CarouselSceneCode) {
     const releases = await this.client.carouselRelease.findMany({
@@ -1495,6 +1673,57 @@ export class CarouselPublicationRepository implements CarouselPublicationReposit
 
   private slotKey(scene: CarouselSceneCode, slot: "draft" | "published" | "scheduled") {
     return `carousel:${scene}:${slot}`;
+  }
+
+  private activationScene(aggregateKey: string): CarouselScene {
+    if (aggregateKey === "USER_HOME" || aggregateKey === "AFFILIATE_HOME_NOTICE") {
+      return sceneToDb[aggregateKey];
+    }
+    throw this.contentError("error.content.release_not_found", 404);
+  }
+
+  private isDueActivationCandidate(
+    release: {
+      status: ContentReleaseStatus;
+      scheduledSlotKey: string | null;
+      publishAt: Date | null;
+      activationAttempts: number;
+    } | null,
+    scheduledSlotKey: string,
+    input: ContentPublicationActivationInput
+  ): boolean {
+    return Boolean(
+      release &&
+        release.status === ContentReleaseStatus.SCHEDULED &&
+        release.scheduledSlotKey === scheduledSlotKey &&
+        release.publishAt &&
+        release.publishAt <= input.now &&
+        release.activationAttempts < input.maxAttempts
+    );
+  }
+
+  private isFailureCandidate(
+    release: {
+      status: ContentReleaseStatus;
+      scheduledSlotKey: string | null;
+      publishAt: Date | null;
+      activationAttempts: number;
+    } | null,
+    scheduledSlotKey: string,
+    input: ContentPublicationFailureRecordInput
+  ): release is NonNullable<typeof release> {
+    return Boolean(
+      release &&
+        release.status === ContentReleaseStatus.SCHEDULED &&
+        release.scheduledSlotKey === scheduledSlotKey &&
+        release.publishAt &&
+        release.publishAt <= input.now &&
+        release.activationAttempts < input.maxAttempts
+    );
+  }
+
+  private unrecordedFailure(activationAttempts = 0) {
+    return { recorded: false, activationAttempts, disabled: false };
   }
   private actorShopScopeId(actor: PublishCarouselMutation["actor"]): number | null {
     return actor.currentIdentityScopeType === "shop" && actor.currentIdentityScopeId

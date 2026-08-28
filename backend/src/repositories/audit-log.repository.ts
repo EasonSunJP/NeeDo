@@ -13,6 +13,10 @@ export interface AuditLogCreateInput {
 
 export interface AuditLogRepositoryPort {
   create: (input: AuditLogCreateInput) => Promise<void>;
+  createInTransaction?: (
+    client: Pick<Prisma.TransactionClient, "auditLog">,
+    input: AuditLogCreateInput
+  ) => Promise<void>;
 }
 
 export const toAuditLogCreateData = (input: AuditLogCreateInput): Prisma.AuditLogUncheckedCreateInput => ({
@@ -30,6 +34,15 @@ export class AuditLogRepository implements AuditLogRepositoryPort {
 
   public async create(input: AuditLogCreateInput): Promise<void> {
     await this.client.auditLog.create({
+      data: toAuditLogCreateData(input)
+    });
+  }
+
+  public async createInTransaction(
+    client: Pick<Prisma.TransactionClient, "auditLog">,
+    input: AuditLogCreateInput
+  ): Promise<void> {
+    await client.auditLog.create({
       data: toAuditLogCreateData(input)
     });
   }

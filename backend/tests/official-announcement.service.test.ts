@@ -108,7 +108,10 @@ const repository = (): jest.Mocked<OfficialAnnouncementRepositoryPort> => ({
   disable: jest.fn(),
   cloneForRollback: jest.fn(),
   listHistory: jest.fn(),
-  findPublished: jest.fn()
+  findPublished: jest.fn(),
+  listDueScheduledReleases: jest.fn(),
+  activateDueScheduledRelease: jest.fn(),
+  recordDueScheduledReleaseFailure: jest.fn()
 });
 
 const marketplace = () => ({

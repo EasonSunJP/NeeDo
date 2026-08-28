@@ -4,6 +4,7 @@ import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import { normalizePagination, type PaginationInput } from "../utils/pagination";
 import type { AuthRequestContext, AuthenticatedAccessContext } from "./auth.service";
+import type { ContentPublicationActivationRepositoryPort } from "./content-publication-scheduler.service";
 
 export type CarouselSceneCode = "USER_HOME" | "AFFILIATE_HOME_NOTICE";
 export type CarouselStatus = "draft" | "scheduled" | "published" | "disabled" | "archived";
@@ -192,7 +193,8 @@ export interface RollbackCarouselMutation extends IdempotentCarouselMutation {
   reason: string;
 }
 
-export interface CarouselPublicationRepositoryPort {
+export interface CarouselPublicationRepositoryPort
+  extends ContentPublicationActivationRepositoryPort {
   getScene(scene: CarouselSceneCode): Promise<{
     scene: CarouselSceneCode;
     draft: CarouselPublicationPayload | null;

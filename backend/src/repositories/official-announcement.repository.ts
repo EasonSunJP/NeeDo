@@ -2,7 +2,7 @@ import {
   ContentLocale,
   ContentPublicationAggregateType,
   ContentReleaseStatus,
-  type Prisma,
+  Prisma,
   type PrismaClient
 } from "@prisma/client";
 import { CONTENT_LOCALES, type ContentLocaleCode } from "../constants/content-locales";
@@ -20,6 +20,11 @@ import type {
   ScheduleAnnouncementMutation,
   UpdateAnnouncementLocaleMutation
 } from "../services/official-announcement.service";
+import type {
+  ContentPublicationActivationInput,
+  ContentPublicationDueRelease,
+  ContentPublicationFailureRecordInput
+} from "../services/content-publication-scheduler.service";
 import { AppError } from "../utils/app-error";
 import { toPrismaPagination } from "../utils/pagination";
 
@@ -60,6 +65,198 @@ const statusFromDb: Record<ContentReleaseStatus, OfficialAnnouncementStatus> = {
 
 export class OfficialAnnouncementRepository implements OfficialAnnouncementRepositoryPort {
   public constructor(private readonly client: AnnouncementClient = prisma) {}
+
+  public async listDueScheduledReleases(input: {
+    now: Date;
+    batchSize: number;
+    maxAttempts: number;
+  }): Promise<ContentPublicationDueRelease[]> {
+    const releases = await this.client.officialAnnouncementRelease.findMany({
+      where: {
+        status: ContentReleaseStatus.SCHEDULED,
+        scheduledSlotKey: { not: null },
+        publishAt: { lte: input.now },
+        activationAttempts: { lt: input.maxAttempts },
+        deletedAt: null,
+        announcement: { deletedAt: null }
+      },
+      orderBy: [{ publishAt: "asc" }, { id: "asc" }],
+      take: input.batchSize,
+      select: {
+        id: true,
+        publishAt: true,
+        announcement: { select: { id: true, publicId: true } }
+      }
+    });
+    return releases.flatMap((release) =>
+      release.publishAt
+        ? [
+            {
+              aggregateType: "official_announcement" as const,
+              aggregateKey: release.announcement.publicId,
+              aggregateTargetId: release.announcement.id,
+              releaseId: release.id,
+              publishAt: release.publishAt
+            }
+          ]
+        : []
+    );
+  }
+
+  public async activateDueScheduledRelease(input: ContentPublicationActivationInput) {
+    return this.transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM official_announcement_releases WHERE id = ${input.release.releaseId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      if (locked.length !== 1) return { activated: false, replayed: false };
+
+      const replay = await transaction.contentPublicationCommand.findUnique({
+        where: { idempotencyKey: input.commandKey }
+      });
+      if (replay) {
+        if (replay.requestFingerprint !== input.requestFingerprint) {
+          throw this.contentError("error.idempotency_key_reused", 409);
+        }
+        return { activated: true, replayed: true };
+      }
+
+      const release = await transaction.officialAnnouncementRelease.findFirst({
+        where: {
+          id: input.release.releaseId,
+          announcementId: input.release.aggregateTargetId,
+          deletedAt: null,
+          announcement: {
+            publicId: input.release.aggregateKey,
+            deletedAt: null
+          }
+        },
+        select: {
+          id: true,
+          announcementId: true,
+          status: true,
+          scheduledSlotKey: true,
+          publishAt: true,
+          activationAttempts: true
+        }
+      });
+      const scheduledSlotKey = this.slotKey(input.release.aggregateTargetId, "scheduled");
+      if (!this.isDueActivationCandidate(release, scheduledSlotKey, input)) {
+        return { activated: false, replayed: false };
+      }
+
+      await transaction.officialAnnouncementRelease.updateMany({
+        where: {
+          announcementId: input.release.aggregateTargetId,
+          publishedSlotKey: { not: null },
+          deletedAt: null
+        },
+        data: {
+          status: ContentReleaseStatus.ARCHIVED,
+          publishedSlotKey: null,
+          archivedAt: input.now,
+          updatedAt: input.now
+        }
+      });
+      const activated = await transaction.officialAnnouncementRelease.updateMany({
+        where: {
+          id: input.release.releaseId,
+          status: ContentReleaseStatus.SCHEDULED,
+          scheduledSlotKey,
+          publishAt: { lte: input.now },
+          activationAttempts: { lt: input.maxAttempts },
+          deletedAt: null
+        },
+        data: {
+          status: ContentReleaseStatus.PUBLISHED,
+          scheduledSlotKey: null,
+          publishedSlotKey: this.slotKey(input.release.aggregateTargetId, "published"),
+          activatedAt: input.now,
+          lastActivationAttemptAt: input.now,
+          lastActivationError: null,
+          lockVersion: { increment: 1 },
+          updatedAt: input.now
+        }
+      });
+      if (activated.count !== 1) throw this.contentError("error.content.lock_conflict", 409);
+      await transaction.contentPublicationCommand.create({
+        data: {
+          idempotencyKey: input.commandKey,
+          requestFingerprint: input.requestFingerprint,
+          aggregateType: ContentPublicationAggregateType.OFFICIAL_ANNOUNCEMENT,
+          aggregateKey: input.release.aggregateKey,
+          releaseId: input.release.releaseId,
+          action: "activate",
+          actorUserId: null,
+          result: {
+            activated: true,
+            releaseId: input.release.releaseId,
+            activatedAt: input.now.toISOString()
+          },
+          createdAt: input.now
+        }
+      });
+      return { activated: true, replayed: false };
+    });
+  }
+
+  public async recordDueScheduledReleaseFailure(input: ContentPublicationFailureRecordInput) {
+    return this.transaction(async (transaction) => {
+      const locked = await transaction.$queryRaw<Array<{ id: number }>>(
+        Prisma.sql`SELECT id FROM official_announcement_releases WHERE id = ${input.release.releaseId} AND deleted_at IS NULL FOR UPDATE`
+      );
+      if (locked.length !== 1) return this.unrecordedFailure();
+      const release = await transaction.officialAnnouncementRelease.findFirst({
+        where: {
+          id: input.release.releaseId,
+          announcementId: input.release.aggregateTargetId,
+          deletedAt: null,
+          announcement: { publicId: input.release.aggregateKey, deletedAt: null }
+        },
+        select: {
+          status: true,
+          scheduledSlotKey: true,
+          publishAt: true,
+          activationAttempts: true
+        }
+      });
+      const scheduledSlotKey = this.slotKey(input.release.aggregateTargetId, "scheduled");
+      const currentActivationAttempts = release?.activationAttempts ?? 0;
+      if (!this.isFailureCandidate(release, scheduledSlotKey, input)) {
+        return this.unrecordedFailure(currentActivationAttempts);
+      }
+      const activationAttempts = release.activationAttempts + 1;
+      const disabled = activationAttempts >= input.maxAttempts;
+      const updated = await transaction.officialAnnouncementRelease.updateMany({
+        where: {
+          id: input.release.releaseId,
+          status: ContentReleaseStatus.SCHEDULED,
+          scheduledSlotKey,
+          activationAttempts: release.activationAttempts,
+          deletedAt: null
+        },
+        data: {
+          ...(disabled
+            ? {
+                status: ContentReleaseStatus.DISABLED,
+                scheduledSlotKey: null,
+                disabledAt: input.now
+              }
+            : {}),
+          activationAttempts: { increment: 1 },
+          lastActivationAttemptAt: input.now,
+          lastActivationError: input.errorKey,
+          lockVersion: { increment: 1 },
+          updatedAt: input.now
+        }
+      });
+      if (updated.count !== 1) return this.unrecordedFailure(release.activationAttempts);
+      if (!input.auditLogRepository.createInTransaction) {
+        throw new Error("AuditLogRepository must support transaction-scoped writes");
+      }
+      await input.auditLogRepository.createInTransaction(transaction, input.audit);
+      return { recorded: true, activationAttempts, disabled };
+    });
+  }
 
   public async createDraft(
     input: CreateAnnouncementDraftMutation
@@ -812,6 +1009,50 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
 
   private slotKey(announcementId: number, slot: "draft" | "published" | "scheduled"): string {
     return `announcement:${announcementId}:${slot}`;
+  }
+
+  private isDueActivationCandidate(
+    release: {
+      status: ContentReleaseStatus;
+      scheduledSlotKey: string | null;
+      publishAt: Date | null;
+      activationAttempts: number;
+    } | null,
+    scheduledSlotKey: string,
+    input: ContentPublicationActivationInput
+  ): boolean {
+    return Boolean(
+      release &&
+        release.status === ContentReleaseStatus.SCHEDULED &&
+        release.scheduledSlotKey === scheduledSlotKey &&
+        release.publishAt &&
+        release.publishAt <= input.now &&
+        release.activationAttempts < input.maxAttempts
+    );
+  }
+
+  private isFailureCandidate(
+    release: {
+      status: ContentReleaseStatus;
+      scheduledSlotKey: string | null;
+      publishAt: Date | null;
+      activationAttempts: number;
+    } | null,
+    scheduledSlotKey: string,
+    input: ContentPublicationFailureRecordInput
+  ): release is NonNullable<typeof release> {
+    return Boolean(
+      release &&
+        release.status === ContentReleaseStatus.SCHEDULED &&
+        release.scheduledSlotKey === scheduledSlotKey &&
+        release.publishAt &&
+        release.publishAt <= input.now &&
+        release.activationAttempts < input.maxAttempts
+    );
+  }
+
+  private unrecordedFailure(activationAttempts = 0) {
+    return { recorded: false, activationAttempts, disabled: false };
   }
 
   private isUniqueConflict(error: unknown): boolean {
