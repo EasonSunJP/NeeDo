@@ -46,7 +46,25 @@ const payRunInclude = {
         select: {
           displayName: true,
           userId: true,
-          user: { select: { needoId: true } }
+          user: {
+            select: {
+              identities: {
+                where: {
+                  type: "technician",
+                  isActive: true,
+                  deletedAt: null,
+                  publicIdentifier: {
+                    is: { kind: "S", status: "ACTIVE", deletedAt: null }
+                  }
+                },
+                orderBy: { id: "asc" },
+                take: 1,
+                select: {
+                  publicIdentifier: { select: { publicId: true } }
+                }
+              }
+            }
+          }
         }
       },
       lines: {
@@ -67,7 +85,25 @@ const payslipInclude = {
     select: {
       displayName: true,
       userId: true,
-      user: { select: { needoId: true } }
+      user: {
+        select: {
+          identities: {
+            where: {
+              type: "technician",
+              isActive: true,
+              deletedAt: null,
+              publicIdentifier: {
+                is: { kind: "S", status: "ACTIVE", deletedAt: null }
+              }
+            },
+            orderBy: { id: "asc" },
+            take: 1,
+            select: {
+              publicIdentifier: { select: { publicId: true } }
+            }
+          }
+        }
+      }
     }
   },
   lines: {
@@ -786,6 +822,7 @@ export class PayrollRepository implements PayrollRepositoryPort {
   }
 
   private mapPayslip(record: PayslipRecord): PayslipPayload {
+    const technicianIdentity = record.technicianProfile.user.identities[0];
     return {
       id: record.id,
       payRunId: record.payRunId,
@@ -794,7 +831,7 @@ export class PayrollRepository implements PayrollRepositoryPort {
       technicianProfileId: record.technicianProfileId,
       technicianName: record.technicianProfile.displayName,
       technicianUserId: record.technicianUserId ?? record.technicianProfile.userId,
-      technicianNeedoId: record.technicianProfile.user.needoId,
+      technicianNeedoId: technicianIdentity?.publicIdentifier?.publicId ?? null,
       compensationProfileId: record.compensationProfileId,
       periodStart: record.periodStart.toISOString(),
       periodEnd: record.periodEnd.toISOString(),

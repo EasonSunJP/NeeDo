@@ -16,8 +16,15 @@ describe("payroll public employee identity contract", () => {
       "utf8"
     );
 
-    expect(repositorySource).toContain("user: { select: { needoId: true } }");
-    expect(repositorySource).toContain("technicianNeedoId: record.technicianProfile.user.needoId");
+    expect(repositorySource).toContain('type: "technician"');
+    expect(repositorySource).toContain('kind: "S"');
+    expect(repositorySource).toContain("select: { publicId: true }");
+    expect(repositorySource).toContain(
+      "technicianNeedoId: technicianIdentity?.publicIdentifier?.publicId ?? null"
+    );
+    expect(repositorySource).not.toContain(
+      "technicianNeedoId: record.technicianProfile.user.needoId"
+    );
     expect(serviceSource).toContain("technicianNeedoId?: string | null;");
     expect(openApiSource).toContain('"technicianNeedoId"');
     expect(openApiSource).toContain("Public NeeDoID for the employee linked to this payslip");
