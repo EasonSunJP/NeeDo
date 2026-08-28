@@ -907,4 +907,56 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).not.toMatch(/"(?:userId|identityId|identityType|roleCode)"/);
     expect(publicContract).not.toContain("scout");
   });
+
+  it("documents strict authenticated affiliate alliance read and create contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      requestBody?: { content: Record<string, { schema: Record<string, string> }> };
+      responses: Record<string, unknown>;
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties: Record<string, unknown>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "post", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const mine = document.paths["/api/v1/affiliate/alliances/me"].get;
+    const create = document.paths["/api/v1/affiliate/alliances"].post;
+
+    expect(mine.security).toEqual([{ bearerAuth: [] }]);
+    expect(create.security).toEqual([{ bearerAuth: [] }]);
+    for (const operation of [mine, create]) {
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+    expect(create.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/AffiliateAllianceCreate"
+    });
+    expect(document.components.schemas.AffiliateAllianceCreate.additionalProperties).toBe(false);
+    expect(document.components.schemas.AffiliateAllianceCreate.required).toEqual([
+      "name",
+      "defaultPromoterShareBps"
+    ]);
+    const publicContract = JSON.stringify({
+      mine,
+      create,
+      schemas: Object.fromEntries(
+        Object.entries(document.components.schemas).filter(([name]) =>
+          name.startsWith("AffiliateAlliance")
+        )
+      )
+    });
+    expect(publicContract).toContain("needoId");
+    expect(publicContract).toContain("canViewAllianceWallet");
+    expect(publicContract).not.toMatch(/userId|identityId|scout/);
+  });
 });

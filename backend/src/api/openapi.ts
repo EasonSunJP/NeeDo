@@ -219,6 +219,15 @@ const affiliateProfileErrorResponses = {
   "409": { description: "Profile version, channel limit, or channel uniqueness conflict" }
 };
 
+const affiliateAllianceErrorResponses = {
+  "400": { description: "Invalid strict affiliate alliance create contract" },
+  "401": { description: "Missing or invalid access token" },
+  "403": {
+    description: "Missing alliance permission, Affiliate identity, or active Affiliate profile"
+  },
+  "409": { description: "The current user already has an active alliance membership" }
+};
+
 const customerProfileErrorResponses = {
   "400": { description: "Invalid customer self-profile update payload" },
   "401": { description: "Missing or invalid access token" },
@@ -2936,6 +2945,122 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
+      AffiliateAlliancePermissions: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "canClaimTasks",
+          "canViewAllianceOverview",
+          "canViewMemberDetails",
+          "canManageOwnSubordinates",
+          "canViewAllianceWallet"
+        ],
+        properties: {
+          canClaimTasks: { type: "boolean" },
+          canViewAllianceOverview: { type: "boolean" },
+          canViewMemberDetails: { type: "boolean" },
+          canManageOwnSubordinates: { type: "boolean" },
+          canViewAllianceWallet: { type: "boolean" }
+        }
+      },
+      AffiliateAllianceOwner: {
+        type: "object",
+        additionalProperties: false,
+        required: ["needoId", "displayName", "avatarUrl"],
+        properties: {
+          needoId: { type: "string", pattern: "^(?:u|needo)[0-9]{10}$" },
+          displayName: { type: "string", minLength: 1 },
+          avatarUrl: { type: ["string", "null"], format: "uri" }
+        }
+      },
+      AffiliateAllianceMembership: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "memberId",
+          "role",
+          "managerNeedoId",
+          "promoterShareBpsOverride",
+          "permissions"
+        ],
+        properties: {
+          memberId: { type: "integer", minimum: 1 },
+          role: { type: "string", enum: ["owner", "partner", "subordinate"] },
+          managerNeedoId: {
+            type: ["string", "null"],
+            pattern: "^(?:u|needo)[0-9]{10}$"
+          },
+          promoterShareBpsOverride: {
+            type: ["integer", "null"],
+            minimum: 0,
+            maximum: 10000
+          },
+          permissions: { $ref: "#/components/schemas/AffiliateAlliancePermissions" }
+        }
+      },
+      AffiliateAllianceWallet: {
+        type: "object",
+        additionalProperties: false,
+        required: ["currency", "availableBalance", "frozenBalance"],
+        properties: {
+          currency: { type: "string", enum: ["NDP"] },
+          availableBalance: { type: "integer", minimum: 0 },
+          frozenBalance: { type: "integer", minimum: 0 }
+        }
+      },
+      AffiliateAlliance: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "allianceId",
+          "name",
+          "description",
+          "status",
+          "version",
+          "defaultPromoterShareBps",
+          "owner",
+          "membership",
+          "wallet",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          allianceId: { type: "integer", minimum: 1 },
+          name: { type: "string", minLength: 2, maxLength: 120 },
+          description: { type: ["string", "null"], minLength: 1, maxLength: 500 },
+          status: { type: "string", enum: ["active", "suspended", "closed"] },
+          version: { type: "integer", minimum: 1 },
+          defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 },
+          owner: { $ref: "#/components/schemas/AffiliateAllianceOwner" },
+          membership: { $ref: "#/components/schemas/AffiliateAllianceMembership" },
+          wallet: { $ref: "#/components/schemas/AffiliateAllianceWallet" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      AffiliateAllianceMine: {
+        type: "object",
+        additionalProperties: false,
+        required: ["alliance"],
+        properties: {
+          alliance: {
+            oneOf: [
+              { $ref: "#/components/schemas/AffiliateAlliance" },
+              { type: "null" }
+            ]
+          }
+        }
+      },
+      AffiliateAllianceCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "defaultPromoterShareBps"],
+        properties: {
+          name: { type: "string", minLength: 2, maxLength: 120 },
+          description: { type: ["string", "null"], minLength: 1, maxLength: 500 },
+          defaultPromoterShareBps: { type: "integer", minimum: 0, maximum: 10000 }
+        }
+      },
       AffiliateChannelCreate: {
         type: "object",
         additionalProperties: false,
@@ -3643,6 +3768,42 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/AffiliateProfile"
           }),
           ...affiliateProfileErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances/me`]: {
+      get: {
+        tags: ["Affiliate Alliance"],
+        summary: "Get the authenticated Affiliate's current alliance",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": jsonDataResponse("Current Affiliate alliance or null", {
+            $ref: "#/components/schemas/AffiliateAllianceMine"
+          }),
+          ...affiliateAllianceErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/affiliate/alliances`]: {
+      post: {
+        tags: ["Affiliate Alliance"],
+        summary: "Create the authenticated Affiliate's owned alliance",
+        description:
+          "Creates an owner membership, all owner permissions, and a separate zero-balance NDP alliance wallet. eKYC and bank details are not required for creation.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/AffiliateAllianceCreate" }
+            }
+          }
+        },
+        responses: {
+          "201": jsonDataResponse("Created Affiliate alliance", {
+            $ref: "#/components/schemas/AffiliateAllianceMine"
+          }),
+          ...affiliateAllianceErrorResponses
         }
       }
     },

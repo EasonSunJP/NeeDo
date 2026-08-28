@@ -940,6 +940,20 @@ export const SYSTEM_PERMISSIONS = [
     "编辑本人联盟营销资料和外部平台主页链接"
   ),
   createPermission(
+    "page:affiliate-alliance",
+    "联盟",
+    "page",
+    "affiliate",
+    "访问本人当前联盟"
+  ),
+  createPermission(
+    "button:affiliate-alliance-create",
+    "创建联盟",
+    "button",
+    "affiliate",
+    "创建本人拥有的联盟"
+  ),
+  createPermission(
     "menu:merchant-affiliate",
     "商户联盟营销",
     "menu",
@@ -1231,7 +1245,9 @@ const ACTIVATED_AFFILIATE_PERMISSION_CODES = [
   "page:affiliate-marketplace",
   "button:affiliate-claim",
   "page:affiliate-profile",
-  "button:affiliate-profile-edit"
+  "button:affiliate-profile-edit",
+  "page:affiliate-alliance",
+  "button:affiliate-alliance-create"
 ] as const satisfies readonly SystemPermissionCode[];
 
 const MERCHANT_AFFILIATE_PERMISSION_CODES = [
