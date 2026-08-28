@@ -686,6 +686,27 @@ function CompleteUserCenterPage({
       return { ...current, languages: languages.length > 0 ? languages : [language] };
     });
   };
+  const persistProfilePrivacy = async (visibility: CustomerSelfProfile["visibility"]) => {
+    if (isSavingProfile) {
+      return false;
+    }
+
+    setIsSavingProfile(true);
+    setProfileToastMessage("");
+
+    try {
+      const updated = await customerProfileApi.updateMine({ visibility });
+      onFormalProfileUpdated(updated);
+
+      setProfileToastMessage(visibility === "public" ? "隐私模式已关闭" : "隐私模式设置已保存");
+      return true;
+    } catch {
+      setProfileToastMessage("隐私模式保存失败，请重试");
+      return false;
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
   const updateProfilePrivacyEnabled = (enabled: boolean) => {
     if (isSavingProfile) {
       return;
@@ -696,9 +717,15 @@ function CompleteUserCenterPage({
       return;
     }
 
-    setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled }));
     setProfilePrivacyMenuOpen(false);
     setProfilePrivacyConfirmOpen(false);
+
+    if (isEditingProfile) {
+      setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled }));
+      return;
+    }
+
+    void persistProfilePrivacy("public");
   };
   const confirmProfilePrivacyEnabled = () => {
     if (isSavingProfile) {
@@ -706,16 +733,32 @@ function CompleteUserCenterPage({
     }
 
     setProfilePrivacyConfirmOpen(false);
-    setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled: true }));
-    setProfilePrivacyMenuOpen(true);
+
+    if (isEditingProfile) {
+      setProfilePrivacyDraft((current) => ({ ...(current ?? savedProfilePrivacy), enabled: true }));
+      setProfilePrivacyMenuOpen(true);
+      return;
+    }
+
+    void persistProfilePrivacy(savedProfilePrivacy.visibility).then((saved) => {
+      if (saved) {
+        setProfilePrivacyMenuOpen(true);
+      }
+    });
   };
   const updateProfilePrivacyVisibility = (visibility: UserProfileVisibility) => {
     if (isSavingProfile) {
       return;
     }
 
-    setProfilePrivacyDraft({ enabled: true, visibility });
     setProfilePrivacyMenuOpen(false);
+
+    if (isEditingProfile) {
+      setProfilePrivacyDraft({ enabled: true, visibility });
+      return;
+    }
+
+    void persistProfilePrivacy(visibility);
   };
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     if (isSavingProfile) {
@@ -922,7 +965,7 @@ function CompleteUserCenterPage({
                         <button
                           aria-expanded={activeProfilePrivacy.enabled ? profilePrivacyMenuOpen : undefined}
                           className="min-w-0 flex-1 text-left disabled:cursor-default"
-                          disabled={!isEditingProfile || !activeProfilePrivacy.enabled || isSavingProfile}
+                          disabled={!activeProfilePrivacy.enabled || isSavingProfile}
                           onClick={() => setProfilePrivacyMenuOpen((current) => !current)}
                           type="button"
                         >
@@ -932,7 +975,7 @@ function CompleteUserCenterPage({
                         <ToggleSwitch
                           ariaLabel="开启隐私模式"
                           checked={activeProfilePrivacy.enabled}
-                          disabled={!isEditingProfile || isSavingProfile}
+                          disabled={isSavingProfile}
                           onChange={updateProfilePrivacyEnabled}
                           size="md"
                         />

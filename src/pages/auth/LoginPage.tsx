@@ -10,6 +10,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { authApi, type VerificationChallengePayload } from "../../api/auth";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import {
+  readBrowserSavedPassword,
   readBrowserPasswordSavePreference,
   requestBrowserPasswordSave,
   writeBrowserPasswordSavePreference,
@@ -381,6 +382,25 @@ export function LoginPage({
     setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
   }, [passwordSaveScope]);
   useEffect(() => {
+    if (!savePassword || panelMode !== "account") {
+      return;
+    }
+
+    let active = true;
+    void readBrowserSavedPassword().then((credential) => {
+      if (!active || !credential) {
+        return;
+      }
+
+      setLoginIdentifier((current) => current || credential.id);
+      setLoginPassword((current) => current || credential.password);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [panelMode, savePassword]);
+  useEffect(() => {
     navigationInFlightRef.current = false;
   }, [activePortal, nextPath]);
 
@@ -509,15 +529,26 @@ export function LoginPage({
     event.preventDefault();
     if (pending) return;
     setFeedback("");
-    const identifier = loginIdentifier.trim();
-    if (!identifier || !loginPassword) {
+    const formData = new FormData(event.currentTarget);
+    const submittedIdentifier = formData.get("username");
+    const submittedPassword = formData.get("password");
+    const identifier = (
+      typeof submittedIdentifier === "string"
+        ? submittedIdentifier
+        : loginIdentifier
+    ).trim();
+    const password =
+      typeof submittedPassword === "string"
+        ? submittedPassword
+        : loginPassword;
+    if (!identifier || !password) {
       setFeedback(copy.requiredAccount);
       return;
     }
 
     setPending(true);
     try {
-      const result = await login(activePortal, identifier, loginPassword);
+      const result = await login(activePortal, identifier, password);
       if (!result.ok) {
         setFeedback(resolveLoginErrorMessage(result.message, language));
         return;
@@ -526,7 +557,7 @@ export function LoginPage({
         await requestBrowserPasswordSave({
           id: identifier,
           name: "NeeDo",
-          password: loginPassword,
+          password,
         });
       }
       navigateToPortal(
@@ -857,6 +888,7 @@ export function LoginPage({
               </form>
             ) : panelMode === "account" ? (
               <form
+                autoComplete={savePassword ? "on" : "off"}
                 className="space-y-5 text-left"
                 data-testid="password-login-form"
                 onSubmit={handleAccountLogin}
@@ -877,8 +909,10 @@ export function LoginPage({
                     autoComplete={savePassword ? "username" : "off"}
                     className="mt-2 h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
                     data-testid="login-identifier"
+                    name="username"
                     onChange={(event) => setLoginIdentifier(event.target.value)}
                     placeholder={copy.accountPlaceholder}
+                    type="text"
                     value={loginIdentifier}
                   />
                 </label>
@@ -909,6 +943,7 @@ export function LoginPage({
                     disabled={pending}
                     hidePasswordLabel={copy.hidePassword}
                     inputClassName="h-14 w-full rounded-[8px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] px-4 pr-14 text-base font-bold outline-none focus:border-[color:var(--client-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--client-primary)_18%,transparent)]"
+                    name="password"
                     onChange={(event) => setLoginPassword(event.target.value)}
                     placeholder={copy.passwordPlaceholder}
                     showPasswordLabel={copy.showPassword}

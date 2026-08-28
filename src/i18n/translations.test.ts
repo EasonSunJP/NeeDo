@@ -81,6 +81,12 @@ describe("translations", () => {
     expect(translateText("开始聊天", "ko")).toBe("채팅 시작");
   });
 
+  it("uses the approved affiliate name in operations navigation", () => {
+    expect(translateText("联盟营销", "zh")).toBe("联盟营销");
+    expect(translateText("联盟营销", "en")).toBe("Affiliate");
+    expect(translateText("联盟营销", "ja")).toBe("アフィリエイト");
+  });
+
   it("localizes every standard recall residue and failure message", () => {
     const keys = [
       "你撤回了一条消息",

@@ -205,6 +205,63 @@ describe("UserCenterPage inline profile editing", () => {
     expect(container.textContent).toContain("对好友以及关联人可见");
   });
 
+  it("enables and persists privacy directly from the view-state switch", async () => {
+    testState.getMine.mockResolvedValue({ ...savedProfile, isPublic: true, visibility: "public" });
+    testState.updateMine.mockResolvedValue({ ...savedProfile, isPublic: false, visibility: "privateAll" });
+    await renderUserCenter();
+
+    const privacySwitch = container.querySelector<HTMLButtonElement>('button[aria-label="开启隐私模式"][role="switch"]');
+
+    expect(privacySwitch).not.toBeNull();
+    expect(privacySwitch?.disabled).toBe(false);
+    await click(privacySwitch!);
+    expect(container.querySelector('[data-testid="privacy-mode-confirm-dialog"]')).not.toBeNull();
+
+    await click(findButton("确定"));
+
+    await waitFor(() => expect(testState.updateMine).toHaveBeenCalledWith({ visibility: "privateAll" }));
+    await waitFor(() => expect(container.textContent).toContain("对所有人不可见"));
+    expect(container.querySelector('[data-testid="user-profile-privacy-options"]')).not.toBeNull();
+  });
+
+  it("disables and persists privacy directly from the view-state switch", async () => {
+    testState.updateMine.mockResolvedValue({ ...savedProfile, isPublic: true, visibility: "public" });
+    await renderUserCenter();
+
+    const privacySwitch = container.querySelector<HTMLButtonElement>('button[aria-label="开启隐私模式"][role="switch"]');
+
+    expect(privacySwitch?.disabled).toBe(false);
+    await click(privacySwitch!);
+
+    await waitFor(() => expect(testState.updateMine).toHaveBeenCalledWith({ visibility: "public" }));
+    await waitFor(() => expect(container.textContent).toContain("公开可见"));
+  });
+
+  it("persists a visibility choice from the view-state privacy menu", async () => {
+    testState.updateMine.mockResolvedValue({ ...savedProfile, isPublic: false, visibility: "limited" });
+    await renderUserCenter();
+
+    await click(findButton("对好友以及关联人可见"));
+    await click(findButton("对好友可见"));
+
+    await waitFor(() => expect(testState.updateMine).toHaveBeenCalledWith({ visibility: "limited" }));
+    await waitFor(() => expect(container.textContent).toContain("对好友可见"));
+  });
+
+  it("keeps the saved privacy state when a direct privacy update fails", async () => {
+    testState.getMine.mockResolvedValue({ ...savedProfile, isPublic: true, visibility: "public" });
+    testState.updateMine.mockRejectedValue(new Error("network"));
+    await renderUserCenter();
+
+    const privacySwitch = container.querySelector<HTMLButtonElement>('button[aria-label="开启隐私模式"][role="switch"]');
+    await click(privacySwitch!);
+    await click(findButton("确定"));
+
+    await waitFor(() => expect(container.textContent).toContain("隐私模式保存失败，请重试"));
+    expect(container.textContent).toContain("公开可见");
+    expect(container.querySelector('[data-testid="user-profile-privacy-options"]')).toBeNull();
+  });
+
   it("keeps a single-line nickname editor compact so the privacy control stays on the view-state grid", async () => {
     await renderUserCenter();
 

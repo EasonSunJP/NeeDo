@@ -30,4 +30,10 @@ describe("MerchantAdminSettingsPage formal shop profile", () => {
     expect(source).toContain("还原未保存修改");
     expect(source).toContain("店铺基础资料已保存并写入数据库");
   });
+
+  it("retries only transient reads and localizes the final merchant read error", () => {
+    expect(source).toContain("loadCoreReadWithTransientRetry(");
+    expect(source).toContain("describeMerchantReadError(loadError, language)");
+    expect(source).not.toContain("loadError instanceof Error ? loadError.message");
+  });
 });

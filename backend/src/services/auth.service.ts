@@ -1686,9 +1686,7 @@ export class AuthService {
           identity.publicIdentifier?.status === "ACTIVE" &&
           identity.publicIdentifier.deletedAt === null
             ? identity.publicIdentifier.publicId
-            : identity.isDefault ||
-                (["customer", "user", "u"].includes(identity.type) &&
-                  user.needoId.startsWith("needo"))
+            : identity.isDefault
               ? user.needoId
               : null
       }));

@@ -30,6 +30,10 @@ const mocked = vi.hoisted(() => ({
     submitGoogleCredential: vi.fn(),
   },
   navigateToPortal: vi.fn(),
+  readBrowserSavedPassword: vi.fn(async () => null as {
+    id: string;
+    password: string;
+  } | null),
   requestBrowserPasswordSave: vi.fn(async () => undefined),
   requestGoogleCredential: vi.fn(),
 }));
@@ -56,6 +60,7 @@ vi.mock("../../auth/browserPasswordSave", async (importOriginal) => {
     await importOriginal<typeof import("../../auth/browserPasswordSave")>();
   return {
     ...actual,
+    readBrowserSavedPassword: mocked.readBrowserSavedPassword,
     requestBrowserPasswordSave: mocked.requestBrowserPasswordSave,
   };
 });
@@ -117,6 +122,14 @@ function setInput(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+function setBrowserAutofilledValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  setter?.call(input, value);
+}
+
 function createDeferred<T>() {
   let reject!: (reason?: unknown) => void;
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -147,6 +160,7 @@ describe("LoginPage verified identity behavior", () => {
     mocked.auth.session = null;
     mocked.auth.canAccess.mockReturnValue(false);
     mocked.auth.hasRememberedPortalAuthorization.mockReturnValue(false);
+    mocked.readBrowserSavedPassword.mockResolvedValue(null);
     mocked.auth.login.mockResolvedValue({
       message: "error.auth.invalid_credentials",
       ok: false,
@@ -278,6 +292,84 @@ describe("LoginPage verified identity behavior", () => {
         '[data-testid="login-password"]',
       )?.autocomplete,
     ).toBe("current-password");
+  });
+
+  it("restores a saved browser credential after password saving is enabled", async () => {
+    mocked.readBrowserSavedPassword.mockResolvedValueOnce({
+      id: "saved@example.com",
+      password: "Saved.Password.2026",
+    });
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
+        ?.click(),
+    );
+
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[role="switch"]')?.click(),
+    );
+    await flushUi();
+
+    expect(mocked.readBrowserSavedPassword).toHaveBeenCalledTimes(1);
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-identifier"]',
+      )?.value,
+    ).toBe("saved@example.com");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-password"]',
+      )?.value,
+    ).toBe("Saved.Password.2026");
+  });
+
+  it("exposes standard credential field names to the browser password manager", async () => {
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
+        ?.click(),
+    );
+
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-identifier"]',
+      )?.name,
+    ).toBe("username");
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid="login-password"]',
+      )?.name,
+    ).toBe("password");
+  });
+
+  it("submits credentials filled by the browser without React input events", async () => {
+    mocked.auth.login.mockResolvedValueOnce({ ok: true, session });
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>('[data-testid="show-password-login"]')
+        ?.click(),
+    );
+
+    const identifier = container.querySelector<HTMLInputElement>(
+      '[data-testid="login-identifier"]',
+    )!;
+    const password = container.querySelector<HTMLInputElement>(
+      '[data-testid="login-password"]',
+    )!;
+    setBrowserAutofilledValue(identifier, "autofill@example.com");
+    setBrowserAutofilledValue(password, "Autofill.Password.2026");
+
+    await act(async () =>
+      container
+        .querySelector<HTMLFormElement>('[data-testid="password-login-form"]')
+        ?.requestSubmit(),
+    );
+
+    expect(mocked.auth.login).toHaveBeenCalledWith(
+      "user",
+      "autofill@example.com",
+      "Autofill.Password.2026",
+    );
   });
 
   it("requests browser-managed password storage only after successful login", async () => {

@@ -24,7 +24,7 @@ import {
 const surfaceLabels: Record<AdminDocsSurface, string> = {
   ops: "产运后台",
   merchant: "商户后台",
-  afirieito: "联盟营销（Afirieito）后台"
+  afirieito: "联盟营销后台"
 };
 
 const targetLabels: Record<ApiDocVisibilityTarget, string> = {
@@ -34,7 +34,7 @@ const targetLabels: Record<ApiDocVisibilityTarget, string> = {
 
 const targetDescriptions: Record<ApiDocVisibilityTarget, string> = {
   merchant: "给门店经营、调度、财务和店铺配置人员查看。",
-  afirieito: "给 NDA 管理后台、推广计划、链接素材和返佣结算人员查看。"
+  afirieito: "给联盟营销后台的推广计划、链接素材和返佣结算人员查看。"
 };
 const apiDocMethodOptions: ApiDocMethod["method"][] = ["GET", "POST", "PATCH", "DELETE"];
 const adminDocsFieldClassName = "mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm font-semibold text-ink outline-none transition focus:border-moss";
@@ -122,7 +122,7 @@ function draftToApiDocItem(draft: ApiDocEditDraft): ApiDocItem {
 
 function getDocsDescription(surface: AdminDocsSurface, mode: AdminDocsMode) {
   if (mode === "operation") {
-    return "操作文档在产运后台、商户后台、联盟营销（Afirieito）后台保持同一份内容，确保流程、权限、公告、结算和风控口径一致。";
+    return "操作文档在产运后台、商户后台、联盟营销后台保持同一份内容，确保流程、权限、公告、结算和风控口径一致。";
   }
 
   if (surface === "ops") {

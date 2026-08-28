@@ -18,6 +18,22 @@ type PasswordCredentialConstructor = new (data: {
   password: string;
 }) => Credential;
 
+type PasswordCredentialInput = {
+  id: string;
+  name?: string;
+  password: string;
+};
+
+type PasswordCredentialsContainer = CredentialsContainer & {
+  create(options: { password: PasswordCredentialInput }): Promise<Credential | null>;
+  get(options: {
+    mediation: "optional";
+    password: true;
+  }): Promise<Credential | null>;
+};
+
+type StoredPasswordCredential = Credential & { password?: string };
+
 export function readBrowserPasswordSavePreference(scope: BrowserPasswordSaveScope) {
   return readBrowserStorage(`${preferencePrefix}${scope}`, { silent: true }) === "true";
 }
@@ -31,11 +47,41 @@ export function writeBrowserPasswordSavePreference(
   });
 }
 
-export async function requestBrowserPasswordSave(input: {
+export async function readBrowserSavedPassword(): Promise<{
   id: string;
-  name?: string;
   password: string;
-}) {
+} | null> {
+  if (
+    typeof navigator === "undefined" ||
+    !navigator.credentials?.get
+  ) {
+    return null;
+  }
+
+  try {
+    const credential = (await (
+      navigator.credentials as PasswordCredentialsContainer
+    ).get({
+      mediation: "optional",
+      password: true
+    })) as StoredPasswordCredential | null;
+
+    if (
+      !credential ||
+      credential.type !== "password" ||
+      !credential.id ||
+      !credential.password
+    ) {
+      return null;
+    }
+
+    return { id: credential.id, password: credential.password };
+  } catch {
+    return null;
+  }
+}
+
+export async function requestBrowserPasswordSave(input: PasswordCredentialInput) {
   const PasswordCredentialType = (
     globalThis as typeof globalThis & {
       PasswordCredential?: PasswordCredentialConstructor;
@@ -45,7 +91,6 @@ export async function requestBrowserPasswordSave(input: {
   if (
     !input.id ||
     !input.password ||
-    !PasswordCredentialType ||
     typeof navigator === "undefined" ||
     !navigator.credentials?.store
   ) {
@@ -53,7 +98,15 @@ export async function requestBrowserPasswordSave(input: {
   }
 
   try {
-    await navigator.credentials.store(new PasswordCredentialType(input));
+    const credential = PasswordCredentialType
+      ? new PasswordCredentialType(input)
+      : await (
+          navigator.credentials as PasswordCredentialsContainer
+        ).create?.({ password: input });
+
+    if (credential) {
+      await navigator.credentials.store(credential);
+    }
   } catch {
     // Browser policy, cancellation, or unsupported storage must not block login.
   }

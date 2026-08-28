@@ -119,6 +119,37 @@ describe("backofficeRealDataApi master data writes", () => {
     );
   });
 
+  it("uses the formal operations affiliate task review endpoints", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+    const query = {
+      keyword: "Shibuya",
+      page: 2,
+      pageSize: 20,
+      publisherType: "shop" as const,
+      status: "pending_review" as const
+    };
+
+    await backofficeRealDataApi.affiliateTasks(query);
+    await backofficeRealDataApi.affiliateTask(81);
+    await backofficeRealDataApi.approveAffiliateTask(81);
+    await backofficeRealDataApi.rejectAffiliateTask(81, "范围快照需要重新提交");
+
+    expect(httpClient.request).toHaveBeenNthCalledWith(1, "/backoffice/affiliate/tasks", {
+      query
+    });
+    expect(httpClient.request).toHaveBeenNthCalledWith(2, "/backoffice/affiliate/tasks/81");
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      3,
+      "/backoffice/affiliate/tasks/81/approve",
+      { method: "POST" }
+    );
+    expect(httpClient.request).toHaveBeenNthCalledWith(
+      4,
+      "/backoffice/affiliate/tasks/81/reject",
+      { body: { reason: "范围快照需要重新提交" }, method: "POST" }
+    );
+  });
+
   it("preserves an empty ranking query for the shared http client", async () => {
     vi.mocked(httpClient.request).mockResolvedValue({});
 

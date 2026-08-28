@@ -15,7 +15,8 @@ const mocked = vi.hoisted(() => ({
     loginWithVerificationCode: vi.fn(),
     logout: vi.fn(),
     sendVerificationCode: vi.fn(),
-    session: null
+    session: null as { email?: string; loginMethod?: string; portal?: string; username?: string } | null,
+    switchPortal: vi.fn()
   },
   language: "en" as "en" | "ja" | "ko" | "zh" | "zh-Hant",
   requestBrowserPasswordSave: vi.fn(async () => undefined),
@@ -56,6 +57,9 @@ describe("AdminLoginPage formal password surface", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mocked.language = "en";
+    mocked.auth.canAccess.mockReturnValue(false);
+    mocked.auth.isAuthenticated = false;
+    mocked.auth.session = null;
     window.localStorage.clear();
     window.localStorage.setItem(
       "needo.auth.remember-credentials.admin.admin",
@@ -88,6 +92,11 @@ describe("AdminLoginPage formal password surface", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     setter?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function setBrowserAutofilledValue(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, value);
   }
 
   it("keeps browser password saving opt-in", () => {
@@ -144,6 +153,32 @@ describe("AdminLoginPage formal password surface", () => {
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')?.value).toBe("");
   });
 
+  it("exposes standard credential field names to the browser password manager", () => {
+    expect(container.querySelector<HTMLInputElement>('input[name="username"]')?.name).toBe("username");
+    expect(container.querySelector<HTMLInputElement>('input[type="password"]')?.name).toBe("password");
+  });
+
+  it("submits credentials filled by the browser without React input events", async () => {
+    mocked.auth.loginWithFormalPassword.mockResolvedValue({
+      ok: true,
+      session: { portal: "admin" }
+    });
+    const account = container.querySelector<HTMLInputElement>('input[name="username"]')!;
+    const password = container.querySelector<HTMLInputElement>('input[type="password"]')!;
+    setBrowserAutofilledValue(account, "autofill-admin@example.com");
+    setBrowserAutofilledValue(password, "Autofill.Admin.Password.2026");
+
+    await act(async () => {
+      container.querySelector<HTMLFormElement>("form")?.requestSubmit();
+    });
+
+    expect(mocked.auth.loginWithFormalPassword).toHaveBeenCalledWith(
+      "admin",
+      "autofill-admin@example.com",
+      "Autofill.Admin.Password.2026"
+    );
+  });
+
   it("requests browser password storage only after a successful opted-in login", async () => {
     mocked.auth.loginWithFormalPassword.mockResolvedValue({
       ok: true,
@@ -166,6 +201,29 @@ describe("AdminLoginPage formal password surface", () => {
       password: "Strong.Password.2026"
     });
     expect(mocked.navigate).toHaveBeenCalledWith("/admin", { replace: true });
+  });
+
+  it("switches the active backend identity before continuing an existing merchant session", async () => {
+    mocked.auth.canAccess.mockReturnValue(true);
+    mocked.auth.isAuthenticated = true;
+    mocked.auth.session = {
+      email: "admin@lifedance.com",
+      loginMethod: "password",
+      portal: "admin"
+    };
+    mocked.auth.switchPortal.mockResolvedValue({
+      ok: true,
+      session: { portal: "merchant" }
+    });
+    await renderPortal("merchant-admin");
+
+    const continueButton = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Enter Admin"
+    );
+    await act(async () => continueButton?.click());
+
+    expect(mocked.auth.switchPortal).toHaveBeenCalledWith("merchant");
+    expect(mocked.navigate).toHaveBeenCalledWith("/merchant-admin", { replace: true });
   });
 
   it("purges all legacy plaintext credential records while preserving unrelated auth storage", () => {

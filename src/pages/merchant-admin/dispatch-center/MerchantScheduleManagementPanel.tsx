@@ -3,6 +3,9 @@ import { backofficeRealDataApi, type BackofficeServicePayload, type BackofficeTe
 import { Badge } from "../../../components/ui/Badge";
 import { Button } from "../../../components/ui/Button";
 import { bookingApi, type BookingScheduleSlot } from "../../../features/booking/api";
+import { loadCoreReadWithTransientRetry } from "../../../features/core-read/transientRetry";
+import { describeMerchantReadError } from "../../../features/merchant-admin/merchantReadError";
+import { useOptionalI18n } from "../../../i18n/I18nProvider";
 
 const inputClassName = "h-10 w-full rounded-lg border border-line bg-white px-3 text-sm font-bold outline-none focus:border-moss";
 const pageSize = 30;
@@ -49,6 +52,7 @@ function statusBadge(status: BookingScheduleSlot["status"]) {
 }
 
 export function MerchantScheduleManagementPanel({ readOnly = false }: { readOnly?: boolean }) {
+  const { language } = useOptionalI18n();
   const [range, setRange] = useState(initialRange);
   const [page, setPage] = useState(1);
   const [slots, setSlots] = useState<BookingScheduleSlot[]>([]);
@@ -67,8 +71,12 @@ export function MerchantScheduleManagementPanel({ readOnly = false }: { readOnly
 
   const loadMasterData = useCallback(async () => {
     const [servicePage, technicianPage] = await Promise.all([
-      backofficeRealDataApi.services("merchant-admin", { page: 1, pageSize: 100 }),
-      backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100 })
+      loadCoreReadWithTransientRetry(
+        () => backofficeRealDataApi.services("merchant-admin", { page: 1, pageSize: 100 })
+      ),
+      loadCoreReadWithTransientRetry(
+        () => backofficeRealDataApi.technicians("merchant-admin", { page: 1, pageSize: 100 })
+      )
     ]);
     setServices(servicePage.list);
     setTechnicians(technicianPage.list.filter((technician) => technician.status === "published"));
@@ -76,12 +84,14 @@ export function MerchantScheduleManagementPanel({ readOnly = false }: { readOnly
   }, []);
 
   const loadSlots = useCallback(async () => {
-    const response = await bookingApi.listManagedScheduleSlots("merchant-admin", {
-      from: toIso(`${range.from}T00:00`),
-      page,
-      pageSize,
-      to: toIso(`${range.to}T23:59`)
-    });
+    const response = await loadCoreReadWithTransientRetry(
+      () => bookingApi.listManagedScheduleSlots("merchant-admin", {
+        from: toIso(`${range.from}T00:00`),
+        page,
+        pageSize,
+        to: toIso(`${range.to}T23:59`)
+      })
+    );
     setSlots(response.list);
     setTotal(response.total);
   }, [page, range.from, range.to]);
@@ -92,13 +102,13 @@ export function MerchantScheduleManagementPanel({ readOnly = false }: { readOnly
     setError("");
     Promise.all([loadMasterData(), loadSlots()])
       .catch((loadError: unknown) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : String(loadError));
+        if (active) setError(describeMerchantReadError(loadError, language));
       })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => { active = false; };
-  }, [loadMasterData, loadSlots, reloadVersion]);
+  }, [language, loadMasterData, loadSlots, reloadVersion]);
 
   const selectedService = useMemo(
     () => services.find((service) => service.id === Number(serviceId)) ?? null,
@@ -202,16 +212,18 @@ export function MerchantScheduleManagementPanel({ readOnly = false }: { readOnly
       {error ? <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}
       {notice ? <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm font-bold text-green-800">{notice}</p> : null}
 
+      {!error ? (
       <section className="overflow-hidden rounded-[22px] border border-line bg-white shadow-panel">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4"><div><h3 className="text-lg font-black text-ink">正式排班库存</h3><p className="mt-1 text-xs font-bold text-ink/50">共 {total} 条；本页 {slots.length} 条</p></div><Badge tone="neutral">第 {page}/{pageCount} 页</Badge></div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-paper text-xs font-black text-ink/55"><tr><th className="px-4 py-3">时间</th><th className="px-4 py-3">服务</th><th className="px-4 py-3">员工</th><th className="px-4 py-3">容量</th><th className="px-4 py-3">状态</th>{!readOnly ? <th className="px-4 py-3">操作</th> : null}</tr></thead>
-            <tbody>{loading ? <tr><td className="px-4 py-8 text-center font-bold text-ink/50" colSpan={readOnly ? 5 : 6}>正在读取正式排班...</td></tr> : null}{!loading && slots.length === 0 ? <tr><td className="px-4 py-8 text-center font-bold text-ink/50" colSpan={readOnly ? 5 : 6}>所选日期内没有排班时段</td></tr> : null}{slots.map((slot) => <tr className="border-t border-line" key={slot.id}><td className="px-4 py-3 font-bold"><span className="block">{formatDateTime(slot.startsAt)}</span><span className="mt-1 block text-xs text-ink/45">至 {formatDateTime(slot.endsAt)}</span></td><td className="px-4 py-3 font-black">{slot.serviceName}</td><td className="px-4 py-3">{slot.technicianName ?? "店铺公共"}</td><td className="px-4 py-3">{slot.bookedCount}/{slot.capacity}</td><td className="px-4 py-3">{statusBadge(slot.status)}</td>{!readOnly ? <td className="px-4 py-3"><div className="flex gap-2"><Button disabled={busyId !== null || slot.status === "booked" || slot.bookedCount > 0} onClick={() => void updateStatus(slot)} size="sm" variant="secondary">{slot.status === "blocked" ? "恢复" : "阻塞"}</Button><Button disabled={busyId !== null || slot.bookedCount > 0} onClick={() => void deleteSlot(slot)} size="sm" variant="danger">软删除</Button></div></td> : null}</tr>)}</tbody>
+            <tbody>{loading ? <tr><td className="px-4 py-8 text-center font-bold text-ink/50" colSpan={readOnly ? 5 : 6}>正在读取正式排班...</td></tr> : null}{!loading && !error && slots.length === 0 ? <tr><td className="px-4 py-8 text-center font-bold text-ink/50" colSpan={readOnly ? 5 : 6}>所选日期内没有排班时段</td></tr> : null}{slots.map((slot) => <tr className="border-t border-line" key={slot.id}><td className="px-4 py-3 font-bold"><span className="block">{formatDateTime(slot.startsAt)}</span><span className="mt-1 block text-xs text-ink/45">至 {formatDateTime(slot.endsAt)}</span></td><td className="px-4 py-3 font-black">{slot.serviceName}</td><td className="px-4 py-3">{slot.technicianName ?? "店铺公共"}</td><td className="px-4 py-3">{slot.bookedCount}/{slot.capacity}</td><td className="px-4 py-3">{statusBadge(slot.status)}</td>{!readOnly ? <td className="px-4 py-3"><div className="flex gap-2"><Button disabled={busyId !== null || slot.status === "booked" || slot.bookedCount > 0} onClick={() => void updateStatus(slot)} size="sm" variant="secondary">{slot.status === "blocked" ? "恢复" : "阻塞"}</Button><Button disabled={busyId !== null || slot.bookedCount > 0} onClick={() => void deleteSlot(slot)} size="sm" variant="danger">软删除</Button></div></td> : null}</tr>)}</tbody>
           </table>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-4"><Button disabled={loading || page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} size="sm" variant="secondary">上一页</Button><Button disabled={loading || page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} size="sm" variant="secondary">下一页</Button></div>
       </section>
+      ) : null}
     </div>
   );
 }

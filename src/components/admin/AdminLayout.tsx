@@ -30,6 +30,7 @@ type AdminNavItem = {
 type AdminNavSection = {
   key: string;
   title: string;
+  badge?: string;
   items: AdminNavItem[];
 };
 
@@ -98,9 +99,10 @@ const navSections: AdminNavSection[] = [
   },
   {
     key: "cps",
-    title: "Afirieito",
+    title: "联盟营销",
+    badge: "TEST",
     items: [
-      { label: "Afirieito 能力状态", to: "/admin/afirieito", icon: "联", children: ["归因合同", "佣金状态机", "结算审计"] }
+      { label: "联盟营销任务", to: "/admin/afirieito", icon: "联", permission: "menu:backoffice-affiliate", children: ["任务审核", "预算状态", "范围快照"] }
     ]
   },
   {
@@ -150,7 +152,7 @@ const navSections: AdminNavSection[] = [
     key: "docs",
     title: "文档",
     items: [
-      { label: "操作文档", to: "/admin/docs", icon: "文", children: ["产运后台", "商户后台", "Afirieito 后台"] },
+      { label: "操作文档", to: "/admin/docs", icon: "文", children: ["产运后台", "商户后台", "联盟营销后台"] },
       { label: "API 文档", to: "/admin/docs/api", icon: "A", children: ["全量 API", "显示开关", "关键字段"] }
     ]
   }
@@ -402,11 +404,17 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               {visibleNavSections.map((section) => (
                 <section className="rounded-lg border border-line bg-paper p-3" key={section.key}>
                   <button
-                    className={cn("w-full rounded-lg px-3 py-3 text-left text-sm font-black", activeSectionKey === section.key ? "bg-ink text-white" : "bg-white text-ink")}
+                    aria-label={section.badge ? `${section.title} ${section.badge}` : section.title}
+                    className={cn("relative w-full rounded-lg px-3 py-3 text-left text-sm font-black", activeSectionKey === section.key ? "bg-ink text-white" : "bg-white text-ink")}
                     onClick={() => openSection(section.key)}
                     type="button"
                   >
                     {section.title}
+                    {section.badge ? (
+                      <span aria-hidden="true" className="absolute right-2 top-2 rounded-full bg-coral px-1.5 py-0.5 text-[8px] font-black leading-none tracking-[0.08em] text-white" data-no-i18n>
+                        {section.badge}
+                      </span>
+                    ) : null}
                   </button>
                   <div className="mt-3 space-y-2">
                     {section.items.map((item) => (
@@ -444,11 +452,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     NeeDo
                   </NavLink>
                 </div>
-                <div className="admin-section-tabs scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-paper p-1">
+                <div className="admin-section-tabs scrollbar-none flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-paper px-1 py-2">
                   {visibleNavSections.map((section) => (
                     <button
+                      aria-label={section.badge ? `${section.title} ${section.badge}` : section.title}
                       className={cn(
-                        "admin-section-tab focus-ring h-8 shrink-0 rounded-md px-3 text-xs font-black transition",
+                        "admin-section-tab focus-ring relative h-8 shrink-0 rounded-md px-3 text-xs font-black transition",
                         activeSectionKey === section.key ? "is-active" : "text-ink/55 hover:bg-white hover:text-ink"
                       )}
                       key={section.key}
@@ -456,6 +465,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                       type="button"
                     >
                       {section.title === "平台运营" ? "PF運営" : section.title}
+                      {section.badge ? (
+                        <span aria-hidden="true" className="absolute -right-1 -top-2 rounded-full bg-coral px-1.5 py-0.5 text-[8px] font-black leading-none tracking-[0.08em] text-white shadow-sm" data-no-i18n>
+                          {section.badge}
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>

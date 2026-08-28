@@ -359,6 +359,103 @@ export interface PaginatedApiPayload<TItem> {
   page_size: number;
 }
 
+export type AffiliateTaskStatus =
+  | "draft"
+  | "pending_review"
+  | "scheduled"
+  | "active"
+  | "paused"
+  | "budget_exhausted"
+  | "ended"
+  | "cancelled"
+  | "rejected";
+export type AffiliatePublisherType = "merchant_account" | "shop";
+export type AffiliateDiscountType = "none" | "fixed_jpy" | "percent";
+export type AffiliateServiceScopeMode = "all_current_services" | "selected_services";
+
+export interface BackofficeAffiliateTaskQuery
+  extends Record<string, string | number | boolean | null | undefined> {
+  page?: number;
+  pageSize?: number;
+  status?: AffiliateTaskStatus;
+  publisherType?: AffiliatePublisherType;
+  keyword?: string;
+  merchantAccountId?: number;
+  shopId?: number;
+}
+
+export interface BackofficeAffiliateTaskShopPayload {
+  id: number;
+  shopId: number;
+  shopNameSnapshot: string;
+}
+
+export interface BackofficeAffiliateTaskServicePayload {
+  id: number;
+  shopId: number;
+  serviceId: number;
+  serviceNameSnapshot: string;
+  servicePriceJpySnapshot: number;
+}
+
+export interface BackofficeAffiliateBudgetReservationPayload {
+  id: number;
+  taskId: number;
+  walletId: number;
+  totalFrozenNdp: number;
+  allocatedNdp: number;
+  capturedNdp: number;
+  releasedNdp: number;
+  status: "active" | "released" | "exhausted";
+  idempotencyKey: string;
+  frozenAt: string;
+  releasedAt: string | null;
+}
+
+export interface BackofficeAffiliateTaskPayload {
+  id: number;
+  taskCode: string;
+  lineageKey: string;
+  version: number;
+  lockVersion: number;
+  publisherType: AffiliatePublisherType;
+  publisherMerchantAccountId: number | null;
+  publisherShopId: number | null;
+  name: string;
+  description: string | null;
+  coverMediaAssetId: number | null;
+  rewardNdpPerCompletedOrder: number;
+  totalBudgetNdp: number;
+  reservedBudgetNdp: number;
+  allocatedBudgetNdp: number;
+  settledBudgetNdp: number;
+  releasedBudgetNdp: number;
+  customerDiscountType: AffiliateDiscountType;
+  fixedDiscountJpy: number;
+  discountRateBps: number;
+  discountCapJpy: number;
+  minimumOrderAmountJpy: number;
+  claimStartsAt: string;
+  claimEndsAt: string;
+  taskStartsAt: string;
+  taskEndsAt: string;
+  attributionWindowDays: number;
+  maxCompletedOrdersPerClaim: number | null;
+  maxCompletedOrdersPerCustomer: number | null;
+  serviceScopeMode: AffiliateServiceScopeMode;
+  status: AffiliateTaskStatus;
+  reviewedById: number | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  activatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  shops: BackofficeAffiliateTaskShopPayload[];
+  services: BackofficeAffiliateTaskServicePayload[];
+  budgetReservation: BackofficeAffiliateBudgetReservationPayload | null;
+}
+
 export interface CsvExportPayload {
   filename: string;
   contentType: "text/csv; charset=utf-8";
@@ -417,6 +514,29 @@ export const backofficeRealDataApi = {
     return httpClient.request<CsvExportPayload>("/backoffice/technician-rankings/export", {
       query
     });
+  },
+  affiliateTasks(query?: BackofficeAffiliateTaskQuery) {
+    return httpClient.request<PaginatedApiPayload<BackofficeAffiliateTaskPayload>>(
+      "/backoffice/affiliate/tasks",
+      { query }
+    );
+  },
+  affiliateTask(taskId: number) {
+    return httpClient.request<BackofficeAffiliateTaskPayload>(
+      `/backoffice/affiliate/tasks/${taskId}`
+    );
+  },
+  approveAffiliateTask(taskId: number) {
+    return httpClient.request<BackofficeAffiliateTaskPayload>(
+      `/backoffice/affiliate/tasks/${taskId}/approve`,
+      { method: "POST" }
+    );
+  },
+  rejectAffiliateTask(taskId: number, reason: string) {
+    return httpClient.request<BackofficeAffiliateTaskPayload>(
+      `/backoffice/affiliate/tasks/${taskId}/reject`,
+      { body: { reason }, method: "POST" }
+    );
   },
   shops(scope: BackofficeScope, query?: ListQuery) {
     return httpClient.request<PaginatedApiPayload<BackofficeShopPayload>>(`${scopePrefix(scope)}/shops`, {

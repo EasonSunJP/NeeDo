@@ -410,7 +410,8 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     loginWithVerificationCode,
     logout,
     sendVerificationCode,
-    session
+    session,
+    switchPortal
   } = useAuth();
   const { language } = useI18n();
   const copy = adminLoginCopy[language];
@@ -444,6 +445,17 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     },
     [config.authPortal, copy.portalMismatchError, navigate, nextPath]
   );
+  const enterExistingBackendSession = useCallback(async () => {
+    setError("");
+    const result = await switchPortal(config.authPortal);
+
+    if (!result.ok) {
+      setError(copy.portalMismatchError);
+      return;
+    }
+
+    navigateToBackendSession(result.session.portal);
+  }, [config.authPortal, copy.portalMismatchError, navigateToBackendSession, switchPortal]);
 
   useEffect(() => {
     setMode(requestedMode);
@@ -473,12 +485,25 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     event.preventDefault();
     setError("");
 
-    if (!account.trim() || !password.trim()) {
+    const formData = new FormData(event.currentTarget);
+    const submittedAccount = formData.get("username");
+    const submittedPassword = formData.get("password");
+    const loginAccount = (
+      typeof submittedAccount === "string" ? submittedAccount : account
+    ).trim();
+    const loginPassword =
+      typeof submittedPassword === "string" ? submittedPassword : password;
+
+    if (!loginAccount || !loginPassword.trim()) {
       setError(copy.requiredError);
       return;
     }
 
-    const result = await loginWithFormalPassword(config.authPortal, account, password);
+    const result = await loginWithFormalPassword(
+      config.authPortal,
+      loginAccount,
+      loginPassword
+    );
     if (!result.ok) {
       setError(result.message || copy.accountError);
       return;
@@ -486,9 +511,9 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
 
     if (savePassword && result.session.portal === config.authPortal) {
       await requestBrowserPasswordSave({
-        id: account.trim(),
+        id: loginAccount,
         name: copy.portalName[portal],
-        password
+        password: loginPassword
       });
     }
 
@@ -586,7 +611,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       {copy.loggedInAs}: <span className="admin-login-title">{session?.email || session?.username}</span>
                     </p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <button className="admin-login-primary px-5 text-base" onClick={() => navigate(nextPath, { replace: true })} type="button">
+                      <button className="admin-login-primary px-5 text-base" onClick={() => void enterExistingBackendSession()} type="button">
                         {copy.continue}
                       </button>
                       <button className="admin-login-secondary px-5 text-base" onClick={logout} type="button">
@@ -597,15 +622,21 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                 ) : null}
 
                 {!hasAccess && mode === "account" ? (
-                  <form className="space-y-5" onSubmit={submitAccountLogin}>
+                  <form
+                    autoComplete={savePassword ? "on" : "off"}
+                    className="space-y-5"
+                    onSubmit={submitAccountLogin}
+                  >
                     <label className="block">
                       <span className="admin-login-label mb-2 block text-sm font-black">{copy.accountLabel}</span>
                       <div className="admin-login-field">
                         <span className="admin-login-field-icon">@</span>
                         <input
                           autoComplete={savePassword ? "username" : "off"}
+                          name="username"
                           onChange={(event) => setAccount(event.target.value)}
                           placeholder={copy.accountPlaceholder}
+                          type="text"
                           value={account}
                         />
                       </div>
@@ -625,6 +656,7 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       <PasswordInput
                         autoComplete={savePassword ? "current-password" : "off"}
                         inputClassName="pr-10"
+                        name="password"
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder={copy.passwordPlaceholder}
                         prefix={<span className="admin-login-field-icon">#</span>}

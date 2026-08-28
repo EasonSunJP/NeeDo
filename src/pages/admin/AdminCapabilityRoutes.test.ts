@@ -12,6 +12,7 @@ const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapab
 const dispatchSource = readFileSync(new URL("./AdminDispatchPage.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
 const affiliateSource = readFileSync(new URL("./AffiliateAdminPage.tsx", import.meta.url), "utf8");
+const affiliateCopySource = readFileSync(new URL("./affiliateAdminCopy.ts", import.meta.url), "utf8");
 const adminLayoutSource = readFileSync(
   new URL("../../components/admin/AdminLayout.tsx", import.meta.url),
   "utf8"
@@ -112,7 +113,7 @@ describe("platform dispatch production capability gate", () => {
   });
 });
 
-describe("affiliate administration production capability gate", () => {
+describe("affiliate administration formal task review", () => {
   it("does not mount the browser-local CPS workspace on the formal admin route", () => {
     expect(appSource).toContain(
       'path="/admin/afirieito" element={protect("admin", <AffiliateAdminPage />)}'
@@ -123,23 +124,38 @@ describe("affiliate administration production capability gate", () => {
     );
   });
 
-  it("collapses unsupported affiliate modules into one capability-status entry", () => {
-    expect(adminLayoutSource).toContain('label: "Afirieito 能力状态"');
+  it("uses the requested localized name and protects the operations navigation entry", () => {
+    expect(adminLayoutSource).toContain('title: "联盟营销"');
+    expect(adminLayoutSource).toContain('label: "联盟营销任务"');
+    expect(adminLayoutSource).toContain('permission: "menu:backoffice-affiliate"');
     expect(adminLayoutSource).not.toContain('/admin/afirieito?module=plans');
     expect(adminLayoutSource).not.toContain('/admin/afirieito?module=attribution');
     expect(adminLayoutSource).not.toContain('/admin/afirieito?module=settlement');
     expect(adminLayoutSource).not.toContain('/admin/afirieito?module=promoters');
   });
 
-  it("states the attribution, commission, settlement, wallet and audit prerequisites", () => {
-    expect(affiliateSource).toContain("正式 Afirieito 管理尚未启用");
-    expect(affiliateSource).toContain(
-      "AffiliateProgram、Promoter、AffiliateLink、AttributionTouch 与 CommissionClaim 表和 migration"
+  it("marks the operations affiliate section as a test surface", () => {
+    expect(adminLayoutSource).toContain('badge: "TEST"');
+    expect(adminLayoutSource).toContain("section.badge");
+    expect(adminLayoutSource).toContain(
+      'aria-label={section.badge ? `${section.title} ${section.badge}` : section.title}'
     );
-    expect(affiliateSource).toContain("申请、审核、链接签发、归因、佣金锁定、冲正与结算状态机 API");
-    expect(affiliateSource).toContain("防重复归因、幂等事件、范围 RBAC、风控与不可变审计");
-    expect(affiliateSource).toContain("钱包账本、结算批次、支付凭证、对账、分页、聚合与导出合同");
-    expect(affiliateSource).toContain("当前不会展示浏览器保存的 GMV、ROI、预算、链接、佣金或结算数据");
+    expect(adminLayoutSource).toContain("absolute -right-1 -top-2");
+  });
+
+  it("connects the page to the formal paginated task and review APIs", () => {
+    expect(affiliateSource).toMatch(/backofficeRealDataApi\s*\.\s*affiliateTasks/);
+    expect(affiliateSource).toContain("backofficeRealDataApi.affiliateTask");
+    expect(affiliateSource).toContain("backofficeRealDataApi.approveAffiliateTask");
+    expect(affiliateSource).toContain("backofficeRealDataApi.rejectAffiliateTask");
+    expect(affiliateSource).toContain('permission="button:backoffice-affiliate-review"');
+    expect(affiliateCopySource).toContain('formalData: "正式数据库"');
+    expect(affiliateCopySource).toContain('rbac: "范围 RBAC"');
+    expect(affiliateCopySource).toContain('audit: "不可变审计"');
+    expect(affiliateCopySource).toContain('title: "Affiliate"');
+    expect(affiliateCopySource).toContain('title: "アフィリエイト"');
+    expect(affiliateSource).not.toContain("正式 Afirieito 管理尚未启用");
+    expect(affiliateSource).not.toMatch(/localStorage|data\/mock|CpsPage/);
   });
 });
 

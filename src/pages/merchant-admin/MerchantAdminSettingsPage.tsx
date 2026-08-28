@@ -9,6 +9,9 @@ import { ModuleShell } from "../../components/admin/ModuleShell";
 import { MerchantAdminLayout } from "../../components/merchant-admin/MerchantAdminLayout";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { loadCoreReadWithTransientRetry } from "../../features/core-read/transientRetry";
+import { describeMerchantReadError } from "../../features/merchant-admin/merchantReadError";
+import { useOptionalI18n } from "../../i18n/I18nProvider";
 
 type ShopDraft = {
   name: string;
@@ -69,6 +72,7 @@ function toUpdateInput(draft: ShopDraft): MerchantShopUpdateInput {
 
 export function MerchantAdminSettingsPage() {
   const [searchParams] = useSearchParams();
+  const { language } = useOptionalI18n();
   const [shop, setShop] = useState<BackofficeShopPayload | null>(null);
   const [draft, setDraft] = useState<ShopDraft>(emptyDraft);
   const [loading, setLoading] = useState(true);
@@ -81,17 +85,19 @@ export function MerchantAdminSettingsPage() {
     setError("");
     setSaved(false);
     try {
-      const page = await backofficeRealDataApi.merchantShop();
+      const page = await loadCoreReadWithTransientRetry(
+        () => backofficeRealDataApi.merchantShop()
+      );
       const currentShop = page.list[0] ?? null;
       setShop(currentShop);
       setDraft(currentShop ? createDraft(currentShop) : emptyDraft);
     } catch (loadError) {
       setShop(null);
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
+      setError(describeMerchantReadError(loadError, language));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     void load();

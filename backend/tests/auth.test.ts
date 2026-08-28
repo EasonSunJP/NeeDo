@@ -1703,6 +1703,43 @@ describe("verified email registration and formal password authentication", () =>
       });
   });
 
+  it("keeps the default platform identity when a non-default customer identity has no public identifier", async () => {
+    const fixture = await createAuthFixture();
+    (fixture.user.identities as Array<Record<string, unknown>>).push({
+      id: 12,
+      userId: fixture.user.id,
+      type: "customer",
+      scopeType: "customer_profile",
+      scopeId: 1,
+      displayName: "Admin customer profile",
+      isDefault: false,
+      isActive: true,
+      deletedAt: null
+    });
+
+    const loginResponse = await request(fixture.app)
+      .post("/api/v1/auth/login")
+      .send({ loginIdentifier: "admin@example.com", password: "Abcd@1234" })
+      .expect(200);
+
+    await request(fixture.app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${loginResponse.body.data.accessToken}`)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data.currentIdentity).toMatchObject({
+          id: 10,
+          type: "platform",
+          scopeType: "global"
+        });
+        expect(response.body.data.identities).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: 10, type: "platform", publicId: "needo1234567890" })
+          ])
+        );
+      });
+  });
+
   it("returns server-computed identity availability for active, draft, pending, rejected, and contract activation states", async () => {
     const fixture = await createAuthFixture();
     const customerLogin = await request(fixture.app)

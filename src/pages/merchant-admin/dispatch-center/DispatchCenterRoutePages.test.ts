@@ -28,4 +28,27 @@ describe("merchant dispatch center production routes", () => {
     expect(source).not.toContain("localStorage");
     expect(source).not.toContain("data/mock");
   });
+
+  it("retries transient reads without retrying audited mutations", () => {
+    const source = read("./MerchantScheduleManagementPanel.tsx");
+
+    expect(source.match(/loadCoreReadWithTransientRetry\(/g)).toHaveLength(3);
+    expect(source).toContain("describeMerchantReadError(loadError, language)");
+    expect(source).not.toContain(
+      'loadCoreReadWithTransientRetry(() => bookingApi.createManagedScheduleSlot'
+    );
+    expect(source).not.toContain(
+      'loadCoreReadWithTransientRetry(() => bookingApi.updateManagedScheduleSlot'
+    );
+    expect(source).not.toContain(
+      'loadCoreReadWithTransientRetry(() => bookingApi.deleteManagedScheduleSlot'
+    );
+  });
+
+  it("does not render a false zero-inventory state after a failed schedule read", () => {
+    const source = read("./MerchantScheduleManagementPanel.tsx");
+
+    expect(source).toContain("{!error ? (");
+    expect(source).toContain("!loading && !error && slots.length === 0");
+  });
 });
