@@ -1,4 +1,4 @@
-import type { PortalScope } from "./demoAccount";
+import type { PortalScope } from "./portal";
 import type { IdentityAvailability, IdentityKind } from "../features/identity-applications/model";
 
 export const authSessionVersion = 7;

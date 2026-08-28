@@ -1,29 +1,22 @@
 import { useSyncExternalStore } from "react";
-import { customers, orders, stores, technicians } from "../data/mock";
-import {
-  buildDemoTechnicianScheduleSeeds,
-  buildPublicAvailabilityDemoTechnicianScheduleSeeds,
-  demoAppointmentSeedStoreId,
-  publicAvailabilityDemoBookingIdPrefix
-} from "../data/demoAppointmentSeeds";
 import type {
   TechnicianDutyShift,
   TechnicianScheduleBooking,
   TechnicianScheduleCustomEvent,
   TechnicianScheduleSnapshot,
-  TechnicianScheduleSyncTarget,
   TechnicianScheduleTransferInvitation,
   TechnicianScheduleTransferRequest
 } from "../features/technician-schedule/model";
 import {
-  addDays,
-  getTodayDateKey,
   intersectRange,
   intervalToRange,
   isBlockingCustomEvent,
   overlapsRange
 } from "../features/technician-schedule/model";
-import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
+import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
+import type { Technician } from "../types/domain";
+
+const technicians: Technician[] = [];
 
 type TechnicianScheduleStoreState = Omit<TechnicianScheduleSnapshot, "revision">;
 
@@ -44,7 +37,8 @@ export type TechnicianScheduleTransferResponseResult = {
   message: string;
 };
 
-const storageKey = "needo.technician-schedule.v1";
+const storageKey = "needo.technician-schedule.formal-state.v1";
+const retiredStorageKeys = ["needo.technician-schedule.v1"];
 const listeners = new Set<() => void>();
 
 let hydrated = false;
@@ -54,437 +48,13 @@ let cachedSnapshot: TechnicianScheduleSnapshot | null = null;
 const state: TechnicianScheduleStoreState = buildSeedState();
 
 function buildSeedState(): TechnicianScheduleStoreState {
-  const fallbackTechnician = technicians[0];
-  const fallbackStore = stores[0];
-
-  if (!fallbackTechnician || !fallbackStore) {
-    return {
-      dutyShifts: [],
-      bookings: [],
-      customEvents: [],
-      transferRequests: [],
-      transferInvitations: []
-    };
-  }
-
-  const primaryTechnician = technicians.find((technician) => technician.id === "tech-1") ?? fallbackTechnician;
-  const homeStore = stores.find((store) => store.id === primaryTechnician.storeId) ?? fallbackStore;
-  const sameStoreColleagues = technicians.filter(
-    (technician) => technician.storeId === homeStore.id && technician.id !== primaryTechnician.id
-  );
-  const [colleagueOne, colleagueTwo, colleagueThree] = sameStoreColleagues;
-  const today = getTodayDateKey();
-  const tomorrow = addDays(today, 1);
-  const dayAfterTomorrow = addDays(today, 2);
-  const nextWeek = addDays(today, 5);
-  const orderPool = orders.filter((order) => typeof order.amount === "number" && order.amount > 0);
-  const syncStoreTarget: TechnicianScheduleSyncTarget = {
-    id: homeStore.id,
-    type: "store",
-    label: homeStore.name
-  };
-
-  const dutyShifts: TechnicianDutyShift[] = [
-    {
-      id: "duty-self-1",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "10:00",
-      endTime: "18:00",
-      title: `${homeStore.name} 已确认勤务`,
-      shiftLabel: "日班"
-    },
-    {
-      id: "duty-self-2",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: tomorrow,
-      startTime: "11:00",
-      endTime: "17:00",
-      title: `${homeStore.name} 已确认勤务`,
-      shiftLabel: "中班"
-    },
-    {
-      id: "duty-self-3",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: dayAfterTomorrow,
-      startTime: "12:00",
-      endTime: "20:00",
-      title: `${homeStore.name} 已确认勤务`,
-      shiftLabel: "晚班"
-    },
-    {
-      id: "duty-self-4",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: nextWeek,
-      startTime: "10:00",
-      endTime: "16:00",
-      title: `${homeStore.name} 已确认勤务`,
-      shiftLabel: "短班"
-    }
-  ];
-
-  if (colleagueOne) {
-    dutyShifts.push({
-      id: "duty-peer-1",
-      technicianId: colleagueOne.id,
-      storeId: homeStore.id,
-      date: dayAfterTomorrow,
-      startTime: "12:00",
-      endTime: "16:00",
-      title: `${homeStore.name} 已确认勤务`,
-      shiftLabel: "协作班"
-    });
-  }
-
-  if (colleagueTwo) {
-    dutyShifts.push({
-      id: "duty-peer-2",
-      technicianId: colleagueTwo.id,
-      storeId: homeStore.id,
-      date: tomorrow,
-      startTime: "18:00",
-      endTime: "20:00",
-      title: `${homeStore.name} 已确认勤务`,
-      shiftLabel: "晚间接替"
-    });
-  }
-
-  if (colleagueThree) {
-    dutyShifts.push({
-      id: "duty-peer-3",
-      technicianId: colleagueThree.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "10:00",
-      endTime: "12:00",
-      title: `${homeStore.name} 已确认勤务`,
-      shiftLabel: "晨班"
-    });
-  }
-
-  const bookings: TechnicianScheduleBooking[] = [
-    {
-      id: "booking-self-1",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "10:30",
-      endTime: "12:00",
-      title: orderPool[0]?.itemName ?? "肩颈放松护理",
-      customerName: orderPool[0]?.customerName ?? "林 小雨",
-      amount: orderPool[0]?.amount ?? 12800,
-      orderId: orderPool[0]?.id,
-      eventType: "booking",
-      detailTargetType: "order_detail",
-      detailTargetId: orderPool[0]?.id,
-      note: "门店正式预约"
-    },
-    {
-      id: "booking-self-2",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "14:00",
-      endTime: "15:30",
-      title: orderPool[1]?.itemName ?? "深层舒缓护理",
-      customerName: orderPool[1]?.customerName ?? "佐藤 健",
-      amount: orderPool[1]?.amount ?? 9800,
-      orderId: orderPool[1]?.id,
-      eventType: "booking",
-      detailTargetType: "order_detail",
-      detailTargetId: orderPool[1]?.id,
-      note: "门店正式预约"
-    },
-    {
-      id: "booking-self-3",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "19:30",
-      endTime: "20:30",
-      title: orderPool[2]?.itemName ?? "加急护理预约",
-      customerName: orderPool[2]?.customerName ?? "Mia Chen",
-      amount: orderPool[2]?.amount ?? 16800,
-      orderId: orderPool[2]?.id,
-      eventType: "booking",
-      detailTargetType: "order_detail",
-      detailTargetId: orderPool[2]?.id,
-      note: "落在确认班次外，需要额外确认"
-    },
-    {
-      id: "booking-self-4",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: tomorrow,
-      startTime: "12:00",
-      endTime: "13:30",
-      title: orderPool[3]?.itemName ?? "肩颈护理 90 分钟",
-      customerName: orderPool[3]?.customerName ?? "高桥 由美",
-      amount: orderPool[3]?.amount ?? 11800,
-      orderId: orderPool[3]?.id,
-      eventType: "reschedule",
-      detailTargetType: "order_detail",
-      detailTargetId: orderPool[3]?.id,
-      note: "已改期到当前时间段，点击打开当前预约订单"
-    },
-    {
-      id: "booking-self-5",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: tomorrow,
-      startTime: "16:30",
-      endTime: "18:30",
-      title: orderPool[4]?.itemName ?? "到店延长护理",
-      customerName: orderPool[4]?.customerName ?? "Emily Wong",
-      amount: orderPool[4]?.amount ?? 15600,
-      orderId: orderPool[4]?.id,
-      parentOrderId: orderPool[0]?.id,
-      eventType: "extension",
-      detailTargetType: "order_detail",
-      detailTargetId: orderPool[4]?.id,
-      note: "加钟订单，详情页可回到原订单"
-    }
-  ];
-
-  if (colleagueOne) {
-    bookings.push({
-      id: "booking-peer-1",
-      technicianId: colleagueOne.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "13:00",
-      endTime: "15:00",
-      title: orderPool[5]?.itemName ?? "店内预约",
-      customerName: orderPool[5]?.customerName ?? "小林 美月",
-      amount: orderPool[5]?.amount ?? 8800,
-      orderId: orderPool[5]?.id,
-      eventType: "booking",
-      detailTargetType: "order_detail",
-      detailTargetId: orderPool[5]?.id
-    });
-  }
-
-  const customEvents: TechnicianScheduleCustomEvent[] = [
-    {
-      id: "event-self-availability-1",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "09:30",
-      endTime: "18:30",
-      title: "可上班",
-      kind: "availability",
-      note: "技师自己设定的可工作时间",
-      syncTargets: [syncStoreTarget],
-      createdAt: `${today}T08:00:00`,
-      updatedAt: `${today}T08:00:00`
-    },
-    {
-      id: "event-self-availability-2",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: today,
-      startTime: "19:00",
-      endTime: "21:30",
-      title: "可上班",
-      kind: "availability",
-      note: "晚间补充可工作时间",
-      syncTargets: [],
-      createdAt: `${today}T08:10:00`,
-      updatedAt: `${today}T08:10:00`
-    },
-    {
-      id: "event-self-availability-3",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: tomorrow,
-      startTime: "10:00",
-      endTime: "19:00",
-      title: "可上班",
-      kind: "availability",
-      note: "次日可排班时间",
-      syncTargets: [syncStoreTarget],
-      createdAt: `${today}T08:20:00`,
-      updatedAt: `${today}T08:20:00`
-    },
-    {
-      id: "event-self-rest-1",
-      technicianId: primaryTechnician.id,
-      storeId: homeStore.id,
-      date: tomorrow,
-      startTime: "09:00",
-      endTime: "10:00",
-      title: "通勤前准备",
-      kind: "travel",
-      note: "上门前移动",
-      syncTargets: [],
-      createdAt: `${today}T08:25:00`,
-      updatedAt: `${today}T08:25:00`
-    }
-  ];
-
-  if (colleagueThree) {
-    customEvents.push({
-      id: "event-peer-locked-1",
-      technicianId: colleagueThree.id,
-      storeId: homeStore.id,
-      date: tomorrow,
-      startTime: "18:00",
-      endTime: "20:00",
-      title: "锁定安排",
-      kind: "locked",
-      note: "已有私人安排",
-      syncTargets: [],
-      createdAt: `${today}T08:30:00`,
-      updatedAt: `${today}T08:30:00`
-    });
-  }
-
-  const publicAvailabilityDemoSeeds = buildPublicAvailabilityDemoTechnicianScheduleSeeds({
-    customers,
-    store: homeStore,
-    stores,
-    technicians
-  });
-  dutyShifts.push(...publicAvailabilityDemoSeeds.dutyShifts);
-  bookings.push(...publicAvailabilityDemoSeeds.bookings);
-  customEvents.push(...publicAvailabilityDemoSeeds.customEvents);
-
-  const demoSeeds = buildDemoTechnicianScheduleSeeds({
-    customers,
-    store: homeStore,
-    technicians
-  });
-  dutyShifts.push(...demoSeeds.dutyShifts);
-  bookings.push(...demoSeeds.bookings);
-  customEvents.push(...demoSeeds.customEvents);
-
-  const transferRequests: TechnicianScheduleTransferRequest[] = [];
-  const transferInvitations: TechnicianScheduleTransferInvitation[] = [];
-
-  if (colleagueTwo) {
-    transferRequests.push({
-      id: "transfer-seed-incoming-1",
-      shiftId: "duty-peer-2",
-      requesterId: colleagueTwo.id,
-      storeId: homeStore.id,
-      requestedCount: 1,
-      candidateIds: [primaryTechnician.id, colleagueThree?.id].filter((candidateId): candidateId is string => Boolean(candidateId)),
-      status: "transfer_pending",
-      createdAt: `${today}T09:00:00`,
-      updatedAt: `${today}T09:00:00`
-    });
-
-    transferInvitations.push(
-      {
-        id: "transfer-seed-incoming-1-invite-self",
-        requestId: "transfer-seed-incoming-1",
-        candidateId: primaryTechnician.id,
-        status: "pending",
-        invitedAt: `${today}T09:00:00`
-      },
-      ...(colleagueThree
-        ? [
-            {
-              id: "transfer-seed-incoming-1-invite-peer",
-              requestId: "transfer-seed-incoming-1",
-              candidateId: colleagueThree.id,
-              status: "pending",
-              invitedAt: `${today}T09:00:00`
-            } satisfies TechnicianScheduleTransferInvitation
-          ]
-        : [])
-    );
-  }
-
   return {
-    dutyShifts,
-    bookings,
-    customEvents,
-    transferRequests,
-    transferInvitations
+    dutyShifts: [],
+    bookings: [],
+    customEvents: [],
+    transferRequests: [],
+    transferInvitations: []
   };
-}
-
-function appendMissingSeedRows<T extends { id: string }>(target: T[], seedRows: T[]) {
-  const existingIds = new Set(target.map((item) => item.id));
-  const missingRows = seedRows.filter((item) => !existingIds.has(item.id));
-
-  if (missingRows.length === 0) {
-    return false;
-  }
-
-  target.push(...missingRows);
-  return true;
-}
-
-function mergePublicAvailabilityDemoBookingTargets(target: TechnicianScheduleBooking[], seedRows: TechnicianScheduleBooking[]) {
-  const seedById = new Map(seedRows.map((booking) => [booking.id, booking]));
-  let changed = false;
-
-  target.forEach((booking, index) => {
-    if (!booking.id.startsWith(publicAvailabilityDemoBookingIdPrefix)) {
-      return;
-    }
-
-    const seed = seedById.get(booking.id);
-    if (!seed?.orderId) {
-      return;
-    }
-
-    if (
-      booking.orderId === seed.orderId &&
-      booking.detailTargetType === seed.detailTargetType &&
-      booking.detailTargetId === seed.detailTargetId
-    ) {
-      return;
-    }
-
-    target[index] = {
-      ...booking,
-      amount: booking.amount ?? seed.amount,
-      orderId: seed.orderId,
-      detailTargetType: seed.detailTargetType,
-      detailTargetId: seed.detailTargetId
-    };
-    changed = true;
-  });
-
-  return changed;
-}
-
-function ensureDemoTechnicianScheduleSeedData() {
-  const seedStore = stores.find((store) => store.id === demoAppointmentSeedStoreId) ?? stores[0] ?? null;
-  const publicAvailabilityDemoSeeds = buildPublicAvailabilityDemoTechnicianScheduleSeeds({
-    customers,
-    store: seedStore,
-    stores,
-    technicians
-  });
-  const demoSeeds = buildDemoTechnicianScheduleSeeds({
-    customers,
-    store: seedStore,
-    technicians
-  });
-  const dutyChanged = appendMissingSeedRows(state.dutyShifts, [
-    ...publicAvailabilityDemoSeeds.dutyShifts,
-    ...demoSeeds.dutyShifts
-  ]);
-  const bookingChanged = appendMissingSeedRows(state.bookings, [
-    ...publicAvailabilityDemoSeeds.bookings,
-    ...demoSeeds.bookings
-  ]);
-  const bookingTargetChanged = mergePublicAvailabilityDemoBookingTargets(state.bookings, publicAvailabilityDemoSeeds.bookings);
-  const eventChanged = appendMissingSeedRows(state.customEvents, [
-    ...publicAvailabilityDemoSeeds.customEvents,
-    ...demoSeeds.customEvents
-  ]);
-
-  return dutyChanged || bookingChanged || bookingTargetChanged || eventChanged;
 }
 
 function cloneState(nextState: TechnicianScheduleStoreState) {
@@ -533,6 +103,8 @@ function hydrate() {
     return;
   }
 
+  retiredStorageKeys.forEach((key) => removeBrowserStorage(key, { silent: true }));
+
   const raw = readBrowserStorage(storageKey, { silent: true });
   if (!raw) {
     persist();
@@ -553,9 +125,6 @@ function hydrate() {
     }
 
     Object.assign(state, cloneState(parsed as TechnicianScheduleStoreState));
-    if (ensureDemoTechnicianScheduleSeedData()) {
-      persist();
-    }
   } catch {
     persist();
   }

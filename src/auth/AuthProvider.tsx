@@ -15,7 +15,7 @@ import {
   setStoredRefreshToken
 } from "../api/httpClient";
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
-import { demoAuthAccount, type PortalScope } from "./demoAccount";
+import type { PortalScope } from "./portal";
 import type { FeaturePermission } from "./featurePermissions";
 import { hasPortalFeaturePermission } from "./featurePermissions";
 import {
@@ -44,8 +44,7 @@ import {
   type LoginMethod
 } from "./rbac";
 
-export type { PortalScope } from "./demoAccount";
-export { demoAuthAccount } from "./demoAccount";
+export type { PortalScope } from "./portal";
 export type { AuthSession } from "./rbac";
 
 export type AuthActionResult = { ok: true; session: AuthSession } | { message: string; ok: false };

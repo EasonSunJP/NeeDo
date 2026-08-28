@@ -758,7 +758,6 @@ describe("LoginPage formal flow guardrails", () => {
       "使用 Google 登录",
       "请选择下方的 Google 账号",
       "重新使用 Google 验证",
-      "静态演示模式不提供 Google 登录",
       "隐藏密码",
       "登录",
       "登录中…",

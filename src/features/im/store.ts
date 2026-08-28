@@ -1,7 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "../../auth/AuthProvider";
-import { useEntityStore } from "../../state/entityStore";
-import { createImApi, installImMockServer, subscribeImRealtime } from "./api";
 import { createFormalImApi, subscribeFormalImUpdates } from "./formal-api";
 import {
   applyConversationDraft,
@@ -96,10 +94,8 @@ function getUiStorageKey(scope: ImRoleType) {
 }
 
 type ScopedStoreBackend = {
-  api: ReturnType<typeof createImApi>;
-  installMockServer: boolean;
-  subscribeUpdates?: (onUpdate: () => void) => () => void;
-  syncAccountEntities: boolean;
+  api: ReturnType<typeof createFormalImApi>;
+  subscribeUpdates: (onUpdate: () => void) => () => void;
 };
 
 function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
@@ -108,7 +104,6 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
   let realtimeUnsubscribe: (() => void) | null = null;
   let hydrated = false;
   let hydrating: Promise<void> | null = null;
-  let lastEntityRevision = -1;
   let entityRefresh: Promise<void> | null = null;
   let snapshot = createInitialSnapshot();
 
@@ -319,10 +314,6 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     }
 
     hydrating = (async () => {
-      if (backend.installMockServer) {
-        installImMockServer();
-      }
-
       setSnapshot((current) => ({
         ...current,
         status: "loading",
@@ -346,9 +337,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
         };
 
         if (!realtimeUnsubscribe) {
-          realtimeUnsubscribe = backend.subscribeUpdates
-            ? backend.subscribeUpdates(() => void refreshBootstrap())
-            : subscribeImRealtime(scope, syncRealtime);
+          realtimeUnsubscribe = backend.subscribeUpdates(() => void refreshBootstrap());
         }
 
         hydrated = true;
@@ -857,18 +846,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     return entityRefresh;
   }
 
-  async function refreshAccountEntities(entityRevision: number) {
-    if (!hydrated || snapshot.status !== "ready" || lastEntityRevision === entityRevision) {
-      return;
-    }
-
-    lastEntityRevision = entityRevision;
-
-    return refreshBootstrap();
-  }
-
   function useStore() {
-    const entityRevision = useEntityStore().revision;
     const storeSnapshot = useSyncExternalStore(
       (listener) => {
         listeners.add(listener);
@@ -880,14 +858,6 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     useEffect(() => {
       void hydrateStore();
     }, []);
-
-    useEffect(() => {
-      if (!backend.syncAccountEntities || storeSnapshot.status !== "ready") {
-        return;
-      }
-
-      void refreshAccountEntities(entityRevision);
-    }, [entityRevision, storeSnapshot.status]);
 
     return {
       ...storeSnapshot,
@@ -938,10 +908,9 @@ const scopedStores = new Map<string, ReturnType<typeof createScopedStore>>();
 
 function getScopedStore(
   scope: ImRoleType,
-  legacyEnabled: boolean,
   currentUser: { avatarUrl: string | null; id: number; needoId: string; username: string }
 ) {
-  const key = legacyEnabled ? `${scope}:static-demo` : `${scope}:formal:${currentUser.id}`;
+  const key = `${scope}:formal:${currentUser.id}`;
   const existing = scopedStores.get(key);
 
   if (existing) {
@@ -949,10 +918,8 @@ function getScopedStore(
   }
 
   const created = createScopedStore(scope, {
-    api: legacyEnabled ? createImApi(scope) : createFormalImApi({ currentUser, scope }),
-    installMockServer: legacyEnabled,
-    subscribeUpdates: legacyEnabled ? undefined : subscribeFormalImUpdates,
-    syncAccountEntities: legacyEnabled
+    api: createFormalImApi({ currentUser, scope }),
+    subscribeUpdates: subscribeFormalImUpdates
   });
   scopedStores.set(key, created);
   return created;
@@ -1018,7 +985,7 @@ export function useImStore(scope: ImRoleType = "user") {
     avatarUrl: session?.avatarUrl ?? null
   };
 
-  return getScopedStore(scope, false, currentUser).useStore();
+  return getScopedStore(scope, currentUser).useStore();
 }
 
 export type ImStoreHook = ReturnType<typeof useImStore>;

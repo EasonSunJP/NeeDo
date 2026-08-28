@@ -13,7 +13,6 @@ import {
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Badge } from "../../components/ui/Badge";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { services as legacyServices, stores as legacyStores, technicians as legacyTechnicians } from "../../data/mock";
 import { coreReadApi, mapCoreCategoryToServiceCategory, mapCoreServiceToServiceItem, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -432,7 +431,6 @@ export function CategoryPage() {
   const hasExplicitCategoryScope = Boolean(searchParams.get("category")) || appliedTagIds.length > 0;
   const shouldApplyCategoryScope = hasExplicitCategoryScope || (appliedCustomLabels.length === 0 && entityFilter !== "technician");
   const searchCategoryId = shouldApplyCategoryScope ? apiCategoryId : undefined;
-  const allowLegacyCoreReadData = false;
   const searchQuery = useCoreReadQuery(
     () =>
       coreReadApi.search({
@@ -444,13 +442,13 @@ export function CategoryPage() {
     [searchCategoryId, searchKeyword]
   );
   const apiServices = useMemo(
-    () => searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? (allowLegacyCoreReadData ? legacyServices : []),
-    [allowLegacyCoreReadData, searchQuery.data]
+    () => searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? [],
+    [searchQuery.data]
   );
   const apiStores = useMemo(
     () => {
       if (!searchQuery.data) {
-        return allowLegacyCoreReadData ? legacyStores : [];
+        return [];
       }
 
       return Array.from(new Map(searchQuery.data.list.map((service) => {
@@ -458,12 +456,12 @@ export function CategoryPage() {
         return [store.id, store] as const;
       })).values());
     },
-    [allowLegacyCoreReadData, searchQuery.data]
+    [searchQuery.data]
   );
   const apiTechnicians = useMemo(
     () => {
       if (!searchQuery.data) {
-        return allowLegacyCoreReadData ? legacyTechnicians : [];
+        return [];
       }
 
       return Array.from(new Map(searchQuery.data.list.flatMap((service) => {
@@ -475,7 +473,7 @@ export function CategoryPage() {
         return [[technician.id, technician] as const];
       })).values());
     },
-    [allowLegacyCoreReadData, searchQuery.data]
+    [searchQuery.data]
   );
   const serviceByTechnicianId = useMemo(
     () => {
@@ -487,18 +485,9 @@ export function CategoryPage() {
         return new Map(entries);
       }
 
-      if (!allowLegacyCoreReadData) {
-        return new Map<string, ServiceItem>();
-      }
-
-      const fallbackEntries = legacyTechnicians.map((technician, index) => [
-        technician.id,
-        legacyServices[index % legacyServices.length] ?? legacyServices[0]
-      ] as const).filter((entry): entry is readonly [string, ServiceItem] => Boolean(entry[1]));
-
-      return new Map(fallbackEntries);
+      return new Map<string, ServiceItem>();
     },
-    [allowLegacyCoreReadData, searchQuery.data]
+    [searchQuery.data]
   );
 
   useEffect(() => {

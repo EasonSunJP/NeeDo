@@ -22,11 +22,12 @@ describe("HomePage technician recommendations", () => {
   });
 
   it("disables legacy recommendations", () => {
-    expect(homePageSource).toContain("const allowLegacyCoreReadData = false;");
-    expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyServices : []");
-    expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyStores : []");
-    expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyTechnicians : []");
-    expect(homePageSource).toContain("if (!allowLegacyCoreReadData)");
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? []");
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? []");
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? []");
+    expect(homePageSource).not.toContain("legacyServices");
+    expect(homePageSource).not.toContain("legacyStores");
+    expect(homePageSource).not.toContain("legacyTechnicians");
   });
 
   it("recovers a transient formal read failure and exposes a manual reload action", () => {
@@ -55,7 +56,8 @@ describe("HomePage authenticated customer identity", () => {
     expect(homePageSource).toContain("mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)");
     expect(homePageSource).not.toContain("isStaticDemoMode()");
     expect(homePageSource).toContain("const currentCustomer = formalCustomerProfileQuery.data");
-    expect(homePageSource).toContain(": legacyCurrentCustomer");
+    expect(homePageSource).toContain(": null;");
+    expect(homePageSource).not.toContain("legacyCurrentCustomer");
   });
 });
 

@@ -1,16 +1,11 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { fieldJobs, orders } from "../../data/mock";
-import {
-  buildDemoAppointmentDispatchArrangements,
-  demoAppointmentSeedStoreId
-} from "../../data/demoAppointmentSeeds";
+import { emptyFieldJobs as fieldJobs, emptyOrders as orders } from "../../data/formalRuntimeFallbacks";
 import { getEntityStoreSnapshot } from "../../state/entityStore";
 import { addSharedSchedules, getScheduleStoreSnapshot, removeSharedSchedule } from "../../state/scheduleStore";
 import { syncDispatchProjectionForStore } from "../../state/shiftPlanningStore";
 import { buildCapacityForSlot } from "../../lib/scheduling/capacityEngine";
 import { promoteDispatchCycles, summarizeCycleLimits } from "../../lib/scheduling/cyclePromotion";
 import { rankDispatchCandidates } from "../../lib/scheduling/priorityEngine";
-import { SmartScheduleEngine } from "../../lib/scheduling/smartScheduleEngine";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
 import {
   addDays,
@@ -203,7 +198,7 @@ export type DispatchFeedbackMatrixRow = {
   unavailableHours: number;
 };
 
-const storageKey = "needo.dispatch-center.v1";
+const storageKey = "needo.dispatch-center.formal-state.v1";
 const listeners = new Set<() => void>();
 let hydrated = false;
 let storageListenerBound = false;
@@ -558,22 +553,7 @@ function buildSeedArrangements(storeId: string) {
     } satisfies DispatchArrangement;
   });
 
-  return [...baselineArrangements, ...buildDemoDispatchArrangementsForStore(storeId)];
-}
-
-function buildDemoDispatchArrangementsForStore(storeId: string) {
-  if (storeId !== demoAppointmentSeedStoreId) {
-    return [];
-  }
-
-  const snapshot = getEntityStoreSnapshot();
-  const store = snapshot.stores.find((item) => item.id === storeId) ?? null;
-
-  return buildDemoAppointmentDispatchArrangements({
-    customers: snapshot.customers,
-    store,
-    technicians: snapshot.technicians
-  });
+  return baselineArrangements;
 }
 
 function buildSeedSpecialTasks(storeId: string) {
@@ -721,32 +701,8 @@ function buildSeedSmartPolicies(storeId: string): ScheduleAutomationPolicy[] {
 }
 
 function buildSeedSmartDataSources(storeId: string): SmartScheduleDataSource[] {
-  const seeds: Array<Pick<SmartScheduleDataSource, "sourceType" | "confidenceScore" | "fallbackUsed" | "missingReason">> = [
-    { sourceType: "merchant_history", confidenceScore: 0.86, fallbackUsed: false, missingReason: null },
-    { sourceType: "technician_preferences", confidenceScore: 0.9, fallbackUsed: false, missingReason: null },
-    { sourceType: "platform_flow", confidenceScore: 0.82, fallbackUsed: false, missingReason: null },
-    { sourceType: "current_booking_trend", confidenceScore: 0.78, fallbackUsed: false, missingReason: null },
-    { sourceType: "weather", confidenceScore: 0.74, fallbackUsed: false, missingReason: null },
-    { sourceType: "traffic", confidenceScore: 0.52, fallbackUsed: true, missingReason: "第一版未接入真实路况 API，使用默认通勤缓冲。" },
-    { sourceType: "holiday", confidenceScore: 0.92, fallbackUsed: false, missingReason: null },
-    { sourceType: "special_date_rules", confidenceScore: 0.84, fallbackUsed: false, missingReason: null },
-    { sourceType: "campaign", confidenceScore: 0.66, fallbackUsed: true, missingReason: "当前活动流量使用平台 mock 基准。" },
-    { sourceType: "local_event", confidenceScore: 0.58, fallbackUsed: true, missingReason: "商圈大型活动暂未接入实时数据。" }
-  ];
-
-  return seeds.map((seed) => ({
-    id: `smart-source-${storeId}-${seed.sourceType}`,
-    shopId: storeId,
-    sourceType: seed.sourceType,
-    enabled: true,
-    status: seed.fallbackUsed ? "fallback" : "ready",
-    confidenceScore: seed.confidenceScore,
-    lastCollectedAt: dispatchReferenceNow,
-    missingReason: seed.missingReason,
-    fallbackUsed: seed.fallbackUsed,
-    createdAt: dispatchReferenceNow,
-    updatedAt: dispatchReferenceNow
-  }));
+  void storeId;
+  return [];
 }
 
 function mergeSmartDataSourcesWithExisting(storeId: string, sources: SmartScheduleDataSource[]) {
@@ -828,32 +784,24 @@ function buildSeedSmartPreferences(storeId: string, technicianIds: string[]): Te
 }
 
 function buildDefaultState(): DispatchCenterState {
-  const storeId = "store-1";
-  const cycles = buildDefaultCycles(storeId);
-  const planningCycle = cycles.find((cycle) => cycle.status === "collecting_feedback");
-  const activeCycle = cycles.find((cycle) => cycle.status === "active");
-  const smartPreferenceTechnicianIds = activeCycle?.targetTechnicianIds ?? planningCycle?.targetTechnicianIds ?? getStoreTechnicianIdsForDispatch(storeId);
-
   return {
-    cycles,
-    feedbacks: planningCycle ? buildDefaultFeedbacks(planningCycle.id, planningCycle.targetTechnicianIds, planningCycle.periodStart) : [],
-    finalShifts: activeCycle
-      ? buildSeedFinalShifts(storeId, activeCycle.id, activeCycle.targetTechnicianIds, getCycleDisplaySeedStartDate(activeCycle))
-      : [],
+    cycles: [],
+    feedbacks: [],
+    finalShifts: [],
     finalBookableSlots: [],
-    arrangements: buildSeedArrangements(storeId),
-    specialTasks: buildSeedSpecialTasks(storeId),
+    arrangements: [],
+    specialTasks: [],
     floatingTasks: [],
-    holidays: buildSeedHolidays(storeId),
-    contactGroups: buildSeedContactGroups(storeId),
+    holidays: [],
+    contactGroups: [],
     auditLogs: [],
-    smartAutomationPolicies: buildSeedSmartPolicies(storeId),
+    smartAutomationPolicies: [],
     smartDemandForecasts: [],
-    smartTechnicianPreferences: buildSeedSmartPreferences(storeId, smartPreferenceTechnicianIds),
+    smartTechnicianPreferences: [],
     smartOptimizationRuns: [],
     smartRecommendations: [],
     smartExceptionQueue: [],
-    smartDataSources: buildSeedSmartDataSources(storeId),
+    smartDataSources: [],
     smartSignals: [],
     smartRuleExplanations: [],
     smartDecisions: [],
@@ -912,53 +860,6 @@ function ensureCycleDisplayData() {
       );
     }
   });
-}
-
-function ensureOverviewRangeDemoData() {
-  let changed = false;
-  const currentCycle = state.cycles.find((cycle) => cycle.id === "cycle-active-store-1" && cycle.status === "active");
-
-  if (!currentCycle) {
-    return changed;
-  }
-
-  const arrangementDateMap = new Map([
-    ["arrangement-ord-grown-006", addDays(dispatchReferenceDateKey, 1)],
-    ["arrangement-ord-grown-007", addDays(dispatchReferenceDateKey, 2)],
-    ["arrangement-ord-grown-008", addDays(dispatchReferenceDateKey, 4)]
-  ]);
-
-  state.arrangements = state.arrangements.map((arrangement) => {
-    const nextDate = arrangementDateMap.get(arrangement.id);
-
-    if (!nextDate || arrangement.date === nextDate) {
-      return arrangement;
-    }
-
-    changed = true;
-    return { ...arrangement, date: nextDate };
-  });
-
-  if (!state.specialTasks.some((task) => task.id === "special-weekend-cover" && task.storeId === currentCycle.storeId)) {
-    state.specialTasks.push(buildOverviewRangeSeedTask(currentCycle.storeId));
-    changed = true;
-  }
-
-  return changed;
-}
-
-function ensureDemoAppointmentSeedData() {
-  const existingIds = new Set(state.arrangements.map((arrangement) => arrangement.id));
-  const missingArrangements = buildDemoDispatchArrangementsForStore(demoAppointmentSeedStoreId).filter(
-    (arrangement) => !existingIds.has(arrangement.id)
-  );
-
-  if (missingArrangements.length === 0) {
-    return false;
-  }
-
-  state.arrangements.push(...missingArrangements);
-  return true;
 }
 
 function ensureSmartSchedulingData() {
@@ -1105,13 +1006,7 @@ function hydrate() {
 
   state.cycles = state.cycles.map((cycle) => ensureCycleDisplayTechnicians(normalizeCycleStep(cycle)));
   ensureCycleDisplayData();
-  const overviewRangeDataChanged = ensureOverviewRangeDemoData();
-  const demoAppointmentSeedChanged = ensureDemoAppointmentSeedData();
-  ensureSmartSchedulingData();
   rebuildStateAfterHydration();
-  if (overviewRangeDataChanged || demoAppointmentSeedChanged) {
-    persist();
-  }
 }
 
 function getCycleById(cycleId: string) {
@@ -2852,166 +2747,11 @@ export function runDispatchSmartSchedule({
   runType?: SmartScheduleRunType;
   storeId: string;
 }) {
-  hydrate();
-  const cycle = getSmartCycleForStore(storeId, cycleId);
-
-  if (!cycle) {
-    return { ok: false, message: "找不到可用于智能排班的周期。" };
-  }
-
-  const policy = getOrCreateSmartPolicy(cycle.storeId);
-  const readiness = buildSmartScheduleReadiness(cycle.storeId);
-
-  if (runType !== "preview" && !readiness.canRunSmartSchedule) {
-    return {
-      ok: false,
-      message: `智能排班仍在冷启动预留期：${readiness.missingItems.join("，")}。可先运行模拟预览。`,
-      readiness
-    };
-  }
-
-  if (runType !== "preview" && policy.mode === "smart_schedule" && getSmartCycleDayCount(cycle) < policy.minCycleDays) {
-    return {
-      ok: false,
-      message: `全智能排班最低周期为 ${policy.minCycleDays} 天。当前周期 ${cycle.periodStart} - ${cycle.periodEnd} 不足 1 个月，请延长后再生成。`
-    };
-  }
-
-  const { technicians } = getEntityMaps(cycle.storeId);
-  const engineContext = {
-    cycle,
-    policy,
-    technicians,
-    preferences: state.smartTechnicianPreferences.filter((preference) => preference.shopId === cycle.storeId),
-    arrangements: state.arrangements.filter((arrangement) => arrangement.storeId === cycle.storeId),
-    finalShifts: state.finalShifts.filter((shift) => shift.cycleId === cycle.id),
-    runType,
-    operatorId
-  };
-  const engine = new SmartScheduleEngine(engineContext);
-  const result = engine.generateSmartSchedule(cycle.id);
-  const enrichedExceptions = result.exceptions.map((exception, index) => {
-    const recommendation = engine.recommendEmergencyAction(exception);
-    const baseException: ScheduleExceptionQueueItem = {
-      ...exception,
-      recommendedActionJson: JSON.stringify({
-        action: recommendation.action,
-        api: `/api/merchant/schedule/smart/exceptions/${exception.id}/execute-now`
-      }),
-      reasonJson: recommendation.reasonJson,
-      countdownSeconds: policy.autoExceptionActionDelayMinutes * 60,
-      autoExecuteAt: null,
-      humanOverride: false
-    };
-    const shouldStartCountdown =
-      runType !== "preview" &&
-      policy.enabled &&
-      policy.mode === "smart_schedule" &&
-      (exception.severity === "high" || index === 0);
-
-    return shouldStartCountdown ? engine.startAutoActionCountdown(baseException) : baseException;
-  });
-  const effectiveAutoConfirmed = runType !== "preview" && result.autoConfirmed;
-  const effectiveFinalShifts = runType === "preview" ? [] : result.finalShifts;
-  const run = {
-    ...result.run,
-    autoConfirmed: effectiveAutoConfirmed,
-    outputSnapshotJson: JSON.stringify({
-      recommendationCount: result.recommendations.length,
-      exceptionCount: enrichedExceptions.length,
-      finalShiftCount: effectiveFinalShifts.length
-    })
-  };
-  const manualShifts = state.finalShifts.filter((shift) => shift.cycleId === cycle.id && shift.source === "manual");
-  const generatedShifts = effectiveFinalShifts.filter((shift) => !manualShifts.some((manualShift) => isSameFinalShift(manualShift, shift)));
-  const hasHighOpenException = enrichedExceptions.some(
-    (exception) => (exception.status === "open" || exception.status === "auto_handling_countdown") && exception.severity === "high"
-  );
-  const hasOpenException = enrichedExceptions.some(
-    (exception) => exception.status === "open" || exception.status === "auto_handling_countdown" || exception.status === "human_override_pending"
-  );
-  const nextStatus: DispatchCycle["status"] =
-    effectiveAutoConfirmed && policy.automationLevel === "full_auto" && !hasHighOpenException
-      ? cycle.periodStart <= dispatchReferenceDateKey && cycle.periodEnd >= dispatchReferenceDateKey
-        ? "active"
-        : "confirmed"
-      : hasOpenException
-        ? "smart_exception_pending"
-        : "smart_generated";
-
-  state.smartDemandForecasts = [
-    ...state.smartDemandForecasts.filter((forecast) => forecast.cycleId !== cycle.id),
-    ...result.forecasts
-  ];
-  state.smartOptimizationRuns = [
-    run,
-    ...state.smartOptimizationRuns.filter((item) => item.id !== run.id)
-  ];
-  state.smartRecommendations = [
-    ...state.smartRecommendations.filter((recommendation) => recommendation.cycleId !== cycle.id),
-    ...result.recommendations
-  ];
-  state.smartExceptionQueue = [
-    ...state.smartExceptionQueue.filter((exception) => exception.cycleId !== cycle.id),
-    ...enrichedExceptions
-  ];
-  state.smartDataSources = [
-    ...state.smartDataSources.filter((source) => source.shopId !== cycle.storeId),
-    ...mergeSmartDataSourcesWithExisting(cycle.storeId, engine.collectColdStartData(cycle.storeId))
-  ];
-  state.smartSignals = [
-    ...state.smartSignals.filter((signal) => signal.cycleId !== cycle.id),
-    ...engine.collectExternalSignals(cycle.id)
-  ];
-  state.smartRuleExplanations = [
-    ...state.smartRuleExplanations.filter((explanation) => explanation.cycleId !== cycle.id),
-    ...engine.explainRules(cycle.id)
-  ];
-  state.smartDecisions = [
-    ...state.smartDecisions.filter((decision) => decision.cycleId !== cycle.id),
-    ...engine.buildDecisionLog(cycle.id, result.recommendations, enrichedExceptions)
-  ];
-
-  if (runType !== "preview") {
-    state.finalShifts = [
-      ...state.finalShifts.filter((shift) => shift.cycleId !== cycle.id || shift.source === "manual"),
-      ...generatedShifts
-    ];
-  }
-
-  updateCycle({
-    ...cycle,
-    mode: "STORE_ASSIGN_FINAL",
-    status: nextStatus,
-    currentStep: 4,
-    lastAutoConfirmAt: effectiveAutoConfirmed ? dispatchReferenceNow : cycle.lastAutoConfirmAt,
-    autoConfirmSummary: {
-      confirmedCount: generatedShifts.filter((shift) => shift.status === "confirmed").length,
-      waitlistedCount: generatedShifts.filter((shift) => shift.status === "waitlisted").length,
-      shortageCount: run.shortageCount,
-      overflowCount: run.overflowCount
-    },
-    finalizedAt: nextStatus === "confirmed" || nextStatus === "active" ? dispatchReferenceNow : cycle.finalizedAt,
-    activeAt: nextStatus === "active" ? dispatchReferenceNow : cycle.activeAt,
-    updatedAt: dispatchReferenceNow
-  });
-  refreshSmartPolicyStatus(cycle.storeId);
-  logAudit({
-    operatorId,
-    action: "dispatch.smart_schedule.run",
-    targetType: "cycle",
-    targetId: cycle.id,
-    before: JSON.stringify(cycle),
-    after: JSON.stringify({ runId: run.id, score: run.score, status: nextStatus, autoConfirmed: effectiveAutoConfirmed }),
-    reason: "执行智能排班生成、质量评分和异常队列计算"
-  });
-  notify();
-  return {
-    ok: true,
-    cycle: getCycleById(cycle.id),
-    run,
-    result: { ...result, exceptions: enrichedExceptions, finalShifts: effectiveFinalShifts, autoConfirmed: effectiveAutoConfirmed }
-  };
+  void cycleId;
+  void operatorId;
+  void runType;
+  void storeId;
+  return { ok: false as const, message: "error.feature_unavailable" };
 }
 
 export function confirmDispatchSmartSchedule(cycleId: string, operatorId: string) {
@@ -3111,161 +2851,26 @@ export function resolveSmartScheduleException(exceptionId: string, operatorId: s
   return { ok: true, exception };
 }
 
-function getSmartExceptionEngine(exception: ScheduleExceptionQueueItem, operatorId: string) {
-  const cycle = getCycleById(exception.cycleId);
-
-  if (!cycle) {
-    return null;
-  }
-
-  const { technicians } = getEntityMaps(cycle.storeId);
-
-  return new SmartScheduleEngine({
-    cycle,
-    policy: getOrCreateSmartPolicy(cycle.storeId),
-    technicians,
-    preferences: state.smartTechnicianPreferences.filter((preference) => preference.shopId === cycle.storeId),
-    arrangements: state.arrangements.filter((arrangement) => arrangement.storeId === cycle.storeId),
-    finalShifts: state.finalShifts.filter((shift) => shift.cycleId === cycle.id),
-    runType: "recalculate",
-    operatorId
-  });
-}
-
-function replaceSmartException(nextException: ScheduleExceptionQueueItem) {
-  state.smartExceptionQueue = state.smartExceptionQueue.map((exception) =>
-    exception.id === nextException.id ? nextException : exception
-  );
+function unavailableSmartExceptionAction(exceptionId: string, operatorId: string) {
+  void exceptionId;
+  void operatorId;
+  return { ok: false as const, message: "error.feature_unavailable" };
 }
 
 export function startSmartExceptionAutoActionCountdown(exceptionId: string, operatorId: string) {
-  hydrate();
-  const exception = state.smartExceptionQueue.find((item) => item.id === exceptionId);
-
-  if (!exception) {
-    return { ok: false, message: "找不到智能排班异常。" };
-  }
-
-  const engine = getSmartExceptionEngine(exception, operatorId);
-
-  if (!engine) {
-    return { ok: false, message: "找不到排班周期。" };
-  }
-
-  const nextException = engine.startAutoActionCountdown(exception);
-  replaceSmartException(nextException);
-  refreshSmartPolicyStatus(exception.shopId);
-  logAudit({
-    operatorId,
-    action: "dispatch.smart_schedule.exception.countdown",
-    targetType: "cycle",
-    targetId: exception.cycleId,
-    before: JSON.stringify(exception),
-    after: JSON.stringify(nextException),
-    reason: "启动异常自动处理倒计时"
-  });
-  notify();
-  return { ok: true, exception: nextException };
+  return unavailableSmartExceptionAction(exceptionId, operatorId);
 }
 
 export function cancelSmartExceptionAutoAction(exceptionId: string, operatorId: string) {
-  hydrate();
-  const exception = state.smartExceptionQueue.find((item) => item.id === exceptionId);
-
-  if (!exception) {
-    return { ok: false, message: "找不到智能排班异常。" };
-  }
-
-  const engine = getSmartExceptionEngine(exception, operatorId);
-
-  if (!engine) {
-    return { ok: false, message: "找不到排班周期。" };
-  }
-
-  const nextException = engine.cancelAutoAction(exception);
-  replaceSmartException(nextException);
-  refreshSmartPolicyStatus(exception.shopId);
-  logAudit({
-    operatorId,
-    action: "dispatch.smart_schedule.exception.cancel_auto",
-    targetType: "cycle",
-    targetId: exception.cycleId,
-    before: JSON.stringify(exception),
-    after: JSON.stringify(nextException),
-    reason: "商户取消本次自动处理"
-  });
-  notify();
-  return { ok: true, exception: nextException };
+  return unavailableSmartExceptionAction(exceptionId, operatorId);
 }
 
 export function markSmartExceptionHumanOverride(exceptionId: string, operatorId: string) {
-  hydrate();
-  const exception = state.smartExceptionQueue.find((item) => item.id === exceptionId);
-
-  if (!exception) {
-    return { ok: false, message: "找不到智能排班异常。" };
-  }
-
-  const engine = getSmartExceptionEngine(exception, operatorId);
-
-  if (!engine) {
-    return { ok: false, message: "找不到排班周期。" };
-  }
-
-  const nextException = engine.markHumanOverride(exception);
-  replaceSmartException(nextException);
-  state.smartManualOverrides.unshift({
-    id: createDispatchId("smart-override"),
-    exceptionId: exception.id,
-    cycleId: exception.cycleId,
-    shopId: exception.shopId,
-    operatorId,
-    action: "human_override",
-    reason: "本次将由人工处理，智能系统不会自动执行该异常的推荐方案。",
-    createdAt: dispatchReferenceNow
-  });
-  refreshSmartPolicyStatus(exception.shopId);
-  logAudit({
-    operatorId,
-    action: "dispatch.smart_schedule.exception.human_override",
-    targetType: "cycle",
-    targetId: exception.cycleId,
-    before: JSON.stringify(exception),
-    after: JSON.stringify(nextException),
-    reason: "商户选择本次人工处理"
-  });
-  notify();
-  return { ok: true, exception: nextException };
+  return unavailableSmartExceptionAction(exceptionId, operatorId);
 }
 
 export function executeSmartExceptionNow(exceptionId: string, operatorId: string) {
-  hydrate();
-  const exception = state.smartExceptionQueue.find((item) => item.id === exceptionId);
-
-  if (!exception) {
-    return { ok: false, message: "找不到智能排班异常。" };
-  }
-
-  const engine = getSmartExceptionEngine(exception, operatorId);
-
-  if (!engine) {
-    return { ok: false, message: "找不到排班周期。" };
-  }
-
-  const nextException = engine.executeAutoAction(exception);
-  replaceSmartException(nextException);
-  refreshSmartPolicyStatus(exception.shopId);
-  logAudit({
-    operatorId,
-    action: "dispatch.smart_schedule.exception.execute_now",
-    targetType: "cycle",
-    targetId: exception.cycleId,
-    before: JSON.stringify(exception),
-    after: JSON.stringify(nextException),
-    reason: "立即执行智能异常推荐处理"
-  });
-  notify();
-  return { ok: true, exception: nextException };
+  return unavailableSmartExceptionAction(exceptionId, operatorId);
 }
 
 export function cancelDispatchCycle(cycleId: string, operatorId: string) {

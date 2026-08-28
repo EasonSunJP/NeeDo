@@ -19,7 +19,7 @@ import { Button } from "../../../components/ui/Button";
 import { Drawer } from "../../../components/ui/Drawer";
 import { TitleWithInfo } from "../../../components/ui/TitleWithInfo";
 import { ScheduleCycleCalendarBoard, type ScheduleCycleCalendarBoardView } from "../../../components/scheduling/ScheduleCycleCalendarBoard";
-import { orders } from "../../../data/mock";
+import { emptyOrders as orders } from "../../../data/formalRuntimeFallbacks";
 import { getMerchantCustomerConversationId, getMessagePath } from "../../../lib/messageCenter";
 import { shareContent } from "../../../lib/share";
 import { cn, statusLabel as formatOrderStatusLabel, yen } from "../../../lib/utils";

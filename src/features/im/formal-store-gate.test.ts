@@ -8,7 +8,7 @@ describe("formal IM legacy-store gate", () => {
     expect(source).not.toContain("isStaticDemoMode");
     expect(source).not.toContain("isFrontendBypassSession");
     expect(source).toContain("createFormalImApi");
-    expect(source).toContain("getScopedStore(scope, false, currentUser)");
+    expect(source).toContain("getScopedStore(scope, currentUser)");
     expect(source).not.toContain("formalImMutationUnavailable");
   });
 

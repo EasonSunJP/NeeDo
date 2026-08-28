@@ -13,7 +13,7 @@ import { ClientEdgeMask } from "../../components/mobile/ClientEdgeMask";
 import { ContactEventTimelinePanel } from "../../components/mobile/ContactEventTimeline";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
-import { services } from "../../data/mock";
+import { emptyServices as services } from "../../data/formalRuntimeFallbacks";
 import {
   bookingApi,
   formatApiOrderDateTime,

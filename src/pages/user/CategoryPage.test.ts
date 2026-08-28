@@ -51,10 +51,10 @@ describe("CategoryPage technician showcase card", () => {
   });
 
   it("disables legacy category content", () => {
-    expect(categoryPageSource).toContain("const allowLegacyCoreReadData = false;");
-    expect(categoryPageSource).toContain("allowLegacyCoreReadData ? legacyServices : []");
-    expect(categoryPageSource).toContain("return allowLegacyCoreReadData ? legacyStores : [];");
-    expect(categoryPageSource).toContain("return allowLegacyCoreReadData ? legacyTechnicians : [];");
-    expect(categoryPageSource).toContain("if (!allowLegacyCoreReadData)");
+    expect(categoryPageSource).toContain("searchQuery.data?.list.map(mapCoreServiceToServiceItem) ?? []");
+    expect(categoryPageSource).not.toContain("legacyServices");
+    expect(categoryPageSource).not.toContain("legacyStores");
+    expect(categoryPageSource).not.toContain("legacyTechnicians");
+    expect(categoryPageSource).not.toContain("data/mock");
   });
 });

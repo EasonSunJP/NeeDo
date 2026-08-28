@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { schedules as defaultSchedules } from "../data/mock";
-import { readBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
+import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
 import { dispatchTodayKey } from "../lib/dispatchCalendar";
 import type { OneClickScheduleConfig } from "../lib/oneClickSchedule";
 import type { FulfillmentMode, Schedule } from "../types/domain";
@@ -70,8 +69,10 @@ type ScheduleSnapshot = {
   revision: number;
 };
 
-const storageKey = "needo.schedule-store.v1";
+const storageKey = "needo.schedule-store.formal-state.v1";
+const retiredStorageKeys = ["needo.schedule-store.v1"];
 const listeners = new Set<() => void>();
+const defaultSchedules: Schedule[] = [];
 const defaultAutoScheduleSettings: AutoScheduleSettings = {
   enabled: false,
   baseDate: dispatchTodayKey,
@@ -393,6 +394,7 @@ function hydrate() {
 
   hydrated = true;
   bindStorageListener();
+  retiredStorageKeys.forEach((key) => removeBrowserStorage(key, { silent: true }));
   const raw = readBrowserStorage(storageKey, { silent: true });
 
   if (!raw) {

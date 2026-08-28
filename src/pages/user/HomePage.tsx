@@ -17,7 +17,6 @@ import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { CloseIconButton } from "../../components/ui/CloseIconButton";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
-import { serviceCategories, services as legacyServices } from "../../data/mock";
 import {
   coreReadApi,
   mapCoreCustomerToCustomer,
@@ -32,7 +31,6 @@ import { translateText, type Language } from "../../i18n/translations";
 import { parseBrowserStorageJson, removeBrowserStorage, writeBrowserStorage } from "../../lib/browserStorage";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
 import { cn } from "../../lib/utils";
-import { useEntityStore } from "../../state/entityStore";
 import { getResolvedCarouselSlides, resolveCarouselTargetPath, useCarouselStore } from "../../state/homeCarouselStore";
 import { useNeedoPetSettings } from "../../state/needoPetSettings";
 import { useClientTheme, type ClientTheme } from "../../theme/ClientThemeProvider";
@@ -152,8 +150,7 @@ function getTextOverlapScore(values: string[], targets: string[]) {
 }
 
 function getServiceProviderScore(values: string[], service: ServiceItem, location: HomeLocationOption) {
-  const categoryName = serviceCategories.find((category) => category.id === service.categoryId)?.name ?? "";
-  const serviceTerms = [service.name, categoryName, service.summary, ...service.tags, ...service.serviceAreas];
+  const serviceTerms = [service.name, service.summary, ...service.tags, ...service.serviceAreas];
 
   return getLocationScore(values, location) * 4 + getTextOverlapScore(values, serviceTerms);
 }
@@ -517,7 +514,7 @@ function ReminderBanner({
               <ReminderMiniCard
                 cover={service.cover}
                 label={t("服务")}
-                meta={`${t(serviceCategories.find((item) => item.id === service.categoryId)?.name ?? "服务")} · ${reminder.startsAt}`}
+                meta={`${t("服务")} · ${reminder.startsAt}`}
                 title={service.name}
               />
             ) : null}
@@ -626,17 +623,15 @@ function resolveStoreForOrder(order: Order, storeList: Store[], technicianList: 
   return storeList.find((item) => item.id === matchedTechnician?.storeId) ?? null;
 }
 
-function resolveServiceForOrder(order: Order) {
+function resolveServiceForOrder(order: Order, serviceList: ServiceItem[]) {
   const orderText = normalizeText(order.itemName);
 
-  const scored = legacyServices
+  const scored = serviceList
     .map((service) => {
-      const categoryName = serviceCategories.find((item) => item.id === service.categoryId)?.name ?? "";
       const serviceTokens = [
         service.name,
         service.name.replace("上门", ""),
         service.name.replace(/\d+\s*号套餐/g, "").trim(),
-        categoryName,
         ...service.tags
       ]
         .filter(Boolean)
@@ -669,18 +664,16 @@ export function HomePage() {
   const { config } = useHomeLayoutStore();
   const petSettings = useNeedoPetSettings();
   const { scenes: carouselScenes, revision: carouselRevision } = useCarouselStore();
-  const { customers, stores: legacyStores, technicians: legacyTechnicians, revision: entityRevision } = useEntityStore();
   const userOrders = useUserOrders();
-  const allowLegacyCoreReadData = false;
   const formalCustomerProfileId = getFormalCustomerProfileId(session);
   const formalCustomerProfileQuery = useCoreReadQuery(
     () => formalCustomerProfileId ? coreReadApi.getCustomerProfile(formalCustomerProfileId) : null,
     [formalCustomerProfileId]
   );
-  const legacyCurrentCustomer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
   const currentCustomer = formalCustomerProfileQuery.data
     ? mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)
-    : legacyCurrentCustomer;
+    : null;
+  const currentCustomerId = currentCustomer?.id ?? "";
   const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
   const [homeRecommendationsRevision, setHomeRecommendationsRevision] = useState(0);
   const homeRecommendationsQuery = useCoreReadQuery(
@@ -688,16 +681,16 @@ export function HomePage() {
     [homeRecommendationsRevision]
   );
   const apiServices = useMemo(
-    () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? (allowLegacyCoreReadData ? legacyServices : []),
-    [allowLegacyCoreReadData, homeRecommendationsQuery.data]
+    () => homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? [],
+    [homeRecommendationsQuery.data]
   );
   const apiStores = useMemo(
-    () => homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? (allowLegacyCoreReadData ? legacyStores : []),
-    [allowLegacyCoreReadData, homeRecommendationsQuery.data, entityRevision, legacyStores]
+    () => homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? [],
+    [homeRecommendationsQuery.data]
   );
   const apiTechnicians = useMemo(
-    () => homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? (allowLegacyCoreReadData ? legacyTechnicians : []),
-    [allowLegacyCoreReadData, homeRecommendationsQuery.data, entityRevision, legacyTechnicians]
+    () => homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? [],
+    [homeRecommendationsQuery.data]
   );
   const serviceByTechnicianId = useMemo(
     () => {
@@ -709,18 +702,9 @@ export function HomePage() {
         return new Map(apiEntries);
       }
 
-      if (!allowLegacyCoreReadData) {
-        return new Map<string, ServiceItem>();
-      }
-
-      const fallbackEntries = legacyTechnicians.map((technician, index) => [
-        technician.id,
-        legacyServices[index % legacyServices.length] ?? legacyServices[0]
-      ] as const).filter((entry): entry is readonly [string, ServiceItem] => Boolean(entry[1]));
-
-      return new Map(fallbackEntries);
+      return new Map<string, ServiceItem>();
     },
-    [allowLegacyCoreReadData, entityRevision, homeRecommendationsQuery.data, legacyTechnicians]
+    [homeRecommendationsQuery.data]
   );
   const [recommendationTab, setRecommendationTab] = useState<HomeRecommendationTabKey>(config.recommendation.defaultTab);
   const [now, setNow] = useState(() => new Date());
@@ -908,10 +892,10 @@ export function HomePage() {
   const activeAppointmentOrders = useMemo(
     () =>
       userOrders
-        .filter((order) => order.customerId === currentCustomer.id)
+        .filter((order) => order.customerId === currentCustomerId)
         .filter((order) => currentAppointmentStatuses.includes(order.status))
         .sort((left, right) => getOrderTimeValue(right) - getOrderTimeValue(left)),
-    [currentCustomer.id, userOrders]
+    [currentCustomerId, userOrders]
   );
   const latestActiveAppointment = activeAppointmentOrders[0];
 
@@ -921,7 +905,7 @@ export function HomePage() {
     }
 
     const candidates = userOrders
-      .filter((order) => order.customerId === currentCustomer.id)
+      .filter((order) => order.customerId === currentCustomerId)
       .filter((order) => order.status === "confirmed" || order.status === "scheduled")
       .map((order) => {
         const start = parseDateTime(order.bookedAt);
@@ -946,10 +930,10 @@ export function HomePage() {
       order: closest.order,
       minutesUntil: closest.minutesUntil,
       startsAt: formatDateTimeLabel(closest.start),
-      store: resolveStoreForOrder(closest.order, legacyStores, legacyTechnicians),
-      service: resolveServiceForOrder(closest.order)
+      store: resolveStoreForOrder(closest.order, apiStores, apiTechnicians),
+      service: resolveServiceForOrder(closest.order, apiServices)
     };
-  }, [config.reminder.enabled, config.reminder.triggerWindowMinutes, currentCustomer.id, entityRevision, legacyStores, legacyTechnicians, now, userOrders]);
+  }, [apiServices, apiStores, apiTechnicians, config.reminder.enabled, config.reminder.triggerWindowMinutes, currentCustomerId, now, userOrders]);
 
   useEffect(() => {
     if (!reminderState) {
@@ -1000,10 +984,10 @@ export function HomePage() {
       >
         <div className={cn(floatingHeaderInnerClassName, "space-y-3")}>
           <SharedHomeHeader
-            avatarAlt={currentCustomer.name}
-            avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
-            avatarMembershipLevel={currentCustomer.memberLevel}
-            avatarSrc={currentCustomer.avatar}
+            avatarAlt={currentCustomer?.name ?? session?.username ?? ""}
+            avatarLevelLabel={currentCustomer ? getCustomerLevelLabel(currentCustomer.activeScore) : undefined}
+            avatarMembershipLevel={currentCustomer?.memberLevel}
+            avatarSrc={currentCustomer?.avatar ?? session?.avatarUrl ?? ""}
             avatarTo={userPortalConfig.myPath}
             locationLabel={selectedLocation.label}
             locationCaption="当前服务区域"

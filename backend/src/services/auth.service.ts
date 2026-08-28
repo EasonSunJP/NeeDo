@@ -1661,11 +1661,21 @@ export class AuthService {
       });
     }
 
-    return this.buildMePayload(user, identityId);
+    const payload = this.buildMePayload(user, identityId);
+
+    if (payload.currentIdentity.id !== identityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_NOT_FOUND,
+        message: "error.auth.identity_not_found",
+        statusCode: 404
+      });
+    }
+
+    return payload;
   }
 
   private buildMePayload(user: AuthUserRecord, currentIdentityId?: number): AuthMePayload {
-    const identities = user.identities
+    const allActiveIdentities = user.identities
       .filter((identity) => identity.deletedAt === null && identity.isActive)
       .map<AuthIdentityPayload>((identity) => ({
         id: identity.id,
@@ -1682,6 +1692,23 @@ export class AuthService {
               ? user.needoId
               : null
       }));
+    const publicIdentityById = new Map<string, AuthIdentityPayload>();
+    for (const identity of allActiveIdentities) {
+      if (!identity.publicId) {
+        continue;
+      }
+
+      const existing = publicIdentityById.get(identity.publicId);
+      if (!existing || ["customer", "user", "u"].includes(identity.type)) {
+        publicIdentityById.set(identity.publicId, identity);
+      }
+    }
+    const identities =
+      publicIdentityById.size > 0
+        ? Array.from(publicIdentityById.values())
+        : this.allowLegacyAuthAdaptersForTest
+          ? allActiveIdentities
+          : [];
     const currentIdentity =
       identities.find((identity) => identity.id === currentIdentityId) ??
       identities.find((identity) =>
@@ -1730,7 +1757,7 @@ export class AuthService {
       isActive: user.isActive,
       currentIdentity,
       identities,
-      identityAvailability: this.buildIdentityAvailability(user, identities),
+      identityAvailability: this.buildIdentityAvailability(user, allActiveIdentities),
       roles: Array.from(roles),
       permissions: permissionCodes,
       menus: permissionCodes.filter((code) => permissions.get(code) === "menu")

@@ -1,5 +1,5 @@
 import { readBrowserStorage, removeBrowserStorage, writeBrowserStorage } from "../lib/browserStorage";
-import type { PortalScope } from "./demoAccount";
+import type { PortalScope } from "./portal";
 import { authSessionVersion, isLoginMethod, normalizeAuthSessionEntityIds, type AuthSession } from "./rbac";
 
 const rememberedPortalSessionStoragePrefix = "needo.auth.portal-session";

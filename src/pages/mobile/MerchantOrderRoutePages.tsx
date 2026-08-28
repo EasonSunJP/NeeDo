@@ -7,7 +7,7 @@ import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreen
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { Button } from "../../components/ui/Button";
-import { orders, services } from "../../data/mock";
+import { emptyOrders as orders, emptyServices as services } from "../../data/formalRuntimeFallbacks";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { getMerchantCustomerConversationId } from "../../lib/messageCenter";
 import { readNavigationReturnTarget } from "../../lib/navigationReturn";

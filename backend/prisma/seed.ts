@@ -86,7 +86,7 @@ interface SeedCoreReadOptions {
   testUserPasswordHash: string | null;
 }
 
-type CoreReadDemoCategorySeed = {
+type CoreReadFormalTestCategorySeed = {
   code: string;
   name: string;
   nameJa: string;
@@ -95,13 +95,13 @@ type CoreReadDemoCategorySeed = {
   sortOrder: number;
 };
 
-type CoreReadDemoReviewSeed = {
+type CoreReadFormalTestReviewSeed = {
   ratingAverage: string;
   reviewCount: number;
   highlights: string[];
 };
 
-type CoreReadDemoShopSeed = {
+type CoreReadFormalTestShopSeed = {
   slug: string;
   ownerEmail: string;
   ownerUsername: string;
@@ -114,10 +114,10 @@ type CoreReadDemoShopSeed = {
   longitude: string;
   phone: string;
   coverUrl: string;
-  review: CoreReadDemoReviewSeed;
+  review: CoreReadFormalTestReviewSeed;
 };
 
-type CoreReadDemoTechnicianSeed = {
+type CoreReadFormalTestTechnicianSeed = {
   slug: string;
   email: string;
   phone: string;
@@ -129,7 +129,7 @@ type CoreReadDemoTechnicianSeed = {
   serviceArea: string;
   yearsExperience: number;
   avatarUrl: string;
-  review: CoreReadDemoReviewSeed;
+  review: CoreReadFormalTestReviewSeed;
   service: {
     name: string;
     description: string;
@@ -138,11 +138,11 @@ type CoreReadDemoTechnicianSeed = {
     priceAmount: string;
     durationMinutes: number;
     coverUrl: string;
-    review: CoreReadDemoReviewSeed;
+    review: CoreReadFormalTestReviewSeed;
   };
 };
 
-export const CORE_READ_DEMO_CATEGORY_SEEDS: CoreReadDemoCategorySeed[] = [
+export const CORE_READ_FORMAL_TEST_CATEGORY_SEEDS: CoreReadFormalTestCategorySeed[] = [
   {
     code: "wellness",
     name: "Wellness",
@@ -209,7 +209,7 @@ export const CORE_READ_DEMO_CATEGORY_SEEDS: CoreReadDemoCategorySeed[] = [
   }
 ];
 
-export const CORE_READ_DEMO_SHOP_SEEDS: CoreReadDemoShopSeed[] = [
+export const CORE_READ_FORMAL_TEST_SHOP_SEEDS: CoreReadFormalTestShopSeed[] = [
   {
     slug: "aoyama-care",
     ownerEmail: "seed.shop-owner@needo.local",
@@ -402,7 +402,7 @@ export const CORE_READ_DEMO_SHOP_SEEDS: CoreReadDemoShopSeed[] = [
   }
 ];
 
-export const CORE_READ_DEMO_TECHNICIAN_SEEDS: CoreReadDemoTechnicianSeed[] = [
+export const CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS: CoreReadFormalTestTechnicianSeed[] = [
   {
     slug: "mika-tanaka",
     email: "seed.technician@needo.local",
@@ -1094,10 +1094,10 @@ export const shouldSeedRequiredTestAccounts = (env: NodeJS.ProcessEnv = process.
   (env.DEPLOY_ENV === "local" || env.DEPLOY_ENV === "test") &&
   isEnabledSeedFlag(env.ALLOW_TEST_LOGIN);
 
-export const shouldSeedCoreReadDemoData = (env: NodeJS.ProcessEnv = process.env): boolean =>
+export const shouldSeedCoreReadFormalTestData = (env: NodeJS.ProcessEnv = process.env): boolean =>
   env.NODE_ENV !== "production" &&
   (env.DEPLOY_ENV === "local" || env.DEPLOY_ENV === "test") &&
-  isEnabledSeedFlag(env.ALLOW_DEMO_SEED);
+  isEnabledSeedFlag(env.ALLOW_FORMAL_TEST_SEED);
 
 const createSeedPrismaClient = (): PrismaClient =>
   new PrismaClient({
@@ -1724,7 +1724,7 @@ const seedMerchantSaasBillingData = async (
   const startsAt = new Date("2026-07-31T15:00:00.000Z");
   const trialEndsAt = new Date("2026-10-31T15:00:00.000Z");
   const invoicePeriodEndsAt = new Date("2026-11-30T15:00:00.000Z");
-  const groupShopSeeds = CORE_READ_DEMO_SHOP_SEEDS.slice(0, 4);
+  const groupShopSeeds = CORE_READ_FORMAL_TEST_SHOP_SEEDS.slice(0, 4);
   const groupShops = groupShopSeeds.map((shopSeed) => {
     const linkedShop = input.shopBySlug.get(shopSeed.slug);
 
@@ -1995,7 +1995,7 @@ const seedCoreReadData = async (
 ): Promise<void> => {
   const demoCategories: Category[] = [];
 
-  for (const categorySeed of CORE_READ_DEMO_CATEGORY_SEEDS) {
+  for (const categorySeed of CORE_READ_FORMAL_TEST_CATEGORY_SEEDS) {
     demoCategories.push(
       await tx.category.upsert({
         where: { code: categorySeed.code },
@@ -2033,8 +2033,8 @@ const seedCoreReadData = async (
   };
   const wellnessCategory = getDemoCategory("wellness");
   const beautyCategory = getDemoCategory("beauty");
-  const primaryShopSeed = CORE_READ_DEMO_SHOP_SEEDS[0];
-  const primaryTechnicianSeed = CORE_READ_DEMO_TECHNICIAN_SEEDS[0];
+  const primaryShopSeed = CORE_READ_FORMAL_TEST_SHOP_SEEDS[0];
+  const primaryTechnicianSeed = CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS[0];
 
   if (!primaryShopSeed || !primaryTechnicianSeed) {
     throw new Error("Core read demo seed requires at least one shop and one technician seed.");
@@ -2207,7 +2207,7 @@ const seedCoreReadData = async (
 
   const shopBySlug = new Map<string, { id: number }>([[primaryShopSeed.slug, shop]]);
 
-  for (const shopSeed of CORE_READ_DEMO_SHOP_SEEDS.slice(1)) {
+  for (const shopSeed of CORE_READ_FORMAL_TEST_SHOP_SEEDS.slice(1)) {
     const owner = await upsertSeedUser(
       tx,
       {
@@ -2292,7 +2292,7 @@ const seedCoreReadData = async (
     shopBySlug.set(shopSeed.slug, demoShop);
   }
 
-  for (const [technicianIndex, technicianSeed] of CORE_READ_DEMO_TECHNICIAN_SEEDS.slice(1).entries()) {
+  for (const [technicianIndex, technicianSeed] of CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS.slice(1).entries()) {
     const demoShop = shopBySlug.get(technicianSeed.shopSlug);
     const category = getDemoCategory(technicianSeed.categoryCode);
 
@@ -3693,7 +3693,7 @@ export const seedUserManagement = async (
   const adminConfig = getAdminSeedConfig();
   const adminPasswordHash = await hash(adminConfig.password, BCRYPT_ROUNDS);
   const seedTestAccounts = shouldSeedRequiredTestAccounts();
-  const seedCoreReadDemo = shouldSeedCoreReadDemoData();
+  const seedCoreReadFormalTest = shouldSeedCoreReadFormalTestData();
   const testUserPasswordHash = seedTestAccounts
     ? await hash(getTestUserSeedPassword(), BCRYPT_ROUNDS)
     : null;
@@ -3933,7 +3933,7 @@ export const seedUserManagement = async (
         scopeId: adminCustomerProfile.id
       });
 
-    if (seedCoreReadDemo || seedTestAccounts) {
+    if (seedCoreReadFormalTest || seedTestAccounts) {
       await seedCoreReadData(tx, adminPasswordHash, roleByCode, {
         seedRequiredTestAccounts: seedTestAccounts,
         testUserPasswordHash

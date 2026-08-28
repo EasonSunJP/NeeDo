@@ -20,7 +20,7 @@ import type {
   QrResolution
 } from "./types";
 
-const dineInStorageKey = "needo.dine-in.state.v1";
+const dineInStorageKey = "needo.dine-in.formal-state.v1";
 const dineInStateEventName = "needo:dine-in-state";
 const activeSessionStatuses = new Set(["OPEN", "ACTIVE", "CHECKOUT_REQUESTED", "PAYMENT_PENDING"]);
 const standardMenuIds = ["menu-dinner", "menu-drinks", "menu-service"] as const;
@@ -366,7 +366,16 @@ export function resetDineInState() {
   return state;
 }
 
-export function resolveQrTokenInState(state: DineInState, inputToken: string, now = new Date().toISOString()): DineInMutationResult<QrResolution> {
+export function resolveQrTokenInState(
+  state: DineInState,
+  inputToken: string,
+  actorId: string,
+  now = new Date().toISOString()
+): DineInMutationResult<QrResolution> {
+  if (!actorId.trim()) {
+    throw new Error("Authenticated actor is required.");
+  }
+
   const nextState = cloneState(state);
   const token = resolveQrTargetToken(inputToken);
   const qr = nextState.qrCodes.find((item) => item.rawToken === token && item.active);
@@ -378,7 +387,7 @@ export function resolveQrTokenInState(state: DineInState, inputToken: string, no
   const facility = nextState.facilityUnits.find((unit) => unit.id === qr.targetId);
   let sessionId: string | undefined;
   let facilityUnitId: string | undefined;
-  let actionUrl = "/dine/session-demo/menu";
+  let actionUrl = "/scan";
   let actionType: QrResolution["action"]["type"] = "OPEN_DINE_IN_MENU";
 
   if (qr.type === "TABLE_MENU" || qr.type === "ROOM_MENU" || qr.type === "BED_MENU") {
@@ -389,35 +398,13 @@ export function resolveQrTokenInState(state: DineInState, inputToken: string, no
     const existingSession = nextState.diningSessions.find(
       (session) => session.facilityUnitId === facility.id && activeSessionStatuses.has(session.status)
     );
-    const session = existingSession ?? {
-      id: createId("session", now),
-      shopId: qr.shopId,
-      facilityUnitId: facility.id,
-      status: "OPEN" as const,
-      openedByUserId: "customer-demo",
-      assignedStaffId: "staff-yamada",
-      partySize: Math.max(1, Math.min(facility.capacity, 2)),
-      openedAt: now
-    };
-
     if (!existingSession) {
-      nextState.diningSessions.unshift(session);
-      facility.currentSessionId = session.id;
-      facility.status = "ORDERING";
-      addAuditLog(nextState, {
-        action: "dining_session.opened",
-        actorId: "customer-demo",
-        actorType: "USER",
-        entityType: "SESSION",
-        entityId: session.id,
-        after: session.status,
-        now
-      });
+      throw new Error("error.feature_unavailable");
     }
 
-    sessionId = session.id;
+    sessionId = existingSession.id;
     facilityUnitId = facility.id;
-    actionUrl = `/dine/${session.id}/menu`;
+    actionUrl = `/dine/${existingSession.id}/menu`;
   } else if (qr.type === "CHECKOUT") {
     const session = nextState.diningSessions.find((item) => item.id === qr.targetId) ?? nextState.diningSessions.find((item) => item.id === facility?.currentSessionId);
     sessionId = session?.id;
@@ -458,7 +445,7 @@ export function resolveQrTokenInState(state: DineInState, inputToken: string, no
 
   addAuditLog(nextState, {
     action: "qr.resolved",
-    actorId: "customer-demo",
+    actorId,
     actorType: "USER",
     entityType: "QR",
     entityId: qr.id,
@@ -480,6 +467,10 @@ export function createDineInOrderInState(
 
   if (!session) {
     throw new Error("Dining session was not found.");
+  }
+
+  if (!session.openedByUserId) {
+    throw new Error("Authenticated session owner is required.");
   }
 
   const facility = nextState.facilityUnits.find((unit) => unit.id === session.facilityUnitId);
@@ -569,7 +560,7 @@ export function createDineInOrderInState(
 
   addAuditLog(nextState, {
     action: "dine_in.order.created",
-    actorId: session.openedByUserId ?? "customer-demo",
+    actorId: session.openedByUserId,
     actorType: "USER",
     entityType: "ORDER",
     entityId: order.id,
@@ -1172,11 +1163,9 @@ export function useDineInStore() {
         setState(nextState);
         return nextState;
       },
-      resolveQrToken: (token: string) => {
-        const mutation = resolveQrTokenInState(getStoredDineInState(), token);
-        persistDineInState(mutation.state);
-        setState(mutation.state);
-        return mutation.result;
+      resolveQrToken: (token: string): QrResolution => {
+        void token;
+        throw new Error("error.feature_unavailable");
       },
       createOrder: (sessionId: string, lines: DineInCartLineInput[]) => {
         const mutation = createDineInOrderInState(getStoredDineInState(), sessionId, lines);

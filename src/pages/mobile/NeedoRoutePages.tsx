@@ -21,7 +21,7 @@ import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
 import { TranslationIcon } from "../../components/ui/LanguageSwitcher";
 import { ShareNetworkIconPath } from "../../components/ui/ShareNetworkIcon";
-import { services, stores, technicians } from "../../data/mock";
+import { emptyServices as services, emptyStores as stores, emptyTechnicians as technicians } from "../../data/formalRuntimeFallbacks";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText, type Language } from "../../i18n/translations";
 import { getForwardContacts, type ForwardContact } from "../../lib/forwardContacts";

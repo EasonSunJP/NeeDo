@@ -39,12 +39,12 @@ export function MyQrCodeIcon({ className }: { className?: string }) {
 
 export function MyQrCodeDisplay({
   className,
-  idLabel = "USER-DEMO-001",
+  idLabel,
   onPurposeChange,
   purpose
 }: {
   className?: string;
-  idLabel?: string;
+  idLabel: string;
   onPurposeChange: (purpose: MyQrCodePurpose) => void;
   purpose: MyQrCodePurpose;
 }) {

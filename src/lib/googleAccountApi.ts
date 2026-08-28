@@ -81,5 +81,9 @@ export function getGoogleAccountActorId(
 ) {
   const id = scope === "merchant" ? store?.id : scope === "technician" ? technician?.id : customer?.id;
 
-  return `needo:${scope}:${id ?? "demo"}`;
+  if (!id) {
+    throw new Error("Authenticated entity ID is required.");
+  }
+
+  return `needo:${scope}:${id}`;
 }

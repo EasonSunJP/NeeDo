@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthProvider";
-import { businessCpsDashboard, businessCpsPromoters } from "../../../features/business-cps/model";
-import { cn, yen } from "../../../lib/utils";
+import { cn } from "../../../lib/utils";
 import "../../../styles/cps/cpsSidebar.css";
 import { CpsSidebarCollapseButton } from "./CpsSidebarCollapseButton";
 import { CpsSidebarMenuItem } from "./CpsSidebarMenuItem";
@@ -212,7 +211,7 @@ export function CpsSidebar({
             <div className="cps-sidebar-account-popover">
               <div className="cps-sidebar-account-header">
                 <span>当前账号</span>
-                <strong>{session?.email ?? "afirieito@needo.jp"}</strong>
+                <strong>{session?.email ?? "未登录"}</strong>
               </div>
               <Link className="cps-sidebar-account-action" onClick={() => setAccountMenuOpen(false)} to="/NDA-admin/account">
                 账户设置
@@ -228,11 +227,11 @@ export function CpsSidebar({
         <div className="cps-sidebar-status">
           <div>
             <span>推广者</span>
-            <strong>{businessCpsPromoters.length}</strong>
+            <strong>--</strong>
           </div>
           <div>
             <span>佣金</span>
-            <strong>{yen(businessCpsDashboard.commissionSpend)}</strong>
+            <strong>--</strong>
           </div>
         </div>
 

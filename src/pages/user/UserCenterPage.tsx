@@ -879,7 +879,7 @@ function CompleteUserCenterPage({
                       ) : null}
                     </div>
                   </div>
-                  <div className={cn("flex min-w-0 flex-1 flex-col", isEditingProfile ? "min-h-36" : "h-36")}>
+                  <div className="flex min-h-36 min-w-0 flex-1 flex-col">
                     <div className="min-w-0 max-w-[calc(100%-44px)]">
                       {isEditingProfile && profileDraft ? (
                         <div className="flex min-w-0 items-start gap-1.5">

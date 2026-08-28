@@ -12,7 +12,7 @@ import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { HolidayCornerBadge } from "../../components/scheduling/HolidayCornerBadge";
 import { ScheduleDraftRangeBlock, scheduleDraftRangeVisualMinHeight } from "../../components/scheduling/ScheduleDraftRangeBlock";
 import { useAuth } from "../../auth/AuthProvider";
-import { orders as demoOrders, services } from "../../data/mock";
+import { emptyOrders as orders, emptyServices as services } from "../../data/formalRuntimeFallbacks";
 import { OrderDynamicStatusCard } from "../../shared/order-detail/OrderDynamicStatusCard";
 import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
 import { useEntityStore } from "../../state/entityStore";
@@ -2064,9 +2064,9 @@ export function TechnicianOrderDetailRoutePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { stores, technicians, customers } = useEntityStore();
-  const order = demoOrders.find((item) => item.id === orderId);
+  const order = orders.find((item) => item.id === orderId);
   const booking = findScheduleBookingByOrderId(orderId);
-  const parentOrder = booking?.parentOrderId ? demoOrders.find((item) => item.id === booking.parentOrderId) : null;
+  const parentOrder = booking?.parentOrderId ? orders.find((item) => item.id === booking.parentOrderId) : null;
   const returnTarget = readNavigationReturnTarget(location.search, location.state);
   const backToScheduleSource = () => {
     if (returnTarget) {

@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  adminLoginQrTokens,
   buildAdminLoginScanRedirect,
-  getAdminLoginPortalScope,
-  parseAdminLoginQrToken
+  getAdminLoginPortalScope
 } from "./adminLogin";
 
 describe("admin login portal routing", () => {
@@ -11,15 +9,8 @@ describe("admin login portal routing", () => {
     expect(getAdminLoginPortalScope("afirieito-admin")).toBe("business");
   });
 
-  it("recognizes NDA backend QR and legacy scan links", () => {
-    expect(parseAdminLoginQrToken(adminLoginQrTokens["afirieito-admin"])).toBe("afirieito-admin");
-    expect(parseAdminLoginQrToken("needo://admin-login/afirieito-admin")).toBe("afirieito-admin");
-    expect(parseAdminLoginQrToken("/login/NDA-admin?scan=approved")).toBe("afirieito-admin");
-  });
-
-  it("builds scan redirects for the NDA backend login page", () => {
-    expect(buildAdminLoginScanRedirect("needo://admin-login/afirieito-admin", "/NDA-admin")).toBe(
-      `/login/afirieito-admin?scan=approved&qr=${encodeURIComponent(adminLoginQrTokens["afirieito-admin"])}&redirect=%2FNDA-admin`
-    );
+  it("does not accept a client-generated backend login approval", () => {
+    expect(buildAdminLoginScanRedirect("needo://admin-login/afirieito-admin", "/NDA-admin")).toBeNull();
+    expect(buildAdminLoginScanRedirect("/login/NDA-admin?scan=approved", "/NDA-admin")).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ describe("production safety", () => {
       NODE_ENV: "production",
       DEPLOY_ENV: "prod",
       ALLOW_TEST_LOGIN: "false",
-      ALLOW_DEMO_SEED: "false",
+      ALLOW_FORMAL_TEST_SEED: "false",
       ALLOW_SIMULATION_SEED: "false",
       CORS_ALLOWED_ORIGINS: "https://needo.dackou.com",
       METRICS_ENABLED: "true",
@@ -71,7 +71,7 @@ describe("production safety", () => {
     ).toBe(false);
   });
 
-  it.each(["ALLOW_TEST_LOGIN", "ALLOW_DEMO_SEED", "ALLOW_SIMULATION_SEED"])(
+  it.each(["ALLOW_TEST_LOGIN", "ALLOW_FORMAL_TEST_SEED", "ALLOW_SIMULATION_SEED"])(
     "rejects %s in production",
     async (unsafeFlag) => {
       process.env = {
@@ -79,7 +79,7 @@ describe("production safety", () => {
         NODE_ENV: "production",
         DEPLOY_ENV: "prod",
         ALLOW_TEST_LOGIN: "false",
-        ALLOW_DEMO_SEED: "false",
+        ALLOW_FORMAL_TEST_SEED: "false",
         ALLOW_SIMULATION_SEED: "false",
         [unsafeFlag]: "true"
       };

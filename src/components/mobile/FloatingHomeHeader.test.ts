@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import appScaffoldSource from "../client-ui/AppScaffold.tsx?raw";
-import businessCpsSource from "../../pages/mobile/BusinessCpsPage.tsx?raw";
 import source from "./FloatingHomeHeader.tsx?raw";
 
 const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
@@ -31,7 +30,6 @@ describe("FloatingHomeHeader spacing guard", () => {
     expect(source).toContain("client-floating-header-glass-frame !rounded-[28px]");
     expect(source).not.toContain("rounded-t-none");
     expect(source).not.toContain("rounded-b-[28px]");
-    expect(businessCpsSource).toContain("client-floating-header-glass-frame rounded-[28px]");
 
     const cpsTabsStart = styles.indexOf(".business-cps-segmented-tabs {");
     const cpsTabsEnd = styles.indexOf(".business-cps-segmented-tabs .business-cps-segmented-tab", cpsTabsStart);

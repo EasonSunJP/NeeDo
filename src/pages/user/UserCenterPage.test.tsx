@@ -72,7 +72,8 @@ describe("UserCenterPage", () => {
     expect(source).toContain("profilePrivacyConfirmOpen");
     expect(source).toContain("confirmProfilePrivacyEnabled");
     expect(source).toContain("absolute right-0 top-[calc(100%+8px)]");
-    expect(source).toContain('isEditingProfile ? "min-h-36" : "h-36"');
+    expect(source).toContain('className="flex min-h-36 min-w-0 flex-1 flex-col"');
+    expect(source).not.toContain('isEditingProfile ? "min-h-36" : "h-36"');
     expect(source).toContain("mt-auto rounded-[18px]");
     expect(source).toContain("z-[90]");
     expect(source).toContain("UserProfilePrivacyInfoButton");

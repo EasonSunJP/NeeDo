@@ -324,6 +324,17 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
         isDefault: true,
         isActive: true,
         deletedAt: null
+      },
+      {
+        id: 11,
+        userId: 1,
+        type: "scout",
+        scopeType: "global",
+        scopeId: null,
+        displayName: "Internal affiliate entitlement",
+        isDefault: false,
+        isActive: true,
+        deletedAt: null
       }
     ],
     identityApplications: [],
@@ -490,7 +501,12 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
         displayName: "Multi Customer",
         isDefault: true,
         isActive: true,
-        deletedAt: null
+        deletedAt: null,
+        publicIdentifier: {
+          publicId: "u1234567894",
+          status: "ACTIVE",
+          deletedAt: null
+        }
       },
       {
         id: 51,
@@ -501,7 +517,12 @@ const createAuthFixture = async (config?: Parameters<typeof createApp>[0]) => {
         displayName: "Multi Technician",
         isDefault: false,
         isActive: true,
-        deletedAt: null
+        deletedAt: null,
+        publicIdentifier: {
+          publicId: "s1234567894",
+          status: "ACTIVE",
+          deletedAt: null
+        }
       }
     ],
     identityApplications: [
@@ -1615,6 +1636,17 @@ describe("verified email registration and formal password authentication", () =>
       menus: expect.arrayContaining(["menu:dashboard", "menu:user-management"])
     });
     expect(JSON.stringify(meResponse.body)).not.toContain("passwordHash");
+    expect(meResponse.body.data.identities).toHaveLength(1);
+    expect(meResponse.body.data.identities[0].publicId).toBe("needo1234567890");
+
+    await request(fixture.app)
+      .post("/api/v1/auth/switch-identity")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ refreshToken, identityId: 11 })
+      .expect(404)
+      .expect((response) => {
+        expect(response.body.message).toBe("error.auth.identity_not_found");
+      });
 
     await request(fixture.app)
       .post("/api/v1/auth/logout")

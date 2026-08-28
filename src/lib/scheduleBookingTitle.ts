@@ -1,4 +1,4 @@
-import { orders } from "../data/mock";
+import { emptyOrders as orders } from "../data/formalRuntimeFallbacks";
 
 const needoBookingTitlePrefix = "ND预约—";
 

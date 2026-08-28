@@ -1,7 +1,7 @@
 import type { MouseEvent, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AppIcon } from "../client-ui/AppScaffold";
-import { services } from "../../data/mock";
+import { emptyServices as services } from "../../data/formalRuntimeFallbacks";
 import { shareContent } from "../../lib/share";
 import { cn, yen } from "../../lib/utils";
 import { SocialProfileMiniCard, buildServiceMiniCardData } from "../../shared/profile-card";
