@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type {
+  EmployeePayrollSchedulePolicyInput,
+  PayrollSchedulePolicyResult,
+} from "../../api/payrollSchedulePolicy";
+import type {
   EmployeeRelationshipType,
   EmployeeWorkStatus,
   MerchantEmployee,
@@ -10,6 +14,7 @@ import { useOptionalI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { PayrollSchedulePolicyEditor } from "./PayrollSchedulePolicyEditor";
 
 type SavingSection = "profile" | "affiliation" | null;
 
@@ -17,6 +22,14 @@ interface EmployeeDetailCardProps {
   employee: MerchantEmployee;
   saving: SavingSection;
   error: string;
+  payrollPolicy: PayrollSchedulePolicyResult | null;
+  payrollPolicyError: string;
+  payrollPolicyLoading: boolean;
+  payrollPolicySaving: boolean;
+  onRetryPayrollPolicy: () => void;
+  onSavePayrollPolicy: (
+    input: EmployeePayrollSchedulePolicyInput,
+  ) => Promise<void>;
   onSaveProfile: (input: MerchantEmployeeProfileUpdate) => Promise<void>;
   onSaveAffiliation: (
     input: MerchantEmployeeAffiliationUpdate,
@@ -93,7 +106,13 @@ export function EmployeeDetailCard({
   employee,
   error,
   onSaveAffiliation,
+  onRetryPayrollPolicy,
+  onSavePayrollPolicy,
   onSaveProfile,
+  payrollPolicy,
+  payrollPolicyError,
+  payrollPolicyLoading,
+  payrollPolicySaving,
   saving,
 }: EmployeeDetailCardProps) {
   const { language } = useOptionalI18n();
@@ -177,7 +196,7 @@ export function EmployeeDetailCard({
 
   const profileSaving = saving === "profile";
   const affiliationSaving = saving === "affiliation";
-  const blocked = saving !== null;
+  const blocked = saving !== null || payrollPolicySaving;
 
   return (
     <article className="space-y-5" data-testid="employee-detail-card">
@@ -562,6 +581,18 @@ export function EmployeeDetailCard({
           </Badge>
         </div>
       </section>
+
+      <PayrollSchedulePolicyEditor
+        description="继承店铺默认规则，或为该员工设置独立结算周期与休息日处理方式。"
+        error={payrollPolicyError}
+        loading={payrollPolicyLoading}
+        mode="employee"
+        onRetry={onRetryPayrollPolicy}
+        onSave={onSavePayrollPolicy}
+        policy={payrollPolicy}
+        saving={payrollPolicySaving}
+        title="工资结算周期"
+      />
     </article>
   );
 }

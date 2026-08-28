@@ -145,8 +145,52 @@ ENV_FILE=.env.dev npm run check:technician-shop-affiliation-cutover -- --batch-s
 3. “基础信息”通过独立 `PATCH .../profile` 保存；“从属关系”继续通过审计后的 `PUT .../affiliation` 保存。
 4. 保存成功后重新读取详情和服务端分页列表；服务端拒绝时保留用户草稿并显示本地化错误。
 5. 商户页不再调用旧 `/merchant-admin/technicians` 的更新、审核或全局软删除能力。旧 API 和旧字段暂作为其他后台与回滚兼容层保留。
-6. 当前卡片只展示已经真实接通的“基础信息”和“从属关系”，不放置未接后端的薪酬、日程、结算或时间线空入口。
+6. 当前卡片只展示已经真实接通的“基础信息”“从属关系”和“工资结算周期”；未接后端的薪资金额、分成编辑、支付确认或时间线不放置空入口。
+
+## 店铺与员工工资结算周期
+
+工资结算周期是薪酬金额和支付结果之外的独立正式合同。它只计算并保存“何时应结算、遇休息日如何调整”，不执行资金转账，也不把计划支付日当成已经支付。
+
+正式 API：
+
+```text
+GET /api/v1/merchant-admin/payroll-schedule-policy
+PUT /api/v1/merchant-admin/payroll-schedule-policy
+GET /api/v1/merchant-admin/employees/:needoId/payroll-schedule-policy
+PUT /api/v1/merchant-admin/employees/:needoId/payroll-schedule-policy
+```
+
+- 客户端不传 `shopId`；四个接口都从 JWT 当前 `shop` identity scope 取得店铺。
+- 员工接口只接受 canonical 技师 NeeDoID `s##########`，并再次确认该员工当前从属本店；其他店铺员工统一安全 404。
+- 店铺规则支持 `daily`、`weekly`、`monthly`。周规则保存 ISO 周一至周日 `1–7`；月规则保存 `1–31`，短月自动落到当月最后一天。
+- 时区固定为 `Asia/Tokyo`。支付日若遇日本法定节假日或周末，可选择提前至前一个营业日，或顺延至下一个营业日。
+- 员工规则绑定 `TechnicianShopAffiliation`，默认 `inheritShopPolicy=true`。管理员或具有财务写权限的人员可以创建员工独立覆盖，也可以恢复继承店铺规则。
+- GET 返回存储规则、最终生效来源、规则版本、本期范围、自然结算日和计划支付日；前端不自行推算日期。
+- 商户“门店设置”维护店铺默认规则；员工详细信息卡维护该员工在当前店铺的继承或覆盖规则。两个入口均使用服务端返回值刷新，失败时保留编辑草稿。
+
+权限：
+
+- 读取：`merchant-admin:payroll:read`
+- 写入：`merchant-admin:payroll:write`
+
+审计 action：
+
+- `merchant_admin.payroll_schedule_policy.update`
+- `merchant_admin.employee_payroll_schedule_override.update`
+
+数据表和 migration：
+
+```text
+shop_payroll_schedule_policies
+technician_payroll_schedule_overrides
+business_calendar_dates
+backend/prisma/migrations/20260829123000_employee_payroll_schedule_policy/migration.sql
+```
+
+规则采用不可变版本行；更新时归档上一 active 版本并创建下一版本。日本法定节假日来自[日本内阁府官方祝日 CSV](https://www8.cao.go.jp/chosei/shukujitsu/syukujitsu.csv)，本 migration 固定导入 2025–2027 共 54 条，`sourceVersion=cabinet-office-2026-08-29`。周末由纯计算层判断，不重复写入节假日表。
+
+2026-08-29 本地 `needo_dev` 已在完整 SQL 备份后部署 migration；checker 返回 `ready=true`、`officialJapanHolidayRows=54`、`issues=[]`。规则表保持空表起步，没有为现有店铺或员工伪造默认结算规则。
 
 ## 当前未完成的后续范围
 
-员工日程与现有统一日程系统的接入、跨店灰色锁定投影、薪酬与分成、店铺/个人结账周期、日本法定节假日提前或顺延规则、财务人员手工结账登记和自然语言审计时间线仍分别属于后续微步骤。员工从属和资料 API 不执行自动转账。
+员工日程与现有统一日程系统的接入、跨店灰色锁定投影、薪资金额与分成编辑、财务人员手工登记实际支付结果和自然语言审计时间线仍分别属于后续微步骤。员工从属、资料和结算周期 API 都不执行资金转账。

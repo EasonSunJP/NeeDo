@@ -72,6 +72,7 @@ import type {
 } from "./services/merchant-saas-billing.service";
 import type { OrderFinanceRepositoryPort } from "./services/order-finance.service";
 import type { PayrollRepositoryPort } from "./services/payroll.service";
+import type { PayrollSchedulePolicyRepositoryPort } from "./services/payroll-schedule-policy.service";
 import type { PermissionRepositoryPort } from "./repositories/permission.repository";
 import type { PricingModeRepositoryPort } from "./services/pricing-mode.service";
 import type { PublicIdentifierRepositoryPort } from "./services/public-identifier.service";
@@ -107,6 +108,7 @@ import { createMerchantSaasBillingRoutes } from "./routes/merchant-saas-billing.
 import { createObservabilityRoutes } from "./routes/observability.routes";
 import { createOrderFinanceRoutes } from "./routes/order-finance.routes";
 import { createPayrollRoutes } from "./routes/payroll.routes";
+import { createPayrollSchedulePolicyRoutes } from "./routes/payroll-schedule-policy.routes";
 import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
@@ -157,6 +159,7 @@ export interface AppDependencies {
   paymentProvider?: PaymentProvider;
   orderFinanceRepository?: OrderFinanceRepositoryPort;
   payrollRepository?: PayrollRepositoryPort;
+  payrollSchedulePolicyRepository?: PayrollSchedulePolicyRepositoryPort;
   compensationProfileRepository?: CompensationProfileRepositoryPort;
   bookingRepository?: BookingRepositoryPort;
   ledgerRepository?: LedgerRepositoryPort;
@@ -255,6 +258,7 @@ export const createApp = (
   apiRouter.use(createMerchantFinanceRulesRoutes(config, resolvedDependencies));
   apiRouter.use(createOrderFinanceRoutes(config, resolvedDependencies));
   apiRouter.use(createPayrollRoutes(config, resolvedDependencies));
+  apiRouter.use(createPayrollSchedulePolicyRoutes(config, resolvedDependencies));
   apiRouter.use(createCompensationProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));

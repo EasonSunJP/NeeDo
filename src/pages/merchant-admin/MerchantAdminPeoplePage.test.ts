@@ -81,6 +81,9 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).toContain("selectedCustomerId");
     expect(source).not.toContain("selectedTechnicianId");
     expect(source).not.toContain("DetailGrid");
+    expect(source).toContain("payrollSchedulePolicyApi.getEmployee(");
+    expect(source).toContain("payrollSchedulePolicyApi.updateEmployee(");
+    expect(source).toContain("employeePayrollPolicyRequest");
   });
 
   it("uses the shared request coordinator with canonical string employee identifiers", () => {
@@ -114,11 +117,13 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).not.toContain(">重试</Button>");
   });
 
-  it("does not invent reviews, payroll, schedule, or customer analytics", () => {
+  it("does not invent reviews, full payroll amounts, schedule, or customer analytics", () => {
     expect(source).not.toContain("LTV");
     expect(source).not.toContain("churnRisk");
     expect(source).not.toContain("activeScore");
-    expect(source).not.toContain("薪酬设置");
+    expect(source).not.toContain("baseSalaryJpy");
+    expect(source).not.toContain("commissionRatePercent");
+    expect(source).toContain("工资结算周期");
     expect(source).not.toContain("时间线");
     expect(source).not.toContain("UnifiedUserCalendar");
     expect(source).toContain("正式评价功能尚未启用");

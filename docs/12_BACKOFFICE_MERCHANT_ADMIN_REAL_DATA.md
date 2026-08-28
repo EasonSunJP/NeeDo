@@ -133,3 +133,26 @@ TechnicianProfile 与 Shop 数据，没有新增 schema 或 migration，也没�
 
 专项测试覆盖：期间边界与输入校验、东京日历换算、SQL 聚合口径、分页与汇总、RBAC、
 审计、CSV、OpenAPI、前端 API adapter 和榜单页面接线。
+
+## 11. 2026-08-29 店铺与员工工资结算周期
+
+商户“门店设置”新增店铺默认工资结算周期；员工详细信息卡新增继承店铺规则或员工个人覆盖。两处均接正式数据库和 API，不读取浏览器 mock，也不接受客户端 `shopId`。
+
+正式接口：
+
+- `GET/PUT /api/v1/merchant-admin/payroll-schedule-policy`
+- `GET/PUT /api/v1/merchant-admin/employees/:needoId/payroll-schedule-policy`
+
+读取要求 `merchant-admin:payroll:read`，写入要求 `merchant-admin:payroll:write`。员工目标必须是当前 JWT 店铺的有效从属，path 只接受 canonical 技师 NeeDoID。更新店铺规则和员工覆盖分别写入 `merchant_admin.payroll_schedule_policy.update` 与 `merchant_admin.employee_payroll_schedule_override.update` 审计日志。
+
+新增版本化表：
+
+- `shop_payroll_schedule_policies`
+- `technician_payroll_schedule_overrides`
+- `business_calendar_dates`
+
+Migration 为 `20260829123000_employee_payroll_schedule_policy`。日本日期固定使用 `Asia/Tokyo`，支持每日、每周、每月结算，以及法定节假日或周末时提前至前一个营业日、顺延至下一个营业日。2025–2027 官方节假日取自日本内阁府 CSV，migration 固定导入 54 条并记录来源版本。
+
+本模块只计算并记录自然结算日和计划支付日。实际支付完成仍由财务人员在财务结算页手工登记；本次没有增加转账、薪资金额、分成编辑或支付状态变更。
+
+本地 `needo_dev` 已在完整 SQL 备份后部署并通过专项 checker：`ready=true`、`officialJapanHolidayRows=54`、`issues=[]`。新规则表空表起步，不创建模拟默认值。
