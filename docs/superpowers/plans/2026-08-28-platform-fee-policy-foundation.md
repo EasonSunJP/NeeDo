@@ -65,7 +65,7 @@
 - Consumes: existing `PlatformFeeRuleSet`, `PlatformFeeRule`, `Shop`, `User`, and default seed rule set.
 - Produces: `PlatformFeeRuleSet.familyCode`, `ShopPlatformFeePayerType`, and `ShopPlatformFeePolicy`.
 
-- [ ] **Step 1: Write the failing schema and seed contract test**
+- [x] **Step 1: Write the failing schema and seed contract test**
 
 Create `backend/tests/platform-fee-policy-schema.test.ts` with exact contract assertions:
 
@@ -116,7 +116,7 @@ describe("platform fee policy schema contract", () => {
 
 Rename the generated directory to the exact plan path `20260828233000_platform_fee_policy_foundation` before the test is made green; do not keep two migrations for the same schema change.
 
-- [ ] **Step 2: Run the schema test and verify RED**
+- [x] **Step 2: Run the schema test and verify RED**
 
 Run:
 
@@ -127,7 +127,7 @@ npm test -- platform-fee-policy-schema.test.ts
 
 Expected: FAIL because the enum, model, family code, and migration are absent.
 
-- [ ] **Step 3: Add the Prisma schema**
+- [x] **Step 3: Add the Prisma schema**
 
 Add the managed family field and version uniqueness:
 
@@ -176,7 +176,7 @@ model ShopPlatformFeePolicy {
 
 Add inverse relations on `Shop` and `User` with the exact relation names above.
 
-- [ ] **Step 4: Make the formal seed history-safe**
+- [x] **Step 4: Make the formal seed history-safe**
 
 Replace the current destructive name-based rewrite with a family-aware initializer:
 
@@ -191,7 +191,7 @@ if (existingFamily) return;
 
 Only when the family is absent, create `familyCode: "booking_default"`, `version: 1`, the 500 NDP Booking platform fee, the 100 NDP user reward, and the existing request/penalty rules. A later seed run must never reopen an expired version, reset version to 1, soft-delete historical rules, or overwrite an operations-configured amount. Do not seed any `ShopPlatformFeePolicy` row; absence is the formal default.
 
-- [ ] **Step 5: Generate and review the migration without applying it**
+- [x] **Step 5: Generate and review the migration without applying it**
 
 Run:
 
@@ -225,7 +225,7 @@ ON `platform_fee_rule_sets`(`family_code`, `version`);
 
 The migration must not drop/recreate fee tables, delete rules, update wallets/orders, or create shop override rows.
 
-- [ ] **Step 6: Run focused verification**
+- [x] **Step 6: Run focused verification**
 
 Run:
 
@@ -238,7 +238,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/prisma/schema.prisma backend/prisma/migrations/*_platform_fee_policy_foundation/migration.sql backend/prisma/seed.ts backend/tests/platform-fee-policy-schema.test.ts

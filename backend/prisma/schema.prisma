@@ -311,6 +311,11 @@ enum FinanceReconciliationStatus {
   @@map("finance_reconciliation_status")
 }
 
+enum ShopPlatformFeePayerType {
+  SHOP
+  TECHNICIAN
+}
+
 enum ConversationType {
   DIRECT @map("direct")
   GROUP  @map("group")
@@ -493,6 +498,8 @@ model User {
   externalAccounts                ExternalAuthAccount[]
   createdTechnicianShopAffiliations TechnicianShopAffiliation[] @relation("TechnicianShopAffiliationCreatedBy")
   updatedTechnicianShopAffiliations TechnicianShopAffiliation[] @relation("TechnicianShopAffiliationUpdatedBy")
+  createdShopPlatformFeePolicies  ShopPlatformFeePolicy[]    @relation("ShopPlatformFeePolicyCreatedBy")
+  updatedShopPlatformFeePolicies  ShopPlatformFeePolicy[]    @relation("ShopPlatformFeePolicyUpdatedBy")
 
   @@index([email])
   @@index([phone])
@@ -600,6 +607,7 @@ model Shop {
   technicianShopAffiliations TechnicianShopAffiliation[]
   publicIdentifier        PublicIdentifier?
   customerSupportAccount  CustomerSupportAccount?
+  platformFeePolicy       ShopPlatformFeePolicy?
 
   @@index([ownerUserId])
   @@index([city])
@@ -2059,6 +2067,7 @@ model PlatformFeeRuleSet {
   name          String    @db.VarChar(160)
   description   String?   @db.VarChar(500)
   scopeType     String    @default("platform") @map("scope_type") @db.VarChar(40)
+  familyCode    String?   @map("family_code") @db.VarChar(80)
   priority      Int       @default(100)
   status        String    @default("draft") @db.VarChar(40)
   version       Int       @default(1)
@@ -2072,12 +2081,38 @@ model PlatformFeeRuleSet {
 
   rules PlatformFeeRule[]
 
+  @@unique([familyCode, version], map: "platform_fee_rule_sets_family_version_key")
   @@index([status])
   @@index([priority])
   @@index([effectiveFrom, effectiveTo])
+  @@index([familyCode, status, effectiveFrom, effectiveTo], map: "platform_fee_rule_sets_family_effective_idx")
   @@index([createdById])
   @@index([deletedAt])
   @@map("platform_fee_rule_sets")
+}
+
+model ShopPlatformFeePolicy {
+  id          Int                      @id @default(autoincrement())
+  shopId      Int                      @unique @map("shop_id")
+  feeEnabled  Boolean                  @default(true) @map("fee_enabled")
+  payerType   ShopPlatformFeePayerType @default(SHOP) @map("payer_type")
+  version     Int                      @default(1)
+  createdById Int?                     @map("created_by_id")
+  updatedById Int?                     @map("updated_by_id")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  deletedAt   DateTime?                @map("deleted_at")
+
+  shop      Shop  @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy User? @relation("ShopPlatformFeePolicyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("ShopPlatformFeePolicyUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([feeEnabled, deletedAt], map: "shop_platform_fee_policies_enabled_deleted_idx")
+  @@index([payerType, deletedAt], map: "shop_platform_fee_policies_payer_deleted_idx")
+  @@index([createdById], map: "shop_platform_fee_policies_created_by_idx")
+  @@index([updatedById], map: "shop_platform_fee_policies_updated_by_idx")
+  @@index([deletedAt], map: "shop_platform_fee_policies_deleted_idx")
+  @@map("shop_platform_fee_policies")
 }
 
 model PlatformFeeRule {
