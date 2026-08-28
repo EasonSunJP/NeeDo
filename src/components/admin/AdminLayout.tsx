@@ -131,13 +131,6 @@ const navSections: AdminNavSection[] = [
     ]
   },
   {
-    key: "design",
-    title: "设计",
-    items: [
-      { label: "装修中心", to: "/admin/decoration", icon: "装", children: ["基础组件", "手机模拟器", "配置面板"] }
-    ]
-  },
-  {
     key: "settings",
     title: "设置",
     items: [

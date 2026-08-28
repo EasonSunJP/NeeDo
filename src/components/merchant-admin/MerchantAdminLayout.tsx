@@ -92,14 +92,6 @@ const merchantAdminSections: MerchantAdminNavSection[] = [
     ]
   },
   {
-    key: "design",
-    title: "UI装修",
-    items: [
-      { label: "店铺 UI 装修", to: "/merchant-admin/design", icon: "店", children: ["能力门禁", "版本 API", "媒体审计"] },
-      { label: "信息卡装修", to: "/merchant-admin/design?module=cards", icon: "卡", children: ["能力门禁", "发布版本", "回滚"] }
-    ]
-  },
-  {
     key: "settings",
     title: "门店设置",
     items: [
