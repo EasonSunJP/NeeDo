@@ -331,6 +331,45 @@ describe("formal IM adapter", () => {
     });
   });
 
+  it("keeps a persisted send successful without a follow-up conversation refresh", async () => {
+    vi.spyOn(realtimeApi, "createMessage").mockResolvedValue({
+      id: 701,
+      conversationId: 91,
+      senderUserId: 100,
+      type: "text",
+      content: "只以创建结果确认发送。",
+      metadata: { needoMessageType: "text" },
+      createdAt: now,
+    });
+    const listConversations = vi
+      .spyOn(realtimeApi, "listConversations")
+      .mockRejectedValue(new Error("error.network.timeout"));
+    const api = createFormalImApi({
+      currentUser: {
+        id: 100,
+        needoId: "u0000000100",
+        username: "sim-customer-100",
+        avatarUrl: null,
+      },
+      scope: "user",
+    });
+
+    await expect(
+      api.sendMessage("text", {
+        conversationId: "91",
+        content: "只以创建结果确认发送。",
+      }),
+    ).resolves.toMatchObject({
+      message: {
+        id: "701",
+        conversationId: "91",
+        senderId: "100",
+        status: "sent",
+      },
+    });
+    expect(listConversations).not.toHaveBeenCalled();
+  });
+
   it("persists message reactions through the formal API and maps the saved people", async () => {
     const setMessageReaction = vi
       .spyOn(realtimeApi, "setMessageReaction")

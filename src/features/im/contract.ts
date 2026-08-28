@@ -65,7 +65,7 @@ export type ImApi = {
   sendMessage(
     type: ImMessageType,
     payload: { conversationId: string; content: string; quotedMessageId?: string; ext?: MessageExt },
-  ): Promise<{ conversation: Conversation; message: ConversationMessage }>;
+  ): Promise<{ conversation?: Conversation; message: ConversationMessage }>;
   setMessageReaction(
     conversationId: string,
     messageId: string,

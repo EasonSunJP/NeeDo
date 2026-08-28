@@ -764,9 +764,7 @@ export function createFormalImApi({
           type: storedType,
         },
       );
-      const response = await getConversation(payload.conversationId);
       return {
-        conversation: response.conversation,
         message: toConversationMessage(message),
       };
     },
