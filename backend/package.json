@@ -37,6 +37,8 @@
     "audit:unified-identity": "ENV_FILE=.env.dev tsx scripts/audit-unified-identity-cutover.ts",
     "backfill:unified-identifiers": "tsx scripts/backfill-unified-identifiers.ts",
     "check:unified-identifier-cutover": "tsx scripts/check-unified-identifier-cutover.ts",
+    "backfill:technician-shop-affiliations": "tsx scripts/backfill-technician-shop-affiliations.ts",
+    "check:technician-shop-affiliation-cutover": "tsx scripts/check-technician-shop-affiliation-cutover.ts",
     "export:simulation-accounts-xlsx": "python3 -m venv .data/simulation-xlsx-venv && .data/simulation-xlsx-venv/bin/python -m pip install --disable-pip-version-check -r requirements-simulation.txt && .data/simulation-xlsx-venv/bin/python scripts/export-simulation-accounts-xlsx.py ../outputs/NeeDo_正式测试账号_2026-08-25.csv ../outputs/NeeDo_正式测试账号_2026-08-25.xlsx",
     "seed:simulation": "tsx scripts/seed-three-month-simulation.ts",
     "seed:lifedance-operations": "ALLOW_SIMULATION_SEED=true ENV_FILE=.env.dev tsx scripts/seed-three-month-simulation.ts",

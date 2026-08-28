@@ -219,6 +219,31 @@ const customerProfileErrorResponses = {
   "500": { description: "Unexpected customer profile persistence error" }
 };
 
+const merchantEmployeeNeedoIdParameter = {
+  name: "needoId",
+  in: "path",
+  required: true,
+  description: "Canonical technician identity NeeDoID",
+  schema: { type: "string", pattern: "^s[0-9]{10}$" }
+};
+
+const merchantEmployeeErrorResponses = {
+  "400": { description: "error.validation — strict employee request validation failed" },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": {
+    description:
+      "error.identity.forbidden — missing employee-affiliation permission or shop identity scope"
+  },
+  "404": {
+    description:
+      "error.technician_affiliation.not_found — employee is absent from the authenticated shop"
+  },
+  "409": {
+    description:
+      "error.technician_affiliation.exclusive_conflict — exclusive and multi-shop relationships conflict"
+  }
+};
+
 const merchantPreviewShopHeaderParameter = {
   name: "X-NeeDo-Merchant-Preview-Shop-Id",
   in: "header",
@@ -607,14 +632,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       SocialProfileSummary: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "userId",
-          "username",
-          "displayName",
-          "avatarUrl",
-          "entityType",
-          "joinedAt"
-        ],
+        required: ["userId", "username", "displayName", "avatarUrl", "entityType", "joinedAt"],
         properties: {
           userId: { type: "integer" },
           username: { type: "string" },
@@ -3184,6 +3202,89 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      MerchantEmployeeShop: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "publicId", "name"],
+        properties: {
+          id: { type: "integer", minimum: 1, readOnly: true },
+          publicId: { type: "string", pattern: "^shop[0-9]{10}$" },
+          name: { type: "string" }
+        }
+      },
+      MerchantEmployeeAffiliation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "relationshipType", "workStatus", "startsAt", "endsAt", "shop"],
+        properties: {
+          id: { type: "integer", minimum: 1, readOnly: true },
+          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          workStatus: {
+            type: "string",
+            enum: ["active", "on_leave", "suspended", "ended"]
+          },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: ["string", "null"], format: "date-time" },
+          shop: { $ref: "#/components/schemas/MerchantEmployeeShop" }
+        }
+      },
+      MerchantEmployee: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "needoId",
+          "displayName",
+          "avatarUrl",
+          "email",
+          "phone",
+          "profileStatus",
+          "verifiedAt",
+          "affiliation"
+        ],
+        properties: {
+          needoId: { type: "string", pattern: "^s[0-9]{10}$" },
+          displayName: { type: "string" },
+          avatarUrl: { type: ["string", "null"], format: "uri-reference" },
+          email: { type: "string", format: "email" },
+          phone: { type: ["string", "null"] },
+          profileStatus: { type: "string" },
+          verifiedAt: { type: ["string", "null"], format: "date-time" },
+          affiliation: { $ref: "#/components/schemas/MerchantEmployeeAffiliation" }
+        }
+      },
+      MerchantEmployeePage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/MerchantEmployee" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      MerchantEmployeeAffiliationInput: {
+        type: "object",
+        additionalProperties: false,
+        required: ["relationshipType", "workStatus", "startsAt", "endsAt"],
+        properties: {
+          relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+          workStatus: {
+            type: "string",
+            enum: ["active", "on_leave", "suspended", "ended"]
+          },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: {
+            type: ["string", "null"],
+            format: "date-time",
+            description:
+              "Required for ended relationships and null for active, on_leave, or suspended relationships"
+          }
+        }
+      },
       AffiliateClaimPage: {
         type: "object",
         required: ["list", "total", "page", "page_size"],
@@ -3200,6 +3301,84 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     }
   },
   paths: {
+    [`${config.API_PREFIX}/merchant-admin/employees`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "List employees affiliated with the authenticated shop",
+        description:
+          "The shop scope is taken only from the authenticated identity. shopId is not accepted as a request parameter.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          {
+            name: "pageSize",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100 }
+          },
+          {
+            name: "keyword",
+            in: "query",
+            schema: { type: "string", maxLength: 100 }
+          },
+          {
+            name: "relationshipType",
+            in: "query",
+            schema: { type: "string", enum: ["exclusive", "partner"] }
+          },
+          {
+            name: "workStatus",
+            in: "query",
+            schema: { type: "string", enum: ["active", "on_leave", "suspended"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Paginated current-shop employee affiliations", {
+            $ref: "#/components/schemas/MerchantEmployeePage"
+          }),
+          ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "Read one employee affiliated with the authenticated shop",
+        description:
+          "The path accepts only the canonical technician S NeeDoID. Other-shop employees receive the same safe not-found response.",
+        security: [{ bearerAuth: [] }],
+        parameters: [merchantEmployeeNeedoIdParameter],
+        responses: {
+          "200": jsonDataResponse("Current-shop employee affiliation", {
+            $ref: "#/components/schemas/MerchantEmployee"
+          }),
+          ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/affiliation`]: {
+      put: {
+        tags: ["Merchant Employees"],
+        summary: "Create, update, or end the authenticated shop affiliation",
+        description:
+          "The shop scope is derived from the authenticated identity. No automatic payroll payment or transfer is performed.",
+        security: [{ bearerAuth: [] }],
+        parameters: [merchantEmployeeNeedoIdParameter],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/MerchantEmployeeAffiliationInput" }
+            }
+          }
+        },
+        responses: {
+          "200": jsonDataResponse("Updated current-shop employee affiliation", {
+            $ref: "#/components/schemas/MerchantEmployee"
+          }),
+          ...merchantEmployeeErrorResponses
+        }
+      }
+    },
     [`${config.API_PREFIX}/merchant-admin/affiliate/tasks`]: {
       get: {
         tags: ["Affiliate Task Publishing"],

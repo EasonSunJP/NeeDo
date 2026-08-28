@@ -67,6 +67,8 @@ import type { OrderFinanceRepositoryPort } from "./services/order-finance.servic
 import type { PayrollRepositoryPort } from "./services/payroll.service";
 import type { PermissionRepositoryPort } from "./repositories/permission.repository";
 import type { PricingModeRepositoryPort } from "./services/pricing-mode.service";
+import type { PublicIdentifierRepositoryPort } from "./services/public-identifier.service";
+import type { TechnicianShopAffiliationRepositoryPort } from "./services/technician-shop-affiliation.service";
 import {
   RealtimeRepository,
   type RealtimeRepositoryPort
@@ -97,6 +99,7 @@ import { createPayrollRoutes } from "./routes/payroll.routes";
 import { createPermissionRoutes } from "./routes/permission.routes";
 import { createPricingModeRoutes } from "./routes/pricing-mode.routes";
 import { createRealtimeRoutes } from "./routes/realtime.routes";
+import { createTechnicianShopAffiliationRoutes } from "./routes/technician-shop-affiliation.routes";
 import { createRoleRoutes } from "./routes/role.routes";
 import { createUserRoutes } from "./routes/user.routes";
 import type { OtpDeliveryClient } from "./services/auth-otp-delivery.service";
@@ -127,6 +130,8 @@ export interface AppDependencies {
   auditLogRepository?: AuditLogRepositoryPort;
   permissionRepository?: PermissionRepositoryPort;
   pricingModeRepository?: PricingModeRepositoryPort;
+  publicIdentifierRepository?: PublicIdentifierRepositoryPort;
+  technicianShopAffiliationRepository?: TechnicianShopAffiliationRepositoryPort;
   roleRepository?: RoleRepositoryPort;
   userRepository?: UserRepositoryPort;
   coreReadRepository?: CoreReadRepositoryPort;
@@ -242,6 +247,7 @@ export const createApp = (
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
+  apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
     apiRouter.use(createOpenApiRoutes(config));
   }

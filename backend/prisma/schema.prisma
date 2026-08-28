@@ -98,6 +98,22 @@ enum TechnicianEmploymentType {
   TEMPORARY
 }
 
+enum TechnicianShopRelationshipType {
+  EXCLUSIVE @map("exclusive")
+  PARTNER   @map("partner")
+
+  @@map("technician_shop_relationship_type")
+}
+
+enum TechnicianShopWorkStatus {
+  ACTIVE    @map("active")
+  ON_LEAVE  @map("on_leave")
+  SUSPENDED @map("suspended")
+  ENDED     @map("ended")
+
+  @@map("technician_shop_work_status")
+}
+
 enum WalletOwnerType {
   USER             @map("user")
   SHOP             @map("shop")
@@ -448,6 +464,8 @@ model User {
   applicationMediaAssets          MediaAsset[]               @relation("ApplicationMediaOwner")
   ekycVerifications               EkycVerification[]
   externalAccounts                ExternalAuthAccount[]
+  createdTechnicianShopAffiliations TechnicianShopAffiliation[] @relation("TechnicianShopAffiliationCreatedBy")
+  updatedTechnicianShopAffiliations TechnicianShopAffiliation[] @relation("TechnicianShopAffiliationUpdatedBy")
 
   @@index([email])
   @@index([phone])
@@ -552,6 +570,7 @@ model Shop {
   affiliateTouches        AffiliateTouch[]
   affiliateAttributions   AffiliateAttribution[]
   technicianApplications  TechnicianApplicationDetail[]
+  technicianShopAffiliations TechnicianShopAffiliation[]
   publicIdentifier        PublicIdentifier?
   customerSupportAccount  CustomerSupportAccount?
 
@@ -678,6 +697,7 @@ model TechnicianProfile {
   payrollAdjustments    PayrollAdjustmentRequest[]
   receivedOrderReviews  OrderReview[]                   @relation("OrderReviewTechnician")
   backofficeProfileTags BackofficeProfileTag[]          @relation("BackofficeProfileTagTechnician")
+  technicianShopAffiliations TechnicianShopAffiliation[]
 
   @@index([shopId])
   @@index([shopId, employmentType])
@@ -686,6 +706,35 @@ model TechnicianProfile {
   @@index([isRecommended])
   @@index([deletedAt])
   @@map("technician_profiles")
+}
+
+model TechnicianShopAffiliation {
+  id                  Int                            @id @default(autoincrement())
+  technicianProfileId Int                            @map("technician_profile_id")
+  shopId              Int                            @map("shop_id")
+  relationshipType    TechnicianShopRelationshipType @map("relationship_type")
+  workStatus          TechnicianShopWorkStatus       @default(ACTIVE) @map("work_status")
+  startsAt            DateTime                       @default(now()) @map("starts_at")
+  endsAt              DateTime?                      @map("ends_at")
+  activeKey           String?                        @unique(map: "tech_shop_affiliation_active_key_key") @map("active_key") @db.VarChar(191)
+  createdById         Int?                           @map("created_by_id")
+  updatedById         Int?                           @map("updated_by_id")
+  createdAt           DateTime                       @default(now()) @map("created_at")
+  updatedAt           DateTime                       @updatedAt @map("updated_at")
+  deletedAt           DateTime?                      @map("deleted_at")
+
+  technicianProfile TechnicianProfile @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  shop              Shop              @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  createdBy         User?             @relation("TechnicianShopAffiliationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy         User?             @relation("TechnicianShopAffiliationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([technicianProfileId, workStatus, deletedAt], map: "tech_shop_affiliation_profile_status_deleted_idx")
+  @@index([shopId, workStatus, deletedAt], map: "tech_shop_affiliation_shop_status_deleted_idx")
+  @@index([shopId, technicianProfileId, deletedAt], map: "tech_shop_affiliation_shop_profile_deleted_idx")
+  @@index([createdById], map: "tech_shop_affiliation_created_by_idx")
+  @@index([updatedById], map: "tech_shop_affiliation_updated_by_idx")
+  @@index([deletedAt], map: "tech_shop_affiliation_deleted_idx")
+  @@map("technician_shop_affiliations")
 }
 
 model CustomerProfile {
