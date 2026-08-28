@@ -390,7 +390,7 @@ ENV_FILE=.env.dev npm --prefix backend run check:affiliate-task-expiry-flow
 
 The guarded check rejects production/staging targets, remote MySQL hosts, and production-looking database names. It creates only uniquely marked fixtures and removes only those fixtures after the check. This backend microstep adds no public API, schema, permission, merchant/shop/marketplace/Afirieito UI, aggregate/export, fraud operation, manual early-end control, or completed-order refund reversal; those capabilities remain separately gated.
 
-The operations carousel, platform-decoration, and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides, in-memory layouts, simulated storefront previews, or generated grant records. Activation requires versioned content and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
+The operations carousel and avatar-ornament routes are explicit content-publication capability gates. They do not publish browser-stored slides or generated grant records. Activation requires versioned carousel and ornament records, audited draft/review/publish/rollback or grant/revoke lifecycles, complete MediaAsset write controls, portal-scoped reads, RBAC, pagination, and export contracts.
 
 The official-notice list and compose routes are explicit delivery capability gates. They do not show bundled update history or browser-stored drafts, attachments, target accounts, and schedules as sent notices. The existing Notification table remains available for recipient-side event notifications; administrator broadcasts additionally require persisted notices, audience snapshots, per-recipient delivery attempts, idempotent workers, retry and failure receipts, attachment storage, RBAC, and audit evidence.
 
@@ -413,7 +413,7 @@ Operations and merchant order aggregates now carry the persisted manual-payment 
 - 用户端 Web App：深色首页、分类、搜索、服务列表、服务详情、店铺列表、店铺详情、下单流程、订单、用户中心、客服入口。
 - 端侧移动应用：用户端、商户端、技师端共享白天 / 黑夜两套视觉主题，客户端主题与语言设置集中在统一的设置中心。
 - 运营后台：Dashboard、Analytics、Data Center、Orders、Field Jobs、CRM、Marketing、Finance、Reviews、Merchants、Roles、Travel Settings。
-- 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、UI装修、门店设置。
+- 店铺后台：门店总览、订单中心、调度中心（排班当前周期确认 / 排班：手动、自动、智能）、场控布局、库存管理、财务结算、人员与顾客、门店设置。
 - 复用组件：按钮、标签、指标卡、筛选器、表格、详情抽屉、Tabs、后台 Layout、移动端 Shell。
 - Legacy mock compatibility：旧页面仍有兼容数据；Auth、User Management、主数据、正式可预约排班、用户正式预约列表/详情、线下收款和 NDP 充值提现审核已迁移到 API/Prisma，禁止新增正式业务 mock。
 - 多语言：用户端与后台端支持中文、日本語、English 三语切换，语言偏好会保存在本地。
@@ -1898,7 +1898,6 @@ npm test
   - 库存管理
   - 财务结算
   - 技师管理 / 用户管理 / 评价中心
-  - UI装修
   - 门店设置
 - 运营后台
   - 数据大盘 / 分析中心 / 数据中心
@@ -1920,8 +1919,6 @@ npm test
 商户店铺基础资料现支持 `PATCH /api/v1/merchant-admin/shop`：店铺 ID 只从当前活动店铺身份取得，商户可更新名称、简介、城市、地址和电话，不能通过请求体切换店铺或修改平台推荐状态；每次修改都经过 Zod、RBAC 和审计日志。图片、营业时段、证件和展示装修仍需独立数据表及文件接口，当前不写入浏览器伪数据。
 
 商户后台“人员与顾客”的员工列表现使用当前店铺范围的 `/api/v1/merchant-admin/employees` 正式分页 API，并以员工 NeeDoID 打开“员工详细信息卡”。基础资料与本店从属关系均通过真实、受权限保护且有审计的接口编辑；商户页已移除旧技师全局审核、软删除和数字档案号展示。客户仍只显示后端已有档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
-
-商户“店铺 UI 装修/信息卡装修”已改为正式能力门禁。在店铺展示配置表、草稿/发布/版本 API、MediaAsset 上传与删除审计、用户端正式读取和回滚完成前，不再把装修、轮播图或展示文案保存到浏览器，也不再显示虚假的“已发布到本店”。
 
 运营“营销中心”已移除模拟优惠券、活动量、GMV、ROI、归因和页面内存创建。现有 `FeeCampaign` 只参与平台费用计算，不被冒充为用户营销模型；通用营销将在 Campaign/Coupon/Redemption 数据表、状态机、领取核销、归因审计和聚合导出合同完成后开放。
 

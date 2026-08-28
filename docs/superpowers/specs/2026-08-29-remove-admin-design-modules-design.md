@@ -1,7 +1,7 @@
 # Remove Admin Design Modules Design
 
 **Date:** 2026-08-29  
-**Status:** Approved for implementation planning
+**Status:** Implemented
 
 ## Goal
 
@@ -57,3 +57,9 @@ Future employee-card and employee-schedule work must reuse the current merchant-
 ## Rollback
 
 Rollback is the single commit revert for this microstep. No database schema, migration, API, permission, or persisted user data is changed.
+
+## Implementation Record
+
+- `94776fa0` removed both navigation groups and added permanent absence tests.
+- `e43ccc84` deleted both routes, imports, page components, the obsolete page test, and module-only i18n copy.
+- Browser acceptance is recorded after the final formal build and logged-in route checks for this microstep.
