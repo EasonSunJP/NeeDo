@@ -168,6 +168,7 @@ export type AffiliateAllianceAcceptInvitationResult =
         | "not_found"
         | "expired"
         | "state_conflict"
+        | "owner_required"
         | "mutual_contact_required"
         | "invitee_not_eligible"
         | "parent_invalid"
@@ -402,7 +403,16 @@ export class AffiliateAllianceService {
         action: "affiliate_alliance.invitation_rejected",
         targetType: "AffiliateAllianceInvitation",
         targetId: invitationId
-      })
+      }),
+      expiryAuditLog: {
+        actorId: null,
+        action: "affiliate_alliance.invitation_expired",
+        targetType: "AffiliateAllianceInvitation",
+        targetId: invitationId,
+        ip: context.ip,
+        userAgent: context.userAgent,
+        metadata: { source: "reject_guard" }
+      }
     });
 
     if (result.kind !== "rejected") throw this.invitationResultError(result.kind);

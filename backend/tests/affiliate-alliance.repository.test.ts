@@ -311,4 +311,159 @@ describe("AffiliateAllianceRepository", () => {
       })
     ).rejects.toBe(failure);
   });
+
+  it("discovers only reciprocal active Affiliate contacts through one paginated query", async () => {
+    const count = jest.fn().mockResolvedValue(1);
+    const findMany = jest.fn().mockResolvedValue([
+      { needoId: "u0000000008", username: "佐藤花子", avatarUrl: null }
+    ]);
+    const client = { user: { count, findMany } } as unknown as PrismaClient;
+    const repository = new AffiliateAllianceRepository(client);
+
+    await expect(
+      repository.listEligibleContacts({
+        allianceId: 42,
+        ownerUserId: 7,
+        page: 1,
+        pageSize: 20,
+        q: "佐藤"
+      })
+    ).resolves.toEqual({
+      list: [{ needoId: "u0000000008", displayName: "佐藤花子", avatarUrl: null }],
+      total: 1,
+      page: 1,
+      page_size: 20
+    });
+
+    const where = (findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> }).where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        isActive: true,
+        deletedAt: null,
+        identities: {
+          some: { type: "scout", isActive: true, deletedAt: null }
+        },
+        affiliateProfile: { is: { status: "ACTIVE", deletedAt: null } },
+        affiliateAllianceMemberships: {
+          none: { activeKey: { not: null }, leftAt: null, deletedAt: null }
+        },
+        contactEntries: {
+          some: { ownerUserId: 7, blockedAt: null, deletedAt: null }
+        },
+        ownedContacts: {
+          some: { contactUserId: 7, blockedAt: null, deletedAt: null }
+        },
+        receivedAffiliateAllianceInvitations: {
+          none: { allianceId: 42, status: "PENDING", deletedAt: null }
+        }
+      })
+    );
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 20,
+        orderBy: [{ username: "asc" }, { id: "asc" }],
+        select: { needoId: true, username: true, avatarUrl: true }
+      })
+    );
+    expect(count).toHaveBeenCalledWith({ where });
+  });
+
+  it("commits request-time expiration and system audit before returning expired", async () => {
+    const expiresAt = new Date("2026-08-28T12:00:00.000Z");
+    const transaction = {
+      affiliateAllianceInvitation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 71,
+          status: "PENDING",
+          expiresAt,
+          version: 3,
+          pendingKey: "alliance:42:invitee:8"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 901 }) }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(transaction))
+    } as unknown as PrismaClient;
+    const repository = new AffiliateAllianceRepository(client);
+
+    await expect(
+      repository.acceptInvitation({
+        invitationId: 71,
+        inviteeUserId: 8,
+        now: expiresAt,
+        auditLog: { actorId: 8, action: "affiliate_alliance.invitation_accepted", targetType: "AffiliateAllianceInvitation" },
+        expiryAuditLog: { actorId: null, action: "affiliate_alliance.invitation_expired", targetType: "AffiliateAllianceInvitation" }
+      })
+    ).resolves.toEqual({ kind: "expired" });
+
+    expect(transaction.affiliateAllianceInvitation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 71, inviteeUserId: 8, deletedAt: null } })
+    );
+    expect(transaction.affiliateAllianceInvitation.updateMany).toHaveBeenCalledWith({
+      where: { id: 71, status: "PENDING", version: 3, deletedAt: null },
+      data: {
+        status: "EXPIRED",
+        pendingKey: null,
+        expiredAt: expiresAt,
+        version: { increment: 1 }
+      }
+    });
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: null,
+        action: "affiliate_alliance.invitation_expired",
+        targetId: 71
+      })
+    });
+  });
+
+  it("commits reject-time expiration instead of leaving a stale pending row", async () => {
+    const expiresAt = new Date("2026-08-28T12:00:00.000Z");
+    const transaction = {
+      affiliateAllianceInvitation: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 72,
+          status: "PENDING",
+          expiresAt,
+          version: 1,
+          pendingKey: "alliance:42:invitee:8"
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 })
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: 902 }) }
+    };
+    const client = {
+      $transaction: jest.fn(async (callback) => callback(transaction))
+    } as unknown as PrismaClient;
+    const repository = new AffiliateAllianceRepository(client);
+
+    await expect(
+      repository.rejectInvitation({
+        invitationId: 72,
+        inviteeUserId: 8,
+        now: expiresAt,
+        auditLog: { actorId: 8, action: "affiliate_alliance.invitation_rejected", targetType: "AffiliateAllianceInvitation" },
+        expiryAuditLog: { actorId: null, action: "affiliate_alliance.invitation_expired", targetType: "AffiliateAllianceInvitation" }
+      })
+    ).resolves.toEqual({ kind: "expired" });
+    expect(transaction.affiliateAllianceInvitation.updateMany).toHaveBeenCalledWith({
+      where: { id: 72, status: "PENDING", version: 1, deletedAt: null },
+      data: {
+        status: "EXPIRED",
+        pendingKey: null,
+        expiredAt: expiresAt,
+        version: { increment: 1 }
+      }
+    });
+    expect(transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorId: null,
+        action: "affiliate_alliance.invitation_expired",
+        targetId: 72
+      })
+    });
+  });
 });

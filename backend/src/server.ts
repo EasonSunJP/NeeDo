@@ -4,14 +4,17 @@ import { logger } from "./config/logger";
 import { disconnectRedis } from "./config/redis";
 import { disconnectPrisma } from "./prisma/client";
 import { AffiliateTaskExpiryRepository } from "./repositories/affiliate-task-expiry.repository";
+import { AffiliateAllianceRepository } from "./repositories/affiliate-alliance.repository";
 import { IdentityApplicationPurgeRepository } from "./repositories/identity-application-purge.repository";
 import { LedgerRepository } from "./repositories/ledger.repository";
 import { AffiliateTaskExpiryService } from "./services/affiliate-task-expiry.service";
+import { AffiliateAllianceInvitationExpiryService } from "./services/affiliate-alliance-invitation-expiry.service";
 import { IdentityApplicationMediaFileStorage } from "./services/identity-application-media.storage";
 import { IdentityApplicationPurgeService } from "./services/identity-application-purge.service";
 import { createShutdownHandler } from "./server-shutdown";
 import { LedgerService } from "./services/ledger.service";
 import { AffiliateTaskExpiryWorker } from "./workers/affiliate-task-expiry.worker";
+import { AffiliateAllianceInvitationExpiryWorker } from "./workers/affiliate-alliance-invitation-expiry.worker";
 import { IdentityApplicationPurgeWorker } from "./workers/identity-application-purge.worker";
 
 const app = createApp(env);
@@ -38,6 +41,12 @@ const affiliateTaskExpiryWorker = new AffiliateTaskExpiryWorker(
   env.AFFILIATE_TASK_EXPIRY_INTERVAL_MS,
   env.AFFILIATE_TASK_EXPIRY_BATCH_SIZE
 );
+const affiliateAllianceInvitationExpiryWorker = new AffiliateAllianceInvitationExpiryWorker(
+  new AffiliateAllianceInvitationExpiryService(new AffiliateAllianceRepository()),
+  logger,
+  env.AFFILIATE_ALLIANCE_INVITATION_EXPIRY_INTERVAL_MS,
+  env.AFFILIATE_ALLIANCE_INVITATION_EXPIRY_BATCH_SIZE
+);
 
 const server = app.listen(env.PORT, () => {
   logger.info(
@@ -50,6 +59,7 @@ const server = app.listen(env.PORT, () => {
   );
   identityApplicationPurgeWorker.start();
   affiliateTaskExpiryWorker.start();
+  affiliateAllianceInvitationExpiryWorker.start();
 });
 
 const shutdown = createShutdownHandler({
@@ -60,6 +70,7 @@ const shutdown = createShutdownHandler({
   exit: (code) => process.exit(code),
   logger,
   stopWorker: () => {
+    affiliateAllianceInvitationExpiryWorker.stop();
     affiliateTaskExpiryWorker.stop();
     identityApplicationPurgeWorker.stop();
   }

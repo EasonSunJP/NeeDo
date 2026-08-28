@@ -426,6 +426,25 @@ describe("AffiliateAllianceService invitation workflow", () => {
     });
   });
 
+  it("supplies a system expiry audit for a reject-time boundary check", async () => {
+    const repository = createRepository();
+    repository.rejectInvitation.mockResolvedValue({ kind: "expired" });
+    const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
+
+    await expect(service.rejectInvitation(actor, context, 71)).rejects.toMatchObject({
+      message: "error.affiliate_alliance.invitation_expired"
+    });
+    expect(repository.rejectInvitation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expiryAuditLog: expect.objectContaining({
+          actorId: null,
+          action: "affiliate_alliance.invitation_expired",
+          targetId: 71
+        })
+      })
+    );
+  });
+
   it("requires current Affiliate identity for received invitation actions", async () => {
     const repository = createRepository();
     const service = new AffiliateAllianceService(repository, createAudit(), () => currentTime);
