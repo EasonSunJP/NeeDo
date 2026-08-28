@@ -1663,19 +1663,16 @@ describe("verified email registration and formal password authentication", () =>
       menus: expect.arrayContaining(["menu:dashboard", "menu:user-management"])
     });
     expect(JSON.stringify(meResponse.body)).not.toContain("passwordHash");
-    expect(meResponse.body.data.identities).toHaveLength(2);
-    expect(meResponse.body.data.identities).toEqual(
+    expect(meResponse.body.data.identities).toEqual([
+      expect.objectContaining({
+        id: 10,
+        type: "platform",
+        publicId: "needo1234567890"
+      })
+    ]);
+    expect(meResponse.body.data.identities).not.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          id: 10,
-          type: "platform",
-          publicId: "needo1234567890"
-        }),
-        expect.objectContaining({
-          id: 11,
-          type: "scout",
-          publicId: "needo1234567890"
-        })
+        expect.objectContaining({ id: 11, type: "scout" })
       ])
     );
 
