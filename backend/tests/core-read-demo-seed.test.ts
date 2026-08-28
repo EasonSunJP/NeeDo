@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
-  CORE_READ_DEMO_CATEGORY_SEEDS,
-  CORE_READ_DEMO_SHOP_SEEDS,
-  CORE_READ_DEMO_TECHNICIAN_SEEDS
+  CORE_READ_FORMAL_TEST_CATEGORY_SEEDS,
+  CORE_READ_FORMAL_TEST_SHOP_SEEDS,
+  CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS
 } from "../prisma/seed";
 
 const publicRoot = path.resolve(__dirname, "../../public");
@@ -23,20 +23,20 @@ function toThumbnailUrl(url: string) {
     .replace(/\.(?:jpe?g|png|webp)$/i, ".jpg")}`;
 }
 
-describe("core read demo seed contract", () => {
-  it("defines the requested demo shop and technician volume", () => {
-    expect(CORE_READ_DEMO_SHOP_SEEDS).toHaveLength(10);
-    expect(CORE_READ_DEMO_TECHNICIAN_SEEDS).toHaveLength(20);
+describe("core read formal test seed contract", () => {
+  it("defines the requested persisted shop and technician volume", () => {
+    expect(CORE_READ_FORMAL_TEST_SHOP_SEEDS).toHaveLength(10);
+    expect(CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS).toHaveLength(20);
 
-    const shopSlugs = new Set(CORE_READ_DEMO_SHOP_SEEDS.map((shop) => shop.slug));
-    const categoryCodes = new Set(CORE_READ_DEMO_CATEGORY_SEEDS.map((category) => category.code));
+    const shopSlugs = new Set(CORE_READ_FORMAL_TEST_SHOP_SEEDS.map((shop) => shop.slug));
+    const categoryCodes = new Set(CORE_READ_FORMAL_TEST_CATEGORY_SEEDS.map((category) => category.code));
 
-    expect(shopSlugs.size).toBe(CORE_READ_DEMO_SHOP_SEEDS.length);
+    expect(shopSlugs.size).toBe(CORE_READ_FORMAL_TEST_SHOP_SEEDS.length);
     expect(
-      CORE_READ_DEMO_TECHNICIAN_SEEDS.every((technician) => shopSlugs.has(technician.shopSlug))
+      CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS.every((technician) => shopSlugs.has(technician.shopSlug))
     ).toBe(true);
     expect(
-      CORE_READ_DEMO_TECHNICIAN_SEEDS.every((technician) =>
+      CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS.every((technician) =>
         categoryCodes.has(technician.categoryCode)
       )
     ).toBe(true);
@@ -44,9 +44,9 @@ describe("core read demo seed contract", () => {
 
   it("uses local generated assets that exist with thumbnail counterparts", () => {
     const imageUrls = [
-      ...CORE_READ_DEMO_CATEGORY_SEEDS.map((category) => category.iconUrl),
-      ...CORE_READ_DEMO_SHOP_SEEDS.map((shop) => shop.coverUrl),
-      ...CORE_READ_DEMO_TECHNICIAN_SEEDS.flatMap((technician) => [
+      ...CORE_READ_FORMAL_TEST_CATEGORY_SEEDS.map((category) => category.iconUrl),
+      ...CORE_READ_FORMAL_TEST_SHOP_SEEDS.map((shop) => shop.coverUrl),
+      ...CORE_READ_FORMAL_TEST_TECHNICIAN_SEEDS.flatMap((technician) => [
         technician.avatarUrl,
         technician.service.coverUrl
       ])

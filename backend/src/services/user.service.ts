@@ -1,5 +1,5 @@
 import { hash } from "bcryptjs";
-import { NeedoIdAllocationExhaustedError } from "./needo-id.service";
+import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   UserRecord,
@@ -118,7 +118,7 @@ export class UserService {
         isActive: input.isActive ?? true
       });
     } catch (error) {
-      if (error instanceof NeedoIdAllocationExhaustedError) {
+      if (error instanceof UserBootstrapKeyAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
       throw error;

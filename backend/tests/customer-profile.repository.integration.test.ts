@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { disconnectPrisma, prisma } from "../src/prisma/client";
 import { CustomerProfileRepository } from "../src/repositories/customer-profile.repository";
-import { NeedoIdAllocator } from "../src/services/needo-id.service";
+import { UserRepository } from "../src/repositories/user.repository";
 
 const runIntegration = process.env.RUN_CUSTOMER_PROFILE_REPOSITORY_INTEGRATION === "true";
 const describeIntegration = runIntegration ? describe : describe.skip;
@@ -14,23 +14,16 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
   const repository = new CustomerProfileRepository(prisma);
 
   beforeAll(async () => {
-    const user = await new NeedoIdAllocator().withNewId((needoId) => prisma.user.create({
-      data: {
-        needoId,
-        email: `${marker}@needo.local`,
-        emailVerifiedAt: new Date(),
-        passwordHash: "integration-test-password-hash",
-        username: marker
-      }
-    }));
+    const user = await new UserRepository(prisma).create({
+      email: `${marker}@needo.local`,
+      isActive: true,
+      passwordHash: "integration-test-password-hash",
+      username: marker
+    });
     userId = user.id;
-    const profile = await prisma.customerProfile.create({
-      data: {
-        userId,
-        displayName: "原始资料",
-        city: "Tokyo",
-        languages: ["日本語"]
-      }
+    const profile = await prisma.customerProfile.update({
+      where: { userId },
+      data: { city: "Tokyo", displayName: "原始资料", languages: ["日本語"] }
     });
     profileId = profile.id;
     await prisma.mediaAsset.create({
@@ -43,17 +36,23 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
         usageType: "avatar"
       }
     });
-  });
+  }, 30_000);
 
   afterAll(async () => {
     if (userId) {
       await prisma.auditLog.deleteMany({ where: { actorId: userId } });
       await prisma.mediaAsset.deleteMany({ where: { customerProfileId: profileId } });
       await prisma.customerProfile.deleteMany({ where: { id: profileId } });
+      await prisma.userRole.deleteMany({ where: { userId } });
+      const identities = await prisma.userIdentity.findMany({ where: { userId }, select: { id: true } });
+      await prisma.publicIdentifier.deleteMany({
+        where: { userIdentityId: { in: identities.map((identity) => identity.id) } }
+      });
+      await prisma.userIdentity.deleteMany({ where: { userId } });
       await prisma.user.deleteMany({ where: { id: userId } });
     }
     await disconnectPrisma();
-  });
+  }, 30_000);
 
   it("persists only the scoped profile, avatar lifecycle, user avatar, audit, and a hard reread", async () => {
     await expect(
@@ -89,6 +88,7 @@ describeIntegration("CustomerProfileRepository MySQL integration", () => {
       gender: "private",
       heightCm: 171,
       languages: ["日本語", "English"],
+      publicId: expect.stringMatching(/^u\d{10}$/),
       visibility: "network"
     });
     await expect(repository.findMine(userId, profileId + 999_999)).resolves.toBeNull();

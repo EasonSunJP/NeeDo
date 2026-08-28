@@ -32,6 +32,7 @@ describe("Step 08 core read API", () => {
   };
   const shopCard = {
     id: 1,
+    publicId: "shop5831047296",
     name: "Aoyama Care Studio",
     city: "Tokyo",
     address: "3-1 Kita Aoyama",
@@ -40,6 +41,7 @@ describe("Step 08 core read API", () => {
   };
   const technicianCard = {
     id: 1,
+    publicId: "s5831047296",
     displayName: "Mika Tanaka",
     city: "Tokyo",
     avatarUrl: "https://cdn.example.test/technicians/mika.jpg",
@@ -102,6 +104,7 @@ describe("Step 08 core read API", () => {
       })),
       findCustomerProfile: jest.fn(async () => ({
         id: 1,
+        publicId: "u3141592653",
         displayName: "Aya Customer",
         city: "Tokyo",
         bio: "Prefers evening appointments.",
@@ -178,6 +181,7 @@ describe("Step 08 core read API", () => {
     const shopResponse = await request(fixture.app).get("/api/v1/shops/1").expect(200);
     expect(shopResponse.body.data).toMatchObject({
       id: 1,
+      publicId: "shop5831047296",
       name: "Aoyama Care Studio",
       services: [serviceCard],
       technicians: [technicianCard]
@@ -186,6 +190,7 @@ describe("Step 08 core read API", () => {
     const technicianResponse = await request(fixture.app).get("/api/v1/technicians/1").expect(200);
     expect(technicianResponse.body.data).toMatchObject({
       id: 1,
+      publicId: "s5831047296",
       displayName: "Mika Tanaka",
       shop: shopCard,
       yearsExperience: 8,
@@ -197,6 +202,7 @@ describe("Step 08 core read API", () => {
       .expect(200);
     expect(customerResponse.body.data).toMatchObject({
       id: 1,
+      publicId: "u3141592653",
       displayName: "Aya Customer",
       membershipLevel: "standard"
     });

@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { adminLoginQrTokens, getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
+import { getAdminLoginPortalScope, type AdminLoginPortal } from "../../auth/adminLogin";
 import {
   readBrowserPasswordSavePreference,
   requestBrowserPasswordSave,
   writeBrowserPasswordSavePreference,
   type BrowserPasswordSaveScope
 } from "../../auth/browserPasswordSave";
-import type { PortalScope } from "../../auth/demoAccount";
+import type { PortalScope } from "../../auth/portal";
 import { useAuth } from "../../auth/AuthProvider";
 import { purgeLegacyRememberedCredentials } from "../../auth/rememberCredentials";
-import { isFrontendBypassSession } from "../../auth/rbac";
 import { backendManagementSystemBgUrl } from "../../assets/runtime/images";
 import { AdminToggleSwitch } from "../../components/admin/AdminToggleSwitch";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
@@ -109,11 +108,11 @@ const adminLoginCopy = {
     loggedIn: "当前已登录",
     loggedInAs: "登录账号",
     logout: "退出登录",
-    qrTitle: "使用手机 NeeDo 聊天页扫一扫",
-    qrSubtitle: "PC 端保留二维码，手机端在聊天页面打开扫一扫后扫描即可确认登录。",
+    qrTitle: "扫码登录尚未启用",
+    qrSubtitle: "正式的服务端一次性登录码接口完成前，此入口不会生成或接受二维码。",
     qrTokenLabel: "登录码",
-    qrApprove: "模拟扫码确认",
-    qrApproved: "扫码已确认，正在进入后台。",
+    qrApprove: "扫码登录不可用",
+    qrApproved: "扫码登录不可用。",
     accountError: "账号或密码不正确，请确认后再试。",
     codeError: "验证码不正确或已过期，请确认后再试。",
     qrError: "二维码登录暂未接入真实接口，请使用邮箱或验证码登录。",
@@ -160,11 +159,11 @@ const adminLoginCopy = {
     loggedIn: "目前已登入",
     loggedInAs: "登入帳號",
     logout: "登出",
-    qrTitle: "使用手機 NeeDo 聊天頁掃一掃",
-    qrSubtitle: "PC 端保留 QR 碼，手機端在聊天頁面打開掃一掃後掃描即可確認登入。",
+    qrTitle: "掃碼登入尚未啟用",
+    qrSubtitle: "正式的服務端一次性登入碼接口完成前，此入口不會產生或接受 QR 碼。",
     qrTokenLabel: "登入碼",
-    qrApprove: "模擬掃碼確認",
-    qrApproved: "掃碼已確認，正在進入後台。",
+    qrApprove: "掃碼登入不可用",
+    qrApproved: "掃碼登入不可用。",
     accountError: "帳號或密碼不正確，請確認後再試。",
     codeError: "驗證碼不正確或已過期，請確認後再試。",
     qrError: "QR 登入尚未接入真實接口，請使用信箱或驗證碼登入。",
@@ -211,11 +210,11 @@ const adminLoginCopy = {
     loggedIn: "ログイン済み",
     loggedInAs: "ログインアカウント",
     logout: "ログアウト",
-    qrTitle: "スマホの NeeDo チャットでスキャン",
-    qrSubtitle: "PC には QR コードを表示し、スマホのチャット画面のスキャンからログインを確認します。",
+    qrTitle: "QRログインは利用できません",
+    qrSubtitle: "サーバー発行のワンタイムログインコード API が完成するまで、QRコードは発行・受理しません。",
     qrTokenLabel: "ログインコード",
-    qrApprove: "スキャン確認を再現",
-    qrApproved: "スキャンを確認しました。管理画面へ移動します。",
+    qrApprove: "QRログインは利用できません",
+    qrApproved: "QRログインは利用できません。",
     accountError: "アカウントまたはパスワードが違います。内容を確認してください。",
     codeError: "認証コードが違うか期限切れです。内容を確認してください。",
     qrError: "QRログインはまだ正式 API に接続されていません。メールまたは認証コードでログインしてください。",
@@ -262,11 +261,11 @@ const adminLoginCopy = {
     loggedIn: "Already signed in",
     loggedInAs: "Signed in as",
     logout: "Log out",
-    qrTitle: "Scan with NeeDo mobile chat",
-    qrSubtitle: "The PC shows a QR code. Open Scan from the mobile chat page to confirm the login.",
+    qrTitle: "QR login is unavailable",
+    qrSubtitle: "No QR code is issued or accepted until the server-backed single-use login-code API is complete.",
     qrTokenLabel: "Login code",
-    qrApprove: "Simulate scan approval",
-    qrApproved: "Scan confirmed. Entering admin.",
+    qrApprove: "QR login unavailable",
+    qrApproved: "QR login is unavailable.",
     accountError: "The account or password is incorrect. Please check and try again.",
     codeError: "The code is incorrect or expired. Please check and try again.",
     qrError: "QR login is not connected to the real API yet. Use email or code login.",
@@ -313,11 +312,11 @@ const adminLoginCopy = {
     loggedIn: "이미 로그인됨",
     loggedInAs: "로그인 계정",
     logout: "로그아웃",
-    qrTitle: "모바일 NeeDo 채팅에서 스캔",
-    qrSubtitle: "PC에는 QR 코드를 표시하고, 모바일 채팅 화면의 스캔으로 로그인을 확인합니다.",
+    qrTitle: "QR 로그인을 사용할 수 없습니다",
+    qrSubtitle: "서버 기반 일회용 로그인 코드 API가 완성되기 전에는 QR 코드를 발급하거나 허용하지 않습니다.",
     qrTokenLabel: "로그인 코드",
-    qrApprove: "스캔 확인 시뮬레이션",
-    qrApproved: "스캔이 확인되었습니다. 관리자 화면으로 이동합니다.",
+    qrApprove: "QR 로그인 사용 불가",
+    qrApproved: "QR 로그인을 사용할 수 없습니다.",
     accountError: "계정 또는 비밀번호가 올바르지 않습니다. 확인 후 다시 시도하세요.",
     codeError: "인증코드가 올바르지 않거나 만료되었습니다. 확인 후 다시 시도하세요.",
     qrError: "QR 로그인은 아직 실제 API에 연결되지 않았습니다. 이메일 또는 인증코드로 로그인하세요.",
@@ -328,9 +327,9 @@ const adminLoginCopy = {
 } satisfies Record<Language, BackendLoginCopy>;
 
 const backendDefaultLoginEmails = {
-  admin: "admin",
-  "merchant-admin": "merchant@example.com",
-  "afirieito-admin": "affiliate@example.com"
+  admin: "",
+  "merchant-admin": "",
+  "afirieito-admin": ""
 } as const satisfies Record<AdminLoginPortal, string>;
 
 const backendLoginConfig = {
@@ -339,7 +338,6 @@ const backendLoginConfig = {
     defaultEmail: backendDefaultLoginEmails.admin,
     entryPath: "/admin",
     background: backendManagementSystemBgUrl,
-    mark: "N",
     themeStorageKey: "needo.admin.theme",
     themePreferenceModeStorageKey: "needo.admin.theme.mode",
     themeOptions: platformAdminThemeOptions,
@@ -352,7 +350,6 @@ const backendLoginConfig = {
     defaultEmail: backendDefaultLoginEmails["merchant-admin"],
     entryPath: "/merchant-admin",
     background: backendManagementSystemBgUrl,
-    mark: "S",
     themeStorageKey: "needo.merchant-admin.theme",
     themePreferenceModeStorageKey: "needo.merchant-admin.theme.mode",
     themeOptions: sharedAdminThemeOptions,
@@ -365,7 +362,6 @@ const backendLoginConfig = {
     defaultEmail: backendDefaultLoginEmails["afirieito-admin"],
     entryPath: "/NDA-admin",
     background: backendManagementSystemBgUrl,
-    mark: "A",
     themeStorageKey: "needo.afirieito-admin.theme",
     themePreferenceModeStorageKey: "needo.afirieito-admin.theme.mode",
     themeOptions: sharedAdminThemeOptions,
@@ -378,11 +374,6 @@ const backendLoginConfig = {
 export function resolveBackendLoginTarget(sessionPortal: PortalScope, requestedPortal: PortalScope, nextPath: string) {
   return sessionPortal === requestedPortal ? nextPath : null;
 }
-
-const qrCells = new Set([
-  0, 1, 2, 3, 4, 5, 6, 8, 10, 14, 16, 18, 20, 21, 22, 24, 26, 28, 32, 34, 36, 37, 38, 39, 40, 42, 44,
-  46, 48, 50, 52, 54, 55, 56, 58, 60, 62, 64, 66, 68, 69, 70, 72, 74, 76, 77, 78, 80
-]);
 
 function normalizeMode(value: string | null): LoginMode {
   if (value === "code" || value === "qr") {
@@ -409,23 +400,6 @@ function getInitialBackendLoginTheme(portal: AdminLoginPortal): AdminTheme {
   return detectSystemAdminTheme(config.dayTheme, config.nightTheme, config.themeOptions);
 }
 
-function QrLoginGraphic({ mark }: { mark: string }) {
-  return (
-    <div className="admin-login-qr-card relative mx-auto grid aspect-square w-full max-w-[260px] grid-cols-9 gap-1 p-4">
-      {Array.from({ length: 81 }).map((_, index) => (
-        <span
-          className={cn("aspect-square rounded-[2px]", qrCells.has(index) ? "bg-[color:var(--admin-text)]" : "bg-transparent")}
-          key={index}
-        />
-      ))}
-      <span className="pointer-events-none absolute" />
-      <div className="absolute left-1/2 top-1/2 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-md border border-[color:var(--admin-line)] bg-[color:var(--admin-surface)] text-lg font-black text-[color:var(--admin-accent)] shadow-sm">
-        {mark}
-      </div>
-    </div>
-  );
-}
-
 export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -433,7 +407,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     canAccess,
     isAuthenticated,
     loginWithFormalPassword,
-    loginWithQr,
     loginWithVerificationCode,
     logout,
     sendVerificationCode,
@@ -445,8 +418,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const passwordSaveScope = `backend:${portal}` as BrowserPasswordSaveScope;
   const theme = useMemo(() => getInitialBackendLoginTheme(portal), [portal]);
   const requestedMode = normalizeMode(searchParams.get("mode"));
-  const scanStatus = searchParams.get("scan");
-  const qrParam = searchParams.get("qr");
   const [mode, setMode] = useState<LoginMode>(requestedMode);
   const [account, setAccount] = useState<string>(config.defaultEmail);
   const [password, setPassword] = useState<string>("");
@@ -457,11 +428,9 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const redirectPath = searchParams.get("redirect");
   const nextPath = redirectPath || config.entryPath;
-  const hasAccess = isAuthenticated && canAccess(config.authPortal) && !isFrontendBypassSession(session);
-  const qrToken = adminLoginQrTokens[portal];
+  const hasAccess = isAuthenticated && canAccess(config.authPortal);
   const navigateToBackendSession = useCallback(
     (sessionPortal: PortalScope) => {
       const target = resolveBackendLoginTarget(sessionPortal, config.authPortal, nextPath);
@@ -490,22 +459,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
   useEffect(() => {
     setSavePassword(readBrowserPasswordSavePreference(passwordSaveScope));
   }, [passwordSaveScope]);
-
-  useEffect(() => {
-    if (scanStatus !== "approved") {
-      return;
-    }
-
-    loginWithQr(config.authPortal, qrParam ?? qrToken).then((result) => {
-      if (!result.ok) {
-        setError(copy.qrError);
-        return;
-      }
-
-      setNotice(copy.qrApproved);
-      navigateToBackendSession(result.session.portal);
-    });
-  }, [config.authPortal, copy.qrApproved, copy.qrError, loginWithQr, navigateToBackendSession, qrParam, qrToken, scanStatus]);
 
   const modeButtons = useMemo<Array<{ mode: LoginMode; label: string }>>(
     () => [
@@ -565,19 +518,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
     navigateToBackendSession(result.session.portal);
   };
 
-  const approveQrLogin = async () => {
-    setError("");
-
-    const result = await loginWithQr(config.authPortal, qrToken);
-    if (!result.ok) {
-      setError(result.message || copy.qrError);
-      return;
-    }
-
-    setNotice(copy.qrApproved);
-    navigateToBackendSession(result.session.portal);
-  };
-
   const requestCode = async () => {
     setError("");
     const result = await sendVerificationCode(codeEmail);
@@ -629,7 +569,6 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                       onClick={() => {
                         setMode(item.mode);
                         setError("");
-                        setNotice("");
                       }}
                       type="button"
                     >
@@ -742,23 +681,10 @@ export function AdminLoginPage({ portal }: { portal: AdminLoginPortal }) {
                 ) : null}
 
                 {!hasAccess && mode === "qr" ? (
-                  <div className="grid gap-5">
-                    <div className="relative">
-                      <QrLoginGraphic mark={config.mark} />
-                    </div>
-                    <div>
-                      <h2 className="admin-login-title text-xl font-black">{copy.qrTitle}</h2>
-                      <p className="admin-login-muted mt-3 text-sm font-semibold leading-6">{copy.qrSubtitle}</p>
-                      <div className="admin-login-token-box mt-5 p-3">
-                        <p className="admin-login-token-label text-xs font-black uppercase tracking-[0.14em]">{copy.qrTokenLabel}</p>
-                        <p className="admin-login-title mt-2 break-all font-mono text-xs font-bold">{qrToken}</p>
-                      </div>
-                      {notice ? <p className="admin-login-notice mt-4 px-4 py-3 text-sm font-bold">{notice}</p> : null}
-                      {error ? <p className="admin-login-error mt-4 px-4 py-3 text-sm font-bold">{error}</p> : null}
-                      <button className="admin-login-primary mt-5 w-full text-base" onClick={approveQrLogin} type="button">
-                        {copy.qrApprove}
-                      </button>
-                    </div>
+                  <div className="grid gap-3">
+                    <h2 className="admin-login-title text-xl font-black">{copy.qrTitle}</h2>
+                    <p className="admin-login-muted text-sm font-semibold leading-6">{copy.qrSubtitle}</p>
+                    <p className="admin-login-error px-4 py-3 text-sm font-bold">{copy.qrError}</p>
                   </div>
                 ) : null}
               </div>

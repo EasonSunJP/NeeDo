@@ -424,7 +424,7 @@ export function SmartSchedulingWorkspace({
             titleClassName="text-lg font-black"
             variant={titleVariant}
           />
-          <Badge tone="neutral">ExternalSignalAdapter · mock 可替换</Badge>
+          <Badge tone="neutral">正式数据源未接入</Badge>
         </div>
         <div className={cn("mt-2 grid gap-2", isMobileSurface ? "grid-cols-1" : "md:grid-cols-2 xl:grid-cols-3")}>
           {dataSources.map((source) => (

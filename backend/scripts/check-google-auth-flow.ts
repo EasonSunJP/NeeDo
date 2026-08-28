@@ -210,8 +210,8 @@ const main = async (): Promise<void> => {
     assert(existingUser.emailVerifiedAt, "verified registration did not verify the email");
     assert(existingUser.customerProfile, "verified registration did not create a customer profile");
     assert(
-      /^n\d{10}$/.test(existingUser.needoId),
-      "verified registration created an invalid NeeDo ID"
+      /^u\d{10}$/.test(existingUser.needoId),
+      "verified registration created an invalid U public ID"
     );
     assert(
       existingUser.username === existingUser.needoId &&

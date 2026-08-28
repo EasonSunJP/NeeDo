@@ -11,7 +11,6 @@ type AdminAccountMenuProps = {
 };
 
 const loginMethodLabels = {
-  "frontend-bypass": "前台临时",
   google: "Google",
   password: "账号密码"
 } as const;
@@ -117,7 +116,7 @@ export function AdminAccountMenu({
           </div>
 
           {passwordNoticeVisible ? (
-            <p className="admin-account-password-note">演示环境暂不保存新密码，正式环境将在账号安全中完成修改。</p>
+            <p className="admin-account-password-note">密码修改接口尚未启用，请暂时联系有权限的平台管理员处理。</p>
           ) : null}
 
           <div className="mt-3 grid gap-2">

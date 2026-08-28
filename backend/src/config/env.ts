@@ -73,7 +73,7 @@ const envSchema = z
     NODE_ENV: z.enum(["development", "test", "production"]),
     DEPLOY_ENV: z.enum(["local", "test", "staging", "prod"]).default("local"),
     ALLOW_TEST_LOGIN: booleanSchema.default(false),
-    ALLOW_DEMO_SEED: booleanSchema.default(false),
+    ALLOW_FORMAL_TEST_SEED: booleanSchema.default(false),
     ALLOW_SIMULATION_SEED: booleanSchema.default(false),
     SERVICE_NAME: z.string().min(1),
     PORT: z.coerce.number().int().min(1).max(65535),
@@ -150,7 +150,7 @@ const envSchema = z
 
     const unsafeFlags = [
       ["ALLOW_TEST_LOGIN", value.ALLOW_TEST_LOGIN],
-      ["ALLOW_DEMO_SEED", value.ALLOW_DEMO_SEED],
+      ["ALLOW_FORMAL_TEST_SEED", value.ALLOW_FORMAL_TEST_SEED],
       ["ALLOW_SIMULATION_SEED", value.ALLOW_SIMULATION_SEED]
     ] as const;
 

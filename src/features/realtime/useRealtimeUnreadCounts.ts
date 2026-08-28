@@ -1,7 +1,5 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { useAuth } from "../../auth/AuthProvider";
-import { isFrontendBypassSession } from "../../auth/rbac";
 import { realtimeApi, subscribeRealtimeEvents, type RealtimeUnreadCounts } from "./api";
 
 const emptyCounts: RealtimeUnreadCounts = {
@@ -15,8 +13,7 @@ const RealtimeUnreadCountsContext = createContext<RealtimeUnreadCounts>(emptyCou
 
 export function RealtimeUnreadCountsProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isRestoring, session } = useAuth();
-  const isStaticBypass = isStaticDemoMode() && isFrontendBypassSession(session);
-  const enabled = isAuthenticated && Boolean(session) && !isRestoring && !isStaticBypass;
+  const enabled = isAuthenticated && Boolean(session) && !isRestoring;
   const [counts, setCounts] = useState<RealtimeUnreadCounts>(emptyCounts);
 
   const refresh = useCallback(async () => {

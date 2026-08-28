@@ -20,6 +20,13 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).not.toContain("needsPortalSync");
   });
 
+  it("aligns the active backend identity before rendering an already-authorized portal", () => {
+    expect(requirePortalAuthSource).toContain("isSessionAlignedWithPortal(session, portal)");
+    expect(requirePortalAuthSource).toContain("needsPortalAlignment");
+    expect(requirePortalAuthSource).toContain("switchPortal(portal)");
+    expect(requirePortalAuthSource).toContain("!isSessionAlignedWithPortal(result.session, portal)");
+  });
+
   it("keeps backend and formal finance routes on direct portal access instead of remembered frontend authorization", () => {
     expect(requirePortalAuthSource).toContain('const isTechnicianPayrollRoute = portal === "technician" && location.pathname.startsWith("/technician/payroll");');
     expect(requirePortalAuthSource).toContain("const requiresDirectPortalAccess = isBackendPortalRoute || isTechnicianPayrollRoute;");
@@ -27,9 +34,9 @@ describe("portal identity switching boundaries", () => {
     expect(requirePortalAuthSource).toContain("const canRestoreRememberedPortal = !requiresDirectPortalAccess && hasRememberedPortalAuthorization(portal);");
   });
 
-  it("does not let a temporary frontend bypass session enter direct-access routes", () => {
-    expect(requirePortalAuthSource).toContain("const hasBlockedFrontendBypass = requiresDirectPortalAccess && isFrontendBypassSession(session);");
-    expect(requirePortalAuthSource).toContain("!isAuthenticated || !hasAccess || hasBlockedFrontendBypass");
+  it("does not include a temporary frontend bypass session", () => {
+    expect(requirePortalAuthSource).not.toContain("FrontendBypass");
+    expect(requirePortalAuthSource).not.toContain("frontend-bypass");
   });
 
   it("admits an authenticated operations admin only when a read-only merchant preview is active", () => {

@@ -9,8 +9,6 @@ import type { MyQrCodePurpose } from "../../components/mobile/MyQrCodeButton";
 import { UnifiedScanSimulator } from "../../components/mobile/UnifiedScanSimulator";
 import { Button } from "../../components/ui/Button";
 import { cn, yen } from "../../lib/utils";
-import { useImStore } from "../im/store";
-import { isProfileSearchableForRole } from "../im/role-config";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
 import { DineInMetricGrid, DineInStatusPill, MenuStockBadge } from "./components";
 import { dineInOrderItemStatusLabels, dineInOrderStatusLabels, facilityStatusLabels } from "./labels";
@@ -59,29 +57,9 @@ function DineInCustomerPageShell({
 export function DineInScanPage() {
   const navigate = useNavigate();
   const { actions } = useDineInStore();
-  const imStore = useImStore("user");
-  const [token, setToken] = useState("qr-table-a08");
+  const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [scannedUserId, setScannedUserId] = useState<string | null>(null);
   const [myQrPurpose, setMyQrPurpose] = useState<MyQrCodePurpose>("friend");
-  const activeContactUserIds = useMemo(
-    () => new Set(imStore.contacts.filter((contact) => contact.relationStatus === "active" && !contact.isBlocked).map((contact) => contact.targetUserId)),
-    [imStore.contacts]
-  );
-  const availableFriendCandidates = useMemo(() => imStore.users.filter((user) => {
-    if (user.id === imStore.currentUserId || user.serviceAccount) {
-      return false;
-    }
-
-    if (!isProfileSearchableForRole("user", user)) {
-      return false;
-    }
-
-    return !activeContactUserIds.has(user.id);
-  }), [activeContactUserIds, imStore.currentUserId, imStore.users]);
-  const scannedUser = scannedUserId
-    ? availableFriendCandidates.find((user) => user.id === scannedUserId) ?? null
-    : null;
 
   const resolve = (nextToken: string) => {
     const adminLoginRedirect = buildAdminLoginScanRedirect(nextToken);
@@ -101,47 +79,13 @@ export function DineInScanPage() {
     }
   };
 
-  const simulateFriendScan = () => {
-    const candidate = availableFriendCandidates.find((user) => Boolean(user.userIdLabel)) ?? availableFriendCandidates[0] ?? null;
-
-    if (!candidate) {
-      return;
-    }
-
-    setError(null);
-    setScannedUserId(candidate.id);
-  };
-
-  const addFriendAndOpen = async (userId: string) => {
-    await imStore.addContact(userId, "聊天页添加好友", "通过扫一扫手动添加为好友");
-    const conversation = await imStore.ensureDirectConversation(userId);
-    navigate(`/messages/${conversation.id}`);
-  };
-
   return (
     <DineInCustomerPageShell forceDarkHeader title="扫一扫">
       <UnifiedScanSimulator
         error={error}
-        friendResult={scannedUser ? (
-          <section className="rounded-[28px] border border-line bg-white p-4 shadow-panel">
-            <p className="text-xs font-black text-moss">扫码识别结果</p>
-            <div className="mt-3 flex items-center gap-3 rounded-[22px] bg-paper p-3">
-              <img alt={scannedUser.nickname} className="h-12 w-12 rounded-2xl object-cover" src={scannedUser.avatar} />
-              <div className="min-w-0 flex-1">
-                <strong className="block truncate text-sm">{scannedUser.nickname}</strong>
-                <p className="mt-1 truncate text-xs font-bold text-ink/48">{scannedUser.signature ?? scannedUser.region ?? scannedUser.bio ?? scannedUser.userIdLabel}</p>
-              </div>
-            </div>
-            <Button className="mt-4 w-full rounded-2xl" onClick={() => void addFriendAndOpen(scannedUser.id)} size="lg">
-              添加好友并开始聊天
-            </Button>
-          </section>
-        ) : undefined}
-        friendScanDisabled={availableFriendCandidates.length === 0}
         myQrPurpose={myQrPurpose}
         onMyQrPurposeChange={setMyQrPurpose}
         onResolveToken={resolve}
-        onScanFriend={simulateFriendScan}
         onTokenChange={setToken}
         token={token}
       />

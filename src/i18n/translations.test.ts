@@ -131,14 +131,6 @@ describe("translations", () => {
     expect(translateText("关闭窗口", "en")).toBe("Close");
   });
 
-  it("joins split string literals from exported spreadsheet formulas", () => {
-    const source = "为进一步定位前后台启动后一闪即白屏的问题，系统已暂时旁路登录输入页，统一改为测试账号 admin / 123456 自动进入各端口。";
-    const translated = translateText(source, "en");
-
-    expect(translated).toContain("which will automatically enter each port");
-    expect(translated).not.toContain("\"&\"");
-  });
-
   it("uses store naming for the merchant admin surface", () => {
     expect(translateText("商户后台", "ja")).toBe("店舗管理画面");
     expect(translateText("商户后台", "en")).toBe("Business Management");

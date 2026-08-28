@@ -17,7 +17,7 @@ import {
   type RealtimeMessage,
   type RealtimeParticipant,
 } from "../realtime/api";
-import type { createImApi } from "./api";
+import type { ImApi } from "./contract";
 import type {
   ContactRelation,
   Conversation,
@@ -32,8 +32,6 @@ import type {
   ImUser,
   MessageExt,
 } from "./model";
-
-type ImApi = ReturnType<typeof createImApi>;
 
 type FormalCurrentUser = {
   avatarUrl: string | null;

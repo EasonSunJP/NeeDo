@@ -103,7 +103,7 @@ export function TechnicianListModule({
             as="h2"
             info={
               context === "platform"
-                ? "切换后可模拟平台后台和店铺后台看到的数据范围。"
+                ? "切换后可核对平台后台和店铺后台按权限读取的数据范围。"
                 : "当前页与平台运营后台共用同一套员工列表模块，商户侧只显示自己可管理的员工。"
             }
             label="可见范围说明"

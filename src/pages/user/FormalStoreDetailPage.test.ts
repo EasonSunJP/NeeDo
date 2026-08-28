@@ -33,6 +33,7 @@ describe("FormalStoreDetailPage real-data boundary", () => {
   it("renders API records and only the first real service as the booking action", () => {
     const shop = {
       id: 1,
+      publicId: "shop5831047296",
       name: "API Store",
       city: "Tokyo",
       address: "1-1",
@@ -49,17 +50,17 @@ describe("FormalStoreDetailPage real-data boundary", () => {
         {
           id: 11, name: "Real Service One", description: null, city: "Tokyo", priceAmount: "6800", currency: "JPY", durationMinutes: 120, coverUrl: null,
           category: { id: 1, code: "care", name: "Care", nameJa: null, nameEn: null, parentId: null, iconUrl: null, sortOrder: 1, isActive: true, createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z" },
-          shop: { id: 1, name: "API Store", city: "Tokyo", address: "1-1", coverUrl: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] } },
+          shop: { id: 1, publicId: "shop5831047296", name: "API Store", city: "Tokyo", address: "1-1", coverUrl: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] } },
           technician: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] }
         },
         {
           id: 12, name: "Real Service Two", description: null, city: "Tokyo", priceAmount: "7800", currency: "JPY", durationMinutes: 90, coverUrl: null,
           category: { id: 1, code: "care", name: "Care", nameJa: null, nameEn: null, parentId: null, iconUrl: null, sortOrder: 1, isActive: true, createdAt: "2026-08-25T00:00:00.000Z", updatedAt: "2026-08-25T00:00:00.000Z" },
-          shop: { id: 1, name: "API Store", city: "Tokyo", address: "1-1", coverUrl: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] } },
+          shop: { id: 1, publicId: "shop5831047296", name: "API Store", city: "Tokyo", address: "1-1", coverUrl: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] } },
           technician: null, reviewSummary: { ratingAverage: "4.8", reviewCount: 2, latestReviewAt: null, highlights: [] }
         }
       ],
-      technicians: [{ id: 21, displayName: "Real Technician", city: "Tokyo", avatarUrl: null, reviewSummary: { ratingAverage: "invalid", reviewCount: 1, latestReviewAt: null, highlights: [] } }]
+      technicians: [{ id: 21, publicId: "s3141592653", displayName: "Real Technician", city: "Tokyo", avatarUrl: null, reviewSummary: { ratingAverage: "invalid", reviewCount: 1, latestReviewAt: null, highlights: [] } }]
     } satisfies CoreShopDetail;
     const html = renderToStaticMarkup(
       createElement(MemoryRouter, null, createElement(FormalStoreContent, { language: "en", scope: "user", shop }))

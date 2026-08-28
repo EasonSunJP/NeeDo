@@ -1,4 +1,4 @@
-import type { PortalScope } from "./demoAccount";
+import type { PortalScope } from "./portal";
 
 export type FeaturePermission =
   | "store.scheduling.overview.view"

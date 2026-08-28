@@ -1,11 +1,11 @@
-import type { PortalScope } from "./demoAccount";
+import type { PortalScope } from "./portal";
 import type { IdentityAvailability, IdentityKind } from "../features/identity-applications/model";
 
-export const authSessionVersion = 6;
+export const authSessionVersion = 7;
 
-export type LoginMethod = "frontend-bypass" | "google" | "password";
+export type LoginMethod = "google" | "password";
 
-const loginMethods = new Set<LoginMethod>(["frontend-bypass", "google", "password"]);
+const loginMethods = new Set<LoginMethod>(["google", "password"]);
 
 export function isLoginMethod(value: unknown): value is LoginMethod {
   return typeof value === "string" && loginMethods.has(value as LoginMethod);
@@ -13,6 +13,7 @@ export function isLoginMethod(value: unknown): value is LoginMethod {
 
 export type AuthIdentityPayload = {
   id: number;
+  publicId?: string | null;
   scopeId: number | null;
   scopeType: string | null;
   type: string;
@@ -21,6 +22,9 @@ export type AuthIdentityPayload = {
 export type AuthMePayload = {
   id: number;
   needoId: string;
+  primaryPublicId?: string;
+  activeIdentityId?: number;
+  activePublicId?: string | null;
   email: string;
   emailVerifiedAt: string | null;
   hasPassword: boolean;
@@ -39,6 +43,9 @@ export type AuthSession = {
   authVersion: number;
   id: number;
   needoId: string;
+  primaryPublicId: string;
+  activeIdentityId: number;
+  activePublicId: string | null;
   username: string;
   email: string;
   emailVerifiedAt: string | null;
@@ -76,8 +83,11 @@ const identityPortalMap: Record<string, PortalScope> = {
   business: "business",
   customer: "user",
   merchant: "merchant",
+  merchant_organization: "merchant",
   merchant_owner: "merchant",
   merchant_staff: "merchant",
+  o: "merchant",
+  owner: "merchant",
   platform: "admin",
   platform_admin: "admin",
   scout: "business",
@@ -95,6 +105,14 @@ function resolvePortalFromIdentity(identity: AuthIdentityPayload): PortalScope |
 
 export function findIdentityForPortal(identities: AuthIdentityPayload[], portal: PortalScope) {
   return identities.find((identity) => resolvePortalFromIdentity(identity) === portal) ?? null;
+}
+
+export function isSessionAlignedWithPortal(session: AuthSession | null, portal: PortalScope) {
+  return Boolean(
+    session &&
+      session.portal === portal &&
+      resolvePortalFromIdentity(session.currentIdentity) === portal
+  );
 }
 
 function resolvePortalsFromRoles(roles: string[]) {
@@ -147,7 +165,7 @@ export function resolveAllowedPortals(me: AuthMePayload): PortalScope[] {
 const identityTypesByKind: Record<IdentityKind, string[]> = {
   customer: ["customer", "user"],
   technician: ["technician"],
-  merchant: ["merchant", "merchant_owner", "merchant_staff"],
+  merchant: ["merchant", "merchant_organization", "merchant_owner", "merchant_staff", "o", "owner"],
   affiliate: ["affiliate", "broker", "scout", "business"]
 };
 
@@ -196,6 +214,9 @@ export function buildAuthSessionFromMe(me: AuthMePayload, requestedPortal: Porta
     authVersion: authSessionVersion,
     id: me.id,
     needoId: me.needoId,
+    primaryPublicId: me.primaryPublicId ?? me.needoId,
+    activeIdentityId: me.currentIdentity.id,
+    activePublicId: me.currentIdentity.publicId ?? null,
     username: me.username,
     email: me.email,
     emailVerifiedAt: me.emailVerifiedAt,
@@ -248,8 +269,4 @@ export function canAccessFeatureFromSession(
 
 export function canAccessMenuFromSession(session: AuthSession | null, menuPermission: string) {
   return Boolean(session && (session.menus.includes(menuPermission) || hasPermissionInSession(session, menuPermission)));
-}
-
-export function isFrontendBypassSession(session: AuthSession | null) {
-  return session?.loginMethod === "frontend-bypass";
 }

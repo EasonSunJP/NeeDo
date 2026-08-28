@@ -18,7 +18,7 @@ describe("TechnicianPortalPage profile card", () => {
     expect(source).toContain("coreReadApi.getTechnicianDetail(formalTechnicianProfileId)");
     expect(source).toContain("mapCoreTechnicianToTechnician(formalTechnicianProfileQuery.data)");
     expect(source).toContain("mapCoreShopToStore(formalTechnicianProfileQuery.data.shop)");
-    expect(source).toContain("isStaticDemoMode()");
+    expect(source).not.toContain("isStaticDemoMode()");
   });
 
   it("keeps formal technician schedules free of the legacy calendar and status timeline", () => {

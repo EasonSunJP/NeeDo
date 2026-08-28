@@ -6,7 +6,6 @@ import {
   createDispatchCycleDraft,
   getDispatchCenterSnapshot,
   getDispatchCycleList,
-  getDispatchOverviewRangeSummary,
   getDispatchOverviewSummary,
   getDispatchScheduleGrid,
   getSmartScheduleReadiness,
@@ -14,7 +13,6 @@ import {
   resetDispatchCenterStore,
   runDispatchAutoConfirm,
   runDispatchSmartSchedule,
-  updateSmartScheduleAutomationPolicy,
   saveDispatchCycleDraft
 } from "./store";
 
@@ -80,43 +78,24 @@ describe("dispatch center scheduling workflow", () => {
     expect(storedCycle?.periodEnd).toBe(cycle.periodEnd);
   });
 
-  it("keeps a per-technician day timeline inside week and month cells", () => {
+  it("starts the formal schedule views without generated technicians or shifts", () => {
     const weekGrid = getDispatchScheduleGrid("store-1", "week", "2026-04-20");
     const monthGrid = getDispatchScheduleGrid("store-1", "month", "2026-04-20");
-    const weekCell = weekGrid.rows[0]?.cells[0];
-    const monthCell = monthGrid.rows[0]?.cells[0];
 
-    expect(weekCell?.hour).toBeNull();
-    expect(weekCell?.dayTimeline).toHaveLength(24);
-    expect(weekCell?.dayTimeline?.every((slot) => slot.hour >= 0 && slot.hour <= 23)).toBe(true);
-    expect(monthCell?.dayTimeline).toHaveLength(24);
+    expect(weekGrid.rows).toEqual([]);
+    expect(monthGrid.rows).toEqual([]);
+    expect(getDispatchCenterSnapshot().arrangements).toEqual([]);
   });
 
-  it("summarizes current-cycle status without requiring schedule grid materialization", () => {
+  it("returns an honest empty summary when no formal schedule exists", () => {
     const summary = getDispatchOverviewSummary("store-1");
-    const daySummary = getDispatchOverviewRangeSummary("store-1", "day", "2026-04-20", summary.activeCycle?.id);
-    const weekSummary = getDispatchOverviewRangeSummary("store-1", "week", "2026-04-20", summary.activeCycle?.id);
-    const monthSummary = getDispatchOverviewRangeSummary("store-1", "month", "2026-04-20", summary.activeCycle?.id);
 
-    expect(summary.effectiveTimeLabel).toMatch(/^2026\.04\.\d{2} 00:00~2026\.04\.\d{2} 23:59$/);
-    expect(summary.confirmedDayLabel).toMatch(/^\d+\/\d+ 天$/);
-    expect(summary.technicianCount).toBeGreaterThan(0);
-    expect(summary.confirmedArrangementLabel).toContain("单");
-    expect(summary.applicationCountLabel).toContain("件");
-    expect(weekSummary.effectiveTimeLabel).toContain("~");
-    expect(weekSummary.technicianCountLabel).toMatch(/^\d+\/\d+$/);
-    expect(weekSummary.confirmedOrderLabel).toContain("单");
-    expect(daySummary.effectiveEndDateLabel).toBe("2026.04.20");
-    expect(weekSummary.effectiveEndDateLabel).toBe("2026.04.26");
-    expect(monthSummary.effectiveEndDateLabel).toBe("2026.04.27");
-    expect(daySummary.confirmedDayLabel).toBe("1/1 天");
-    expect(weekSummary.confirmedDayLabel).toBe("3/7 天");
-    expect(monthSummary.confirmedDayLabel).toBe("3/8 天");
-    expect(daySummary.confirmedOrderLabel).not.toBe(weekSummary.confirmedOrderLabel);
-    expect(daySummary.applicationCountLabel).not.toBe(weekSummary.applicationCountLabel);
+    expect(summary.effectiveTimeLabel).toBe("-");
+    expect(summary.technicianCount).toBe(0);
+    expect(summary.activeCycle).toBeNull();
   });
 
-  it("keeps formal smart scheduling behind cold-start readiness while allowing previews", () => {
+  it("keeps formal smart scheduling unavailable until its server contract exists", () => {
     const readiness = getSmartScheduleReadiness("store-1");
 
     expect(readiness.status).toBe("cold_start");
@@ -129,7 +108,7 @@ describe("dispatch center scheduling workflow", () => {
     });
 
     expect(formalRun.ok).toBe(false);
-    expect("message" in formalRun ? formalRun.message : "").toContain("冷启动");
+    expect("message" in formalRun ? formalRun.message : "").toBe("error.feature_unavailable");
 
     const previewRun = runDispatchSmartSchedule({
       operatorId: "store-1",
@@ -137,21 +116,7 @@ describe("dispatch center scheduling workflow", () => {
       storeId: "store-1"
     });
 
-    expect(previewRun.ok).toBe(true);
-  });
-
-  it("marks smart scheduling ready after the reserved period and data gates are met", () => {
-    updateSmartScheduleAutomationPolicy("store-1", {
-      coldStartStartedAt: "2026-03-01",
-      coldStartEndsAt: "2026-03-14",
-      minimumHistoricalOrderCount: 1,
-      minimumPreferenceCoveragePercent: 50
-    });
-
-    const readiness = getSmartScheduleReadiness("store-1");
-
-    expect(readiness.status).toBe("ready");
-    expect(readiness.canRunSmartSchedule).toBe(true);
+    expect(previewRun.ok).toBe(false);
   });
 });
 

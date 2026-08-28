@@ -1,46 +1,30 @@
-# Mock Retirement Map
+# Formal Runtime Data Boundary
 
-> Step 01 baseline map, refreshed 2026-06-07. This document records existing mock/demo/local state boundaries and the planned retirement order.  
-> It does not replace any mock by itself.
+> Refreshed 2026-08-28. The normal NeeDo runtime is formal-only. It must not read browser demo datasets, use shared demo credentials, approve QR login in the client, or present local mutations as persisted business results.
 
-## 1. Retirement Policy
+## Active rule
 
-- Existing mock/demo/local state can remain as legacy compatibility until its assigned step.
-- Normal local development and production login use formal `/api/v1/auth/*`; captcha/legacy login is limited to an explicit static-demo runtime.
-- Current online static pages keep permissive static-demo fallback behavior by default. Do not enable `VITE_NEEDO_STATIC_DEMO_STRICT=true` in the online static demo build unless the goal is to catch missing API coverage during development acceptance.
-- Do not add new mock data sources, fake backend endpoints, or placeholder APIs in later formal-development steps.
-- When a module is retired, replace it with a real API contract, validation, pagination where applicable, RBAC where protected, tests, and documentation.
-- Frontend UI, portal entries, theme tokens, and routes must remain stable during mock retirement unless a step document explicitly says otherwise.
+- Production UI reads `/api/v1/*` with an authenticated session and RBAC scope.
+- Persisted test scenarios use explicit non-production test accounts and the real Prisma/MySQL path.
+- Test-account and formal-test-data seeds require explicit local/test flags and are rejected in production.
+- When a server contract is missing, the route keeps its stable entry and renders an unavailable/empty state. It does not generate substitute customers, orders, schedules, messages, metrics, or settlements.
+- Browser storage is limited to UI preferences and non-authoritative drafts. It is not a business database.
 
-## 2. Current Mock Sources
+## Retired sources
 
-| Source | Current responsibility | Persistence / runtime behavior | Retirement target | Planned step |
-|---|---|---|---|---|
-| `src/auth/demoAccount.ts` | Demo login account, demo verification code, linked customer/technician/store IDs | Imported by auth, IM account sync, mock data | Real User Management seed plus real auth/session identity | Step 04-07 |
-| `src/auth/AuthProvider.tsx` | Local auth session, portal switching, demo credential validation | `needo.auth.session` in browser storage | JWT + refresh token + `/api/v1/auth/me` + RBAC permission response | Step 05-07 |
-| `src/auth/featurePermissions.ts` | Static frontend feature permission list | In-memory only | Backend permissions, role assignments, menu/action permissions | Step 06-07 |
-| `src/data/mock.ts` | Core customers, stores, technicians, services, orders, settlements, reviews, campaigns, cities, inventory, permission modules, images | Static frontend seed module | Real read APIs and database-backed entities. Step 09 routes the main numeric/home/search/detail lanes through `src/features/core-read/api.ts`; legacy discovery, service-detail, and checkout records are now reachable only in the explicit static-demo runtime, while other compatibility imports remain owned by their later domain steps. | Step 08-12 by domain |
-| `src/state/entityStore.ts` | Editable customer/store/technician overlay | `needo.entity-store.v4` with legacy migration keys | User/Profile/Store/Technician APIs with audit history. Step 09 bypasses this store for API-backed numeric browsing/detail routes, while nonnumeric legacy profile/store links and editable/admin surfaces keep the overlay until their owning steps. | Step 08-09 for read, Step 12 for admin writes |
-| `src/state/userOrderStore.ts` | Legacy nonnumeric checkout/detail compatibility only; formal numeric checkout, customer order list, and numeric order details no longer read or mutate it | `needo.user-created-orders.v1` | Retire the remaining nonnumeric compatibility lane with its legacy routes | Step 10 |
-| `src/state/orderServiceSessionStore.ts` | In-service/extension/review/reward session state | `needo.order-service-sessions.v1` | Order service session state machine and audit logs | Step 10-11 |
-| `src/state/scheduleStore.ts` | Shared schedule data, edits, auto schedule/dispatch settings | `needo.schedule-store.v1` | Schedule API, conflict checks, generated schedule records | Step 10 |
-| `src/state/shiftPlanningStore.ts` | Shift planning cycles and projections | `needo.shift-planning.v2` | Merchant scheduling backend and projection tables | Step 10 |
-| `src/state/technicianScheduleStore.ts` | Technician duty shifts, bookings, custom events, transfer requests | `needo.technician-schedule.v1` | Technician schedule and transfer APIs | Step 10 |
-| `src/features/dispatch-center/store.ts` | Merchant dispatch center cycles, feedback, final shifts, smart schedule data, audit-like logs | `needo.dispatch-center.v1` | Merchant schedule/dispatch APIs, backend audit logs | Step 10 and Step 12 |
-| `src/features/im/api.ts` | Static-demo-only browser `/api/im/*` compatibility interceptor | `needo.im.mock-database.v3.<scope>` plus browser events; formal mode cannot hydrate it | Formal routes use `/api/v1/im/*`, `/api/v1/realtime/*`, cursor pagination, and authenticated SSE | Step 13 formal lane complete; static-demo compatibility retained |
-| `src/features/im/store.ts` and `src/features/im/seed.ts` | Static-demo-only IM UI/seed compatibility | `needo.im.ui.v*` keys are read or written only for explicit static-demo + frontend-bypass sessions | Formal routes persist pin, mute, read/unread, and personal deletion; remaining unsupported advanced IM capabilities are gated | Step 13 formal lane complete; static-demo compatibility retained |
-| `src/features/social/context.tsx` | Static-demo-only advanced Social compatibility state | `needo.social.module.v2` is disabled in formal sessions; mutations reject with `error.feature_unavailable` | Formal routes use persisted post/follow/notification APIs and authenticated SSE | Step 13 basic formal lane complete; advanced Social remains gated |
-| `src/features/dine-in/store.ts` | QR sessions, menus, carts, dine-in orders, checkout state | `needo.dine-in.state.v1` | Dine-in menu/order/session APIs and merchant permissions | Step 10 or Step 12, depending on final API cut |
-| `src/features/shop-member/store.ts` and `src/features/shop-member/seed.ts` | Member cards, top-up/consume/refund/freeze flows, member snapshots | `needo.shop-member-system.v1` | Shop member/customer/ledger APIs with audit logs | Step 11-12 |
-| `src/features/business-cps/model.ts`, `logic.ts`, admin/mobile pages | Afirieito campaigns, commissions, promoters, tracking, settlement-like state | `needo.afirieito.runtime.v1`, legacy `needo.business-cps.runtime.v1`, admin draft keys | Afirieito campaign/attribution/commission/payout APIs | Step 12 |
-| `src/features/settings/portalSettingsState.ts` | Per-portal settings preferences | `needo.settings.portal.<portal>.v1` | Account/profile/settings APIs after auth is real | Step 07 and Step 12 by field |
-| `src/components/scheduling/UnifiedUserCalendar.tsx` | Local calendar events and IM tag UI | `needo.user-unified-calendar.v1` and UI keys | User calendar API and external calendar sync records | Step 10 |
-| `src/api/staticDemo.ts` | Browser-side static-demo `/api/v1/*` interception for Auth/RBAC, core read, Booking, backoffice, finance, payroll, and fallback empty responses | Included only by the dedicated `build:static` target or development/test runtime. Normal `build` compiles the loader out and the release artifact audit rejects its chunk/markers. | Use strict mode in development acceptance to reveal missing API coverage, then retire per owning domain | Cross-cutting guardrail; default must stay permissive for the dedicated static demo only |
-| `scripts/mock-backend.mjs` | Local health service plus Google account/calendar and translation helper routes | Node process on port `4176`; temp JSON token stores by env path | Formal backend service, env config, API contracts | Step 02 onward; helper behavior removed or renamed when real backend owns it |
+The following legacy runtime sources have been deleted:
 
-## 3. Current Direct `src/data/mock.ts` Consumers
+- `src/data/mock.ts`
+- `src/auth/demoAccount.ts`
+- `src/data/demoAppointmentSeeds.ts`
+- `src/features/im/api.ts`, `seed.ts`, and `account-sync.ts`
+- `src/features/business-cps/model.ts` and its local calculation runtime
+- `src/features/shop-member/*` local member/ledger runtime
+- `src/lib/detailProfiles.ts`
+- `src/lib/needoExchangeBridge.ts`
+- `src/components/mobile/MobileMessageCenter.tsx`
 
-These files import from the central mock module and should not be rewired until their planned step:
+Large local-only member, analytics, social, scheduling, checkout, CPS, IM, and profile datasets were removed or replaced by formal API capability gates. Legacy storage keys are no longer used for business truth; stores that remain for UI compatibility start empty and cannot create a successful local business mutation.
 
 - Step 09 core browsing: `src/pages/user/CategoryPage.tsx` and `src/pages/user/ServiceDetailPage.tsx` use core-read APIs in formal mode and never fall back to legacy services, shops, or technicians when the API is loading, empty, or unavailable. Their remaining `src/data/mock.ts` imports are reachable only when `isStaticDemoMode()` is true. Category custom-keyword searches use the global `/api/v1/search` scope unless the user explicitly selects a category or category tag, so the page's default category does not hide matching shops. `src/pages/user/ProfileDetailPage.tsx` uses Step 08 APIs for numeric `user` / `technician` / `shop` profile IDs and keeps Social profile fallback for legacy nonnumeric links.
 - Step 09 homepage: `src/pages/user/HomePage.tsx` reads recommendations from `/api/v1/home/recommendations`; formal mode now shows loading, error, or empty states instead of legacy service/store/technician records. A transient timeout or network/server interruption receives one bounded retry, and the final error state exposes a manual reload action; neither recovery path falls back to legacy records. Its mock recommendation fallback is restricted to explicit static-demo mode. Other remaining mock imports support appointment reminder/category-label compatibility owned by Booking/Order later steps. `src/pages/user/StoreDetailPage.tsx` routes numeric store IDs to the isolated `FormalStoreDetailPage`, which renders only `/api/v1/shops/:id` shop, service, technician and aggregate-review fields. Nonnumeric legacy stores are reachable only in explicit static-demo mode; `StoreDetailExperience` remains for direct merchant presentation compatibility and is not used by numeric formal routes.
@@ -51,35 +35,23 @@ These files import from the central mock module and should not be rewired until 
 - Feature stores/models: `src/features/im/*`, `src/features/social/context.tsx`, `src/features/dispatch-center/*`, `src/features/technician-schedule/*`, `src/features/shop-member/*`, `src/features/dine-in/*`
 - Shared/components: `src/components/mobile/MobileMessageCenter.tsx`, `src/components/mobile/OrderServiceMiniCard.tsx`, `src/components/admin/*`, `src/components/scheduling/UnifiedUserCalendar.tsx`
 
-## 4. Replacement Priority By Product Step
+## Formal seed boundary
 
-| Priority | Scope | Replace first | Keep until later |
-|---|---|---|---|
-| P0 | Auth/User Management | Demo credentials, local auth session, static permissions | Legacy UI routes and portal shells |
-| P1 | Core read APIs | Home/search/category/profile/store/service read data | Booking, orders, scheduling, finance, IM, Social |
-| P2 | Frontend first mock retirement | User browsing pages and read-only profile/detail views | Transaction and realtime workflows |
-| P3 | Booking/scheduling/order | Checkout, order creation, order status, service sessions, schedule conflict checks, technician transfer | NDP finance and realtime IM/Social |
-| P4 | NDP/finance/accounting | Settlement-like flows, NDP reward/ledger, shop-member card finance operations | Non-financial UI preferences |
-| P5 | Backoffice/merchant admin | Operations admin and merchant admin read/write workflows | Realtime IM/Social/notification internals if not in Step 13 |
-| P6 | IM/Social/Notification | IM REST/WebSocket, social posts/follows/notifications, official notification delivery | Local UI-only preferences |
+- `ALLOW_TEST_LOGIN=true` permits required test-account provisioning only in `local` or `test` deployments.
+- `ALLOW_FORMAL_TEST_SEED=true` permits persisted category, shop, technician, service, and related read data only in `local` or `test` deployments.
+- Both paths use the formal schema, transactions, uniqueness constraints, password hashing, public-ID allocator, and rollback behavior.
+- Production rejects these flags. There is no production fallback account.
 
-## 5. Non-Retirement Notes
+## Identity acceptance
 
-- Generated images under `public/images/generated` are visual assets, not API mocks. They may remain as assets unless a later media storage/CDN step replaces them.
-- UI preferences such as theme, drawer width, collapsed navigation, floating button position, pet settings, and dismissed notices can remain browser-local unless a later product requirement asks for account sync.
-- Tests may continue to use seed fixtures as test fixtures. Test fixtures must not become production API behavior.
-- `docs/FRONTEND_IA.md`, admin docs content, and API doc editor data are documentation/UI content, not real backend contracts.
-- Static-demo strict mode is an acceptance tool, not the default demo runtime. The default static build remains `VITE_NEEDO_STATIC_DEMO=true` only, so missing static fallback paths continue to render empty objects/lists instead of breaking the online static page.
-- `npm run build` is the formal artifact and excludes `src/api/staticDemo.ts`; `npm run build:static` is the only deployable static-demo artifact. Do not upload a static-demo artifact to a formal environment.
+- A normal account owns one ten-digit `accountNo`; enabled login identities use `u/s/b/o` plus those digits.
+- Company-assigned accounts use `needo` plus ten digits and do not receive an additional `u` public ID.
+- Login by email, phone, digits-only account number, `u...`, or `needo...` enters the customer portal; `s...`, `b...`, and `o...` select those active identities.
+- Shop and owner entities retain their own persisted `shopNo` and `ownerNo`; customer-visible IDs are never derived from an internal numeric row ID.
+- ID allocation is server-side, collision-bounded, transactional, and rolls back the entire account/entity creation when exhausted.
 
-## 6. Guardrails For Each Retirement PR
+## Guardrails
 
-Before retiring any row in this map:
+`src/data/mockRetirement.test.ts` fails if deleted sources return, production code imports the old central dataset, or known legacy IDs/credentials/client-approved QR tokens are reintroduced. Formal production build auditing remains required before release.
 
-- Confirm the owning step document allows that module.
-- Add or update API contract docs before frontend rewiring.
-- Add backend validation and pagination for list APIs.
-- Add permission declarations for protected APIs.
-- Keep old route paths and portal entries working.
-- Include migration/seed only when the database step allows it.
-- Update this map with the final source of truth and removed legacy keys.
+Generated images are presentation assets, not records. Unit-test fixtures may remain inside test files but cannot be imported by production code or used as an API fallback.

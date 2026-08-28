@@ -26,8 +26,8 @@ export const buildFormalTestAccountExportRow = (
   source: FormalTestAccountExportSource,
   password: string
 ): FormalTestAccountExportRow => {
-  if (!/^n\d{10}$/.test(source.needoId)) {
-    throw new Error("NeeDo ID must match n plus ten digits.");
+  if (!/^(?:u|needo)\d{10}$/.test(source.needoId)) {
+    throw new Error("Primary public ID must match U or NEEDO plus ten digits.");
   }
 
   return {

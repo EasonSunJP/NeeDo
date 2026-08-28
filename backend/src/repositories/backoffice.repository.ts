@@ -1,6 +1,11 @@
 import { Prisma, TechnicianEmploymentType, type PrismaClient } from "@prisma/client";
 import { prisma } from "../prisma/client";
-import { NeedoIdAllocator } from "../services/needo-id.service";
+import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.service";
+import {
+  IdentifierAllocator,
+  formatPersonId
+} from "../services/public-identifier.service";
+import { PublicIdentifierRepository } from "./public-identifier.repository";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import {
@@ -183,7 +188,9 @@ type ServiceRecord = Prisma.ServiceGetPayload<{
 export class BackofficeRepository implements BackofficeRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly needoIdAllocator = new NeedoIdAllocator()
+    private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
+    private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
+      new IdentifierAllocator(new PublicIdentifierRepository(client))
   ) {}
 
   public async getDashboard(scope: BackofficeScope): Promise<BackofficeDashboardPayload> {
@@ -883,21 +890,54 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
   }
 
   public createShop(input: BackofficeShopCreateData): Promise<BackofficeShopPayload> {
-    return this.needoIdAllocator.withNewId((needoId) => this.client.$transaction(async (transaction) => {
-      const role = await transaction.role.findFirst({
-        where: { code: "merchant_owner", deletedAt: null }
+    return this.bootstrapKeyAllocator.withNewKey((bootstrapKey) => this.client.$transaction(async (transaction) => {
+      const roles = await transaction.role.findMany({
+        where: { code: { in: ["customer", "merchant_owner"] }, deletedAt: null },
+        select: { id: true, code: true }
       });
-      if (!role) {
-        throw new Error("Registration role is missing: merchant_owner");
+      const customerRole = roles.find((role) => role.code === "customer");
+      const merchantRole = roles.find((role) => role.code === "merchant_owner");
+      if (!customerRole || !merchantRole) {
+        throw new Error("Registration roles are missing: customer or merchant_owner");
       }
       const owner = await transaction.user.create({
         data: {
-          needoId,
+          needoId: bootstrapKey,
           email: input.ownerEmail,
           emailVerifiedAt: new Date(),
           passwordHash: input.ownerPasswordHash,
           username: input.ownerUsername,
           isActive: false
+        }
+      });
+      const customerProfile = await transaction.customerProfile.create({
+        data: { userId: owner.id, displayName: input.ownerUsername }
+      });
+      const customerIdentity = await transaction.userIdentity.create({
+        data: {
+          userId: owner.id,
+          type: "customer",
+          scopeType: "customer_profile",
+          scopeId: customerProfile.id,
+          displayName: input.ownerUsername,
+          isDefault: true,
+          isActive: true
+        }
+      });
+      const primaryIdentifier = await this.createIdentifierAllocator(transaction).allocate({
+        kind: "U",
+        userIdentityId: customerIdentity.id
+      });
+      await transaction.user.update({
+        where: { id: owner.id },
+        data: { needoId: primaryIdentifier.publicId }
+      });
+      await transaction.userRole.create({
+        data: {
+          userId: owner.id,
+          roleId: customerRole.id,
+          scopeType: "customer_profile",
+          scopeId: customerProfile.id
         }
       });
       const shop = await transaction.shop.create({
@@ -912,21 +952,29 @@ export class BackofficeRepository implements BackofficeRepositoryPort {
           isRecommended: input.isRecommended ?? false
         }
       });
-      await transaction.userIdentity.create({
+      const merchantIdentity = await transaction.userIdentity.create({
         data: {
           userId: owner.id,
           type: "merchant_owner",
           scopeType: "shop",
           scopeId: shop.id,
           displayName: input.ownerUsername,
-          isDefault: true,
+          isDefault: false,
           isActive: false
         }
+      });
+      await new PublicIdentifierRepository(transaction).createIdentifier({
+        publicId: formatPersonId("B", primaryIdentifier.numberPart),
+        numberPart: primaryIdentifier.numberPart,
+        kind: "B",
+        userIdentityId: merchantIdentity.id,
+        loginAllowed: true,
+        searchable: true
       });
       await transaction.userRole.create({
         data: {
           userId: owner.id,
-          roleId: role.id,
+          roleId: merchantRole.id,
           scopeType: "shop",
           scopeId: shop.id
         }

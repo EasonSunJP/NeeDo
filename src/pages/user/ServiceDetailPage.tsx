@@ -11,8 +11,6 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { HighlightedTagText } from "../../components/ui/HighlightedTagText";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
-import { services as legacyServices } from "../../data/mock";
 import { coreReadApi, coreReadIdFromRoute, mapCoreServiceToServiceItem, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
@@ -121,13 +119,9 @@ function ServiceDetailContent() {
     () => (apiId ? coreReadApi.getServiceDetail(apiId) : null),
     [apiId]
   );
-  const legacyService = useMemo(
-    () => (isStaticDemoMode() && !apiId && id ? legacyServices.find((item) => item.id === id) ?? null : null),
-    [apiId, id]
-  );
   const service = useMemo(
-    () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : legacyService),
-    [legacyService, serviceQuery.data]
+    () => (serviceQuery.data ? mapCoreServiceToServiceItem(serviceQuery.data) : null),
+    [serviceQuery.data]
   );
   const [selectedPackageId, setSelectedPackageId] = useState("");
   const [liked, setLiked] = useState(false);
@@ -159,7 +153,7 @@ function ServiceDetailContent() {
     return <ServiceDetailStatus description={serviceQuery.error} title="服务读取失败" />;
   }
 
-  if (!apiId && !isStaticDemoMode()) {
+  if (!apiId) {
     return <ServiceDetailStatus description="请从真实店铺或服务列表重新选择可预约项目。" title="服务链接不可用" />;
   }
 

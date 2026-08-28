@@ -100,7 +100,19 @@ describe("GET /api/v1/openapi.json", () => {
       })
     );
     expect(response.body.components.schemas.AuthMe.required).toEqual(
-      expect.arrayContaining(["needoId", "emailVerifiedAt", "hasPassword", "identityAvailability"])
+      expect.arrayContaining([
+        "needoId",
+        "primaryPublicId",
+        "activeIdentityId",
+        "activePublicId",
+        "emailVerifiedAt",
+        "hasPassword",
+        "identityAvailability"
+      ])
+    );
+    expect(response.body.components.schemas.AuthIdentity.required).toContain("publicId");
+    expect(response.body.components.schemas.AuthMe.properties.needoId.pattern).toBe(
+      "^(?:u|needo)[0-9]{10}$"
     );
     expect(response.body.components.schemas.AuthMe.properties.identityAvailability).toMatchObject({
       type: "array",
@@ -666,6 +678,7 @@ describe("GET /api/v1/openapi.json", () => {
     expect(response.body.components.schemas.CustomerSelfProfile.required).toEqual(
       expect.arrayContaining([
         "id",
+        "publicId",
         "displayName",
         "avatarUrl",
         "gender",
@@ -691,10 +704,7 @@ describe("GET /api/v1/openapi.json", () => {
             responses: Record<
               string,
               {
-                content: Record<
-                  string,
-                  { schema: { properties: Record<string, unknown> } }
-                >;
+                content: Record<string, { schema: { properties: Record<string, unknown> } }>;
               }
             >;
           };
@@ -743,6 +753,25 @@ describe("GET /api/v1/openapi.json", () => {
       "recent_posts",
       "no_recent_posts"
     ]);
+  });
+
+  it("keeps the additive public-identifier foundation out of runtime contracts until cutover", () => {
+    const document = createOpenApiDocument(env) as {
+      paths: Record<string, unknown>;
+      components: {
+        schemas: Record<string, { properties?: Record<string, unknown> }>;
+      };
+    };
+
+    for (const schemaName of ["AuthMe", "RealtimeParticipant", "SocialProfileSummary"]) {
+      expect(document.components.schemas[schemaName]?.properties).not.toHaveProperty("accountNo");
+      expect(document.components.schemas[schemaName]?.properties).not.toHaveProperty("publicId");
+      expect(document.components.schemas[schemaName]?.properties).not.toHaveProperty(
+        "primaryIdentityType"
+      );
+    }
+    expect(document.paths).not.toHaveProperty("/api/v1/public-identifiers");
+    expect(document.paths).not.toHaveProperty("/api/v1/public-identifiers/{publicId}");
   });
 
   it("documents the configured access-token lifetime instead of a fixed default", () => {

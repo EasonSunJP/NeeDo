@@ -19,12 +19,12 @@ const context = { ip: "127.0.0.1", userAgent: "google-auth-service-test" };
 
 const createUser = (overrides: Partial<AuthUserRecord> = {}): AuthUserRecord => ({
   id: 1,
-  needoId: "n0000000001",
+  needoId: "u0000000001",
   email: "existing@example.com",
   emailVerifiedAt: new Date("2026-08-26T00:00:00.000Z"),
   phone: null,
   passwordHash: null,
-  username: "n0000000001",
+  username: "u0000000001",
   avatarUrl: null,
   isActive: true,
   sessionGeneration: 0,
@@ -38,7 +38,7 @@ const createUser = (overrides: Partial<AuthUserRecord> = {}): AuthUserRecord => 
       type: "customer",
       scopeType: "customer_profile",
       scopeId: 1,
-      displayName: "n0000000001",
+      displayName: "u0000000001",
       isDefault: true,
       isActive: true,
       deletedAt: null
@@ -219,10 +219,10 @@ const createFixture = () => {
     createVerifiedBaselineCustomer: jest.fn(async (input) => {
       const user = createUser({
         id: users.length + 1,
-        needoId: `n${String(users.length + 1).padStart(10, "0")}`,
+        needoId: `u${String(users.length + 1).padStart(10, "0")}`,
         email: input.email,
         passwordHash: input.passwordHash,
-        username: `n${String(users.length + 1).padStart(10, "0")}`
+        username: `u${String(users.length + 1).padStart(10, "0")}`
       });
       users.push(user);
       if (input.googleIdentity) {
@@ -464,7 +464,7 @@ describe("formal Google sign-in service", () => {
       context
     );
 
-    expect(created).toMatchObject({ needoId: "n0000000002" });
+    expect(created).toMatchObject({ needoId: "u0000000002" });
     expect(fixture.repository.createVerifiedBaselineCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "new@example.com",
@@ -472,7 +472,7 @@ describe("formal Google sign-in service", () => {
         googleIdentity: expect.objectContaining({ subject: "google-subject-2" })
       })
     );
-    expect(fixture.users[1].username).toBe("n0000000002");
+    expect(fixture.users[1].username).toBe("u0000000002");
   });
 
   it("fails closed for nonce replay and never exposes provider credential or subject", async () => {

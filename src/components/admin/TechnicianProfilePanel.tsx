@@ -5,7 +5,7 @@ import { ScheduleSearchField } from "../scheduling/ScheduleSearchField";
 import { UnifiedUserCalendar } from "../scheduling/UnifiedUserCalendar";
 import { Badge } from "../ui/Badge";
 import { Tabs } from "../ui/Tabs";
-import { technicianMoments } from "../../data/mock";
+import { emptyTechnicianMoments as technicianMoments } from "../../data/formalRuntimeFallbacks";
 import { buildStaffCompensationRule, calculateStaffCompensation } from "../../lib/staffCompensation";
 import { parseBrowserStorageJson, writeBrowserStorage } from "../../lib/browserStorage";
 import { cn, yen } from "../../lib/utils";

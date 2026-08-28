@@ -161,7 +161,6 @@ export function DineOrderWorkspace({
     <div className="space-y-4">
       {!hideTopIntro ? (
         <DineInWorkspaceHeader
-          actions={<Button onClick={() => actions.reset()} size="sm" variant="secondary">重置演示数据</Button>}
           subtitle="店内扫码产生的 DINE_IN 订单独立于原 Booking / Request，接单、出品、上菜和收款都在这里闭环。"
           title="点单 / オーダー"
         />

@@ -1,4 +1,10 @@
-import { customers, imageBank, orders, stores, technicians } from "../data/mock";
+import {
+  emptyCustomers as customers,
+  emptyOrders as orders,
+  emptyStores as stores,
+  emptyTechnicians as technicians,
+  formalMediaFallback as imageBank
+} from "../data/formalRuntimeFallbacks";
 import {
   getMerchantCustomerConversationId,
   getMerchantTechnicianConversationId,

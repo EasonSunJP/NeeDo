@@ -22,7 +22,6 @@ import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderIn
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileFullscreenPage } from "../../components/mobile/MobileFullscreenPage";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { MobileMessageCenter } from "../../components/mobile/MobileMessageCenter";
 import {
   ContactInfoStatusPanel,
   type ContactInfoStatusFilter,
@@ -40,7 +39,7 @@ import { Button } from "../../components/ui/Button";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
-import { imageBank, orders, settlements } from "../../data/mock";
+import { emptyOrders as orders, emptySettlements as settlements, formalMediaFallback as imageBank } from "../../data/formalRuntimeFallbacks";
 import { DispatchOverviewWorkspace } from "../../features/dispatch-center/components/OverviewWorkspace";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";

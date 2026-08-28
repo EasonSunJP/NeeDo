@@ -4,8 +4,8 @@ import checkoutSource from "./CheckoutPage.tsx?raw";
 
 describe("formal customer checkout", () => {
   it("routes numeric services into an isolated API-only checkout", () => {
-    expect(checkoutSource).toContain("if (isBookingApiId(serviceId))");
-    expect(checkoutSource).toContain("return <FormalCheckoutPage serviceId={Number(serviceId)} />;");
+    expect(checkoutSource).toContain("isBookingApiId(serviceId)");
+    expect(checkoutSource).toContain("? <FormalCheckoutPage serviceId={Number(serviceId)} />");
     expect(formalSource).toContain("coreReadApi.getServiceDetail(serviceId)");
     expect(formalSource).toContain("bookingApi.listAvailability");
     expect(formalSource).toContain("bookingApi.createBooking");
@@ -14,7 +14,7 @@ describe("formal customer checkout", () => {
   });
 
   it("keeps mock checkout data exclusive to explicit static-demo mode", () => {
-    expect(checkoutSource).toContain("isStaticDemoMode() ? <LegacyCheckoutPage />");
+    expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
     expect(checkoutSource).toContain('<Navigate replace to="/categories" />');
   });
 

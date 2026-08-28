@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import source from "./UserCenterPage.tsx?raw";
 
 describe("UserCenterPage", () => {
+  it("has no legacy mock or static-preview fallback in the formal user center", () => {
+    expect(source).not.toContain('from "../../data/mock"');
+    expect(source).not.toContain("legacyOrderShortcuts");
+    expect(source).not.toContain("frontend-bypass");
+    expect(source).not.toContain("customers[0]");
+    expect(source).not.toContain("?? 18420");
+    expect(source).not.toContain('|| "Mia"');
+  });
+
   it("does not show the recent user feedback section", () => {
     expect(source).not.toContain("近期用户反馈");
     expect(source).not.toContain("userStories.map");
@@ -63,7 +72,8 @@ describe("UserCenterPage", () => {
     expect(source).toContain("profilePrivacyConfirmOpen");
     expect(source).toContain("confirmProfilePrivacyEnabled");
     expect(source).toContain("absolute right-0 top-[calc(100%+8px)]");
-    expect(source).toContain('isEditingProfile ? "min-h-36" : "h-36"');
+    expect(source).toContain('className="flex min-h-36 min-w-0 flex-1 flex-col"');
+    expect(source).not.toContain('isEditingProfile ? "min-h-36" : "h-36"');
     expect(source).toContain("mt-auto rounded-[18px]");
     expect(source).toContain("z-[90]");
     expect(source).toContain("UserProfilePrivacyInfoButton");

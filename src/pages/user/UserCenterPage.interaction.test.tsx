@@ -16,13 +16,15 @@ const testState = vi.hoisted(() => ({
   updateCustomerEntity: vi.fn(() => true),
   updateTechnicianEntity: vi.fn(() => true),
   loginMethod: "password",
+  currentIdentityScopeId: 41 as number | null,
+  currentIdentityType: "customer",
   previewCustomer: null as Record<string, unknown> | null
 }));
 
 vi.mock("../../auth/AuthProvider", () => ({
   useAuth: () => ({
     session: {
-      currentIdentity: { scopeId: 41, type: "customer" },
+      currentIdentity: { scopeId: testState.currentIdentityScopeId, type: testState.currentIdentityType },
       linkedCustomerId: "customer-1",
       loginMethod: testState.loginMethod
     }
@@ -72,6 +74,7 @@ const savedProfile: CustomerSelfProfile = {
   gender: "private" as const,
   heightCm: 171,
   id: 41,
+  publicId: "u3141592653",
   isPublic: false,
   languages: ["日本語"],
   membershipLevel: "standard",
@@ -157,6 +160,8 @@ describe("UserCenterPage inline profile editing", () => {
     root = createRoot(container);
     vi.clearAllMocks();
     testState.loginMethod = "password";
+    testState.currentIdentityScopeId = 41;
+    testState.currentIdentityType = "customer";
     testState.previewCustomer = null;
     testState.getMine.mockResolvedValue(savedProfile);
     testState.getMyWallet.mockResolvedValue({
@@ -331,8 +336,9 @@ describe("UserCenterPage inline profile editing", () => {
     expect(testState.updateMine).toHaveBeenCalledWith(expect.objectContaining({ gender: "private" }));
   });
 
-  it("uses the mounted fixed save action in frontend-bypass preview without calling the formal API", async () => {
-    testState.loginMethod = "frontend-bypass";
+  it("fails closed instead of rendering a legacy customer for a formal non-customer identity", async () => {
+    testState.currentIdentityScopeId = null;
+    testState.currentIdentityType = "platform";
     testState.previewCustomer = {
       activeScore: 0,
       age: "36",
@@ -346,7 +352,7 @@ describe("UserCenterPage inline profile editing", () => {
       lastOrderAt: "2026-08-26",
       ltv: 0,
       memberLevel: "standard",
-      name: "预览原名",
+      name: "Mia",
       orderCount: 0,
       phone: "",
       points: 0,
@@ -354,19 +360,19 @@ describe("UserCenterPage inline profile editing", () => {
       tags: []
     };
 
-    await renderUserCenter("预览原名");
+    await act(async () => {
+      root.render(
+        <MemoryRouter>
+          <UserCenterPage />
+        </MemoryRouter>
+      );
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("当前身份没有读取个人数据的权限"));
     expect(testState.getMine).not.toHaveBeenCalled();
-
-    await click(findIconButton("编辑资料"));
-    const nickname = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="昵称"]');
-    await inputValue(nickname!, "预览已保存");
-    await click(findButton("保存并退出编辑模式"));
-
-    await waitFor(() => expect(container.textContent).toContain("预览已保存"));
-    expect(testState.updateCustomerEntity).toHaveBeenCalledWith(
-      "customer-1",
-      expect.objectContaining({ nickname: "预览已保存" })
-    );
+    expect(container.textContent).not.toContain("Mia");
+    expect(container.textContent).not.toContain("18,420");
     expect(testState.updateMine).not.toHaveBeenCalled();
   });
+
 });

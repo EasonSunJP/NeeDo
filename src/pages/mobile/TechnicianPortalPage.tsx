@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, type AuthSession } from "../../auth/AuthProvider";
 import { ApiClientError } from "../../api/httpClient";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import {
   createCustomContactCategoryDraft,
   CustomContactCategoryEditor,
@@ -26,7 +25,6 @@ import { ChatConversationInfoCard } from "../../components/mobile/ChatConversati
 import { ContactEventTimelinePanel, type ContactEventTimelineEntry, type ContactEventTimelineTone } from "../../components/mobile/ContactEventTimeline";
 import { FloatingActionButton } from "../../components/mobile/FloatingActionButton";
 import { MobileShell } from "../../components/mobile/MobileShell";
-import { MobileMessageCenter } from "../../components/mobile/MobileMessageCenter";
 import { OrderServiceMiniCard, findOrderService } from "../../components/mobile/OrderServiceMiniCard";
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { SectionTitle } from "../../components/mobile/SectionTitle";
@@ -51,7 +49,7 @@ import { NotificationBadge } from "../../components/ui/NotificationBadge";
 import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirmDialog";
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
-import { fieldJobs, orders } from "../../data/mock";
+import { emptyFieldJobs as fieldJobs, emptyOrders as orders } from "../../data/formalRuntimeFallbacks";
 import { coreReadApi, mapCoreShopToStore, mapCoreTechnicianToTechnician } from "../../features/core-read/api";
 import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
@@ -78,7 +76,7 @@ import { getServiceStartCode } from "../../lib/serviceStartCode";
 import { shareContent } from "../../lib/share";
 import { getActivePolicyForStore, getPolicyStatusLabel, getResponseStatusLabel, getScheduleContextLabel, resolveScheduleContext } from "../../lib/shiftPlanning";
 import { buildTrendCoordinates, buildTrendPolylineFromIndexes } from "../../lib/technicianWorkTrendChart";
-import { buildTechnicianWorkAnalyticsSeed } from "../../lib/technicianWorkAnalytics";
+import { getFormalTechnicianWorkAnalyticsEvents } from "../../lib/technicianWorkAnalytics";
 import { updateCustomerEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import {
   dismissOrderServiceReview,
@@ -2189,7 +2187,6 @@ function getTechnicianView(view?: string): TechnicianView {
 
 function getFormalTechnicianProfileId(session: AuthSession | null) {
   if (
-    isStaticDemoMode() ||
     session?.portal !== "technician" ||
     session.currentIdentity.scopeType !== "technician_profile"
   ) {
@@ -3349,7 +3346,7 @@ export function TechnicianPortalPage() {
     .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
   const workAnalyticsSeedEvents = useMemo<TechnicianScheduleEvent[]>(
     () =>
-      buildTechnicianWorkAnalyticsSeed({
+      getFormalTechnicianWorkAnalyticsEvents({
         technicianId: baseTech.id,
         storeName: store.name,
         customerNames: customers.slice(0, 4).map((customer) => customer.name),
@@ -3514,29 +3511,6 @@ export function TechnicianPortalPage() {
   const rangeEvents = scheduleEvents.filter((event) => rangeDates.includes(event.date));
   const timelineBaseDate = scheduleScope === "day" ? scheduleAnchorDate : (scheduleSelectedDate ?? null);
   const isShowingEntireScheduleRange = scheduleScope !== "day" && !timelineBaseDate;
-  const recentReviewCards = [
-    {
-      id: "review-1",
-      customer: customers[0]?.name ?? "Aki",
-      rating: 4.9,
-      date: "2026-04-12",
-      content: "到达前确认很及时，手法稳定，沟通也很舒服，下次还会继续约。"
-    },
-    {
-      id: "review-2",
-      customer: customers[1]?.name ?? "Mia",
-      rating: 4.8,
-      date: "2026-04-09",
-      content: "时间安排很准，途中状态同步清楚，服务结束后的建议也很专业。"
-    },
-    {
-      id: "review-3",
-      customer: customers[2]?.name ?? "Luna",
-      rating: 4.7,
-      date: "2026-04-05",
-      content: "语言沟通顺畅，照顾到我的临时需求，整体体验很安心。"
-    }
-  ];
   const timelineEvents = timelineBaseDate ? getScheduleEventsForDate(timelineBaseDate) : rangeEvents;
   const isSingleDateTimeline = Boolean(timelineBaseDate);
   const monthGridDates = getMonthGridDates(scheduleAnchorDate);
@@ -6817,19 +6791,8 @@ export function TechnicianPortalPage() {
                     </div>
                   ))}
                 </section>
-                <section className="space-y-3">
-                  {recentReviewCards.map((review) => (
-                    <article className="rounded-lg border border-line bg-white p-4 shadow-panel" key={review.id}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-black">{review.customer}</h3>
-                          <p className="mt-1 text-xs text-ink/45">{review.date}</p>
-                        </div>
-                        <Badge tone="yellow">★ {review.rating.toFixed(1)}</Badge>
-                      </div>
-                      <p className="mt-3 text-sm leading-6 text-ink/65">{review.content}</p>
-                    </article>
-                  ))}
+                <section className="rounded-lg border border-line bg-white p-4 text-sm font-bold leading-6 text-ink/55 shadow-panel">
+                  评价明细 API 尚未启用，当前不展示本地生成的评价内容。
                 </section>
               </main>
           </MobileFullscreenPage>

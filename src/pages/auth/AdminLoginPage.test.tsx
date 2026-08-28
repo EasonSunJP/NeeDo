@@ -91,12 +91,13 @@ describe("AdminLoginPage formal password surface", () => {
   }
 
   it("keeps browser password saving opt-in", () => {
-    const username = container.querySelector<HTMLInputElement>('input[autocomplete="username"]');
-    const password = container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]');
+    const account = container.querySelector<HTMLInputElement>('input[placeholder="admin@example.com"]');
+    const password = container.querySelector<HTMLInputElement>('input[type="password"]');
 
-    expect(container.querySelector<HTMLInputElement>('input[value="admin"]')).not.toBeNull();
-    expect(username).toBeNull();
-    expect(password).toBeNull();
+    expect(account?.value).toBe("");
+    expect(account?.autocomplete).toBe("off");
+    expect(password?.value).toBe("");
+    expect(password?.autocomplete).toBe("off");
     expect(container.querySelector('[role="switch"]')?.getAttribute("aria-checked")).toBe("false");
     expect(container.textContent).not.toContain("Remember account and password");
   });
@@ -139,7 +140,7 @@ describe("AdminLoginPage formal password surface", () => {
 
     expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect(window.localStorage.getItem("needo.auth.browser-password-save.backend:admin")).toBe("true");
-    expect(container.querySelector<HTMLInputElement>('input[autocomplete="username"]')?.value).toBe("admin");
+    expect(container.querySelector<HTMLInputElement>('input[autocomplete="username"]')?.value).toBe("");
     expect(container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')?.value).toBe("");
   });
 
@@ -150,7 +151,9 @@ describe("AdminLoginPage formal password surface", () => {
     });
     const toggle = container.querySelector<HTMLButtonElement>('[role="switch"]')!;
     await act(async () => toggle.click());
+    const account = container.querySelector<HTMLInputElement>('input[autocomplete="username"]')!;
     const password = container.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')!;
+    setInput(account, "admin@lifedance.com");
     setInput(password, "Strong.Password.2026");
 
     await act(async () => {
@@ -158,7 +161,7 @@ describe("AdminLoginPage formal password surface", () => {
     });
 
     expect(mocked.requestBrowserPasswordSave).toHaveBeenCalledWith({
-      id: "admin",
+      id: "admin@lifedance.com",
       name: "Operations Admin",
       password: "Strong.Password.2026"
     });

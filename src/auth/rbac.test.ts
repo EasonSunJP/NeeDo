@@ -5,12 +5,17 @@ import {
   canUseUserSessionForClientPortal,
   canAccessPortalFromSession,
   hasPermissionInSession,
+  findIdentityForPortal,
+  isSessionAlignedWithPortal,
   type AuthMePayload
 } from "./rbac";
 
 const baseMe = {
   id: 1,
-  needoId: "n0000000001",
+  needoId: "needo0000000001",
+  primaryPublicId: "needo0000000001",
+  activeIdentityId: 1,
+  activePublicId: "needo0000000001",
   email: "admin@example.com",
   emailVerifiedAt: "2026-08-27T00:00:00.000Z",
   hasPassword: true,
@@ -19,6 +24,7 @@ const baseMe = {
   isActive: true,
   currentIdentity: {
     id: 1,
+    publicId: "needo0000000001",
     type: "platform",
     scopeType: "global",
     scopeId: null
@@ -26,6 +32,7 @@ const baseMe = {
   identities: [
     {
       id: 1,
+      publicId: "needo0000000001",
       type: "platform",
       scopeType: "global",
       scopeId: null
@@ -37,6 +44,18 @@ const baseMe = {
 } satisfies AuthMePayload;
 
 describe("frontend RBAC session helpers", () => {
+  it("keeps an organization O identity inside the merchant portal", () => {
+    const organizationIdentity = {
+      id: 9,
+      type: "merchant_organization",
+      scopeType: "merchant_account",
+      scopeId: 4
+    };
+
+    expect(findIdentityForPortal([organizationIdentity], "merchant")).toEqual(
+      organizationIdentity
+    );
+  });
   it("derives admin portal access from the real /auth/me identity and roles", () => {
     const session = buildAuthSessionFromMe(baseMe, "admin", "password");
 
@@ -64,6 +83,26 @@ describe("frontend RBAC session helpers", () => {
     expect(session.portal).toBe("user");
     expect(session.allowedPortals).toEqual(["admin", "user"]);
     expect(canAccessPortalFromSession(session, "user")).toBe(true);
+  });
+
+  it("distinguishes portal authorization from the active backend identity", () => {
+    const session = buildAuthSessionFromMe(
+      {
+        ...baseMe,
+        identities: [
+          ...baseMe.identities,
+          { id: 2, type: "customer", scopeType: "customer_profile", scopeId: 10 }
+        ],
+        roles: ["admin", "customer"],
+        permissions: [...baseMe.permissions, "page:client-app"],
+        menus: [...baseMe.menus, "menu:client-app"]
+      },
+      "user",
+      "password"
+    );
+
+    expect(canAccessPortalFromSession(session, "user")).toBe(true);
+    expect(isSessionAlignedWithPortal(session, "user")).toBe(false);
   });
 
   it("maps formal numeric scoped identities to the local client entity ids", () => {
@@ -141,9 +180,9 @@ describe("frontend RBAC session helpers", () => {
     ] as const;
     const session = buildAuthSessionFromMe({ ...baseMe, identityAvailability: [...identityAvailability] }, "admin", "password");
 
-    expect(session.authVersion).toBe(6);
+    expect(session.authVersion).toBe(7);
     expect(session).toMatchObject({
-      needoId: "n0000000001",
+      needoId: "needo0000000001",
       emailVerifiedAt: "2026-08-27T00:00:00.000Z",
       hasPassword: true
     });

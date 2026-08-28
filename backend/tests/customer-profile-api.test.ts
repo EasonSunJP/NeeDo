@@ -112,6 +112,7 @@ const avatarHash = "a".repeat(64);
 
 const makeProfile = (): CustomerProfilePayload => ({
   id: 41,
+  publicId: "u3141592653",
   userId: 11,
   displayName: "田中 彩",
   city: "Tokyo",
@@ -155,7 +156,7 @@ const createFixture = async () => {
   };
   const customer = {
     id: 11,
-    needoId: "n0000000011",
+    needoId: "u0000000011",
     email: "customer@example.com",
     phone: null,
     passwordHash,
@@ -185,7 +186,7 @@ const createFixture = async () => {
   const technician = {
     ...customer,
     id: 12,
-    needoId: "n0000000012",
+    needoId: "u0000000012",
     email: "technician@example.com",
     username: "Tomo Technician",
     identities: [
@@ -206,7 +207,7 @@ const createFixture = async () => {
   const wrongIdentity = {
     ...technician,
     id: 13,
-    needoId: "n0000000013",
+    needoId: "u0000000013",
     email: "wrong-identity@example.com",
     username: "Mika Wrong Identity",
     identities: [

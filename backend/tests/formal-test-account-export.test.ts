@@ -9,25 +9,25 @@ describe("formal test account export", () => {
       accountType: "customer",
       displayName: "望月 結菜",
       email: "customer@example.com",
-      needoId: "n0000000024"
+      needoId: "u3141592653"
     },
     {
       accountType: "admin",
       displayName: "LifeDance 管理员",
       email: "admin@lifedance.com",
-      needoId: "n0000000001"
+      needoId: "needo2718281828"
     },
     {
       accountType: "technician",
       displayName: "橘 ひかり",
       email: "technician@example.com",
-      needoId: "n0000000018"
+      needoId: "u1618033988"
     },
     {
       accountType: "merchant_owner",
       displayName: "青山プライベートケア Lino 公式受付",
       email: "merchant@example.com",
-      needoId: "n0000000012"
+      needoId: "u1414213562"
     }
   ];
 
@@ -37,12 +37,12 @@ describe("formal test account export", () => {
     );
 
     expect(rows.map((row) => row.needoId)).toEqual([
-      "n0000000024",
-      "n0000000001",
-      "n0000000018",
-      "n0000000012"
+      "u3141592653",
+      "needo2718281828",
+      "u1618033988",
+      "u1414213562"
     ]);
-    expect(rows.every((row) => /^n\d{10}$/.test(row.needoId))).toBe(true);
+    expect(rows.every((row) => /^(?:u|needo)\d{10}$/.test(row.needoId))).toBe(true);
   });
 
   it("rejects a non-immutable NeeDo ID instead of exporting a legacy formatter value", () => {
@@ -50,11 +50,11 @@ describe("formal test account export", () => {
       buildFormalTestAccountExportRow(
         {
           ...accounts[0],
-          needoId: "u0000000003"
+          needoId: "n0000000003"
         },
         "ExportFixturePassword-2026!"
       )
-    ).toThrow("NeeDo ID must match n plus ten digits");
+    ).toThrow("Primary public ID must match U or NEEDO plus ten digits");
   });
 
   it("labels and places the operations super administrator first", () => {

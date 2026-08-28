@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import merchantPayrollSource from "./merchantPayrollCenter.ts?raw";
 import technicianPayrollSource from "./technicianPayrollCenter.ts?raw";
-import staticDemoSource from "./staticDemo.ts?raw";
 
 describe("payroll center typed API", () => {
-  it("uses the formal DTO routes for merchant, technician, and static demo payroll", () => {
+  it("uses the formal DTO routes for merchant and technician payroll", () => {
     expect(merchantPayrollSource).toContain("/merchant-admin/pay-runs");
     expect(merchantPayrollSource).toContain("/merchant-admin/pay-runs/export");
     expect(merchantPayrollSource).toContain("/backoffice/pay-runs/export");
@@ -23,12 +22,5 @@ describe("payroll center typed API", () => {
     expect(technicianPayrollSource).toContain("/payout-records/");
     expect(technicianPayrollSource).toContain("requestCsvExport");
     expect(technicianPayrollSource).toContain("PayslipPayload");
-    expect(staticDemoSource).toContain("staticPayRunPayload");
-    expect(staticDemoSource).toContain("staticPayRunCsvExport");
-    expect(staticDemoSource).toContain("staticPayslipCsvExport");
-    expect(staticDemoSource).toContain("staticPayrollAdjustmentPayload");
-    expect(staticDemoSource).toContain("reportStaticPayslipDispute");
-    expect(staticDemoSource).toContain("resolveStaticPayslipDispute");
-    expect(staticDemoSource).toContain("confirmStaticPayoutRecord");
   });
 });

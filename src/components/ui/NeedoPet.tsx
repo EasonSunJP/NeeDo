@@ -4,7 +4,6 @@ import { useAuth } from "../../auth/AuthProvider";
 import type { ImRoleType } from "../../features/im/model";
 import { useRealtimeUnreadCounts } from "../../features/realtime/useRealtimeUnreadCounts";
 import { useOptionalI18n } from "../../i18n/I18nProvider";
-import { readNeedoExternalInfoPosts, subscribeNeedoExternalInfoPosts, type NeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { cn } from "../../lib/utils";
 import {
   petSpriteSrc,
@@ -424,17 +423,6 @@ function buildReminderHighlights(reminders: ReminderItem[]) {
   }));
 }
 
-function getLatestExternalInfoTitle(posts: NeedoExternalInfoPost[]) {
-  const now = Date.now();
-  const latestActivePost = posts.find((post) => {
-    const expiresAt = new Date(post.expiresAt).getTime();
-    return Number.isNaN(expiresAt) || expiresAt > now;
-  });
-  const latestPost = latestActivePost ?? posts[0];
-
-  return latestPost?.title.trim() ?? "";
-}
-
 function getLowCareBubble(care: PetCareState): PetBubble | null {
   if (!care.alive) {
     return {
@@ -822,7 +810,6 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   const clientRole = getClientRole(location.pathname, session?.portal);
   const realtimeCounts = useRealtimeUnreadCounts();
   const [care, setCare] = useState<PetCareState>(() => readCareState());
-  const [externalInfoPosts, setExternalInfoPosts] = useState<NeedoExternalInfoPost[]>(() => readNeedoExternalInfoPosts());
   const [panelOpen, setPanelOpen] = useState(false);
   const [bubble, setBubble] = useState<PetBubble | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -1092,7 +1079,7 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
       .map((item) => ({ ...item }));
   }, [clientRole, realtimeCounts]);
 
-  const latestExternalInfoTitle = useMemo(() => getLatestExternalInfoTitle(externalInfoPosts), [externalInfoPosts]);
+  const latestExternalInfoTitle: string | undefined = undefined;
   const totalReminderCount = reminders.reduce((sum, item) => sum + item.count, 0);
   const primaryReminder = reminders[0];
   const expression = getCareExpression(care, totalReminderCount > 0 || Boolean(latestExternalInfoTitle));
@@ -1132,12 +1119,6 @@ export function NeedoPet({ disabled = false }: { disabled?: boolean }) {
   useEffect(() => {
     persistCareState(care);
   }, [care]);
-
-  useEffect(() => {
-    return subscribeNeedoExternalInfoPosts(() => {
-      setExternalInfoPosts(readNeedoExternalInfoPosts());
-    });
-  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {

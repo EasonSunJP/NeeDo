@@ -8,7 +8,6 @@ import {
 } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { authApi, type VerificationChallengePayload } from "../../api/auth";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { type PortalScope, useAuth } from "../../auth/AuthProvider";
 import {
   readBrowserPasswordSavePreference,
@@ -17,7 +16,7 @@ import {
   type BrowserPasswordSaveScope,
 } from "../../auth/browserPasswordSave";
 import { requestGoogleCredential } from "../../auth/googleIdentity";
-import { isFrontendBypassSession, type AuthSession } from "../../auth/rbac";
+import { type AuthSession } from "../../auth/rbac";
 import { LanguageSwitcher } from "../../components/ui/LanguageSwitcher";
 import { PasswordInput } from "../../components/ui/PasswordInput";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
@@ -50,11 +49,6 @@ type VerificationState = {
 type GeneratedNeedoIdState = {
   needoId: string;
   session: AuthSession;
-};
-
-type FrontendLoginEnv = {
-  PROD?: boolean;
-  VITE_NEEDO_FRONTEND_AUTH_BYPASS?: string;
 };
 
 const loginIconMarkUrl = "/icons/needo-login-check-mark-white.png";
@@ -109,7 +103,6 @@ function buildLoginCopy(language: Language) {
     googleLogin: text("使用 Google 登录"),
     googlePrompt: text("请选择下方的 Google 账号"),
     googleRestart: text("重新使用 Google 验证"),
-    googleUnavailableStatic: text("静态演示模式不提供 Google 登录"),
     hidePassword: text("隐藏密码"),
     loginButton: text("登录"),
     loginPending: text("登录中…"),
@@ -221,15 +214,6 @@ export function resolveLoginErrorMessage(
   return translateText(source ?? "登录服务暂时不可用，请稍后重试。", language);
 }
 
-export function isFrontendAuthBypassEnabled(env: FrontendLoginEnv) {
-  if (env.PROD) {
-    return false;
-  }
-
-  const value = env.VITE_NEEDO_FRONTEND_AUTH_BYPASS?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
-}
-
 function normalizePortal(value?: string | null): PortalScope {
   if (value === "merchant" || value === "technician" || value === "business") {
     return value;
@@ -300,28 +284,10 @@ export function getPostLoginRoute(
 }
 
 export function requiresFormalFrontendLogin(
-  portal: PortalScope,
-  redirectPath: string | null,
-  isProduction = import.meta.env.PROD,
-  isStaticDemo = isStaticDemoMode(),
+  _portal: PortalScope,
+  _redirectPath: string | null,
 ) {
-  if (isProduction || !isStaticDemo) {
-    return true;
-  }
-
-  const pathname =
-    normalizeRedirectRoute(redirectPath)?.split(/[?#]/u)[0] || "";
-  if (portal === "technician") {
-    return (
-      pathname.startsWith("/technician/payroll") ||
-      pathname === "/technician/schedule"
-    );
-  }
-
-  return (
-    portal === "merchant" &&
-    (pathname === "/merchant/schedule" || pathname === "/merchant/orders")
-  );
+  return true;
 }
 
 function openPortalEntry(portal: PortalScope, route: string) {
@@ -355,7 +321,6 @@ export function LoginPage({
   const { theme, isNight } = useClientTheme();
   const {
     canAccess,
-    enterFrontendWithoutAuthentication,
     hasRememberedPortalAuthorization,
     isAuthenticated,
     login,
@@ -394,7 +359,7 @@ export function LoginPage({
   const [pending, setPending] = useState(false);
   const [googleFlowKey, setGoogleFlowKey] = useState(0);
   const [googleState, setGoogleState] = useState<
-    "connecting" | "error" | "idle" | "static"
+    "connecting" | "error" | "idle"
   >("idle");
   const googleContainerRef = useRef<HTMLDivElement>(null);
   const googleFlowGenerationRef = useRef(0);
@@ -405,23 +370,11 @@ export function LoginPage({
     () => getPostLoginRoute(activePortal, redirectPath),
     [activePortal, redirectPath],
   );
-  const requiresFormalLogin = requiresFormalFrontendLogin(
-    activePortal,
-    redirectPath,
-  );
-  const shouldBypassFrontendLogin =
-    !requiresFormalLogin &&
-    isFrontendAuthBypassEnabled(import.meta.env as FrontendLoginEnv);
   const hasRememberedActivePortal =
     hasRememberedPortalAuthorization(activePortal);
-  const hasBlockedFormalFrontendBypass =
-    requiresFormalLogin && isFrontendBypassSession(session);
   const hasActiveAccess =
-    (isAuthenticated &&
-      canAccess(activePortal) &&
-      !hasBlockedFormalFrontendBypass) ||
+    (isAuthenticated && canAccess(activePortal)) ||
     hasRememberedActivePortal;
-  const staticDemo = isStaticDemoMode();
 
   useEffect(() => setActivePortal(requestedPortal), [requestedPortal]);
   useEffect(() => {
@@ -469,43 +422,6 @@ export function LoginPage({
   }, [enterPortal, generatedNeedoId, hasActiveAccess, panelMode, pending]);
 
   useEffect(() => {
-    if (!shouldBypassFrontendLogin || hasActiveAccess || pending) {
-      return;
-    }
-
-    let active = true;
-    setPending(true);
-    enterFrontendWithoutAuthentication(activePortal)
-      .then((result) => {
-        if (!active) return;
-        if (!result.ok) {
-          setFeedback(resolveLoginErrorMessage(result.message, language));
-          return;
-        }
-        navigateToPortal(
-          result.session.portal,
-          getPostLoginRoute(result.session.portal, redirectPath),
-        );
-      })
-      .finally(() => {
-        if (active) setPending(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activePortal,
-    enterFrontendWithoutAuthentication,
-    hasActiveAccess,
-    language,
-    navigateToPortal,
-    pending,
-    redirectPath,
-    shouldBypassFrontendLogin,
-  ]);
-
-  useEffect(() => {
     const container = googleContainerRef.current;
     if (
       !container ||
@@ -517,11 +433,6 @@ export function LoginPage({
     }
 
     container.replaceChildren();
-    if (staticDemo) {
-      setGoogleState("static");
-      return;
-    }
-
     let active = true;
     const flowGeneration = googleFlowGenerationRef.current + 1;
     googleFlowGenerationRef.current = flowGeneration;
@@ -592,7 +503,6 @@ export function LoginPage({
     navigateToPortal,
     panelMode,
     redirectPath,
-    staticDemo,
   ]);
 
   const handleAccountLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -1044,35 +954,26 @@ export function LoginPage({
                   : "hidden"
               }
             >
-              {staticDemo ? (
-                <p
-                  className="rounded-[12px] border border-[color:var(--client-line)] px-4 py-3 text-sm font-bold text-[color:var(--client-muted)]"
-                  role="status"
-                >
-                  {copy.googleUnavailableStatic}
+              <div className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3">
+                <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">
+                  {copy.googlePrompt}
                 </p>
-              ) : (
-                <div className="rounded-[12px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-3">
-                  <p className="mb-2 text-xs font-bold text-[color:var(--client-muted)]">
-                    {copy.googlePrompt}
-                  </p>
-                  <div
-                    aria-label={copy.googleLogin}
-                    className="flex min-h-11 items-center justify-center"
-                    data-testid="google-identity-button"
-                    ref={googleContainerRef}
-                  />
-                  {googleState === "error" ? (
-                    <button
-                      className="mt-2 min-h-11 rounded-full px-4 text-sm font-black text-[color:var(--client-primary)]"
-                      onClick={() => setGoogleFlowKey((current) => current + 1)}
-                      type="button"
-                    >
-                      {copy.googleRestart}
-                    </button>
-                  ) : null}
-                </div>
-              )}
+                <div
+                  aria-label={copy.googleLogin}
+                  className="flex min-h-11 items-center justify-center"
+                  data-testid="google-identity-button"
+                  ref={googleContainerRef}
+                />
+                {googleState === "error" ? (
+                  <button
+                    className="mt-2 min-h-11 rounded-full px-4 text-sm font-black text-[color:var(--client-primary)]"
+                    onClick={() => setGoogleFlowKey((current) => current + 1)}
+                    type="button"
+                  >
+                    {copy.googleRestart}
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             {feedback ? (

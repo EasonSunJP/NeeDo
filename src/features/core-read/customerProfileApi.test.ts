@@ -25,6 +25,7 @@ describe("customerProfileApi", () => {
     expect(
       mapCoreCustomerToCustomer({
         id: 41,
+        publicId: "u3141592653",
         displayName: "松尾 雄大",
         city: "Tokyo",
         bio: "自己紹介",
@@ -52,6 +53,7 @@ describe("customerProfileApi", () => {
   it("maps the real self-profile response without a public review summary", () => {
     const selfProfile = {
       id: 41,
+      publicId: "u3141592653",
       userId: 12,
       displayName: "松尾 雄大",
       city: "Tokyo",
@@ -70,6 +72,7 @@ describe("customerProfileApi", () => {
 
     expect(() => mapCoreCustomerToCustomer(selfProfile)).not.toThrow();
     expect(mapCoreCustomerToCustomer(selfProfile)).toMatchObject({
+      systemId: "u3141592653",
       activeScore: 0,
       creditRating: undefined,
       orderCount: 0

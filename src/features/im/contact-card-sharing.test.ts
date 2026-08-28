@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ContactRelation } from "./model";
+import type { ContactRelation, ImUser } from "./model";
 import { buildShareableCardUsers, getShareableCardCaptionPrefix } from "./contact-card-sharing";
-import { makeScopedImDatabase } from "./seed";
 
 function activeContactMap(contacts: ContactRelation[]) {
   return new Map(
@@ -13,34 +12,41 @@ function activeContactMap(contacts: ContactRelation[]) {
 
 describe("contact-card sharing", () => {
   it("pins the current user's own card first outside merchant scope", () => {
-    const database = makeScopedImDatabase("user");
+    const currentUser = makeUser({ id: "1", accountId: "u1234567890", userIdLabel: "u1234567890" });
     const users = buildShareableCardUsers({
-      activeContactByUserId: activeContactMap(database.contacts),
-      currentUserId: database.currentUserId,
+      activeContactByUserId: activeContactMap([]),
+      currentUserId: currentUser.id,
       scope: "user",
-      users: database.users
+      users: [currentUser]
     });
-    const currentUser = database.users.find((user) => user.id === database.currentUserId);
 
-    expect(users[0]?.id).toBe(database.currentUserId);
-    expect(getShareableCardCaptionPrefix("user", users[0]!, database.currentUserId, currentUser)).toBe("我的名片");
+    expect(users[0]?.id).toBe(currentUser.id);
+    expect(getShareableCardCaptionPrefix("user", users[0]!, currentUser.id, currentUser)).toBe("我的名片");
   });
 
   it("pins the current account store card before a merchant personal operator card", () => {
-    const database = makeScopedImDatabase("merchant");
-    const storeUser = database.users.find((user) => user.id === database.currentUserId)!;
-    const operatorUser = {
-      ...storeUser,
+    const storeUser = makeUser({
+      id: "2",
+      accountId: "b1234567890",
+      nickname: "测试店铺",
+      profileKind: "store",
+      entityType: "shop",
+      entityId: "12",
+      userIdLabel: "b1234567890"
+    });
+    const operatorUser = makeUser({
       id: "im-merchant-personal-operator",
       nickname: "门店值班账号",
-      profileKind: "person" as const,
-      entityType: "user" as const,
+      accountId: storeUser.accountId,
+      profileKind: "person",
+      entityType: "user",
       entityId: "merchant-operator-1",
-      tags: ["本人"]
-    };
-    const users = [operatorUser, ...database.users];
+      tags: ["本人"],
+      userIdLabel: "u1234567890"
+    });
+    const users = [operatorUser, storeUser];
     const shareableUsers = buildShareableCardUsers({
-      activeContactByUserId: activeContactMap(database.contacts),
+      activeContactByUserId: activeContactMap([]),
       currentUserId: operatorUser.id,
       scope: "merchant",
       users
@@ -52,3 +58,22 @@ describe("contact-card sharing", () => {
     expect(getShareableCardCaptionPrefix("merchant", shareableUsers[1]!, operatorUser.id, operatorUser)).toBe("我的名片");
   });
 });
+
+function makeUser(overrides: Partial<ImUser> & Pick<ImUser, "id" | "accountId" | "userIdLabel">): ImUser {
+  return {
+    id: overrides.id,
+    accountId: overrides.accountId,
+    nickname: overrides.nickname ?? "测试账号",
+    avatar: "",
+    status: "active",
+    searchableFields: [],
+    sortKey: overrides.nickname ?? "test",
+    profileKind: overrides.profileKind ?? "person",
+    entityType: overrides.entityType,
+    entityId: overrides.entityId,
+    tags: overrides.tags ?? [],
+    userIdLabel: overrides.userIdLabel,
+    canCall: true,
+    canVideoCall: true,
+  };
+}

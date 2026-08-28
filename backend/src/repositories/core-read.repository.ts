@@ -4,6 +4,7 @@ import type {
   MediaAsset,
   Prisma,
   PrismaClient,
+  PublicIdentifier,
   ReviewSummary,
   Service,
   Shop,
@@ -78,6 +79,7 @@ export interface CategoryPayload {
 
 export interface ShopCardPayload {
   id: number;
+  publicId: string;
   name: string;
   city: string;
   address: string;
@@ -87,6 +89,7 @@ export interface ShopCardPayload {
 
 export interface TechnicianCardPayload {
   id: number;
+  publicId: string;
   displayName: string;
   city: string;
   avatarUrl: string | null;
@@ -140,6 +143,7 @@ export interface TechnicianDetailPayload extends TechnicianCardPayload {
 
 export interface CustomerProfilePayload {
   id: number;
+  publicId: string;
   displayName: string;
   city: string | null;
   bio: string | null;
@@ -170,12 +174,16 @@ export interface CoreReadRepositoryPort {
 
 type ShopCardRecord = Shop & {
   mediaAssets: MediaAsset[];
+  publicIdentifier: PublicIdentifier | null;
   reviewSummary: ReviewSummary | null;
 };
 
 type TechnicianCardRecord = TechnicianProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
+  user: {
+    identities: Array<{ publicIdentifier: PublicIdentifier | null }>;
+  };
 };
 
 type ServiceRecordBase = Service & {
@@ -202,6 +210,7 @@ type TechnicianDetailRecord = TechnicianCardRecord & {
 type CustomerProfileRecord = CustomerProfile & {
   mediaAssets: MediaAsset[];
   reviewSummary: ReviewSummary | null;
+  user: { needoId: string };
 };
 
 type DecimalLike = {
@@ -387,7 +396,8 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       },
       include: {
         mediaAssets: activeMediaArgs,
-        reviewSummary: true
+        reviewSummary: true,
+        user: { select: { needoId: true } }
       }
     });
 
@@ -422,6 +432,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   private shopCardInclude() {
     return {
       mediaAssets: activeMediaArgs,
+      publicIdentifier: true,
       reviewSummary: true
     };
   }
@@ -429,7 +440,19 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   private technicianCardInclude() {
     return {
       mediaAssets: activeMediaArgs,
-      reviewSummary: true
+      reviewSummary: true,
+      user: {
+        select: {
+          identities: {
+            where: {
+              deletedAt: null,
+              isActive: true,
+              type: { in: ["technician", "service", "s"] }
+            },
+            include: { publicIdentifier: true }
+          }
+        }
+      }
     };
   }
 
@@ -557,6 +580,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   private mapShopCard(shop: ShopCardRecord): ShopCardPayload {
     return {
       id: shop.id,
+      publicId: this.requirePublicId(shop.publicIdentifier, "SHOP"),
       name: shop.name,
       city: shop.city,
       address: shop.address,
@@ -583,8 +607,13 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   }
 
   private mapTechnicianCard(technician: TechnicianCardRecord): TechnicianCardPayload {
+    const identifier = technician.user.identities.find(
+      (identity) => identity.publicIdentifier?.kind === "S"
+    )?.publicIdentifier;
+
     return {
       id: technician.id,
+      publicId: this.requirePublicId(identifier ?? null, "S"),
       displayName: technician.displayName,
       city: technician.city,
       avatarUrl: this.findMediaUrl(technician.mediaAssets, "avatar"),
@@ -609,6 +638,7 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
   private mapCustomerProfile(customer: CustomerProfileRecord): CustomerProfilePayload {
     return {
       id: customer.id,
+      publicId: this.requireCustomerPublicId(customer.user.needoId),
       displayName: customer.displayName,
       city: customer.city,
       bio: customer.bio,
@@ -618,6 +648,30 @@ export class CoreReadRepository implements CoreReadRepositoryPort {
       createdAt: customer.createdAt,
       updatedAt: customer.updatedAt
     };
+  }
+
+  private requirePublicId(
+    identifier: PublicIdentifier | null,
+    expectedKind: "S" | "SHOP"
+  ): string {
+    if (
+      identifier &&
+      identifier.kind === expectedKind &&
+      identifier.status === "ACTIVE" &&
+      identifier.deletedAt === null
+    ) {
+      return identifier.publicId;
+    }
+
+    throw new Error(`Formal ${expectedKind} public identifier is unavailable.`);
+  }
+
+  private requireCustomerPublicId(publicId: string): string {
+    if (/^(?:u|needo)\d{10}$/.test(publicId)) {
+      return publicId;
+    }
+
+    throw new Error("Formal customer public identifier is unavailable.");
   }
 
   private mapMediaAsset(asset: MediaAsset): MediaAssetPayload {

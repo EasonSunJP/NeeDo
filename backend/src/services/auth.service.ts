@@ -1,6 +1,6 @@
 import { randomInt, timingSafeEqual } from "crypto";
 import { compare, hash } from "bcryptjs";
-import { NeedoIdAllocationExhaustedError } from "./needo-id.service";
+import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import type { AppConfig } from "../config/env";
 import { ERROR_CODES } from "../constants/error-codes";
 import {
@@ -62,6 +62,7 @@ export interface AuthenticatedAccessContext {
   accessTokenExpiresAt: number;
   sessionGeneration?: number;
   currentIdentityId?: number;
+  currentPublicId?: string | null;
   currentIdentityType?: string;
   currentIdentityScopeType?: string | null;
   currentIdentityScopeId?: number | null;
@@ -76,6 +77,7 @@ export interface AuthIdentityPayload {
   type: string;
   scopeType: string | null;
   scopeId: number | null;
+  publicId: string | null;
 }
 
 export type AuthIdentityAvailabilityKind = "customer" | "technician" | "merchant" | "affiliate";
@@ -97,6 +99,9 @@ export interface AuthIdentityAvailabilityPayload {
 export interface AuthMePayload {
   id: number;
   needoId: string;
+  primaryPublicId: string;
+  activeIdentityId: number;
+  activePublicId: string | null;
   email: string;
   emailVerifiedAt: string | null;
   hasPassword: boolean;
@@ -599,7 +604,7 @@ export class AuthService {
       }
       if (originalError instanceof ExternalAuthAccountConflictError)
         throw this.googleConflictError();
-      if (originalError instanceof NeedoIdAllocationExhaustedError) {
+      if (originalError instanceof UserBootstrapKeyAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
       throw originalError;
@@ -677,7 +682,7 @@ export class AuthService {
       });
     }
 
-    return this.completeSuccessfulLogin(user, context);
+    return this.completeSuccessfulLogin(user, context, user.loginIdentityId);
   }
 
   public async startRegistration(input: RegistrationInput): Promise<RegistrationChallengePayload> {
@@ -801,7 +806,7 @@ export class AuthService {
       } catch {
         // The original failure remains authoritative; no challenge data is logged here.
       }
-      if (originalError instanceof NeedoIdAllocationExhaustedError) {
+      if (originalError instanceof UserBootstrapKeyAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
       if (this.isUniqueConstraintError(originalError)) {
@@ -1102,6 +1107,7 @@ export class AuthService {
       accessTokenExpiresAt: payload.exp,
       sessionGeneration: payload.sessionGeneration,
       currentIdentityId: me.currentIdentity.id,
+      currentPublicId: me.currentIdentity.publicId,
       currentIdentityType: me.currentIdentity.type,
       currentIdentityScopeType: me.currentIdentity.scopeType,
       currentIdentityScopeId: me.currentIdentity.scopeId,
@@ -1655,18 +1661,54 @@ export class AuthService {
       });
     }
 
-    return this.buildMePayload(user, identityId);
+    const payload = this.buildMePayload(user, identityId);
+
+    if (payload.currentIdentity.id !== identityId) {
+      throw new AppError({
+        code: ERROR_CODES.IDENTITY_NOT_FOUND,
+        message: "error.auth.identity_not_found",
+        statusCode: 404
+      });
+    }
+
+    return payload;
   }
 
   private buildMePayload(user: AuthUserRecord, currentIdentityId?: number): AuthMePayload {
-    const identities = user.identities
+    const allActiveIdentities = user.identities
       .filter((identity) => identity.deletedAt === null && identity.isActive)
       .map<AuthIdentityPayload>((identity) => ({
         id: identity.id,
         type: identity.type,
         scopeType: identity.scopeType,
-        scopeId: identity.scopeId
+        scopeId: identity.scopeId,
+        publicId:
+          identity.publicIdentifier?.status === "ACTIVE" &&
+          identity.publicIdentifier.deletedAt === null
+            ? identity.publicIdentifier.publicId
+            : identity.isDefault ||
+                (["customer", "user", "u"].includes(identity.type) &&
+                  user.needoId.startsWith("needo"))
+              ? user.needoId
+              : null
       }));
+    const publicIdentityById = new Map<string, AuthIdentityPayload>();
+    for (const identity of allActiveIdentities) {
+      if (!identity.publicId) {
+        continue;
+      }
+
+      const existing = publicIdentityById.get(identity.publicId);
+      if (!existing || ["customer", "user", "u"].includes(identity.type)) {
+        publicIdentityById.set(identity.publicId, identity);
+      }
+    }
+    const identities =
+      publicIdentityById.size > 0
+        ? Array.from(publicIdentityById.values())
+        : this.allowLegacyAuthAdaptersForTest
+          ? allActiveIdentities
+          : [];
     const currentIdentity =
       identities.find((identity) => identity.id === currentIdentityId) ??
       identities.find((identity) =>
@@ -1704,6 +1746,9 @@ export class AuthService {
     return {
       id: user.id,
       needoId: user.needoId,
+      primaryPublicId: user.needoId,
+      activeIdentityId: currentIdentity.id,
+      activePublicId: currentIdentity.publicId,
       email: user.email,
       emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
       hasPassword: Boolean(user.passwordHash),
@@ -1712,7 +1757,7 @@ export class AuthService {
       isActive: user.isActive,
       currentIdentity,
       identities,
-      identityAvailability: this.buildIdentityAvailability(user, identities),
+      identityAvailability: this.buildIdentityAvailability(user, allActiveIdentities),
       roles: Array.from(roles),
       permissions: permissionCodes,
       menus: permissionCodes.filter((code) => permissions.get(code) === "menu")
@@ -1726,7 +1771,14 @@ export class AuthService {
     const identityTypes: Readonly<Record<AuthIdentityAvailabilityKind, readonly string[]>> = {
       customer: ["customer"],
       technician: ["technician"],
-      merchant: ["merchant", "merchant_owner", "merchant_staff"],
+      merchant: [
+        "merchant",
+        "merchant_organization",
+        "merchant_owner",
+        "merchant_staff",
+        "o",
+        "owner"
+      ],
       affiliate: ["affiliate", "scout"]
     };
     const customerIdentity = identities.find((identity) =>

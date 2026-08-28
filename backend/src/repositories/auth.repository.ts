@@ -2,7 +2,9 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../config/env";
 import { prisma } from "../prisma/client";
-import { NeedoIdAllocator } from "../services/needo-id.service";
+import { UserBootstrapKeyAllocator } from "../services/user-bootstrap-key.service";
+import { IdentifierAllocator } from "../services/public-identifier.service";
+import { PublicIdentifierRepository } from "./public-identifier.repository";
 
 export const createGoogleUnlinkRecoveryProof = (jti: string): string =>
   createHmac("sha256", env.AUTH_VERIFICATION_SECRET)
@@ -20,6 +22,13 @@ export interface AuthIdentityRecord {
   isDefault: boolean;
   isActive: boolean;
   deletedAt: Date | null;
+  publicIdentifier?: {
+    publicId: string;
+    kind: string;
+    loginAllowed: boolean;
+    status: string;
+    deletedAt: Date | null;
+  } | null;
 }
 
 export interface AuthPermissionRecord {
@@ -71,6 +80,7 @@ export interface AuthUserRecord {
   identities: AuthIdentityRecord[];
   userRoles: AuthUserRoleRecord[];
   identityApplications?: AuthIdentityApplicationRecord[];
+  loginIdentityId?: number;
 }
 
 export interface CreateLoginLogInput {
@@ -90,29 +100,6 @@ export interface CreateAuditLogInput {
   ip?: string | null;
   userAgent?: string | null;
   metadata?: Prisma.InputJsonValue;
-}
-
-export type PublicRegistrationAccountType = "customer" | "technician";
-
-interface RegisterUserBaseData {
-  email: string;
-  ip: string;
-  passwordHash: string;
-  userAgent?: string | null;
-  username: string;
-}
-
-export type RegisterUserData =
-  | (RegisterUserBaseData & { accountType: "customer" })
-  | (RegisterUserBaseData & { accountType: "technician"; city: string });
-
-export interface RegisteredAccountRecord {
-  id: number;
-  email: string;
-  username: string;
-  accountType: PublicRegistrationAccountType;
-  approvalStatus: "approved" | "pending_review";
-  isActive: boolean;
 }
 
 export interface CreateVerifiedBaselineCustomerInput {
@@ -257,7 +244,8 @@ const authUserInclude = {
     where: {
       deletedAt: null
     },
-    orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }]
+    orderBy: [{ isDefault: "desc" as const }, { id: "asc" as const }],
+    include: { publicIdentifier: true }
   },
   identityApplications: {
     where: {
@@ -298,20 +286,60 @@ const authUserInclude = {
 
 type AuthUserPrismaRecord = Prisma.UserGetPayload<{ include: typeof authUserInclude }>;
 
-const toAuthUserRecord = (user: AuthUserPrismaRecord): AuthUserRecord => ({
-  ...user,
-  accessState: {
-    disabled: !user.isActive,
-    restricted: !user.identities.some(
-      (identity) => identity.deletedAt === null && identity.isActive
-    )
+const activeAuthIdentities = (user: AuthUserPrismaRecord) =>
+  user.identities.filter((identity) => identity.deletedAt === null && identity.isActive);
+
+const resolveLoginIdentityId = (
+  user: AuthUserPrismaRecord,
+  loginIdentifier?: string
+): number | undefined => {
+  const identities = activeAuthIdentities(user);
+  const customerIdentity = identities.find((identity) =>
+    ["customer", "user", "u"].includes(identity.type)
+  );
+  const matchedIdentifierIdentity = loginIdentifier
+    ? identities.find(
+        (identity) =>
+          identity.publicIdentifier?.publicId === loginIdentifier &&
+          identity.publicIdentifier.loginAllowed &&
+          identity.publicIdentifier.status === "ACTIVE" &&
+          identity.publicIdentifier.deletedAt === null
+      )
+    : undefined;
+
+  if (matchedIdentifierIdentity?.publicIdentifier?.kind === "NEEDO") {
+    return customerIdentity?.id ?? matchedIdentifierIdentity.id;
   }
-});
+  return matchedIdentifierIdentity?.id ?? customerIdentity?.id;
+};
+
+const toAuthUserRecord = (
+  user: AuthUserPrismaRecord,
+  loginIdentifier?: string
+): AuthUserRecord => {
+  const primaryIdentifier = activeAuthIdentities(user).find(
+    (identity) => identity.publicIdentifier?.kind === user.primaryIdentityType
+  )?.publicIdentifier;
+
+  return {
+    ...user,
+    needoId: primaryIdentifier?.publicId ?? user.needoId,
+    accessState: {
+      disabled: !user.isActive,
+      restricted: activeAuthIdentities(user).length === 0
+    },
+    ...(loginIdentifier
+      ? { loginIdentityId: resolveLoginIdentityId(user, loginIdentifier) }
+      : {})
+  };
+};
 
 export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryPort {
   public constructor(
     private readonly client: PrismaClient = prisma,
-    private readonly needoIdAllocator = new NeedoIdAllocator()
+    private readonly bootstrapKeyAllocator = new UserBootstrapKeyAllocator(),
+    private readonly createIdentifierAllocator = (client: Prisma.TransactionClient) =>
+      new IdentifierAllocator(new PublicIdentifierRepository(client))
   ) {}
 
   public async findUserByEmail(email: string): Promise<AuthUserRecord | null> {
@@ -326,14 +354,37 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   }
 
   public async findUserByLoginIdentifier(identifier: string): Promise<AuthUserRecord | null> {
-    const user = await this.client.user.findFirst({
-      where: {
-        OR: [{ email: identifier }, { needoId: identifier }],
-        deletedAt: null
-      },
-      include: authUserInclude
-    });
-    return user ? toAuthUserRecord(user) : null;
+    const findUser = (where: Prisma.UserWhereInput) =>
+      this.client.user.findFirst({ where: { ...where, deletedAt: null }, include: authUserInclude });
+    let user: AuthUserPrismaRecord | null;
+
+    if (identifier.includes("@")) {
+      user = await findUser({ email: identifier });
+    } else if (/^(?:u|s|b|o|needo)\d{10}$/.test(identifier)) {
+      user = await findUser({
+        identities: {
+          some: {
+            isActive: true,
+            deletedAt: null,
+            publicIdentifier: {
+              is: {
+                publicId: identifier,
+                loginAllowed: true,
+                status: "ACTIVE",
+                deletedAt: null
+              }
+            }
+          }
+        }
+      });
+    } else if (/^\d{10}$/.test(identifier)) {
+      user = await findUser({ accountNo: identifier });
+      if (!user) user = await findUser({ phone: identifier });
+    } else {
+      user = await findUser({ phone: identifier });
+    }
+
+    return user ? toAuthUserRecord(user, identifier) : null;
   }
 
   public async findUserById(id: number): Promise<AuthUserRecord | null> {
@@ -369,7 +420,7 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
   ): Promise<AuthUserRecord> {
     const email = input.email.trim().toLowerCase();
 
-    return this.needoIdAllocator.withNewId(async (needoId) => {
+    return this.bootstrapKeyAllocator.withNewKey(async (bootstrapKey) => {
       try {
         return await this.client.$transaction(async (transaction) => {
           const customerRole = await transaction.role.findFirst({
@@ -380,27 +431,46 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
 
           const user = await transaction.user.create({
             data: {
-              needoId,
+              needoId: bootstrapKey,
               email,
               emailVerifiedAt: input.emailVerifiedAt,
               passwordHash: input.passwordHash,
-              username: needoId,
+              username: bootstrapKey,
               isActive: true
             }
           });
           const customerProfile = await transaction.customerProfile.create({
-            data: { userId: user.id, displayName: needoId }
+            data: { userId: user.id, displayName: bootstrapKey }
           });
-          await transaction.userIdentity.create({
+          const customerIdentity = await transaction.userIdentity.create({
             data: {
               userId: user.id,
               type: "customer",
               scopeType: "customer_profile",
               scopeId: customerProfile.id,
-              displayName: needoId,
+              displayName: bootstrapKey,
               isDefault: true,
               isActive: true
             }
+          });
+          const publicIdentifier = await this.createIdentifierAllocator(transaction).allocate({
+            kind: "U",
+            userIdentityId: customerIdentity.id
+          });
+          await transaction.user.update({
+            where: { id: user.id },
+            data: {
+              needoId: publicIdentifier.publicId,
+              username: publicIdentifier.publicId
+            }
+          });
+          await transaction.customerProfile.update({
+            where: { id: customerProfile.id },
+            data: { displayName: publicIdentifier.publicId }
+          });
+          await transaction.userIdentity.update({
+            where: { id: customerIdentity.id },
+            data: { displayName: publicIdentifier.publicId }
           });
           await transaction.userRole.create({
             data: {
@@ -798,92 +868,6 @@ export class AuthRepository implements AuthRepositoryPort, GoogleAuthRepositoryP
       data: { lastUsedAt }
     });
     return result.count === 1;
-  }
-
-  public registerUser(input: RegisterUserData): Promise<RegisteredAccountRecord> {
-    return this.needoIdAllocator.withNewId((needoId) =>
-      this.client.$transaction(async (transaction) => {
-        const role = await transaction.role.findFirst({
-          where: {
-            code: input.accountType,
-            deletedAt: null
-          }
-        });
-
-        if (!role) {
-          throw new Error(`Registration role is missing: ${input.accountType}`);
-        }
-
-        const isCustomer = input.accountType === "customer";
-        const user = await transaction.user.create({
-          data: {
-            needoId,
-            email: input.email,
-            passwordHash: input.passwordHash,
-            username: needoId,
-            isActive: isCustomer
-          }
-        });
-        const profile = isCustomer
-          ? await transaction.customerProfile.create({
-              data: {
-                userId: user.id,
-                displayName: needoId
-              }
-            })
-          : await transaction.technicianProfile.create({
-              data: {
-                userId: user.id,
-                displayName: needoId,
-                city: input.city,
-                status: "pending_review"
-              }
-            });
-        const scopeType = isCustomer ? "customer_profile" : "technician_profile";
-
-        await transaction.userIdentity.create({
-          data: {
-            userId: user.id,
-            type: input.accountType,
-            scopeType,
-            scopeId: profile.id,
-            displayName: needoId,
-            isDefault: true,
-            isActive: isCustomer
-          }
-        });
-        await transaction.userRole.create({
-          data: {
-            userId: user.id,
-            roleId: role.id,
-            scopeType,
-            scopeId: profile.id
-          }
-        });
-        await transaction.auditLog.create({
-          data: {
-            action: "auth.register",
-            targetType: "User",
-            targetId: user.id,
-            ip: input.ip,
-            userAgent: input.userAgent ?? null,
-            metadata: {
-              accountType: input.accountType,
-              approvalStatus: isCustomer ? "approved" : "pending_review"
-            }
-          }
-        });
-
-        return {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-          accountType: input.accountType,
-          approvalStatus: isCustomer ? "approved" : "pending_review",
-          isActive: user.isActive
-        };
-      })
-    );
   }
 
   public async updateLastLoginAt(id: number, loggedInAt: Date): Promise<void> {

@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(new URL("./context.tsx", import.meta.url), "utf8");
 
 describe("formal social provider gate", () => {
-  it("mounts the local demo provider only for an explicit static bypass session", () => {
-    expect(source).toContain("function LegacySocialProvider");
-    expect(source).toContain("isStaticDemoMode() && isFrontendBypassSession(session)");
+  it("always mounts the formal provider", () => {
+    expect(source).not.toContain("isStaticDemoMode");
+    expect(source).not.toContain("isFrontendBypassSession");
     expect(source).toContain("<FormalSocialProvider>");
   });
 

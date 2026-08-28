@@ -21,6 +21,7 @@ export interface CustomerProfileMutation {
 
 export interface CustomerProfilePayload {
   id: number;
+  publicId: string;
   userId: number;
   displayName: string;
   city: string | null;
@@ -47,7 +48,10 @@ export interface CustomerProfileRepositoryPort {
   ) => Promise<CustomerProfilePayload>;
 }
 
-type CustomerProfileRecord = CustomerProfile & { mediaAssets: MediaAsset[] };
+type CustomerProfileRecord = CustomerProfile & {
+  mediaAssets: MediaAsset[];
+  user: { needoId: string };
+};
 
 export class CustomerProfileRepository implements CustomerProfileRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
@@ -55,7 +59,10 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
   public async findMine(userId: number, profileId: number): Promise<CustomerProfilePayload | null> {
     const profile = await this.client.customerProfile.findFirst({
       where: { id: profileId, userId, deletedAt: null },
-      include: { mediaAssets: this.avatarMediaInclude() }
+      include: {
+        mediaAssets: this.avatarMediaInclude(),
+        user: { select: { needoId: true } }
+      }
     });
 
     return profile ? this.mapProfile(profile) : null;
@@ -79,7 +86,10 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       const updated = await transaction.customerProfile.update({
         where: { id: current.id },
         data: this.profileData(mutation),
-        include: { mediaAssets: this.avatarMediaInclude() }
+        include: {
+          mediaAssets: this.avatarMediaInclude(),
+          user: { select: { needoId: true } }
+        }
       });
 
       if (mutation.avatar) {
@@ -112,7 +122,10 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
 
       return transaction.customerProfile.findUniqueOrThrow({
         where: { id: updated.id },
-        include: { mediaAssets: this.avatarMediaInclude() }
+        include: {
+          mediaAssets: this.avatarMediaInclude(),
+          user: { select: { needoId: true } }
+        }
       });
     });
 
@@ -145,6 +158,7 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
   private mapProfile(profile: CustomerProfileRecord): CustomerProfilePayload {
     return {
       id: profile.id,
+      publicId: this.requireCustomerPublicId(profile.user.needoId),
       userId: profile.userId,
       displayName: profile.displayName,
       city: profile.city,
@@ -160,6 +174,18 @@ export class CustomerProfileRepository implements CustomerProfileRepositoryPort 
       createdAt: profile.createdAt.toISOString(),
       updatedAt: profile.updatedAt.toISOString()
     };
+  }
+
+  private requireCustomerPublicId(publicId: string): string {
+    if (/^(?:u|needo)\d{10}$/.test(publicId)) {
+      return publicId;
+    }
+
+    throw new AppError({
+      code: ERROR_CODES.INTERNAL,
+      message: "error.identifier.primary_unavailable",
+      statusCode: 500
+    });
   }
 
   private toJsonStringArray(value: string[]): Prisma.InputJsonValue {

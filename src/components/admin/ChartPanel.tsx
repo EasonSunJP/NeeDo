@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { trendData } from "../../data/mock";
+import { emptyTrendData as trendData } from "../../data/formalRuntimeFallbacks";
 import { useI18n } from "../../i18n/I18nProvider";
 import { type Language } from "../../i18n/translations";
 import { cn } from "../../lib/utils";

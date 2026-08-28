@@ -28,7 +28,12 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ImageAdjustmentEditor } from "../../components/ui/ImageAdjustmentEditor";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { ShareNetworkIcon } from "../../components/ui/ShareNetworkIcon";
-import { customers, orders, reviews, services } from "../../data/mock";
+import {
+  emptyCustomers as customers,
+  emptyOrders as orders,
+  emptyReviews as reviews,
+  emptyServices as services
+} from "../../data/formalRuntimeFallbacks";
 import { coreReadIdFromRoute } from "../../features/core-read/api";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
@@ -36,9 +41,7 @@ import { useSocial } from "../../features/social/context";
 import { profileKey, sortPostsByNewest } from "../../features/social/utils";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Language } from "../../i18n/translations";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import { getGeneratedImageThumbnailUrl } from "../../lib/imageThumbnails";
-import { appendNeedoExternalInfoPost } from "../../lib/needoExchangeBridge";
 import { readImageFilesAsDataUrls } from "../../lib/imageUpload";
 import { buildStoreCheckoutRoute } from "../../lib/storeBookingRoute";
 import {
@@ -3121,37 +3124,9 @@ export function StoreDetailExperience({
   };
 
   const forwardOfferToNeedo = (offer: OfferCard, coverImage: string) => {
-    const currentPoints = currentCustomer?.points ?? 0;
-
-    if (currentPoints < 1000) {
-      window.alert("当前积分不足 1000 point，暂时无法发送到 NeeDo 情报页。");
-      return;
-    }
-
-    const shouldContinue = window.confirm("本次发送情报需要耗费 1000 point，是否继续？");
-
-    if (!shouldContinue) {
-      return;
-    }
-
-    updateCustomerEntity(currentCustomer.id, (customer) => ({
-      points: Math.max(0, (customer.points ?? 0) - 1000)
-    }));
-
-    appendNeedoExternalInfoPost({
-      author: store.name,
-      area: offer.applicable,
-      budget: parsePriceNumber(menuCards[0]?.priceLabel ?? store.priceLabel),
-      detail: offer.stackingRule,
-      expiresAt: resolveOfferExpiryIso(offer.validUntil),
-      image: coverImage,
-      role: "店铺情报",
-      tags: [offer.benefit, store.area, ...store.tags.slice(0, 2)],
-      time: offer.conditions,
-      title: offer.title
-    });
-
-    navigate("/needo?tab=reverse");
+    void offer;
+    void coverImage;
+    window.alert("正式需求与情报功能尚未启用，当前不会扣除积分或写入浏览器数据。");
   };
   const getTechnicianServiceListTo = (technicianId: string) => getScopedTechnicianServiceListPath(scope, store.id, technicianId);
 
@@ -4180,8 +4155,7 @@ export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant
     return <FormalStoreDetailPage scope={scope} shopId={apiId} />;
   }
 
-  const allowLegacyStore = isStaticDemoMode();
-  const legacyStore = allowLegacyStore ? stores.find((item) => item.id === id) ?? null : null;
+  const legacyStore = null;
 
   if (!legacyStore) {
     const unavailableCopy = formalStoreLinkCopy[language];

@@ -30,7 +30,7 @@ if (runCustomerProfileRepositoryIntegration) {
 process.env.NODE_ENV = runCustomerProfileRepositoryIntegration ? "development" : "test";
 process.env.DEPLOY_ENV = runCustomerProfileRepositoryIntegration ? "local" : "test";
 process.env.ALLOW_TEST_LOGIN = "true";
-process.env.ALLOW_DEMO_SEED = "true";
+process.env.ALLOW_FORMAL_TEST_SEED = "true";
 process.env.ALLOW_SIMULATION_SEED = "true";
 process.env.SERVICE_NAME = "needo-backend";
 process.env.PORT = "3101";

@@ -27,12 +27,12 @@ const requestContext = { ip: "127.0.0.1", userAgent: "jest" };
 
 const createUser = (overrides: Partial<AuthUserRecord> = {}): AuthUserRecord => ({
   id: 7,
-  needoId: "n0000000007",
+  needoId: "u0000000007",
   email: "needo@example.com",
   emailVerifiedAt: new Date(),
   phone: null,
   passwordHash: null,
-  username: "n0000000007",
+  username: "u0000000007",
   avatarUrl: null,
   isActive: true,
   sessionGeneration: 0,
@@ -46,7 +46,7 @@ const createUser = (overrides: Partial<AuthUserRecord> = {}): AuthUserRecord => 
       type: "customer",
       scopeType: "customer_profile",
       scopeId: 1,
-      displayName: "n0000000007",
+      displayName: "u0000000007",
       isDefault: true,
       isActive: true,
       deletedAt: null

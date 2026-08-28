@@ -45,7 +45,7 @@ const runMigration = (
 ) => migrateAdminAccount(tx as never, {
   adminConfig,
   adminPasswordHash: "$2b$12$test-hash-never-exported",
-  allocateNeedoId: async (create) => create("n0000000099")
+  allocateBootstrapKey: async (create) => create("pending:0123456789abcdef01234567")
 });
 
 describe("formal administrator account seed", () => {
@@ -125,10 +125,14 @@ describe("formal administrator account seed", () => {
 
     const result = await runMigration(tx);
 
-    expect(result).toMatchObject({ id: 99, needoId: "n0000000099", email: adminConfig.email });
+    expect(result).toMatchObject({
+      id: 99,
+      needoId: "pending:0123456789abcdef01234567",
+      email: adminConfig.email
+    });
     expect(user.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        needoId: "n0000000099",
+        needoId: "pending:0123456789abcdef01234567",
         email: adminConfig.email,
         username: adminConfig.username
       })

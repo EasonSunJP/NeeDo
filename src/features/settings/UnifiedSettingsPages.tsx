@@ -14,7 +14,6 @@ import { AvatarImage } from "../../components/ui/AvatarImage";
 import { ImageGalleryManager } from "../../components/ui/ImageGalleryManager";
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
-import { businessCpsPromoters } from "../business-cps/model";
 import {
   SettingsDetailPage,
   SettingsArrow,
@@ -741,7 +740,7 @@ type FormalAccountSecurityPanelProps = {
   language: Language;
   onSessionRefresh: () => Promise<void>;
   onSignedOut: () => Promise<void>;
-  session: Pick<AuthSession, "email" | "emailVerifiedAt" | "needoId" | "username">;
+  session: Pick<AuthSession, "activePublicId" | "email" | "emailVerifiedAt" | "needoId" | "primaryPublicId" | "username">;
 };
 
 const googleBrandIconSrc = "/icons/google-g-logo-2026.png";
@@ -1013,7 +1012,7 @@ export function FormalAccountSecurityPanel({ autoFocus, language, onSessionRefre
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
             <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-soft-muted)]">{t("NeeDo ID（不可修改）")}</span>
-            <strong className="mt-2 block break-all font-mono text-[15px] font-black text-[color:var(--client-text)]">{session.needoId}</strong>
+            <strong className="mt-2 block break-all font-mono text-[15px] font-black text-[color:var(--client-text)]">{session.activePublicId ?? session.primaryPublicId}</strong>
           </div>
           <div className="rounded-[18px] border border-[color:var(--client-line)] bg-[color:color-mix(in_srgb,var(--client-surface)_72%,transparent)] p-4">
             <span className="text-[11px] font-black uppercase tracking-[0.12em] text-[color:var(--client-soft-muted)]">{t("NeeDo 主邮箱")}</span>
@@ -1816,7 +1815,7 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
         </SettingsSection>
 
         <SettingsSection
-          description={t(isBusinessPortal ? "利用规约、个人信息保护方针、退会和退出账号作为 NeeDoAfirieito App 的固定基础入口。" : "帮助、关于和演示登录态重置保持统一入口，不再散落在各端我的页。")}
+          description={t(isBusinessPortal ? "利用规约、个人信息保护方针、退会和退出账号作为 NeeDoAfirieito App 的固定基础入口。" : "帮助、关于、注销账号和退出登录保持统一入口，不再散落在各端我的页。")}
           panelClassName={settingsListDividerClassName}
           title={t("其他")}
         >
@@ -1826,13 +1825,13 @@ export function UnifiedSettingsPage({ portal }: { portal: UnifiedSettingsPortal 
           <SettingsListItem dataNoI18n title={t(isBusinessPortal ? "关于 NeeDoAfirieito" : "关于 NeeDo")} to={getSettingsPath(portal, "about")} value={appVersion} />
           <SettingsListItem title={t("注销账号")} to={getSettingsPath(portal, "delete-account")} />
           <SettingsListItem
-            subtitle={t("演示环境会重置到默认测试账号并保留当前身份")}
+            subtitle={t("清除当前登录会话并返回对应登录入口")}
             title={t(isBusinessPortal ? "退出账号" : "退出登录")}
             onClick={() => {
               logout();
               navigate(getPortalEntry(portal), { replace: true });
             }}
-            value={t("重置")}
+            value={t("退出")}
           />
         </SettingsSection>
         <PwaInstallGuideDialog
@@ -3264,7 +3263,6 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
   const { customers, stores } = useEntityStore();
   const customer = customers.find((item) => item.id === session?.linkedCustomerId) ?? customers[0];
   const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
-  const businessPromoter = businessCpsPromoters[0];
   const t = (source: string) => translateText(source, language);
   const handleSessionRefresh = async () => {
     const result = await refreshSession(portal);
@@ -3281,9 +3279,9 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
         <SettingsSection description={portal === "business" ? "这里展示 NeeDoAfirieito 推广账号的基础绑定信息，不展示普通用户会员等级。" : "首页只显示摘要，这里承接三端账户、安全与主体绑定相关内容。"} panelClassName={settingsListDividerClassName} title="账户信息">
           {portal === "business" ? (
             <>
-              <SettingsListItem subtitle={session?.needoId ?? t("正在读取账户身份…")} title="NeeDo ID" value={t("不可修改")} />
-              <SettingsListItem subtitle={businessPromoter?.inviteCode ?? "未分配推广码"} title="专属推广码" value="已绑定" />
-              <SettingsListItem subtitle={businessPromoter?.primaryChannel ?? "待设置"} title="默认推广渠道" value="可使用" />
+              <SettingsListItem subtitle={session?.activePublicId ?? session?.primaryPublicId ?? t("正在读取账户身份…")} title="NeeDo ID" value={t("不可修改")} />
+              <SettingsListItem subtitle="未分配推广码" title="专属推广码" value="待接入" />
+              <SettingsListItem subtitle="待设置" title="默认推广渠道" value="待接入" />
               <SettingsListItem subtitle="提现、税务与银行资料后续接入正式接口" title="收款身份" value="待复核" />
               <SettingsListItem subtitle="只读取本人推广活动、素材、收益和结算数据" title="数据权限" value="Afirieito 专用" />
             </>
@@ -3304,7 +3302,7 @@ export function UnifiedSettingsAccountPage({ portal }: { portal: UnifiedSettings
               ) : (
                 <>
                   <SettingsListItem subtitle="账号与资料主体已关联" title="绑定信息" value="基础完成" />
-                  <SettingsListItem subtitle="演示环境未接入多设备记录" title="设备管理" value="当前设备" />
+                  <SettingsListItem subtitle="多设备会话查询与撤销接口尚未启用" title="设备管理" value="待开放" />
                 </>
               )}
             </>
@@ -3520,7 +3518,7 @@ export function UnifiedSettingsHelpPage({ portal }: { portal: UnifiedSettingsPor
             to={supportPath}
             value="进入"
           />
-          <SettingsListItem subtitle="当前演示环境统一通过平台支持入口承接问题反馈" title="问题反馈" value="支持中" />
+          <SettingsListItem subtitle="问题反馈通过平台正式支持入口提交" title="问题反馈" value="支持中" />
         </SettingsSection>
         <div className="flex justify-end">
           <PrimaryButton to={supportPath}>{supportPrimaryLabel}</PrimaryButton>
@@ -3772,19 +3770,18 @@ export function UnifiedSettingsPrivacyPage({ portal }: { portal: UnifiedSettings
 export function UnifiedSettingsDeleteAccountPage({ portal }: { portal: UnifiedSettingsPortal }) {
   const { language } = useI18n();
   const t = (source: string) => translateText(source, language);
-  const [submitted, setSubmitted] = useState(false);
   const checks =
     portal === "business"
       ? [
           { title: "Afirieito 账号资料", subtitle: "退会后将停止使用 NeeDoAfirieito 前端，并按法规要求保留必要记录。", value: "需确认" },
           { title: "佣金与提现", subtitle: "未结算佣金、冻结金额和提现争议处理完成前不能正式退会。", value: "需检查" },
           { title: "推广链接与素材", subtitle: "退会后专属链接、二维码和素材授权将进入停止使用流程。", value: "需确认" },
-          { title: "演示账号", subtitle: "当前环境只展示退会入口，不会直接删除测试账号数据。", value: "演示中" }
+          { title: "正式申请接口", subtitle: "注销申请接口和审计流程尚未启用，当前不会记录或伪造申请。", value: "待开放" }
         ]
       : [
           { title: "账号资料", subtitle: "注销后将停止登录当前身份，并按法规要求处理必要记录。", value: "需确认" },
           { title: "预约与结算", subtitle: "未完成预约、未结算金额和争议处理完成前不能正式退会。", value: "需检查" },
-          { title: "演示账号", subtitle: "当前环境只展示退会入口，不会直接删除测试账号数据。", value: "演示中" }
+          { title: "正式申请接口", subtitle: "注销申请接口和审计流程尚未启用，当前不会记录或伪造申请。", value: "待开放" }
         ];
 
   return (
@@ -3808,11 +3805,8 @@ export function UnifiedSettingsDeleteAccountPage({ portal }: { portal: UnifiedSe
         <SettingsSection panelClassName="p-4" title={t("提交申请")}>
           <div className="space-y-4">
             <p className="text-sm leading-7 text-[color:var(--client-muted)]">
-              {t(submitted ? "退会申请已记录在演示状态中。" : "当前演示环境只展示退会入口与确认说明，不直接删除测试账号数据。")}
+              {t("正式注销申请接口与审计流程尚未启用。为避免产生无法追踪的假状态，当前不接受提交。")}
             </p>
-            <PrimaryButton className="w-full" onClick={() => setSubmitted(true)}>
-              {t(submitted ? "已提交申请" : "提交注销申请")}
-            </PrimaryButton>
           </div>
         </SettingsSection>
       </SettingsDetailPage>

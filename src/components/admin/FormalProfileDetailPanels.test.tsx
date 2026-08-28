@@ -57,7 +57,7 @@ const baseBooking: BackofficeOrderPayload = {
 const technicianDetail: BackofficeTechnicianDetailPayload = {
   id: 31,
   userId: 1031,
-  needoId: "n0000001031",
+  needoId: "u0000001031",
   displayName: "佐藤 美香",
   email: "mika@example.jp",
   avatarUrl: "/images/mika.jpg",

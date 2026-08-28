@@ -1,5 +1,9 @@
 import { useSyncExternalStore } from "react";
-import { imageBank, serviceCategories, services } from "../data/mock";
+import {
+  emptyServiceCategories as serviceCategories,
+  emptyServices as services,
+  formalMediaFallback as imageBank
+} from "../data/formalRuntimeFallbacks";
 import type { ServiceCategory } from "../types/domain";
 import { readBrowserStorage, writeBrowserStorage } from "./browserStorage";
 

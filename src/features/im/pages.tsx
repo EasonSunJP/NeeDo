@@ -32,7 +32,7 @@ import {
   floatingHeaderSearchInputClassName
 } from "../../components/mobile/FloatingHomeHeader";
 import { chatBgUrl } from "../../assets/runtime/images";
-import { imageBank, orders, services } from "../../data/mock";
+import { emptyOrders as orders, emptyServices as services, formalMediaFallback as imageBank } from "../../data/formalRuntimeFallbacks";
 import { parseBrowserStorageJson } from "../../lib/browserStorage";
 import { clampMessageText } from "../../lib/messageTextLimits";
 import { getNeedoAppBookingTitle } from "../../lib/scheduleBookingTitle";
@@ -64,7 +64,6 @@ import {
   padNumber,
   timeToMinutes
 } from "../technician-schedule/model";
-import { isStaticDemoMode } from "../../api/staticDemoMode";
 import {
   ContactSummaryCard,
   ContactRow,
@@ -4967,47 +4966,8 @@ export function ImConversationRoomPage({
       return;
     }
 
-    if (type === "video") {
-      await store.sendMessage(conversationId, "video", "https://example.com/video/mock.mp4", {
-        ext: {
-          url: "https://example.com/video/mock.mp4",
-          thumbnailUrl: imageBank.cleaningPortrait,
-          fileName: "preview.mp4",
-          fileSize: 1_820_000,
-          mimeType: "video/mp4",
-          duration: 11,
-          width: 720,
-          height: 960
-        }
-      });
-      setPanel(null);
-      return;
-    }
-
-    if (type === "file") {
-      await store.sendMessage(conversationId, "file", "https://example.com/files/im-note.pdf", {
-        ext: {
-          url: "https://example.com/files/im-note.pdf",
-          fileName: "预约说明.pdf",
-          fileSize: 1_420_000,
-          mimeType: "application/pdf"
-        }
-      });
-      setPanel(null);
-      return;
-    }
-
-    if (type === "location") {
-      await store.sendMessage(conversationId, "location", "门店位置", {
-        ext: {
-          location: {
-            title: "东京都中央区 银座 4-2-11",
-            address: "最近地铁站出口步行 3 分钟",
-            latitude: 35.6721,
-            longitude: 139.7649
-          }
-        }
-      });
+    if (type === "video" || type === "file" || type === "location") {
+      window.alert("该消息类型需要正式上传或位置选择接口，当前不会发送示例内容。");
       setPanel(null);
       return;
     }
@@ -5203,10 +5163,6 @@ export function ImConversationRoomPage({
     });
     if (closeAfter) {
       closeMessageMenu();
-    }
-
-    if (isStaticDemoMode()) {
-      return;
     }
 
     void api
@@ -6081,8 +6037,7 @@ export function ImConversationInfoPage() {
   const user = conversation?.contactUserId ? store.usersById[conversation.contactUserId] : undefined;
   const numericContactUserId = Number(user?.id);
   const formalActivityTargetUserId = conversation?.type === "single"
-    && !isStaticDemoMode()
-    && /^n\d{10}$/.test(user?.userIdLabel ?? "")
+    && /^(?:u|s|b|o|needo)\d{10}$/.test(user?.userIdLabel ?? "")
     && Number.isSafeInteger(numericContactUserId)
     && numericContactUserId > 0
     ? numericContactUserId
@@ -6950,8 +6905,7 @@ export function ImNewConversationPage() {
   const [selectedCollectUserId, setSelectedCollectUserId] = useState<string | null>(null);
   const [collectAmount, setCollectAmount] = useState("");
   const [collectNote, setCollectNote] = useState("");
-  const [scannedUserId, setScannedUserId] = useState<string | null>(null);
-  const [scanToken, setScanToken] = useState("qr-table-a08");
+  const [scanToken, setScanToken] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
   const [myQrPurpose, setMyQrPurpose] = useState<MyQrCodePurpose>("friend");
   const contacts = useMemo(() => {
@@ -7028,9 +6982,6 @@ export function ImNewConversationPage() {
   const activePointerIdRef = useRef<number | null>(null);
   const groupSourceSelectionRef = useRef<string | null>(null);
   const [activeIndexLetter, setActiveIndexLetter] = useState<ContactIndexLetter | null>(null);
-  const scannedUser = scannedUserId
-    ? availableFriendCandidates.find((user) => user.id === scannedUserId) ?? null
-    : null;
   const indexLetterClassName = visibleIndexLetters.length > 18
     ? "h-3.5 text-[9px] leading-[14px]"
     : visibleIndexLetters.length > 12
@@ -7182,17 +7133,6 @@ export function ImNewConversationPage() {
       note ? `收款请求 · ${amountLabel} · ${note}` : `收款请求 · ${amountLabel}`
     );
     navigate(config.routes.conversation(conversation.id));
-  };
-
-  const simulateScan = () => {
-    const candidate = availableFriendCandidates.find((user) => Boolean(user.userIdLabel)) ?? availableFriendCandidates[0] ?? null;
-
-    if (!candidate) {
-      return;
-    }
-
-    setScanError(null);
-    setScannedUserId(candidate.id);
   };
 
   const resolveScanToken = (nextToken: string) => {
@@ -7440,25 +7380,9 @@ export function ImNewConversationPage() {
         <div className="space-y-4 px-4 py-4">
           <UnifiedScanSimulator
             error={scanError}
-            friendResult={scannedUser ? (
-              <section className="rounded-[24px] bg-white p-4 shadow-[0_12px_32px_rgba(20,20,20,0.06)]">
-                <p className="text-xs font-black text-[color:var(--client-primary)]">扫码识别结果</p>
-                <div className="mt-3">
-                  <ContactRow
-                    caption={scannedUser.signature ?? scannedUser.region ?? scannedUser.bio ?? scannedUser.userIdLabel}
-                    user={scannedUser}
-                  />
-                </div>
-                <Button className="mt-4 w-full rounded-2xl" onClick={() => void addFriendAndOpen(scannedUser.id)} size="lg">
-                  添加好友并开始聊天
-                </Button>
-              </section>
-            ) : undefined}
-            friendScanDisabled={availableFriendCandidates.length === 0}
             myQrPurpose={myQrPurpose}
             onMyQrPurposeChange={setMyQrPurpose}
             onResolveToken={resolveScanToken}
-            onScanFriend={simulateScan}
             onTokenChange={setScanToken}
             token={scanToken}
           />

@@ -18,6 +18,7 @@ const profile = {
   mediaAssets: [],
   membershipLevel: "standard",
   updatedAt: now,
+  user: { needoId: "u1234567890" },
   userId: 11,
   visibility: "public"
 };

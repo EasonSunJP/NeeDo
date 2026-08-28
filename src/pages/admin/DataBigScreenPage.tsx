@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import { CloseIconButton } from "../../components/ui/CloseIconButton";
 import { TitleWithInfo } from "../../components/ui/TitleWithInfo";
-import { services, stores, technicians } from "../../data/mock";
+import { emptyServices as services, emptyStores as stores, emptyTechnicians as technicians } from "../../data/formalRuntimeFallbacks";
 import { yen } from "../../lib/utils";
 import { detectSystemAdminTheme, isDarkAdminTheme, normalizeAdminTheme, platformAdminThemeOptions, type AdminTheme } from "../../theme/AdminTheme";
 

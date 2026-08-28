@@ -43,7 +43,9 @@ const serviceRangeSource = source.slice(source.indexOf("export function UnifiedS
 const accountSession = {
   email: "owner@needo.example",
   emailVerifiedAt: "2026-08-27T00:00:00.000Z",
-  needoId: "n0000000042",
+  needoId: "u0000000042",
+  primaryPublicId: "u0000000042",
+  activePublicId: "u0000000042",
   username: "可编辑昵称"
 };
 const accountChallenge = {
@@ -160,7 +162,7 @@ describe("FormalAccountSecurityPanel", () => {
     accountSecurityMocks.getGoogleLinkStatus.mockRejectedValueOnce(new Error("error.network"));
     await renderAccountSecurity();
     await waitForAccount(() => expect(accountContainer?.textContent).toContain("账户安全状态读取失败"));
-    expect(accountContainer?.textContent).toContain("n0000000042");
+    expect(accountContainer?.textContent).toContain("u0000000042");
     expect(accountContainer?.textContent).toContain("owner@needo.example");
     expect(accountContainer?.textContent).toContain("可编辑昵称");
     await clickAccount(accountButton("重试"));

@@ -21,12 +21,13 @@ describe("HomePage technician recommendations", () => {
     expect(homePageSource).toContain("getTechnicianDynamicPath(technician)");
   });
 
-  it("keeps legacy recommendations exclusive to explicit static-demo mode", () => {
-    expect(homePageSource).toContain("const allowLegacyCoreReadData = isStaticDemoMode();");
-    expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyServices : []");
-    expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyStores : []");
-    expect(homePageSource).toContain("allowLegacyCoreReadData ? legacyTechnicians : []");
-    expect(homePageSource).toContain("if (!allowLegacyCoreReadData)");
+  it("disables legacy recommendations", () => {
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.services.map(mapCoreServiceToServiceItem) ?? []");
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.shops.map(mapCoreShopToStore) ?? []");
+    expect(homePageSource).toContain("homeRecommendationsQuery.data?.technicians.map(mapCoreTechnicianToTechnician) ?? []");
+    expect(homePageSource).not.toContain("legacyServices");
+    expect(homePageSource).not.toContain("legacyStores");
+    expect(homePageSource).not.toContain("legacyTechnicians");
   });
 
   it("recovers a transient formal read failure and exposes a manual reload action", () => {
@@ -53,9 +54,10 @@ describe("HomePage authenticated customer identity", () => {
     expect(homePageSource).toContain("getFormalCustomerProfileId(session)");
     expect(homePageSource).toContain("coreReadApi.getCustomerProfile(formalCustomerProfileId)");
     expect(homePageSource).toContain("mapCoreCustomerToCustomer(formalCustomerProfileQuery.data)");
-    expect(homePageSource).toContain("isStaticDemoMode()");
+    expect(homePageSource).not.toContain("isStaticDemoMode()");
     expect(homePageSource).toContain("const currentCustomer = formalCustomerProfileQuery.data");
-    expect(homePageSource).toContain(": legacyCurrentCustomer");
+    expect(homePageSource).toContain(": null;");
+    expect(homePageSource).not.toContain("legacyCurrentCustomer");
   });
 });
 

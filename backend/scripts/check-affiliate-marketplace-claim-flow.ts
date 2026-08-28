@@ -2,7 +2,6 @@ import { hash } from "bcryptjs";
 import { config as loadDotenv } from "dotenv";
 import { existsSync } from "node:fs";
 import { AppError } from "../src/utils/app-error";
-import { NeedoIdAllocator } from "../src/services/needo-id.service";
 
 const TASK_BUDGET_NDP = 2_000_000;
 const REWARD_NDP = 1_000;
@@ -46,11 +45,13 @@ const main = async (): Promise<void> => {
     { AffiliateMarketplaceRepository },
     { AffiliateLinkTokenService },
     { AffiliateMarketplaceService },
+    { createFormalTestUser, deleteFormalTestUserFoundations },
     { prisma, disconnectPrisma }
   ] = await Promise.all([
     import("../src/repositories/affiliate-marketplace.repository"),
     import("../src/services/affiliate-link-token.service"),
     import("../src/services/affiliate-marketplace.service"),
+    import("./support/formal-test-user"),
     import("../src/prisma/client")
   ]);
   const marker = `affiliate-marketplace-claim-${Date.now()}-${process.pid}`;
@@ -66,13 +67,8 @@ const main = async (): Promise<void> => {
 
   try {
     const passwordHash = await hash("AffiliateClaimFlow.2026!", 12);
-    const needoIdAllocator = new NeedoIdAllocator();
     const createUser = (email: string, username: string) =>
-      needoIdAllocator.withNewId((needoId) =>
-        prisma.user.create({
-          data: { needoId, email, emailVerifiedAt: new Date(), passwordHash, username }
-        })
-      );
+      createFormalTestUser(prisma, { email, passwordHash, username });
     const publisher = await createUser(`${marker}-publisher@needo.test`, `${marker} publisher`);
     const claimant = await createUser(`${marker}-claimant@needo.test`, `${marker} claimant`);
     const otherUser = await createUser(`${marker}-other@needo.test`, `${marker} other`);
@@ -119,19 +115,7 @@ const main = async (): Promise<void> => {
         { roleId: readRole.id, permissionId: readPermission.id }
       ]
     });
-    const identities = await Promise.all(
-      [claimant, otherUser].map((user) =>
-        prisma.userIdentity.create({
-          data: {
-            userId: user.id,
-            type: "customer",
-            scopeType: "global",
-            displayName: user.username,
-            isDefault: true
-          }
-        })
-      )
-    );
+    const identities = [claimant, otherUser].map((user) => user.identities[0]!);
     await prisma.userRole.createMany({
       data: [
         { userId: claimant.id, roleId: fullRole.id, scopeType: "global" },
@@ -444,8 +428,7 @@ const main = async (): Promise<void> => {
       }
       if (userIds.length > 0) {
         await transaction.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
-        await transaction.userRole.deleteMany({ where: { userId: { in: userIds } } });
-        await transaction.userIdentity.deleteMany({ where: { userId: { in: userIds } } });
+        await deleteFormalTestUserFoundations(transaction, userIds);
       }
       if (roleIds.length > 0) {
         await transaction.rolePermission.deleteMany({ where: { roleId: { in: roleIds } } });

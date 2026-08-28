@@ -1,49 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import viteConfig, {
-  resolveLegacyAuthProxyTarget,
-  shouldIncludeStaticDemoRuntime
+  resolveLegacyAuthProxyTarget
 } from "../../vite.config";
-import { isStaticDemoMode } from "./staticDemoMode";
+import authProviderSource from "../auth/AuthProvider.tsx?raw";
 import httpClientSource from "./httpClient.ts?raw";
+import loginPageSource from "../pages/auth/LoginPage.tsx?raw";
 import mainSource from "../main.tsx?raw";
 import packageJsonSource from "../../package.json?raw";
-import {
-  isFrontendAuthBypassEnabled,
-  requiresFormalFrontendLogin
-} from "../pages/auth/LoginPage";
+import rbacSource from "../auth/rbac.ts?raw";
+import viteConfigSource from "../../vite.config.ts?raw";
 
 describe("frontend production safety", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("disables the passwordless frontend bypass in production", () => {
-    const productionEnv = {
-      PROD: true,
-      VITE_NEEDO_FRONTEND_AUTH_BYPASS: "true"
-    } as Parameters<typeof isFrontendAuthBypassEnabled>[0] & { PROD: boolean };
+  it("has no static demo or passwordless frontend runtime", () => {
+    const productionSources = [
+      authProviderSource,
+      httpClientSource,
+      loginPageSource,
+      mainSource,
+      rbacSource,
+      viteConfigSource
+    ].join("\n");
 
-    expect(isFrontendAuthBypassEnabled(productionEnv)).toBe(false);
-  });
-
-  it("requires formal login for every frontend portal in production", () => {
-    const resolveFormalLogin = requiresFormalFrontendLogin as (
-      portal: "user",
-      redirectPath: string | null,
-      isProduction: boolean
-    ) => boolean;
-
-    expect(resolveFormalLogin("user", null, true)).toBe(true);
-  });
-
-  it("does not install the static demo runtime in a normal production build", () => {
-    vi.stubEnv("PROD", true);
-    vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
-
-    expect(isStaticDemoMode()).toBe(false);
-    expect(httpClientSource).not.toMatch(/from\s+["']\.\/staticDemo["']/);
-    expect(mainSource).not.toMatch(/from\s+["']\.\/api\/staticDemo["']/);
-    expect(httpClientSource).toContain("resolveLoadedStaticDemoRequest");
+    expect(productionSources).not.toMatch(/staticDemo|STATIC_DEMO/);
+    expect(productionSources).not.toMatch(/frontend-bypass|FRONTEND_AUTH_BYPASS/);
   });
 
   it("does not create a legacy auth proxy for the production target", () => {
@@ -55,34 +38,16 @@ describe("frontend production safety", () => {
     ).toBeNull();
   });
 
-  it("omits the static demo runtime from a production artifact", () => {
-    expect(
-      shouldIncludeStaticDemoRuntime(
-        { NEEDO_BUILD_TARGET: "production" },
-        "build",
-        "production"
-      )
-    ).toBe(false);
-    expect(
-      shouldIncludeStaticDemoRuntime(
-        { NEEDO_BUILD_TARGET: "static-demo" },
-        "build",
-        "production"
-      )
-    ).toBe(true);
-  });
+  it("exposes only formal development and build scripts", () => {
+    const packageJson = JSON.parse(packageJsonSource) as {
+      scripts: Record<string, string>;
+    };
 
-  it("rejects unsafe flags in a normal production build", () => {
-    vi.stubEnv("NEEDO_BUILD_TARGET", "production");
-    vi.stubEnv("VITE_NEEDO_STATIC_DEMO", "true");
-    const createConfig = viteConfig as unknown as (config: {
-      command: "build";
-      mode: string;
-    }) => unknown;
-
-    expect(() => createConfig({ command: "build", mode: "production" })).toThrow(
-      "VITE_NEEDO_STATIC_DEMO"
-    );
+    expect(packageJson.scripts["dev:static"]).toBeUndefined();
+    expect(packageJson.scripts["build:static"]).toBeUndefined();
+    expect(packageJson.scripts["dev:legacy"]).toBeUndefined();
+    expect(packageJson.scripts["dev:backend"]).toBeUndefined();
+    expect(packageJson.scripts["dev:all"]).toBeUndefined();
   });
 
   it("keeps isolated git worktrees outside the root test suite and dev watcher", () => {

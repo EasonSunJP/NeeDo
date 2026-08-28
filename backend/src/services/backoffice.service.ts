@@ -1,5 +1,5 @@
 import { hash } from "bcryptjs";
-import { NeedoIdAllocationExhaustedError } from "./needo-id.service";
+import { UserBootstrapKeyAllocationExhaustedError } from "./user-bootstrap-key.service";
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   BackofficeCustomerUpdateBody,
@@ -868,7 +868,7 @@ export class BackofficeService {
         ownerPasswordHash: await hash(input.ownerPassword, BackofficeService.BCRYPT_ROUNDS)
       });
     } catch (error) {
-      if (error instanceof NeedoIdAllocationExhaustedError) {
+      if (error instanceof UserBootstrapKeyAllocationExhaustedError) {
         throw this.needoIdAllocationUnavailableError();
       }
       if (this.isUniqueConstraintError(error)) {
