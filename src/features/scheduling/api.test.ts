@@ -34,4 +34,12 @@ describe("schedulingApi", () => {
     expect(httpClient.request).toHaveBeenCalledWith("/technician/schedule/slots/10", { body: { status: "blocked" }, method: "PATCH" });
     expect(httpClient.request).toHaveBeenCalledWith("/merchant-admin/schedule/slots/10", { method: "DELETE" });
   });
+
+  it("loads one technician-owned schedule slot", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await schedulingApi.getTechnicianSlot(17);
+
+    expect(httpClient.request).toHaveBeenCalledWith("/technician/schedule/slots/17");
+  });
 });
