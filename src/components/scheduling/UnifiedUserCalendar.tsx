@@ -534,9 +534,15 @@ function getLocalCalendarEvents(localEvents: LocalCalendarEvent[], syncContactOp
   }));
 }
 
-function getOrderEvents(currentCustomer: Customer, orderRows: Order[]): UnifiedCalendarEvent[] {
+function getOrderEvents(
+  currentCustomer: Customer,
+  orderRows: Order[],
+  ordersAreServerScoped = false
+): UnifiedCalendarEvent[] {
   return orderRows
-    .filter((order) => order.customerId === currentCustomer.id && order.status !== "cancelled" && order.status !== "refunded")
+    .filter((order) => (
+      ordersAreServerScoped || order.customerId === currentCustomer.id
+    ) && order.status !== "cancelled" && order.status !== "refunded")
     .map((order): UnifiedCalendarEvent | null => {
       const schedule = normalizeDateTimeFromOrder(order);
       if (!schedule) {
@@ -4991,7 +4997,7 @@ export function UnifiedUserCalendar({
     const birthdayEvents = formalOnly ? [] : getBirthdayCalendarEvents(period, currentCustomer, currentTechnician, currentStore, birthdayContactOptions);
     const localCalendarEvents = formalOnly ? [] : getLocalCalendarEvents(localEvents, syncContactOptions, currentScopeCreator);
     const neeDoEvents = activeScope === "user" && currentCustomer
-      ? getOrderEvents(currentCustomer, formalOrders)
+      ? getOrderEvents(currentCustomer, formalOrders, formalOnly)
       : activeScope === "merchant" || activeScope === "technician"
         ? getFormalScheduleEvents(formalScheduleSlots, activeScope)
         : [];

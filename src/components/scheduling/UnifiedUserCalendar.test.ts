@@ -92,6 +92,17 @@ describe("UnifiedUserCalendar multi-day interactions", () => {
     expect(source).toContain("onCreate={formalOnly ? undefined : openCreate}");
   });
 
+  it("trusts the authenticated order scope instead of comparing customer profile and user IDs", () => {
+    const orderEventSource = source.slice(
+      source.indexOf("function getOrderEvents"),
+      source.indexOf("function getFormalScheduleEvents")
+    );
+
+    expect(orderEventSource).toContain("ordersAreServerScoped");
+    expect(orderEventSource).toContain("ordersAreServerScoped || order.customerId === currentCustomer.id");
+    expect(source).toContain("getOrderEvents(currentCustomer, formalOrders, formalOnly)");
+  });
+
   it("loads persisted orders and schedule slots without the order mock", () => {
     expect(source).not.toContain('import { orders } from "../../data/mock"');
     expect(source).toContain("bookingApi.listOrders");
