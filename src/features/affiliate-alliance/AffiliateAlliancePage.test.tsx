@@ -3,7 +3,12 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AffiliateAlliance } from "../../api/affiliateAlliance";
+import type {
+  AffiliateAlliance,
+  AffiliateAllianceInvitation,
+  AffiliateAllianceMember,
+  AffiliateAlliancePublicPerson
+} from "../../api/affiliateAlliance";
 import { ApiClientError } from "../../api/httpClient";
 import { AffiliateAlliancePage } from "./AffiliateAlliancePage";
 
@@ -11,8 +16,15 @@ import { AffiliateAlliancePage } from "./AffiliateAlliancePage";
   true;
 
 const apiMocks = vi.hoisted(() => ({
+  acceptInvitation: vi.fn(),
   create: vi.fn(),
-  getMine: vi.fn()
+  createInvitation: vi.fn(),
+  getMine: vi.fn(),
+  listEligibleContacts: vi.fn(),
+  listMembers: vi.fn(),
+  listReceivedInvitations: vi.fn(),
+  listSentInvitations: vi.fn(),
+  rejectInvitation: vi.fn()
 }));
 
 vi.mock("../../api/affiliateAlliance", () => ({
@@ -62,6 +74,55 @@ const alliance: AffiliateAlliance = {
   updatedAt: "2026-08-28T12:00:00.000Z"
 };
 
+const partnerMember: AffiliateAllianceMember = {
+  memberId: 92,
+  person: {
+    needoId: "u0000000009",
+    displayName: "佐藤 美咲",
+    avatarUrl: null
+  },
+  role: "partner",
+  parent: {
+    memberId: 91,
+    person: alliance.owner
+  },
+  promoterShareBpsOverride: null,
+  permissions: {
+    canClaimTasks: false,
+    canViewAllianceOverview: false,
+    canViewMemberDetails: false,
+    canManageOwnSubordinates: false,
+    canViewAllianceWallet: false
+  },
+  joinedAt: "2026-08-28T12:30:00.000Z"
+};
+
+const candidate: AffiliateAlliancePublicPerson = {
+  needoId: "u0000000008",
+  displayName: "鈴木 葵",
+  avatarUrl: null
+};
+
+const pendingInvitation: AffiliateAllianceInvitation = {
+  invitationId: 41,
+  alliance: { allianceId: alliance.allianceId, name: alliance.name },
+  inviter: alliance.owner,
+  invitee: candidate,
+  role: "partner",
+  proposedParent: null,
+  status: "pending",
+  expiresAt: "2026-08-31T12:00:00.000Z",
+  respondedAt: null,
+  createdAt: "2026-08-28T12:00:00.000Z"
+};
+
+const page = <T,>(list: T[], currentPage = 1, total = list.length) => ({
+  list,
+  total,
+  page: currentPage,
+  page_size: 20
+});
+
 let container: HTMLDivElement;
 let root: Root;
 let storageSetItem: ReturnType<typeof vi.spyOn>;
@@ -97,11 +158,15 @@ async function click(element: Element) {
 }
 
 async function setControlValue(
-  element: HTMLInputElement | HTMLTextAreaElement,
+  element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
   value: string
 ) {
   const prototype =
-    element instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    element instanceof HTMLInputElement
+      ? HTMLInputElement.prototype
+      : element instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLTextAreaElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
   await act(async () => {
     setter?.call(element, value);
@@ -125,8 +190,20 @@ describe("AffiliateAlliancePage", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     apiMocks.getMine.mockResolvedValue({ alliance: null });
+    apiMocks.listMembers.mockResolvedValue(page([]));
+    apiMocks.listEligibleContacts.mockResolvedValue(page([]));
+    apiMocks.listSentInvitations.mockResolvedValue(page([]));
+    apiMocks.listReceivedInvitations.mockResolvedValue(page([]));
+    apiMocks.createInvitation.mockResolvedValue({ invitation: pendingInvitation });
+    apiMocks.acceptInvitation.mockResolvedValue({
+      invitation: { ...pendingInvitation, status: "accepted" },
+      member: partnerMember
+    });
+    apiMocks.rejectInvitation.mockResolvedValue({
+      invitation: { ...pendingInvitation, status: "rejected" }
+    });
     storageSetItem = vi.spyOn(Storage.prototype, "setItem");
   });
 
@@ -194,9 +271,152 @@ describe("AffiliateAlliancePage", () => {
     expect(container.textContent).toContain("可用余额");
     expect(container.textContent).toContain("冻结余额");
     expect(container.textContent).toContain("0 NDP");
-    expect(container.textContent).not.toContain("邀请成员");
+    expect(container.textContent).toContain("邀请成员");
     expect(container.textContent).not.toContain("转账");
     expect(container.textContent).not.toContain("GMV");
+  });
+
+  it("loads owner management data and refreshes authoritative lists after an invitation", async () => {
+    apiMocks.getMine.mockResolvedValue({ alliance });
+    apiMocks.listMembers.mockResolvedValue(page([partnerMember]));
+    apiMocks.listEligibleContacts.mockResolvedValue(page([candidate]));
+    apiMocks.listSentInvitations.mockResolvedValue(page([pendingInvitation]));
+
+    await renderPage();
+    await waitFor(() => expect(container.textContent).toContain("成员名单"));
+
+    expect(apiMocks.listMembers).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }));
+    expect(apiMocks.listEligibleContacts).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 20, q: "" })
+    );
+    expect(apiMocks.listSentInvitations).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 20 })
+    );
+    expect(container.textContent).toContain("佐藤 美咲");
+    expect(container.textContent).toContain("鈴木 葵");
+    expect(container.textContent).toContain("等待回应");
+
+    await click(findButton("选择鈴木 葵"));
+    await click(findButton("发送邀请"));
+    await waitFor(() =>
+      expect(apiMocks.createInvitation).toHaveBeenCalledWith({
+        inviteeNeedoId: candidate.needoId,
+        role: "partner",
+        proposedParentMemberId: null
+      })
+    );
+    await waitFor(() => expect(apiMocks.listEligibleContacts).toHaveBeenCalledTimes(2));
+    expect(apiMocks.listSentInvitations).toHaveBeenCalledTimes(2);
+  });
+
+  it("requires a parent only for subordinate invitations and clears it for partners", async () => {
+    apiMocks.getMine.mockResolvedValue({ alliance });
+    apiMocks.listMembers.mockResolvedValue(page([partnerMember]));
+    apiMocks.listEligibleContacts.mockResolvedValue(page([candidate]));
+
+    await renderPage();
+    await waitFor(() => expect(container.textContent).toContain("邀请成员"));
+    await click(findButton("选择鈴木 葵"));
+
+    const roleSelect = container.querySelector<HTMLSelectElement>('select[name="invitationRole"]')!;
+    await setControlValue(roleSelect, "subordinate");
+    const parentSelect = container.querySelector<HTMLSelectElement>('select[name="proposedParentMemberId"]');
+    expect(parentSelect).not.toBeNull();
+    expect(findButton("发送邀请").hasAttribute("disabled")).toBe(true);
+
+    await setControlValue(parentSelect!, String(partnerMember.memberId));
+    expect(findButton("发送邀请").hasAttribute("disabled")).toBe(false);
+    await setControlValue(roleSelect, "partner");
+    expect(container.querySelector('select[name="proposedParentMemberId"]')).toBeNull();
+    await click(findButton("发送邀请"));
+    await waitFor(() =>
+      expect(apiMocks.createInvitation).toHaveBeenCalledWith({
+        inviteeNeedoId: candidate.needoId,
+        role: "partner",
+        proposedParentMemberId: null
+      })
+    );
+  });
+
+  it("shows received invitations before creation and refreshes both invitation and alliance state", async () => {
+    apiMocks.getMine.mockReset();
+    apiMocks.getMine
+      .mockResolvedValueOnce({ alliance: null })
+      .mockResolvedValueOnce({ alliance: null });
+    apiMocks.listReceivedInvitations.mockReset();
+    apiMocks.listReceivedInvitations
+      .mockResolvedValueOnce(page([pendingInvitation]))
+      .mockResolvedValueOnce(page([]));
+
+    await renderPage();
+    await waitFor(() => expect(container.textContent).toContain("收到的邀请"));
+    expect(container.textContent!.indexOf("收到的邀请")).toBeLessThan(
+      container.textContent!.indexOf("建立你的第一个联盟")
+    );
+
+    await click(findButton("拒绝邀请"));
+    await waitFor(() => expect(apiMocks.rejectInvitation).toHaveBeenCalledWith(41));
+    await waitFor(() => expect(apiMocks.getMine).toHaveBeenCalledTimes(2));
+
+    await waitFor(() => expect(container.textContent).toContain("建立你的第一个联盟"));
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    apiMocks.getMine.mockReset();
+    apiMocks.getMine
+      .mockResolvedValueOnce({ alliance: null })
+      .mockResolvedValueOnce({ alliance });
+    apiMocks.listReceivedInvitations.mockReset();
+    apiMocks.listReceivedInvitations
+      .mockResolvedValueOnce(page([pendingInvitation]))
+      .mockResolvedValueOnce(page([]));
+    await renderPage();
+    await waitFor(() => expect(container.textContent).toContain("接受邀请"));
+    await click(findButton("接受邀请"));
+    await waitFor(() => expect(apiMocks.acceptInvitation).toHaveBeenCalledWith(41));
+    await waitFor(() => expect(container.textContent).toContain("东京美容联盟"));
+  });
+
+  it("shows a joined non-owner's real permissions without owner controls or hidden wallet", async () => {
+    const joinedAlliance: AffiliateAlliance = {
+      ...alliance,
+      membership: {
+        ...alliance.membership,
+        memberId: partnerMember.memberId,
+        role: "partner",
+        managerNeedoId: alliance.owner.needoId,
+        permissions: partnerMember.permissions
+      }
+    };
+    apiMocks.getMine.mockResolvedValue({ alliance: joinedAlliance });
+
+    await renderPage();
+    await waitFor(() => expect(container.textContent).toContain("我的联盟身份"));
+
+    expect(container.textContent).toContain("合作伙伴");
+    expect(container.textContent).toContain("未授权");
+    expect(container.textContent).not.toContain("邀请成员");
+    expect(container.textContent).not.toContain("可用余额");
+    expect(container.textContent).not.toContain("冻结余额");
+    expect(apiMocks.listMembers).not.toHaveBeenCalled();
+  });
+
+  it("renders expired history, paged controls, recoverable owner errors, and one create label", async () => {
+    const expiredInvitation = { ...pendingInvitation, invitationId: 43, status: "expired" as const };
+    apiMocks.getMine.mockResolvedValue({ alliance });
+    apiMocks.listMembers
+      .mockRejectedValueOnce(new ApiClientError("error.forbidden", 40301, 403))
+      .mockResolvedValueOnce(page([partnerMember], 1, 25));
+    apiMocks.listEligibleContacts.mockResolvedValue(page([]));
+    apiMocks.listSentInvitations.mockResolvedValue(page([expiredInvitation]));
+
+    await renderPage();
+    await waitFor(() => expect(container.textContent).toContain("成员数据读取失败"));
+    expect(container.textContent).toContain("已过期");
+    await click(findButton("重试成员名单"));
+    await waitFor(() => expect(container.textContent).toContain("下一页"));
+
+    expect(Array.from(container.querySelectorAll("button")).filter((button) => button.textContent === "创建联盟")).toHaveLength(0);
+    expect(storageSetItem).not.toHaveBeenCalled();
   });
 
   it("recovers a 409 by reloading and shows permission failures without local fallback", async () => {
