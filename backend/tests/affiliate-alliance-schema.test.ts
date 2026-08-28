@@ -66,7 +66,7 @@ describe("affiliate alliance schema", () => {
 
   it("indexes invitation owner, recipient, expiry, parent, and soft deletion queries", () => {
     expect(schema).toMatch(
-      /model AffiliateAllianceInvitation[\s\S]*@@index\(\[allianceId, status, createdAt\]\)[\s\S]*@@index\(\[inviteeUserId, status, createdAt\]\)[\s\S]*@@index\(\[status, expiresAt, id\]\)[\s\S]*@@index\(\[inviterMemberId\]\)[\s\S]*@@index\(\[proposedParentMemberId\]\)[\s\S]*@@index\(\[deletedAt\]\)/
+      /model AffiliateAllianceInvitation[\s\S]*@@index\(\[allianceId, status, createdAt\]\)[\s\S]*@@index\(\[inviteeUserId, status, createdAt\], map: "affiliate_alliance_invitee_status_created_idx"\)[\s\S]*@@index\(\[status, expiresAt, id\]\)[\s\S]*@@index\(\[inviterMemberId\]\)[\s\S]*@@index\(\[proposedParentMemberId\]\)[\s\S]*@@index\(\[deletedAt\]\)/
     );
     expect(schema).toMatch(/affiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
     expect(schema).toMatch(/sentAffiliateAllianceInvitations\s+AffiliateAllianceInvitation\[\]/);
