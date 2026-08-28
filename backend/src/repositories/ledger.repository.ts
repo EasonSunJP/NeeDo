@@ -57,6 +57,50 @@ type WalletHoldRecord = Prisma.WalletHoldGetPayload<Record<string, never>>;
 type WalletAdjustmentRequestRecord = Prisma.WalletAdjustmentRequestGetPayload<
   Record<string, never>
 >;
+type LockedOrderFinancialPlatformFeeRow = {
+  bookingOrderId: number;
+  customerUserId: number;
+  shopId: number;
+  technicianProfileId: number | null;
+  platformFeeEnabledSnapshot: boolean | number;
+  platformFeeAmountNdpSnapshot: number;
+  platformFeeWalletOwnerType: string | null;
+  platformFeeWalletOwnerId: number | null;
+  platformFeeWalletId: number | null;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: string;
+  platformFeeAcceptedAt: Date | null;
+  userRewardEligibleNdp: number;
+  userRewardStatus: string;
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  settlementStatus: string;
+};
+type LockedPlatformFeeDebtRow = {
+  id: number;
+  bookingOrderId: number;
+  customerUserId: number;
+  platformFeeWalletId: number | null;
+  platformFeeAcceptedAt: Date | null;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: string;
+  userRewardEligibleNdp: number;
+  userRewardStatus: string;
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  userRewardNdp: number;
+  settlementStatus: string;
+};
+type LockedWalletRow = {
+  id: number;
+  ownerType: string;
+  ownerId: number;
+  currency: string;
+  availableBalance: number;
+  frozenBalance: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 export class LedgerRepository implements LedgerRepositoryPort {
   public constructor(private readonly client: LedgerPrismaClient = prisma) {}
@@ -542,8 +586,89 @@ export class LedgerRepository implements LedgerRepositoryPort {
         financial.platformFeeDebtStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["platformFeeDebtStatus"],
       userRewardStatus:
         financial.userRewardStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["userRewardStatus"],
-      settlementStatus: financial.settlementStatus as OrderFinancialPlatformFeeSnapshot["settlementStatus"]
+      settlementStatus:
+        financial.settlementStatus as OrderFinancialPlatformFeeSnapshot["settlementStatus"]
     };
+  }
+
+  public async lockOrderFinancialPlatformFeeSnapshot(
+    bookingOrderId: number
+  ): Promise<OrderFinancialPlatformFeeSnapshot | null> {
+    const rows = await this.client.$queryRaw<LockedOrderFinancialPlatformFeeRow[]>(
+      Prisma.sql`SELECT
+          booking_order_id AS bookingOrderId,
+          customer_user_id AS customerUserId,
+          shop_id AS shopId,
+          technician_profile_id AS technicianProfileId,
+          platform_fee_enabled_snapshot AS platformFeeEnabledSnapshot,
+          platform_fee_amount_ndp_snapshot AS platformFeeAmountNdpSnapshot,
+          platform_fee_wallet_owner_type AS platformFeeWalletOwnerType,
+          platform_fee_wallet_owner_id AS platformFeeWalletOwnerId,
+          platform_fee_wallet_id AS platformFeeWalletId,
+          platform_fee_outstanding_ndp AS platformFeeOutstandingNdp,
+          platform_fee_debt_status AS platformFeeDebtStatus,
+          platform_fee_accepted_at AS platformFeeAcceptedAt,
+          user_reward_eligible_ndp AS userRewardEligibleNdp,
+          user_reward_status AS userRewardStatus,
+          user_reward_deadline_at AS userRewardDeadlineAt,
+          user_reward_granted_at AS userRewardGrantedAt,
+          settlement_status AS settlementStatus
+        FROM order_financials
+        WHERE booking_order_id = ${bookingOrderId}
+          AND platform_fee_enabled_snapshot IS NOT NULL
+          AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const financial = rows[0];
+    if (!financial || rows.length !== 1) {
+      return null;
+    }
+    return {
+      ...financial,
+      platformFeeEnabledSnapshot: Boolean(financial.platformFeeEnabledSnapshot),
+      platformFeeWalletOwnerType: financial.platformFeeWalletOwnerType
+        ? this.ownerTypeFromDb(financial.platformFeeWalletOwnerType)
+        : null,
+      platformFeeDebtStatus:
+        financial.platformFeeDebtStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["platformFeeDebtStatus"],
+      userRewardStatus:
+        financial.userRewardStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["userRewardStatus"],
+      settlementStatus:
+        financial.settlementStatus as OrderFinancialPlatformFeeSnapshot["settlementStatus"]
+    };
+  }
+
+  public async lockWalletById(walletId: number): Promise<WalletPayload | null> {
+    const rows = await this.client.$queryRaw<LockedWalletRow[]>(
+      Prisma.sql`SELECT
+          id,
+          owner_type AS ownerType,
+          owner_id AS ownerId,
+          currency,
+          available_balance AS availableBalance,
+          frozen_balance AS frozenBalance,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM wallets
+        WHERE id = ${walletId} AND deleted_at IS NULL
+        FOR UPDATE`
+    );
+    const wallet = rows[0];
+    if (!wallet || rows.length !== 1) {
+      return null;
+    }
+    return this.mapWallet(wallet);
+  }
+
+  public async getDatabaseNow(): Promise<Date> {
+    const rows = await this.client.$queryRaw<Array<{ now: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS now`
+    );
+    const databaseNow = rows[0]?.now;
+    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime())) {
+      throw new Error("error.database_clock_unavailable");
+    }
+    return databaseNow;
   }
 
   public async findPlatformFeeHoldByBookingOrderId(
@@ -583,27 +708,26 @@ export class LedgerRepository implements LedgerRepositoryPort {
   }
 
   public async lockPlatformFeeDebt(id: number): Promise<PlatformFeeDebtAllocationRecord | null> {
-    await this.client.$queryRaw(
-      Prisma.sql`SELECT id FROM order_financials WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    const rows = await this.client.$queryRaw<LockedPlatformFeeDebtRow[]>(
+      Prisma.sql`SELECT
+          id,
+          booking_order_id AS bookingOrderId,
+          customer_user_id AS customerUserId,
+          platform_fee_wallet_id AS platformFeeWalletId,
+          platform_fee_accepted_at AS platformFeeAcceptedAt,
+          platform_fee_outstanding_ndp AS platformFeeOutstandingNdp,
+          platform_fee_debt_status AS platformFeeDebtStatus,
+          user_reward_eligible_ndp AS userRewardEligibleNdp,
+          user_reward_status AS userRewardStatus,
+          user_reward_deadline_at AS userRewardDeadlineAt,
+          user_reward_granted_at AS userRewardGrantedAt,
+          user_reward_ndp AS userRewardNdp,
+          settlement_status AS settlementStatus
+        FROM order_financials
+        WHERE id = ${id} AND deleted_at IS NULL
+        FOR UPDATE`
     );
-    const financial = await this.client.orderFinancial.findFirst({
-      where: { id, deletedAt: null },
-      select: {
-        id: true,
-        bookingOrderId: true,
-        customerUserId: true,
-        platformFeeWalletId: true,
-        platformFeeAcceptedAt: true,
-        platformFeeOutstandingNdp: true,
-        platformFeeDebtStatus: true,
-        userRewardEligibleNdp: true,
-        userRewardStatus: true,
-        userRewardDeadlineAt: true,
-        userRewardGrantedAt: true,
-        userRewardNdp: true,
-        settlementStatus: true
-      }
-    });
+    const financial = rows[0];
     if (
       !financial ||
       financial.platformFeeWalletId === null ||
@@ -1142,9 +1266,7 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return "NONE" as const;
   }
 
-  private userRewardStatusToDb(
-    status: "disabled" | "immediate" | "pending" | "paid" | "expired"
-  ) {
+  private userRewardStatusToDb(status: "disabled" | "immediate" | "pending" | "paid" | "expired") {
     return status.toUpperCase() as "DISABLED" | "IMMEDIATE" | "PENDING" | "PAID" | "EXPIRED";
   }
 

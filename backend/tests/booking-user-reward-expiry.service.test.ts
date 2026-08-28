@@ -20,6 +20,7 @@ const makeRecord = (
 
 const createRepository = (records: BookingUserRewardExpiryRecord[]) => {
   const repository: BookingUserRewardExpiryRepositoryPort = {
+    getDatabaseNow: jest.fn(async () => now),
     listExpiryCandidateIds: jest.fn(async ({ afterId, batchSize }) =>
       records
         .filter(
@@ -78,6 +79,27 @@ describe("BookingUserRewardExpiryService", () => {
     expect(records[2]?.userRewardStatus).toBe("pending");
     expect(repository.createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: "booking.user_reward.expired", financialId: 1 })
+    );
+  });
+
+  it("uses the database clock for the locked deadline decision", async () => {
+    const record = makeRecord(1, { userRewardDeadlineAt: now });
+    const repository = createRepository([record]) as BookingUserRewardExpiryRepositoryPort & {
+      getDatabaseNow: jest.Mock<Promise<Date>, []>;
+    };
+    repository.getDatabaseNow = jest.fn(async () => now);
+    const service = new BookingUserRewardExpiryService(repository);
+    const applicationNow = new Date(now.getTime() - 1);
+
+    await expect(service.expireDue({ now: applicationNow, batchSize: 100 })).resolves.toEqual({
+      scanned: 1,
+      expired: 1,
+      failed: 0
+    });
+    expect(repository.getDatabaseNow).toHaveBeenCalled();
+    expect(record.userRewardStatus).toBe("expired");
+    expect(repository.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ expiredAt: now })
     );
   });
 
@@ -173,9 +195,7 @@ describe("BookingUserRewardExpiryService", () => {
       orderBy: { id: "asc" },
       take: 100
     });
-    await expect(
-      repository.expireReward({ id: 11, expectedDeadlineAt: now })
-    ).resolves.toBe(true);
+    await expect(repository.expireReward({ id: 11, expectedDeadlineAt: now })).resolves.toBe(true);
     expect(updateMany).toHaveBeenCalledWith({
       where: {
         id: 11,
@@ -189,5 +209,33 @@ describe("BookingUserRewardExpiryService", () => {
         userRewardGrantedAt: null
       }
     });
+  });
+
+  it("reads MySQL time instead of the worker host clock", async () => {
+    const queryRaw = jest.fn().mockResolvedValue([{ now }]);
+    const repository = new BookingUserRewardExpiryRepository({ $queryRaw: queryRaw } as never);
+
+    await expect(repository.getDatabaseNow()).resolves.toEqual(now);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the current reward state from the same locking read", async () => {
+    const queryRaw = jest.fn().mockResolvedValue([
+      {
+        id: 11,
+        bookingOrderId: 111,
+        userRewardStatus: "PAID",
+        userRewardDeadlineAt: now
+      }
+    ]);
+    const repository = new BookingUserRewardExpiryRepository({ $queryRaw: queryRaw } as never);
+
+    await expect(repository.lockReward(11)).resolves.toEqual({
+      id: 11,
+      bookingOrderId: 111,
+      userRewardStatus: "paid",
+      userRewardDeadlineAt: now
+    });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
   });
 });

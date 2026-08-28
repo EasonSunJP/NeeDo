@@ -35,20 +35,20 @@ const bookingInput = (input: {
   actorUserId: input.actorUserId
 });
 
-const createPolicyResolver = (
-  overrides: Partial<BookingPlatformFeePolicySnapshot> = {}
-) => ({
-  resolveForBookingSettlement: jest.fn(async (): Promise<BookingPlatformFeePolicySnapshot> => ({
-    shopId: 10,
-    feeEnabled: true,
-    payerType: "shop",
-    policyVersion: 0,
-    policySource: "default",
-    globalAmountNdp: 500,
-    globalVersion: 0,
-    globalSource: "default",
-    ...overrides
-  }))
+const createPolicyResolver = (overrides: Partial<BookingPlatformFeePolicySnapshot> = {}) => ({
+  resolveForBookingSettlement: jest.fn(
+    async (): Promise<BookingPlatformFeePolicySnapshot> => ({
+      shopId: 10,
+      feeEnabled: true,
+      payerType: "shop",
+      policyVersion: 0,
+      policySource: "default",
+      globalAmountNdp: 500,
+      globalVersion: 0,
+      globalSource: "default",
+      ...overrides
+    })
+  )
 });
 
 const createFeeService = (
@@ -72,8 +72,7 @@ const createFeeService = (
       stage: input.stage,
       feeType: input.feeType,
       payerType:
-        input.payerOverride?.payerType ??
-        (input.feeType === "user_reward" ? "platform" : "shop"),
+        input.payerOverride?.payerType ?? (input.feeType === "user_reward" ? "platform" : "shop"),
       payerId: input.payerOverride?.payerId ?? input.shopId ?? null,
       baseFeeNdp: calculatedFeeNdp,
       tierAdjustmentNdp: 0,
@@ -108,7 +107,10 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
     metadata?: unknown;
   }> = [];
   public readonly technicianUsers = new Map<number, number>();
+  public readonly lockEvents: string[] = [];
   public upsertFinancialCallCount = 0;
+  public unlockedSnapshotLookupCount = 0;
+  public lockedSnapshotLookupCount = 0;
 
   private walletId = 1;
   private transactionId = 1;
@@ -386,6 +388,22 @@ class InMemoryLedgerRepository implements LedgerRepositoryPort {
   }
 
   public async findOrderFinancialPlatformFeeSnapshot(bookingOrderId: number) {
+    this.unlockedSnapshotLookupCount += 1;
+    return this.platformFeeSnapshot(bookingOrderId);
+  }
+
+  public async lockOrderFinancialPlatformFeeSnapshot(bookingOrderId: number) {
+    this.lockEvents.push(`financial:${bookingOrderId}`);
+    this.lockedSnapshotLookupCount += 1;
+    return this.platformFeeSnapshot(bookingOrderId);
+  }
+
+  public async lockWalletById(walletId: number): Promise<WalletPayload | null> {
+    this.lockEvents.push(`wallet:${walletId}`);
+    return [...this.wallets.values()].find((wallet) => wallet.id === walletId) ?? null;
+  }
+
+  private platformFeeSnapshot(bookingOrderId: number) {
     const financial = this.financials.get(bookingOrderId);
     if (!financial || financial.platformFeeEnabledSnapshot === undefined) {
       return null;
@@ -486,13 +504,7 @@ describe("LedgerService wallet mutations", () => {
     repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 1000 });
     const feeService = createFeeService();
     const policyResolver = createPolicyResolver();
-    const service = new LedgerService(
-      repository,
-      feeService,
-      undefined,
-      () => now,
-      policyResolver
-    );
+    const service = new LedgerService(repository, feeService, undefined, () => now, policyResolver);
 
     await service.freezeBookingAcceptance(
       bookingInput({ bookingOrderId: 101, shopId: 10, actorUserId: 2, customerUserId: 3 })
@@ -518,11 +530,7 @@ describe("LedgerService wallet mutations", () => {
       userRewardStatus: "immediate",
       platformFeeAcceptedAt: now
     });
-    expect(policyResolver.resolveForBookingSettlement).toHaveBeenCalledWith(
-      10,
-      now,
-      undefined
-    );
+    expect(policyResolver.resolveForBookingSettlement).toHaveBeenCalledWith(10, now, undefined);
     expect(feeService.calculateFee).toHaveBeenCalledWith(
       expect.objectContaining({ payerOverride: { payerType: "shop", payerId: 10 } }),
       { transactionClient: undefined }
@@ -565,6 +573,29 @@ describe("LedgerService wallet mutations", () => {
       expect.objectContaining({ waiveReason: "shop_policy_disabled" }),
       { transactionClient: undefined }
     );
+  });
+
+  it("still requires the assigned technician when a disabled policy names the technician payer", async () => {
+    const repository = new InMemoryLedgerRepository();
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver({ feeEnabled: false, payerType: "technician" })
+    );
+
+    await expect(
+      service.freezeBookingAcceptance(
+        bookingInput({ bookingOrderId: 1021, shopId: 10, actorUserId: 2, customerUserId: 3 })
+      )
+    ).rejects.toMatchObject({
+      code: ERROR_CODES.PLATFORM_FEE_TECHNICIAN_REQUIRED,
+      message: "error.platform_fee.technician_required"
+    });
+    expect(repository.wallets.size).toBe(0);
+    expect(repository.financials.size).toBe(0);
+    expect(repository.holds.size).toBe(0);
   });
 
   it("freezes a technician payer fee on the technician's global user wallet", async () => {
@@ -697,6 +728,54 @@ describe("LedgerService wallet mutations", () => {
     );
   });
 
+  it("records only the new marginal deficit when the same payer accepts consecutive overdrafts", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 120 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+
+    for (const bookingOrderId of [1051, 1052]) {
+      const input = bookingInput({
+        bookingOrderId,
+        shopId: 10,
+        actorUserId: 2,
+        customerUserId: 3
+      });
+      const warning = await service.freezeBookingAcceptance(input).catch((error) => error);
+      expect(warning).toMatchObject({
+        data: {
+          feeAmountNdp: 500,
+          shortfallNdp: bookingOrderId === 1051 ? 380 : 500
+        }
+      });
+      await service.freezeBookingAcceptance({
+        ...input,
+        insufficientBalanceConfirmation: {
+          confirmed: true,
+          idempotencyKey: `fee-confirm-order-${bookingOrderId}`,
+          previewVersion: (warning as { data: { previewVersion: string } }).data.previewVersion
+        }
+      });
+    }
+
+    expect(repository.wallets.get("shop:10:NDP")).toMatchObject({
+      availableBalance: -880,
+      frozenBalance: 1000
+    });
+    expect(repository.financials.get(1051)).toMatchObject({
+      platformFeeOutstandingNdp: 380
+    });
+    expect(repository.financials.get(1052)).toMatchObject({
+      platformFeeShortfallNdp: 500,
+      platformFeeOutstandingNdp: 500
+    });
+  });
+
   it("rejects stale previews and confirmation keys already used by another order", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 0 });
@@ -743,8 +822,11 @@ describe("LedgerService wallet mutations", () => {
       actorUserId: 2,
       customerUserId: 3
     });
-    const secondWarning = await service.freezeBookingAcceptance(secondInput).catch((error) => error);
-    const secondPreview = (secondWarning as { data: { previewVersion: string } }).data.previewVersion;
+    const secondWarning = await service
+      .freezeBookingAcceptance(secondInput)
+      .catch((error) => error);
+    const secondPreview = (secondWarning as { data: { previewVersion: string } }).data
+      .previewVersion;
     await expect(
       service.freezeBookingAcceptance({
         ...secondInput,
@@ -833,13 +915,7 @@ describe("LedgerService wallet mutations", () => {
     repository.seedWallet({ ownerType: "user", ownerId: 77, availableBalance: 700 });
     const feeService = createFeeService();
     const policyResolver = createPolicyResolver({ payerType: "technician", policyVersion: 2 });
-    const service = new LedgerService(
-      repository,
-      feeService,
-      undefined,
-      () => now,
-      policyResolver
-    );
+    const service = new LedgerService(repository, feeService, undefined, () => now, policyResolver);
     const input = bookingInput({
       bookingOrderId: 201,
       shopId: 10,
@@ -863,6 +939,9 @@ describe("LedgerService wallet mutations", () => {
     await service.settleBookingCompletion({ ...input, customerUserId: 3, completedAt: now });
 
     expect(policyResolver.resolveForBookingSettlement).not.toHaveBeenCalled();
+    expect(repository.lockedSnapshotLookupCount).toBe(1);
+    expect(repository.unlockedSnapshotLookupCount).toBe(1);
+    expect(repository.lockEvents).toEqual(["wallet:1", "financial:201"]);
     expect(repository.wallets.get("user:77:NDP")).toMatchObject({
       availableBalance: 200,
       frozenBalance: 0
@@ -875,7 +954,9 @@ describe("LedgerService wallet mutations", () => {
       userRewardGrantedAt: now
     });
     expect(
-      feeService.calculateFee.mock.calls.filter(([feeInput]) => feeInput.feeType === "b_platform_fee")
+      feeService.calculateFee.mock.calls.filter(
+        ([feeInput]) => feeInput.feeType === "b_platform_fee"
+      )
     ).toHaveLength(0);
   });
 

@@ -54,7 +54,10 @@ const createRepository = (availableBalance = 1000) => {
   let request: Record<string, unknown> | null = null;
   const repository: Record<string, jest.Mock> = {};
   Object.assign(repository, {
-    runInTransaction: jest.fn(async (handler: (repository: unknown, transactionClient: unknown) => Promise<unknown>) => handler(repository, {})),
+    runInTransaction: jest.fn(
+      async (handler: (repository: unknown, transactionClient: unknown) => Promise<unknown>) =>
+        handler(repository, {})
+    ),
     findWalletAdjustmentByIdempotencyKey: jest.fn(async () => request),
     createWalletAdjustmentRequest: jest.fn(async (input: Record<string, unknown>) => {
       request = {
@@ -77,23 +80,47 @@ const createRepository = (availableBalance = 1000) => {
       };
       return request;
     }),
-    listWalletAdjustmentRequests: jest.fn(async () => ({ list: request ? [request] : [], total: request ? 1 : 0, page: 1, page_size: 20 })),
+    listWalletAdjustmentRequests: jest.fn(async () => ({
+      list: request ? [request] : [],
+      total: request ? 1 : 0,
+      page: 1,
+      page_size: 20
+    })),
     lockWalletAdjustmentRequest: jest.fn(async () => request),
     approveWalletAdjustmentRequest: jest.fn(async (input: Record<string, unknown>) => {
-      request = { ...request, status: "approved", reviewedById: input.reviewedById, reviewedAt: now, reviewNote: input.reviewNote ?? null, ledgerTransactionId: input.ledgerTransactionId };
+      request = {
+        ...request,
+        status: "approved",
+        reviewedById: input.reviewedById,
+        reviewedAt: now,
+        reviewNote: input.reviewNote ?? null,
+        ledgerTransactionId: input.ledgerTransactionId
+      };
       return request;
     }),
     rejectWalletAdjustmentRequest: jest.fn(async (input: Record<string, unknown>) => {
-      request = { ...request, status: "rejected", reviewedById: input.reviewedById, reviewedAt: now, reviewNote: input.reviewNote };
+      request = {
+        ...request,
+        status: "rejected",
+        reviewedById: input.reviewedById,
+        reviewedAt: now,
+        reviewNote: input.reviewNote
+      };
       return request;
     }),
     findTransactionByIdempotencyKey: jest.fn(async () => null),
     getOrCreateWallet: jest.fn(async () => wallet),
-    applyWalletDelta: jest.fn(async (input: { availableDelta: number; requireAvailableAtLeast?: number }) => {
-      if (input.requireAvailableAtLeast && wallet.availableBalance < input.requireAvailableAtLeast) return null;
-      wallet = { ...wallet, availableBalance: wallet.availableBalance + input.availableDelta };
-      return wallet;
-    }),
+    applyWalletDelta: jest.fn(
+      async (input: { availableDelta: number; requireAvailableAtLeast?: number }) => {
+        if (
+          input.requireAvailableAtLeast &&
+          wallet.availableBalance < input.requireAvailableAtLeast
+        )
+          return null;
+        wallet = { ...wallet, availableBalance: wallet.availableBalance + input.availableDelta };
+        return wallet;
+      }
+    ),
     createTransaction: jest.fn(async (input: Record<string, unknown>) => ({
       id: 51,
       transactionNo: "NDP202608250051",
@@ -110,9 +137,14 @@ const createRepository = (availableBalance = 1000) => {
       updatedAt: now,
       entries: []
     })),
-    createLedgerEntry: jest.fn(async (input: Record<string, unknown>) => ({ id: 61, createdAt: now, ...input })),
+    createLedgerEntry: jest.fn(async (input: Record<string, unknown>) => ({
+      id: 61,
+      createdAt: now,
+      ...input
+    })),
     createFinanceReconciliation: jest.fn(async () => undefined),
     createAuditLog: jest.fn(async () => undefined),
+    getDatabaseNow: jest.fn(async () => now),
     listOutstandingPlatformFeeDebtIds: jest.fn(async () => []),
     lockPlatformFeeDebt: jest.fn(async () => null),
     updatePlatformFeeDebt: jest.fn(async () => true),
@@ -130,12 +162,7 @@ describe("LedgerService wallet adjustment requests", () => {
     const eligibility = {
       assertEligible: jest.fn(async () => ({ eKycVerificationId: 11, bankAccountId: 21 }))
     };
-    const service = new LedgerService(
-      repository as never,
-      undefined,
-      eligibility,
-      () => now
-    );
+    const service = new LedgerService(repository as never, undefined, eligibility, () => now);
 
     const requestInput = {
       type: "withdrawal" as const,
@@ -157,12 +184,7 @@ describe("LedgerService wallet adjustment requests", () => {
         throw new Error("error.affiliate_withdrawal.ekyc_required");
       })
     };
-    const service = new LedgerService(
-      repository as never,
-      undefined,
-      eligibility,
-      () => now
-    );
+    const service = new LedgerService(repository as never, undefined, eligibility, () => now);
 
     await expect(
       service.createWalletAdjustmentRequest(affiliate, {
@@ -323,33 +345,37 @@ describe("LedgerService wallet adjustment requests", () => {
       updatedAt: now
     };
     repository.getOrCreateWallet.mockImplementation(async (input: { ownerType: string }) =>
-      input.ownerType === "user" ? customerWallet : {
-        id: 3,
-        ownerType: "shop",
-        ownerId: 7,
-        currency: "NDP",
-        availableBalance: 0,
-        frozenBalance: 0,
-        createdAt: now,
-        updatedAt: now
+      input.ownerType === "user"
+        ? customerWallet
+        : {
+            id: 3,
+            ownerType: "shop",
+            ownerId: 7,
+            currency: "NDP",
+            availableBalance: 0,
+            frozenBalance: 0,
+            createdAt: now,
+            updatedAt: now
+          }
+    );
+    repository.applyWalletDelta.mockImplementation(
+      async (input: { walletId: number; availableDelta: number }) => {
+        if (input.walletId === customerWallet.id) {
+          customerWallet.availableBalance += input.availableDelta;
+          return customerWallet;
+        }
+        return {
+          id: 3,
+          ownerType: "shop",
+          ownerId: 7,
+          currency: "NDP",
+          availableBalance: 0,
+          frozenBalance: 0,
+          createdAt: now,
+          updatedAt: now
+        };
       }
     );
-    repository.applyWalletDelta.mockImplementation(async (input: { walletId: number; availableDelta: number }) => {
-      if (input.walletId === customerWallet.id) {
-        customerWallet.availableBalance += input.availableDelta;
-        return customerWallet;
-      }
-      return {
-        id: 3,
-        ownerType: "shop",
-        ownerId: 7,
-        currency: "NDP",
-        availableBalance: 0,
-        frozenBalance: 0,
-        createdAt: now,
-        updatedAt: now
-      };
-    });
     const service = new LedgerService(repository as never, undefined, undefined, () => now);
     await service.createWalletAdjustmentRequest(merchant, {
       type: "topup",
@@ -412,6 +438,47 @@ describe("LedgerService wallet adjustment requests", () => {
       userRewardGrantedAt: null
     });
     expect(repository.createTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the database clock when the application clock is still before the reward deadline", async () => {
+    const repository = createRepository(-380);
+    const debts = installDebtRecords(repository, [
+      debtRecord({
+        id: 1,
+        bookingOrderId: 101,
+        acceptedAt: "2026-08-01",
+        outstanding: 380,
+        settlementStatus: "settled",
+        rewardStatus: "pending",
+        rewardDeadlineAt: now
+      })
+    ]);
+    const applicationNow = new Date(now.getTime() - 1);
+    const service = new LedgerService(
+      repository as never,
+      undefined,
+      undefined,
+      () => applicationNow
+    );
+    await service.createWalletAdjustmentRequest(merchant, {
+      type: "topup",
+      amountNdp: 380,
+      idempotencyKey: "wallet-topup-database-clock-expired-reward"
+    });
+
+    await service.reviewWalletAdjustmentRequest(operator, 41, {
+      action: "approve",
+      note: "数据库时钟已到截止时间"
+    });
+
+    expect(repository.getDatabaseNow).toHaveBeenCalled();
+    expect(debts[0]).toMatchObject({
+      platformFeeOutstandingNdp: 0,
+      platformFeeDebtStatus: "settled",
+      userRewardStatus: "expired",
+      userRewardNdp: 0,
+      userRewardGrantedAt: null
+    });
   });
 
   it("marks debt settled before completion and does not grant the reward early", async () => {
@@ -536,9 +603,16 @@ describe("LedgerService wallet adjustment requests", () => {
     const repository = createRepository();
     const service = new LedgerService(repository as never);
 
-    await expect(service.getMyWallet(merchant)).resolves.toMatchObject({ ownerType: "shop", ownerId: 7 });
-    await expect(service.listWalletLedger(merchant, { walletId: 3, page: 1, pageSize: 20 })).resolves.toMatchObject({ total: 0 });
-    await expect(service.listWalletLedger(merchant, { walletId: 999, page: 1, pageSize: 20 })).rejects.toMatchObject({
+    await expect(service.getMyWallet(merchant)).resolves.toMatchObject({
+      ownerType: "shop",
+      ownerId: 7
+    });
+    await expect(
+      service.listWalletLedger(merchant, { walletId: 3, page: 1, pageSize: 20 })
+    ).resolves.toMatchObject({ total: 0 });
+    await expect(
+      service.listWalletLedger(merchant, { walletId: 999, page: 1, pageSize: 20 })
+    ).rejects.toMatchObject({
       code: ERROR_CODES.WALLET_NOT_FOUND,
       message: "error.wallet.not_found"
     });
@@ -609,16 +683,14 @@ const installDebtRecords = (
   repository.lockPlatformFeeDebt.mockImplementation(
     async (id: number) => debts.find((debt) => debt.id === id) ?? null
   );
-  repository.updatePlatformFeeDebt.mockImplementation(
-    async (input: Record<string, unknown>) => {
-      const debt = debts.find((candidate) => candidate.id === input.id);
-      if (!debt || debt.platformFeeOutstandingNdp !== input.expectedOutstandingNdp) {
-        return false;
-      }
-      Object.assign(debt, input);
-      return true;
+  repository.updatePlatformFeeDebt.mockImplementation(async (input: Record<string, unknown>) => {
+    const debt = debts.find((candidate) => candidate.id === input.id);
+    if (!debt || debt.platformFeeOutstandingNdp !== input.expectedOutstandingNdp) {
+      return false;
     }
-  );
+    Object.assign(debt, input);
+    return true;
+  });
 
   return debts;
 };

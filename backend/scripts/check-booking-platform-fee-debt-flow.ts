@@ -8,12 +8,18 @@ import type {
   BookingUserRewardExpiryRepositoryPort,
   BookingUserRewardExpiryTransactionClient
 } from "../src/services/booking-user-reward-expiry.service";
+import type {
+  LedgerRepositoryPort,
+  LedgerTransactionClient,
+  WalletPayload
+} from "../src/services/ledger.service";
 
 const FEE_NDP = 500;
 const REWARD_NDP = 100;
 const LOW_BALANCE_NDP = 120;
 const SHORTFALL_NDP = FEE_NDP - LOW_BALANCE_NDP;
 const SERVICE_AMOUNT_JPY = 8_800;
+const BARRIER_TIMEOUT_MS = 3_000;
 const BLOCKED_ENVIRONMENTS = new Set(["staging", "prod", "production"]);
 
 const assert = (condition: unknown, message: string): asserts condition => {
@@ -76,13 +82,15 @@ interface BookingFixture {
   orderType: "booking";
 }
 
-class FixtureOwnedBookingUserRewardExpiryRepository
-  implements BookingUserRewardExpiryRepositoryPort
-{
+class FixtureOwnedBookingUserRewardExpiryRepository implements BookingUserRewardExpiryRepositoryPort {
   public constructor(
     private readonly inner: BookingUserRewardExpiryRepositoryPort,
     private readonly allowedFinancialIds: ReadonlySet<number>
   ) {}
+
+  public getDatabaseNow(): Promise<Date> {
+    return this.inner.getDatabaseNow();
+  }
 
   public async listExpiryCandidateIds(input: {
     now: Date;
@@ -101,10 +109,7 @@ class FixtureOwnedBookingUserRewardExpiryRepository
   ): Promise<T> {
     return this.inner.runInTransaction((repository, transactionClient) =>
       handler(
-        new FixtureOwnedBookingUserRewardExpiryRepository(
-          repository,
-          this.allowedFinancialIds
-        ),
+        new FixtureOwnedBookingUserRewardExpiryRepository(repository, this.allowedFinancialIds),
         transactionClient
       )
     );
@@ -232,8 +237,14 @@ const assertMarkerOwnership = async (
   fixture: FixtureState
 ): Promise<void> => {
   const [users, shops, services, slots, bookings] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: fixture.userIds } }, select: { id: true, email: true } }),
-    prisma.shop.findMany({ where: { id: { in: fixture.shopIds } }, select: { id: true, name: true } }),
+    prisma.user.findMany({
+      where: { id: { in: fixture.userIds } },
+      select: { id: true, email: true }
+    }),
+    prisma.shop.findMany({
+      where: { id: { in: fixture.shopIds } },
+      select: { id: true, name: true }
+    }),
     prisma.service.findMany({
       where: { id: { in: fixture.serviceIds } },
       select: { id: true, name: true }
@@ -274,10 +285,7 @@ const assertMarkerOwnership = async (
   );
 };
 
-const cleanupMarkerFixture = async (
-  prisma: PrismaClient,
-  fixture: FixtureState
-): Promise<void> => {
+const cleanupMarkerFixture = async (prisma: PrismaClient, fixture: FixtureState): Promise<void> => {
   if (fixture.userIds.length === 0) {
     return;
   }
@@ -398,6 +406,96 @@ const main = async (): Promise<void> => {
     import("../src/services/platform-fee-policy.service"),
     import("../src/prisma/client")
   ]);
+  type BarrierHooks = {
+    beforeWalletLock?: () => Promise<void>;
+    afterWalletLock?: () => Promise<void>;
+    beforeWalletAccess?: () => Promise<void>;
+    beforeDebtLock?: () => Promise<void>;
+  };
+  const createBarrier = () => {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  };
+  const waitForBarrier = async (
+    barrier: ReturnType<typeof createBarrier>,
+    label: string
+  ): Promise<void> => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        barrier.promise,
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error(`${label} did not arrive within ${BARRIER_TIMEOUT_MS}ms`)),
+            BARRIER_TIMEOUT_MS
+          );
+        })
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  };
+  const trackPromise = <T>(promise: Promise<T>): Promise<T> => {
+    void promise.catch(() => undefined);
+    return promise;
+  };
+  const createBarrierLedgerRepository = (
+    client: unknown,
+    hooks: BarrierHooks,
+    canStartTransaction: boolean
+  ): LedgerRepositoryPort => {
+    const inner = new LedgerRepository(client as never);
+    const overrides: Partial<LedgerRepositoryPort> = {
+      runInTransaction: async <T>(
+        handler: (
+          transactionRepository: LedgerRepositoryPort,
+          transactionClient?: LedgerTransactionClient
+        ) => Promise<T>,
+        transactionClient?: LedgerTransactionClient
+      ): Promise<T> => {
+        if (transactionClient) {
+          return handler(
+            createBarrierLedgerRepository(transactionClient, hooks, false),
+            transactionClient
+          );
+        }
+        if (canStartTransaction) {
+          return prisma.$transaction((transaction) =>
+            handler(createBarrierLedgerRepository(transaction, hooks, false), transaction)
+          );
+        }
+        return handler(createBarrierLedgerRepository(client, hooks, false), client);
+      },
+      lockWalletById: async (walletId: number): Promise<WalletPayload | null> => {
+        await hooks.beforeWalletLock?.();
+        const wallet = await inner.lockWalletById(walletId);
+        await hooks.afterWalletLock?.();
+        return wallet;
+      },
+      getOrCreateWallet: async (input) => {
+        await hooks.beforeWalletAccess?.();
+        return inner.getOrCreateWallet(input);
+      },
+      lockPlatformFeeDebt: async (id: number) => {
+        await hooks.beforeDebtLock?.();
+        return inner.lockPlatformFeeDebt(id);
+      }
+    };
+    const repository: LedgerRepositoryPort = new Proxy(inner, {
+      get(target, property, receiver) {
+        const override = Reflect.get(overrides, property, receiver);
+        if (override !== undefined) {
+          return override;
+        }
+        const value = Reflect.get(target, property, receiver) as unknown;
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    return repository;
+  };
   const marker = `booking-platform-fee-debt-${Date.now()}-${process.pid}`;
   const orderMarker = `BPF${Date.now()}${process.pid}`;
   const fixture: FixtureState = {
@@ -411,7 +509,15 @@ const main = async (): Promise<void> => {
     bookingIds: [],
     categoryId: null
   };
-  const baselineBefore = await captureBaseline(prisma);
+  const captureBaselineOrDisconnect = async () => {
+    try {
+      return await captureBaseline(prisma);
+    } catch (error) {
+      await disconnectPrisma();
+      throw error;
+    }
+  };
+  const baselineBefore = await captureBaselineOrDisconnect();
   const now = new Date();
   let orderCounter = 0;
   let accountCounter = 0;
@@ -469,6 +575,8 @@ const main = async (): Promise<void> => {
     const immediateCustomer = await createUser("customer-immediate", true);
     const delayedCustomer = await createUser("customer-delayed", true);
     const expiredCustomer = await createUser("customer-expired", true);
+    const completionFirstCustomer = await createUser("customer-completion-first", true);
+    const topupFirstCustomer = await createUser("customer-topup-first", true);
     const technicianProfile = await prisma.technicianProfile.create({
       data: {
         userId: technicianUser.id,
@@ -571,6 +679,24 @@ const main = async (): Promise<void> => {
     });
     const expired = await createScenario({
       label: "expired",
+      feeEnabled: true,
+      payerType: "SHOP",
+      initialBalance: LOW_BALANCE_NDP
+    });
+    const repeatedDebt = await createScenario({
+      label: "repeated-debt",
+      feeEnabled: true,
+      payerType: "SHOP",
+      initialBalance: LOW_BALANCE_NDP
+    });
+    const completionFirst = await createScenario({
+      label: "completion-first",
+      feeEnabled: true,
+      payerType: "SHOP",
+      initialBalance: LOW_BALANCE_NDP
+    });
+    const topupFirst = await createScenario({
+      label: "topup-first",
       feeEnabled: true,
       payerType: "SHOP",
       initialBalance: LOW_BALANCE_NDP
@@ -731,7 +857,10 @@ const main = async (): Promise<void> => {
       .freezeBookingAcceptance({ ...cancellationBooking, acceptedAt: now })
       .catch((error: unknown) => error);
     assert(
-      typeof warning === "object" && warning !== null && "code" in warning && warning.code === 40935,
+      typeof warning === "object" &&
+        warning !== null &&
+        "code" in warning &&
+        warning.code === 40935,
       "insufficient first-attempt rollback: confirmation warning was not returned"
     );
     const warningData = (warning as { data?: { previewVersion?: string } }).data;
@@ -739,17 +868,21 @@ const main = async (): Promise<void> => {
       typeof warningData?.previewVersion === "string",
       "insufficient first-attempt rollback: preview version is missing"
     );
-    const [failedFinancial, failedHoldCount, failedTransactionCount, cancellationWalletAfterFailure] =
-      await Promise.all([
-        prisma.orderFinancial.findUnique({
-          where: { bookingOrderId: cancellationBooking.bookingOrderId }
-        }),
-        prisma.walletHold.count({ where: { bookingOrderId: cancellationBooking.bookingOrderId } }),
-        prisma.ledgerTransaction.count({
-          where: { referenceType: "booking_order", referenceId: cancellationBooking.bookingOrderId }
-        }),
-        prisma.wallet.findUniqueOrThrow({ where: { id: cancellationWalletBefore.id } })
-      ]);
+    const [
+      failedFinancial,
+      failedHoldCount,
+      failedTransactionCount,
+      cancellationWalletAfterFailure
+    ] = await Promise.all([
+      prisma.orderFinancial.findUnique({
+        where: { bookingOrderId: cancellationBooking.bookingOrderId }
+      }),
+      prisma.walletHold.count({ where: { bookingOrderId: cancellationBooking.bookingOrderId } }),
+      prisma.ledgerTransaction.count({
+        where: { referenceType: "booking_order", referenceId: cancellationBooking.bookingOrderId }
+      }),
+      prisma.wallet.findUniqueOrThrow({ where: { id: cancellationWalletBefore.id } })
+    ]);
     assert(
       failedFinancial === null &&
         failedHoldCount === 0 &&
@@ -829,19 +962,247 @@ const main = async (): Promise<void> => {
         }
       });
     };
-    const approveTopup = async (shopId: number, label: string) => {
-      const request = await ledger.createWalletAdjustmentRequest(merchantActor(shopId), {
+    const createTopupRequest = async (shopId: number, label: string, amountNdp = SHORTFALL_NDP) =>
+      ledger.createWalletAdjustmentRequest(merchantActor(shopId), {
         type: "topup",
-        amountNdp: SHORTFALL_NDP,
+        amountNdp,
         idempotencyKey: `${marker}-${label}-topup`,
         bankReference: `${orderMarker}-${label}`,
         note: `${marker} approved debt top-up`
       });
+    const approveTopup = async (shopId: number, label: string) => {
+      const request = await createTopupRequest(shopId, label);
       return ledger.reviewWalletAdjustmentRequest(operatorActor, request.id, {
         action: "approve",
         note: `${marker} local acceptance approval`
       });
     };
+
+    const repeatedDebtBookingOne = await createBooking(repeatedDebt, immediateCustomer.id);
+    const repeatedDebtBookingTwo = await createBooking(repeatedDebt, immediateCustomer.id);
+    await acceptWithDebt(repeatedDebtBookingOne, "repeated-debt-one-confirmation");
+    await acceptWithDebt(repeatedDebtBookingTwo, "repeated-debt-two-confirmation");
+    const [repeatedDebtWallet, repeatedDebtFinancials] = await Promise.all([
+      prisma.wallet.findUniqueOrThrow({
+        where: {
+          ownerType_ownerId_currency: {
+            ownerType: "SHOP",
+            ownerId: repeatedDebt.shopId,
+            currency: "NDP"
+          }
+        }
+      }),
+      prisma.orderFinancial.findMany({
+        where: {
+          bookingOrderId: {
+            in: [repeatedDebtBookingOne.bookingOrderId, repeatedDebtBookingTwo.bookingOrderId]
+          }
+        },
+        orderBy: { bookingOrderId: "asc" }
+      })
+    ]);
+    assert(
+      repeatedDebtWallet.availableBalance === LOW_BALANCE_NDP - FEE_NDP * 2 &&
+        repeatedDebtFinancials.length === 2 &&
+        repeatedDebtFinancials[0]?.platformFeeOutstandingNdp === SHORTFALL_NDP &&
+        repeatedDebtFinancials[1]?.platformFeeOutstandingNdp === FEE_NDP &&
+        repeatedDebtFinancials.reduce(
+          (sum, financial) => sum + financial.platformFeeOutstandingNdp,
+          0
+        ) === -repeatedDebtWallet.availableBalance,
+      "consecutive overdrafts did not preserve the exact wallet-deficit debt invariant"
+    );
+
+    const completionFirstBooking = await createBooking(completionFirst, completionFirstCustomer.id);
+    await acceptWithDebt(completionFirstBooking, "completion-first-confirmation");
+    const completionFirstTopup = await createTopupRequest(
+      completionFirst.shopId,
+      "completion-first"
+    );
+    const completionHasWalletLock = createBarrier();
+    const allowCompletionToContinue = createBarrier();
+    const topupReachedWalletMutation = createBarrier();
+    let completionWalletHookUsed = false;
+    let completionTopupHookUsed = false;
+    const completionBarrierLedger = new LedgerService(
+      createBarrierLedgerRepository(
+        prisma,
+        {
+          afterWalletLock: async () => {
+            if (completionWalletHookUsed) return;
+            completionWalletHookUsed = true;
+            completionHasWalletLock.release();
+            await waitForBarrier(allowCompletionToContinue, "completion-first continuation gate");
+          }
+        },
+        true
+      ),
+      new FeeCalculationService(new FeeRuleRepository(prisma)),
+      undefined,
+      () => now,
+      policyService
+    );
+    const completionFirstTopupLedger = new LedgerService(
+      createBarrierLedgerRepository(
+        prisma,
+        {
+          beforeWalletAccess: async () => {
+            if (completionTopupHookUsed) return;
+            completionTopupHookUsed = true;
+            topupReachedWalletMutation.release();
+          }
+        },
+        true
+      ),
+      undefined,
+      undefined,
+      () => now
+    );
+    let completionFirstPromise: Promise<unknown> | null = null;
+    let completionFirstTopupPromise: Promise<unknown> | null = null;
+    try {
+      completionFirstPromise = trackPromise(
+        completionBarrierLedger.settleBookingCompletion({
+          ...completionFirstBooking,
+          completedAt: now
+        })
+      );
+      await waitForBarrier(completionHasWalletLock, "completion-first wallet lock");
+      completionFirstTopupPromise = trackPromise(
+        completionFirstTopupLedger.reviewWalletAdjustmentRequest(
+          operatorActor,
+          completionFirstTopup.id,
+          { action: "approve", note: `${marker} completion-first approval` }
+        )
+      );
+      await waitForBarrier(topupReachedWalletMutation, "completion-first top-up wallet access");
+      allowCompletionToContinue.release();
+      await Promise.all([completionFirstPromise, completionFirstTopupPromise]);
+    } finally {
+      allowCompletionToContinue.release();
+      await Promise.allSettled(
+        [completionFirstPromise, completionFirstTopupPromise].filter(
+          (promise): promise is Promise<unknown> => promise !== null
+        )
+      );
+    }
+
+    const topupFirstBooking = await createBooking(topupFirst, topupFirstCustomer.id);
+    await acceptWithDebt(topupFirstBooking, "topup-first-confirmation");
+    const topupFirstRequest = await createTopupRequest(topupFirst.shopId, "topup-first");
+    const topupReachedDebtLock = createBarrier();
+    const allowTopupToContinue = createBarrier();
+    const completionReachedWalletLock = createBarrier();
+    let topupDebtHookUsed = false;
+    let topupCompletionHookUsed = false;
+    const topupBarrierLedger = new LedgerService(
+      createBarrierLedgerRepository(
+        prisma,
+        {
+          beforeDebtLock: async () => {
+            if (topupDebtHookUsed) return;
+            topupDebtHookUsed = true;
+            topupReachedDebtLock.release();
+            await waitForBarrier(allowTopupToContinue, "topup-first continuation gate");
+          }
+        },
+        true
+      ),
+      undefined,
+      undefined,
+      () => now
+    );
+    const topupFirstCompletionLedger = new LedgerService(
+      createBarrierLedgerRepository(
+        prisma,
+        {
+          beforeWalletLock: async () => {
+            if (topupCompletionHookUsed) return;
+            topupCompletionHookUsed = true;
+            completionReachedWalletLock.release();
+          }
+        },
+        true
+      ),
+      new FeeCalculationService(new FeeRuleRepository(prisma)),
+      undefined,
+      () => now,
+      policyService
+    );
+    let topupFirstPromise: Promise<unknown> | null = null;
+    let topupFirstCompletionPromise: Promise<unknown> | null = null;
+    try {
+      topupFirstPromise = trackPromise(
+        topupBarrierLedger.reviewWalletAdjustmentRequest(operatorActor, topupFirstRequest.id, {
+          action: "approve",
+          note: `${marker} topup-first approval`
+        })
+      );
+      await waitForBarrier(topupReachedDebtLock, "topup-first debt lock");
+      topupFirstCompletionPromise = trackPromise(
+        topupFirstCompletionLedger.settleBookingCompletion({
+          ...topupFirstBooking,
+          completedAt: now
+        })
+      );
+      await waitForBarrier(completionReachedWalletLock, "topup-first completion wallet lock");
+      allowTopupToContinue.release();
+      await Promise.all([topupFirstPromise, topupFirstCompletionPromise]);
+    } finally {
+      allowTopupToContinue.release();
+      await Promise.allSettled(
+        [topupFirstPromise, topupFirstCompletionPromise].filter(
+          (promise): promise is Promise<unknown> => promise !== null
+        )
+      );
+    }
+
+    const [completionFirstFinancial, topupFirstFinancial, concurrencyRewards] = await Promise.all([
+      prisma.orderFinancial.findUniqueOrThrow({
+        where: { bookingOrderId: completionFirstBooking.bookingOrderId }
+      }),
+      prisma.orderFinancial.findUniqueOrThrow({
+        where: { bookingOrderId: topupFirstBooking.bookingOrderId }
+      }),
+      prisma.ledgerTransaction.count({
+        where: {
+          idempotencyKey: {
+            in: [
+              `booking:${completionFirstBooking.bookingOrderId}:reward:settlement`,
+              `booking:${topupFirstBooking.bookingOrderId}:reward:settlement`
+            ]
+          }
+        }
+      })
+    ]);
+    assert(
+      completionFirstFinancial.platformFeeOutstandingNdp === 0 &&
+        completionFirstFinancial.platformFeeDebtStatus === "SETTLED" &&
+        completionFirstFinancial.userRewardNdp === REWARD_NDP &&
+        completionFirstFinancial.userRewardStatus === "PAID",
+      `completion-first concurrency lost debt settlement or delayed reward: ${JSON.stringify({
+        outstandingNdp: completionFirstFinancial.platformFeeOutstandingNdp,
+        debtStatus: completionFirstFinancial.platformFeeDebtStatus,
+        rewardNdp: completionFirstFinancial.userRewardNdp,
+        rewardStatus: completionFirstFinancial.userRewardStatus
+      })}`
+    );
+    assert(
+      topupFirstFinancial.platformFeeOutstandingNdp === 0 &&
+        topupFirstFinancial.platformFeeDebtStatus === "SETTLED" &&
+        topupFirstFinancial.userRewardNdp === REWARD_NDP &&
+        topupFirstFinancial.userRewardStatus === "IMMEDIATE",
+      `topup-first concurrency resurrected debt or lost the immediate reward: ${JSON.stringify({
+        outstandingNdp: topupFirstFinancial.platformFeeOutstandingNdp,
+        debtStatus: topupFirstFinancial.platformFeeDebtStatus,
+        rewardNdp: topupFirstFinancial.userRewardNdp,
+        rewardStatus: topupFirstFinancial.userRewardStatus
+      })}`
+    );
+    assert(
+      concurrencyRewards === 1,
+      "concurrency scenarios created an unexpected number of delayed reward transactions"
+    );
 
     const delayedBooking = await createBooking(delayed, delayedCustomer.id);
     await acceptWithDebt(delayedBooking, "delayed-confirmation");
@@ -944,6 +1305,9 @@ const main = async (): Promise<void> => {
             insufficientAttemptRolledBack: true,
             explicitNegativeBalance: true,
             cancellationReversed: true,
+            consecutiveDebtMatchesWalletDeficit: true,
+            completionFirstConcurrencySerialized: true,
+            topupFirstConcurrencySerialized: true,
             immediateRewardNdp: REWARD_NDP,
             delayedRewardAfterApprovedTopupNdp: REWARD_NDP,
             expiredRewardNdp: 0,
@@ -961,10 +1325,13 @@ const main = async (): Promise<void> => {
       )
     );
   } finally {
-    await cleanupMarkerFixture(prisma, fixture);
-    const baselineAfterCleanup = await captureBaseline(prisma);
-    assertExactBaseline(baselineBefore, baselineAfterCleanup);
-    await disconnectPrisma();
+    try {
+      await cleanupMarkerFixture(prisma, fixture);
+      const baselineAfterCleanup = await captureBaseline(prisma);
+      assertExactBaseline(baselineBefore, baselineAfterCleanup);
+    } finally {
+      await disconnectPrisma();
+    }
   }
 };
 

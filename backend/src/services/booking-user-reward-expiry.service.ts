@@ -13,6 +13,7 @@ export interface BookingUserRewardExpiryRecord {
 }
 
 export interface BookingUserRewardExpiryRepositoryPort {
+  getDatabaseNow: () => Promise<Date>;
   listExpiryCandidateIds: (input: {
     now: Date;
     batchSize: number;
@@ -68,7 +69,8 @@ export class BookingUserRewardExpiryService {
     input: BookingUserRewardExpiryInput
   ): Promise<BookingUserRewardExpiryBatchSummary> {
     this.validateInput(input);
-    const candidateIds = await this.listCandidateIds(input);
+    const databaseNow = await this.repository.getDatabaseNow();
+    const candidateIds = await this.listCandidateIds({ ...input, now: databaseNow });
     const summary: BookingUserRewardExpiryBatchSummary = {
       scanned: candidateIds.length,
       expired: 0,
@@ -77,7 +79,7 @@ export class BookingUserRewardExpiryService {
 
     for (const financialId of candidateIds) {
       try {
-        if (await this.expireCandidate(financialId, input.now)) {
+        if (await this.expireCandidate(financialId)) {
           summary.expired += 1;
         }
       } catch (error) {
@@ -115,14 +117,15 @@ export class BookingUserRewardExpiryService {
     return candidateIds;
   }
 
-  private expireCandidate(financialId: number, now: Date): Promise<boolean> {
+  private expireCandidate(financialId: number): Promise<boolean> {
     return this.repository.runInTransaction(async (repository) => {
       const reward = await repository.lockReward(financialId);
+      const databaseNow = await repository.getDatabaseNow();
       if (
         !reward ||
         reward.userRewardStatus !== "pending" ||
         reward.userRewardDeadlineAt === null ||
-        reward.userRewardDeadlineAt > now
+        reward.userRewardDeadlineAt > databaseNow
       ) {
         return false;
       }
@@ -140,7 +143,7 @@ export class BookingUserRewardExpiryService {
         financialId: reward.id,
         bookingOrderId: reward.bookingOrderId,
         deadlineAt: reward.userRewardDeadlineAt,
-        expiredAt: now
+        expiredAt: databaseNow
       });
       return true;
     });

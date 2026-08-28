@@ -148,6 +148,64 @@ describe("LedgerRepository wallet creation", () => {
     );
   });
 
+  it("locks the payer wallet and platform-fee financial row before settlement", async () => {
+    const acceptedAt = new Date("2026-08-29T01:00:00.000Z");
+    const wallet = {
+      id: 91,
+      ownerType: "USER",
+      ownerId: 77,
+      currency: "NDP",
+      availableBalance: -380,
+      frozenBalance: 500,
+      createdAt: acceptedAt,
+      updatedAt: acceptedAt,
+      deletedAt: null
+    };
+    const financial = {
+      bookingOrderId: 71,
+      customerUserId: 3,
+      shopId: 10,
+      technicianProfileId: 9,
+      platformFeeEnabledSnapshot: true,
+      platformFeeAmountNdpSnapshot: 500,
+      platformFeeWalletOwnerType: "USER",
+      platformFeeWalletOwnerId: 77,
+      platformFeeWalletId: 91,
+      platformFeeOutstandingNdp: 380,
+      platformFeeDebtStatus: "OUTSTANDING",
+      platformFeeAcceptedAt: acceptedAt,
+      userRewardEligibleNdp: 100,
+      userRewardStatus: "PENDING",
+      userRewardDeadlineAt: null,
+      userRewardGrantedAt: null,
+      settlementStatus: "holding"
+    };
+    const queryRaw = jest.fn().mockResolvedValueOnce([wallet]).mockResolvedValueOnce([financial]);
+    const repository = new LedgerRepository({
+      $queryRaw: queryRaw,
+      orderFinancial: { findFirst: jest.fn().mockResolvedValue(financial) }
+    } as never);
+
+    await expect(repository.lockWalletById(91)).resolves.toMatchObject({
+      id: 91,
+      ownerType: "user"
+    });
+    await expect(repository.lockOrderFinancialPlatformFeeSnapshot(71)).resolves.toMatchObject({
+      bookingOrderId: 71,
+      platformFeeOutstandingNdp: 380
+    });
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads the authoritative MySQL clock for reward deadline decisions", async () => {
+    const databaseNow = new Date("2026-09-05T00:00:00.000Z");
+    const queryRaw = jest.fn().mockResolvedValue([{ now: databaseNow }]);
+    const repository = new LedgerRepository({ $queryRaw: queryRaw } as never);
+
+    await expect(repository.getDatabaseNow()).resolves.toEqual(databaseNow);
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+  });
+
   it("finds the active original platform-fee hold without re-resolving its owner", async () => {
     const now = new Date("2026-08-29T01:00:00.000Z");
     const findFirst = jest.fn().mockResolvedValue({
@@ -211,8 +269,7 @@ describe("LedgerRepository wallet creation", () => {
 
   it("locks one debt row and updates it only from the expected outstanding amount", async () => {
     const acceptedAt = new Date("2026-08-29T01:00:00.000Z");
-    const queryRaw = jest.fn().mockResolvedValue([{ id: 11 }]);
-    const findFirst = jest.fn().mockResolvedValue({
+    const financial = {
       id: 11,
       bookingOrderId: 71,
       customerUserId: 3,
@@ -226,11 +283,12 @@ describe("LedgerRepository wallet creation", () => {
       userRewardGrantedAt: null,
       userRewardNdp: 0,
       settlementStatus: "holding"
-    });
+    };
+    const queryRaw = jest.fn().mockResolvedValue([financial]);
     const updateMany = jest.fn().mockResolvedValue({ count: 1 });
     const repository = new LedgerRepository({
       $queryRaw: queryRaw,
-      orderFinancial: { findFirst, updateMany }
+      orderFinancial: { updateMany }
     } as never);
 
     await expect(repository.lockPlatformFeeDebt(11)).resolves.toMatchObject({
@@ -349,9 +407,7 @@ describe("LedgerRepository transaction mapping", () => {
       }
     };
     const repository = new LedgerRepository(client as never);
-    const mapped = await repository.findTransactionByIdempotencyKey(
-      "affiliate-task:87:v1:release"
-    );
+    const mapped = await repository.findTransactionByIdempotencyKey("affiliate-task:87:v1:release");
     const service = new LedgerService(repository);
 
     expect(mapped).toMatchObject({ currency: "JPY" });

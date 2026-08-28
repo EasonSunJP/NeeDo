@@ -10,19 +10,19 @@ import { runWithTransactionConflictRetry } from "../utils/transaction-conflict-r
 
 type BookingUserRewardExpiryPrismaClient = PrismaClient | Prisma.TransactionClient;
 
-const rewardSelect = {
-  id: true,
-  bookingOrderId: true,
-  userRewardStatus: true,
-  userRewardDeadlineAt: true
-} satisfies Prisma.OrderFinancialSelect;
-
-type BookingUserRewardDbRecord = Prisma.OrderFinancialGetPayload<{ select: typeof rewardSelect }>;
-
-export class BookingUserRewardExpiryRepository
-  implements BookingUserRewardExpiryRepositoryPort
-{
+export class BookingUserRewardExpiryRepository implements BookingUserRewardExpiryRepositoryPort {
   public constructor(private readonly client: BookingUserRewardExpiryPrismaClient = prisma) {}
+
+  public async getDatabaseNow(): Promise<Date> {
+    const rows = await this.client.$queryRaw<Array<{ now: Date }>>(
+      Prisma.sql`SELECT CURRENT_TIMESTAMP(3) AS now`
+    );
+    const databaseNow = rows[0]?.now;
+    if (!(databaseNow instanceof Date) || Number.isNaN(databaseNow.getTime())) {
+      throw new Error("error.database_clock_unavailable");
+    }
+    return databaseNow;
+  }
 
   public async listExpiryCandidateIds(input: {
     now: Date;
@@ -60,23 +60,36 @@ export class BookingUserRewardExpiryRepository
   }
 
   public async lockReward(id: number): Promise<BookingUserRewardExpiryRecord | null> {
-    const rows = await this.client.$queryRaw<Array<{ id: number }>>(
-      Prisma.sql`SELECT id FROM order_financials WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    const rows = await this.client.$queryRaw<
+      Array<{
+        id: number;
+        bookingOrderId: number;
+        userRewardStatus: string;
+        userRewardDeadlineAt: Date | null;
+      }>
+    >(
+      Prisma.sql`SELECT
+          id,
+          booking_order_id AS bookingOrderId,
+          user_reward_status AS userRewardStatus,
+          user_reward_deadline_at AS userRewardDeadlineAt
+        FROM order_financials
+        WHERE id = ${id} AND deleted_at IS NULL
+        FOR UPDATE`
     );
-    if (rows.length !== 1) {
+    const reward = rows[0];
+    if (!reward || rows.length !== 1) {
       return null;
     }
-    const reward = await this.client.orderFinancial.findFirst({
-      where: { id: Number(rows[0].id), deletedAt: null },
-      select: rewardSelect
-    });
-    return reward ? this.mapReward(reward) : null;
+    return {
+      id: reward.id,
+      bookingOrderId: reward.bookingOrderId,
+      userRewardStatus: reward.userRewardStatus.toLowerCase() as BookingUserRewardStatus,
+      userRewardDeadlineAt: reward.userRewardDeadlineAt
+    };
   }
 
-  public async expireReward(input: {
-    id: number;
-    expectedDeadlineAt: Date;
-  }): Promise<boolean> {
+  public async expireReward(input: { id: number; expectedDeadlineAt: Date }): Promise<boolean> {
     const update = await this.client.orderFinancial.updateMany({
       where: {
         id: input.id,
@@ -117,14 +130,5 @@ export class BookingUserRewardExpiryRepository
 
   private canStartTransaction(client: BookingUserRewardExpiryPrismaClient): client is PrismaClient {
     return "$transaction" in client && typeof client.$transaction === "function";
-  }
-
-  private mapReward(reward: BookingUserRewardDbRecord): BookingUserRewardExpiryRecord {
-    return {
-      id: reward.id,
-      bookingOrderId: reward.bookingOrderId,
-      userRewardStatus: reward.userRewardStatus.toLowerCase() as BookingUserRewardStatus,
-      userRewardDeadlineAt: reward.userRewardDeadlineAt
-    };
   }
 }

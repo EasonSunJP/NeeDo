@@ -242,7 +242,7 @@ Migration `20260829010000_booking_platform_fee_debt_reward` is additive and has 
 ENV_FILE=.env.dev npm --prefix backend run check:booking-platform-fee-debt-flow
 ```
 
-The checker rejects production flags, remote MySQL hosts, and production-looking database names. It creates uniquely marked real users, customer/technician profiles, shops, services, schedule slots, bookings, wallets, holds, ledger entries, adjustments, and audits; exercises disabled/shop/technician payer, rollback, explicit overdraft, cancellation, immediate/delayed/expired reward, and replay behavior; then proves exact pre/post aggregate equality after marker-only cleanup.
+The checker rejects production flags, remote MySQL hosts, and production-looking database names. It creates uniquely marked real users, customer/technician profiles, shops, services, schedule slots, bookings, wallets, holds, ledger entries, adjustments, and audits; exercises disabled/shop/technician payer, rollback, explicit and consecutive overdrafts, cancellation, immediate/delayed/expired reward, and replay behavior. It also uses real MySQL barriers to force both completion-first and top-up-first races. Settlement locks the payer wallet before reading the complete `OrderFinancial` row with `FOR UPDATE`; top-up and expiry use the same locking read, and reward deadlines use `CURRENT_TIMESTAMP(3)`. The current check creates 7 users, 9 shops, and 10 bookings, then proves exact pre/post aggregate equality after marker-only cleanup.
 
 ## Formal Customer Reservations
 

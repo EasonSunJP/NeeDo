@@ -51,10 +51,10 @@ type ShopPolicyRecordWithShop = Prisma.ShopPlatformFeePolicyGetPayload<{
 type PolicyClient = PrismaClient | Prisma.TransactionClient;
 
 export class PlatformFeePolicyRepository implements PlatformFeePolicyRepositoryPort {
-  public constructor(private readonly client: PrismaClient = prisma) {}
+  public constructor(private readonly client: PolicyClient = prisma) {}
 
   public withTransactionClient(transactionClient: unknown): PlatformFeePolicyRepositoryPort {
-    return new PlatformFeePolicyRepository(transactionClient as PrismaClient);
+    return new PlatformFeePolicyRepository(transactionClient as PolicyClient);
   }
 
   public async findGlobalBookingFee(at: Date): Promise<GlobalBookingPlatformFeePayload | null> {

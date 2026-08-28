@@ -3,9 +3,9 @@ import { join } from "node:path";
 
 describe("booking platform fee debt real-database checker", () => {
   const backendRoot = join(__dirname, "..");
-  const packageJson = JSON.parse(
-    readFileSync(join(backendRoot, "package.json"), "utf8")
-  ) as { scripts: Record<string, string> };
+  const packageJson = JSON.parse(readFileSync(join(backendRoot, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  };
   const scriptPath = join(backendRoot, "scripts/check-booking-platform-fee-debt-flow.ts");
 
   it("exposes the formal checker command", () => {
@@ -24,6 +24,10 @@ describe("booking platform fee debt real-database checker", () => {
     expect(source).toContain("assertMarkerOwnership");
     expect(source).toContain("baselineAfterCleanup");
     expect(source).toContain("assertExactBaseline");
+    expect(source).toContain("BARRIER_TIMEOUT_MS");
+    expect(source).toContain("waitForBarrier");
+    expect(source).toContain("Promise.allSettled");
+    expect(source).toContain("captureBaselineOrDisconnect");
     expect(source).not.toContain("prisma.wallet.update");
     expect(source).not.toContain("prisma.wallet.updateMany");
   });
