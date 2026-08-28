@@ -10,6 +10,11 @@ const notificationComposeSource = readFileSync(new URL("./AdminNotificationCompo
 const notificationGateSource = readFileSync(new URL("./OfficialNotificationCapabilityGate.tsx", import.meta.url), "utf8");
 const dispatchSource = readFileSync(new URL("./AdminDispatchPage.tsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+const stylesSource = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
+const translationsSource = readFileSync(
+  new URL("../../i18n/translations.ts", import.meta.url),
+  "utf8"
+);
 const affiliateSource = readFileSync(new URL("./AffiliateAdminPage.tsx", import.meta.url), "utf8");
 const affiliateCopySource = readFileSync(new URL("./affiliateAdminCopy.ts", import.meta.url), "utf8");
 const adminLayoutSource = readFileSync(
@@ -25,6 +30,15 @@ describe("removed admin design modules", () => {
     expect(appSource).not.toContain('./pages/merchant-admin/MerchantAdminDesignPage');
     expect(appSource).not.toContain('path="/admin/decoration"');
     expect(appSource).not.toContain('path="/merchant-admin/design"');
+  });
+
+  it("does not retain the deleted merchant editor styles or copy", () => {
+    expect(stylesSource).not.toContain("merchant-design-preview");
+    expect(stylesSource).not.toContain("merchant-phone-preview");
+    expect(stylesSource).not.toContain("merchant-live-preview");
+    expect(translationsSource).not.toContain("店铺展示设计");
+    expect(translationsSource).not.toContain("UI 装修配置");
+    expect(translationsSource).not.toContain("手机模拟器");
   });
 });
 
