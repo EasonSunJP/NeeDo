@@ -105,17 +105,17 @@ No audit write is required for this read. Existing create/update/delete audit ac
 
 ### 6.1 Formal Resource Layer
 
-Extend `schedulingApi` with:
+Extend `schedulingApi` with the technician-only detail method:
 
 ```ts
-getSlot(scope: SchedulingScope, id: number): Promise<BookingScheduleSlot>;
+getTechnicianSlot(id: number): Promise<BookingScheduleSlot>;
 ```
 
 Create a focused technician schedule resource hook that:
 
 - validates a numeric route ID;
 - loads the active technician profile and shop from formal Auth/Core Read data;
-- loads the slot through `schedulingApi.getSlot("technician", id)`;
+- loads the slot through `schedulingApi.getTechnicianSlot(id)`;
 - exposes loading, data, not-found/error, and retry state;
 - never falls back to `technicianScheduleStore`, `entityStore`, or array index zero.
 
