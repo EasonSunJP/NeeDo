@@ -16,6 +16,13 @@ export const shopFeeEnabledUpdateBodySchema = z
   })
   .strict();
 
+export const shopFeePayerUpdateBodySchema = z
+  .object({
+    payerType: z.enum(["shop", "technician"]),
+    expectedVersion: z.number().int().min(0)
+  })
+  .strict();
+
 export const shopPlatformFeePolicyListQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().max(100).optional(),
@@ -29,4 +36,5 @@ export const platformFeeShopIdParamSchema = z.object({
 
 export type GlobalPlatformFeeUpdateBody = z.infer<typeof globalPlatformFeeUpdateBodySchema>;
 export type ShopFeeEnabledUpdateBody = z.infer<typeof shopFeeEnabledUpdateBodySchema>;
+export type ShopFeePayerUpdateBody = z.infer<typeof shopFeePayerUpdateBodySchema>;
 export type ShopPlatformFeePolicyListQuery = z.infer<typeof shopPlatformFeePolicyListQuerySchema>;

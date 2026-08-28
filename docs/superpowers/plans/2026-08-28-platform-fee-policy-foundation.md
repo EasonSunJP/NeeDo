@@ -678,7 +678,7 @@ git commit -m "feat: expose backoffice platform fee policy"
   - `GET /api/v1/merchant-admin/shops/:shopId/platform-fee-policy`
   - `PATCH /api/v1/merchant-admin/shops/:shopId/platform-fee-policy/payer`
 
-- [ ] **Step 1: Write failing merchant scope and permission tests**
+- [x] **Step 1: Write failing merchant scope and permission tests**
 
 Add API cases for:
 
@@ -693,7 +693,7 @@ Add API cases for:
 
 Add OpenAPI assertions for all six operations on the four paths from Tasks 4–5, bearer security, strict request schemas, pagination, and `400/401/403/409` responses.
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run:
 
@@ -704,7 +704,7 @@ npm test -- platform-fee-policy-api.test.ts openapi.test.ts
 
 Expected: FAIL because merchant routes, permissions, and OpenAPI paths are absent.
 
-- [ ] **Step 3: Add merchant permissions and validator**
+- [x] **Step 3: Add merchant permissions and validator**
 
 Add:
 
@@ -724,7 +724,7 @@ export const shopFeePayerUpdateBodySchema = z.object({
 }).strict();
 ```
 
-- [ ] **Step 4: Register merchant routes and scope checks**
+- [x] **Step 4: Register merchant routes and scope checks**
 
 The service must authorize current identity before repository mutation:
 
@@ -752,7 +752,7 @@ if (actor.currentIdentityScopeType === "shop") {
 
 Recheck the membership inside the write transaction; the precheck alone is not sufficient.
 
-- [ ] **Step 5: Document formal API contracts**
+- [x] **Step 5: Document formal API contracts**
 
 Add OpenAPI component schemas for:
 
@@ -765,7 +765,7 @@ Add OpenAPI component schemas for:
 
 All request schemas use `additionalProperties:false`. Response payloads include `shopPublicId` and never label numeric `shopId` as NeeDo ID.
 
-- [ ] **Step 6: Run focused verification**
+- [x] **Step 6: Run focused verification**
 
 Run:
 
@@ -778,7 +778,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/src/constants/permissions.constants.ts backend/src/validators/platform-fee-policy.validator.ts backend/src/controllers/platform-fee-policy.controller.ts backend/src/routes/platform-fee-policy.routes.ts backend/tests/platform-fee-policy-api.test.ts backend/src/api/openapi.ts backend/tests/openapi.test.ts

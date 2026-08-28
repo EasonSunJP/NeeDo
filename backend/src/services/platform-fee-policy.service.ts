@@ -171,7 +171,7 @@ export class PlatformFeePolicyService {
     context: AuthRequestContext,
     shopId: number,
     input: { feeEnabled: boolean; expectedVersion: number }
-  ): Promise<ShopPolicyRecord> {
+  ): Promise<ShopPlatformFeePolicyPayload> {
     this.assertOperationsIdentity(actor);
     const result = await this.repository.updateShopFeeEnabled({
       shopId,
@@ -187,7 +187,8 @@ export class PlatformFeePolicyService {
       )
     });
 
-    return this.unwrapMutation(result);
+    const policy = this.unwrapMutation(result);
+    return this.mapEffectivePolicy(policy, policy, await this.getGlobalPolicy());
   }
 
   public async updateShopPayerType(
@@ -195,7 +196,7 @@ export class PlatformFeePolicyService {
     context: AuthRequestContext,
     shopId: number,
     input: { payerType: ShopPlatformFeePayer; expectedVersion: number }
-  ): Promise<ShopPolicyRecord> {
+  ): Promise<ShopPlatformFeePolicyPayload> {
     const merchantScope = await this.resolveMerchantScope(actor, shopId);
     const result = await this.repository.updateShopPayerType({
       shopId,
@@ -212,7 +213,8 @@ export class PlatformFeePolicyService {
       )
     });
 
-    return this.unwrapMutation(result);
+    const policy = this.unwrapMutation(result);
+    return this.mapEffectivePolicy(policy, policy, await this.getGlobalPolicy());
   }
 
   private mapEffectivePolicy(

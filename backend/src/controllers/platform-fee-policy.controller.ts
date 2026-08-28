@@ -6,6 +6,7 @@ import {
   globalPlatformFeeUpdateBodySchema,
   platformFeeShopIdParamSchema,
   shopFeeEnabledUpdateBodySchema,
+  shopFeePayerUpdateBodySchema,
   shopPlatformFeePolicyListQuerySchema
 } from "../validators/platform-fee-policy.validator";
 
@@ -54,6 +55,37 @@ export class PlatformFeePolicyController {
             getRequestContext(request),
             shopId,
             shopFeeEnabledUpdateBodySchema.parse(request.body)
+          )
+        )
+      );
+  });
+
+  public getMerchantShopPolicy = this.handle(async (request, response) => {
+    const { shopId } = platformFeeShopIdParamSchema.parse(request.params);
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.getShopPolicy(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            shopId
+          )
+        )
+      );
+  });
+
+  public updateShopPayerType = this.handle(async (request, response) => {
+    const { shopId } = platformFeeShopIdParamSchema.parse(request.params);
+    response
+      .status(200)
+      .json(
+        successResponse(
+          await this.service.updateShopPayerType(
+            getAuthenticatedAccess(response),
+            getRequestContext(request),
+            shopId,
+            shopFeePayerUpdateBodySchema.parse(request.body)
           )
         )
       );

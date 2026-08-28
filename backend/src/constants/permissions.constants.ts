@@ -621,6 +621,20 @@ export const SYSTEM_PERMISSIONS = [
     "读取商户后台真实指标"
   ),
   createPermission(
+    "merchant-admin:platform-fee-policy:read",
+    "商户平台费策略读取",
+    "api",
+    "merchant-admin",
+    "读取当前商户身份可管理店铺的平台费策略"
+  ),
+  createPermission(
+    "merchant-admin:platform-fee-policy:write",
+    "商户平台费承担者管理",
+    "api",
+    "merchant-admin",
+    "设置当前商户身份可管理店铺的平台费承担者"
+  ),
+  createPermission(
     "merchant-admin:orders:list",
     "商户后台订单列表",
     "api",
@@ -1203,6 +1217,8 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "menu:merchant-app",
   "menu:merchant-admin",
   "merchant-admin:dashboard:read",
+  "merchant-admin:platform-fee-policy:read",
+  "merchant-admin:platform-fee-policy:write",
   "merchant-admin:orders:list",
   "merchant-admin:schedule:list",
   "merchant-admin:finance:list",

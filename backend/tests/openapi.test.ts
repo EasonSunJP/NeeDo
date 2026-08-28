@@ -918,4 +918,68 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicContract).not.toMatch(/"(?:userId|identityId|identityType|roleCode)"/);
     expect(publicContract).not.toContain("scout");
   });
+
+  it("documents the formal platform fee policy contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<string, unknown>;
+      requestBody?: { content: { "application/json": { schema: { $ref: string } } } };
+      parameters?: Array<{ name: string; in: string }>;
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      required?: string[];
+      properties: Record<string, { type?: string; pattern?: string }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "patch", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const operations = [
+      document.paths["/api/v1/backoffice/platform-fee-policy"].get,
+      document.paths["/api/v1/backoffice/platform-fee-policy"].patch,
+      document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get,
+      document.paths["/api/v1/backoffice/shops/{shopId}/platform-fee-policy"].patch,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy"].get,
+      document.paths["/api/v1/merchant-admin/shops/{shopId}/platform-fee-policy/payer"].patch
+    ];
+
+    for (const operation of operations) {
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+    expect(document.paths["/api/v1/backoffice/shop-platform-fee-policies"].get.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "page", in: "query" }),
+        expect.objectContaining({ name: "pageSize", in: "query" })
+      ])
+    );
+    for (const schemaName of [
+      "GlobalPlatformFeeUpdateRequest",
+      "ShopFeeEnabledUpdateRequest",
+      "ShopFeePayerUpdateRequest"
+    ]) {
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    expect(document.components.schemas.ShopPlatformFeePolicy.properties.shopId.type).toBe(
+      "integer"
+    );
+    expect(document.components.schemas.ShopPlatformFeePolicy.properties.shopPublicId.pattern).toBe(
+      "^b[0-9]{10}$"
+    );
+    expect(document.components.schemas).toEqual(
+      expect.objectContaining({
+        GlobalBookingPlatformFee: expect.any(Object),
+        ShopPlatformFeePolicy: expect.any(Object),
+        ShopPlatformFeePolicyPage: expect.any(Object)
+      })
+    );
+  });
 });

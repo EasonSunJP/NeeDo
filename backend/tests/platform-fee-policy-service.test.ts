@@ -94,9 +94,16 @@ describe("PlatformFeePolicyService", () => {
     const repository = createRepository();
     const service = createService(repository);
 
-    await service.updateShopFeeEnabled(operationsActor, context, 11, {
+    await expect(
+      service.updateShopFeeEnabled(operationsActor, context, 11, {
+        feeEnabled: false,
+        expectedVersion: 0
+      })
+    ).resolves.toMatchObject({
+      globalAmountNdp: 500,
       feeEnabled: false,
-      expectedVersion: 0
+      policyVersion: 1,
+      policySource: "persisted"
     });
 
     expect(repository.updateShopFeeEnabled).toHaveBeenCalledWith(

@@ -13,6 +13,7 @@ import {
   globalPlatformFeeUpdateBodySchema,
   platformFeeShopIdParamSchema,
   shopFeeEnabledUpdateBodySchema,
+  shopFeePayerUpdateBodySchema,
   shopPlatformFeePolicyListQuerySchema
 } from "../validators/platform-fee-policy.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
@@ -20,6 +21,11 @@ import { createAuthServiceForRoutes } from "./auth-service.factory";
 export const PLATFORM_FEE_POLICY_ROUTE_PERMISSIONS = {
   read: "backoffice:platform-fee-policy:read",
   write: "backoffice:platform-fee-policy:write"
+} as const;
+
+export const MERCHANT_PLATFORM_FEE_POLICY_ROUTE_PERMISSIONS = {
+  read: "merchant-admin:platform-fee-policy:read",
+  write: "merchant-admin:platform-fee-policy:write"
 } as const;
 
 export const createPlatformFeePolicyRoutes = (
@@ -65,6 +71,23 @@ export const createPlatformFeePolicyRoutes = (
       body: shopFeeEnabledUpdateBodySchema
     }),
     controller.updateShopFeeEnabled
+  );
+  router.get(
+    "/merchant-admin/shops/:shopId/platform-fee-policy",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_PLATFORM_FEE_POLICY_ROUTE_PERMISSIONS.read),
+    validateRequest({ params: platformFeeShopIdParamSchema }),
+    controller.getMerchantShopPolicy
+  );
+  router.patch(
+    "/merchant-admin/shops/:shopId/platform-fee-policy/payer",
+    authenticate(),
+    createAuthorizeMiddleware(MERCHANT_PLATFORM_FEE_POLICY_ROUTE_PERMISSIONS.write),
+    validateRequest({
+      params: platformFeeShopIdParamSchema,
+      body: shopFeePayerUpdateBodySchema
+    }),
+    controller.updateShopPayerType
   );
 
   return router;
