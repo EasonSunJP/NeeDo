@@ -2766,17 +2766,11 @@ type TechnicianProfileSource = {
 };
 
 export function TechnicianPortalPage() {
-  const technicianPortalConfig = roleBasedTabConfig.technician;
-  const navigate = useNavigate();
-  const { view } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { profiles, getActorForScope } = useSocial();
-  const activeView = getTechnicianView(view);
-  const activeMeTab = getTechnicianMeTab(searchParams.get("meTab"));
-  const { session, logout } = useAuth();
-  const { isNight } = useClientTheme();
-  const { language } = useI18n();
-  const { customers, stores, technicians } = useEntityStore();
+  return <TechnicianPortalDataGate />;
+}
+
+function TechnicianPortalDataGate() {
+  const { session } = useAuth();
   const formalTechnicianProfileId = getFormalTechnicianProfileId(session);
   const formalTechnicianProfileQuery = useCoreReadQuery(
     () => formalTechnicianProfileId ? coreReadApi.getTechnicianDetail(formalTechnicianProfileId) : null,
@@ -2792,12 +2786,56 @@ export function TechnicianPortalPage() {
       : null,
     [formalTechnicianProfileQuery.data]
   );
-  const baseTech = formalTechnician ?? technicians.find((technician) => technician.id === session?.linkedTechnicianId) ?? technicians[0];
+
+  if (!formalTechnicianProfileId || !formalTechnician || !formalStore) {
+    const failed = !formalTechnicianProfileQuery.loading && Boolean(formalTechnicianProfileQuery.error);
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[color:var(--client-bg)] px-6 text-center text-[color:var(--client-text)]">
+        <div>
+          <h1 className="text-xl font-black">{failed ? "技师资料加载失败" : "正在加载技师资料"}</h1>
+          <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">
+            {failed ? "请稍后重试，或切换回其他身份。" : "正在同步当前技师与所属店铺，请稍候。"}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <TechnicianPortalContent
+      baseTech={formalTechnician}
+      formalTechnicianProfileId={formalTechnicianProfileId}
+      store={formalStore}
+    />
+  );
+}
+
+function TechnicianPortalContent({
+  baseTech,
+  formalTechnicianProfileId,
+  store
+}: {
+  baseTech: Technician;
+  formalTechnicianProfileId: number;
+  store: Store;
+}) {
+  const technicianPortalConfig = roleBasedTabConfig.technician;
+  const navigate = useNavigate();
+  const { view } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { profiles, getActorForScope } = useSocial();
+  const activeView = getTechnicianView(view);
+  const activeMeTab = getTechnicianMeTab(searchParams.get("meTab"));
+  const { session, logout } = useAuth();
+  const { isNight } = useClientTheme();
+  const { language } = useI18n();
+  const { customers } = useEntityStore();
+  const technicians = [baseTech];
+  const stores = [store];
   const linkedCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId);
   const defaultAreaSelection = useRef(getDefaultAreaSelection()).current;
   const defaultLineSelection = useRef(getDefaultLineSelection()).current;
   const nextJob = fieldJobs[0];
-  const store = formalStore ?? stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const taskOrderCodeSectionRef = useRef<HTMLElement | null>(null);
   const taskOrderCodeInputRef = useRef<HTMLInputElement | null>(null);
@@ -2805,7 +2843,7 @@ export function TechnicianPortalPage() {
   const idBackInputRef = useRef<HTMLInputElement | null>(null);
   const selfieInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<WorkStatus>("休息");
-  const [tasksPanelTab, setTasksPanelTab] = useState<TechnicianTasksPanelTab>("schedule");
+  const [tasksPanelTab, setTasksPanelTab] = useState<TechnicianTasksPanelTab>("orders");
   const [selectedTaskOrder, setSelectedTaskOrder] = useState<Order | null>(null);
   const [statusTimelineRecords, setStatusTimelineRecords] = useState<TechnicianStatusTimelineRecord[]>([]);
   const [activeDirectoryShortcut, setActiveDirectoryShortcut] = useState<string | null>(null);
@@ -3188,8 +3226,10 @@ export function TechnicianPortalPage() {
   const availableAreas = (selectedCountryCatalog[profileDraft.selectedPrefecture as keyof typeof selectedCountryCatalog] ?? []) as readonly string[];
   const availableLines = Object.keys(railLineCatalog) as Array<keyof typeof railLineCatalog>;
   const availableStations = railLineCatalog[profileDraft.selectedLine as keyof typeof railLineCatalog] ?? railLineCatalog["山手線"];
-  const activeOrder = orders[0];
-  const activeCustomer = customers.find((customer) => customer.id === activeOrder.customerId) ?? customers[0];
+  const activeOrder = orders[0] ?? null;
+  const activeCustomer = activeOrder
+    ? customers.find((customer) => customer.id === activeOrder.customerId) ?? customers[0] ?? null
+    : null;
   const socialActorKey = getActorForScope("technician");
   const socialActor = profiles[socialActorKey];
   const {
@@ -3308,8 +3348,11 @@ export function TechnicianPortalPage() {
   );
   const baseScheduleEvents: TechnicianScheduleEvent[] = sharedSchedules
     .filter((schedule) => schedule.staffId === baseTech.id)
-    .map((schedule, index) => {
-      const order = orders.find((item) => item.id === schedule.orderId) ?? orders[index % orders.length];
+    .flatMap<TechnicianScheduleEvent>((schedule, index) => {
+      const order = orders.find((item) => item.id === schedule.orderId) ?? orders[index % Math.max(1, orders.length)];
+      if (!order) {
+        return [];
+      }
       const planType = schedule.status === "booked"
         ? undefined
         : schedulePlanTags[schedule.id] === "leave"
@@ -3329,9 +3372,9 @@ export function TechnicianPortalPage() {
                       : undefined;
       const planMeta = planType ? technicianPlanMeta[planType] : null;
 
-      return {
+      return [{
         ...schedule,
-        workMode: "store",
+        workMode: "store" as const,
         title: planMeta?.title ?? (schedule.status === "free" ? "门店可接单空档" : getNeedoAppBookingTitle(schedule.orderId, order.itemName) ?? order.itemName),
         place: store.name,
         customer: schedule.status === "free" ? "待分配" : order.customerName,
@@ -3339,7 +3382,7 @@ export function TechnicianPortalPage() {
         note: planMeta?.caption ?? (schedule.status === "free" ? "来自门店排班，可被系统派单" : "来自门店正式预约"),
         planType,
         isEstimated: isEstimatedSchedulePlanType(planType)
-      };
+      }];
     });
   const scheduleEvents = baseScheduleEvents
     .filter((event) => event.staffId === baseTech.id)
@@ -3394,16 +3437,26 @@ export function TechnicianPortalPage() {
   const codeModalTargetOrder = serviceCodeTargetOrderId
     ? orders.find((order) => order.id === serviceCodeTargetOrderId) ?? nextServiceOrder
     : nextServiceOrder;
-  const secondaryNextServiceOrder = currentServiceOrder && upcomingServiceOrder.id !== currentServiceOrder.id ? upcomingServiceOrder : null;
-  const isCurrentServiceFocused = currentServiceOrder?.id === nextServiceOrder.id;
-  const nextServiceJob = fieldJobs.find((job) => job.orderId === nextServiceOrder.id) ?? null;
-  const nextServiceAddress = nextServiceJob?.address ?? `${nextServiceOrder.city}${nextServiceOrder.area}`;
-  const nextServiceTime = nextServiceJob?.serviceTime ?? nextServiceOrder.bookedAt ?? `${todayDate} ${nextBookedScheduleEvent?.startTime ?? "10:00"}`;
+  const secondaryNextServiceOrder = currentServiceOrder && upcomingServiceOrder && upcomingServiceOrder.id !== currentServiceOrder.id ? upcomingServiceOrder : null;
+  const isCurrentServiceFocused = Boolean(nextServiceOrder && currentServiceOrder?.id === nextServiceOrder.id);
+  const nextServiceJob = nextServiceOrder
+    ? fieldJobs.find((job) => job.orderId === nextServiceOrder.id) ?? null
+    : null;
+  const nextServiceAddress = nextServiceOrder
+    ? nextServiceJob?.address ?? `${nextServiceOrder.city}${nextServiceOrder.area}`
+    : "";
+  const nextServiceTime = nextServiceOrder
+    ? nextServiceJob?.serviceTime ?? nextServiceOrder.bookedAt ?? `${todayDate} ${nextBookedScheduleEvent?.startTime ?? "10:00"}`
+    : "";
   const nextServiceCountdown = getScheduleCountdown(nextServiceTime, technicianHomeReferenceTime, language);
   const currentServiceStageLabel = status === "服务中" ? "服务中" : "进行中";
   const currentServiceStageTone: BadgeTone = status === "服务中" ? "green" : "yellow";
-  const nextServiceEstimatedEndTime = addMinutesToDateTime(nextServiceTime, getOrderEstimatedDurationMinutes(nextServiceOrder));
-  const nextServiceCustomer = customers.find((customer) => customer.id === nextServiceOrder.customerId) ?? activeCustomer;
+  const nextServiceEstimatedEndTime = nextServiceOrder
+    ? addMinutesToDateTime(nextServiceTime, getOrderEstimatedDurationMinutes(nextServiceOrder))
+    : "";
+  const nextServiceCustomer = nextServiceOrder
+    ? customers.find((customer) => customer.id === nextServiceOrder.customerId) ?? activeCustomer
+    : null;
   const secondaryNextServiceJob = secondaryNextServiceOrder ? fieldJobs.find((job) => job.orderId === secondaryNextServiceOrder.id) ?? null : null;
   const secondaryNextServiceAddress = secondaryNextServiceOrder
     ? secondaryNextServiceJob?.address ?? `${secondaryNextServiceOrder.city}${secondaryNextServiceOrder.area}`
@@ -3462,8 +3515,12 @@ export function TechnicianPortalPage() {
       technicianStatusOrderIds.add(event.orderId);
     }
   });
-  technicianStatusOrderIds.add(nextServiceOrder.id);
-  technicianStatusOrderIds.add(upcomingServiceOrder.id);
+  if (nextServiceOrder) {
+    technicianStatusOrderIds.add(nextServiceOrder.id);
+  }
+  if (upcomingServiceOrder) {
+    technicianStatusOrderIds.add(upcomingServiceOrder.id);
+  }
   if (currentServiceOrder) {
     technicianStatusOrderIds.add(currentServiceOrder.id);
   }
@@ -3668,11 +3725,11 @@ export function TechnicianPortalPage() {
       },
       entityCardVariant: "compact" as const
     },
-    {
+    ...(activeOrder && activeCustomer ? [{
       id: "customer-active",
       systemId: activeCustomer.systemId,
       name: activeOrder.customerName,
-      username: "cus_today_001",
+      username: "customer-active",
       remark: "今日服务客户",
       avatar: activeCustomer.avatar,
       title: "顾客",
@@ -3687,7 +3744,7 @@ export function TechnicianPortalPage() {
         detailPath: getScopedProfileDetailPath("technician", "user", activeCustomer.id)
       },
       entityCardVariant: "compact" as const
-    },
+    }] : []),
     {
       id: "dispatch",
       name: "平台调度",
@@ -3750,7 +3807,7 @@ export function TechnicianPortalPage() {
       title: "新朋友申请",
       caption: "新来的顾客、同事和平台联系人会集中显示在这里。",
       items: [
-        {
+        ...(activeCustomer ? [{
           id: "tech-new-customer",
           title: customers[2]?.name ?? activeCustomer.name,
           caption: "顾客申请 · 希望加入常用联系",
@@ -3763,7 +3820,7 @@ export function TechnicianPortalPage() {
             detailPath: getScopedProfileDetailPath("technician", "user", customers[2]?.id ?? activeCustomer.id)
           },
           entityCardVariant: "compact" as const
-        },
+        }] : []),
         {
           id: "tech-new-staff",
           title: "门店排班员",
@@ -5115,7 +5172,7 @@ export function TechnicianPortalPage() {
               />
 
               {tasksPanelTab === "schedule" ? (
-                <div className="space-y-3">
+                nextServiceOrder && nextServiceCustomer ? <div className="space-y-3">
                   <article
                     className={technicianTaskCardClassName}
                     onClick={(event) => handleTaskCardClick(event, nextServiceOrder)}
@@ -5252,7 +5309,7 @@ export function TechnicianPortalPage() {
                     </div>
                   </article>
 
-                  {secondaryNextServiceOrder ? (
+                  {secondaryNextServiceOrder && secondaryNextServiceCustomer ? (
                     <article
                       className={technicianTaskCardClassName}
                       onClick={(event) => handleTaskCardClick(event, secondaryNextServiceOrder)}
@@ -5374,7 +5431,7 @@ export function TechnicianPortalPage() {
                       </div>
                     )}
                   </div>
-                </div>
+                </div> : <FormalScheduleInventoryPanel scope="technician" shopId={technicianShopApiId} />
               ) : (
                 <FormalTechnicianOrdersPanel />
               )}
@@ -6898,7 +6955,7 @@ export function TechnicianPortalPage() {
           </MobileFullscreenPage>
         )}
 
-        {nextCustomerCardOpen && (
+        {nextCustomerCardOpen && nextServiceOrder && nextServiceCustomer && (
           <MobileFullscreenPage innerClassName="relative">
               <MobileFullscreenHeader
                 className="absolute inset-x-0 top-0 z-40 border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-bg)] shadow-[0_16px_36px_rgba(0,0,0,0.18)]"
@@ -7290,7 +7347,7 @@ export function TechnicianPortalPage() {
           </MobileFullscreenPage>
         )}
 
-        {codeModalOpen && (
+        {codeModalOpen && codeModalTargetOrder && (
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 px-4">
             <section className="w-full max-w-[420px] rounded-lg bg-white p-5 text-ink shadow-soft">
               <TitleWithInfo

@@ -10035,7 +10035,40 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
     [`${config.API_PREFIX}/im/conversations/{conversationId}/leave`]: {
       post: {
         tags: ["Step 13 Realtime"],
-        summary: "Leave a group and transfer ownership to the earliest remaining member",
+        summary: "Leave a group; owners must explicitly transfer ownership first",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  transferOwnerUserId: { type: "integer", minimum: 1 }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Current participant left; groups with fewer than two remaining members are dissolved" },
+          "400": { description: "Owner transfer is required or the selected successor is invalid" },
+          "404": { description: "Group not found for current participant" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/dissolve`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Dissolve a group as its current owner",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -10046,8 +10079,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ],
         responses: {
-          "200": { description: "Current participant left the group" },
-          "404": { description: "Group not found for current participant" }
+          "200": { description: "Group dissolved and removed for every participant" },
+          "404": { description: "Group not found or current account is not the owner" }
         }
       }
     },
@@ -10104,6 +10137,23 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         },
         responses: {
           "201": { description: "Created message" }
+        }
+      },
+      delete: {
+        tags: ["Step 13 Realtime"],
+        summary: "Permanently clear message history for the current participant only",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          }
+        ],
+        responses: {
+          "200": { description: "Current participant history cleared through the latest message" },
+          "404": { description: "Conversation not found for current participant" }
         }
       }
     },

@@ -40,6 +40,12 @@ import { PrivacyModeConfirmDialog } from "../../components/ui/PrivacyModeConfirm
 import { InfoTooltipTrigger, TitleWithInfo } from "../../components/ui/TitleWithInfo";
 import { ToggleSwitch } from "../../components/ui/ToggleSwitch";
 import { emptyOrders as orders, emptySettlements as settlements, formalMediaFallback as imageBank } from "../../data/formalRuntimeFallbacks";
+import {
+  coreReadApi,
+  mapCoreShopToStore,
+  mapCoreTechnicianToTechnician
+} from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { DispatchOverviewWorkspace } from "../../features/dispatch-center/components/OverviewWorkspace";
 import { ImContactsListPage, ImMessagesEntryPage } from "../../features/im/route-pages";
 import { ImScopeProvider } from "../../features/im/scope";
@@ -1499,20 +1505,60 @@ function MerchantStorePrivacyControl({
 }
 
 export function MerchantPortalPage() {
+  return <MerchantPortalDataGate />;
+}
+
+function MerchantPortalDataGate() {
+  const { session } = useAuth();
+  const storeApiId = getMerchantStoreApiId(session?.linkedStoreId);
+  const formalStoreQuery = useCoreReadQuery(
+    () => storeApiId ? coreReadApi.getShopDetail(storeApiId) : null,
+    [storeApiId]
+  );
+
+  if (!storeApiId || !formalStoreQuery.data) {
+    const failed = !formalStoreQuery.loading && Boolean(formalStoreQuery.error);
+    return (
+      <main className="grid min-h-dvh place-items-center bg-[color:var(--client-bg)] px-6 text-center text-[color:var(--client-text)]">
+        <div>
+          <h1 className="text-xl font-black">{failed ? "店铺资料加载失败" : "正在加载店铺资料"}</h1>
+          <p className="mt-2 text-sm font-semibold text-[color:var(--client-muted)]">
+            {failed ? "请稍后重试，或切换回其他身份。" : "正在同步当前店铺与正式员工资料，请稍候。"}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const store = mapCoreShopToStore(formalStoreQuery.data);
+  const technicians = formalStoreQuery.data.technicians.map((technician) => ({
+    ...mapCoreTechnicianToTechnician(technician),
+    storeId: store.id
+  }));
+
+  return <MerchantPortalContent store={store} technicians={technicians} />;
+}
+
+function MerchantPortalContent({
+  store,
+  technicians
+}: {
+  store: Store;
+  technicians: Technician[];
+}) {
   const merchantPortalConfig = roleBasedTabConfig.merchant;
   const { view } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { session } = useAuth();
-  const { customers, stores, technicians, revision: entityRevision } = useEntityStore();
+  const { customers } = useEntityStore();
   const merchantImStore = useImStore("merchant");
   const activeView = getMerchantView(view);
   const activeMeTab = getMerchantMeTab(searchParams.get("meTab"));
-  const store = stores.find((item) => item.id === session?.linkedStoreId) ?? stores[0];
   const storeApiId = getMerchantStoreApiId(store.id);
   const storeTechnicians = useMemo(() => {
     return technicians.filter((tech) => tech.storeId === store.id);
-  }, [entityRevision, store.id, technicians]);
+  }, [store.id, technicians]);
   const embeddedHeaderViews: MerchantView[] = ["orders", "schedule", "staff", "messages", "contacts", "me"];
   const pageTitleMap: Record<MerchantView, string> = {
     dashboard: "门店工作台",
@@ -1985,40 +2031,42 @@ export function MerchantPortalPage() {
     })),
     { id: "custom-add", title: "添加自定义分类", caption: "新建分类", icon: "add", tone: "bg-[#171717] text-lemon" }
   ];
+  const newestCustomer = customers[3] ?? customers[0];
+  const newestTechnician = technicians[2] ?? technicians[0];
   const merchantBaseShortcutPanels: Record<string, { title: string; caption: string; items: ContactShortcutPanelItem[] }> = {
     new: {
       title: "新朋友申请",
       caption: "新来的顾客、员工和平台协作联系人会先集中在这里。",
       items: [
-        {
-          id: `shortcut-new-customer-${customers[3]?.id ?? customers[0].id}`,
-          title: customers[3]?.name ?? customers[0].name,
+        ...(newestCustomer ? [{
+          id: `shortcut-new-customer-${newestCustomer.id}`,
+          title: newestCustomer.name,
           caption: "新顾客申请 · 希望加入常用联系",
-          meta: `${(customers[3]?.tags ?? customers[0].tags).slice(0, 2).join(" / ")} · ID ${customers[3]?.systemId ?? customers[0].systemId}`,
-          avatar: customers[3]?.avatar ?? customers[0].avatar,
+          meta: `${newestCustomer.tags.slice(0, 2).join(" / ")} · ID ${newestCustomer.systemId}`,
+          avatar: newestCustomer.avatar,
           badge: "顾客",
-          onClick: () => setSelectedContact({ type: "customer", id: customers[3]?.id ?? customers[0].id }),
+          onClick: () => setSelectedContact({ type: "customer", id: newestCustomer.id }),
           entityCardData: {
-            ...buildUserInfoCardData(customers[3] ?? customers[0]),
-            detailPath: getScopedProfileDetailPath("merchant", "user", customers[3]?.id ?? customers[0].id)
+            ...buildUserInfoCardData(newestCustomer),
+            detailPath: getScopedProfileDetailPath("merchant", "user", newestCustomer.id)
           },
           entityCardVariant: "compact" as const
-        },
-        {
-          id: `shortcut-new-staff-${technicians[2]?.id ?? technicians[0].id}`,
-          title: technicians[2]?.name ?? technicians[0].name,
+        }] : []),
+        ...(newestTechnician ? [{
+          id: `shortcut-new-staff-${newestTechnician.id}`,
+          title: newestTechnician.name,
           caption: "新员工申请 · 等待加入门店通讯录",
-          meta: `${(technicians[2]?.profileTags ?? technicians[2]?.skills ?? technicians[0].profileTags ?? technicians[0].skills).slice(0, 2).join(" / ")} · ID ${technicians[2]?.systemId ?? technicians[0].systemId}`,
-          avatar: technicians[2]?.avatar ?? technicians[0].avatar,
+          meta: `${(newestTechnician.profileTags ?? newestTechnician.skills).slice(0, 2).join(" / ")} · ID ${newestTechnician.systemId}`,
+          avatar: newestTechnician.avatar,
           badge: "员工",
-          onClick: () => openStaffDetail(technicians[2]?.id ?? technicians[0].id),
+          onClick: () => openStaffDetail(newestTechnician.id),
           entityCardData: {
-            ...buildTechnicianInfoCardData(technicians[2] ?? technicians[0]),
+            ...buildTechnicianInfoCardData(newestTechnician),
             cardUi: technicianCardUi,
-            detailPath: getMerchantStaffDetailPath(technicians[2]?.id ?? technicians[0].id)
+            detailPath: getMerchantStaffDetailPath(newestTechnician.id)
           },
           entityCardVariant: "compact" as const
-        },
+        }] : []),
         {
           id: "shortcut-new-platform",
           title: "NeeDo 商户 onboarding",
@@ -2720,12 +2768,12 @@ export function MerchantPortalPage() {
               {activeMeTab === "data" ? (
                 <ShopAnalyticsDashboard
                   customers={customers}
-                  key={entityRevision}
+                  key={store.id}
                   orders={orders}
                   personnelMonthlyCost={manualPersonnelMonthlyCost}
                   settlements={settlements}
                   store={store}
-                  stores={stores}
+                  stores={[store]}
                   technicians={technicians}
                 />
               ) : null}
@@ -2758,47 +2806,55 @@ export function MerchantPortalPage() {
                 </div>
 
                 {selectedContactCustomer ? (
-                  <SocialProfileMiniCard
-                    actionLabel={followedCustomerIds.includes(selectedContactCustomer.id) ? "关注中" : "关注"}
-                    className="mt-3"
-                    customer={selectedContactCustomer}
-                    detailTo={getScopedProfileDetailPath("merchant", "user", selectedContactCustomer.id)}
-                    onAction={() => toggleFollow("customer", selectedContactCustomer.id)}
-                  />
-                ) : null}
+                  <>
+                    <SocialProfileMiniCard
+                      actionLabel={followedCustomerIds.includes(selectedContactCustomer.id) ? "关注中" : "关注"}
+                      className="mt-3"
+                      customer={selectedContactCustomer}
+                      detailTo={getScopedProfileDetailPath("merchant", "user", selectedContactCustomer.id)}
+                      onAction={() => toggleFollow("customer", selectedContactCustomer.id)}
+                    />
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <Button
-                    size="sm"
-                    to={`/merchant/messages?chat=${getMerchantCustomerConversationId(selectedContactCustomer?.id ?? customers[0].id)}`}
-                  >
-                    聊天
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      contact(selectedContactCustomer?.name ?? "联系人", "phone");
-                      closeSelectedContact();
-                    }}
-                  >
-                    电话
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    to={`/merchant/messages?chat=${getMerchantCustomerConversationId(selectedContactCustomer?.id ?? customers[0].id)}`}
-                  >
-                    预约详细
-                  </Button>
-                  <Button size="sm" variant="secondary" to="/merchant/moments">
-                    查看动态
-                  </Button>
-                </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <Button
+                        size="sm"
+                        to={`/merchant/messages?chat=${getMerchantCustomerConversationId(selectedContactCustomer.id)}`}
+                      >
+                        聊天
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          contact(selectedContactCustomer.name, "phone");
+                          closeSelectedContact();
+                        }}
+                      >
+                        电话
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        to={`/merchant/messages?chat=${getMerchantCustomerConversationId(selectedContactCustomer.id)}`}
+                      >
+                        预约详细
+                      </Button>
+                      <Button size="sm" variant="secondary" to="/merchant/moments">
+                        查看动态
+                      </Button>
+                    </div>
 
-                <div className="mt-4 rounded-lg bg-paper p-3 text-xs leading-5 text-ink/55">
-                  预约提醒：最近订单 {selectedCustomerOrder.itemName}，时间 {selectedCustomerOrder.bookedAt}。
-                </div>
+                    {selectedCustomerOrder ? (
+                      <div className="mt-4 rounded-lg bg-paper p-3 text-xs leading-5 text-ink/55">
+                        预约提醒：最近订单 {selectedCustomerOrder.itemName}，时间 {selectedCustomerOrder.bookedAt}。
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="mt-4 rounded-lg bg-paper p-3 text-xs leading-5 text-ink/55">
+                    该联系人不存在或已从当前通讯录移除。
+                  </div>
+                )}
               </section>
             )}
           </div>

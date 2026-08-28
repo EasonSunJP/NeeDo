@@ -789,14 +789,25 @@ export function createFormalImApi({
     updateConversationGroupInfo: featureUnavailable,
     updateConversationTags: featureUnavailable,
     addConversationMembers: featureUnavailable,
-    async removeConversationMember(conversationId, userId) {
+    async removeConversationMember(conversationId, userId, transferOwnerUserId) {
       if (toNumericId(userId) !== currentUser.id) {
         throw new Error("error.feature_unavailable");
       }
-      const result = await realtimeApi.leaveConversation(toNumericId(conversationId));
+      const result = await realtimeApi.leaveConversation(
+        toNumericId(conversationId),
+        transferOwnerUserId ? toNumericId(transferOwnerUserId) : undefined,
+      );
       return {
         conversationId: String(result.conversationId),
         removedUserId: String(result.removedUserId),
+        dissolved: result.dissolved,
+      };
+    },
+    async dissolveConversation(conversationId) {
+      const result = await realtimeApi.dissolveConversation(toNumericId(conversationId));
+      return {
+        conversationId: String(result.conversationId),
+        dissolved: true as const,
       };
     },
     async pinConversation(conversationId: string, isPinned: boolean) {
@@ -828,7 +839,12 @@ export function createFormalImApi({
       const conversation = await realtimeApi.deleteConversation(toNumericId(conversationId));
       return { conversation: toConversation(conversation, currentUser.id) };
     },
-    clearConversation: featureUnavailable,
+    async clearConversation(conversationId: string) {
+      const conversation = await realtimeApi.clearConversationMessages(
+        toNumericId(conversationId),
+      );
+      return { conversation: toConversation(conversation, currentUser.id) };
+    },
     async sendMessage(
       type: ImMessageType,
       payload: {

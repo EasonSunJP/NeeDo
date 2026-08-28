@@ -34,7 +34,14 @@ import {
   emptyReviews as reviews,
   emptyServices as services
 } from "../../data/formalRuntimeFallbacks";
-import { coreReadIdFromRoute } from "../../features/core-read/api";
+import {
+  coreReadApi,
+  coreReadIdFromRoute,
+  mapCoreShopToStore,
+  mapCoreTechnicianToTechnician,
+  type CoreShopDetail
+} from "../../features/core-read/api";
+import { useCoreReadQuery } from "../../features/core-read/hooks";
 import { pricingModeApi, type BookingNavigationResponse } from "../../features/pricing-mode/api";
 import { SocialEmptyState, SocialPostItem } from "../../features/social/components/UnifiedSocialUi";
 import { useSocial } from "../../features/social/context";
@@ -60,7 +67,6 @@ import { getScopedProfileDetailPath, getScopedTechnicianServiceListPath } from "
 import { updateCustomerEntity, updateStoreEntity, updateTechnicianEntity, useEntityStore } from "../../state/entityStore";
 import type { SocialPost } from "../../features/social/types";
 import type { Order, OrderStatus, Review, ServiceItem, Store, StoreCardDecorationConfig, StoreDecorationBlockId, StoreMenuConfig, StoreOfferConfig, StorePresentationConfig, Technician } from "../../types/domain";
-import { FormalStoreDetailPage } from "./FormalStoreDetailPage";
 
 type StoreTab = "home" | "seats" | "menu" | "moments" | "offers" | "map";
 type StoreIndustry = StorePresentationIndustry;
@@ -90,6 +96,8 @@ type StoreDetailExperienceProps = {
   scope?: "user" | "merchant";
   store: Store;
   techniciansOverride?: Technician[];
+  presentationOverride?: StorePresentationConfig;
+  hideUnavailableReviewDetails?: boolean;
 };
 
 function storeDetailRouteEntityIdToApiId(value: string | number | null | undefined) {
@@ -2679,7 +2687,9 @@ export function StoreDetailExperience({
   scope = "user",
   store,
   technicianPricingRatePercent,
-  techniciansOverride
+  techniciansOverride,
+  presentationOverride,
+  hideUnavailableReviewDetails = false
 }: StoreDetailExperienceProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -2754,14 +2764,20 @@ export function StoreDetailExperience({
         .slice(0, 8),
     [displayedTechnicians, isMerchantEditable, store.id]
   );
-  const config = useMemo(() => buildStoreProfileConfig(store, industry), [industry, store, store.presentation]);
+  const config = useMemo(
+    () => presentationOverride ?? buildStoreProfileConfig(store, industry),
+    [industry, presentationOverride, store, store.presentation]
+  );
   const seatCards = useMemo(() => buildSeatCards(store, industry), [industry, store]);
   const baseMenuCards = useMemo(() => buildMenuCards(store, industry), [industry, store]);
   const menuCards = useMemo(() => mergeMenuCardOverrides(baseMenuCards, config.menuCards), [baseMenuCards, config.menuCards]);
   const servicePriceRangeLabel = useMemo(() => buildDisplayedMenuPriceRangeLabel(menuCards, buildServiceMenuPriceRangeLabel(store, industry)), [industry, menuCards, store]);
   const displayedBudgetLabel = industry === "cleaning" ? "¥10,000 - ¥20,000" : servicePriceRangeLabel.replace(/\s*-\s*/g, " - ");
   const mapDetailCopy = storeMapDetailCopyByIndustry[industry];
-  const relevantReviews = useMemo(() => buildRelevantReviews(store, storeTechnicians), [store, storeTechnicians]);
+  const relevantReviews = useMemo(
+    () => hideUnavailableReviewDetails ? [] : buildRelevantReviews(store, storeTechnicians),
+    [hideUnavailableReviewDetails, store, storeTechnicians]
+  );
   const socialPosts = useMemo(() => {
     const authorKeys = [profileKey({ entityType: "shop", id: store.id })];
     const merged = new Map<string, SocialPost>();
@@ -4145,14 +4161,104 @@ const formalStoreLinkCopy: Record<Language, { description: string; title: string
   ko: { description: "정식 매장 목록에서 매장을 다시 선택해 주세요.", title: "매장 링크를 사용할 수 없습니다" }
 };
 
+function formatFormalServicePrice(service: CoreShopDetail["services"][number]) {
+  const amount = Number(service.priceAmount);
+  if (service.currency === "JPY" && Number.isFinite(amount)) {
+    return yen(amount);
+  }
+  return `${service.priceAmount} ${service.currency}`.trim();
+}
+
+function buildFormalStorePresentation(shop: CoreShopDetail, store: Store): StorePresentationConfig {
+  return {
+    subtitle: shop.description?.trim() || shop.name,
+    favoriteCount: 0,
+    distance: shop.address,
+    station: shop.city,
+    access: shop.address,
+    seatLabel: "环境",
+    menuLabel: "服务项目",
+    peopleLabel: "预约人数",
+    paymentMethods: [],
+    equipment: [],
+    parking: "未公开",
+    routeGuide: shop.address,
+    seatFilters: [],
+    offers: [],
+    menuCards: shop.services.map((service) => ({
+      id: `api-service-${service.id}`,
+      sourceServiceId: String(service.id),
+      name: service.name,
+      subtitle: service.description?.trim() || service.category.name,
+      duration: `${service.durationMinutes} 分钟`,
+      priceLabel: formatFormalServicePrice(service),
+      audience: service.city,
+      tags: Array.from(new Set([
+        service.category.name,
+        service.category.nameJa,
+        ...service.reviewSummary.highlights
+      ].filter((value): value is string => Boolean(value)))).slice(0, 4),
+      cover: service.coverUrl || store.cover,
+      highlights: service.reviewSummary.highlights.slice(0, 3)
+    }))
+  };
+}
+
+function UnifiedFormalStoreDetail({
+  scope,
+  shopId
+}: {
+  scope: "user" | "merchant";
+  shopId: number;
+}) {
+  const { language } = useI18n();
+  const [revision, setRevision] = useState(0);
+  const query = useCoreReadQuery(
+    () => coreReadApi.getShopDetail(shopId),
+    [shopId, revision]
+  );
+
+  if (query.loading) {
+    return <StoreDetailStatus description="正在同步数据库正式资料。" scope={scope} title="正在加载店铺资料" />;
+  }
+  if (query.error || !query.data) {
+    const unavailableCopy = formalStoreLinkCopy[language];
+    return (
+      <PageScaffold contentClassName="space-y-5 pb-28" navItems={scope === "merchant" ? [] : undefined}>
+        <AppTopBar subtitle="真实 API 数据源" title="店铺详情" />
+        <EmptyStatePanel
+          action={<PrimaryButton onClick={() => setRevision((current) => current + 1)}>重新加载</PrimaryButton>}
+          caption={query.error ?? unavailableCopy.description}
+          title={unavailableCopy.title}
+        />
+      </PageScaffold>
+    );
+  }
+
+  const store = mapCoreShopToStore(query.data);
+  const technicians = query.data.technicians.map((technician) => ({
+    ...mapCoreTechnicianToTechnician(technician),
+    storeId: store.id
+  }));
+
+  return (
+    <StoreDetailExperience
+      hideUnavailableReviewDetails
+      presentationOverride={buildFormalStorePresentation(query.data, store)}
+      scope={scope}
+      store={store}
+      techniciansOverride={technicians}
+    />
+  );
+}
+
 export function StoreDetailPage({ scope = "user" }: { scope?: "user" | "merchant" } = {}) {
   const { id } = useParams();
-  const { stores } = useEntityStore();
   const { language } = useI18n();
   const apiId = coreReadIdFromRoute(id);
 
   if (apiId) {
-    return <FormalStoreDetailPage scope={scope} shopId={apiId} />;
+    return <UnifiedFormalStoreDetail scope={scope} shopId={apiId} />;
   }
 
   const legacyStore = null;

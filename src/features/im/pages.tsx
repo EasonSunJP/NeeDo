@@ -6240,6 +6240,9 @@ export function ImConversationInfoPage() {
   const toastIdRef = useRef(0);
   const [infoToast, setInfoToast] = useState<{ id: number; message: string } | null>(null);
   const [leavingGroup, setLeavingGroup] = useState(false);
+  const [transferOwnerPickerOpen, setTransferOwnerPickerOpen] = useState(false);
+  const [dissolveConfirmOpen, setDissolveConfirmOpen] = useState(false);
+  const [dissolvingGroup, setDissolvingGroup] = useState(false);
   const infoRoleTagSet = useMemo(() => new Set(scope === "merchant" ? getMerchantOrganizationRoleTagNames() : []), [scope]);
   const privacyCountdown = useMemo(() => parseCountdownInput(privacyCountdownInput), [privacyCountdownInput]);
   const hasPrivacyCountdown = hasCountdownValue(privacyCountdown);
@@ -6414,19 +6417,46 @@ export function ImConversationInfoPage() {
     }
   };
 
-  const leaveGroupConversation = async () => {
+  const leaveGroupConversation = async (transferOwnerUserId?: string) => {
     if (!conversation || conversation.type !== "group" || !store.currentUserId || leavingGroup) {
+      return;
+    }
+
+    if (isGroupOwner && !transferOwnerUserId) {
+      setTransferOwnerPickerOpen(true);
       return;
     }
 
     setLeavingGroup(true);
     try {
-      await store.removeConversationMember(conversation.id, store.currentUserId);
+      await store.removeConversationMember(
+        conversation.id,
+        store.currentUserId,
+        transferOwnerUserId,
+      );
+      setTransferOwnerPickerOpen(false);
       navigate(config.routes.messages, { replace: true });
     } catch {
       showInfoToast("退出群聊失败，请稍后重试");
     } finally {
       setLeavingGroup(false);
+    }
+  };
+
+  const dissolveGroupConversation = async () => {
+    if (!conversation || conversation.type !== "group" || !isGroupOwner || dissolvingGroup) {
+      return;
+    }
+
+    setDissolvingGroup(true);
+    try {
+      await store.dissolveConversation(conversation.id);
+      setDissolveConfirmOpen(false);
+      navigate(config.routes.messages, { replace: true });
+    } catch {
+      showInfoToast("解散群聊失败，请稍后重试");
+    } finally {
+      setDissolvingGroup(false);
     }
   };
 
@@ -6508,6 +6538,9 @@ export function ImConversationInfoPage() {
     .filter((member) => member.conversationId === conversation.id)
     .map((member) => ({ member, user: store.usersById[member.userId] }))
     .filter((item): item is { member: typeof item.member; user: ImUser } => Boolean(item.user));
+  const transferOwnerCandidates = members.filter(
+    ({ member }) => member.userId !== store.currentUserId,
+  );
   const groupOwner = members.find(({ member }) => member.role === "owner");
   const groupOwnerAnonymousIdentity = groupOwner ? anonymousMemberIdentityByUserId.get(groupOwner.member.userId) : undefined;
   const groupOwnerDisplayName = groupOwner ? groupOwnerAnonymousIdentity?.displayName ?? groupOwner.member.nicknameInGroup ?? groupOwner.user.nickname : "";
@@ -6883,9 +6916,25 @@ export function ImConversationInfoPage() {
           <Link className="block border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-[15px] text-[color:var(--client-text)]" to={appendQuery(config.routes.search, { conversationId: conversation.id })}>查找聊天内容</Link>
           <button className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[color:var(--client-text)]" onClick={() => void store.clearConversation(conversation.id)} type="button">清空聊天记录</button>
           {conversation.type === "group" ? (
-            <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup} onClick={() => void leaveGroupConversation()} type="button">
-              {leavingGroup ? "正在退出…" : "退出群聊"}
-            </button>
+            <>
+              {isGroupOwner ? (
+                <>
+                  <button className="block w-full border-b border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup || dissolvingGroup} onClick={() => setTransferOwnerPickerOpen(true)} type="button">
+                    {leavingGroup ? "正在退出…" : "转让群主并退出"}
+                  </button>
+                  <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup || dissolvingGroup} onClick={() => setDissolveConfirmOpen(true)} type="button">
+                    {dissolvingGroup ? "正在解散…" : "解散群聊"}
+                  </button>
+                </>
+              ) : (
+                <button className="block w-full px-5 py-4 text-left text-[15px] text-[#ef4f3f] disabled:opacity-50" disabled={leavingGroup} onClick={() => void leaveGroupConversation()} type="button">
+                  {leavingGroup ? "正在退出…" : "退出群聊"}
+                </button>
+              )}
+              <p className="border-t border-[color:color-mix(in_srgb,var(--client-line)_58%,transparent)] px-5 py-3 text-xs font-semibold leading-5 text-[color:var(--client-muted)]">
+                群成员不足 2 人时将自动解散；退出后，该群和聊天内容会从你的聊天列表中删除。
+              </p>
+            </>
           ) : (
             <>
               {contact && config.messageActionConfig.detailToggles.includes("blacklist") ? (
@@ -6919,6 +6968,47 @@ export function ImConversationInfoPage() {
           </Link>
         </div>
       ) : null}
+      <ImBottomSheet
+        onClose={() => setTransferOwnerPickerOpen(false)}
+        open={transferOwnerPickerOpen}
+        title="选择新群主"
+      >
+        <div className="space-y-2 pb-2">
+          {transferOwnerCandidates.map(({ member, user }) => {
+            const anonymousIdentity = anonymousMemberIdentityByUserId.get(member.userId);
+            const displayName = anonymousIdentity?.displayName ?? member.nicknameInGroup ?? user.nickname;
+            const avatar = anonymousIdentity
+              ? buildAnonymousGroupAvatarDataUrl(anonymousIdentity.code)
+              : user.avatar;
+
+            return (
+              <button
+                className="focus-ring flex min-h-14 w-full items-center gap-3 rounded-[20px] border border-[color:color-mix(in_srgb,var(--client-line)_72%,transparent)] bg-[color:var(--client-surface)] px-3 py-2 text-left disabled:opacity-50"
+                disabled={leavingGroup}
+                key={member.id}
+                onClick={() => void leaveGroupConversation(member.userId)}
+                type="button"
+              >
+                <InteractiveAvatar alt={displayName} className="h-10 w-10" src={avatar} />
+                <span className="min-w-0 flex-1 truncate text-sm font-black text-[color:var(--client-text)]">{displayName}</span>
+                <span className="text-xs font-black text-[color:var(--client-primary)]">转让并退出</span>
+              </button>
+            );
+          })}
+        </div>
+      </ImBottomSheet>
+      <ClientActionDialog
+        actions={(
+          <div className="grid grid-cols-2 gap-3">
+            <button className="min-h-11 rounded-full border border-[color:var(--client-line)] text-sm font-black" disabled={dissolvingGroup} onClick={() => setDissolveConfirmOpen(false)} type="button">取消</button>
+            <button className="min-h-11 rounded-full bg-[#ef4f3f] text-sm font-black text-white disabled:opacity-50" disabled={dissolvingGroup} onClick={() => void dissolveGroupConversation()} type="button">{dissolvingGroup ? "正在解散…" : "确认解散"}</button>
+          </div>
+        )}
+        description="解散后，所有成员的聊天列表都会删除该群及其聊天内容，此操作不可恢复。"
+        onClose={() => setDissolveConfirmOpen(false)}
+        open={dissolveConfirmOpen}
+        title="解散群聊"
+      />
       <ImBottomSheet onClose={() => setTagPickerOpen(false)} open={tagPickerOpen} title="添加标签">
         <div className="space-y-4 pb-2">
           {availableInfoTags.length > 0 ? (

@@ -102,6 +102,10 @@ export const conversationPreferencesBodySchema = z
     message: "At least one conversation preference is required"
   });
 
+export const conversationLeaveBodySchema = z.object({
+  transferOwnerUserId: z.coerce.number().int().positive().optional()
+});
+
 export const messageListQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(100).optional(),
   beforeId: z.coerce.number().int().positive().optional()
@@ -198,6 +202,7 @@ export const notificationListQuerySchema = z.object({
 export type ConversationCreateBody = z.infer<typeof conversationCreateBodySchema>;
 export type ConversationPrivacyBody = z.infer<typeof conversationPrivacyBodySchema>;
 export type ConversationPreferencesBody = z.infer<typeof conversationPreferencesBodySchema>;
+export type ConversationLeaveBody = z.infer<typeof conversationLeaveBodySchema>;
 export type ConversationListQuery = z.infer<typeof conversationListQuerySchema>;
 export type MessageCreateBody = z.infer<typeof messageCreateBodySchema>;
 export type MessageListQuery = z.infer<typeof messageListQuerySchema>;

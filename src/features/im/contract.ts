@@ -59,7 +59,11 @@ export type ImApi = {
   removeConversationMember(
     conversationId: string,
     userId: string,
-  ): Promise<{ conversation?: Conversation; conversationId: string; removedUserId: string }>;
+    transferOwnerUserId?: string,
+  ): Promise<{ conversation?: Conversation; conversationId: string; removedUserId: string; dissolved: boolean }>;
+  dissolveConversation(
+    conversationId: string,
+  ): Promise<{ conversationId: string; dissolved: true }>;
   pinConversation(conversationId: string, isPinned: boolean): Promise<{ conversation: Conversation }>;
   muteConversation(conversationId: string, isMuted: boolean): Promise<{ conversation: Conversation }>;
   markConversationRead(conversationId: string, markUnread?: boolean): Promise<{ conversation: Conversation }>;

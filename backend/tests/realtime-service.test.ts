@@ -347,4 +347,23 @@ describe("RealtimeService group privacy and membership", () => {
       expect.objectContaining({ type: "conversation.dissolved", recipientUserId: 3 })
     );
   });
+
+  it("clears history only for the authenticated participant", async () => {
+    const conversation = { id: 91, lastMessage: null, unreadCount: 0 };
+    const repository = {
+      clearConversationMessages: jest.fn(async () => conversation)
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(
+      service.clearConversationMessages({ userId: 1 } as never, 91)
+    ).resolves.toBe(conversation);
+    expect(repository.clearConversationMessages).toHaveBeenCalledWith({
+      conversationId: 91,
+      userId: 1
+    });
+  });
 });

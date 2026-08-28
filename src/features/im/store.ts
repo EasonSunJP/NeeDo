@@ -858,33 +858,45 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
     await loadConversation(conversationId);
   }
 
-  async function removeConversationMember(conversationId: string, userId: string) {
+  function removeConversationLocally(conversationId: string) {
+    const nextMessagesByConversation = { ...snapshot.messagesByConversation };
+    const nextPaginationByConversation = { ...snapshot.paginationByConversation };
+    delete nextMessagesByConversation[conversationId];
+    delete nextPaginationByConversation[conversationId];
+    snapshot = {
+      ...snapshot,
+      conversations: snapshot.conversations.filter(
+        (conversation) => conversation.id !== conversationId,
+      ),
+      members: snapshot.members.filter(
+        (member) => member.conversationId !== conversationId,
+      ),
+      messagesByConversation: nextMessagesByConversation,
+      paginationByConversation: nextPaginationByConversation,
+      activeConversationId:
+        snapshot.activeConversationId === conversationId
+          ? undefined
+          : snapshot.activeConversationId,
+    };
+    emit();
+  }
+
+  async function removeConversationMember(
+    conversationId: string,
+    userId: string,
+    transferOwnerUserId?: string,
+  ) {
     await hydrateStore();
-    const response = await api.removeConversationMember(conversationId, userId);
+    const response = await api.removeConversationMember(
+      conversationId,
+      userId,
+      transferOwnerUserId,
+    );
     if (response.conversation) {
       upsertConversation(response.conversation);
     }
     if (userId === snapshot.currentUserId) {
-      const nextMessagesByConversation = { ...snapshot.messagesByConversation };
-      const nextPaginationByConversation = { ...snapshot.paginationByConversation };
-      delete nextMessagesByConversation[conversationId];
-      delete nextPaginationByConversation[conversationId];
-      snapshot = {
-        ...snapshot,
-        conversations: snapshot.conversations.filter(
-          (conversation) => conversation.id !== conversationId,
-        ),
-        members: snapshot.members.filter(
-          (member) => member.conversationId !== conversationId,
-        ),
-        messagesByConversation: nextMessagesByConversation,
-        paginationByConversation: nextPaginationByConversation,
-        activeConversationId:
-          snapshot.activeConversationId === conversationId
-            ? undefined
-            : snapshot.activeConversationId,
-      };
-      emit();
+      removeConversationLocally(conversationId);
       return;
     }
     snapshot = {
@@ -892,6 +904,12 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       members: snapshot.members.filter((member) => !(member.conversationId === conversationId && member.userId === userId))
     };
     emit();
+  }
+
+  async function dissolveConversation(conversationId: string) {
+    await hydrateStore();
+    await api.dissolveConversation(conversationId);
+    removeConversationLocally(conversationId);
   }
 
   async function updateRemark(contactId: string, remarkName: string) {
@@ -1099,6 +1117,7 @@ function createScopedStore(scope: ImRoleType, backend: ScopedStoreBackend) {
       createGroupConversation,
       addConversationMembers,
       removeConversationMember,
+      dissolveConversation,
       addContact,
       updateRemark,
       updateContactTags,

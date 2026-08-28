@@ -14,6 +14,7 @@ import {
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
+  conversationLeaveBodySchema,
   conversationListQuerySchema,
   conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
@@ -50,7 +51,9 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   updateConversationPreferences: "conversation:list",
   updateConversationPrivacy: "conversation:create",
   leaveConversation: "conversation:list",
+  dissolveConversation: "conversation:create",
   hideConversation: "conversation:list",
+  clearConversationMessages: "message:list",
   listContacts: "contact:list",
   searchDirectory: "contact:list",
   addContact: "contact:list",
@@ -168,8 +171,22 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     "/im/conversations/:conversationId/leave",
     authenticate(),
     authorize(REALTIME_ROUTE_PERMISSIONS.leaveConversation),
-    validateRequest({ params: conversationIdParamSchema }),
+    validateRequest({ params: conversationIdParamSchema, body: conversationLeaveBodySchema }),
     controller.leaveConversation
+  );
+  router.post(
+    "/im/conversations/:conversationId/dissolve",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.dissolveConversation),
+    validateRequest({ params: conversationIdParamSchema }),
+    controller.dissolveConversation
+  );
+  router.delete(
+    "/im/conversations/:conversationId/messages",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.clearConversationMessages),
+    validateRequest({ params: conversationIdParamSchema }),
+    controller.clearConversationMessages
   );
   router.delete(
     "/im/conversations/:conversationId",

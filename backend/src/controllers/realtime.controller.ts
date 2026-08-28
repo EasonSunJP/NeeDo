@@ -8,6 +8,7 @@ import {
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
+  conversationLeaveBodySchema,
   conversationListQuerySchema,
   conversationPrivacyBodySchema,
   conversationPreferencesBodySchema,
@@ -144,7 +145,17 @@ export class RealtimeController {
 
   public leaveConversation = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
+    const body = conversationLeaveBodySchema.parse(request.body ?? {});
     return this.service.leaveConversation(
+      getAuthenticatedAccess(response),
+      params.conversationId,
+      body.transferOwnerUserId
+    );
+  });
+
+  public dissolveConversation = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.dissolveConversation(
       getAuthenticatedAccess(response),
       params.conversationId
     );
@@ -153,6 +164,14 @@ export class RealtimeController {
   public hideConversation = this.createHandler((request, response) => {
     const params = conversationIdParamSchema.parse(request.params);
     return this.service.hideConversation(
+      getAuthenticatedAccess(response),
+      params.conversationId
+    );
+  });
+
+  public clearConversationMessages = this.createHandler((request, response) => {
+    const params = conversationIdParamSchema.parse(request.params);
+    return this.service.clearConversationMessages(
       getAuthenticatedAccess(response),
       params.conversationId
     );
