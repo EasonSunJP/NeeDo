@@ -62,4 +62,4 @@ Rollback is the single commit revert for this microstep. No database schema, mig
 
 - `94776fa0` removed both navigation groups and added permanent absence tests.
 - `e43ccc84` deleted both routes, imports, page components, the obsolete page test, and module-only i18n copy.
-- Browser acceptance is recorded after the final formal build and logged-in route checks for this microstep.
+- Logged-in browser acceptance on formal `5182` confirmed that both navigation groups are absent, the remaining classic blue-black styling is unchanged, and each deleted URL receives only the application's ordinary unknown-route fallback.
