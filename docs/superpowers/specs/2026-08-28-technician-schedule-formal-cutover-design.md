@@ -18,6 +18,7 @@ The authenticated technician portal already renders `FormalScheduleInventoryPane
 - `/technician/schedule/events/:eventId`
 - `/technician/schedule/events/:eventId/edit`
 - `/technician/schedule/shifts/:shiftId/transfer`
+- `/technician/orders/:orderId`
 
 The existing backend exposes identity-scoped list/create/update/delete endpoints, but it lacks an identity-scoped single-slot read endpoint. The browser therefore cannot safely open a numeric schedule detail route without either loading an arbitrary window or consulting local state.
 
@@ -29,8 +30,9 @@ Implement the smallest complete formal route chain:
 2. Resolve the slot exclusively from the authenticated `technician_profile` identity.
 3. Replace the dedicated technician route module with API-backed new/detail/edit pages using numeric `ScheduleSlot.id` values.
 4. Link formal inventory rows to numeric detail and edit routes.
-5. Replace the browser-only transfer workflow with an explicit unavailable capability page until a formal transfer state machine exists.
-6. Add permanent tests that prevent the accepted formal route module from importing browser business stores or localStorage.
+5. Replace the technician order-detail route with `bookingApi.getOrder()` and the existing formal order transition APIs.
+6. Replace the browser-only transfer workflow with an explicit unavailable capability page until a formal transfer state machine exists.
+7. Add permanent tests that prevent the accepted formal route module from importing browser business stores or localStorage.
 
 Rejected alternatives:
 
@@ -44,6 +46,7 @@ Rejected alternatives:
 - Identity-scoped single-slot backend read.
 - Formal technician slot creation from an active, bookable `TechnicianService`.
 - Numeric slot detail and edit routes.
+- Numeric technician order detail with persisted status history and existing formal state transitions.
 - Formal block/restore/delete actions using existing backend mutations.
 - Visible loading, empty/not-found, permission, conflict, booked/in-use, and retry states.
 - Browser acceptance with an existing technician test account and the reconciled future-six-month database.
@@ -141,6 +144,14 @@ Rewrite `src/features/technician-schedule/route-pages.tsx` as the formal route m
 - Performs no mutation and creates no browser record.
 - Provides navigation back to the technician schedule.
 
+`TechnicianOrderDetailRoutePage`:
+
+- Parses a positive numeric `orderId` and reads only `bookingApi.getOrder(orderId)`.
+- Renders the persisted order number, service, shop, technician, customer reference, appointment time, payment state, price, note, and complete status history.
+- Reuses the existing formal confirm/start/complete/cancel endpoints and their server-authoritative transition rules.
+- Uses two-step confirmation for cancellation and reloads the returned persisted order after every successful action.
+- Invalid, missing, or other-technician order IDs show the same safe not-found state and never consult `orders`, `entityStore`, or the technician schedule store.
+
 ### 6.3 Inventory Integration
 
 `FormalScheduleInventoryPanel` remains the main authenticated schedule inventory. Technician rows gain a detail action that uses the numeric slot ID. Its create, block/restore, and delete operations continue using the same formal API and reload from the server after success.
@@ -193,6 +204,7 @@ Rules:
 - Resource-hook tests for loading, success, retry, and failure without fallback.
 - Editor tests for formal service loading, persisted create/update, conflict, in-use, and invalid input.
 - Detail tests for formal rendering, retry, block/restore, two-step delete, and cross-scope not-found.
+- Technician order-detail tests for formal fetch, complete status history, state transitions, retry, two-step cancellation, and safe not-found.
 - Inventory pagination and numeric navigation tests.
 - Transfer capability-gate test proving no store mutation.
 - Mock-retirement guard rejecting `technicianScheduleStore`, `entityStore`, `shiftPlanningStore`, dispatch store, and localStorage in the formal route module.
@@ -207,13 +219,14 @@ Acceptance requires:
 
 1. Future six-month and historical database checkers return `status: "ok"`.
 2. The schedule list, numeric detail, and edit page show the same persisted slot ID and time.
-3. Creating a slot writes MySQL and is visible after refresh and re-login.
-4. Editing/blocking/restoring writes MySQL and survives frontend/backend restart.
-5. Booked slots reject modification/deletion without local UI drift.
-6. Another technician's numeric slot ID returns the safe not-found state.
-7. With the backend unavailable, pages show retryable errors and no fake schedules.
-8. The transfer route creates no browser or database record.
-9. Focused and full Jest/Vitest tests, lint, backend build, formal production build, and bundle audit pass.
+3. A numeric technician order route renders the same persisted order and status history shown by the formal order API.
+4. Creating a slot writes MySQL and is visible after refresh and re-login.
+5. Editing/blocking/restoring writes MySQL and survives frontend/backend restart.
+6. Booked slots reject modification/deletion without local UI drift.
+7. Another technician's numeric slot or order ID returns the safe not-found state.
+8. With the backend unavailable, pages show retryable errors and no fake schedules or orders.
+9. The transfer route creates no browser or database record.
+10. Focused and full Jest/Vitest tests, lint, backend build, formal production build, and bundle audit pass.
 
 ## 11. Rollback
 
