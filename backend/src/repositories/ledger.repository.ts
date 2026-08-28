@@ -14,6 +14,7 @@ import type {
   LedgerTransactionType,
   OrderFinancialPlatformFeeSnapshot,
   OrderFinancialUpsertInput,
+  PlatformFeeDebtAllocationRecord,
   WalletLedgerDirection,
   WalletLedgerListInput,
   WalletLedgerPayload,
@@ -559,6 +560,101 @@ export class LedgerRepository implements LedgerRepositoryPort {
     });
 
     return hold ? this.mapWalletHold(hold) : null;
+  }
+
+  public async listOutstandingPlatformFeeDebtIds(input: {
+    walletId: number;
+    limit: number;
+  }): Promise<number[]> {
+    const rows = await this.client.orderFinancial.findMany({
+      where: {
+        platformFeeWalletId: input.walletId,
+        platformFeeDebtStatus: "OUTSTANDING",
+        platformFeeOutstandingNdp: { gt: 0 },
+        platformFeeAcceptedAt: { not: null },
+        deletedAt: null
+      },
+      select: { id: true },
+      orderBy: [{ platformFeeAcceptedAt: "asc" }, { id: "asc" }],
+      take: input.limit
+    });
+
+    return rows.map((row) => row.id);
+  }
+
+  public async lockPlatformFeeDebt(id: number): Promise<PlatformFeeDebtAllocationRecord | null> {
+    await this.client.$queryRaw(
+      Prisma.sql`SELECT id FROM order_financials WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE`
+    );
+    const financial = await this.client.orderFinancial.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        bookingOrderId: true,
+        customerUserId: true,
+        platformFeeWalletId: true,
+        platformFeeAcceptedAt: true,
+        platformFeeOutstandingNdp: true,
+        platformFeeDebtStatus: true,
+        userRewardEligibleNdp: true,
+        userRewardStatus: true,
+        userRewardDeadlineAt: true,
+        userRewardGrantedAt: true,
+        userRewardNdp: true,
+        settlementStatus: true
+      }
+    });
+    if (
+      !financial ||
+      financial.platformFeeWalletId === null ||
+      financial.platformFeeAcceptedAt === null
+    ) {
+      return null;
+    }
+
+    return {
+      ...financial,
+      platformFeeWalletId: financial.platformFeeWalletId,
+      platformFeeAcceptedAt: financial.platformFeeAcceptedAt,
+      platformFeeDebtStatus:
+        financial.platformFeeDebtStatus.toLowerCase() as PlatformFeeDebtAllocationRecord["platformFeeDebtStatus"],
+      userRewardStatus:
+        financial.userRewardStatus.toLowerCase() as PlatformFeeDebtAllocationRecord["userRewardStatus"],
+      settlementStatus:
+        financial.settlementStatus as PlatformFeeDebtAllocationRecord["settlementStatus"]
+    };
+  }
+
+  public async updatePlatformFeeDebt(input: {
+    id: number;
+    expectedOutstandingNdp: number;
+    platformFeeOutstandingNdp: number;
+    platformFeeDebtStatus: "outstanding" | "settled";
+    userRewardStatus?: PlatformFeeDebtAllocationRecord["userRewardStatus"];
+    userRewardNdp?: number;
+    userRewardGrantedAt?: Date | null;
+  }): Promise<boolean> {
+    const update = await this.client.orderFinancial.updateMany({
+      where: {
+        id: input.id,
+        platformFeeOutstandingNdp: input.expectedOutstandingNdp,
+        platformFeeDebtStatus: "OUTSTANDING",
+        deletedAt: null
+      },
+      data: {
+        platformFeeOutstandingNdp: input.platformFeeOutstandingNdp,
+        platformFeeDebtStatus: this.platformFeeDebtStatusToDb(input.platformFeeDebtStatus),
+        ...(input.userRewardStatus !== undefined
+          ? { userRewardStatus: this.userRewardStatusToDb(input.userRewardStatus) }
+          : {}),
+        ...(input.userRewardNdp !== undefined ? { userRewardNdp: input.userRewardNdp } : {}),
+        ...(input.userRewardGrantedAt !== undefined
+          ? { userRewardGrantedAt: input.userRewardGrantedAt }
+          : {})
+      }
+    });
+
+    return update.count === 1;
   }
 
   public async upsertOrderFinancial(input: OrderFinancialUpsertInput): Promise<void> {

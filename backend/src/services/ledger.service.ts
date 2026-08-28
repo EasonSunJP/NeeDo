@@ -245,6 +245,22 @@ export interface OrderFinancialPlatformFeeSnapshot {
   settlementStatus: OrderFinancialSettlementStatus;
 }
 
+export interface PlatformFeeDebtAllocationRecord {
+  id: number;
+  bookingOrderId: number;
+  customerUserId: number;
+  platformFeeWalletId: number;
+  platformFeeAcceptedAt: Date;
+  platformFeeOutstandingNdp: number;
+  platformFeeDebtStatus: Extract<PlatformFeeDebtStatus, "outstanding" | "settled">;
+  userRewardEligibleNdp: number;
+  userRewardStatus: UserRewardStatus;
+  userRewardDeadlineAt: Date | null;
+  userRewardGrantedAt: Date | null;
+  userRewardNdp: number;
+  settlementStatus: OrderFinancialSettlementStatus;
+}
+
 export interface WalletLookupInput {
   ownerType: WalletOwnerType;
   ownerId: number;
@@ -297,6 +313,20 @@ export interface LedgerRepositoryPort {
   findPlatformFeeHoldByBookingOrderId?: (
     bookingOrderId: number
   ) => Promise<WalletHoldPayload | null>;
+  listOutstandingPlatformFeeDebtIds?: (input: {
+    walletId: number;
+    limit: number;
+  }) => Promise<number[]>;
+  lockPlatformFeeDebt?: (id: number) => Promise<PlatformFeeDebtAllocationRecord | null>;
+  updatePlatformFeeDebt?: (input: {
+    id: number;
+    expectedOutstandingNdp: number;
+    platformFeeOutstandingNdp: number;
+    platformFeeDebtStatus: Extract<PlatformFeeDebtStatus, "outstanding" | "settled">;
+    userRewardStatus?: UserRewardStatus;
+    userRewardNdp?: number;
+    userRewardGrantedAt?: Date | null;
+  }) => Promise<boolean>;
   applyWalletDelta: (input: {
     walletId: number;
     availableDelta: number;
@@ -498,6 +528,7 @@ export interface BookingLedgerSettlementPort {
 }
 
 const CURRENCY: LedgerCurrency = "NDP";
+const PLATFORM_FEE_DEBT_ALLOCATION_BATCH_SIZE = 100;
 
 export class LedgerService
   implements BookingLedgerSettlementPort, AffiliateRewardSettlementPort
@@ -2337,6 +2368,14 @@ export class LedgerService
         expectedAmount: request.amountNdp,
         actualAmount: request.amountNdp
       });
+      if (request.type === "topup") {
+        await this.allocateApprovedTopupToPlatformFeeDebt(
+          repository,
+          wallet.id,
+          request.amountNdp,
+          actor.userId
+        );
+      }
 
       return repository.approveWalletAdjustmentRequest!({
         id: request.id,
@@ -2345,6 +2384,175 @@ export class LedgerService
         ledgerTransactionId: transaction.id
       });
     });
+  }
+
+  private async allocateApprovedTopupToPlatformFeeDebt(
+    repository: LedgerRepositoryPort,
+    walletId: number,
+    amountNdp: number,
+    actorUserId: number
+  ): Promise<void> {
+    this.assertPlatformFeeDebtAllocationRepository(repository);
+    let remainingBudgetNdp = amountNdp;
+
+    while (remainingBudgetNdp > 0) {
+      const candidateIds = await repository.listOutstandingPlatformFeeDebtIds!({
+        walletId,
+        limit: PLATFORM_FEE_DEBT_ALLOCATION_BATCH_SIZE
+      });
+      if (candidateIds.length === 0) {
+        return;
+      }
+      let progressed = false;
+
+      for (const id of candidateIds) {
+        if (remainingBudgetNdp <= 0) {
+          break;
+        }
+        const debt = await repository.lockPlatformFeeDebt!(id);
+        if (
+          !debt ||
+          debt.platformFeeWalletId !== walletId ||
+          debt.platformFeeDebtStatus !== "outstanding" ||
+          debt.platformFeeOutstandingNdp <= 0
+        ) {
+          continue;
+        }
+
+        const allocatedNdp = Math.min(remainingBudgetNdp, debt.platformFeeOutstandingNdp);
+        const outstandingNdp = debt.platformFeeOutstandingNdp - allocatedNdp;
+        const settled = outstandingNdp === 0;
+        const rewardUpdate = settled
+          ? await this.resolveSettledDebtReward(repository, debt, actorUserId)
+          : {};
+        const updated = await repository.updatePlatformFeeDebt!({
+          id: debt.id,
+          expectedOutstandingNdp: debt.platformFeeOutstandingNdp,
+          platformFeeOutstandingNdp: outstandingNdp,
+          platformFeeDebtStatus: settled ? "settled" : "outstanding",
+          ...rewardUpdate
+        });
+        if (!updated) {
+          throw this.walletMutationError();
+        }
+
+        remainingBudgetNdp -= allocatedNdp;
+        progressed = true;
+        await repository.createAuditLog({
+          actorUserId,
+          action: "booking.platform_fee.debt.allocated",
+          targetType: "order_financial",
+          targetId: debt.id,
+          metadata: {
+            bookingOrderId: debt.bookingOrderId,
+            walletId,
+            allocatedNdp,
+            outstandingNdp,
+            debtStatus: settled ? "settled" : "outstanding"
+          }
+        });
+      }
+
+      if (!progressed) {
+        return;
+      }
+    }
+  }
+
+  private async resolveSettledDebtReward(
+    repository: LedgerRepositoryPort,
+    debt: PlatformFeeDebtAllocationRecord,
+    actorUserId: number
+  ): Promise<{
+    userRewardStatus?: UserRewardStatus;
+    userRewardNdp?: number;
+    userRewardGrantedAt?: Date | null;
+  }> {
+    if (debt.settlementStatus !== "settled") {
+      return {
+        userRewardStatus: "immediate",
+        userRewardNdp: 0,
+        userRewardGrantedAt: null
+      };
+    }
+    if (debt.userRewardStatus !== "pending") {
+      return {};
+    }
+    const resolvedAt = this.now();
+    if (!debt.userRewardDeadlineAt || resolvedAt >= debt.userRewardDeadlineAt) {
+      await repository.createAuditLog({
+        actorUserId,
+        action: "booking.user_reward.expired",
+        targetType: "order_financial",
+        targetId: debt.id,
+        metadata: {
+          bookingOrderId: debt.bookingOrderId,
+          deadlineAt: debt.userRewardDeadlineAt?.toISOString() ?? null,
+          resolvedAt: resolvedAt.toISOString()
+        }
+      });
+
+      return {
+        userRewardStatus: "expired",
+        userRewardNdp: 0,
+        userRewardGrantedAt: null
+      };
+    }
+
+    const idempotencyKey = `booking:${debt.bookingOrderId}:reward:settlement`;
+    const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
+    if (!existing) {
+      const customerWallet = await repository.getOrCreateWallet({
+        ownerType: "user",
+        ownerId: debt.customerUserId,
+        currency: CURRENCY
+      });
+      const updatedCustomerWallet = await repository.applyWalletDelta({
+        walletId: customerWallet.id,
+        availableDelta: debt.userRewardEligibleNdp,
+        frozenDelta: 0
+      });
+      if (!updatedCustomerWallet) {
+        throw this.walletMutationError();
+      }
+      const transaction = await repository.createTransaction({
+        idempotencyKey,
+        type: "booking_complete_settlement",
+        referenceType: "booking_order",
+        referenceId: debt.bookingOrderId,
+        actorUserId,
+        amount: debt.userRewardEligibleNdp,
+        metadata: {
+          delayedUserReward: true,
+          orderFinancialId: debt.id,
+          customerUserId: debt.customerUserId
+        }
+      });
+      if (debt.userRewardEligibleNdp > 0) {
+        await repository.createLedgerEntry({
+          transactionId: transaction.id,
+          walletId: customerWallet.id,
+          direction: "available_credit",
+          amount: debt.userRewardEligibleNdp,
+          availableDelta: debt.userRewardEligibleNdp,
+          frozenDelta: 0,
+          availableBalanceAfter: updatedCustomerWallet.availableBalance,
+          frozenBalanceAfter: updatedCustomerWallet.frozenBalance,
+          reason: "booking_delayed_customer_reward"
+        });
+      }
+      await this.recordFinanceAndAudit(repository, transaction, {
+        action: "ledger.booking_user_reward.delayed_settlement",
+        expectedAmount: debt.userRewardEligibleNdp,
+        actualAmount: debt.userRewardEligibleNdp
+      });
+    }
+
+    return {
+      userRewardStatus: "paid",
+      userRewardNdp: debt.userRewardEligibleNdp,
+      userRewardGrantedAt: resolvedAt
+    };
   }
 
   public async getMyWallet(actor: AuthenticatedAccessContext): Promise<WalletPayload> {
@@ -2613,6 +2821,16 @@ export class LedgerService
       !repository.lockWalletAdjustmentRequest ||
       !repository.approveWalletAdjustmentRequest ||
       !repository.rejectWalletAdjustmentRequest
+    ) {
+      throw this.repositoryUnavailableError();
+    }
+  }
+
+  private assertPlatformFeeDebtAllocationRepository(repository: LedgerRepositoryPort): void {
+    if (
+      !repository.listOutstandingPlatformFeeDebtIds ||
+      !repository.lockPlatformFeeDebt ||
+      !repository.updatePlatformFeeDebt
     ) {
       throw this.repositoryUnavailableError();
     }

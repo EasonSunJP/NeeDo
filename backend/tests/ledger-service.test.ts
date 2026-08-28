@@ -996,6 +996,56 @@ describe("LedgerService wallet mutations", () => {
     });
   });
 
+  it("grants the immediate completion reward after debt was settled before completion", async () => {
+    const repository = new InMemoryLedgerRepository();
+    repository.seedWallet({ ownerType: "shop", ownerId: 10, availableBalance: 120 });
+    const service = new LedgerService(
+      repository,
+      createFeeService(),
+      undefined,
+      () => now,
+      createPolicyResolver()
+    );
+    const input = bookingInput({
+      bookingOrderId: 206,
+      shopId: 10,
+      actorUserId: 2,
+      customerUserId: 3
+    });
+    const warning = await service.freezeBookingAcceptance(input).catch((error) => error);
+    await service.freezeBookingAcceptance({
+      ...input,
+      insufficientBalanceConfirmation: {
+        confirmed: true,
+        idempotencyKey: "fee-confirm-order-206",
+        previewVersion: (warning as { data: { previewVersion: string } }).data.previewVersion
+      }
+    });
+    await repository.upsertOrderFinancial({
+      bookingOrderId: 206,
+      orderType: "booking",
+      customerUserId: 3,
+      shopId: 10,
+      serviceAmountJpy: 8800,
+      platformFeeOutstandingNdp: 0,
+      platformFeeDebtStatus: "settled",
+      userRewardStatus: "immediate"
+    });
+
+    await service.settleBookingCompletion({ ...input, customerUserId: 3, completedAt: now });
+
+    expect(repository.wallets.get("user:3:NDP")).toMatchObject({
+      availableBalance: 100
+    });
+    expect(repository.financials.get(206)).toMatchObject({
+      platformFeeOutstandingNdp: 0,
+      platformFeeDebtStatus: "settled",
+      userRewardNdp: 100,
+      userRewardStatus: "immediate",
+      userRewardGrantedAt: now
+    });
+  });
+
   it("returns a technician's platform-fee hold before funding provider-cancel compensation from shop", async () => {
     const repository = new InMemoryLedgerRepository();
     repository.technicianUsers.set(9, 77);

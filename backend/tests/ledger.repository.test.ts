@@ -188,6 +188,85 @@ describe("LedgerRepository wallet creation", () => {
     });
   });
 
+  it("lists outstanding debt IDs in acceptance FIFO order with a bounded batch", async () => {
+    const findMany = jest.fn().mockResolvedValue([{ id: 11 }, { id: 12 }]);
+    const repository = new LedgerRepository({ orderFinancial: { findMany } } as never);
+
+    await expect(
+      repository.listOutstandingPlatformFeeDebtIds({ walletId: 91, limit: 100 })
+    ).resolves.toEqual([11, 12]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        platformFeeWalletId: 91,
+        platformFeeDebtStatus: "OUTSTANDING",
+        platformFeeOutstandingNdp: { gt: 0 },
+        platformFeeAcceptedAt: { not: null },
+        deletedAt: null
+      },
+      select: { id: true },
+      orderBy: [{ platformFeeAcceptedAt: "asc" }, { id: "asc" }],
+      take: 100
+    });
+  });
+
+  it("locks one debt row and updates it only from the expected outstanding amount", async () => {
+    const acceptedAt = new Date("2026-08-29T01:00:00.000Z");
+    const queryRaw = jest.fn().mockResolvedValue([{ id: 11 }]);
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 11,
+      bookingOrderId: 71,
+      customerUserId: 3,
+      platformFeeWalletId: 91,
+      platformFeeAcceptedAt: acceptedAt,
+      platformFeeOutstandingNdp: 380,
+      platformFeeDebtStatus: "OUTSTANDING",
+      userRewardEligibleNdp: 100,
+      userRewardStatus: "PENDING",
+      userRewardDeadlineAt: null,
+      userRewardGrantedAt: null,
+      userRewardNdp: 0,
+      settlementStatus: "holding"
+    });
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const repository = new LedgerRepository({
+      $queryRaw: queryRaw,
+      orderFinancial: { findFirst, updateMany }
+    } as never);
+
+    await expect(repository.lockPlatformFeeDebt(11)).resolves.toMatchObject({
+      id: 11,
+      platformFeeDebtStatus: "outstanding",
+      userRewardStatus: "pending"
+    });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    await expect(
+      repository.updatePlatformFeeDebt({
+        id: 11,
+        expectedOutstandingNdp: 380,
+        platformFeeOutstandingNdp: 0,
+        platformFeeDebtStatus: "settled",
+        userRewardStatus: "immediate",
+        userRewardNdp: 0,
+        userRewardGrantedAt: null
+      })
+    ).resolves.toBe(true);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 11,
+        platformFeeOutstandingNdp: 380,
+        platformFeeDebtStatus: "OUTSTANDING",
+        deletedAt: null
+      },
+      data: {
+        platformFeeOutstandingNdp: 0,
+        platformFeeDebtStatus: "SETTLED",
+        userRewardStatus: "IMMEDIATE",
+        userRewardNdp: 0,
+        userRewardGrantedAt: null
+      }
+    });
+  });
+
   it("uses an atomic idempotent insert for concurrent wallet creation", async () => {
     const wallet = {
       id: 91,
