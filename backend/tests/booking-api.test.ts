@@ -1,7 +1,11 @@
 import { hash } from "bcryptjs";
+import express from "express";
 import request from "supertest";
 import { createApp } from "../src/app";
 import { ERROR_CODES } from "../src/constants/error-codes";
+import { errorMiddleware } from "../src/middlewares/error.middleware";
+import { AppError } from "../src/utils/app-error";
+import { orderConfirmBodySchema } from "../src/validators/booking.validator";
 
 interface StoredValue {
   value: string;
@@ -406,6 +410,96 @@ const createFixture = async () => {
 };
 
 describe("Step 10 Booking / Schedule / Order state machine API", () => {
+  it("validates the strict insufficient-balance confirmation contract", () => {
+    const previewVersion = `sha256:${"0".repeat(64)}`;
+
+    expect(orderConfirmBodySchema.parse({})).toEqual({});
+    expect(
+      orderConfirmBodySchema.parse({
+        insufficientBalanceConfirmation: {
+          confirmed: true,
+          idempotencyKey: "fee-confirm-1234567890",
+          previewVersion
+        }
+      })
+    ).toEqual({
+      insufficientBalanceConfirmation: {
+        confirmed: true,
+        idempotencyKey: "fee-confirm-1234567890",
+        previewVersion
+      }
+    });
+    expect(() => orderConfirmBodySchema.parse({ unknown: true })).toThrow();
+    expect(() =>
+      orderConfirmBodySchema.parse({
+        insufficientBalanceConfirmation: {
+          confirmed: false,
+          idempotencyKey: "fee-confirm-1234567890",
+          previewVersion
+        }
+      })
+    ).toThrow();
+  });
+
+  it("serializes only explicitly supplied safe AppError preview data", async () => {
+    const app = express();
+    const previewVersion = `sha256:${"1".repeat(64)}`;
+    app.get("/structured-error", (_request, _response, next) => {
+      next(
+        new AppError({
+          code: ERROR_CODES.PLATFORM_FEE_INSUFFICIENT_CONFIRMATION_REQUIRED,
+          message: "error.platform_fee.insufficient_balance_confirmation_required",
+          statusCode: 409,
+          data: {
+            feeAmountNdp: 500,
+            availableBalanceNdp: 120,
+            shortfallNdp: 380,
+            payerType: "shop",
+            walletOwnerType: "shop",
+            previewVersion
+          }
+        })
+      );
+    });
+    app.use(errorMiddleware);
+
+    await request(app)
+      .get("/structured-error")
+      .expect(409)
+      .expect({
+        code: ERROR_CODES.PLATFORM_FEE_INSUFFICIENT_CONFIRMATION_REQUIRED,
+        message: "error.platform_fee.insufficient_balance_confirmation_required",
+        data: {
+          feeAmountNdp: 500,
+          availableBalanceNdp: 120,
+          shortfallNdp: 380,
+          payerType: "shop",
+          walletOwnerType: "shop",
+          previewVersion
+        }
+      });
+  });
+
+  it("rejects unknown fields on the order confirmation endpoint", async () => {
+    const fixture = await createFixture();
+    const token = await fixture.login();
+
+    await request(fixture.app)
+      .post("/api/v1/orders/1/confirm")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ unknown: true })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toEqual({
+          code: ERROR_CODES.VALIDATION,
+          message: "error.validation",
+          data: null
+        });
+      });
+
+    expect(fixture.bookingRepository.transitionOrder).not.toHaveBeenCalled();
+  });
+
   it("lists a published technician availability window without a service filter", async () => {
     const fixture = await createFixture();
 

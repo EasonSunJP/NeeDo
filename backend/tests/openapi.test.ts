@@ -211,6 +211,28 @@ describe("GET /api/v1/openapi.json", () => {
     );
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/confirm");
+    const confirmOperation = response.body.paths["/api/v1/orders/{id}/confirm"].post;
+    const confirmBodySchema = confirmOperation.requestBody.content["application/json"].schema;
+    expect(confirmBodySchema.additionalProperties).toBe(false);
+    expect(confirmBodySchema.properties.insufficientBalanceConfirmation).toEqual(
+      expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["confirmed", "idempotencyKey", "previewVersion"]
+      })
+    );
+    const insufficientBalanceSchema =
+      confirmOperation.responses["409"].content["application/json"].schema.properties.data;
+    expect(insufficientBalanceSchema.properties).toEqual(
+      expect.objectContaining({
+        feeAmountNdp: expect.any(Object),
+        availableBalanceNdp: expect.any(Object),
+        shortfallNdp: expect.any(Object),
+        payerType: expect.any(Object),
+        walletOwnerType: expect.any(Object),
+        previewVersion: expect.any(Object)
+      })
+    );
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/cancel");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/start");
     expect(response.body.paths).toHaveProperty("/api/v1/orders/{id}/complete");

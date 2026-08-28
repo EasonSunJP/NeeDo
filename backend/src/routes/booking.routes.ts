@@ -22,6 +22,7 @@ import {
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
+  orderConfirmBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
   scheduleSlotCreateBodySchema,
@@ -106,7 +107,7 @@ export const createBookingRoutes = (config: AppConfig, dependencies: AppDependen
     "/orders/:id/confirm",
     authenticate(),
     authorize(BOOKING_ROUTE_PERMISSIONS.confirm),
-    validateRequest({ params: orderIdParamSchema }),
+    validateRequest({ params: orderIdParamSchema, body: orderConfirmBodySchema }),
     controller.confirmOrder
   );
   router.post(

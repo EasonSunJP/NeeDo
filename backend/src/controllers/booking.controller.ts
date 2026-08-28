@@ -7,6 +7,7 @@ import {
   manualPaymentConfirmBodySchema,
   manualPaymentRefundBodySchema,
   orderCancelBodySchema,
+  orderConfirmBodySchema,
   orderIdParamSchema,
   orderListQuerySchema,
   scheduleSlotCreateBodySchema,
@@ -104,6 +105,7 @@ export class BookingController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const body = orderConfirmBodySchema.parse(request.body);
       response
         .status(200)
         .json(
@@ -111,7 +113,9 @@ export class BookingController {
             await this.bookingService.transitionOrder(
               this.getActor(response),
               this.getOrderId(request),
-              "confirm"
+              "confirm",
+              undefined,
+              body
             )
           )
         );

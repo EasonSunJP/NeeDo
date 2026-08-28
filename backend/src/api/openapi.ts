@@ -6168,9 +6168,72 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "integer", minimum: 1 } }
         ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  insufficientBalanceConfirmation: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["confirmed", "idempotencyKey", "previewVersion"],
+                    properties: {
+                      confirmed: { type: "boolean", const: true },
+                      idempotencyKey: { type: "string", minLength: 16, maxLength: 160 },
+                      previewVersion: {
+                        type: "string",
+                        pattern: "^sha256:[a-f0-9]{64}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         responses: {
           "200": { description: "Order confirmed" },
-          "409": { description: "Invalid state transition" }
+          "409": {
+            description: "Invalid state transition or platform-fee balance confirmation required",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["code", "message", "data"],
+                  properties: {
+                    code: { type: "integer" },
+                    message: {
+                      type: "string",
+                      enum: [
+                        "error.order.invalid_transition",
+                        "error.platform_fee.insufficient_balance_confirmation_required",
+                        "error.platform_fee.preview_stale",
+                        "error.platform_fee.technician_required",
+                        "error.platform_fee.confirmation_conflict"
+                      ]
+                    },
+                    data: {
+                      type: ["object", "null"],
+                      properties: {
+                        feeAmountNdp: { type: "integer", minimum: 0 },
+                        availableBalanceNdp: { type: "integer" },
+                        shortfallNdp: { type: "integer", minimum: 0 },
+                        payerType: { type: "string", enum: ["shop", "technician"] },
+                        walletOwnerType: { type: "string", enum: ["shop", "user"] },
+                        previewVersion: {
+                          type: "string",
+                          pattern: "^sha256:[a-f0-9]{64}$"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

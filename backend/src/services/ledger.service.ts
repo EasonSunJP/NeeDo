@@ -369,6 +369,11 @@ export interface BookingLedgerSettlementInput {
   completedAt?: Date;
   customerUserId?: number;
   actorUserId: number | null;
+  insufficientBalanceConfirmation?: {
+    confirmed: true;
+    idempotencyKey: string;
+    previewVersion: string;
+  };
 }
 
 export interface LedgerMutationContext {

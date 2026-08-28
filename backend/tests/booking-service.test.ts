@@ -618,17 +618,25 @@ describe("BookingService state machine", () => {
       currentIdentityScopeType: "shop",
       currentIdentityScopeId: 1
     };
+    const insufficientBalanceConfirmation = {
+      confirmed: true as const,
+      idempotencyKey: "fee-confirm-1234567890",
+      previewVersion: `sha256:${"a".repeat(64)}`
+    };
 
     await new BookingService(createRepository(makeOrder("pending")), ledgerService).transitionOrder(
       providerActor,
       1,
-      "confirm"
+      "confirm",
+      undefined,
+      { insufficientBalanceConfirmation }
     );
     expect(ledgerService.freezeBookingAcceptance).toHaveBeenCalledWith(
       expect.objectContaining({
         bookingOrderId: 1,
         shopId: 1,
-        actorUserId: 2
+        actorUserId: 2,
+        insufficientBalanceConfirmation
       }),
       expect.anything()
     );
@@ -642,7 +650,8 @@ describe("BookingService state machine", () => {
         bookingOrderId: 1,
         orderType: "request",
         customerUserId: 1,
-        actorUserId: 2
+        actorUserId: 2,
+        insufficientBalanceConfirmation: undefined
       }),
       expect.anything()
     );

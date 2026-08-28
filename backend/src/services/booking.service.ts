@@ -54,6 +54,14 @@ export interface ManualPaymentRefundInput {
   reference?: string | null;
 }
 
+export interface OrderConfirmInput {
+  insufficientBalanceConfirmation?: {
+    confirmed: true;
+    idempotencyKey: string;
+    previewVersion: string;
+  };
+}
+
 type OrderAction = "confirm" | "cancel" | "start" | "complete";
 
 const ORDER_TRANSITIONS = {
@@ -251,9 +259,10 @@ export class BookingService {
     actor: AuthenticatedBookingActor,
     id: number,
     action: OrderAction,
-    reason?: string | null
+    reason?: string | null,
+    confirmInput?: OrderConfirmInput
   ): Promise<BookingOrderPayload> {
-    return this.transition(actor, id, action, reason);
+    return this.transition(actor, id, action, reason, action === "confirm" ? confirmInput : undefined);
   }
 
   public async confirmManualPayment(
@@ -308,7 +317,8 @@ export class BookingService {
     actor: AuthenticatedBookingActor,
     id: number,
     action: OrderAction,
-    reason?: string | null
+    reason?: string | null,
+    confirmInput?: OrderConfirmInput
   ): Promise<BookingOrderPayload> {
     const order = await this.getOrder(actor, id);
     const rule = ORDER_TRANSITIONS[action];
@@ -326,7 +336,7 @@ export class BookingService {
         toStatus: rule.to,
         reason
       },
-      this.createSettlementOptions(actor, order, action)
+      this.createSettlementOptions(actor, order, action, confirmInput)
     );
 
     if (!next) {
@@ -494,12 +504,13 @@ export class BookingService {
   private createSettlementOptions(
     actor: AuthenticatedBookingActor,
     order: BookingOrderPayload,
-    action: OrderAction
+    action: OrderAction,
+    confirmInput?: OrderConfirmInput
   ): OrderTransitionRepositoryOptions {
     const actions: Array<
       NonNullable<OrderTransitionRepositoryOptions["settle"]>
     > = [];
-    const ledgerOptions = this.createLedgerSettlementOptions(actor, order, action);
+    const ledgerOptions = this.createLedgerSettlementOptions(actor, order, action, confirmInput);
     if (ledgerOptions.settle) {
       actions.push(ledgerOptions.settle);
     }
@@ -538,7 +549,8 @@ export class BookingService {
   private createLedgerSettlementOptions(
     actor: AuthenticatedBookingActor,
     order: BookingOrderPayload,
-    action: OrderAction
+    action: OrderAction,
+    confirmInput?: OrderConfirmInput
   ): OrderTransitionRepositoryOptions {
     if (!this.ledgerService) {
       return {};
@@ -558,7 +570,9 @@ export class BookingService {
               scheduledStartAt: order.startsAt,
               acceptedAt: new Date(),
               customerUserId: order.customerUserId,
-              actorUserId: actor.userId
+              actorUserId: actor.userId,
+              insufficientBalanceConfirmation:
+                confirmInput?.insufficientBalanceConfirmation
             },
             { transactionClient: context.transactionClient }
           ).then(() => undefined)
