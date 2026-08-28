@@ -25,9 +25,7 @@ describe("technician shop affiliation schema", () => {
   it("defines one soft-deletable shop affiliation authority", () => {
     const model = modelBlock("TechnicianShopAffiliation");
 
-    expect(model).toMatch(
-      /technicianProfileId\s+Int\s+@map\("technician_profile_id"\)/
-    );
+    expect(model).toMatch(/technicianProfileId\s+Int\s+@map\("technician_profile_id"\)/);
     expect(model).toMatch(/shopId\s+Int\s+@map\("shop_id"\)/);
     expect(model).toMatch(/relationshipType\s+TechnicianShopRelationshipType/);
     expect(model).toMatch(/workStatus\s+TechnicianShopWorkStatus/);
@@ -49,12 +47,8 @@ describe("technician shop affiliation schema", () => {
   });
 
   it("maps stable lowercase relationship and work status values", () => {
-    expect(enumBlock("TechnicianShopRelationshipType")).toMatch(
-      /EXCLUSIVE\s+@map\("exclusive"\)/
-    );
-    expect(enumBlock("TechnicianShopRelationshipType")).toMatch(
-      /PARTNER\s+@map\("partner"\)/
-    );
+    expect(enumBlock("TechnicianShopRelationshipType")).toMatch(/EXCLUSIVE\s+@map\("exclusive"\)/);
+    expect(enumBlock("TechnicianShopRelationshipType")).toMatch(/PARTNER\s+@map\("partner"\)/);
 
     const status = enumBlock("TechnicianShopWorkStatus");
     expect(status).toMatch(/ACTIVE\s+@map\("active"\)/);
@@ -85,8 +79,6 @@ describe("technician shop affiliation schema", () => {
     expect(technician).toMatch(/shopId\s+Int\?/);
     expect(technician).toMatch(/employmentType\s+TechnicianEmploymentType/);
     expect(technician).toMatch(/employmentStartedAt\s+DateTime\?/);
-    expect(technician).toMatch(
-      /technicianShopAffiliations\s+TechnicianShopAffiliation\[\]/
-    );
+    expect(technician).toMatch(/technicianShopAffiliations\s+TechnicianShopAffiliation\[\]/);
   });
 });
