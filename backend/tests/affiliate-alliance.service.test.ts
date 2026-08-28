@@ -71,12 +71,17 @@ const createAudit = () => ({
 });
 
 describe("AffiliateAllianceService", () => {
-  it("requires the current Affiliate identity before repository access", async () => {
+  it("requires the current Affiliate identity even when admin permissions are present", async () => {
     const repository = createRepository();
     const service = new AffiliateAllianceService(repository, createAudit());
 
     await expect(
-      service.getMine({ ...actor, currentIdentityType: "customer" })
+      service.getMine({
+        ...actor,
+        currentIdentityType: "customer",
+        roles: ["admin"],
+        permissions: ["page:affiliate-alliance", "button:affiliate-alliance-create"]
+      })
     ).rejects.toMatchObject({
       message: "error.affiliate_alliance.identity_required",
       statusCode: 403

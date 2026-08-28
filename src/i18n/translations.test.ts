@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { translateAffiliateAllianceText } from "../features/affiliate-alliance/i18n";
 import { getTranslationLookupCandidates, languages, translateText, translateTextForContext, translations } from "./translations";
 
 describe("translations", () => {
@@ -148,10 +149,10 @@ describe("translations", () => {
   });
 
   it("localizes the complete affiliate alliance foundation experience", () => {
-    expect(translateText("联盟", "en")).toBe("Alliance");
-    expect(translateText("联盟", "ja")).toBe("アライアンス");
-    expect(translateText("创建联盟", "en")).toBe("Create alliance");
-    expect(translateText("创建联盟", "ja")).toBe("アライアンスを作成");
+    expect(translateAffiliateAllianceText("联盟", "en")).toBe("Alliance");
+    expect(translateAffiliateAllianceText("联盟", "ja")).toBe("アライアンス");
+    expect(translateAffiliateAllianceText("创建联盟", "en")).toBe("Create alliance");
+    expect(translateAffiliateAllianceText("创建联盟", "ja")).toBe("アライアンスを作成");
 
     const completeKeys = [
       "管理当前联盟、成员权限与独立联盟钱包。",
@@ -184,13 +185,18 @@ describe("translations", () => {
     ] as const;
 
     completeKeys.forEach((key) => {
-      expect(translations[key]).toMatchObject({
-        "zh-Hant": expect.any(String),
-        ja: expect.any(String),
-        en: expect.any(String),
-        ko: expect.any(String)
+      (["zh-Hant", "ja", "en", "ko"] as const).forEach((language) => {
+        expect(translateAffiliateAllianceText(key, language)).not.toBe(key);
       });
     });
+  });
+
+  it("keeps shared glossary entries unchanged by the alliance feature", () => {
+    expect(translateText("有效", "en")).toBe("Valid");
+    expect(translateText("暂停", "en")).toBe("Pause");
+    expect(translateText("已关闭", "ja")).toBe("休業中");
+    expect(translateText("推广者", "ja")).toBe("紹介パートナー");
+    expect(translateText("冻结余额", "ja")).toBe("保留中残高");
   });
 
   it("localizes every standard recall residue and failure message", () => {

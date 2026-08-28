@@ -10,9 +10,10 @@ import { businessNavItems } from "../../components/mobile/businessNavItems";
 import { MobileFullscreenHeader } from "../../components/mobile/MobileFullscreenHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
 import { useI18n } from "../../i18n/I18nProvider";
-import { languageLocales, translateText } from "../../i18n/translations";
+import { languageLocales } from "../../i18n/translations";
 import { cn } from "../../lib/utils";
 import { useClientTheme } from "../../theme/ClientThemeProvider";
+import { translateAffiliateAllianceText } from "./i18n";
 
 const controlClassName =
   "min-h-12 w-full rounded-[18px] border border-[color:var(--client-line)] bg-[color:var(--client-elevated)] px-4 text-[14px] font-bold text-[color:var(--client-text)] outline-none transition placeholder:text-[color:var(--client-muted)] focus:border-[color:var(--client-primary)] focus-visible:ring-2 focus-visible:ring-[color:var(--client-primary-soft)]";
@@ -49,7 +50,7 @@ const parsePromoterShareBps = (value: string): number | null => {
 export function AffiliateAlliancePage() {
   const { language } = useI18n();
   const { isNight } = useClientTheme();
-  const t = (source: string) => translateText(source, language);
+  const t = (source: string) => translateAffiliateAllianceText(source, language);
   const [alliance, setAlliance] = useState<AffiliateAlliance | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);

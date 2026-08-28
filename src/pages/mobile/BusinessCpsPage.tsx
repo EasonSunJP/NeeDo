@@ -8,7 +8,7 @@ export function BusinessCpsPage() {
 
   return (
     <MobileShell className="business-cps-shell" navItems={businessNavItems}>
-      <MobileFullscreenHeader dark={isNight} title="NeeDoAfirieito" />
+      <MobileFullscreenHeader dark={isNight} title="联盟营销" />
       <main className="px-4 pb-28 pt-4">
         <section className="rounded-[28px] border border-[color:var(--client-line)] bg-[color:var(--client-surface)] p-5 text-[color:var(--client-text)]">
           <p className="text-xs font-black text-[color:var(--client-primary)]">功能暂未开放</p>

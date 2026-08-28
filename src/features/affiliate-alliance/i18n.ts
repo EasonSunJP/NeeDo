@@ -1,3 +1,5 @@
+import { translateText, type Language } from "../../i18n/translations";
+
 type AffiliateAllianceTranslation = Partial<
   Record<"zh-Hant" | "ja" | "en" | "ko", string>
 >;
@@ -120,3 +122,8 @@ export const affiliateAllianceTranslations: Record<string, AffiliateAllianceTran
   冻结余额: { "zh-Hant": "凍結餘額", ja: "凍結残高", en: "Frozen balance", ko: "동결 잔액" },
   最后更新: { "zh-Hant": "最後更新", ja: "最終更新", en: "Last updated", ko: "마지막 업데이트" }
 };
+
+export function translateAffiliateAllianceText(source: string, language: Language): string {
+  if (language === "zh") return source;
+  return affiliateAllianceTranslations[source]?.[language] ?? translateText(source, language);
+}

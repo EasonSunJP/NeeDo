@@ -42,7 +42,7 @@ describe("affiliate alliance migrations", () => {
     expect(foundation).not.toContain("DROP TABLE");
   });
 
-  it("deploys alliance read/create permissions only to admin and activated affiliates", () => {
+  it("deploys alliance read/create permissions only to admin and scout roles", () => {
     expect(existsSync(permissionsPath)).toBe(true);
     expect(permissions).toContain("page:affiliate-alliance");
     expect(permissions).toContain("button:affiliate-alliance-create");
