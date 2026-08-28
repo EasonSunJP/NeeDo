@@ -6,7 +6,9 @@ describe("formal profile detail OpenAPI contract", () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const schema = response.body.components.schemas.BackofficeTechnicianDetail;
 
-    expect(schema.required).toEqual(expect.arrayContaining(["services", "servicesLimit", "servicesTruncated"]));
+    expect(schema.required).toEqual(
+      expect.arrayContaining(["services", "servicesLimit", "servicesTruncated"])
+    );
     expect(schema.properties.servicesLimit).toMatchObject({ type: "integer", minimum: 1 });
     expect(schema.properties.servicesTruncated).toEqual({ type: "boolean" });
   });
@@ -28,8 +30,49 @@ describe("formal profile detail OpenAPI contract", () => {
       format: "date-time"
     });
     expect(update.properties.employmentType).toEqual(detail.properties.employmentType);
-    expect(update.properties.employmentStartedAt).toEqual(
-      detail.properties.employmentStartedAt
+    expect(update.properties.employmentStartedAt).toEqual(detail.properties.employmentStartedAt);
+  });
+
+  it("documents the shop-scoped employee affiliation contract without a shopId input", async () => {
+    const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
+    const list = response.body.paths["/api/v1/merchant-admin/employees"].get;
+    const detail = response.body.paths["/api/v1/merchant-admin/employees/{needoId}"].get;
+    const update =
+      response.body.paths["/api/v1/merchant-admin/employees/{needoId}/affiliation"].put;
+
+    expect(list.security).toEqual([{ bearerAuth: [] }]);
+    expect(list.parameters.map((parameter: { name: string }) => parameter.name)).toEqual(
+      expect.arrayContaining(["page", "pageSize", "keyword", "relationshipType", "workStatus"])
+    );
+    expect(list.parameters.map((parameter: { name: string }) => parameter.name)).not.toContain(
+      "shopId"
+    );
+    expect(detail.parameters[0]).toMatchObject({
+      name: "needoId",
+      required: true,
+      schema: { type: "string", pattern: "^s[0-9]{10}$" }
+    });
+    expect(update.requestBody.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/MerchantEmployeeAffiliationInput"
+    });
+    expect(response.body.components.schemas.MerchantEmployeeAffiliationInput).toMatchObject({
+      additionalProperties: false,
+      required: ["relationshipType", "workStatus", "startsAt", "endsAt"]
+    });
+    expect(update.responses).toEqual(
+      expect.objectContaining({
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object),
+        "409": expect.any(Object)
+      })
+    );
+    expect(response.body.components.schemas.MerchantEmployee.required).toEqual(
+      expect.arrayContaining(["needoId", "displayName", "affiliation"])
+    );
+    expect(response.body.components.schemas.MerchantEmployee.properties.needoId.pattern).toBe(
+      "^s[0-9]{10}$"
     );
   });
 });

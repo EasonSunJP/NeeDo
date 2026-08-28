@@ -810,6 +810,20 @@ export const SYSTEM_PERMISSIONS = [
     "更新、审核和移除本店技师"
   ),
   createPermission(
+    "merchant-admin:employee-affiliation:read",
+    "商户员工从属读取",
+    "api",
+    "merchant-admin",
+    "按当前店铺读取员工身份和在职从属关系"
+  ),
+  createPermission(
+    "merchant-admin:employee-affiliation:write",
+    "商户员工从属维护",
+    "api",
+    "merchant-admin",
+    "按当前店铺创建、更新或结束员工从属关系"
+  ),
+  createPermission(
     "merchant-admin:customers:list",
     "商户客户列表",
     "api",
@@ -1181,6 +1195,8 @@ const MERCHANT_ADMIN_REAL_DATA_PERMISSION_CODES = [
   "merchant-admin:payroll-adjustment:approve",
   "merchant-admin:technicians:list",
   "merchant-admin:technicians:write",
+  "merchant-admin:employee-affiliation:read",
+  "merchant-admin:employee-affiliation:write",
   "merchant-admin:customers:list",
   "merchant-admin:services:list",
   "merchant-admin:services:write",
