@@ -39,6 +39,7 @@ User
 ```text
 GET /api/v1/merchant-admin/employees
 GET /api/v1/merchant-admin/employees/:needoId
+PATCH /api/v1/merchant-admin/employees/:needoId/profile
 PUT /api/v1/merchant-admin/employees/:needoId/affiliation
 ```
 
@@ -47,6 +48,8 @@ PUT /api/v1/merchant-admin/employees/:needoId/affiliation
 - 客户端不允许传 `shopId`；店铺只取自 JWT 当前 `shop` identity scope。
 - 未从属当前店铺、错误类别公开号和不存在的目标使用相同安全 404，不能借错误差异枚举其他店铺员工。
 - response 中的内部主键仅供服务关联，前端不得把它显示成“档案号”或“账号”；用户可见账号只有技师 NeeDoID。
+- `PATCH .../profile` 只允许修改 `displayName`、`bio`、`city`、`serviceArea`、`yearsExperience`；邮箱、手机号码、头像、账号状态、档案验证状态和 NeeDoID 在本步骤保持只读。
+- 基础资料写入前再次确认员工仍从属 JWT 当前店铺，写入与读取均不接受客户端 `shopId`。
 
 权限：
 
@@ -60,8 +63,9 @@ PUT /api/v1/merchant-admin/employees/:needoId/affiliation
 - `merchant_admin.employee_affiliation.list`
 - `merchant_admin.employee_affiliation.read`
 - `merchant_admin.employee_affiliation.update`
+- `merchant_admin.employee_profile.update`
 
-审计 metadata 只记录店铺 ID、关系类别和状态，不写姓名、邮箱、电话或完整 NeeDoID。
+审计 metadata 只记录店铺 ID、关系类别、状态或经过排序的变更字段名，不写姓名、邮箱、电话、字段值或完整 NeeDoID。
 
 ## Migration 与回填
 
@@ -132,14 +136,17 @@ ENV_FILE=.env.dev npm run check:technician-shop-affiliation-cutover -- --batch-s
 - 需要恢复本地数据库时，应使用执行 migration 前生成并校验过的完整 SQL 备份；共享/生产环境按其正式恢复流程处理。
 - 不得手改已应用 migration。
 
+## 商户员工详细信息卡
+
+商户后台“人员与顾客 / 员工列表”现已完成正式切换：
+
+1. 列表、搜索和详情只使用 `/merchant-admin/employees`，选中员工使用 canonical 技师 NeeDoID，不再使用可见数字档案号。
+2. 抽屉名称统一为“员工详细信息卡”，顶部展示头像、姓名、NeeDoID、当前店铺、联系方式、账号状态、档案验证状态、技师分类和本店工作状态。
+3. “基础信息”通过独立 `PATCH .../profile` 保存；“从属关系”继续通过审计后的 `PUT .../affiliation` 保存。
+4. 保存成功后重新读取详情和服务端分页列表；服务端拒绝时保留用户草稿并显示本地化错误。
+5. 商户页不再调用旧 `/merchant-admin/technicians` 的更新、审核或全局软删除能力。旧 API 和旧字段暂作为其他后台与回滚兼容层保留。
+6. 当前卡片只展示已经真实接通的“基础信息”和“从属关系”，不放置未接后端的薪酬、日程、结算或时间线空入口。
+
 ## 当前未完成的后续范围
 
-现有 `/merchant-admin/technicians` 页面和旧商户技师写路径仍是兼容层，尚未切换。下一个独立微步骤才会：
-
-1. 将“技师正式档案”切换为“员工详细信息卡”；
-2. 使用 `/merchant-admin/employees` 读取顶部身份和从属；
-3. 移除可见内部档案号/账号号；
-4. 接通真实基础资料编辑；
-5. 完成浏览器验收后再退役旧商户雇佣写路径。
-
-日程脱敏投影、薪酬与分成、结账周期、日本法定节假日顺延规则、财务手工支付登记和自然语言动态时间线仍分别属于后续微步骤。本地员工从属 API 不执行自动转账。
+员工日程与现有统一日程系统的接入、跨店灰色锁定投影、薪酬与分成、店铺/个人结账周期、日本法定节假日提前或顺延规则、财务人员手工结账登记和自然语言审计时间线仍分别属于后续微步骤。员工从属和资料 API 不执行自动转账。

@@ -160,9 +160,9 @@ All portals require a formal authenticated session. Local preview, acceptance, a
 
 ## Formal Merchant Employee Affiliations
 
-Merchant employee identity is now founded on one global technician profile, its canonical `s##########` NeeDoID, and shop-scoped `TechnicianShopAffiliation` rows. The protected `/api/v1/merchant-admin/employees` list/detail routes derive the shop only from the active authenticated identity; the affiliation write route enforces exclusive-versus-partner rules inside a locked database transaction and preserves ended relationships as history.
+Merchant employee identity is now founded on one global technician profile, its canonical `s##########` NeeDoID, and shop-scoped `TechnicianShopAffiliation` rows. The protected `/api/v1/merchant-admin/employees` list/detail/profile/affiliation routes derive the shop only from the active authenticated identity; profile edits are field-limited and audited, while affiliation writes enforce exclusive-versus-partner rules inside a locked database transaction and preserve ended relationships as history.
 
-The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The existing merchant technician UI remains a compatibility page until the separate employee-detail-card microstep is implemented and browser-accepted.
+The additive migration, dry-run-first legacy backfill, RBAC/audit contract, local verification commands, compatibility boundary, and non-destructive rollback procedure are documented in [`docs/employee-affiliation.md`](docs/employee-affiliation.md). The merchant “员工列表” and “员工详细信息卡” now use the canonical employee APIs and NeeDoID; the legacy technician endpoints remain only as compatibility surfaces outside this merchant page.
 
 ## Operations Technician Ranking
 
@@ -1903,7 +1903,7 @@ npm test
 
 商户店铺基础资料现支持 `PATCH /api/v1/merchant-admin/shop`：店铺 ID 只从当前活动店铺身份取得，商户可更新名称、简介、城市、地址和电话，不能通过请求体切换店铺或修改平台推荐状态；每次修改都经过 Zod、RBAC 和审计日志。图片、营业时段、证件和展示装修仍需独立数据表及文件接口，当前不写入浏览器伪数据。
 
-商户后台“人员与顾客”现直接使用当前店铺范围内的正式分页 API。技师可在店铺范围内更新、审核和软删除，客户只显示后端已有的档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
+商户后台“人员与顾客”的员工列表现使用当前店铺范围的 `/api/v1/merchant-admin/employees` 正式分页 API，并以员工 NeeDoID 打开“员工详细信息卡”。基础资料与本店从属关系均通过真实、受权限保护且有审计的接口编辑；商户页已移除旧技师全局审核、软删除和数字档案号展示。客户仍只显示后端已有档案与真实预约数；旧组件推算的假头像、LTV、活跃分、流失风险和动态已移除。评价页在 Review 表、回复权限和审核链路完成前保持明确未启用。
 
 商户“店铺 UI 装修/信息卡装修”已改为正式能力门禁。在店铺展示配置表、草稿/发布/版本 API、MediaAsset 上传与删除审计、用户端正式读取和回滚完成前，不再把装修、轮播图或展示文案保存到浏览器，也不再显示虚假的“已发布到本店”。
 

@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+const read = (path: string) =>
+  readFileSync(new URL(path, import.meta.url), "utf8");
 
 describe("master data pages", () => {
   it("uses formal shop, service, and category APIs without mock imports", () => {
@@ -46,18 +47,26 @@ describe("master data pages", () => {
     expect(source).toContain("technicianDetailRequest.activate()");
     expect(source).toContain("useOptionalI18n");
     expect(source).not.toContain("DetailGrid");
-    expect(source).toMatch(/const deleteTechnician[\s\S]*?closeTechnician\(\);[\s\S]*?await load\(\);/);
+    expect(source).toMatch(
+      /const deleteTechnician[\s\S]*?closeTechnician\(\);[\s\S]*?await load\(\);/,
+    );
   });
 
   it("renders a complete formal technician ranking for module=ranking", () => {
     const pageSource = read("./TechniciansPage.tsx");
-    const rankingSource = read("../../components/admin/TechnicianRankingModule.tsx");
+    const rankingSource = read(
+      "../../components/admin/TechnicianRankingModule.tsx",
+    );
 
     expect(pageSource).toContain('searchParams.get("module") === "ranking"');
     expect(pageSource).toContain("TechnicianRankingModule");
     expect(pageSource).toContain("openRankingTechnician");
-    expect(rankingSource).toMatch(/backofficeRealDataApi\s*\.\s*technicianRankings/);
-    expect(rankingSource).toContain("backofficeRealDataApi.exportTechnicianRankings");
+    expect(rankingSource).toMatch(
+      /backofficeRealDataApi\s*\.\s*technicianRankings/,
+    );
+    expect(rankingSource).toContain(
+      "backofficeRealDataApi.exportTechnicianRankings",
+    );
     expect(rankingSource).toContain("downloadCsvExport");
     expect(rankingSource).toContain('key: "month"');
     expect(rankingSource).toContain('key: "today"');
@@ -88,19 +97,34 @@ describe("master data pages", () => {
     expect(source).toContain("customerDetailRequest.activate()");
     expect(source).toContain("useOptionalI18n");
     expect(source).not.toContain("DetailGrid");
-    expect(source).toMatch(/const deleteCustomer[\s\S]*?closeCustomer\(\);[\s\S]*?await load\(\);/);
+    expect(source).toMatch(
+      /const deleteCustomer[\s\S]*?closeCustomer\(\);[\s\S]*?await load\(\);/,
+    );
     expect(source).not.toContain("../../data/mock");
   });
 
-  it("uses merchant-scoped customers and technicians without merchant demo data", () => {
+  it("uses merchant-scoped customers and NeeDoID employees without merchant demo data", () => {
     const source = read("../merchant-admin/MerchantAdminPeoplePage.tsx");
     expect(source).not.toContain("getMerchantAdminDemo");
-    expect(source).toMatch(/backofficeRealDataApi\.customers\(\s*"merchant-admin"/);
-    expect(source).toMatch(/backofficeRealDataApi\.technicians\(\s*"merchant-admin"/);
-    expect(source).toContain('backofficeRealDataApi.approveTechnician("merchant-admin"');
-    expect(source).toContain('backofficeRealDataApi.technician("merchant-admin"');
+    expect(source).toMatch(
+      /backofficeRealDataApi\.customers\(\s*"merchant-admin"/,
+    );
+    expect(source).toContain("merchantEmployeeApi.list(");
+    expect(source).toContain("merchantEmployeeApi.detail(needoId)");
+    expect(source).toContain("merchantEmployeeApi.updateProfile(");
+    expect(source).toContain("merchantEmployeeApi.updateAffiliation(");
+    expect(source).not.toContain(
+      'backofficeRealDataApi.technicians("merchant-admin"',
+    );
+    expect(source).not.toContain(
+      'backofficeRealDataApi.approveTechnician("merchant-admin"',
+    );
+    expect(source).not.toContain(
+      'backofficeRealDataApi.technician("merchant-admin"',
+    );
     expect(source).toContain('backofficeRealDataApi.customer("merchant-admin"');
-    expect(source).toContain("FormalTechnicianDetailPanel");
+    expect(source).toContain("EmployeeDetailCard");
+    expect(source).not.toContain("FormalTechnicianDetailPanel");
     expect(source).toContain("FormalCustomerDetailPanel");
   });
 });
