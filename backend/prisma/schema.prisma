@@ -440,6 +440,49 @@ enum VanityNumberRuleKind {
   @@map("vanity_number_rule_kind")
 }
 
+enum ContentLocale {
+  ZH_CN @map("zh-CN")
+  ZH_TW @map("zh-TW")
+  EN    @map("en")
+  JA    @map("ja")
+  KO    @map("ko")
+
+  @@map("content_locale")
+}
+
+enum CarouselScene {
+  USER_HOME             @map("user_home")
+  AFFILIATE_HOME_NOTICE @map("affiliate_home_notice")
+
+  @@map("carousel_scene")
+}
+
+enum ContentReleaseStatus {
+  DRAFT     @map("draft")
+  SCHEDULED @map("scheduled")
+  PUBLISHED @map("published")
+  DISABLED  @map("disabled")
+  ARCHIVED  @map("archived")
+
+  @@map("content_release_status")
+}
+
+enum CarouselTargetType {
+  SHOP                   @map("shop")
+  TECHNICIAN             @map("technician")
+  SERVICE                @map("service")
+  AFFILIATE_ANNOUNCEMENT @map("affiliate_announcement")
+
+  @@map("carousel_target_type")
+}
+
+enum ContentPublicationAggregateType {
+  OFFICIAL_ANNOUNCEMENT @map("official_announcement")
+  CAROUSEL              @map("carousel")
+
+  @@map("content_publication_aggregate_type")
+}
+
 model User {
   id                  Int                  @id @default(autoincrement())
   needoId             String               @unique @map("needo_id") @db.VarChar(32)
@@ -529,6 +572,16 @@ model User {
   externalAccounts                     ExternalAuthAccount[]
   createdTechnicianShopAffiliations    TechnicianShopAffiliation[]   @relation("TechnicianShopAffiliationCreatedBy")
   updatedTechnicianShopAffiliations    TechnicianShopAffiliation[]   @relation("TechnicianShopAffiliationUpdatedBy")
+  createdOfficialAnnouncements          OfficialAnnouncement[]        @relation("OfficialAnnouncementCreatedBy")
+  createdOfficialAnnouncementReleases   OfficialAnnouncementRelease[] @relation("OfficialAnnouncementReleaseCreatedBy")
+  updatedOfficialAnnouncementReleases   OfficialAnnouncementRelease[] @relation("OfficialAnnouncementReleaseUpdatedBy")
+  publishedOfficialAnnouncementReleases OfficialAnnouncementRelease[] @relation("OfficialAnnouncementReleasePublishedBy")
+  disabledOfficialAnnouncementReleases  OfficialAnnouncementRelease[] @relation("OfficialAnnouncementReleaseDisabledBy")
+  createdCarouselReleases               CarouselRelease[]             @relation("CarouselReleaseCreatedBy")
+  updatedCarouselReleases               CarouselRelease[]             @relation("CarouselReleaseUpdatedBy")
+  publishedCarouselReleases             CarouselRelease[]             @relation("CarouselReleasePublishedBy")
+  disabledCarouselReleases              CarouselRelease[]             @relation("CarouselReleaseDisabledBy")
+  contentPublicationCommands            ContentPublicationCommand[]   @relation("ContentPublicationCommandActor")
 
   @@index([email])
   @@index([phone])
@@ -634,6 +687,7 @@ model Shop {
   affiliateAttributions      AffiliateAttribution[]
   technicianApplications     TechnicianApplicationDetail[]
   technicianShopAffiliations TechnicianShopAffiliation[]
+  carouselSlides             CarouselSlide[]
   publicIdentifier           PublicIdentifier?
   customerSupportAccount     CustomerSupportAccount?
 
@@ -761,6 +815,7 @@ model TechnicianProfile {
   receivedOrderReviews       OrderReview[]                   @relation("OrderReviewTechnician")
   backofficeProfileTags      BackofficeProfileTag[]          @relation("BackofficeProfileTagTechnician")
   technicianShopAffiliations TechnicianShopAffiliation[]
+  carouselSlides             CarouselSlide[]
 
   @@index([shopId])
   @@index([shopId, employmentType])
@@ -832,6 +887,7 @@ model CustomerProfile {
 
 model Service {
   id                  Int       @id @default(autoincrement())
+  publicId            String    @unique @default(uuid()) @map("public_id") @db.Char(36)
   categoryId          Int       @map("category_id")
   shopId              Int       @map("shop_id")
   technicianProfileId Int?      @map("technician_profile_id")
@@ -860,6 +916,7 @@ model Service {
   affiliateTaskScopes   AffiliateTaskService[]
   affiliateTouches      AffiliateTouch[]
   affiliateAttributions AffiliateAttribution[]
+  carouselSlides        CarouselSlide[]
 
   @@index([categoryId])
   @@index([shopId])
@@ -953,6 +1010,7 @@ model MediaAsset {
   ownerUser            User?                      @relation("ApplicationMediaOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   affiliateTaskCovers  AffiliateTask[]            @relation("AffiliateTaskCover")
   identityApplications IdentityApplicationMedia[]
+  carouselSlides       CarouselSlide[]
 
   @@index([entityType, entityId])
   @@index([categoryId])
@@ -965,6 +1023,224 @@ model MediaAsset {
   @@index([purgeAt])
   @@index([deletedAt])
   @@map("media_assets")
+}
+
+model OfficialAnnouncement {
+  id               Int       @id @default(autoincrement())
+  publicId         String    @unique @map("public_id") @db.Char(36)
+  announcementType String    @default("affiliate_notice") @map("announcement_type") @db.VarChar(40)
+  visibilityScope  String    @default("all_affiliates") @map("visibility_scope") @db.VarChar(40)
+  affiliateTaskId  Int?      @map("affiliate_task_id")
+  createdById      Int       @map("created_by_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  affiliateTask  AffiliateTask?                @relation("OfficialAnnouncementAffiliateTask", fields: [affiliateTaskId], references: [id], onDelete: Restrict)
+  createdBy      User                          @relation("OfficialAnnouncementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  releases       OfficialAnnouncementRelease[]
+  carouselSlides CarouselSlide[]
+
+  @@index([affiliateTaskId])
+  @@index([createdById])
+  @@index([visibilityScope, deletedAt])
+  @@index([deletedAt])
+  @@map("official_announcements")
+}
+
+model OfficialAnnouncementRelease {
+  id                      Int                  @id @default(autoincrement())
+  announcementId          Int                  @map("announcement_id")
+  version                 Int
+  status                  ContentReleaseStatus @default(DRAFT)
+  lockVersion             Int                  @default(1) @map("lock_version")
+  draftSlotKey            String?              @unique @map("draft_slot_key") @db.VarChar(80)
+  publishedSlotKey        String?              @unique @map("published_slot_key") @db.VarChar(80)
+  scheduledSlotKey        String?              @unique @map("scheduled_slot_key") @db.VarChar(80)
+  publishAt               DateTime?            @map("publish_at")
+  visibleFrom             DateTime?            @map("visible_from")
+  visibleUntil            DateTime?            @map("visible_until")
+  activatedAt             DateTime?            @map("activated_at")
+  disabledAt              DateTime?            @map("disabled_at")
+  archivedAt              DateTime?            @map("archived_at")
+  activationAttempts      Int                  @default(0) @map("activation_attempts")
+  lastActivationAttemptAt DateTime?            @map("last_activation_attempt_at")
+  lastActivationError     String?              @map("last_activation_error") @db.VarChar(160)
+  sourceReleaseId         Int?                 @map("source_release_id")
+  createdById             Int                  @map("created_by_id")
+  updatedById             Int?                 @map("updated_by_id")
+  publishedById           Int?                 @map("published_by_id")
+  disabledById            Int?                 @map("disabled_by_id")
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+  deletedAt               DateTime?            @map("deleted_at")
+
+  announcement    OfficialAnnouncement              @relation(fields: [announcementId], references: [id], onDelete: Restrict)
+  sourceRelease   OfficialAnnouncementRelease?      @relation("OfficialAnnouncementReleaseSource", fields: [sourceReleaseId], references: [id], onDelete: Restrict)
+  derivedReleases OfficialAnnouncementRelease[]     @relation("OfficialAnnouncementReleaseSource")
+  createdBy       User                              @relation("OfficialAnnouncementReleaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy       User?                             @relation("OfficialAnnouncementReleaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  publishedBy     User?                             @relation("OfficialAnnouncementReleasePublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  disabledBy      User?                             @relation("OfficialAnnouncementReleaseDisabledBy", fields: [disabledById], references: [id], onDelete: SetNull)
+  translations    OfficialAnnouncementTranslation[]
+
+  @@unique([announcementId, version])
+  @@index([status, publishAt, deletedAt])
+  @@index([sourceReleaseId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([publishedById])
+  @@index([disabledById])
+  @@index([deletedAt])
+  @@map("official_announcement_releases")
+}
+
+model OfficialAnnouncementTranslation {
+  id            Int           @id @default(autoincrement())
+  releaseId     Int           @map("release_id")
+  locale        ContentLocale
+  title         String        @db.VarChar(160)
+  summary       String?       @db.VarChar(500)
+  body          String        @db.Text
+  sourceLocale  ContentLocale @map("source_locale")
+  isInitialCopy Boolean       @default(false) @map("is_initial_copy")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  release OfficialAnnouncementRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+
+  @@unique([releaseId, locale])
+  @@index([locale, deletedAt])
+  @@map("official_announcement_translations")
+}
+
+model CarouselRelease {
+  id                      Int                  @id @default(autoincrement())
+  scene                   CarouselScene
+  version                 Int
+  status                  ContentReleaseStatus @default(DRAFT)
+  lockVersion             Int                  @default(1) @map("lock_version")
+  draftSlotKey            String?              @unique @map("draft_slot_key") @db.VarChar(80)
+  publishedSlotKey        String?              @unique @map("published_slot_key") @db.VarChar(80)
+  scheduledSlotKey        String?              @unique @map("scheduled_slot_key") @db.VarChar(80)
+  publishAt               DateTime?            @map("publish_at")
+  activatedAt             DateTime?            @map("activated_at")
+  disabledAt              DateTime?            @map("disabled_at")
+  archivedAt              DateTime?            @map("archived_at")
+  activationAttempts      Int                  @default(0) @map("activation_attempts")
+  lastActivationAttemptAt DateTime?            @map("last_activation_attempt_at")
+  lastActivationError     String?              @map("last_activation_error") @db.VarChar(160)
+  sourceReleaseId         Int?                 @map("source_release_id")
+  createdById             Int                  @map("created_by_id")
+  updatedById             Int?                 @map("updated_by_id")
+  publishedById           Int?                 @map("published_by_id")
+  disabledById            Int?                 @map("disabled_by_id")
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+  deletedAt               DateTime?            @map("deleted_at")
+
+  sourceRelease   CarouselRelease?  @relation("CarouselReleaseSource", fields: [sourceReleaseId], references: [id], onDelete: Restrict)
+  derivedReleases CarouselRelease[] @relation("CarouselReleaseSource")
+  createdBy       User              @relation("CarouselReleaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy       User?             @relation("CarouselReleaseUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  publishedBy     User?             @relation("CarouselReleasePublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  disabledBy      User?             @relation("CarouselReleaseDisabledBy", fields: [disabledById], references: [id], onDelete: SetNull)
+  slides          CarouselSlide[]
+
+  @@unique([scene, version])
+  @@index([status, publishAt, deletedAt])
+  @@index([sourceReleaseId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@index([publishedById])
+  @@index([disabledById])
+  @@index([deletedAt])
+  @@map("carousel_releases")
+}
+
+model CarouselSlide {
+  id                  Int                @id @default(autoincrement())
+  publicId            String             @unique @map("public_id") @db.Char(36)
+  releaseId           Int                @map("release_id")
+  mediaAssetId        Int                @map("media_asset_id")
+  sortOrder           Int                @map("sort_order")
+  isEnabled           Boolean            @default(true) @map("is_enabled")
+  visibleFrom         DateTime?          @map("visible_from")
+  visibleUntil        DateTime?          @map("visible_until")
+  targetType          CarouselTargetType @map("target_type")
+  shopId              Int?               @map("shop_id")
+  technicianProfileId Int?               @map("technician_profile_id")
+  serviceId           Int?               @map("service_id")
+  announcementId      Int?               @map("announcement_id")
+  affiliateTaskId     Int?               @map("affiliate_task_id")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  deletedAt           DateTime?          @map("deleted_at")
+
+  release           CarouselRelease            @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  mediaAsset        MediaAsset                 @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  shop              Shop?                      @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  technicianProfile TechnicianProfile?         @relation(fields: [technicianProfileId], references: [id], onDelete: Restrict)
+  service           Service?                   @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  announcement      OfficialAnnouncement?      @relation(fields: [announcementId], references: [id], onDelete: Restrict)
+  affiliateTask     AffiliateTask?             @relation("CarouselSlideAffiliateTask", fields: [affiliateTaskId], references: [id], onDelete: Restrict)
+  translations      CarouselSlideTranslation[]
+
+  @@unique([releaseId, sortOrder])
+  @@index([mediaAssetId])
+  @@index([shopId])
+  @@index([technicianProfileId])
+  @@index([serviceId])
+  @@index([announcementId])
+  @@index([affiliateTaskId])
+  @@index([releaseId, isEnabled, deletedAt])
+  @@index([deletedAt])
+  @@map("carousel_slides")
+}
+
+model CarouselSlideTranslation {
+  id            Int           @id @default(autoincrement())
+  slideId       Int           @map("slide_id")
+  locale        ContentLocale
+  badge         String?       @db.VarChar(40)
+  title         String        @db.VarChar(160)
+  caption       String?       @db.VarChar(500)
+  ctaLabel      String?       @map("cta_label") @db.VarChar(60)
+  imageAltText  String        @map("image_alt_text") @db.VarChar(255)
+  sourceLocale  ContentLocale @map("source_locale")
+  isInitialCopy Boolean       @default(false) @map("is_initial_copy")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  slide CarouselSlide @relation(fields: [slideId], references: [id], onDelete: Restrict)
+
+  @@unique([slideId, locale])
+  @@index([locale, deletedAt])
+  @@map("carousel_slide_translations")
+}
+
+model ContentPublicationCommand {
+  id                 Int                             @id @default(autoincrement())
+  idempotencyKey     String                          @unique @map("idempotency_key") @db.VarChar(191)
+  requestFingerprint String                          @map("request_fingerprint") @db.Char(64)
+  aggregateType      ContentPublicationAggregateType @map("aggregate_type")
+  aggregateKey       String                          @map("aggregate_key") @db.VarChar(80)
+  releaseId          Int?                            @map("release_id")
+  action             String                          @db.VarChar(40)
+  actorUserId        Int?                            @map("actor_user_id")
+  result             Json
+  createdAt          DateTime                        @default(now()) @map("created_at")
+  updatedAt          DateTime                        @updatedAt @map("updated_at")
+  deletedAt          DateTime?                       @map("deleted_at")
+
+  actorUser User? @relation("ContentPublicationCommandActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([aggregateType, aggregateKey, action])
+  @@index([actorUserId])
+  @@index([deletedAt])
+  @@map("content_publication_commands")
 }
 
 model ReviewSummary {
@@ -3012,6 +3288,8 @@ model AffiliateTask {
   rewards                  AffiliateReward[]
   budgetReservation        AffiliateBudgetReservation?
   riskEvents               AffiliateRiskEvent[]
+  officialAnnouncements    OfficialAnnouncement[]      @relation("OfficialAnnouncementAffiliateTask")
+  carouselSlides           CarouselSlide[]             @relation("CarouselSlideAffiliateTask")
 
   @@unique([lineageKey, version])
   @@index([parentTaskId])
