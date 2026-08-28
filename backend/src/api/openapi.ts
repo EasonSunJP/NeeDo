@@ -623,6 +623,16 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           createdAt: { type: "string", format: "date-time" }
         }
       },
+      RealtimeUploadedImage: {
+        type: "object",
+        required: ["fileName", "fileSize", "mimeType", "url"],
+        properties: {
+          fileName: { type: "string", minLength: 1, maxLength: 255 },
+          fileSize: { type: "integer", minimum: 1, maximum: 8388608 },
+          mimeType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+          url: { type: "string", format: "uri" }
+        }
+      },
       FriendRequest: {
         type: "object",
         required: [
@@ -9260,6 +9270,49 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         }
       }
     },
+    [`${config.API_PREFIX}/im/conversations/{conversationId}/media`]: {
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Upload one validated image for an IM conversation",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "conversationId",
+            in: "path",
+            required: true,
+            schema: { type: "integer", minimum: 1 }
+          },
+          {
+            name: "fileName",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1, maxLength: 255 }
+          }
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "image/jpeg": { schema: { type: "string", format: "binary" } },
+            "image/png": { schema: { type: "string", format: "binary" } },
+            "image/webp": { schema: { type: "string", format: "binary" } }
+          }
+        },
+        responses: {
+          "201": {
+            description: "Uploaded image metadata",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/RealtimeUploadedImage" }
+              }
+            }
+          },
+          "400": { description: "Invalid image bytes or request" },
+          "404": { description: "Conversation not found for current participant" },
+          "413": { description: "Image exceeds 8 MiB" },
+          "415": { description: "Unsupported image media type" }
+        }
+      }
+    },
     [`${config.API_PREFIX}/im/conversations/{conversationId}/messages/{messageId}/recall`]: {
       post: {
         tags: ["Step 13 Realtime"],
@@ -9442,6 +9495,44 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Paginated contacts" }
+        }
+      },
+      post: {
+        tags: ["Step 13 Realtime"],
+        summary: "Add or restore one contact from the searchable directory",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["targetUserId"],
+                additionalProperties: false,
+                properties: { targetUserId: { type: "integer", minimum: 1 } }
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Created or restored contact" },
+          "400": { description: "Cannot add the current user" },
+          "404": { description: "Target user not found" }
+        }
+      }
+    },
+    [`${config.API_PREFIX}/im/directory`]: {
+      get: {
+        tags: ["Step 13 Realtime"],
+        summary: "Fuzzy-search active non-contact accounts by display name or immutable NeeDoID",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "query", in: "query", required: true, schema: { type: "string", minLength: 1, maxLength: 100 } },
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Paginated safe account directory results" }
         }
       }
     },

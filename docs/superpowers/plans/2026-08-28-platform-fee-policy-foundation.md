@@ -56,12 +56,14 @@
 ### Task 1: Add the Versioned Global Family and Shop Policy Schema
 
 **Files:**
+
 - Modify: `backend/prisma/schema.prisma`
 - Create: `backend/prisma/migrations/20260828233000_platform_fee_policy_foundation/migration.sql`
 - Modify: `backend/prisma/seed.ts`
 - Create: `backend/tests/platform-fee-policy-schema.test.ts`
 
 **Interfaces:**
+
 - Consumes: existing `PlatformFeeRuleSet`, `PlatformFeeRule`, `Shop`, `User`, and default seed rule set.
 - Produces: `PlatformFeeRuleSet.familyCode`, `ShopPlatformFeePayerType`, and `ShopPlatformFeePolicy`.
 
@@ -74,17 +76,22 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 describe("platform fee policy schema contract", () => {
-  const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
+  const schema = readFileSync(
+    join(process.cwd(), "prisma/schema.prisma"),
+    "utf8",
+  );
   const seed = readFileSync(join(process.cwd(), "prisma/seed.ts"), "utf8");
 
   it("defines a versioned managed rule family and one policy per shop", () => {
     expect(schema).toContain("enum ShopPlatformFeePayerType");
     expect(schema).toContain("model ShopPlatformFeePolicy");
-    expect(schema).toContain('familyCode   String?');
+    expect(schema).toContain("familyCode   String?");
     expect(schema).toContain("@@unique([familyCode, version]");
     expect(schema).toMatch(/shopId\s+Int\s+@unique/);
     expect(schema).toMatch(/feeEnabled\s+Boolean\s+@default\(true\)/);
-    expect(schema).toMatch(/payerType\s+ShopPlatformFeePayerType\s+@default\(SHOP\)/);
+    expect(schema).toMatch(
+      /payerType\s+ShopPlatformFeePayerType\s+@default\(SHOP\)/,
+    );
     expect(schema).toMatch(/version\s+Int\s+@default\(1\)/);
   });
 
@@ -100,12 +107,14 @@ describe("platform fee policy schema contract", () => {
     const migration = readFileSync(
       join(
         migrationRoot,
-        existsSync(join(migrationRoot, "20260828233000_platform_fee_policy_foundation"))
+        existsSync(
+          join(migrationRoot, "20260828233000_platform_fee_policy_foundation"),
+        )
           ? "20260828233000_platform_fee_policy_foundation"
           : "__missing__",
-        "migration.sql"
+        "migration.sql",
       ),
-      "utf8"
+      "utf8",
     );
     expect(migration).toContain("shop_platform_fee_policies");
     expect(migration).toContain("family_code");
@@ -184,7 +193,7 @@ Replace the current destructive name-based rewrite with a family-aware initializ
 const existingFamily = await tx.platformFeeRuleSet.findFirst({
   where: { familyCode: "booking_default", deletedAt: null },
   orderBy: { version: "desc" },
-  select: { id: true }
+  select: { id: true },
 });
 if (existingFamily) return;
 ```
@@ -250,6 +259,7 @@ git commit -m "feat: add platform fee policy schema"
 ### Task 2: Lock Global Fee History and Define the Policy Service
 
 **Files:**
+
 - Modify: `backend/src/constants/error-codes.ts`
 - Modify: `backend/src/services/fee-calculation.service.ts`
 - Modify: `backend/src/repositories/fee-rule.repository.ts`
@@ -259,6 +269,7 @@ git commit -m "feat: add platform fee policy schema"
 - Create: `backend/tests/platform-fee-policy-service.test.ts`
 
 **Interfaces:**
+
 - Consumes: active effective-dated `booking_default` rule-set family and authenticated identity scope.
 - Produces: `GlobalBookingPlatformFeePayload`, `ShopPlatformFeePolicyPayload`, `EffectiveShopPlatformFeePolicy`, and mutation result contracts.
 
@@ -274,11 +285,11 @@ it("prices Booking platform-fee capture at acceptedAt", async () => {
     ...baseInput("b_platform_fee"),
     stage: "capture",
     acceptedAt: new Date("2026-08-28T09:00:00.000Z"),
-    completedAt: new Date("2026-08-29T09:00:00.000Z")
+    completedAt: new Date("2026-08-29T09:00:00.000Z"),
   });
 
   expect(repository.lastActiveRuleQuery?.at).toEqual(
-    new Date("2026-08-28T09:00:00.000Z")
+    new Date("2026-08-28T09:00:00.000Z"),
   );
 });
 ```
@@ -294,25 +305,31 @@ it("returns safe defaults when no shop policy exists", async () => {
   repository.findGlobalBookingFee.mockResolvedValue(null);
   repository.findShopPolicy.mockResolvedValue(null);
 
-  await expect(service.getShopPolicy(operationsActor, context, 11)).resolves.toMatchObject({
+  await expect(
+    service.getShopPolicy(operationsActor, context, 11),
+  ).resolves.toMatchObject({
     shopId: 11,
     globalAmountNdp: 500,
     globalVersion: 0,
     feeEnabled: true,
     payerType: "shop",
     policyVersion: 0,
-    policySource: "default"
+    policySource: "default",
   });
 });
 
 it("updates only the operations-owned feeEnabled field", async () => {
   await service.updateShopFeeEnabled(operationsActor, context, 11, {
     feeEnabled: false,
-    expectedVersion: 2
+    expectedVersion: 2,
   });
 
   expect(repository.updateShopFeeEnabled).toHaveBeenCalledWith(
-    expect.objectContaining({ shopId: 11, feeEnabled: false, expectedVersion: 2 })
+    expect.objectContaining({
+      shopId: 11,
+      feeEnabled: false,
+      expectedVersion: 2,
+    }),
   );
   expect(repository.updateShopPayerType).not.toHaveBeenCalled();
 });
@@ -321,13 +338,13 @@ it("updates only payerType inside the active merchant identity scope", async () 
   repository.hasMerchantShopScope.mockResolvedValue(true);
   await service.updateShopPayerType(merchantActor, context, 11, {
     payerType: "technician",
-    expectedVersion: 1
+    expectedVersion: 1,
   });
 
   expect(repository.hasMerchantShopScope).toHaveBeenCalledWith({
     scopeType: "merchant_account",
     scopeId: 4,
-    shopId: 11
+    shopId: 11,
   });
 });
 ```
@@ -350,9 +367,9 @@ Expected: FAIL because the new service/contracts and pricing lock are absent.
 Append unique codes after the existing 409xx range:
 
 ```ts
-PLATFORM_FEE_POLICY_VERSION_CONFLICT: 40932,
-PLATFORM_FEE_POLICY_CONFIG_CONFLICT: 40933,
-PLATFORM_FEE_MANAGED_RULE_CONFLICT: 40934,
+PLATFORM_FEE_POLICY_VERSION_CONFLICT: 40933,
+PLATFORM_FEE_POLICY_CONFIG_CONFLICT: 40934,
+PLATFORM_FEE_MANAGED_RULE_CONFLICT: 40935,
 ```
 
 Use message keys:
@@ -447,10 +464,12 @@ git commit -m "feat: define versioned platform fee policy"
 ### Task 3: Implement the Prisma Policy Repository and Atomic Audit
 
 **Files:**
+
 - Create: `backend/src/repositories/platform-fee-policy.repository.ts`
 - Create: `backend/tests/platform-fee-policy-repository.test.ts`
 
 **Interfaces:**
+
 - Consumes: `PlatformFeePolicyRepositoryPort`, `AuditLogCreateInput`, Prisma client/transaction client.
 - Produces: real MySQL reads, paginated shop projections, effective-dated rule cloning, optimistic policy mutation, and scoped membership checks.
 
@@ -492,9 +511,9 @@ const current = await tx.platformFeeRuleSet.findFirst({
     status: "active",
     deletedAt: null,
     effectiveFrom: { lte: changedAt },
-    OR: [{ effectiveTo: null }, { effectiveTo: { gt: changedAt } }]
+    OR: [{ effectiveTo: null }, { effectiveTo: { gt: changedAt } }],
   },
-  include: fullRuleSetInclude
+  include: fullRuleSetInclude,
 });
 ```
 
@@ -525,8 +544,8 @@ if (input.expectedVersion === 0) {
       payerType: "SHOP",
       version: 1,
       createdById: input.actorUserId,
-      updatedById: input.actorUserId
-    }
+      updatedById: input.actorUserId,
+    },
   });
 }
 ```
@@ -557,6 +576,7 @@ git commit -m "feat: persist audited platform fee policies"
 ### Task 4: Expose the Backoffice Policy APIs with RBAC
 
 **Files:**
+
 - Modify: `backend/src/constants/permissions.constants.ts`
 - Create: `backend/src/validators/platform-fee-policy.validator.ts`
 - Create: `backend/src/controllers/platform-fee-policy.controller.ts`
@@ -566,6 +586,7 @@ git commit -m "feat: persist audited platform fee policies"
 - Modify: `backend/tests/platform-fee-policy-schema.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `GET /api/v1/backoffice/platform-fee-policy`
   - `PATCH /api/v1/backoffice/platform-fee-policy`
@@ -579,7 +600,7 @@ Add permission assertions:
 ```ts
 const backofficeCodes = [
   "backoffice:platform-fee-policy:read",
-  "backoffice:platform-fee-policy:write"
+  "backoffice:platform-fee-policy:write",
 ];
 ```
 
@@ -617,15 +638,19 @@ Expected: FAIL because permissions and routes are absent.
 Use `.strict()` for writes:
 
 ```ts
-export const globalPlatformFeeUpdateBodySchema = z.object({
-  amountNdp: z.number().int().min(0).max(10_000_000),
-  expectedVersion: z.number().int().positive()
-}).strict();
+export const globalPlatformFeeUpdateBodySchema = z
+  .object({
+    amountNdp: z.number().int().min(0).max(10_000_000),
+    expectedVersion: z.number().int().positive(),
+  })
+  .strict();
 
-export const shopFeeEnabledUpdateBodySchema = z.object({
-  feeEnabled: z.boolean(),
-  expectedVersion: z.number().int().min(0)
-}).strict();
+export const shopFeeEnabledUpdateBodySchema = z
+  .object({
+    feeEnabled: z.boolean(),
+    expectedVersion: z.number().int().min(0),
+  })
+  .strict();
 ```
 
 The list query accepts `page`, `pageSize<=100`, optional trimmed `keyword`, and optional `feeEnabled` parsed explicitly from the strings `true|false` (do not use JavaScript truthiness for `"false"`). The numeric `shopId` path param must be positive.
@@ -665,6 +690,7 @@ git commit -m "feat: expose backoffice platform fee policy"
 ### Task 5: Expose Merchant/Shop Payer APIs and OpenAPI
 
 **Files:**
+
 - Modify: `backend/src/constants/permissions.constants.ts`
 - Modify: `backend/src/validators/platform-fee-policy.validator.ts`
 - Modify: `backend/src/controllers/platform-fee-policy.controller.ts`
@@ -674,6 +700,7 @@ git commit -m "feat: expose backoffice platform fee policy"
 - Modify: `backend/tests/openapi.test.ts`
 
 **Interfaces:**
+
 - Produces:
   - `GET /api/v1/merchant-admin/shops/:shopId/platform-fee-policy`
   - `PATCH /api/v1/merchant-admin/shops/:shopId/platform-fee-policy/payer`
@@ -718,10 +745,12 @@ Assign both only to `merchant_owner` and `merchant_staff` through `MERCHANT_ADMI
 Add the strict body:
 
 ```ts
-export const shopFeePayerUpdateBodySchema = z.object({
-  payerType: z.enum(["shop", "technician"]),
-  expectedVersion: z.number().int().min(0)
-}).strict();
+export const shopFeePayerUpdateBodySchema = z
+  .object({
+    payerType: z.enum(["shop", "technician"]),
+    expectedVersion: z.number().int().min(0),
+  })
+  .strict();
 ```
 
 - [x] **Step 4: Register merchant routes and scope checks**
@@ -738,9 +767,9 @@ if (actor.currentIdentityScopeType === "shop") {
   if (
     typeof merchantAccountId !== "number" ||
     !(await repository.hasMerchantShopScope({
-    scopeType: "merchant_account",
-    scopeId: merchantAccountId,
-    shopId
+      scopeType: "merchant_account",
+      scopeId: merchantAccountId,
+      shopId,
     }))
   ) {
     throw this.identityForbidden();
@@ -790,10 +819,12 @@ git commit -m "feat: expose merchant platform fee payer policy"
 ### Task 6: Apply Safely, Reconcile Real MySQL, and Close the Microstep
 
 **Files:**
+
 - Modify: `docs/11_NDP_LEDGER_FINANCE_RECONCILIATION.md`
 - Verify only: all files from Tasks 1–5
 
 **Interfaces:**
+
 - Consumes: reviewed migration and existing local formal MySQL.
 - Produces: applied schema evidence, canonical global fee evidence, zero unintended shop overrides, and a documented boundary for the next microstep.
 

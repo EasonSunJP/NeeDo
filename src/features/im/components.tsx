@@ -2663,7 +2663,9 @@ export function MessageBubble({
     ? message.status === "sending"
       ? "发送中"
       : message.status === "failed"
-        ? "发送失败"
+        ? message.failureReason === "recipient_blocked"
+          ? "对方将你拉黑，信息发送失败"
+          : "发送失败"
         : undefined
     : undefined;
 

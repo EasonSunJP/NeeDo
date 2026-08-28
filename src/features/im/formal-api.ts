@@ -321,14 +321,24 @@ function isRealtimeMessagePayload(payload: unknown): payload is RealtimeMessage 
 }
 
 export function toFormalImStoreUpdate(event: FormalRealtimeEvent): ImStoreUpdate {
-  if (event.type !== "message.recalled" || !isRealtimeMessagePayload(event.payload)) {
+  if (
+    !["message.created", "message.updated", "message.recalled"].includes(event.type) ||
+    !isRealtimeMessagePayload(event.payload)
+  ) {
     return { type: "refresh" };
   }
 
   const message = toConversationMessage(event.payload);
-  return message.serverState === "recalled"
-    ? { type: "message.recalled", message }
-    : { type: "refresh" };
+  if (event.type === "message.recalled") {
+    return message.serverState === "recalled"
+      ? { type: "message.recalled", message }
+      : { type: "refresh" };
+  }
+
+  return {
+    type: event.type as "message.created" | "message.updated",
+    message,
+  };
 }
 
 function getOtherParticipant(
@@ -572,7 +582,21 @@ export function createFormalImApi({
         users: bootstrapPayload.users,
       };
     },
-    addContact: featureUnavailable,
+    async searchDirectory(query: string) {
+      const normalizedQuery = query.trim();
+      if (!normalizedQuery) return { users: [] };
+      const response = await realtimeApi.searchDirectory({
+        query: normalizedQuery,
+        page: 1,
+        pageSize: 50,
+      });
+      return { users: response.list.map(toImUser) };
+    },
+    async addContact(targetUserId: string) {
+      return {
+        contact: toContact(await realtimeApi.addContact(toNumericId(targetUserId))),
+      };
+    },
     async getContact(contactId: string) {
       const contacts = await loadContacts();
       const contact = contacts.find(
@@ -792,43 +816,9 @@ export function createFormalImApi({
     },
     resendMessage: featureUnavailable,
     forwardMessage: featureUnavailable,
-    async search(query: string, conversationId?: string) {
-      const normalizedQuery = query.trim().toLowerCase();
-      if (!normalizedQuery)
-        return { contacts: [], conversations: [], messages: [] };
-      const bootstrapPayload = await bootstrap();
-      const conversations = bootstrapPayload.conversations.filter(
-        (conversation) =>
-          (!conversationId || conversation.id === conversationId) &&
-          `${conversation.title} ${conversation.lastMessagePreview}`
-            .toLowerCase()
-            .includes(normalizedQuery),
-      );
-      const contacts = bootstrapPayload.contacts.filter((contact) => {
-        const user = bootstrapPayload.users.find(
-          (item) => item.id === contact.targetUserId,
-        );
-        return `${contact.remarkName ?? ""} ${user?.nickname ?? ""} ${user?.userIdLabel ?? ""}`
-          .toLowerCase()
-          .includes(normalizedQuery);
-      });
-      const targetConversations = bootstrapPayload.conversations.filter(
-        (conversation) => !conversationId || conversation.id === conversationId,
-      );
-      const messagePages = await Promise.all(
-        targetConversations.map((conversation) =>
-          realtimeApi.listMessages(Number(conversation.id), { pageSize: 100 }),
-        ),
-      );
-      const messages = messagePages
-        .flatMap((page) => page.list.map(toConversationMessage))
-        .filter((message) =>
-          message.content.toLowerCase().includes(normalizedQuery),
-        );
-      return { contacts, conversations, messages };
+    async uploadImage(conversationId: string, file: File) {
+      return realtimeApi.uploadConversationImage(toNumericId(conversationId), file);
     },
-    uploadInit: featureUnavailable,
-    uploadComplete: featureUnavailable,
   } satisfies ImApi;
 
   return api;
@@ -838,6 +828,7 @@ export function subscribeFormalImUpdates(onUpdate: (update: ImStoreUpdate) => vo
   return subscribeRealtimeEvents({
     onEvent(event) {
       if (
+        event.type === "connected" ||
         event.type.startsWith("message.") ||
         event.type.startsWith("conversation.") ||
         event.type.startsWith("friend_request.") ||
