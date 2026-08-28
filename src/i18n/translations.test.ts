@@ -87,6 +87,66 @@ describe("translations", () => {
     expect(translateText("联盟营销", "ja")).toBe("アフィリエイト");
   });
 
+  it("localizes the complete affiliate profile experience", () => {
+    expect(translateText("联盟营销个人资料", "en")).toBe("Affiliate profile");
+    expect(translateText("联盟营销个人资料", "ja")).toBe("アフィリエイトプロフィール");
+    expect(translateText("NeeDo用户ID", "en")).toBe("NeeDo user ID");
+    expect(translateText("NeeDo用户ID", "ja")).toBe("NeeDoユーザーID");
+    expect(translateText("外部社交平台主页", "en")).toBe("External social profiles");
+    expect(translateText("外部社交平台主页", "ja")).toBe("外部SNSプロフィール");
+    expect(translateText("用户填写的外部主页", "en")).toBe("User-provided external profile");
+    expect(translateText("用户填写的外部主页", "ja")).toBe(
+      "ユーザー入力の外部プロフィール"
+    );
+    expect(translateText("可接受合作", "en")).toBe("Available for collaborations");
+    expect(translateText("可接受合作", "ja")).toBe("コラボレーション受付中");
+    expect(translateText("选择性接受", "en")).toBe("Selective");
+    expect(translateText("选择性接受", "ja")).toBe("条件付きで受付");
+    expect(translateText("暂不接受", "en")).toBe("Unavailable");
+    expect(translateText("暂不接受", "ja")).toBe("受付停止中");
+
+    const completeKeys = [
+      "管理联盟营销公开资料和用户填写的外部社交平台主页。",
+      "正在读取联盟营销资料",
+      "没有权限查看联盟营销资料",
+      "联盟营销资料读取失败",
+      "没有权限编辑联盟营销资料",
+      "资料保存失败，请稍后重试",
+      "资料已保存",
+      "主页已更新",
+      "主页已添加",
+      "主页已删除",
+      "外部主页保存失败，请检查链接后重试",
+      "外部主页删除失败，请稍后重试",
+      "合作资料",
+      "商户和联盟组织会在合作前查看这些信息。",
+      "联盟营销简介",
+      "介绍擅长的内容、服务类型和合作方式",
+      "优势领域",
+      "添加优势",
+      "服务区域",
+      "添加地区",
+      "合作状态",
+      "保存资料",
+      "只展示用户填写的链接，不代表 NeeDo 已验证外部数据。",
+      "添加外部主页",
+      "还没有添加外部主页",
+      "可添加 X、Instagram、YouTube、TikTok 或自定义 HTTPS 主页。",
+      "自定义平台",
+      "自定义平台名称",
+      "HTTPS主页链接",
+      "显示顺序",
+      "保存主页",
+      "更新主页",
+      "资料已在其他页面更新，请重新加载后继续。",
+      "公开账号标识"
+    ] as const;
+
+    completeKeys.forEach((key) => {
+      expect(translations[key]).toMatchObject({ en: expect.any(String), ja: expect.any(String) });
+    });
+  });
+
   it("localizes every standard recall residue and failure message", () => {
     const keys = [
       "你撤回了一条消息",

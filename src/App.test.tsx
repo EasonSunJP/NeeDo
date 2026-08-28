@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import appSource from "./App.tsx?raw";
+import affiliateActivationSource from "./features/identity-applications/AffiliateActivationPage.tsx?raw";
 import settingsSource from "./features/settings/UnifiedSettingsPages.tsx?raw";
 
 function sliceBetween(source: string, startToken: string, endToken: string) {
@@ -55,6 +56,19 @@ describe("portal identity switching boundaries", () => {
     expect(appSource).toContain('path="/me/identity/technician/apply" element={protect("user", <TechnicianApplicationPage />)}');
     expect(appSource).toContain('path="/me/identity/merchant/apply" element={protect("user", <MerchantApplicationPage />)}');
     expect(appSource).toContain('path="/me/identity/affiliate/contract" element={protect("user", <AffiliateActivationPage />)}');
+  });
+
+  it("routes activated affiliates to the formal profile instead of the capability gate", () => {
+    expect(appSource).toContain(
+      'import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";'
+    );
+    expect(appSource).toContain(
+      'path="/afirieito/me" element={protect("business", <AffiliateProfilePage />)}'
+    );
+    expect(affiliateActivationSource.match(/window\.location\.assign\("\/afirieito\/me"\)/g)).toHaveLength(
+      2
+    );
+    expect(affiliateActivationSource).not.toContain('window.location.assign("/afirieito")');
   });
 });
 
