@@ -107,6 +107,87 @@ describe("LedgerRepository wallet creation", () => {
     });
   });
 
+  it("maps the stored platform-fee settlement snapshot to service-layer statuses", async () => {
+    const acceptedAt = new Date("2026-08-29T01:00:00.000Z");
+    const deadlineAt = new Date("2026-09-05T01:00:00.000Z");
+    const findFirst = jest.fn().mockResolvedValue({
+      bookingOrderId: 71,
+      customerUserId: 3,
+      shopId: 10,
+      technicianProfileId: 9,
+      platformFeeEnabledSnapshot: true,
+      platformFeeAmountNdpSnapshot: 500,
+      platformFeeWalletOwnerType: "USER",
+      platformFeeWalletOwnerId: 77,
+      platformFeeWalletId: 91,
+      platformFeeOutstandingNdp: 380,
+      platformFeeDebtStatus: "OUTSTANDING",
+      platformFeeAcceptedAt: acceptedAt,
+      userRewardEligibleNdp: 100,
+      userRewardStatus: "PENDING",
+      userRewardDeadlineAt: deadlineAt,
+      userRewardGrantedAt: null,
+      settlementStatus: "settled"
+    });
+    const repository = new LedgerRepository({ orderFinancial: { findFirst } } as never);
+
+    await expect(repository.findOrderFinancialPlatformFeeSnapshot(71)).resolves.toMatchObject({
+      platformFeeWalletOwnerType: "user",
+      platformFeeDebtStatus: "outstanding",
+      userRewardStatus: "pending",
+      settlementStatus: "settled"
+    });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          bookingOrderId: 71,
+          platformFeeEnabledSnapshot: { not: null },
+          deletedAt: null
+        }
+      })
+    );
+  });
+
+  it("finds the active original platform-fee hold without re-resolving its owner", async () => {
+    const now = new Date("2026-08-29T01:00:00.000Z");
+    const findFirst = jest.fn().mockResolvedValue({
+      id: 41,
+      ownerType: "USER",
+      ownerId: 77,
+      bookingOrderId: 71,
+      feeType: "b_platform_fee",
+      holdAmountNdp: 500,
+      capturedAmountNdp: 0,
+      releasedAmountNdp: 0,
+      status: "ACTIVE",
+      idempotencyKey: "booking:71:accept:freeze",
+      calculationLogId: 5,
+      metadata: null,
+      capturedAt: null,
+      releasedAt: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null
+    });
+    const repository = new LedgerRepository({ walletHold: { findFirst } } as never);
+
+    await expect(repository.findPlatformFeeHoldByBookingOrderId(71)).resolves.toMatchObject({
+      ownerType: "user",
+      ownerId: 77,
+      bookingOrderId: 71,
+      status: "active"
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        bookingOrderId: 71,
+        feeType: "b_platform_fee",
+        status: { in: ["ACTIVE", "PARTIALLY_CAPTURED"] },
+        deletedAt: null
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+  });
+
   it("uses an atomic idempotent insert for concurrent wallet creation", async () => {
     const wallet = {
       id: 91,

@@ -12,6 +12,7 @@ import type {
   LedgerTransactionPayload,
   LedgerTransactionStatus,
   LedgerTransactionType,
+  OrderFinancialPlatformFeeSnapshot,
   OrderFinancialUpsertInput,
   WalletLedgerDirection,
   WalletLedgerListInput,
@@ -495,6 +496,69 @@ export class LedgerRepository implements LedgerRepositoryPort {
           previewVersion: financial.platformFeePreviewVersion ?? ""
         }
       : null;
+  }
+
+  public async findOrderFinancialPlatformFeeSnapshot(
+    bookingOrderId: number
+  ): Promise<OrderFinancialPlatformFeeSnapshot | null> {
+    const financial = await this.client.orderFinancial.findFirst({
+      where: {
+        bookingOrderId,
+        platformFeeEnabledSnapshot: { not: null },
+        deletedAt: null
+      },
+      select: {
+        bookingOrderId: true,
+        customerUserId: true,
+        shopId: true,
+        technicianProfileId: true,
+        platformFeeEnabledSnapshot: true,
+        platformFeeAmountNdpSnapshot: true,
+        platformFeeWalletOwnerType: true,
+        platformFeeWalletOwnerId: true,
+        platformFeeWalletId: true,
+        platformFeeOutstandingNdp: true,
+        platformFeeDebtStatus: true,
+        platformFeeAcceptedAt: true,
+        userRewardEligibleNdp: true,
+        userRewardStatus: true,
+        userRewardDeadlineAt: true,
+        userRewardGrantedAt: true,
+        settlementStatus: true
+      }
+    });
+    if (!financial || financial.platformFeeEnabledSnapshot === null) {
+      return null;
+    }
+
+    return {
+      ...financial,
+      platformFeeEnabledSnapshot: financial.platformFeeEnabledSnapshot,
+      platformFeeWalletOwnerType: financial.platformFeeWalletOwnerType
+        ? this.ownerTypeFromDb(financial.platformFeeWalletOwnerType)
+        : null,
+      platformFeeDebtStatus:
+        financial.platformFeeDebtStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["platformFeeDebtStatus"],
+      userRewardStatus:
+        financial.userRewardStatus.toLowerCase() as OrderFinancialPlatformFeeSnapshot["userRewardStatus"],
+      settlementStatus: financial.settlementStatus as OrderFinancialPlatformFeeSnapshot["settlementStatus"]
+    };
+  }
+
+  public async findPlatformFeeHoldByBookingOrderId(
+    bookingOrderId: number
+  ): Promise<WalletHoldPayload | null> {
+    const hold = await this.client.walletHold.findFirst({
+      where: {
+        bookingOrderId,
+        feeType: "b_platform_fee",
+        status: { in: ["ACTIVE", "PARTIALLY_CAPTURED"] },
+        deletedAt: null
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+    });
+
+    return hold ? this.mapWalletHold(hold) : null;
   }
 
   public async upsertOrderFinancial(input: OrderFinancialUpsertInput): Promise<void> {
