@@ -45,9 +45,23 @@
 - `booking_default` 是 Booking 平台使用费与用户返点的受管规则族；旧通用费用规则接口不得修改或暂停该规则族。
 - 修改全局平台使用费金额时，必须关闭当前有效版本并完整复制规则、阶梯和时段到下一版本，旧版本不得覆写。Booking 平台使用费在完单 capture 时按订单 `acceptedAt` 选择有效版本，不按 `completedAt` 追溯新价格。
 - 店铺未持久化 `ShopPlatformFeePolicy` 时，有效缺省值固定为：收费开启、承担者为店铺、策略版本 0。运营只能修改店铺是否收费；当前店铺或商户集团身份只能修改其有权管理店铺的承担者。
-- 店铺策略已通过正式 API、RBAC、乐观锁和事务内审计持久化，但 **Booking/Ledger 尚未消费店铺策略**。在消费链路完成前，不得给真实测试店铺批量写入“关闭平台费”覆盖行。
-- 下一微步骤必须在订单接单事务中保存费用金额、收费开关和承担者快照，并补齐：不收费时零冻结/零扣费、技师钱包承担、负余额与补款、7 天用户返点状态。完成这些后，才可继续实现暂停接单、普通用户单一 PENDING 替换、真实测试店铺策略 apply 和前端页面验收。
+- Booking/Ledger 已在订单确认事务中消费店铺策略，并保存费用金额、收费开关、全局/店铺版本、承担者和实际钱包快照。关闭收费时零冻结、零扣费且用户返点为 `DISABLED`；技师承担使用其用户全局钱包，换店不改变既有负债。
+- 余额不足第一次确认返回结构化 409 且零写入；只有携带匹配预览与唯一确认键的人工二次确认才允许完整冻结并形成负余额。取消按原钱包返还；完单按快照结算。只有审核通过的充值按接单时间 FIFO 抵扣欠费，并在 7×24 小时内一次性补发 100 NDP；到期 worker 只把仍为 `PENDING` 的返点改为 `EXPIRED`，之后补交不再补发。
 - 已应用迁移：`20260828233000_platform_fee_policy_foundation`。本地正式库对账结果为：当前 `booking_default` 1 行、平台费 500 NDP、用户返点 100 NDP、店铺策略覆盖 0 行；迁移前后钱包、余额、冻结、hold、账本、订单及订单财务计数保持一致。
+- 已应用迁移：`20260829010000_booking_platform_fee_debt_reward`。应用前后均为：钱包 107、可用余额合计 507,000 NDP、冻结余额 0、WalletHold 0、账本交易 103、账本明细 103、Booking 20,472、OrderFinancial 1,399；原平台费 hold 合计 500、实际平台费 699,500、用户返点 27,700，均未变化。新增缺口、欠费和返点资格合计均为 0，迁移后状态为 up to date。
+- `check:booking-platform-fee-debt-flow` 在真实本地 MySQL 中创建并清理 5 个标记用户、6 个店铺和 6 个预约，已通过关闭收费、店铺/技师承担、首请求整体回滚、人工负余额、取消返还、即时返点、审核充值后延迟返点、过期不补发和幂等重放，并要求清理后全库聚合基线完全一致。
+- 既有正式数据复核通过：三个月数据为 210 个账号、10 店、100 技师、100 用户、1,957 个历史预约；未来六个月为 41,193 个时段和 18,513 个预约，技师重叠、用户重叠、重复订单号、无效关系与未来终态订单均为 0。
+- 尚未在本微步骤执行：集团/店铺暂停接单、普通用户单一 `PENDING` 替换、72 名多订单用户 `black` 资格 dry-run/apply、真实测试店铺批量 `feeEnabled=false`、运营/商户/技师/用户端页面和浏览器验收。
+
+本地迁移与验收命令：
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run prisma:status
+ENV_FILE=.env.dev npm --prefix backend run prisma:migrate:deploy
+ENV_FILE=.env.dev npm --prefix backend run check:booking-platform-fee-debt-flow
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:simulation-data
+ENV_FILE=.env.dev ALLOW_SIMULATION_SEED=true npm --prefix backend run check:future-operations
+```
 
 ---
 

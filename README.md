@@ -230,6 +230,20 @@ ENV_FILE=.env.dev npm --prefix backend run check:wallet-adjustment-flow
 
 The check refuses production flags and remote database hosts, covers idempotent create/review, approved top-up and withdrawal, insufficient-balance rollback, rejection without mutation, ledger entries and reconciliation, then removes its uniquely named records.
 
+## Formal Booking Platform Fee Debt and Reward
+
+Booking confirmation now resolves the persisted shop policy and snapshots the fee switch, 500 NDP amount, policy/global versions, payer identity, and exact payer wallet inside the confirmation transaction. A disabled shop policy creates no hold or wallet/ledger movement and also disables the 100 NDP customer reward. A shop payer uses its shop wallet; a technician payer uses that technician user's global wallet, so later shop changes do not move the debt.
+
+When the payer wallet is short, the first confirmation returns a structured conflict without partial writes. A second request must include the matching preview plus a unique explicit-confirmation key; only then may the complete 500 NDP hold make the payer's available balance negative. Cancellation returns the original hold. Completion consumes the stored snapshot, records the outstanding shortfall, and either grants the 100 NDP reward immediately or keeps it pending for exactly seven days. Only an approved top-up allocates debt FIFO. Settlement before the deadline grants the reward once; the bounded background worker marks overdue pending rewards expired, and a later top-up settles debt without restoring the reward.
+
+Migration `20260829010000_booking_platform_fee_debt_reward` is additive and has been applied to the formal local `needo_dev` database. Verify the real service/repository flow with a local non-production database:
+
+```bash
+ENV_FILE=.env.dev npm --prefix backend run check:booking-platform-fee-debt-flow
+```
+
+The checker rejects production flags, remote MySQL hosts, and production-looking database names. It creates uniquely marked real users, customer/technician profiles, shops, services, schedule slots, bookings, wallets, holds, ledger entries, adjustments, and audits; exercises disabled/shop/technician payer, rollback, explicit overdraft, cancellation, immediate/delayed/expired reward, and replay behavior; then proves exact pre/post aggregate equality after marker-only cleanup.
+
 ## Formal Customer Reservations
 
 Numeric checkout routes load the formal service detail and current bookable schedule inventory, then create the reservation through the authenticated Booking API. A successful submission navigates directly to the persisted numeric order without copying it into browser storage. The customer reservation list reads only the paginated Booking API. Numeric reservation detail routes load the formal order, payment state, and complete status history from the backend, and customer cancellation is submitted through the protected order-status endpoint. Browser-local order creation, hiding, deletion, review mutation, and mock-order merging are not used in this formal lane. Legacy nonnumeric demo links remain isolated compatibility.

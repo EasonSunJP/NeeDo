@@ -69,7 +69,10 @@ const createFixture = async () => {
     createTransaction: jest.fn(async (input: Record<string, unknown>) => ({ id: 51, transactionNo: "LT202608250051", status: "applied", currency: "NDP", metadata: null, createdAt: now, updatedAt: now, entries: [], ...input })),
     createLedgerEntry: jest.fn(async (input: Record<string, unknown>) => ({ id: 61, createdAt: now, ...input })),
     createFinanceReconciliation: jest.fn(async () => undefined),
-    createAuditLog: jest.fn(async () => undefined)
+    createAuditLog: jest.fn(async () => undefined),
+    listOutstandingPlatformFeeDebtIds: jest.fn(async () => []),
+    lockPlatformFeeDebt: jest.fn(async () => null),
+    updatePlatformFeeDebt: jest.fn(async () => true)
   });
   const app = createApp(undefined, {
     redisHealthCheck: async () => ({ status: "ok", latencyMs: 1 }),
