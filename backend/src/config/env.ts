@@ -129,6 +129,8 @@ const envSchema = z
       .string()
       .min(1)
       .default("runtime/identity-applications"),
+    IM_MEDIA_STORAGE_DIR: z.string().min(1).default("runtime/im-media"),
+    IM_MEDIA_PUBLIC_BASE_URL: optionalUrlSchema,
     IDENTITY_APPLICATION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
     AFFILIATE_TASK_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
     AFFILIATE_TASK_EXPIRY_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(100),
@@ -308,6 +310,17 @@ const envSchema = z
         "CUSTOMER_AVATAR_PUBLIC_BASE_URL",
         "CUSTOMER_AVATAR_PUBLIC_BASE_URL must use a production HTTPS origin"
       );
+    }
+
+    if (value.IM_MEDIA_PUBLIC_BASE_URL) {
+      const imMediaPublicBaseUrl = new URL(value.IM_MEDIA_PUBLIC_BASE_URL);
+      if (imMediaPublicBaseUrl.protocol !== "https:") {
+        addProductionIssue(
+          context,
+          "IM_MEDIA_PUBLIC_BASE_URL",
+          "IM_MEDIA_PUBLIC_BASE_URL must use a production HTTPS origin"
+        );
+      }
     }
 
     const databaseUrl = new URL(value.DATABASE_URL);

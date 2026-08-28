@@ -96,6 +96,7 @@ import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
+import { createImMediaRoutes } from "./routes/im-media.routes";
 import { createIdentityActivationRoutes } from "./routes/identity-activation.routes";
 import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
 import { createOperationsMerchantApplicationRoutes } from "./routes/operations-merchant-application.routes";
@@ -120,6 +121,8 @@ import {
   type RealtimeEventGatewayPort
 } from "./services/realtime-event.gateway";
 import { RealtimeService } from "./services/realtime.service";
+import type { ImMediaStoragePort } from "./services/im-media.storage";
+import type { ImMediaService } from "./services/im-media.service";
 import {
   ObservabilityMetricsService,
   type ObservabilityMetricsPort
@@ -190,6 +193,8 @@ export interface AppDependencies {
   realtimeRepository?: RealtimeRepositoryPort;
   realtimeEventGateway?: RealtimeEventGatewayPort;
   realtimeService?: RealtimeService;
+  imMediaStorage?: ImMediaStoragePort;
+  imMediaService?: ImMediaService;
 }
 
 const createDefaultAppDependencies = (): AppDependencies => ({
@@ -260,6 +265,7 @@ export const createApp = (
   apiRouter.use(createBookingRoutes(config, resolvedDependencies));
   apiRouter.use(createBackofficeRoutes(config, resolvedDependencies));
   apiRouter.use(createMerchantSaasBillingRoutes(config, resolvedDependencies));
+  apiRouter.use(createImMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createRealtimeRoutes(config, resolvedDependencies));
   apiRouter.use(createTechnicianShopAffiliationRoutes(config, resolvedDependencies));
   if (config.OPENAPI_ENABLED) {
@@ -271,6 +277,7 @@ export const createApp = (
     "/media/customer-avatars",
     createCustomerAvatarStaticMiddleware(config.CUSTOMER_AVATAR_STORAGE_DIR)
   );
+  app.use("/media/im", createImMediaStaticMiddleware(config.IM_MEDIA_STORAGE_DIR));
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);
 
@@ -299,6 +306,32 @@ const createCustomerAvatarStaticMiddleware = (directory: string) => {
       return;
     }
 
+    staticMiddleware(request, response, next);
+  };
+};
+
+const imMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+
+const createImMediaStaticMiddleware = (directory: string) => {
+  const staticMiddleware = express.static(directory, {
+    index: false,
+    redirect: false,
+    setHeaders: (response) => {
+      response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      response.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      response.setHeader("X-Content-Type-Options", "nosniff");
+    }
+  });
+
+  return (
+    request: express.Request,
+    response: express.Response,
+    next: express.NextFunction
+  ): void => {
+    if (!imMediaFilenamePattern.test(request.path)) {
+      next();
+      return;
+    }
     staticMiddleware(request, response, next);
   };
 };

@@ -276,6 +276,12 @@ describe("translations", () => {
     expect(translateText("消息免打扰", "ja")).toBe("通知をミュートする");
     expect(translateText("置顶聊天", "ja")).toBe("一番上に表示する");
     expect(translateText("查找聊天内容", "ja")).toBe("トークを検索");
+    expect(translateText("解除黑名单", "ja")).toBe("ブラックリストを解除");
+    expect(translateText("对方将你拉黑，信息发送失败", "en")).toBe("The recipient blocked you. Message failed to send.");
+    expect(translateText("图片发送失败，请重试", "ko")).toBe("이미지 전송에 실패했습니다. 다시 시도해 주세요.");
+    expect(translateText("正在搜索账号…", "zh-Hant")).toBe("正在搜尋帳號…");
+    expect(translateText("搜索失败，请稍后重试", "ja")).toContain("検索に失敗");
+    expect(translateText("请输入昵称或 NeeDoID 搜索", "en")).toBe("Search by nickname or NeeDoID");
     expect(translateText("退出群聊", "ja")).toBe("グループ解散／退会");
     expect(translateText("完全隐私模式", "ja")).toBe("完全プライベートモード");
     expect(translateText("隐私模式设置已保存", "ja")).toBe("プライベートモード設定を保存しました");

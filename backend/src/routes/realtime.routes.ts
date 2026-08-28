@@ -10,11 +10,13 @@ import { SseRealtimeEventGateway } from "../services/realtime-event.gateway";
 import { RealtimeService } from "../services/realtime.service";
 import {
   contactIdParamSchema,
+  contactCreateBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
   conversationListQuerySchema,
   conversationPreferencesBodySchema,
+  directorySearchQuerySchema,
   followCreateBodySchema,
   followTargetParamSchema,
   friendRequestCreateBodySchema,
@@ -47,6 +49,8 @@ export const REALTIME_ROUTE_PERMISSIONS = {
   updateConversationPreferences: "conversation:list",
   hideConversation: "conversation:list",
   listContacts: "contact:list",
+  searchDirectory: "contact:list",
+  addContact: "contact:list",
   blockContact: "contact:block",
   listFriendRequests: "friend-request:list",
   createFriendRequest: "friend-request:create",
@@ -153,6 +157,20 @@ export const createRealtimeRoutes = (config: AppConfig, dependencies: AppDepende
     authorize(REALTIME_ROUTE_PERMISSIONS.hideConversation),
     validateRequest({ params: conversationIdParamSchema }),
     controller.hideConversation
+  );
+  router.get(
+    "/im/directory",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.searchDirectory),
+    validateRequest({ query: directorySearchQuerySchema }),
+    controller.searchDirectory
+  );
+  router.post(
+    "/im/contacts",
+    authenticate(),
+    authorize(REALTIME_ROUTE_PERMISSIONS.addContact),
+    validateRequest({ body: contactCreateBodySchema }),
+    controller.addContact
   );
   router.get(
     "/im/contacts",

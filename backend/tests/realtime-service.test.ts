@@ -1,5 +1,53 @@
 import { RealtimeService } from "../src/services/realtime.service";
 
+describe("RealtimeService fuzzy search", () => {
+  it("keeps add-friend discovery scoped to the authenticated user", async () => {
+    const directoryResult = { list: [], total: 0, page: 1, page_size: 50 };
+    const repository = {
+      searchDirectory: jest.fn(async () => directoryResult)
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(
+      service.searchDirectory(
+        { userId: 41 } as never,
+        { query: "u0000000167", page: 1, pageSize: 50 }
+      )
+    ).resolves.toBe(directoryResult);
+    expect(repository.searchDirectory).toHaveBeenCalledWith(41, {
+      query: "u0000000167",
+      page: 1,
+      pageSize: 50
+    });
+  });
+
+  it("creates a manual contact for another active user and publishes the update", async () => {
+    const contact = { id: 31, ownerUserId: 41, contactUserId: 167 };
+    const repository = {
+      findActiveUserIds: jest.fn(async () => [167]),
+      addContact: jest.fn(async () => contact)
+    };
+    const eventGateway = { publish: jest.fn(), subscribe: jest.fn() };
+    const service = new RealtimeService(repository as never, eventGateway);
+
+    await expect(service.addContact({ userId: 41 } as never, 167)).resolves.toBe(contact);
+
+    expect(repository.addContact).toHaveBeenCalledWith({
+      contactUserId: 167,
+      ownerUserId: 41,
+      source: "manual"
+    });
+    expect(eventGateway.publish).toHaveBeenCalledWith(expect.objectContaining({
+      payload: contact,
+      recipientUserId: 41,
+      type: "contact.updated"
+    }));
+  });
+});
+
 describe("RealtimeService social events", () => {
   it("publishes a created post to the author and current followers", async () => {
     const post = {
@@ -157,5 +205,29 @@ describe("RealtimeService standard message recall", () => {
       message: "error.realtime.message_not_found",
       statusCode: 404
     });
+  });
+});
+
+describe("RealtimeService blocked-recipient delivery guard", () => {
+  it("rejects before persistence when the direct-chat recipient has blocked the sender", async () => {
+    const repository = {
+      isMessageSenderBlocked: jest.fn(async () => true),
+      createMessage: jest.fn()
+    };
+    const service = new RealtimeService(repository as never, {
+      publish: jest.fn(),
+      subscribe: jest.fn()
+    });
+
+    await expect(
+      service.createMessage(
+        { userId: 41 } as never,
+        { conversationId: 91, type: "text", content: "hello" }
+      )
+    ).rejects.toMatchObject({
+      message: "error.im.recipient_blocked",
+      statusCode: 403
+    });
+    expect(repository.createMessage).not.toHaveBeenCalled();
   });
 });

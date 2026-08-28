@@ -4,11 +4,13 @@ import { successResponse } from "../utils/api-response";
 import { getAuthenticatedAccess } from "../utils/request-context";
 import {
   contactIdParamSchema,
+  contactCreateBodySchema,
   contactListQuerySchema,
   conversationCreateBodySchema,
   conversationIdParamSchema,
   conversationListQuerySchema,
   conversationPreferencesBodySchema,
+  directorySearchQuerySchema,
   followCreateBodySchema,
   followTargetParamSchema,
   friendRequestCreateBodySchema,
@@ -143,6 +145,21 @@ export class RealtimeController {
       getAuthenticatedAccess(response),
       contactListQuerySchema.parse(request.query)
     )
+  );
+
+  public searchDirectory = this.createHandler((request, response) =>
+    this.service.searchDirectory(
+      getAuthenticatedAccess(response),
+      directorySearchQuerySchema.parse(request.query)
+    )
+  );
+
+  public addContact = this.createHandler(
+    (request, response) => {
+      const body = contactCreateBodySchema.parse(request.body);
+      return this.service.addContact(getAuthenticatedAccess(response), body.targetUserId);
+    },
+    201
   );
 
   public blockContact = this.createHandler((request, response) => {
