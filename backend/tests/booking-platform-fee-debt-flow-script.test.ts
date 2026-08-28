@@ -58,4 +58,14 @@ describe("booking platform fee debt real-database checker", () => {
     expect(source).toContain("reviewWalletAdjustmentRequest(");
     expect(source).toContain("new BookingUserRewardExpiryService(");
   });
+
+  it("uses the canonical platform fee confirmation error code", () => {
+    const source = readFileSync(scriptPath, "utf8");
+
+    expect(source).toContain('import { ERROR_CODES } from "../src/constants/error-codes";');
+    expect(source).toContain(
+      "warning.code === ERROR_CODES.PLATFORM_FEE_INSUFFICIENT_CONFIRMATION_REQUIRED"
+    );
+    expect(source).not.toContain("warning.code === 40935");
+  });
 });
