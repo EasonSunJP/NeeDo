@@ -5492,6 +5492,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       get: {
         tags: ["Booking"],
         summary: "Paginated available schedule slots",
+        description: "Provide serviceId or technicianServiceId, but not both. technicianId can be used without a service filter, or can further narrow a service query. The from/to window must not exceed 93 days. Results are limited to published, unsuspended shops and available slots with remaining capacity.",
         parameters: [
           {
             name: "serviceId",
@@ -5613,6 +5614,18 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "pageSize", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          {
+            name: "from",
+            in: "query",
+            description: "Inclusive ISO 8601 booking start timestamp; requires to",
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            description: "Exclusive ISO 8601 booking start timestamp; requires from; maximum window is 93 days",
+            schema: { type: "string", format: "date-time" }
+          },
           {
             name: "status",
             in: "query",

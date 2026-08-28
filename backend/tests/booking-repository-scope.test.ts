@@ -1,6 +1,44 @@
 import { BookingRepository } from "../src/repositories/booking.repository";
 
 describe("BookingRepository order list scope", () => {
+  it("keeps public availability safety predicates on technician-only queries", async () => {
+    const capacityField = Symbol("capacity");
+    const scheduleSlot = {
+      fields: { capacity: capacityField },
+      findMany: jest.fn(async () => []),
+      count: jest.fn(async () => 0)
+    };
+    const repository = new BookingRepository({ scheduleSlot } as never);
+
+    await repository.listAvailableSlots({
+      technicianId: 17,
+      from: new Date("2026-08-31T15:00:00.000Z"),
+      to: new Date("2026-10-01T15:00:00.000Z"),
+      page: 1,
+      pageSize: 100
+    });
+
+    const expectedWhere = expect.objectContaining({
+      deletedAt: null,
+      status: "AVAILABLE",
+      bookedCount: { lt: capacityField },
+      technicianProfileId: 17,
+      startsAt: { gte: new Date("2026-08-31T15:00:00.000Z") },
+      endsAt: { lte: new Date("2026-10-01T15:00:00.000Z") },
+      shop: {
+        deletedAt: null,
+        status: "published",
+        entitySuspensions: {
+          none: { activeKey: { not: null }, status: "active", deletedAt: null }
+        }
+      }
+    });
+    expect(scheduleSlot.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expectedWhere
+    }));
+    expect(scheduleSlot.count).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
   it("rejects a partial affiliate hook pair before opening the booking transaction", async () => {
     const client = { $transaction: jest.fn().mockResolvedValue(null) };
     const repository = new BookingRepository(client as never);
@@ -32,6 +70,8 @@ describe("BookingRepository order list scope", () => {
       customerUserId: 7,
       shopId: 11,
       technicianProfileId: 17,
+      from: new Date("2026-09-01T00:00:00.000Z"),
+      to: new Date("2026-12-01T00:00:00.000Z"),
       page: 1,
       pageSize: 20
     });
@@ -41,7 +81,11 @@ describe("BookingRepository order list scope", () => {
         deletedAt: null,
         customerUserId: 7,
         shopId: 11,
-        technicianProfileId: 17
+        technicianProfileId: 17,
+        startsAt: {
+          gte: new Date("2026-09-01T00:00:00.000Z"),
+          lt: new Date("2026-12-01T00:00:00.000Z")
+        }
       }
     }));
     expect(bookingOrder.count).toHaveBeenCalledWith({
@@ -49,7 +93,11 @@ describe("BookingRepository order list scope", () => {
         deletedAt: null,
         customerUserId: 7,
         shopId: 11,
-        technicianProfileId: 17
+        technicianProfileId: 17,
+        startsAt: {
+          gte: new Date("2026-09-01T00:00:00.000Z"),
+          lt: new Date("2026-12-01T00:00:00.000Z")
+        }
       }
     });
   });

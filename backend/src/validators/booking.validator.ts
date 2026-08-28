@@ -21,9 +21,28 @@ export const availabilityListQuerySchema = z
     from: isoDateSchema,
     to: isoDateSchema
   })
-  .refine((value) => Boolean(value.serviceId) !== Boolean(value.technicianServiceId), {
-    message: "Exactly one of serviceId or technicianServiceId is required",
-    path: ["serviceId"]
+  .superRefine((value, context) => {
+    if (value.serviceId && value.technicianServiceId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "serviceId and technicianServiceId are mutually exclusive",
+        path: ["serviceId"]
+      });
+    }
+    if (!value.serviceId && !value.technicianServiceId && !value.technicianId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "serviceId, technicianServiceId, or technicianId is required",
+        path: ["technicianId"]
+      });
+    }
+    if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "date range must not exceed 93 days",
+        path: ["to"]
+      });
+    }
   })
   .refine((value) => value.from.getTime() < value.to.getTime(), {
     message: "from must be earlier than to",
@@ -55,7 +74,33 @@ export const orderIdParamSchema = z.object({
 export const orderListQuerySchema = z.object({
   ...paginationQuerySchema,
   customerUserId: z.coerce.number().int().positive().optional(),
-  status: z.enum(["pending", "confirmed", "inService", "completed", "cancelled"]).optional()
+  status: z.enum(["pending", "confirmed", "inService", "completed", "cancelled"]).optional(),
+  from: isoDateSchema.optional(),
+  to: isoDateSchema.optional()
+}).superRefine((value, context) => {
+  if (Boolean(value.from) !== Boolean(value.to)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "from and to must be provided together",
+      path: [value.from ? "to" : "from"]
+    });
+    return;
+  }
+  if (!value.from || !value.to) return;
+  if (value.from.getTime() >= value.to.getTime()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "from must be earlier than to",
+      path: ["to"]
+    });
+  }
+  if (value.to.getTime() - value.from.getTime() > 93 * 24 * 60 * 60 * 1000) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "date range must not exceed 93 days",
+      path: ["to"]
+    });
+  }
 });
 
 export const orderCancelBodySchema = z.object({

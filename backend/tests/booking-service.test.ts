@@ -308,15 +308,21 @@ describe("BookingService state machine", () => {
   it("forces customer order lists to the authenticated user scope", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);
+    const from = new Date("2026-09-01T00:00:00.000Z");
+    const to = new Date("2026-12-01T00:00:00.000Z");
 
     await service.listOrders(actor, {
       customerUserId: 999,
+      from,
+      to,
       page: 1,
       pageSize: 20
     });
 
     expect(repository.listOrders).toHaveBeenCalledWith({
       customerUserId: actor.userId,
+      from,
+      to,
       page: 1,
       pageSize: 20
     });

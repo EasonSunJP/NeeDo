@@ -95,6 +95,8 @@ export interface OrderListInput extends PaginationInput {
   shopId?: number;
   technicianProfileId?: number;
   status?: BookingOrderStatusPayload;
+  from?: Date;
+  to?: Date;
 }
 
 export type ScheduleScope =
@@ -718,7 +720,8 @@ export class BookingRepository implements BookingRepositoryPort {
       ...(input.customerUserId ? { customerUserId: input.customerUserId } : {}),
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(input.technicianProfileId ? { technicianProfileId: input.technicianProfileId } : {}),
-      ...(input.status ? { status: this.statusToDb(input.status) } : {})
+      ...(input.status ? { status: this.statusToDb(input.status) } : {}),
+      ...(input.from && input.to ? { startsAt: { gte: input.from, lt: input.to } } : {})
     };
     const [list, total] = await Promise.all([
       this.client.bookingOrder.findMany({

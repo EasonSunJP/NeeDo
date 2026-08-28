@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import userScheduleSource from "../pages/user/UserSchedulePage.tsx?raw";
+import userTechnicianScheduleSource from "../pages/user/UserTechnicianScheduleDetailPage.tsx?raw";
 
 const sourceRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -15,6 +17,16 @@ function listProductionSources(directory: string): string[] {
 }
 
 describe("legacy mock retirement", () => {
+  it("keeps formal user schedule pages free of browser business stores", () => {
+    for (const source of [userScheduleSource, userTechnicianScheduleSource]) {
+      expect(source).not.toMatch(
+        /entityStore|scheduleStore|technicianScheduleStore|shiftPlanningStore|dispatch-center\/store/
+      );
+      expect(source).not.toMatch(/customers\[0\]|technicians\[0\]|localStorage/);
+    }
+    expect(userScheduleSource).toContain("formalOnly");
+  });
+
   it("has no production import of the old mock dataset", () => {
     const offenders = listProductionSources(sourceRoot).filter((path) =>
       /(?:data\/mock|\.\/mock)["']/u.test(readFileSync(path, "utf8"))
