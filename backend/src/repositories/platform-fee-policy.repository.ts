@@ -53,6 +53,10 @@ type PolicyClient = PrismaClient | Prisma.TransactionClient;
 export class PlatformFeePolicyRepository implements PlatformFeePolicyRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
 
+  public withTransactionClient(transactionClient: unknown): PlatformFeePolicyRepositoryPort {
+    return new PlatformFeePolicyRepository(transactionClient as PrismaClient);
+  }
+
   public async findGlobalBookingFee(at: Date): Promise<GlobalBookingPlatformFeePayload | null> {
     const current = await this.client.platformFeeRuleSet.findFirst({
       where: this.activeGlobalFamilyWhere(at),

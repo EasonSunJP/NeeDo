@@ -129,6 +129,19 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return this.mapWallet(wallet);
   }
 
+  public async findTechnicianUserId(technicianProfileId: number): Promise<number | null> {
+    const technician = await this.client.technicianProfile.findFirst({
+      where: {
+        id: technicianProfileId,
+        deletedAt: null,
+        user: { deletedAt: null }
+      },
+      select: { userId: true }
+    });
+
+    return technician?.userId ?? null;
+  }
+
   public async applyWalletDelta(input: {
     walletId: number;
     availableDelta: number;

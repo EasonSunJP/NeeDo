@@ -28,6 +28,17 @@ export interface ShopPlatformFeePolicyPayload {
   updatedAt: string | null;
 }
 
+export interface BookingPlatformFeePolicySnapshot {
+  shopId: number;
+  feeEnabled: boolean;
+  payerType: ShopPlatformFeePayer;
+  policyVersion: number;
+  policySource: PlatformFeePolicySource;
+  globalAmountNdp: number;
+  globalVersion: number;
+  globalSource: PlatformFeePolicySource;
+}
+
 export interface ShopPolicyIdentity {
   shopId: number;
   shopPublicId: string | null;
@@ -75,6 +86,7 @@ export interface ShopPayerMutationInput extends PolicyMutationBase {
 }
 
 export interface PlatformFeePolicyRepositoryPort {
+  withTransactionClient?: (transactionClient: unknown) => PlatformFeePolicyRepositoryPort;
   findGlobalBookingFee: (at: Date) => Promise<GlobalBookingPlatformFeePayload | null>;
   findShopPolicy: (shopId: number) => Promise<ShopPolicyRecord | null>;
   findShopById: (shopId: number) => Promise<ShopPolicyIdentity | null>;
@@ -107,6 +119,37 @@ export class PlatformFeePolicyService {
 
   public async getGlobalPolicy(at = new Date()): Promise<GlobalBookingPlatformFeePayload> {
     return (await this.repository.findGlobalBookingFee(at)) ?? this.defaultGlobalPolicy();
+  }
+
+  public async resolveForBookingSettlement(
+    shopId: number,
+    acceptedAt: Date,
+    transactionClient?: unknown
+  ): Promise<BookingPlatformFeePolicySnapshot> {
+    const repository =
+      transactionClient && this.repository.withTransactionClient
+        ? this.repository.withTransactionClient(transactionClient)
+        : this.repository;
+    const [shop, policy, storedGlobal] = await Promise.all([
+      repository.findShopById(shopId),
+      repository.findShopPolicy(shopId),
+      repository.findGlobalBookingFee(acceptedAt)
+    ]);
+    if (!shop) {
+      throw this.shopNotFoundError();
+    }
+    const global = storedGlobal ?? this.defaultGlobalPolicy();
+
+    return {
+      shopId,
+      feeEnabled: policy?.feeEnabled ?? true,
+      payerType: policy?.payerType ?? "shop",
+      policyVersion: policy?.version ?? 0,
+      policySource: policy ? "persisted" : "default",
+      globalAmountNdp: global.amountNdp,
+      globalVersion: global.version,
+      globalSource: global.source
+    };
   }
 
   public async getShopPolicy(

@@ -132,6 +132,21 @@ const currentRuleSet = {
 };
 
 describe("PlatformFeePolicyRepository", () => {
+  it("rebinds settlement reads to an existing booking transaction", async () => {
+    const transactionClient = {
+      platformFeeRuleSet: { findFirst: jest.fn() },
+      shopPlatformFeePolicy: { findFirst: jest.fn() },
+      shop: { findFirst: jest.fn() }
+    };
+    const repository = new PlatformFeePolicyRepository({} as PrismaClient);
+
+    const rebound = repository.withTransactionClient(transactionClient);
+
+    expect(rebound).toBeInstanceOf(PlatformFeePolicyRepository);
+    await rebound.findGlobalBookingFee(changedAt);
+    expect(transactionClient.platformFeeRuleSet.findFirst).toHaveBeenCalled();
+  });
+
   it("reads the active effective-dated canonical Booking fee", async () => {
     const findFirst = jest.fn().mockResolvedValue(currentRuleSet);
     const client = { platformFeeRuleSet: { findFirst } } as unknown as PrismaClient;

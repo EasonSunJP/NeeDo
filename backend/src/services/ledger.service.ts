@@ -243,6 +243,7 @@ export interface LedgerRepositoryPort {
     ownerId: number;
     currency: LedgerCurrency;
   }) => Promise<WalletPayload>;
+  findTechnicianUserId?: (technicianProfileId: number) => Promise<number | null>;
   applyWalletDelta: (input: {
     walletId: number;
     availableDelta: number;

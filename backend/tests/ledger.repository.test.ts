@@ -3,6 +3,23 @@ import { LedgerRepository } from "../src/repositories/ledger.repository";
 import { LedgerService } from "../src/services/ledger.service";
 
 describe("LedgerRepository wallet creation", () => {
+  it("resolves a technician profile to its global active user wallet owner", async () => {
+    const findFirst = jest.fn().mockResolvedValue({ userId: 501 });
+    const repository = new LedgerRepository({
+      technicianProfile: { findFirst }
+    } as never);
+
+    await expect(repository.findTechnicianUserId(9)).resolves.toBe(501);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 9,
+        deletedAt: null,
+        user: { deletedAt: null }
+      },
+      select: { userId: true }
+    });
+  });
+
   it("uses an atomic idempotent insert for concurrent wallet creation", async () => {
     const wallet = {
       id: 91,

@@ -75,6 +75,60 @@ const createService = (repository: jest.Mocked<PlatformFeePolicyRepositoryPort>)
   });
 
 describe("PlatformFeePolicyService", () => {
+  it("resolves an effective settlement snapshot from the supplied transaction", async () => {
+    const transactionClient = { transaction: "booking-confirm" };
+    const repository = createRepository();
+    const transactionRepository = createRepository();
+    transactionRepository.findGlobalBookingFee.mockResolvedValue({
+      amountNdp: 500,
+      version: 2,
+      effectiveFrom: "2026-08-29T00:00:00.000Z",
+      source: "persisted"
+    });
+    transactionRepository.findShopPolicy.mockResolvedValue({
+      ...shop,
+      feeEnabled: false,
+      payerType: "technician",
+      version: 4,
+      updatedAt: new Date("2026-08-29T00:30:00.000Z")
+    });
+    repository.withTransactionClient = jest.fn(() => transactionRepository);
+    const service = createService(repository);
+    const acceptedAt = new Date("2026-08-29T01:00:00.000Z");
+
+    await expect(
+      service.resolveForBookingSettlement(11, acceptedAt, transactionClient)
+    ).resolves.toEqual({
+      shopId: 11,
+      feeEnabled: false,
+      payerType: "technician",
+      policyVersion: 4,
+      policySource: "persisted",
+      globalAmountNdp: 500,
+      globalVersion: 2,
+      globalSource: "persisted"
+    });
+    expect(repository.withTransactionClient).toHaveBeenCalledWith(transactionClient);
+    expect(transactionRepository.findGlobalBookingFee).toHaveBeenCalledWith(acceptedAt);
+    expect(transactionRepository.findShopPolicy).toHaveBeenCalledWith(11);
+  });
+
+  it("uses enabled shop-payer defaults for a real shop without an override", async () => {
+    const repository = createRepository();
+    const service = createService(repository);
+
+    await expect(service.resolveForBookingSettlement(11, new Date())).resolves.toEqual({
+      shopId: 11,
+      feeEnabled: true,
+      payerType: "shop",
+      policyVersion: 0,
+      policySource: "default",
+      globalAmountNdp: 500,
+      globalVersion: 0,
+      globalSource: "default"
+    });
+  });
+
   it("returns safe defaults when no shop policy or global family exists", async () => {
     const repository = createRepository();
     const service = createService(repository);
