@@ -265,6 +265,62 @@ const customerProfileErrorResponses = {
   "500": { description: "Unexpected customer profile persistence error" }
 };
 
+const contentAnnouncementErrorResponses = {
+  "400": {
+    description:
+      "error.content.locale_invalid — invalid locale, UUID, positive release ID, pagination, or strict request body"
+  },
+  "401": { description: "error.auth.token_invalid — missing or invalid access token" },
+  "403": { description: "error.forbidden — missing exact content publication permission" },
+  "404": {
+    description:
+      "error.content.not_found or error.content.release_not_found — announcement or release is unavailable"
+  },
+  "409": {
+    description:
+      "error.content.draft_exists, error.content.lock_conflict, error.content.incomplete_translations, error.content.schedule_conflict, error.content.target_unavailable, error.content.invalid_state_transition, or error.idempotency_key_reused"
+  }
+};
+
+const announcementPublicIdParameter = {
+  name: "publicId",
+  in: "path",
+  required: true,
+  schema: { type: "string", format: "uuid" }
+};
+
+const announcementReleaseIdParameter = {
+  name: "releaseId",
+  in: "path",
+  required: true,
+  schema: { type: "integer", minimum: 1 }
+};
+
+const contentHistoryParameters = [
+  { name: "page", in: "query", schema: { type: "integer", minimum: 1, default: 1 } },
+  {
+    name: "pageSize",
+    in: "query",
+    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 }
+  }
+];
+
+const announcementOperation = (
+  summary: string,
+  permission: string,
+  extras: Record<string, unknown> = {}
+) => ({
+  tags: ["Affiliate Content Publication"],
+  summary,
+  security: [{ bearerAuth: [] }],
+  "x-permission": permission,
+  ...extras,
+  responses: {
+    ...contentAnnouncementErrorResponses,
+    ...((extras.responses as Record<string, unknown> | undefined) ?? {})
+  }
+});
+
 const merchantEmployeeNeedoIdParameter = {
   name: "needoId",
   in: "path",
@@ -3801,6 +3857,196 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             description:
               "Required for ended relationships and null for active, on_leave, or suspended relationships"
           }
+        }
+      },
+      OfficialAnnouncementTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "body"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 }
+        }
+      },
+      OfficialAnnouncementDraftCreate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "sourceLocale", "translation"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          affiliateTaskId: { type: ["integer", "null"], minimum: 1, default: null },
+          visibleFrom: { type: ["string", "null"], format: "date-time", default: null },
+          visibleUntil: { type: ["string", "null"], format: "date-time", default: null },
+          translation: { $ref: "#/components/schemas/OfficialAnnouncementTranslation" }
+        }
+      },
+      OfficialAnnouncementLocaleUpdate: {
+        type: "object",
+        additionalProperties: false,
+        required: ["expectedLockVersion", "locale", "title", "summary", "body"],
+        properties: {
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 }
+        }
+      },
+      ContentPublishCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedLockVersion"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      ContentScheduleCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedLockVersion", "publishAt"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          publishAt: {
+            type: "string",
+            format: "date-time",
+            description: "Future UTC instant ending in Z"
+          },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      ContentDisableCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedLockVersion", "reason"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      ContentRollbackCommand: {
+        type: "object",
+        additionalProperties: false,
+        required: ["idempotencyKey", "expectedCurrentVersion", "reason"],
+        properties: {
+          idempotencyKey: { type: "string", format: "uuid" },
+          expectedCurrentVersion: { type: "integer", minimum: 1 },
+          reason: { type: "string", minLength: 1, maxLength: 500 }
+        }
+      },
+      OfficialAnnouncementProtectedPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "releaseId",
+          "version",
+          "status",
+          "lockVersion",
+          "announcementType",
+          "visibilityScope",
+          "affiliateTaskId",
+          "publishAt",
+          "visibleFrom",
+          "visibleUntil",
+          "activatedAt",
+          "disabledAt",
+          "archivedAt",
+          "sourceReleaseId",
+          "translations",
+          "createdAt",
+          "updatedAt"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          releaseId: { type: "integer", minimum: 1 },
+          version: { type: "integer", minimum: 1 },
+          status: {
+            type: "string",
+            enum: ["draft", "scheduled", "published", "disabled", "archived"]
+          },
+          lockVersion: { type: "integer", minimum: 1 },
+          announcementType: { type: "string", enum: ["affiliate_notice"] },
+          visibilityScope: { type: "string", enum: ["all_affiliates"] },
+          affiliateTaskId: { type: ["integer", "null"], minimum: 1 },
+          publishAt: { type: ["string", "null"], format: "date-time" },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" },
+          activatedAt: { type: ["string", "null"], format: "date-time" },
+          disabledAt: { type: ["string", "null"], format: "date-time" },
+          archivedAt: { type: ["string", "null"], format: "date-time" },
+          sourceReleaseId: { type: ["integer", "null"], minimum: 1 },
+          translations: {
+            type: "object",
+            additionalProperties: false,
+            required: ["zh-CN", "zh-TW", "en", "ja", "ko"],
+            properties: Object.fromEntries(
+              ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
+                locale,
+                { $ref: "#/components/schemas/OfficialAnnouncementTranslation" }
+              ])
+            )
+          },
+          taskAction: { $ref: "#/components/schemas/OfficialAnnouncementTaskAction" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" }
+        }
+      },
+      OfficialAnnouncementProtectedPage: {
+        type: "object",
+        additionalProperties: false,
+        required: ["list", "total", "page", "page_size"],
+        properties: {
+          list: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload" }
+          },
+          total: { type: "integer", minimum: 0 },
+          page: { type: "integer", minimum: 1 },
+          page_size: { type: "integer", minimum: 1, maximum: 100 }
+        }
+      },
+      OfficialAnnouncementTaskAction: {
+        type: ["object", "null"],
+        additionalProperties: false,
+        required: ["taskCode", "label", "claimable"],
+        properties: {
+          taskCode: { type: "string" },
+          label: { type: "string" },
+          claimable: { type: "boolean" }
+        }
+      },
+      OfficialAnnouncementPublicPayload: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "publicId",
+          "version",
+          "locale",
+          "title",
+          "summary",
+          "body",
+          "visibleFrom",
+          "visibleUntil",
+          "activatedAt",
+          "taskAction"
+        ],
+        properties: {
+          publicId: { type: "string", format: "uuid" },
+          version: { type: "integer", minimum: 1 },
+          locale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 },
+          visibleFrom: { type: ["string", "null"], format: "date-time" },
+          visibleUntil: { type: ["string", "null"], format: "date-time" },
+          activatedAt: { type: ["string", "null"], format: "date-time" },
+          taskAction: { $ref: "#/components/schemas/OfficialAnnouncementTaskAction" }
         }
       },
       AffiliateClaimPage: {
@@ -8696,6 +8942,216 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           ["expectedVersion", "contractVersion", "contentHash", "language", "hasRead", "hasAgreed"]
         )
       })
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements`]: {
+      get: announcementOperation(
+        "List localized Affiliate announcements",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: contentHistoryParameters,
+          responses: {
+            "200": jsonDataResponse("Paginated Affiliate announcements", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPage"
+            })
+          }
+        }
+      ),
+      post: announcementOperation(
+        "Create one localized Affiliate announcement draft",
+        "button:backoffice-affiliate-announcement-edit",
+        {
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OfficialAnnouncementDraftCreate" }
+              }
+            }
+          },
+          responses: {
+            "201": jsonDataResponse("Affiliate announcement draft created", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/history`]: {
+      get: announcementOperation(
+        "List immutable Affiliate announcement release history",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: [announcementPublicIdParameter, ...contentHistoryParameters],
+          responses: {
+            "200": jsonDataResponse("Paginated announcement history", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPage"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}`]: {
+      get: announcementOperation(
+        "Read one protected Affiliate announcement release",
+        "page:backoffice-affiliate-announcement",
+        {
+          parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+          responses: {
+            "200": jsonDataResponse("Protected announcement release", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+            })
+          }
+        }
+      ),
+      patch: announcementOperation(
+        "Edit exactly one locale of a draft release",
+        "button:backoffice-affiliate-announcement-edit",
+        {
+          parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OfficialAnnouncementLocaleUpdate" }
+              }
+            }
+          },
+          responses: {
+            "200": jsonDataResponse("Draft locale updated", {
+              $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+            })
+          }
+        }
+      )
+    },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/preview`]:
+      {
+        get: announcementOperation(
+          "Preview all five protected translations and redacted task action",
+          "page:backoffice-affiliate-announcement",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            responses: {
+              "200": jsonDataResponse("Protected announcement preview", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/publish`]:
+      {
+        post: announcementOperation(
+          "Publish a complete draft immediately",
+          "button:backoffice-affiliate-announcement-publish",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentPublishCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Announcement published", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/schedule`]:
+      {
+        post: announcementOperation(
+          "Schedule a complete draft for future UTC publication",
+          "button:backoffice-affiliate-announcement-publish",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentScheduleCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Announcement scheduled", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/disable`]:
+      {
+        post: announcementOperation(
+          "Disable a published or scheduled announcement release",
+          "button:backoffice-affiliate-announcement-publish",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentDisableCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Announcement disabled", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/backoffice/affiliate/announcements/{publicId}/releases/{releaseId}/rollback`]:
+      {
+        post: announcementOperation(
+          "Clone an immutable historical release into a new rollback draft",
+          "button:backoffice-affiliate-announcement-edit",
+          {
+            parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ContentRollbackCommand" }
+                }
+              }
+            },
+            responses: {
+              "200": jsonDataResponse("Rollback draft cloned", {
+                $ref: "#/components/schemas/OfficialAnnouncementProtectedPayload"
+              })
+            }
+          }
+        )
+      },
+    [`${config.API_PREFIX}/affiliate/announcements/{publicId}`]: {
+      get: announcementOperation(
+        "Read the active localized announcement through Affiliate marketplace visibility",
+        "page:affiliate-marketplace",
+        {
+          parameters: [
+            announcementPublicIdParameter,
+            {
+              name: "locale",
+              in: "query",
+              required: true,
+              schema: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+            }
+          ],
+          responses: {
+            "200": jsonDataResponse("One-locale Affiliate announcement", {
+              $ref: "#/components/schemas/OfficialAnnouncementPublicPayload"
+            })
+          }
+        }
+      )
     },
     [`${config.API_PREFIX}/backoffice/content/media`]: {
       post: {

@@ -1098,4 +1098,105 @@ describe("GET /api/v1/openapi.json", () => {
     });
     expect(publicContract).not.toMatch(/passwordHash|email|phone|identityId|bankAccount|ekyc/);
   });
+
+  it("documents the complete localized Affiliate announcement lifecycle without public internals", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      parameters?: Array<Record<string, unknown>>;
+      requestBody?: { content: Record<string, { schema: Record<string, unknown> }> };
+      responses: Record<string, { description?: string }>;
+      "x-permission": string;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<string, Operation>>;
+      components: { schemas: Record<string, Record<string, unknown>> };
+    };
+    const base = "/api/v1/backoffice/affiliate/announcements";
+    const release = `${base}/{publicId}/releases/{releaseId}`;
+    const operations = [
+      [base, "get", "page:backoffice-affiliate-announcement"],
+      [base, "post", "button:backoffice-affiliate-announcement-edit"],
+      [`${base}/{publicId}/history`, "get", "page:backoffice-affiliate-announcement"],
+      [release, "get", "page:backoffice-affiliate-announcement"],
+      [release, "patch", "button:backoffice-affiliate-announcement-edit"],
+      [`${release}/preview`, "get", "page:backoffice-affiliate-announcement"],
+      [`${release}/publish`, "post", "button:backoffice-affiliate-announcement-publish"],
+      [`${release}/schedule`, "post", "button:backoffice-affiliate-announcement-publish"],
+      [`${release}/disable`, "post", "button:backoffice-affiliate-announcement-publish"],
+      [`${release}/rollback`, "post", "button:backoffice-affiliate-announcement-edit"],
+      ["/api/v1/affiliate/announcements/{publicId}", "get", "page:affiliate-marketplace"]
+    ] as const;
+
+    for (const [path, method, permission] of operations) {
+      const operation = document.paths[path]?.[method];
+      expect(operation).toBeDefined();
+      expect(operation.security).toEqual([{ bearerAuth: [] }]);
+      expect(operation["x-permission"]).toBe(permission);
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+
+    expect(document.paths[base].post.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/OfficialAnnouncementDraftCreate"
+    });
+    expect(document.paths[release].patch.requestBody?.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/OfficialAnnouncementLocaleUpdate"
+    });
+    expect(
+      document.paths[`${release}/schedule`].post.requestBody?.content["application/json"].schema
+    ).toEqual({ $ref: "#/components/schemas/ContentScheduleCommand" });
+    expect(
+      document.paths[`${release}/rollback`].post.requestBody?.content["application/json"].schema
+    ).toEqual({ $ref: "#/components/schemas/ContentRollbackCommand" });
+
+    const createSchema = document.components.schemas.OfficialAnnouncementDraftCreate as {
+      additionalProperties: boolean;
+      required: string[];
+    };
+    expect(createSchema.additionalProperties).toBe(false);
+    expect(createSchema.required).toEqual(["idempotencyKey", "sourceLocale", "translation"]);
+    const protectedPayload = JSON.stringify(
+      document.components.schemas.OfficialAnnouncementProtectedPayload
+    );
+    expect(protectedPayload).toContain("translations");
+    const publicPayload = JSON.stringify(
+      document.components.schemas.OfficialAnnouncementPublicPayload
+    );
+    expect(publicPayload).toContain("locale");
+    expect(publicPayload).toContain("taskAction");
+    expect(publicPayload).not.toMatch(
+      /releaseId|affiliateTaskId|translations|createdBy|updatedBy|publishedBy|disabledBy/
+    );
+    const lifecycleContract = JSON.stringify({
+      operations: Object.fromEntries(
+        operations.map(([path, method]) => [`${method}:${path}`, document.paths[path][method]])
+      ),
+      schemas: Object.fromEntries(
+        Object.entries(document.components.schemas).filter(([name]) =>
+          /OfficialAnnouncement|Content(?:Publish|Schedule|Disable|Rollback)/.test(name)
+        )
+      )
+    });
+    for (const errorKey of [
+      "error.content.locale_invalid",
+      "error.content.not_found",
+      "error.content.release_not_found",
+      "error.content.draft_exists",
+      "error.content.lock_conflict",
+      "error.content.incomplete_translations",
+      "error.content.schedule_conflict",
+      "error.content.target_unavailable",
+      "error.content.invalid_state_transition",
+      "error.idempotency_key_reused"
+    ]) {
+      expect(lifecycleContract).toContain(errorKey);
+    }
+  });
 });

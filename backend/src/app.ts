@@ -46,6 +46,8 @@ import type { IdentityApplicationMediaService } from "./services/identity-applic
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
 import type { ContentMediaRepositoryPort } from "./services/content-media.service";
 import type { ContentMediaService } from "./services/content-media.service";
+import type { OfficialAnnouncementRepositoryPort } from "./services/official-announcement.service";
+import type { OfficialAnnouncementService } from "./services/official-announcement.service";
 import {
   assertContentMediaStorageIsolationSync,
   type ContentMediaStoragePort
@@ -103,6 +105,7 @@ import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
 import { createContentMediaRoutes } from "./routes/content-media.routes";
+import { createOfficialAnnouncementRoutes } from "./routes/official-announcement.routes";
 import { createIdentityActivationRoutes } from "./routes/identity-activation.routes";
 import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
 import { createOperationsMerchantApplicationRoutes } from "./routes/operations-merchant-application.routes";
@@ -169,6 +172,8 @@ export interface AppDependencies {
   contentMediaRepository?: ContentMediaRepositoryPort;
   contentMediaService?: ContentMediaService;
   contentMediaStorage?: ContentMediaStoragePort;
+  officialAnnouncementRepository?: OfficialAnnouncementRepositoryPort;
+  officialAnnouncementService?: OfficialAnnouncementService;
   affiliateIdentityActivationRepository?: AffiliateIdentityActivationRepositoryPort;
   affiliateIdentityActivationService?: AffiliateIdentityActivationService;
   affiliateProfileRepository?: AffiliateProfileRepositoryPort;
@@ -265,6 +270,7 @@ export const createApp = (
   apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createContentMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createOfficialAnnouncementRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityActivationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateAllianceRoutes(config, resolvedDependencies));
