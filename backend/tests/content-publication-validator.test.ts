@@ -3,6 +3,7 @@ import {
   affiliateNoticeCarouselDraftCreateBodySchema,
   affiliateNoticeCarouselDraftUpdateBodySchema,
   announcementDraftCreateBodySchema,
+  announcementDraftMutationBodySchema,
   announcementDraftUpdateBodySchema,
   carouselSceneParamSchema,
   carouselTargetSearchQuerySchemaByScene,
@@ -292,6 +293,33 @@ describe("announcement and lifecycle validators", () => {
         translation: announcementTranslation
       }).success
     ).toBe(false);
+  });
+
+  it("accepts an explicit strict copy-to-all PATCH command", () => {
+    expect(
+      announcementDraftMutationBodySchema.parse({
+        operation: "copy_to_all",
+        expectedLockVersion: 3,
+        sourceLocale: "en"
+      })
+    ).toEqual({ operation: "copy_to_all", expectedLockVersion: 3, sourceLocale: "en" });
+    expect(
+      announcementDraftMutationBodySchema.safeParse({
+        operation: "copy_to_all",
+        expectedLockVersion: 3,
+        sourceLocale: "en",
+        title: "must not be accepted"
+      }).success
+    ).toBe(false);
+    expect(
+      announcementDraftMutationBodySchema.safeParse({
+        expectedLockVersion: 3,
+        locale: "en",
+        title: "Important notice",
+        summary: null,
+        body: "Body"
+      }).success
+    ).toBe(true);
   });
 
   it("requires idempotency plus optimistic locking for publication mutations", () => {

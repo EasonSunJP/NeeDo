@@ -130,15 +130,15 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
         return result;
       });
     } catch (error) {
-      if (this.isIdempotencyUniqueConflict(error)) {
-        const replay = await this.commandReplay(
-          this.client,
-          input.idempotencyKey,
-          input.requestFingerprint
-        );
-        if (replay) return replay;
-      }
+      const replay = await this.recoverCommandAfterRace(
+        error,
+        input.idempotencyKey,
+        input.requestFingerprint
+      );
+      if (replay) return replay;
       if (this.isUniqueConflict(error)) throw this.contentError("error.content.draft_exists", 409);
+      if (this.isPrismaWriteRace(error))
+        throw this.contentError("error.content.lock_conflict", 409);
       throw error;
     }
   }
@@ -263,6 +263,7 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
     return this.publicationCommand(input, "publish", async (transaction, release) => {
       this.assertDraftAndLock(release, input.expectedLockVersion);
       this.assertCompleteTranslations(release);
+      this.assertNotExpired(release, input.now);
       const scheduled = await transaction.officialAnnouncementRelease.findFirst({
         where: {
           announcementId: release.announcementId,
@@ -313,6 +314,7 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
       this.assertCompleteTranslations(release);
       if (input.publishAt <= input.now)
         throw this.contentError("error.content.schedule_conflict", 409);
+      this.assertEffectiveWindow(release, input.publishAt);
       const existing = await transaction.officialAnnouncementRelease.findFirst({
         where: {
           announcementId: release.announcementId,
@@ -452,15 +454,15 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
         return result;
       });
     } catch (error) {
-      if (this.isIdempotencyUniqueConflict(error)) {
-        const replay = await this.commandReplay(
-          this.client,
-          input.idempotencyKey,
-          input.requestFingerprint
-        );
-        if (replay) return replay;
-      }
+      const replay = await this.recoverCommandAfterRace(
+        error,
+        input.idempotencyKey,
+        input.requestFingerprint
+      );
+      if (replay) return replay;
       if (this.isUniqueConflict(error)) throw this.contentError("error.content.draft_exists", 409);
+      if (this.isPrismaWriteRace(error))
+        throw this.contentError("error.content.lock_conflict", 409);
       throw error;
     }
   }
@@ -498,10 +500,8 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
       where: {
         deletedAt: null,
         announcement: { publicId, deletedAt: null },
-        OR: [
-          { status: ContentReleaseStatus.PUBLISHED },
-          { status: ContentReleaseStatus.SCHEDULED, publishAt: { lte: now } }
-        ],
+        status: ContentReleaseStatus.PUBLISHED,
+        publishedSlotKey: { not: null },
         AND: [
           { OR: [{ visibleFrom: null }, { visibleFrom: { lte: now } }] },
           { OR: [{ visibleUntil: null }, { visibleUntil: { gt: now } }] }
@@ -528,7 +528,7 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
       body: translation.body,
       visibleFrom: release.visibleFrom,
       visibleUntil: release.visibleUntil,
-      activatedAt: release.activatedAt ?? release.publishAt,
+      activatedAt: release.activatedAt,
       affiliateTaskId: release.announcement.affiliateTaskId
     };
   }
@@ -551,6 +551,9 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
           input.publicId,
           input.releaseId
         );
+        if (release.announcement.affiliateTaskId !== null) {
+          await input.validateAffiliateTask?.(release.announcement.affiliateTaskId);
+        }
         await mutate(transaction, release);
         const result = await this.loadRelease(transaction, input.publicId, release.id);
         await this.audit(
@@ -572,15 +575,13 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
         return result;
       });
     } catch (error) {
-      if (this.isIdempotencyUniqueConflict(error)) {
-        const replay = await this.commandReplay(
-          this.client,
-          input.idempotencyKey,
-          input.requestFingerprint
-        );
-        if (replay) return replay;
-      }
-      if (this.isUniqueConflict(error)) {
+      const replay = await this.recoverCommandAfterRace(
+        error,
+        input.idempotencyKey,
+        input.requestFingerprint
+      );
+      if (replay) return replay;
+      if (this.isUniqueConflict(error) || this.isPrismaWriteRace(error)) {
         throw this.contentError(
           action === "schedule" ? "error.content.schedule_conflict" : "error.content.lock_conflict",
           409
@@ -640,6 +641,21 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
     }
   }
 
+  private assertEffectiveWindow(release: ReleaseRecord, effectiveAt: Date): void {
+    if (
+      (release.visibleFrom !== null && effectiveAt < release.visibleFrom) ||
+      (release.visibleUntil !== null && effectiveAt >= release.visibleUntil)
+    ) {
+      throw this.contentError("error.content.schedule_conflict", 409);
+    }
+  }
+
+  private assertNotExpired(release: ReleaseRecord, effectiveAt: Date): void {
+    if (release.visibleUntil !== null && effectiveAt >= release.visibleUntil) {
+      throw this.contentError("error.content.schedule_conflict", 409);
+    }
+  }
+
   private async bumpDraftLock(
     transaction: Prisma.TransactionClient,
     releaseId: number,
@@ -671,6 +687,23 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
       throw this.contentError("error.idempotency_key_reused", 409);
     }
     return this.hydratePayload(command.result);
+  }
+
+  private async recoverCommandAfterRace(
+    error: unknown,
+    idempotencyKey: string,
+    requestFingerprint: string
+  ): Promise<OfficialAnnouncementPayload | null> {
+    if (!this.isRaceShapedConflict(error)) return null;
+    const maxAttempts = 6;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const replay = await this.commandReplay(this.client, idempotencyKey, requestFingerprint);
+      if (replay) return replay;
+      if (attempt + 1 < maxAttempts) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      }
+    }
+    return null;
   }
 
   private async saveCommand(
@@ -726,7 +759,13 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
     const translations = Object.fromEntries(
       release.translations.map((translation) => [
         localeFromDb[translation.locale],
-        { title: translation.title, summary: translation.summary, body: translation.body }
+        {
+          title: translation.title,
+          summary: translation.summary,
+          body: translation.body,
+          sourceLocale: localeFromDb[translation.sourceLocale],
+          isInitialCopy: translation.isInitialCopy
+        }
       ])
     ) as OfficialAnnouncementPayload["translations"];
     return {
@@ -779,11 +818,23 @@ export class OfficialAnnouncementRepository implements OfficialAnnouncementRepos
     return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
   }
 
-  private isIdempotencyUniqueConflict(error: unknown): boolean {
-    if (!this.isUniqueConflict(error) || typeof error !== "object" || error === null) return false;
-    const meta = "meta" in error ? error.meta : undefined;
-    const serialized = JSON.stringify(meta ?? "");
-    return /idempotency[_-]?key/i.test(serialized);
+  private isPrismaWriteRace(error: unknown): boolean {
+    if (typeof error !== "object" || error === null || !("code" in error)) return false;
+    return error.code === "P2025" || error.code === "P2034";
+  }
+
+  private isRaceShapedConflict(error: unknown): boolean {
+    if (this.isUniqueConflict(error) || this.isPrismaWriteRace(error)) return true;
+    return (
+      error instanceof AppError &&
+      error.statusCode === 409 &&
+      [
+        "error.content.draft_exists",
+        "error.content.lock_conflict",
+        "error.content.schedule_conflict",
+        "error.content.invalid_state_transition"
+      ].includes(error.message)
+    );
   }
 
   private contentError(message: string, statusCode: number): AppError {

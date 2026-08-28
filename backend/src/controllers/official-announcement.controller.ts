@@ -6,6 +6,7 @@ import { successResponse } from "../utils/api-response";
 import { getRequestContext } from "../utils/request-context";
 import type {
   AnnouncementDraftBody,
+  AnnouncementDraftMutationBody,
   ContentHistoryQuery,
   DisableBody,
   PublishBody,
@@ -14,7 +15,6 @@ import type {
 } from "../validators/content-publication.validator";
 
 type AnnouncementCreateBody = Extract<AnnouncementDraftBody, { idempotencyKey: string }>;
-type AnnouncementUpdateBody = Extract<AnnouncementDraftBody, { expectedLockVersion: number }>;
 
 export class OfficialAnnouncementController {
   public constructor(private readonly service: OfficialAnnouncementService) {}
@@ -75,19 +75,29 @@ export class OfficialAnnouncementController {
   });
 
   public updateLocale = this.handle(async (request, response) => {
-    response
-      .status(200)
-      .json(
-        successResponse(
-          await this.service.updateLocale(
-            this.actor(response),
-            getRequestContext(request),
-            request.params.publicId,
-            Number(request.params.releaseId),
-            request.body as AnnouncementUpdateBody
-          )
-        )
-      );
+    const input = request.body as AnnouncementDraftMutationBody;
+    response.status(200).json(
+      successResponse(
+        "operation" in input
+          ? await this.service.copyLocaleToAll(
+              this.actor(response),
+              getRequestContext(request),
+              request.params.publicId,
+              Number(request.params.releaseId),
+              {
+                expectedLockVersion: input.expectedLockVersion,
+                locale: input.sourceLocale
+              }
+            )
+          : await this.service.updateLocale(
+              this.actor(response),
+              getRequestContext(request),
+              request.params.publicId,
+              Number(request.params.releaseId),
+              input
+            )
+      )
+    );
   });
 
   public preview = this.handle(async (request, response) => {

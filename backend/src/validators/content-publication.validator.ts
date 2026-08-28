@@ -275,9 +275,22 @@ export const announcementDraftUpdateBodySchema = z
   })
   .strict();
 
+export const announcementCopyAllBodySchema = z
+  .object({
+    operation: z.literal("copy_to_all"),
+    expectedLockVersion: positiveVersionSchema,
+    sourceLocale: localeSchema
+  })
+  .strict();
+
+export const announcementDraftMutationBodySchema = z.union([
+  announcementDraftUpdateBodySchema,
+  announcementCopyAllBodySchema
+]);
+
 export const announcementDraftBodySchema = z.union([
   announcementDraftCreateBodySchema,
-  announcementDraftUpdateBodySchema
+  announcementDraftMutationBodySchema
 ]);
 
 export const publishBodySchema = z
@@ -350,6 +363,9 @@ export const carouselTargetSearchQuerySchemaByScene = {
 export type CarouselSceneParam = z.infer<typeof carouselSceneParamSchema>;
 export type CarouselDraftBody = z.infer<typeof carouselDraftBodySchema>;
 export type AnnouncementDraftBody = z.infer<typeof announcementDraftBodySchema>;
+export type AnnouncementDraftUpdateBody = z.infer<typeof announcementDraftUpdateBodySchema>;
+export type AnnouncementCopyAllBody = z.infer<typeof announcementCopyAllBodySchema>;
+export type AnnouncementDraftMutationBody = z.infer<typeof announcementDraftMutationBodySchema>;
 export type PublishBody = z.infer<typeof publishBodySchema>;
 export type ScheduleBody = z.infer<typeof scheduleBodySchema>;
 export type DisableBody = z.infer<typeof disableBodySchema>;

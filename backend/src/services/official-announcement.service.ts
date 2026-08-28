@@ -7,6 +7,7 @@ import {
 import { ERROR_CODES } from "../constants/error-codes";
 import type {
   AnnouncementDraftBody,
+  AnnouncementDraftUpdateBody,
   DisableBody,
   PublishBody,
   RollbackBody,
@@ -23,16 +24,18 @@ export type OfficialAnnouncementStatus =
   | "disabled"
   | "archived";
 
-export interface OfficialAnnouncementTranslationPayload {
+export interface OfficialAnnouncementTranslationInput {
   title: string;
   summary: string | null;
   body: string;
 }
 
-export interface OfficialAnnouncementStoredTranslation extends OfficialAnnouncementTranslationPayload {
+export interface OfficialAnnouncementTranslationPayload extends OfficialAnnouncementTranslationInput {
   sourceLocale: ContentLocaleCode;
   isInitialCopy: boolean;
 }
+
+export type OfficialAnnouncementStoredTranslation = OfficialAnnouncementTranslationPayload;
 
 export interface OfficialAnnouncementPayload {
   publicId: string;
@@ -104,7 +107,7 @@ export interface UpdateAnnouncementLocaleMutation extends AnnouncementMutationAu
   expectedLockVersion: number;
   locale: ContentLocaleCode;
   copyToAll: boolean;
-  translation?: OfficialAnnouncementTranslationPayload;
+  translation?: OfficialAnnouncementTranslationInput;
 }
 
 interface IdempotentReleaseMutation extends AnnouncementMutationAuditInput {
@@ -112,6 +115,7 @@ interface IdempotentReleaseMutation extends AnnouncementMutationAuditInput {
   releaseId: number;
   idempotencyKey: string;
   requestFingerprint: string;
+  validateAffiliateTask?: (affiliateTaskId: number) => Promise<void>;
 }
 
 export interface PublishAnnouncementMutation extends IdempotentReleaseMutation {
@@ -175,7 +179,7 @@ interface OfficialAnnouncementServiceOptions {
 }
 
 type AnnouncementCreateBody = Extract<AnnouncementDraftBody, { idempotencyKey: string }>;
-type AnnouncementUpdateBody = Extract<AnnouncementDraftBody, { expectedLockVersion: number }>;
+type AnnouncementUpdateBody = AnnouncementDraftUpdateBody;
 
 export class OfficialAnnouncementService {
   private readonly now: () => Date;
@@ -324,7 +328,8 @@ export class OfficialAnnouncementService {
       }),
       actorUserId: actor.userId,
       context,
-      now: this.now()
+      now: this.now(),
+      validateAffiliateTask: (affiliateTaskId) => this.assertTaskVisible(actor, affiliateTaskId)
     });
   }
 
@@ -350,7 +355,8 @@ export class OfficialAnnouncementService {
       }),
       actorUserId: actor.userId,
       context,
-      now: this.now()
+      now: this.now(),
+      validateAffiliateTask: (affiliateTaskId) => this.assertTaskVisible(actor, affiliateTaskId)
     });
   }
 

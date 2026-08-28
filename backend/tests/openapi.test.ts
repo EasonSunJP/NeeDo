@@ -1123,7 +1123,7 @@ describe("GET /api/v1/openapi.json", () => {
       [`${release}/publish`, "post", "button:backoffice-affiliate-announcement-publish"],
       [`${release}/schedule`, "post", "button:backoffice-affiliate-announcement-publish"],
       [`${release}/disable`, "post", "button:backoffice-affiliate-announcement-publish"],
-      [`${release}/rollback`, "post", "button:backoffice-affiliate-announcement-edit"],
+      [`${release}/rollback`, "post", "button:backoffice-affiliate-announcement-publish"],
       ["/api/v1/affiliate/announcements/{publicId}", "get", "page:affiliate-marketplace"]
     ] as const;
 
@@ -1141,13 +1141,14 @@ describe("GET /api/v1/openapi.json", () => {
           "409": expect.any(Object)
         })
       );
+      expect(operation.responses["400"].description).toContain("error.validation");
     }
 
     expect(document.paths[base].post.requestBody?.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/OfficialAnnouncementDraftCreate"
     });
     expect(document.paths[release].patch.requestBody?.content["application/json"].schema).toEqual({
-      $ref: "#/components/schemas/OfficialAnnouncementLocaleUpdate"
+      $ref: "#/components/schemas/OfficialAnnouncementDraftMutation"
     });
     expect(
       document.paths[`${release}/schedule`].post.requestBody?.content["application/json"].schema
@@ -1162,10 +1163,13 @@ describe("GET /api/v1/openapi.json", () => {
     };
     expect(createSchema.additionalProperties).toBe(false);
     expect(createSchema.required).toEqual(["idempotencyKey", "sourceLocale", "translation"]);
-    const protectedPayload = JSON.stringify(
-      document.components.schemas.OfficialAnnouncementProtectedPayload
-    );
+    const protectedPayload = JSON.stringify({
+      payload: document.components.schemas.OfficialAnnouncementProtectedPayload,
+      translation: document.components.schemas.OfficialAnnouncementProtectedTranslation
+    });
     expect(protectedPayload).toContain("translations");
+    expect(protectedPayload).toContain("sourceLocale");
+    expect(protectedPayload).toContain("isInitialCopy");
     const publicPayload = JSON.stringify(
       document.components.schemas.OfficialAnnouncementPublicPayload
     );

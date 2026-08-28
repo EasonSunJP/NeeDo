@@ -14,7 +14,7 @@ import { AffiliateMarketplaceService } from "../services/affiliate-marketplace.s
 import { OfficialAnnouncementService } from "../services/official-announcement.service";
 import {
   announcementDraftCreateBodySchema,
-  announcementDraftUpdateBodySchema,
+  announcementDraftMutationBodySchema,
   contentHistoryQuerySchema,
   contentPublicationValidationErrorMessage,
   disableBodySchema,
@@ -107,7 +107,7 @@ export const createOfficialAnnouncementRoutes = (
     "/backoffice/affiliate/announcements/:publicId/releases/:releaseId",
     authenticate(),
     edit,
-    validate({ params: releaseParamSchema, body: announcementDraftUpdateBodySchema }),
+    validate({ params: releaseParamSchema, body: announcementDraftMutationBodySchema }),
     controller.updateLocale
   );
   router.get(
@@ -141,7 +141,7 @@ export const createOfficialAnnouncementRoutes = (
   router.post(
     "/backoffice/affiliate/announcements/:publicId/releases/:releaseId/rollback",
     authenticate(),
-    edit,
+    publish,
     validate({ params: releaseParamSchema, body: rollbackBodySchema }),
     controller.rollback
   );

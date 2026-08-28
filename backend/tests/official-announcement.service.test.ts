@@ -26,11 +26,35 @@ const idempotencyKey = "11111111-1111-4111-8111-111111111111";
 const now = new Date("2026-08-29T03:00:00.000Z");
 
 const translations = {
-  "zh-CN": { title: "重要通知", summary: "概要", body: "正文" },
-  "zh-TW": { title: "重要通知", summary: "概要", body: "正文" },
-  en: { title: "Important notice", summary: "Summary", body: "Body" },
-  ja: { title: "重要なお知らせ", summary: "概要", body: "本文" },
-  ko: { title: "중요 공지", summary: "요약", body: "본문" }
+  "zh-CN": {
+    title: "重要通知",
+    summary: "概要",
+    body: "正文",
+    sourceLocale: "ja",
+    isInitialCopy: true
+  },
+  "zh-TW": {
+    title: "重要通知",
+    summary: "概要",
+    body: "正文",
+    sourceLocale: "ja",
+    isInitialCopy: true
+  },
+  en: {
+    title: "Important notice",
+    summary: "Summary",
+    body: "Body",
+    sourceLocale: "en",
+    isInitialCopy: false
+  },
+  ja: {
+    title: "重要なお知らせ",
+    summary: "概要",
+    body: "本文",
+    sourceLocale: "ja",
+    isInitialCopy: false
+  },
+  ko: { title: "중요 공지", summary: "요약", body: "본문", sourceLocale: "ja", isInitialCopy: true }
 } as const;
 
 const payload = (
@@ -199,7 +223,16 @@ describe("OfficialAnnouncementService", () => {
     repo.updateLocale.mockResolvedValue(
       payload({
         lockVersion: 2,
-        translations: { ...translations, en: { title: "Changed", summary: null, body: "Changed" } }
+        translations: {
+          ...translations,
+          en: {
+            title: "Changed",
+            summary: null,
+            body: "Changed",
+            sourceLocale: "en",
+            isInitialCopy: false
+          }
+        }
       })
     );
     const service = new OfficialAnnouncementService(repo, marketplace());
@@ -219,6 +252,7 @@ describe("OfficialAnnouncementService", () => {
     );
 
     expect(edited.translations.ja.title).toBe("重要なお知らせ");
+    expect(edited.translations.en).toMatchObject({ sourceLocale: "en", isInitialCopy: false });
     expect(repo.updateLocale).toHaveBeenCalledWith(
       expect.objectContaining({ locale: "en", copyToAll: false, actorUserId: 41, context })
     );
@@ -240,7 +274,13 @@ describe("OfficialAnnouncementService", () => {
     const copied = Object.fromEntries(
       Object.keys(translations).map((locale) => [
         locale,
-        { title: "Important notice", summary: "Summary", body: "Body" }
+        {
+          title: "Important notice",
+          summary: "Summary",
+          body: "Body",
+          sourceLocale: "en",
+          isInitialCopy: false
+        }
       ])
     ) as OfficialAnnouncementPayload["translations"];
     repo.updateLocale.mockResolvedValue(payload({ lockVersion: 3, translations: copied }));
@@ -257,6 +297,11 @@ describe("OfficialAnnouncementService", () => {
     expect(new Set(Object.values(result.translations).map((value) => value.title))).toEqual(
       new Set(["Important notice"])
     );
+    expect(
+      Object.values(result.translations).every(
+        (value) => value.sourceLocale === "en" && value.isInitialCopy === false
+      )
+    ).toBe(true);
     expect(repo.updateLocale).toHaveBeenCalledWith(
       expect.objectContaining({ locale: "en", copyToAll: true, expectedLockVersion: 2 })
     );
@@ -305,10 +350,12 @@ describe("OfficialAnnouncementService", () => {
 
   it("publishes immediately with an idempotency fingerprint and audit input", async () => {
     const repo = repository();
-    repo.publish.mockResolvedValue(
-      payload({ status: "published", lockVersion: 2, activatedAt: now })
-    );
-    const service = new OfficialAnnouncementService(repo, marketplace(), { now: () => now });
+    const tasks = marketplace();
+    repo.publish.mockImplementation(async (input) => {
+      await input.validateAffiliateTask?.(29);
+      return payload({ status: "published", lockVersion: 2, activatedAt: now });
+    });
+    const service = new OfficialAnnouncementService(repo, tasks, { now: () => now });
 
     const result = await service.publish(actor, context, payload().publicId, payload().releaseId, {
       idempotencyKey,
@@ -325,6 +372,28 @@ describe("OfficialAnnouncementService", () => {
         reason: "Ready",
         requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/)
       })
+    );
+    expect(tasks.getTask).toHaveBeenCalledWith(actor, 29);
+  });
+
+  it("revalidates the canonical affiliate task before scheduling", async () => {
+    const repo = repository();
+    const tasks = marketplace();
+    repo.schedule.mockImplementation(async (input) => {
+      await input.validateAffiliateTask?.(29);
+      return payload({ status: "scheduled", publishAt: input.publishAt });
+    });
+    const service = new OfficialAnnouncementService(repo, tasks, { now: () => now });
+
+    await service.schedule(actor, context, payload().publicId, payload().releaseId, {
+      idempotencyKey,
+      expectedLockVersion: 1,
+      publishAt: "2026-08-30T03:00:00.000Z"
+    });
+
+    expect(tasks.getTask).toHaveBeenCalledWith(actor, 29);
+    expect(repo.schedule).toHaveBeenCalledWith(
+      expect.objectContaining({ validateAffiliateTask: expect.any(Function) })
     );
   });
 

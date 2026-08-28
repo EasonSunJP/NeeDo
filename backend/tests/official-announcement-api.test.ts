@@ -24,11 +24,29 @@ const protectedPayload = {
   archivedAt: null,
   sourceReleaseId: null,
   translations: {
-    "zh-CN": { title: "通知", summary: null, body: "正文" },
-    "zh-TW": { title: "通知", summary: null, body: "正文" },
-    en: { title: "Notice", summary: null, body: "Body" },
-    ja: { title: "お知らせ", summary: null, body: "本文" },
-    ko: { title: "공지", summary: null, body: "본문" }
+    "zh-CN": {
+      title: "通知",
+      summary: null,
+      body: "正文",
+      sourceLocale: "ja",
+      isInitialCopy: true
+    },
+    "zh-TW": {
+      title: "通知",
+      summary: null,
+      body: "正文",
+      sourceLocale: "ja",
+      isInitialCopy: true
+    },
+    en: { title: "Notice", summary: null, body: "Body", sourceLocale: "en", isInitialCopy: false },
+    ja: {
+      title: "お知らせ",
+      summary: null,
+      body: "本文",
+      sourceLocale: "ja",
+      isInitialCopy: false
+    },
+    ko: { title: "공지", summary: null, body: "본문", sourceLocale: "ja", isInitialCopy: true }
   },
   createdAt: now,
   updatedAt: now
@@ -86,7 +104,8 @@ const createFixture = () => {
       "button:backoffice-affiliate-announcement-publish"
     ]),
     createUser(8, ["page:affiliate-marketplace"]),
-    createUser(9, ["page:backoffice-affiliate-announcement"])
+    createUser(9, ["page:backoffice-affiliate-announcement"]),
+    createUser(10, ["button:backoffice-affiliate-announcement-edit"])
   ];
   const service = {
     list: jest.fn(async () => ({ list: [protectedPayload], total: 1, page: 1, page_size: 20 })),
@@ -94,6 +113,7 @@ const createFixture = () => {
     history: jest.fn(async () => ({ list: [protectedPayload], total: 1, page: 1, page_size: 20 })),
     getRelease: jest.fn(async () => protectedPayload),
     updateLocale: jest.fn(async () => ({ ...protectedPayload, lockVersion: 2 })),
+    copyLocaleToAll: jest.fn(async () => ({ ...protectedPayload, lockVersion: 2 })),
     preview: jest.fn(async () => ({ ...protectedPayload, taskAction: null })),
     publish: jest.fn(async () => ({ ...protectedPayload, status: "published" })),
     schedule: jest.fn(async () => ({ ...protectedPayload, status: "scheduled" })),
@@ -151,6 +171,10 @@ describe("official Affiliate announcement HTTP API", () => {
       .expect(201);
 
     expect(Object.keys(response.body.data.translations)).toHaveLength(5);
+    expect(response.body.data.translations.ja).toMatchObject({
+      sourceLocale: "ja",
+      isInitialCopy: false
+    });
     expect(fixture.service.createDraft).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 7 }),
       expect.objectContaining({ ip: expect.any(String), userAgent: "announcement-api-test" }),
@@ -232,6 +256,11 @@ describe("official Affiliate announcement HTTP API", () => {
       })
       .expect(200);
     await request(fixture.app)
+      .patch(`/api/v1/backoffice/affiliate/announcements/${publicId}/releases/71`)
+      .set("Authorization", authorization)
+      .send({ operation: "copy_to_all", expectedLockVersion: 2, sourceLocale: "en" })
+      .expect(200);
+    await request(fixture.app)
       .get(`/api/v1/backoffice/affiliate/announcements/${publicId}/releases/71/preview`)
       .set("Authorization", authorization)
       .expect(200);
@@ -267,6 +296,23 @@ describe("official Affiliate announcement HTTP API", () => {
       71,
       expect.objectContaining({ expectedCurrentVersion: 1, idempotencyKey })
     );
+    expect(fixture.service.copyLocaleToAll).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7 }),
+      expect.any(Object),
+      publicId,
+      71,
+      { expectedLockVersion: 2, locale: "en" }
+    );
+  });
+
+  it("requires publish permission for rollback even when the actor can edit", async () => {
+    const fixture = createFixture();
+    await request(fixture.app)
+      .post(`/api/v1/backoffice/affiliate/announcements/${publicId}/releases/71/rollback`)
+      .set("Authorization", `Bearer ${fixture.tokens[10]}`)
+      .send({ idempotencyKey, expectedCurrentVersion: 1, reason: "Restore" })
+      .expect(403);
+    expect(fixture.service.rollback).not.toHaveBeenCalled();
   });
 
   it("returns one locale through Affiliate visibility without internal IDs or Prisma fields", async () => {

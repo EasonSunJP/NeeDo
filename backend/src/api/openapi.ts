@@ -268,7 +268,7 @@ const customerProfileErrorResponses = {
 const contentAnnouncementErrorResponses = {
   "400": {
     description:
-      "error.content.locale_invalid — invalid locale, UUID, positive release ID, pagination, or strict request body"
+      "error.validation — malformed UUID, positive release ID, pagination, or strict request body; error.content.locale_invalid — unsupported locale"
   },
   "401": { description: "error.auth.token_invalid — missing or invalid access token" },
   "403": { description: "error.forbidden — missing exact content publication permission" },
@@ -3859,7 +3859,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         }
       },
-      OfficialAnnouncementTranslation: {
+      OfficialAnnouncementTranslationInput: {
         type: "object",
         additionalProperties: false,
         required: ["title", "summary", "body"],
@@ -3879,7 +3879,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           affiliateTaskId: { type: ["integer", "null"], minimum: 1, default: null },
           visibleFrom: { type: ["string", "null"], format: "date-time", default: null },
           visibleUntil: { type: ["string", "null"], format: "date-time", default: null },
-          translation: { $ref: "#/components/schemas/OfficialAnnouncementTranslation" }
+          translation: { $ref: "#/components/schemas/OfficialAnnouncementTranslationInput" }
         }
       },
       OfficialAnnouncementLocaleUpdate: {
@@ -3892,6 +3892,34 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           title: { type: "string", minLength: 1, maxLength: 160 },
           summary: { type: ["string", "null"], maxLength: 500 },
           body: { type: "string", minLength: 1, maxLength: 50000 }
+        }
+      },
+      OfficialAnnouncementCopyAll: {
+        type: "object",
+        additionalProperties: false,
+        required: ["operation", "expectedLockVersion", "sourceLocale"],
+        properties: {
+          operation: { type: "string", enum: ["copy_to_all"] },
+          expectedLockVersion: { type: "integer", minimum: 1 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] }
+        }
+      },
+      OfficialAnnouncementDraftMutation: {
+        oneOf: [
+          { $ref: "#/components/schemas/OfficialAnnouncementLocaleUpdate" },
+          { $ref: "#/components/schemas/OfficialAnnouncementCopyAll" }
+        ]
+      },
+      OfficialAnnouncementProtectedTranslation: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "summary", "body", "sourceLocale", "isInitialCopy"],
+        properties: {
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          summary: { type: ["string", "null"], maxLength: 500 },
+          body: { type: "string", minLength: 1, maxLength: 50000 },
+          sourceLocale: { type: "string", enum: ["zh-CN", "zh-TW", "en", "ja", "ko"] },
+          isInitialCopy: { type: "boolean" }
         }
       },
       ContentPublishCommand: {
@@ -3988,7 +4016,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             properties: Object.fromEntries(
               ["zh-CN", "zh-TW", "en", "ja", "ko"].map((locale) => [
                 locale,
-                { $ref: "#/components/schemas/OfficialAnnouncementTranslation" }
+                { $ref: "#/components/schemas/OfficialAnnouncementProtectedTranslation" }
               ])
             )
           },
@@ -9012,7 +9040,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             required: true,
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/OfficialAnnouncementLocaleUpdate" }
+                schema: { $ref: "#/components/schemas/OfficialAnnouncementDraftMutation" }
               }
             }
           },
@@ -9112,7 +9140,7 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
       {
         post: announcementOperation(
           "Clone an immutable historical release into a new rollback draft",
-          "button:backoffice-affiliate-announcement-edit",
+          "button:backoffice-affiliate-announcement-publish",
           {
             parameters: [announcementPublicIdParameter, announcementReleaseIdParameter],
             requestBody: {

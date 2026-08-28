@@ -1,5 +1,9 @@
 import { OfficialAnnouncementRepository } from "../src/repositories/official-announcement.repository";
-import type { CreateAnnouncementDraftMutation } from "../src/services/official-announcement.service";
+import type {
+  CreateAnnouncementDraftMutation,
+  PublishAnnouncementMutation
+} from "../src/services/official-announcement.service";
+import { AppError } from "../src/utils/app-error";
 
 const now = new Date("2026-08-29T03:00:00.000Z");
 const input: CreateAnnouncementDraftMutation = {
@@ -65,6 +69,26 @@ const cachedResult = {
   createdAt: now.toISOString(),
   updatedAt: now.toISOString()
 };
+
+const draftRelease = (window: { visibleFrom: Date | null; visibleUntil: Date | null }) => ({
+  id: 71,
+  announcementId: 12,
+  version: 1,
+  status: "DRAFT",
+  lockVersion: 1,
+  visibleFrom: window.visibleFrom,
+  visibleUntil: window.visibleUntil,
+  announcement: {
+    id: 12,
+    publicId: input.publicId,
+    affiliateTaskId: null
+  },
+  translations: ["ZH_CN", "ZH_TW", "EN", "JA", "KO"].map((locale) => ({
+    locale,
+    title: `${locale} title`,
+    body: `${locale} body`
+  }))
+});
 
 describe("OfficialAnnouncementRepository", () => {
   it("exposes the complete announcement transaction boundary", () => {
@@ -155,5 +179,178 @@ describe("OfficialAnnouncementRepository", () => {
     expect(client.contentPublicationCommand.findUnique).toHaveBeenCalledWith({
       where: { idempotencyKey: input.idempotencyKey }
     });
+  });
+
+  it("boundedly re-reads a command after a race-shaped domain conflict", async () => {
+    const conflict = new AppError({
+      code: 40001,
+      message: "error.content.lock_conflict",
+      statusCode: 409
+    });
+    const findUnique = jest
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        requestFingerprint: input.requestFingerprint,
+        result: cachedResult
+      });
+    const client = {
+      $transaction: jest.fn().mockRejectedValue(conflict),
+      contentPublicationCommand: { findUnique }
+    };
+    const repository = new OfficialAnnouncementRepository(client as never);
+
+    await expect(repository.createDraft(input)).resolves.toMatchObject({
+      publicId: input.publicId,
+      releaseId: 71
+    });
+    expect(findUnique).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns idempotency reuse when a delayed race winner has a different fingerprint", async () => {
+    const client = {
+      $transaction: jest.fn().mockRejectedValue({ code: "P2034" }),
+      contentPublicationCommand: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({ requestFingerprint: "b".repeat(64), result: cachedResult })
+      }
+    };
+    const repository = new OfficialAnnouncementRepository(client as never);
+
+    await expect(repository.createDraft(input)).rejects.toMatchObject({
+      message: "error.idempotency_key_reused",
+      statusCode: 409
+    });
+  });
+
+  it("checks replay before volatile publication policy validation", async () => {
+    const validateAffiliateTask = jest.fn(async () => undefined);
+    const transaction = {
+      contentPublicationCommand: {
+        findUnique: jest.fn(async () => ({
+          requestFingerprint: input.requestFingerprint,
+          result: cachedResult
+        }))
+      }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      )
+    };
+    const repository = new OfficialAnnouncementRepository(client as never);
+    const publicationInput: PublishAnnouncementMutation = {
+      publicId: input.publicId,
+      releaseId: 71,
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint: input.requestFingerprint,
+      expectedLockVersion: 1,
+      actorUserId: input.actorUserId,
+      context: input.context,
+      now,
+      validateAffiliateTask
+    };
+
+    await expect(repository.publish(publicationInput)).resolves.toMatchObject({ releaseId: 71 });
+    expect(validateAffiliateTask).not.toHaveBeenCalled();
+  });
+
+  it("rejects immediate publication after the release visibility window expires", async () => {
+    const transaction = {
+      contentPublicationCommand: { findUnique: jest.fn(async () => null) },
+      officialAnnouncementRelease: {
+        findFirst: jest.fn(async () =>
+          draftRelease({ visibleFrom: null, visibleUntil: new Date("2026-08-29T02:59:59.000Z") })
+        ),
+        updateMany: jest.fn()
+      }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      ),
+      contentPublicationCommand: { findUnique: jest.fn(async () => null) }
+    };
+    const repository = new OfficialAnnouncementRepository(client as never);
+
+    await expect(
+      repository.publish({
+        publicId: input.publicId,
+        releaseId: 71,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint: input.requestFingerprint,
+        expectedLockVersion: 1,
+        actorUserId: input.actorUserId,
+        context: input.context,
+        now
+      })
+    ).rejects.toMatchObject({ message: "error.content.schedule_conflict", statusCode: 409 });
+    expect(transaction.officialAnnouncementRelease.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("requires a scheduled activation to fall inside the release visibility window", async () => {
+    const transaction = {
+      contentPublicationCommand: { findUnique: jest.fn(async () => null) },
+      officialAnnouncementRelease: {
+        findFirst: jest.fn(async () =>
+          draftRelease({
+            visibleFrom: new Date("2026-08-30T04:00:00.000Z"),
+            visibleUntil: new Date("2026-09-01T00:00:00.000Z")
+          })
+        ),
+        updateMany: jest.fn()
+      }
+    };
+    const client = {
+      $transaction: jest.fn(async (operation: (tx: unknown) => Promise<unknown>) =>
+        operation(transaction)
+      ),
+      contentPublicationCommand: { findUnique: jest.fn(async () => null) }
+    };
+    const repository = new OfficialAnnouncementRepository(client as never);
+
+    await expect(
+      repository.schedule({
+        publicId: input.publicId,
+        releaseId: 71,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint: input.requestFingerprint,
+        expectedLockVersion: 1,
+        publishAt: new Date("2026-08-30T03:00:00.000Z"),
+        actorUserId: input.actorUserId,
+        context: input.context,
+        now
+      })
+    ).rejects.toMatchObject({ message: "error.content.schedule_conflict", statusCode: 409 });
+    expect(transaction.officialAnnouncementRelease.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("reads only the actual current PUBLISHED slot for public projection", async () => {
+    const findFirst = jest.fn(async (query: unknown) => {
+      expect(query).toBeDefined();
+      return null;
+    });
+    const repository = new OfficialAnnouncementRepository({
+      officialAnnouncementRelease: { findFirst }
+    } as never);
+
+    await expect(repository.findPublished(input.publicId, "ja", now)).resolves.toBeNull();
+
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "PUBLISHED",
+          publishedSlotKey: { not: null },
+          AND: [
+            { OR: [{ visibleFrom: null }, { visibleFrom: { lte: now } }] },
+            { OR: [{ visibleUntil: null }, { visibleUntil: { gt: now } }] }
+          ]
+        })
+      })
+    );
+    expect(JSON.stringify(findFirst.mock.calls[0]?.[0])).not.toContain("SCHEDULED");
   });
 });
