@@ -44,6 +44,9 @@ import type { IdentityApplicationService } from "./services/identity-application
 import type { IdentityApplicationMediaRepositoryPort } from "./services/identity-application-media.service";
 import type { IdentityApplicationMediaService } from "./services/identity-application-media.service";
 import type { IdentityApplicationMediaStoragePort } from "./services/identity-application-media.storage";
+import type { ContentMediaRepositoryPort } from "./services/content-media.service";
+import type { ContentMediaService } from "./services/content-media.service";
+import type { ContentMediaStoragePort } from "./services/content-media.storage";
 import type { AffiliateIdentityActivationRepositoryPort } from "./services/affiliate-identity-activation.service";
 import type { AffiliateIdentityActivationService } from "./services/affiliate-identity-activation.service";
 import type { AffiliateWithdrawalEligibilityRepositoryPort } from "./services/affiliate-withdrawal-eligibility.service";
@@ -96,6 +99,7 @@ import { createHealthRoutes } from "./routes/health.routes";
 import { createLedgerRoutes } from "./routes/ledger.routes";
 import { createIdentityApplicationRoutes } from "./routes/identity-application.routes";
 import { createIdentityApplicationMediaRoutes } from "./routes/identity-application-media.routes";
+import { createContentMediaRoutes } from "./routes/content-media.routes";
 import { createIdentityActivationRoutes } from "./routes/identity-activation.routes";
 import { createMerchantTechnicianApplicationRoutes } from "./routes/merchant-technician-application.routes";
 import { createOperationsMerchantApplicationRoutes } from "./routes/operations-merchant-application.routes";
@@ -159,6 +163,9 @@ export interface AppDependencies {
   identityApplicationMediaRepository?: IdentityApplicationMediaRepositoryPort;
   identityApplicationMediaService?: IdentityApplicationMediaService;
   identityApplicationMediaStorage?: IdentityApplicationMediaStoragePort;
+  contentMediaRepository?: ContentMediaRepositoryPort;
+  contentMediaService?: ContentMediaService;
+  contentMediaStorage?: ContentMediaStoragePort;
   affiliateIdentityActivationRepository?: AffiliateIdentityActivationRepositoryPort;
   affiliateIdentityActivationService?: AffiliateIdentityActivationService;
   affiliateProfileRepository?: AffiliateProfileRepositoryPort;
@@ -250,6 +257,7 @@ export const createApp = (
   apiRouter.use(createLedgerRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityApplicationMediaRoutes(config, resolvedDependencies));
+  apiRouter.use(createContentMediaRoutes(config, resolvedDependencies));
   apiRouter.use(createIdentityActivationRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateProfileRoutes(config, resolvedDependencies));
   apiRouter.use(createAffiliateAllianceRoutes(config, resolvedDependencies));
@@ -271,6 +279,7 @@ export const createApp = (
     "/media/customer-avatars",
     createCustomerAvatarStaticMiddleware(config.CUSTOMER_AVATAR_STORAGE_DIR)
   );
+  app.use("/media/content", createContentMediaStaticMiddleware(config.CONTENT_MEDIA_STORAGE_DIR));
   app.use(notFoundMiddleware);
   app.use(errorMiddleware);
 
@@ -278,6 +287,31 @@ export const createApp = (
 };
 
 const customerAvatarFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+const contentMediaFilenamePattern = /^\/[a-f0-9]{64}\.(?:jpg|png|webp)$/;
+
+const createContentMediaStaticMiddleware = (directory: string) => {
+  const staticMiddleware = express.static(directory, {
+    index: false,
+    redirect: false,
+    setHeaders: (response) => {
+      response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      response.setHeader("Content-Disposition", "inline");
+      response.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    }
+  });
+
+  return (
+    request: express.Request,
+    response: express.Response,
+    next: express.NextFunction
+  ): void => {
+    if (!contentMediaFilenamePattern.test(request.path)) {
+      next();
+      return;
+    }
+    staticMiddleware(request, response, next);
+  };
+};
 
 const createCustomerAvatarStaticMiddleware = (directory: string) => {
   const staticMiddleware = express.static(directory, {
