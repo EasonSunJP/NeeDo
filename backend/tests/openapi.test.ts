@@ -1117,6 +1117,7 @@ describe("GET /api/v1/openapi.json", () => {
 
   it("documents the complete localized Affiliate announcement lifecycle without public internals", () => {
     type Operation = {
+      description: string;
       security: Array<Record<string, unknown>>;
       parameters?: Array<Record<string, unknown>>;
       requestBody?: { content: Record<string, { schema: Record<string, unknown> }> };
@@ -1194,6 +1195,13 @@ describe("GET /api/v1/openapi.json", () => {
     expect(publicPayload).not.toMatch(
       /releaseId|affiliateTaskId|translations|createdBy|updatedBy|publishedBy|disabledBy/
     );
+    const publicOperation = document.paths["/api/v1/affiliate/announcements/{publicId}"].get;
+    expect(publicOperation.description).toContain("active Affiliate identity");
+    expect(publicOperation.description).toContain("scout");
+    expect(publicOperation.responses["403"].description).toContain(
+      "error.affiliate_profile.identity_required"
+    );
+    expect(publicOperation.responses["403"].description).toContain("scout");
     const lifecycleContract = JSON.stringify({
       operations: Object.fromEntries(
         operations.map(([path, method]) => [`${method}:${path}`, document.paths[path][method]])
@@ -1358,7 +1366,19 @@ describe("GET /api/v1/openapi.json", () => {
 
   it("documents canonical Service UUID and legacy numeric identifiers on the same detail route", () => {
     const document = createOpenApiDocument(env) as unknown as {
-      paths: Record<string, Record<string, { parameters: Array<Record<string, unknown>> }>>;
+      paths: Record<
+        string,
+        Record<
+          string,
+          {
+            parameters: Array<Record<string, unknown>>;
+            responses: Record<
+              string,
+              { content: Record<string, { schema: Record<string, unknown> }> }
+            >;
+          }
+        >
+      >;
       components: {
         schemas: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
       };
@@ -1376,6 +1396,15 @@ describe("GET /api/v1/openapi.json", () => {
     expect(document.components.schemas.ServiceCard.properties).toHaveProperty("publicId", {
       type: "string",
       format: "uuid"
+    });
+    expect(operation.responses["200"].content["application/json"].schema).toEqual({
+      type: "object",
+      required: ["code", "message", "data"],
+      properties: {
+        code: { type: "integer", enum: [0] },
+        message: { type: "string", enum: ["success"] },
+        data: { $ref: "#/components/schemas/ServiceDetail" }
+      }
     });
   });
 });

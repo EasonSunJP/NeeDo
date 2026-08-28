@@ -6917,7 +6917,9 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           }
         ],
         responses: {
-          "200": { description: "Service detail" },
+          "200": jsonDataResponse("Service detail", {
+            $ref: "#/components/schemas/ServiceDetail"
+          }),
           "400": { description: "error.validation" },
           "404": { description: "Service not found" }
         }
@@ -9810,6 +9812,8 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
         "Read the active localized announcement through Affiliate marketplace visibility",
         "page:affiliate-marketplace",
         {
+          description:
+            "Requires page:affiliate-marketplace and an active Affiliate identity (current identity type scout).",
           parameters: [
             announcementPublicIdParameter,
             {
@@ -9822,7 +9826,11 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           responses: {
             "200": jsonDataResponse("One-locale Affiliate announcement", {
               $ref: "#/components/schemas/OfficialAnnouncementPublicPayload"
-            })
+            }),
+            "403": {
+              description:
+                "error.forbidden — missing page:affiliate-marketplace; error.affiliate_profile.identity_required — active Affiliate identity (current identity type scout) required"
+            }
           }
         }
       )
