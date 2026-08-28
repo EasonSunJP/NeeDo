@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useAuth } from "../../auth/AuthProvider";
+import { ApiClientError } from "../../api/httpClient";
 import { AppIcon, IconButton, floatingHeaderControlButtonClassName } from "../../components/client-ui/AppScaffold";
 import { FloatingHomeHeader, floatingHeaderGlassPanelClassName, floatingHeaderInnerClassName } from "../../components/mobile/FloatingHomeHeader";
 import { MobileShell } from "../../components/mobile/MobileShell";
@@ -8,19 +8,22 @@ import { roleBasedTabConfig, userNavItems } from "../../components/mobile/navIte
 import { SharedHomeHeader } from "../../components/mobile/SharedHomeHeader";
 import { AvatarImage } from "../../components/ui/AvatarImage";
 import {
-  buildTechnicianPublicAvailabilityRanges,
   formatTechnicianPublicAvailabilityRange,
   type TechnicianPublicAvailabilityRange
 } from "../../lib/technicianPublicAvailability";
-import { resolveTechnicianScheduleRouteId } from "../../lib/technicianScheduleRoute";
-import { getActivePolicyForStore } from "../../lib/shiftPlanning";
 import { cn } from "../../lib/utils";
 import { getCustomerLevelLabel } from "../../shared/profile-card/customerMembership";
-import { useEntityStore } from "../../state/entityStore";
-import { useHomeLayoutStore } from "../../state/homeLayoutStore";
-import { useShiftPlanningStore } from "../../state/shiftPlanningStore";
-import { useTechnicianScheduleStore } from "../../state/technicianScheduleStore";
 import type { Technician } from "../../types/domain";
+import type { BookingScheduleSlot } from "../../features/booking/api";
+import { groupFormalAvailabilityByJstDate } from "../../features/booking/formal-technician-availability";
+import { loadTechnicianAvailabilityWindow } from "../../features/booking/window-loaders";
+import {
+  coreReadApi,
+  coreReadIdFromRoute,
+  mapCoreTechnicianToTechnician,
+  type CoreTechnicianDetail
+} from "../../features/core-read/api";
+import { useCustomerSelfProfile } from "../../features/core-read/useCustomerSelfProfile";
 import {
   addDays,
   addMonths,
@@ -47,31 +50,6 @@ const timeColumnWidth = 72;
 
 function normalizeDateParam(value: string | null) {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : getTodayDateKey();
-}
-
-function resolveBufferMinutes(technician: Technician, planningSnapshot: ReturnType<typeof useShiftPlanningStore>) {
-  const policy = getActivePolicyForStore(technician.storeId, planningSnapshot.policies);
-  const response = policy
-    ? planningSnapshot.responses.find((item) => item.policyId === policy.id && item.technicianId === technician.id) ?? null
-    : planningSnapshot.responses.find((item) => item.technicianId === technician.id) ?? null;
-
-  if (!policy) {
-    return {
-      pre: response?.specialRules.preServiceBufferMinutes ?? 0,
-      post: response?.specialRules.postServiceBufferMinutes ?? 0
-    };
-  }
-
-  const forcePolicyBuffer = policy.forceInheritedRules.includes("buffers");
-
-  return {
-    pre: forcePolicyBuffer
-      ? policy.preServiceBufferMinutes
-      : Math.max(policy.preServiceBufferMinutes, response?.specialRules.preServiceBufferMinutes ?? 0),
-    post: forcePolicyBuffer
-      ? policy.postServiceBufferMinutes
-      : Math.max(policy.postServiceBufferMinutes, response?.specialRules.postServiceBufferMinutes ?? 0)
-  };
 }
 
 function formatPeriodLabel(view: AvailabilityView, anchorDate: string) {
@@ -113,6 +91,26 @@ function shiftAnchor(view: AvailabilityView, anchorDate: string, direction: -1 |
 
 function canNavigateBack() {
   return typeof window !== "undefined" && typeof window.history.state?.idx === "number" && window.history.state.idx > 0;
+}
+
+function getVisibleDates(view: AvailabilityView, anchorDate: string) {
+  if (view === "month") {
+    return getMonthGridDates(anchorDate);
+  }
+
+  if (view === "week") {
+    return getWeekDates(anchorDate);
+  }
+
+  if (view === "threeDay") {
+    return Array.from({ length: 3 }, (_, index) => addDays(anchorDate, index));
+  }
+
+  return [anchorDate];
+}
+
+function getJstDateBoundary(date: string) {
+  return new Date(`${date}T00:00:00+09:00`);
 }
 
 function AvailabilityTimeline({
@@ -192,63 +190,129 @@ export function UserTechnicianScheduleDetailPage() {
   const [searchParams] = useSearchParams();
   const initialDate = normalizeDateParam(searchParams.get("date"));
   const userPortalConfig = roleBasedTabConfig.user;
-  const { session } = useAuth();
-  const { customers, stores, technicians } = useEntityStore();
-  const { config } = useHomeLayoutStore();
-  const technicianSnapshot = useTechnicianScheduleStore();
-  const planningSnapshot = useShiftPlanningStore();
+  const routeTechnicianId = coreReadIdFromRoute(technicianId);
+  const {
+    profile: customerProfile,
+    customer,
+    loading: customerLoading,
+    error: customerError,
+    reload: reloadCustomer
+  } = useCustomerSelfProfile();
+  const [technicianDetail, setTechnicianDetail] = useState<CoreTechnicianDetail | null>(null);
+  const [technicianLoading, setTechnicianLoading] = useState(true);
+  const [technicianError, setTechnicianError] = useState<string | null>(null);
+  const [technicianNotFound, setTechnicianNotFound] = useState(false);
+  const [technicianReloadGeneration, setTechnicianReloadGeneration] = useState(0);
+  const [availabilitySlots, setAvailabilitySlots] = useState<BookingScheduleSlot[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(true);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [availabilityReloadGeneration, setAvailabilityReloadGeneration] = useState(0);
+  const technicianRequestGeneration = useRef(0);
+  const availabilityRequestGeneration = useRef(0);
   const [view, setView] = useState<AvailabilityView>("day");
   const [anchorDate, setAnchorDate] = useState(initialDate);
   const [selectedDate, setSelectedDate] = useState(initialDate);
-  const currentCustomer = customers.find((customer) => customer.id === session?.linkedCustomerId) ?? customers[0];
-  const selectedLocation = config.locations.find((item) => item.id === config.selectedLocationId) ?? config.locations[0];
-  const scheduleTechnicianId = resolveTechnicianScheduleRouteId(technicianId, technicians.map((item) => item.id));
-  const technician = technicians.find((item) => item.id === scheduleTechnicianId) ?? null;
-  const store = technician ? stores.find((item) => item.id === technician.storeId) ?? null : null;
 
   useEffect(() => {
     setAnchorDate(initialDate);
     setSelectedDate(initialDate);
   }, [initialDate]);
 
-  const buffer = useMemo(
-    () => (technician ? resolveBufferMinutes(technician, planningSnapshot) : { pre: 0, post: 0 }),
-    [planningSnapshot, technician]
-  );
-  const selectedDateRanges = useMemo(
-    () => technician
-      ? buildTechnicianPublicAvailabilityRanges({
-        date: selectedDate,
-        preBufferMinutes: buffer.pre,
-        postBufferMinutes: buffer.post,
-        snapshot: technicianSnapshot,
-        technicianId: technician.id
-      })
-      : [],
-    [buffer.post, buffer.pre, selectedDate, technician, technicianSnapshot]
-  );
   const threeDayDates = useMemo(() => Array.from({ length: 3 }, (_, index) => addDays(anchorDate, index)), [anchorDate]);
   const weekDates = useMemo(() => getWeekDates(anchorDate), [anchorDate]);
   const monthDates = useMemo(() => getMonthGridDates(anchorDate), [anchorDate]);
-  const availabilityCountByDate = useMemo(() => {
-    if (!technician) {
-      return new Map<string, number>();
+  const visibleDates = useMemo(() => getVisibleDates(view, anchorDate), [anchorDate, view]);
+  const availabilityWindowStart = visibleDates[0] ?? anchorDate;
+  const availabilityWindowEnd = addDays(visibleDates[visibleDates.length - 1] ?? anchorDate, 1);
+
+  useEffect(() => {
+    const generation = technicianRequestGeneration.current + 1;
+    technicianRequestGeneration.current = generation;
+
+    if (routeTechnicianId === null) {
+      setTechnicianDetail(null);
+      setTechnicianLoading(false);
+      setTechnicianError(null);
+      setTechnicianNotFound(true);
+      return;
     }
 
-    const dates = new Set([...threeDayDates, ...weekDates, ...monthDates, selectedDate]);
-    return new Map(
-      Array.from(dates).map((date) => [
-        date,
-        buildTechnicianPublicAvailabilityRanges({
-          date,
-          preBufferMinutes: buffer.pre,
-          postBufferMinutes: buffer.post,
-          snapshot: technicianSnapshot,
-          technicianId: technician.id
-        }).length
-      ])
-    );
-  }, [buffer.post, buffer.pre, monthDates, selectedDate, technician, technicianSnapshot, threeDayDates, weekDates]);
+    setTechnicianDetail(null);
+    setTechnicianLoading(true);
+    setTechnicianError(null);
+    setTechnicianNotFound(false);
+
+    void coreReadApi.getTechnicianDetail(routeTechnicianId)
+      .then((detail) => {
+        if (technicianRequestGeneration.current !== generation) return;
+        setTechnicianDetail(detail);
+        setTechnicianLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (technicianRequestGeneration.current !== generation) return;
+        setTechnicianDetail(null);
+        setTechnicianLoading(false);
+        if (error instanceof ApiClientError && error.status === 404) {
+          setTechnicianNotFound(true);
+          return;
+        }
+        setTechnicianError(error instanceof Error ? error.message : String(error));
+      });
+
+    return () => {
+      technicianRequestGeneration.current += 1;
+    };
+  }, [routeTechnicianId, technicianReloadGeneration]);
+
+  useEffect(() => {
+    const generation = availabilityRequestGeneration.current + 1;
+    availabilityRequestGeneration.current = generation;
+
+    if (routeTechnicianId === null) {
+      setAvailabilitySlots([]);
+      setAvailabilityLoading(false);
+      setAvailabilityError(null);
+      return;
+    }
+
+    setAvailabilitySlots([]);
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+
+    void loadTechnicianAvailabilityWindow(
+      routeTechnicianId,
+      getJstDateBoundary(availabilityWindowStart),
+      getJstDateBoundary(availabilityWindowEnd)
+    )
+      .then((slots) => {
+        if (availabilityRequestGeneration.current !== generation) return;
+        setAvailabilitySlots(slots);
+        setAvailabilityLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (availabilityRequestGeneration.current !== generation) return;
+        setAvailabilitySlots([]);
+        setAvailabilityLoading(false);
+        setAvailabilityError(error instanceof Error ? error.message : String(error));
+      });
+
+    return () => {
+      availabilityRequestGeneration.current += 1;
+    };
+  }, [availabilityReloadGeneration, availabilityWindowEnd, availabilityWindowStart, routeTechnicianId]);
+
+  const technician = useMemo(
+    () => technicianDetail ? mapCoreTechnicianToTechnician(technicianDetail) : null,
+    [technicianDetail]
+  );
+  const availabilityByDate = useMemo(
+    () => groupFormalAvailabilityByJstDate(availabilitySlots),
+    [availabilitySlots]
+  );
+  const selectedDateRanges = availabilityByDate.get(selectedDate) ?? [];
+  const availabilityCountByDate = useMemo(() => {
+    return new Map(visibleDates.map((date) => [date, availabilityByDate.get(date)?.length ?? 0]));
+  }, [availabilityByDate, visibleDates]);
 
   const changeView = (nextView: AvailabilityView) => {
     setView(nextView);
@@ -284,17 +348,80 @@ export function UserTechnicianScheduleDetailPage() {
     navigate(userPortalConfig.secondary.to, { replace: true });
   };
 
-  if (!currentCustomer || !selectedLocation) {
-    return null;
-  }
-
-  if (!technician) {
+  if (customerLoading || technicianLoading) {
     return (
       <MobileShell navItems={userNavItems}>
-        <div className="px-4 py-10 text-center">
+        <div className="px-4 py-10 text-center" role="status">
+          <strong className="text-lg font-black text-[color:var(--client-text)]">正在读取正式技师日程…</strong>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (technicianError) {
+    return (
+      <MobileShell navItems={userNavItems}>
+        <div className="px-4 py-10 text-center" role="alert">
+          <strong className="text-lg font-black text-[color:var(--client-text)]">技师资料读取失败</strong>
+          <button
+            className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")}
+            onClick={() => setTechnicianReloadGeneration((generation) => generation + 1)}
+            type="button"
+          >
+            重新加载
+          </button>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (technicianNotFound || !technician) {
+    return (
+      <MobileShell navItems={userNavItems}>
+        <div className="px-4 py-10 text-center" role="alert">
           <strong className="text-lg font-black text-[color:var(--client-text)]">未找到技师日程</strong>
           <button className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")} onClick={() => navigate(-1)} type="button">
             返回
+          </button>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (customerError || !customerProfile || !customer) {
+    return (
+      <MobileShell navItems={userNavItems}>
+        <div className="px-4 py-10 text-center" role="alert">
+          <strong className="text-lg font-black text-[color:var(--client-text)]">无法读取当前账号资料</strong>
+          <button className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")} onClick={reloadCustomer} type="button">
+            重新加载
+          </button>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (availabilityLoading) {
+    return (
+      <MobileShell navItems={userNavItems}>
+        <div className="px-4 py-10 text-center" role="status">
+          <strong className="text-lg font-black text-[color:var(--client-text)]">正在读取数据库可预约时段…</strong>
+        </div>
+      </MobileShell>
+    );
+  }
+
+  if (availabilityError) {
+    return (
+      <MobileShell navItems={userNavItems}>
+        <div className="px-4 py-10 text-center" role="alert">
+          <strong className="text-lg font-black text-[color:var(--client-text)]">可预约时段读取失败</strong>
+          <button
+            className={cn(floatingHeaderControlButtonClassName, "mx-auto mt-4")}
+            onClick={() => setAvailabilityReloadGeneration((generation) => generation + 1)}
+            type="button"
+          >
+            重新加载
           </button>
         </div>
       </MobileShell>
@@ -309,12 +436,12 @@ export function UserTechnicianScheduleDetailPage() {
       >
         <div className={floatingHeaderInnerClassName}>
           <SharedHomeHeader
-            avatarAlt={currentCustomer.name}
-            avatarLevelLabel={getCustomerLevelLabel(currentCustomer.activeScore)}
-            avatarMembershipLevel={currentCustomer.memberLevel}
-            avatarSrc={currentCustomer.avatar}
+            avatarAlt={customer.name}
+            avatarLevelLabel={getCustomerLevelLabel(customer.activeScore)}
+            avatarMembershipLevel={customer.memberLevel}
+            avatarSrc={customer.avatar}
             avatarTo={userPortalConfig.myPath}
-            locationLabel={selectedLocation.label}
+            locationLabel={customerProfile.city ?? "服务区域未设置"}
             locationCaption="当前服务区域"
             locationTo="/me/settings/service-range"
             rightAction={
@@ -343,7 +470,7 @@ export function UserTechnicianScheduleDetailPage() {
             <div className="min-w-0 flex-1">
               <strong className="block truncate text-lg font-black text-[color:var(--client-text)]">{formatPeriodLabel(view, anchorDate)}</strong>
               <span className="mt-0.5 block truncate text-[11px] font-black text-[color:var(--client-muted)]">
-                {technician.nickname ?? technician.name} · {store?.name ?? "可预约日程"}
+                {technician.nickname ?? technician.name} · {technicianDetail?.shop?.name ?? "可预约日程"} · {technician.systemId}
               </span>
             </div>
             <button
@@ -448,7 +575,7 @@ export function UserTechnicianScheduleDetailPage() {
 
           <div className="mt-3 rounded-[18px] border border-[color:color-mix(in_srgb,var(--client-line)_60%,transparent)] bg-[color:color-mix(in_srgb,var(--client-elevated)_76%,transparent)] px-3 py-2 text-[11px] font-black leading-5 text-[color:var(--client-muted)]">
             <AppIcon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" name="clock" />
-            已自动扣除已预约、休息、锁定以及前后缓冲时间。缓冲：前 {buffer.pre} 分 / 后 {buffer.post} 分。
+            仅显示该技师在当前日期范围内仍有剩余容量的正式可预约时段。
           </div>
         </section>
 
