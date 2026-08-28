@@ -550,14 +550,6 @@ describe("translations", () => {
     expect(translateText("最近的店铺工作会归档在这里，方便核对排班和收入记录。", "ko")).toContain("근무표");
   });
 
-  it("uses UI decoration naming for the merchant design surface", () => {
-    expect(translateText("UI装修", "ja")).toBe("UI装飾");
-    expect(translateText("UI装修", "en")).toBe("UI Decoration");
-    expect(translateText("UI装修", "ko")).toBe("UI 꾸미기");
-    expect(translateText("店铺 UI 装修", "en")).toBe("Store UI Decoration");
-    expect(translateText("信息卡装修", "ja")).toBe("情報カード装飾");
-  });
-
   it("uses the approved UI theme names across languages", () => {
     expect(translateText("活力黑白版", "ja")).toBe("活躍白黒");
     expect(translateText("冷酷黑灰版", "ja")).toBe("クールダーク");

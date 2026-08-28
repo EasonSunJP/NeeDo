@@ -23,7 +23,6 @@ import { CitySettingsPage } from "./pages/admin/CitySettingsPage";
 import { CRMPage } from "./pages/admin/CRMPage";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { DataCenterPage } from "./pages/admin/DataCenterPage";
-import { DecorationPage } from "./pages/admin/DecorationPage";
 import { FieldJobsPage } from "./pages/admin/FieldJobsPage";
 import { FinancePage } from "./pages/admin/FinancePage";
 import { FloorplanPage } from "./pages/admin/FloorplanPage";
@@ -67,7 +66,6 @@ import {
   MerchantAdminDispatchCenterOverviewPage,
   MerchantAdminDispatchCenterSchedulePage
 } from "./pages/merchant-admin/dispatch-center/DispatchCenterRoutePages";
-import { MerchantAdminDesignPage } from "./pages/merchant-admin/MerchantAdminDesignPage";
 import { MerchantAdminDocsPage } from "./pages/merchant-admin/MerchantAdminDocsPage";
 import { MerchantAdminOrdersPage } from "./pages/merchant-admin/MerchantAdminOrdersPage";
 import { MerchantAdminPeoplePage } from "./pages/merchant-admin/MerchantAdminPeoplePage";
@@ -1305,7 +1303,6 @@ export default function App() {
               <Route path="/merchant-admin/inventory" element={protectFeature("merchant", "store.inventory.view", <MerchantAdminInventoryPage />, "/merchant-admin")} />
               <Route path="/merchant-admin/finance" element={protect("merchant", <MerchantAdminFinancePage />)} />
               <Route path="/merchant-admin/people" element={protect("merchant", <MerchantAdminPeoplePage />)} />
-              <Route path="/merchant-admin/design" element={protect("merchant", <MerchantAdminDesignPage />)} />
               <Route path="/merchant-admin/docs" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/docs/api" element={protect("merchant", <MerchantAdminDocsPage />)} />
               <Route path="/merchant-admin/settings" element={protect("merchant", <MerchantAdminSettingsPage />)} />
@@ -1378,7 +1375,6 @@ export default function App() {
               <Route path="/admin/data" element={protect("admin", <DataCenterPage />)} />
               <Route path="/admin/cities" element={protect("admin", <CitySettingsPage />)} />
               <Route path="/admin/badges" element={protect("admin", <AvatarBadgesPage />)} />
-              <Route path="/admin/decoration" element={protect("admin", <DecorationPage />)} />
               <Route path="/admin/technicians" element={protect("admin", <TechniciansPage />)} />
               <Route path="/admin/orders" element={protect("admin", <OrdersAdminPage />)} />
               <Route path="/admin/orders/demands" element={protect("admin", <NeedoDemandAdminPage />)} />
