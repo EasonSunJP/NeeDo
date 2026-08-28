@@ -701,7 +701,7 @@ git commit -m "test: retire technician schedule browser data"
 - Consumes: existing `needo_dev`, seeded technician test accounts, formal backend 3000, and formal frontend 5180 or isolated alternate ports.
 - Produces: acceptance evidence for persisted IDs/times, cross-technician isolation, restart behavior, and failure behavior.
 
-- [ ] **Step 1: Reconcile both real database datasets**
+- [x] **Step 1: Reconcile both real database datasets**
 
 Run:
 
@@ -713,7 +713,7 @@ ENV_FILE=.env.dev npm run check:lifedance-operations
 
 Expected: both return `status: "ok"`; future overlap, duplicate, invalid relationship, terminal-state, finance, hold, and review counts remain zero.
 
-- [ ] **Step 2: Run focused backend and frontend suites**
+- [x] **Step 2: Run focused backend and frontend suites**
 
 Run:
 
@@ -726,7 +726,7 @@ npm test -- src/features/scheduling/api.test.ts src/features/scheduling/window-l
 
 Expected: all commands PASS.
 
-- [ ] **Step 3: Run complete quality gates**
+- [x] **Step 3: Run complete quality gates**
 
 Run:
 
@@ -742,11 +742,11 @@ npm run build
 
 Expected: all commands PASS; production bundle audit passes all formal HTML entries and assets.
 
-- [ ] **Step 4: Start isolated formal services and verify readiness**
+- [x] **Step 4: Start isolated formal services and verify readiness**
 
 Use an isolated frontend/backend port pair if 5180/3000 belongs to another task. Verify listeners, `/api/v1/health`, `/api/v1/ready`, frontend HTTP 200, and frontend proxy health before browser interaction. Do not use the root legacy backend script.
 
-- [ ] **Step 5: Browser-accept a real technician schedule**
+- [x] **Step 5: Browser-accept a real technician schedule**
 
 Sign in with an existing seeded technician account. Record the active `s##########` identity and one existing future `ScheduleSlot.id` from the formal API without exposing credentials or tokens.
 
@@ -762,15 +762,17 @@ Verify:
 
 - [ ] **Step 6: Browser-accept formal order detail and isolation**
 
+Order detail, cross-technician isolation, and backend stop/retry/recovery passed. The required successful state transition remains open because the selected test shop has no NDP wallet while the active Booking hold rule requires 500 NDP; the failed confirm rolled back without changing the seeded order or creating finance rows. Do not mark this step complete until a formally funded test-shop order can transition and persist its history.
+
 Open one numeric order from the formal technician order list. Verify the route matches the formal API order number, status, appointment time, payment state, and complete status history. Use only a state transition valid for the selected test order and verify the returned history persists after refresh.
 
 Attempt another technician's numeric slot and order IDs; both must show safe not-found. Stop the isolated backend and verify schedule/detail/order pages show retryable errors with no fallback schedules or orders. Restart, retry, and confirm the same persisted records return.
 
-- [ ] **Step 7: Verify transfer capability boundary**
+- [x] **Step 7: Verify transfer capability boundary**
 
 Open `/technician/schedule/shifts/1/transfer`. Confirm the page explains that server-backed transfer is unavailable, performs no request mutation, writes no localStorage, and returns safely to the technician schedule.
 
-- [ ] **Step 8: Clean acceptance-only data and record evidence**
+- [x] **Step 8: Clean acceptance-only data and record evidence**
 
 Remove only the uniquely created unbooked slot through the formal delete API if it still exists. Do not delete seeded six-month data. Update `docs/MOCK_RETIREMENT_MAP.md` with exact test totals, checker counts, browser account label, slot/order IDs, persisted timestamps, failure/recovery results, and remaining merchant boundary.
 
