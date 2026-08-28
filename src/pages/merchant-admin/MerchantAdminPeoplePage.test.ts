@@ -117,7 +117,7 @@ describe("MerchantAdminPeoplePage formal scoped data", () => {
     expect(source).not.toContain(">重试</Button>");
   });
 
-  it("does not invent reviews, full payroll amounts, schedule, or customer analytics", () => {
+  it("does not invent reviews, full payroll amounts, or customer analytics and uses the formal employee schedule", () => {
     expect(source).not.toContain("LTV");
     expect(source).not.toContain("churnRisk");
     expect(source).not.toContain("activeScore");

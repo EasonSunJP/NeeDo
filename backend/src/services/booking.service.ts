@@ -328,16 +328,37 @@ export class BookingService {
       throw this.invalidTransitionError();
     }
 
-    const next = await this.repository.transitionOrder(
-      {
-        id,
-        actorUserId: actor.userId,
-        fromStatus: order.status,
-        toStatus: rule.to,
-        reason
-      },
-      this.createSettlementOptions(actor, order, action, confirmInput)
+    const transitionInput = {
+      id,
+      actorUserId: actor.userId,
+      fromStatus: order.status,
+      toStatus: rule.to,
+      reason
+    };
+    const transitionOptions = this.createSettlementOptions(
+      actor,
+      order,
+      action,
+      confirmInput
     );
+    const guardedResult = action === "confirm"
+      ? await this.repository.transitionOrderWithScheduleGuard?.(
+          transitionInput,
+          transitionOptions
+        )
+      : undefined;
+    if (guardedResult?.outcome === "schedule_conflict") {
+      throw new AppError({
+        code: ERROR_CODES.SCHEDULE_CONFLICT,
+        message: "error.schedule.conflict",
+        statusCode: 409
+      });
+    }
+    const next = guardedResult
+      ? guardedResult.outcome === "ok"
+        ? guardedResult.order
+        : null
+      : await this.repository.transitionOrder(transitionInput, transitionOptions);
 
     if (!next) {
       throw this.invalidTransitionError();

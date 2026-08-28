@@ -50,6 +50,19 @@ const createRepository = (): jest.Mocked<TechnicianShopAffiliationRepositoryPort
       page_size: 20
     })),
     findCurrentShopEmployee: jest.fn(async () => employee),
+    listCurrentShopEmployeeSchedule: jest.fn(async () => [
+      {
+        projectionId: "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
+        kind: "busy_redacted",
+        visibility: "busy_redacted",
+        status: "busy",
+        startsAt: "2026-08-29T13:00:00.000Z",
+        endsAt: "2026-08-29T15:00:00.000Z",
+        title: "其他店铺已有确认安排",
+        isClickable: false,
+        isEditable: false
+      }
+    ]),
     updateCurrentShopEmployeeProfile: jest.fn(async () => employee),
     upsertCurrentAffiliation: jest.fn(async () => employee)
   }) as unknown as jest.Mocked<TechnicianShopAffiliationRepositoryPort>;
@@ -216,6 +229,59 @@ describe("merchant employee affiliation HTTP API", () => {
           data: null
         });
       });
+  });
+
+  it("returns a strict employee schedule projection and rejects invalid ranges", async () => {
+    const fixture = createFixture();
+    const authorization = `Bearer ${fixture.token}`;
+    const endpoint =
+      "/api/v1/merchant-admin/employees/s0000000086/schedule?from=2026-08-25T00%3A00%3A00.000Z&to=2026-09-01T00%3A00%3A00.000Z&view=week";
+
+    await request(fixture.app)
+      .get(endpoint)
+      .set("Authorization", authorization)
+      .expect(200)
+      .expect((response) => {
+        expect(response.body.data).toMatchObject({
+          employee: { needoId: "s0000000086", relationshipType: "partner" },
+          range: { view: "week" },
+          events: [
+            {
+              projectionId: expect.any(String),
+              kind: "busy_redacted",
+              visibility: "busy_redacted",
+              status: "busy",
+              startsAt: "2026-08-29T13:00:00.000Z",
+              endsAt: "2026-08-29T15:00:00.000Z",
+              title: "其他店铺已有确认安排",
+              isClickable: false,
+              isEditable: false
+            }
+          ]
+        });
+        expect(response.body.data.events[0]).not.toEqual(
+          expect.objectContaining({
+            shopId: expect.anything(),
+            orderId: expect.anything(),
+            serviceName: expect.anything(),
+            customerUserId: expect.anything()
+          })
+        );
+      });
+    expect(fixture.repository.listCurrentShopEmployeeSchedule).toHaveBeenCalledWith({
+      shopId: 16,
+      technicianIdentityId: 86,
+      from: new Date("2026-08-25T00:00:00.000Z"),
+      to: new Date("2026-09-01T00:00:00.000Z"),
+      view: "week"
+    });
+
+    await request(fixture.app)
+      .get(
+        "/api/v1/merchant-admin/employees/s0000000086/schedule?from=2026-08-01T00%3A00%3A00.000Z&to=2026-12-01T00%3A00%3A00.000Z&view=week"
+      )
+      .set("Authorization", authorization)
+      .expect(400);
   });
 
   it("validates strict mutation dates and maps an exclusivity collision to safe 409", async () => {

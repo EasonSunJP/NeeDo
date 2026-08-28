@@ -3685,6 +3685,120 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
           page_size: { type: "integer", minimum: 1, maximum: 100 }
         }
       },
+      MerchantEmployeeScheduleVisibleEvent: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "projectionId",
+          "kind",
+          "visibility",
+          "status",
+          "startsAt",
+          "endsAt",
+          "title",
+          "isClickable",
+          "isEditable"
+        ],
+        properties: {
+          projectionId: { type: "string" },
+          kind: { type: "string", enum: ["availability", "schedule", "booking"] },
+          visibility: { type: "string", enum: ["current_shop", "affiliated_shops"] },
+          status: {
+            type: "string",
+            enum: [
+              "available",
+              "scheduled",
+              "pending",
+              "confirmed",
+              "in_service",
+              "completed",
+              "blocked"
+            ]
+          },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          title: { type: "string" },
+          detail: { type: "string" },
+          orderId: { type: "integer", minimum: 1 },
+          isClickable: { type: "boolean" },
+          isEditable: { type: "boolean" }
+        }
+      },
+      MerchantEmployeeScheduleRedactedEvent: {
+        type: "object",
+        additionalProperties: false,
+        description:
+          "Privacy projection for another affiliated shop's confirmed or in-service booking. No source shop, participant, service, order, price, address, note, or source event identifier is returned.",
+        required: [
+          "projectionId",
+          "kind",
+          "visibility",
+          "status",
+          "startsAt",
+          "endsAt",
+          "title",
+          "isClickable",
+          "isEditable"
+        ],
+        properties: {
+          projectionId: { type: "string" },
+          kind: { type: "string", enum: ["busy_redacted"] },
+          visibility: { type: "string", enum: ["busy_redacted"] },
+          status: { type: "string", enum: ["busy"] },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: "string", format: "date-time" },
+          title: { type: "string", enum: ["其他店铺已有确认安排"] },
+          isClickable: { type: "boolean", enum: [false] },
+          isEditable: { type: "boolean", enum: [false] }
+        }
+      },
+      MerchantEmployeeScheduleProjection: {
+        type: "object",
+        additionalProperties: false,
+        required: ["employee", "range", "events"],
+        properties: {
+          employee: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "needoId",
+              "displayName",
+              "avatarUrl",
+              "relationshipType",
+              "workStatus"
+            ],
+            properties: {
+              needoId: { type: "string", pattern: "^s[0-9]{10}$" },
+              displayName: { type: "string" },
+              avatarUrl: { type: ["string", "null"], format: "uri-reference" },
+              relationshipType: { type: "string", enum: ["exclusive", "partner"] },
+              workStatus: {
+                type: "string",
+                enum: ["active", "on_leave", "suspended", "ended"]
+              }
+            }
+          },
+          range: {
+            type: "object",
+            additionalProperties: false,
+            required: ["from", "to", "view"],
+            properties: {
+              from: { type: "string", format: "date-time" },
+              to: { type: "string", format: "date-time" },
+              view: { type: "string", enum: ["day", "week", "month"] }
+            }
+          },
+          events: {
+            type: "array",
+            items: {
+              oneOf: [
+                { $ref: "#/components/schemas/MerchantEmployeeScheduleVisibleEvent" },
+                { $ref: "#/components/schemas/MerchantEmployeeScheduleRedactedEvent" }
+              ]
+            }
+          }
+        }
+      },
       MerchantEmployeeAffiliationInput: {
         type: "object",
         additionalProperties: false,
@@ -3984,6 +4098,45 @@ export const createOpenApiDocument = (config: AppConfig): OpenApiDocument => ({
             $ref: "#/components/schemas/MerchantEmployee"
           }),
           ...merchantEmployeeErrorResponses
+        }
+      }
+    },
+    [`${config.API_PREFIX}/merchant-admin/employees/{needoId}/schedule`]: {
+      get: {
+        tags: ["Merchant Employees"],
+        summary: "Read a privacy-safe employee schedule projection",
+        description:
+          "The authenticated shop receives its own schedule details, technician-published partner availability, and time-only gray locks for another shop's confirmed or in-service bookings.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          merchantEmployeeNeedoIdParameter,
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "view",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["day", "week", "month"] }
+          }
+        ],
+        responses: {
+          "200": jsonDataResponse("Privacy-safe employee schedule projection", {
+            $ref: "#/components/schemas/MerchantEmployeeScheduleProjection"
+          }),
+          "400": merchantEmployeeErrorResponses["400"],
+          "401": merchantEmployeeErrorResponses["401"],
+          "403": merchantEmployeeErrorResponses["403"],
+          "404": merchantEmployeeErrorResponses["404"]
         }
       }
     },

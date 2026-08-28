@@ -154,6 +154,77 @@ describe("TechnicianShopAffiliationRepository", () => {
     );
   });
 
+  it("projects partner availability and merges other-shop confirmed time without leaking details", async () => {
+    const bookingFindMany = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          startsAt: new Date("2026-08-29T13:00:00.000Z"),
+          endsAt: new Date("2026-08-29T14:00:00.000Z")
+        },
+        {
+          startsAt: new Date("2026-08-29T13:30:00.000Z"),
+          endsAt: new Date("2026-08-29T15:00:00.000Z")
+        }
+      ]);
+    const repository = new TechnicianShopAffiliationRepository({
+      userIdentity: {
+        findFirst: jest.fn().mockResolvedValue({
+          user: { technicianProfile: { id: 47 } }
+        })
+      },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({ relationshipType: "PARTNER" })
+      },
+      scheduleSlot: { findMany: jest.fn().mockResolvedValue([]) },
+      bookingOrder: { findMany: bookingFindMany },
+      availability: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            startsAt: new Date("2026-08-29T12:00:00.000Z"),
+            endsAt: new Date("2026-08-29T16:00:00.000Z")
+          }
+        ])
+      }
+    } as unknown as PrismaClient);
+
+    const result = await repository.listCurrentShopEmployeeSchedule({
+      shopId: 16,
+      technicianIdentityId: 86,
+      from: new Date("2026-08-29T00:00:00.000Z"),
+      to: new Date("2026-08-30T00:00:00.000Z"),
+      view: "day"
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        kind: "availability",
+        startsAt: "2026-08-29T12:00:00.000Z",
+        endsAt: "2026-08-29T13:00:00.000Z"
+      }),
+      {
+        projectionId:
+          "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
+        kind: "busy_redacted",
+        visibility: "busy_redacted",
+        status: "busy",
+        startsAt: "2026-08-29T13:00:00.000Z",
+        endsAt: "2026-08-29T15:00:00.000Z",
+        title: "其他店铺已有确认安排",
+        isClickable: false,
+        isEditable: false
+      },
+      expect.objectContaining({
+        kind: "availability",
+        startsAt: "2026-08-29T15:00:00.000Z",
+        endsAt: "2026-08-29T16:00:00.000Z"
+      })
+    ]);
+    const serialized = JSON.stringify(result?.find((event) => event.kind === "busy_redacted"));
+    expect(serialized).not.toMatch(/shop|order|service|customer|price|address|note|participant/i);
+  });
+
   it("updates only a profile with a current affiliation in the requested shop", async () => {
     const tx = transactionClient();
     const repository = new TechnicianShopAffiliationRepository(transactionalClient(tx));

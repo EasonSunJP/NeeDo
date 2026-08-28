@@ -37,6 +37,8 @@ describe("formal profile detail OpenAPI contract", () => {
     const response = await request(createApp()).get("/api/v1/openapi.json").expect(200);
     const list = response.body.paths["/api/v1/merchant-admin/employees"].get;
     const detail = response.body.paths["/api/v1/merchant-admin/employees/{needoId}"].get;
+    const schedule =
+      response.body.paths["/api/v1/merchant-admin/employees/{needoId}/schedule"].get;
     const update =
       response.body.paths["/api/v1/merchant-admin/employees/{needoId}/affiliation"].put;
     const profileUpdate =
@@ -54,6 +56,25 @@ describe("formal profile detail OpenAPI contract", () => {
       required: true,
       schema: { type: "string", pattern: "^s[0-9]{10}$" }
     });
+    expect(schedule.security).toEqual([{ bearerAuth: [] }]);
+    expect(schedule.parameters.map((parameter: { name: string }) => parameter.name)).toEqual([
+      "needoId",
+      "from",
+      "to",
+      "view"
+    ]);
+    expect(schedule.responses).toEqual(
+      expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "401": expect.any(Object),
+        "403": expect.any(Object),
+        "404": expect.any(Object)
+      })
+    );
+    expect(response.body.components.schemas.MerchantEmployeeScheduleProjection.required).toEqual(
+      ["employee", "range", "events"]
+    );
     expect(update.requestBody.content["application/json"].schema).toEqual({
       $ref: "#/components/schemas/MerchantEmployeeAffiliationInput"
     });

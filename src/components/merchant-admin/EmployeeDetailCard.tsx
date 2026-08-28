@@ -15,6 +15,7 @@ import { translateText } from "../../i18n/translations";
 import { Badge, type BadgeTone } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { PayrollSchedulePolicyEditor } from "./PayrollSchedulePolicyEditor";
+import { EmployeeSchedulePanel } from "./EmployeeSchedulePanel";
 
 type SavingSection = "profile" | "affiliation" | null;
 
@@ -581,6 +582,8 @@ export function EmployeeDetailCard({
           </Badge>
         </div>
       </section>
+
+      <EmployeeSchedulePanel employee={employee} />
 
       <PayrollSchedulePolicyEditor
         description="继承店铺默认规则，或为该员工设置独立结算周期与休息日处理方式。"

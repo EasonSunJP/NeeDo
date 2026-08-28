@@ -78,4 +78,25 @@ describe("merchant employee API client", () => {
       },
     );
   });
+
+  it("loads a bounded employee schedule by canonical NeeDoID", async () => {
+    vi.mocked(httpClient.request).mockResolvedValue({});
+
+    await merchantEmployeeApi.schedule(" NEEDO-S-47/东京 ", {
+      from: "2026-08-24T15:00:00.000Z",
+      to: "2026-08-31T15:00:00.000Z",
+      view: "week",
+    });
+
+    expect(httpClient.request).toHaveBeenCalledWith(
+      "/merchant-admin/employees/NEEDO-S-47%2F%E4%B8%9C%E4%BA%AC/schedule",
+      {
+        query: {
+          from: "2026-08-24T15:00:00.000Z",
+          to: "2026-08-31T15:00:00.000Z",
+          view: "week",
+        },
+      },
+    );
+  });
 });

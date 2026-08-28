@@ -232,6 +232,10 @@ export type ManualPaymentMutationResult =
   | { outcome: "ok"; order: BookingOrderPayload; applied: boolean }
   | { outcome: "not_found" | "invalid_state" | "amount_mismatch" | "conflict" };
 
+export type OrderTransitionGuardedResult =
+  | { outcome: "ok"; order: BookingOrderPayload }
+  | { outcome: "invalid_state" | "schedule_conflict" };
+
 export interface BookingRepositoryPort {
   listAvailableSlots: (
     input: AvailabilityListInput
@@ -249,6 +253,10 @@ export interface BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options?: OrderTransitionRepositoryOptions
   ) => Promise<BookingOrderPayload | null>;
+  transitionOrderWithScheduleGuard?: (
+    input: OrderTransitionRepositoryInput,
+    options?: OrderTransitionRepositoryOptions
+  ) => Promise<OrderTransitionGuardedResult>;
   findScheduleSlotById: (input: ScheduleSlotReadInput) => Promise<ScheduleSlotPayload | null>;
   listScheduleSlots: (input: ScheduleListInput) => Promise<PaginatedResponse<ScheduleSlotPayload>>;
   createScheduleSlot: (input: ScheduleSlotCreateInput) => Promise<ScheduleMutationResult>;
@@ -300,6 +308,7 @@ type OrderRecord = Prisma.BookingOrderGetPayload<{
 }>;
 
 const ACTIVE_ORDER_DB_STATUSES = ["PENDING", "CONFIRMED", "IN_SERVICE"] as const;
+const HARD_LOCK_ORDER_DB_STATUSES = ["CONFIRMED", "IN_SERVICE"] as const;
 
 export class BookingRepository implements BookingRepositoryPort {
   public constructor(private readonly client: PrismaClient = prisma) {}
@@ -433,6 +442,17 @@ export class BookingRepository implements BookingRepositoryPort {
       if (!this.matchesServiceDuration(input.startsAt, input.endsAt, target.durationMinutes)) {
         return { outcome: "duration_mismatch" };
       }
+      if (
+        target.technicianProfileId &&
+        await this.hasConfirmedBookingOverlap(
+          transaction,
+          target.technicianProfileId,
+          input.startsAt,
+          input.endsAt
+        )
+      ) {
+        return { outcome: "conflict" };
+      }
       if (await this.hasScheduleOverlap(transaction, target.shopId, target.technicianProfileId, target.serviceId, input.startsAt, input.endsAt)) {
         return { outcome: "conflict" };
       }
@@ -440,6 +460,8 @@ export class BookingRepository implements BookingRepositoryPort {
         data: {
           shopId: target.shopId,
           technicianProfileId: target.technicianProfileId,
+          sourceType: input.scope === "technician" ? "TECHNICIAN" : "SHOP",
+          visibility: input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY",
           startsAt: input.startsAt,
           endsAt: input.endsAt,
           capacity: input.capacity,
@@ -482,6 +504,19 @@ export class BookingRepository implements BookingRepositoryPort {
       }
       if (!this.matchesServiceDuration(startsAt, endsAt, existing.service?.durationMinutes ?? existing.technicianService?.durationMinutes ?? 0)) {
         return { outcome: "duration_mismatch" };
+      }
+      if (
+        timeChanged &&
+        existing.technicianProfileId &&
+        await this.hasConfirmedBookingOverlap(
+          transaction,
+          existing.technicianProfileId,
+          startsAt,
+          endsAt,
+          existing.id
+        )
+      ) {
+        return { outcome: "conflict" };
       }
       if (timeChanged && await this.hasScheduleOverlap(transaction, existing.shopId, existing.technicianProfileId, existing.serviceId, startsAt, endsAt, existing.id)) {
         return { outcome: "conflict" };
@@ -593,10 +628,10 @@ export class BookingRepository implements BookingRepositoryPort {
       const conflict = await tx.bookingOrder.findFirst({
         where: {
           deletedAt: null,
-          status: { in: [...ACTIVE_ORDER_DB_STATUSES] },
           OR: [
             {
               customerUserId: input.customerUserId,
+              status: { in: [...ACTIVE_ORDER_DB_STATUSES] },
               startsAt: { lt: slot.endsAt },
               endsAt: { gt: slot.startsAt }
             },
@@ -605,6 +640,7 @@ export class BookingRepository implements BookingRepositoryPort {
                   {
                     scheduleSlotId: { not: slot.id },
                     technicianProfileId: slot.technicianProfileId,
+                    status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
                     startsAt: { lt: slot.endsAt },
                     endsAt: { gt: slot.startsAt }
                   }
@@ -775,6 +811,14 @@ export class BookingRepository implements BookingRepositoryPort {
     input: OrderTransitionRepositoryInput,
     options: OrderTransitionRepositoryOptions = {}
   ): Promise<BookingOrderPayload | null> {
+    const result = await this.transitionOrderWithScheduleGuard(input, options);
+    return result?.outcome === "ok" ? result.order : null;
+  }
+
+  public async transitionOrderWithScheduleGuard(
+    input: OrderTransitionRepositoryInput,
+    options: OrderTransitionRepositoryOptions = {}
+  ): Promise<OrderTransitionGuardedResult> {
     return runWithTransactionConflictRetry(() => this.client.$transaction(async (tx) => {
       const current = await tx.bookingOrder.findFirst({
         where: {
@@ -785,7 +829,25 @@ export class BookingRepository implements BookingRepositoryPort {
       });
 
       if (!current || this.statusFromDb(current.status) !== input.fromStatus) {
-        return null;
+        return { outcome: "invalid_state" as const };
+      }
+
+      if (input.toStatus === "confirmed" && current.technicianProfileId) {
+        await this.lockScheduleOwner(tx, current.shopId, current.technicianProfileId);
+        const conflict = await tx.bookingOrder.findFirst({
+          where: {
+            id: { not: current.id },
+            technicianProfileId: current.technicianProfileId,
+            status: { in: ["CONFIRMED", "IN_SERVICE"] },
+            startsAt: { lt: current.endsAt },
+            endsAt: { gt: current.startsAt },
+            deletedAt: null
+          },
+          select: { id: true }
+        });
+        if (conflict) {
+          return { outcome: "schedule_conflict" as const };
+        }
       }
 
       const update = await tx.bookingOrder.updateMany({
@@ -805,7 +867,7 @@ export class BookingRepository implements BookingRepositoryPort {
       });
 
       if (update.count !== 1) {
-        return null;
+        return { outcome: "invalid_state" as const };
       }
 
       if (input.toStatus === "cancelled") {
@@ -846,7 +908,9 @@ export class BookingRepository implements BookingRepositoryPort {
         include: this.orderInclude()
       });
 
-      return next ? this.mapOrder(next) : null;
+      return next
+        ? { outcome: "ok" as const, order: this.mapOrder(next) }
+        : { outcome: "invalid_state" as const };
     }));
   }
 
@@ -1110,14 +1174,13 @@ export class BookingRepository implements BookingRepositoryPort {
       });
       if (!technicianService || (technicianProfileId && technicianProfileId !== technicianService.technicianId)) return null;
       technicianProfileId = technicianService.technicianId;
-      const technician = await transaction.technicianProfile.findFirst({ where: { id: technicianProfileId, shopId, deletedAt: null, status: "published" }, select: { id: true } });
-      if (!technician) return null;
+      if (!await this.hasActiveScheduleAffiliation(transaction, shopId, technicianProfileId)) return null;
       return { shopId, technicianProfileId, serviceId: null, technicianServiceId: technicianService.id, durationMinutes: technicianService.durationMinutes };
     }
     const [service, technician] = await Promise.all([
       transaction.service.findFirst({ where: { id: serviceId, shopId, deletedAt: null, status: "published" }, select: { id: true, durationMinutes: true } }),
       technicianProfileId
-        ? transaction.technicianProfile.findFirst({ where: { id: technicianProfileId, shopId, deletedAt: null, status: "published" }, select: { id: true } })
+        ? this.hasActiveScheduleAffiliation(transaction, shopId, technicianProfileId)
         : Promise.resolve(null)
     ]);
     if (!service || (technicianProfileId && !technician)) return null;
@@ -1154,9 +1217,52 @@ export class BookingRepository implements BookingRepositoryPort {
       where: {
         deletedAt: null,
         ...(excludeId ? { id: { not: excludeId } } : {}),
-        ...(technicianProfileId ? { technicianProfileId } : { shopId, serviceId, technicianProfileId: null }),
+        ...(technicianProfileId
+          ? { shopId, technicianProfileId }
+          : { shopId, serviceId, technicianProfileId: null }),
         startsAt: { lt: endsAt },
         endsAt: { gt: startsAt }
+      },
+      select: { id: true }
+    }));
+  }
+
+  private async hasActiveScheduleAffiliation(
+    transaction: Prisma.TransactionClient,
+    shopId: number,
+    technicianProfileId: number
+  ): Promise<boolean> {
+    return Boolean(await transaction.technicianShopAffiliation.findFirst({
+      where: {
+        shopId,
+        technicianProfileId,
+        activeKey: { not: null },
+        workStatus: { in: ["ACTIVE", "ON_LEAVE", "SUSPENDED"] },
+        endsAt: null,
+        deletedAt: null,
+        technicianProfile: { deletedAt: null, status: "published" }
+      },
+      select: { id: true, relationshipType: true }
+    }));
+  }
+
+  private async hasConfirmedBookingOverlap(
+    transaction: Prisma.TransactionClient,
+    technicianProfileId: number,
+    startsAt: Date,
+    endsAt: Date,
+    excludeScheduleSlotId?: number
+  ): Promise<boolean> {
+    return Boolean(await transaction.bookingOrder.findFirst({
+      where: {
+        technicianProfileId,
+        status: { in: [...HARD_LOCK_ORDER_DB_STATUSES] },
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt },
+        deletedAt: null,
+        ...(excludeScheduleSlotId
+          ? { scheduleSlotId: { not: excludeScheduleSlotId } }
+          : {})
       },
       select: { id: true }
     }));

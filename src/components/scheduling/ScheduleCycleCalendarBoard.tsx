@@ -42,6 +42,7 @@ export type ScheduleCycleCalendarBoardView = "day" | "threeDay" | "week" | "mont
 export type ScheduleCycleCalendarStatusFilter = "all" | DispatchScheduleCellStatus;
 
 type ScheduleCycleCalendarBoardProps = {
+  availableViews?: Array<Exclude<ScheduleCycleCalendarBoardView, "agenda" | "threeDay">>;
   className?: string;
   cycleId?: string | null;
   dateKey: string;
@@ -56,6 +57,14 @@ type ScheduleCycleCalendarBoardProps = {
   scheduleStickyTop?: string;
   surface?: "desktop" | "mobile";
   view: ScheduleCycleCalendarBoardView;
+  dataOverride?: ScheduleCycleCalendarBoardDataOverride;
+};
+
+export type ScheduleCycleCalendarBoardDataOverride = {
+  cellByEventId: ReadonlyMap<string, DispatchScheduleCell>;
+  dayGrids: DispatchScheduleGridData[];
+  events: UnifiedCalendarEvent[];
+  lanes: UnifiedCalendarLane[];
 };
 
 type CycleCalendarPeriod = {
@@ -616,6 +625,7 @@ function buildCyclePeriodGridData(
             appointmentId: cell.appointmentId,
             eventType: cell.eventType,
             isClickable: cell.isClickable,
+            privacyVisibility: cell.privacyVisibility,
             detailTargetType: cell.detailTargetType,
             detailTargetId: cell.detailTargetId,
             serviceStatus: cell.serviceStatus,
@@ -817,8 +827,10 @@ function CycleCalendarLabelDrawer({
 }
 
 export function ScheduleCycleCalendarBoard({
+  availableViews,
   className,
   cycleId,
+  dataOverride,
   dateKey,
   getTechnicianDetailPath,
   onDateChange,
@@ -847,10 +859,10 @@ export function ScheduleCycleCalendarBoard({
   const period = useMemo(() => getCycleCalendarPeriod(view, dateKey, cycle), [cycle, dateKey, view]);
   const periodKey = period.dates.join("|");
   const dayGrids = useMemo(
-    () => period.dates.map((date) => getDispatchScheduleGrid(storeId, "day", date, cycleId)),
-    [cycleId, dispatchSnapshot.revision, periodKey, storeId]
+    () => dataOverride?.dayGrids ?? period.dates.map((date) => getDispatchScheduleGrid(storeId, "day", date, cycleId)),
+    [cycleId, dataOverride, dispatchSnapshot.revision, periodKey, storeId]
   );
-  const { cellByEventId, events, lanes, statusCounts } = useMemo(
+  const computedCalendarData = useMemo(
     () => buildCycleCalendarData(
       dayGrids,
       {
@@ -867,6 +879,30 @@ export function ScheduleCycleCalendarBoard({
     ),
     [dayGrids, dispatchSnapshot.arrangements, entitySnapshot.customers, entitySnapshot.stores, entitySnapshot.technicians, getTechnicianDetailPath, normalizedSearchQuery, statusFilter, statusVisibility, storeId]
   );
+  const { cellByEventId, events, lanes, statusCounts } = useMemo(() => {
+    if (!dataOverride) return computedCalendarData;
+    const counts = createEmptyCycleStatusCounts();
+    const visibleEvents = dataOverride.events.filter((event) => {
+      const cell = dataOverride.cellByEventId.get(event.id);
+      if (!cell) return false;
+      counts[cell.status] += 1;
+      if (!statusVisibility[cell.status] || !cellMatchesStatusFilter(cell, statusFilter)) {
+        return false;
+      }
+      if (!normalizedSearchQuery) return true;
+      const haystack = normalizeSearchValue(getCellSearchText(cell));
+      return normalizedSearchQuery
+        .split(" ")
+        .filter(Boolean)
+        .every((token) => haystack.includes(token));
+    });
+    return {
+      cellByEventId: dataOverride.cellByEventId,
+      events: visibleEvents,
+      lanes: dataOverride.lanes,
+      statusCounts: counts
+    };
+  }, [computedCalendarData, dataOverride, normalizedSearchQuery, statusFilter, statusVisibility]);
   const periodGridData = useMemo(
     () => buildCyclePeriodGridData(dayGrids, period.dates, normalizedSearchQuery, statusFilter, statusVisibility),
     [dayGrids, normalizedSearchQuery, period.dates, statusFilter, statusVisibility]
@@ -876,7 +912,7 @@ export function ScheduleCycleCalendarBoard({
   const openEvent = (event: UnifiedCalendarEvent) => {
     const cell = cellByEventId.get(event.id);
 
-    if (cell) {
+    if (cell && cell.isClickable !== false) {
       setActiveDetail({ cell, event });
     }
   };
@@ -944,9 +980,11 @@ export function ScheduleCycleCalendarBoard({
             onChange={(event) => onViewChange(event.target.value as ScheduleCycleCalendarBoardView)}
             value={view === "agenda" ? "day" : view}
           >
-            {cycleCalendarViewOptions.map((option) => (
+            {cycleCalendarViewOptions
+              .filter((option) => !availableViews || availableViews.includes(option.value as "day" | "week" | "month"))
+              .map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
+              ))}
           </select>
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-black text-[color:var(--client-muted)]">⌄</span>
         </label>

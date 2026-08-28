@@ -81,6 +81,19 @@ const setup = () => {
       page_size: 20
     }),
     findCurrentShopEmployee: jest.fn().mockResolvedValue(employee()),
+    listCurrentShopEmployeeSchedule: jest.fn().mockResolvedValue([
+      {
+        projectionId: "busy-redacted:2026-08-29T13:00:00.000Z:2026-08-29T15:00:00.000Z",
+        kind: "busy_redacted",
+        visibility: "busy_redacted",
+        status: "busy",
+        startsAt: "2026-08-29T13:00:00.000Z",
+        endsAt: "2026-08-29T15:00:00.000Z",
+        title: "其他店铺已有确认安排",
+        isClickable: false,
+        isEditable: false
+      }
+    ]),
     updateCurrentShopEmployeeProfile: jest.fn().mockResolvedValue(employee()),
     upsertCurrentAffiliation: jest.fn().mockResolvedValue(employee())
   };
@@ -150,6 +163,57 @@ describe("TechnicianShopAffiliationService", () => {
 
     expect(identifierResolver.resolve).toHaveBeenCalledWith("s0000000047");
     expect(repository.findCurrentShopEmployee).toHaveBeenCalledWith(16, 77);
+  });
+
+  it("returns a NeeDoID-scoped schedule projection without cross-shop details", async () => {
+    const { service, repository, identifierResolver, audit } = setup();
+    const input = {
+      from: new Date("2026-08-25T00:00:00.000Z"),
+      to: new Date("2026-09-01T00:00:00.000Z"),
+      view: "week" as const
+    };
+
+    await expect(
+      service.getCurrentShopEmployeeSchedule(
+        actorForShop(16),
+        context,
+        "s0000000047",
+        input
+      )
+    ).resolves.toEqual({
+      employee: {
+        needoId: "s0000000047",
+        displayName: "山本 太郎",
+        avatarUrl: null,
+        relationshipType: "partner",
+        workStatus: "active"
+      },
+      range: {
+        from: "2026-08-25T00:00:00.000Z",
+        to: "2026-09-01T00:00:00.000Z",
+        view: "week"
+      },
+      events: [
+        expect.objectContaining({
+          kind: "busy_redacted",
+          title: "其他店铺已有确认安排",
+          isClickable: false,
+          isEditable: false
+        })
+      ]
+    });
+    expect(identifierResolver.resolve).toHaveBeenCalledWith("s0000000047");
+    expect(repository.listCurrentShopEmployeeSchedule).toHaveBeenCalledWith({
+      shopId: 16,
+      technicianIdentityId: 77,
+      ...input
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "merchant_admin.employee_schedule.read",
+        metadata: { eventCount: 1, shopId: 16 }
+      })
+    );
   });
 
   it("uses the same safe 404 for a wrong identifier kind or out-of-shop employee", async () => {

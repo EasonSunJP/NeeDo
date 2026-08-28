@@ -15,7 +15,8 @@ import {
   merchantEmployeeAffiliationBodySchema,
   merchantEmployeeListQuerySchema,
   merchantEmployeeParamSchema,
-  merchantEmployeeProfileBodySchema
+  merchantEmployeeProfileBodySchema,
+  merchantEmployeeScheduleQuerySchema
 } from "../validators/technician-shop-affiliation.validator";
 import { createAuthServiceForRoutes } from "./auth-service.factory";
 
@@ -58,6 +59,16 @@ export const createTechnicianShopAffiliationRoutes = (
     createAuthorizeMiddleware(EMPLOYEE_AFFILIATION_PERMISSIONS.read),
     validateRequest({ params: merchantEmployeeParamSchema }),
     controller.detail
+  );
+  router.get(
+    "/merchant-admin/employees/:needoId/schedule",
+    authenticate(),
+    createAuthorizeMiddleware(EMPLOYEE_AFFILIATION_PERMISSIONS.read),
+    validateRequest({
+      params: merchantEmployeeParamSchema,
+      query: merchantEmployeeScheduleQuerySchema
+    }),
+    controller.schedule
   );
   router.put(
     "/merchant-admin/employees/:needoId/affiliation",

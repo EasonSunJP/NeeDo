@@ -67,6 +67,72 @@ export interface EmployeeListRepositoryInput extends MerchantEmployeeListInput {
   shopId: number;
 }
 
+export type EmployeeScheduleView = "day" | "week" | "month";
+
+export interface EmployeeScheduleQueryInput {
+  from: Date;
+  to: Date;
+  view: EmployeeScheduleView;
+}
+
+export interface EmployeeScheduleRepositoryInput extends EmployeeScheduleQueryInput {
+  shopId: number;
+  technicianIdentityId: number;
+}
+
+interface EmployeeScheduleEventBase {
+  projectionId: string;
+  startsAt: string;
+  endsAt: string;
+  title: string;
+  isClickable: boolean;
+  isEditable: boolean;
+}
+
+export interface EmployeeScheduleVisibleEvent extends EmployeeScheduleEventBase {
+  kind: "availability" | "schedule" | "booking";
+  visibility: "current_shop" | "affiliated_shops";
+  status:
+    | "available"
+    | "scheduled"
+    | "pending"
+    | "confirmed"
+    | "in_service"
+    | "completed"
+    | "blocked";
+  detail?: string;
+  orderId?: number;
+}
+
+export interface EmployeeScheduleRedactedEvent extends EmployeeScheduleEventBase {
+  kind: "busy_redacted";
+  visibility: "busy_redacted";
+  status: "busy";
+  title: "其他店铺已有确认安排";
+  isClickable: false;
+  isEditable: false;
+}
+
+export type EmployeeScheduleEvent =
+  | EmployeeScheduleVisibleEvent
+  | EmployeeScheduleRedactedEvent;
+
+export interface EmployeeScheduleProjection {
+  employee: {
+    needoId: string;
+    displayName: string;
+    avatarUrl: string | null;
+    relationshipType: EmployeeRelationshipType;
+    workStatus: EmployeeWorkStatus;
+  };
+  range: {
+    from: string;
+    to: string;
+    view: EmployeeScheduleView;
+  };
+  events: EmployeeScheduleEvent[];
+}
+
 export interface EmployeeAffiliationMutationInput {
   relationshipType: EmployeeRelationshipType;
   workStatus: EmployeeWorkStatus;
@@ -93,6 +159,9 @@ export interface TechnicianShopAffiliationRepositoryPort {
     shopId: number,
     technicianIdentityId: number
   ): Promise<MerchantEmployeePayload | null>;
+  listCurrentShopEmployeeSchedule(
+    input: EmployeeScheduleRepositoryInput
+  ): Promise<EmployeeScheduleEvent[] | null>;
   updateCurrentShopEmployeeProfile(
     input: EmployeeProfileUpdateRepositoryInput
   ): Promise<MerchantEmployeePayload | null>;
@@ -147,6 +216,53 @@ export class TechnicianShopAffiliationService {
       metadata: { shopId }
     });
     return employee;
+  }
+
+  public async getCurrentShopEmployeeSchedule(
+    actor: AuthenticatedAccessContext,
+    context: AuthRequestContext,
+    publicId: string,
+    input: EmployeeScheduleQueryInput
+  ): Promise<EmployeeScheduleProjection> {
+    const shopId = this.requireMerchantShopScope(actor);
+    const technicianIdentityId = await this.resolveTechnicianIdentityId(publicId);
+    const employee = await this.repository.findCurrentShopEmployee(
+      shopId,
+      technicianIdentityId
+    );
+    if (!employee) throw this.notFound();
+
+    const events = await this.repository.listCurrentShopEmployeeSchedule({
+      shopId,
+      technicianIdentityId,
+      ...input
+    });
+    if (!events) throw this.notFound();
+
+    await this.auditLogService.record({
+      actor,
+      action: "merchant_admin.employee_schedule.read",
+      targetType: "technician_shop_affiliation",
+      targetId: employee.affiliation.id,
+      context,
+      metadata: { eventCount: events.length, shopId }
+    });
+
+    return {
+      employee: {
+        needoId: employee.needoId,
+        displayName: employee.displayName,
+        avatarUrl: employee.avatarUrl,
+        relationshipType: employee.affiliation.relationshipType,
+        workStatus: employee.affiliation.workStatus
+      },
+      range: {
+        from: input.from.toISOString(),
+        to: input.to.toISOString(),
+        view: input.view
+      },
+      events
+    };
   }
 
   public async upsertCurrentShopAffiliation(

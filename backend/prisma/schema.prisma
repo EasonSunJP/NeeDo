@@ -69,6 +69,20 @@ enum ScheduleSlotStatus {
   @@map("schedule_slot_status")
 }
 
+enum AvailabilitySourceType {
+  SHOP       @map("shop")
+  TECHNICIAN @map("technician")
+
+  @@map("availability_source_type")
+}
+
+enum AvailabilityVisibility {
+  SHOP_ONLY        @map("shop_only")
+  AFFILIATED_SHOPS @map("affiliated_shops")
+
+  @@map("availability_visibility")
+}
+
 enum ShopPricingMode {
   MERCHANT   @map("merchant")
   TECHNICIAN @map("technician")
@@ -1373,16 +1387,18 @@ model ReviewSummary {
 }
 
 model Availability {
-  id                  Int       @id @default(autoincrement())
-  shopId              Int       @map("shop_id")
-  technicianProfileId Int?      @map("technician_profile_id")
-  startsAt            DateTime  @map("starts_at")
-  endsAt              DateTime  @map("ends_at")
-  capacity            Int       @default(1)
-  isActive            Boolean   @default(true) @map("is_active")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  deletedAt           DateTime? @map("deleted_at")
+  id                  Int                    @id @default(autoincrement())
+  shopId              Int                    @map("shop_id")
+  technicianProfileId Int?                   @map("technician_profile_id")
+  sourceType          AvailabilitySourceType @default(SHOP) @map("source_type")
+  visibility          AvailabilityVisibility @default(SHOP_ONLY)
+  startsAt            DateTime               @map("starts_at")
+  endsAt              DateTime               @map("ends_at")
+  capacity            Int                    @default(1)
+  isActive            Boolean                @default(true) @map("is_active")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
+  deletedAt           DateTime?              @map("deleted_at")
 
   shop              Shop               @relation(fields: [shopId], references: [id], onDelete: Restrict)
   technicianProfile TechnicianProfile? @relation(fields: [technicianProfileId], references: [id], onDelete: SetNull)
@@ -1390,6 +1406,7 @@ model Availability {
 
   @@index([shopId])
   @@index([technicianProfileId])
+  @@index([technicianProfileId, visibility, startsAt, endsAt, deletedAt], map: "availability_technician_visibility_range_idx")
   @@index([startsAt, endsAt])
   @@index([isActive])
   @@index([deletedAt])
@@ -1424,6 +1441,7 @@ model ScheduleSlot {
   @@index([technicianServiceId])
   @@index([shopId])
   @@index([technicianProfileId])
+  @@index([technicianProfileId, shopId, startsAt, endsAt, deletedAt], map: "schedule_slot_technician_shop_range_deleted_idx")
   @@index([startsAt, endsAt])
   @@index([status])
   @@index([deletedAt])
@@ -1492,6 +1510,7 @@ model BookingOrder {
   @@index([technicianServiceId])
   @@index([shopId])
   @@index([technicianProfileId])
+  @@index([technicianProfileId, status, startsAt, endsAt, deletedAt], map: "booking_order_technician_status_range_deleted_idx")
   @@index([scheduleSlotId])
   @@index([status])
   @@index([orderType])

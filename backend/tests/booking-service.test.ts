@@ -139,6 +139,21 @@ const createRepository = (order: BookingOrderPayload | null): jest.Mocked<Bookin
   }) as unknown as jest.Mocked<BookingRepositoryPort>;
 
 describe("BookingService state machine", () => {
+  it("maps an atomic cross-shop confirmation collision to a non-leaking schedule conflict", async () => {
+    const repository = createRepository(makeOrder("pending"));
+    repository.transitionOrderWithScheduleGuard = jest
+      .fn()
+      .mockResolvedValue({ outcome: "schedule_conflict" });
+    const service = new BookingService(repository);
+
+    await expect(service.transitionOrder(actor, 1, "confirm")).rejects.toMatchObject({
+      code: ERROR_CODES.SCHEDULE_CONFLICT,
+      message: "error.schedule.conflict",
+      statusCode: 409
+    });
+    expect(repository.transitionOrder).not.toHaveBeenCalled();
+  });
+
   it("derives technician scope for a single schedule slot", async () => {
     const repository = createRepository(makeOrder("pending"));
     const service = new BookingService(repository);

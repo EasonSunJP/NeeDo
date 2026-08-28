@@ -16,6 +16,14 @@ vi.mock("../../i18n/I18nProvider", () => ({
   useOptionalI18n: () => ({ language: "zh", setLanguage: vi.fn() }),
 }));
 
+vi.mock("./EmployeeSchedulePanel", () => ({
+  EmployeeSchedulePanel: ({ employee }: { employee: MerchantEmployee }) => (
+    <section data-testid="employee-schedule-panel">
+      员工日程 · {employee.needoId}
+    </section>
+  ),
+}));
+
 const employee: MerchantEmployee = {
   needoId: "NEEDO-S-47",
   displayName: "斉藤 健太",
@@ -170,6 +178,7 @@ describe("EmployeeDetailCard", () => {
     expect(container.textContent).not.toContain("654");
     expect(container.textContent).not.toContain("薪酬设置");
     expect(container.textContent).not.toContain("时间线");
+    expect(container.textContent).toContain("员工日程 · NEEDO-S-47");
   });
 
   it("submits edited basic profile fields through the real mutation contract", async () => {

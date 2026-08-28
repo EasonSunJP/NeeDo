@@ -156,3 +156,21 @@ Migration 为 `20260829123000_employee_payroll_schedule_policy`。日本日期�
 本模块只计算并记录自然结算日和计划支付日。实际支付完成仍由财务人员在财务结算页手工登记；本次没有增加转账、薪资金额、分成编辑或支付状态变更。
 
 本地 `needo_dev` 已在完整 SQL 备份后部署并通过专项 checker：`ready=true`、`officialJapanHolidayRows=54`、`issues=[]`。新规则表空表起步，不创建模拟默认值。
+
+## 12. 2026-08-29 员工日程与跨店隐私投影
+
+员工详细信息卡复用正式调度日历，提供日、周、月视图。页面只调用正式接口，不读取浏览器排班 store，也不创建第二套日程数据：
+
+- `GET /api/v1/merchant-admin/employees/:needoId/schedule?from=...&to=...&view=day|week|month`
+- 权限：`merchant-admin:employee-affiliation:read`
+- 范围：店铺取自 JWT；员工必须是当前店铺的有效从属；path 只接受 canonical 技师 NeeDoID。
+- 审计：`merchant_admin.employee_schedule.read`。
+
+接口返回面向当前店铺的服务端投影：
+
+- 当前店铺的排班和预约可返回本店详情；预约可进入现有订单详情。
+- 其他店铺仅把 `confirmed` / `in_service` 预约合并为灰色锁定区间，固定文案为“其他店铺已有确认安排”。投影不返回来源店铺、顾客、服务、订单、价格、地址、备注或参与者字段，也不可点击和编辑。
+- 合作技师本人发布且标记为 `affiliated_shops` 的可排班时段可向其有效从属店铺公开；遇到跨店硬锁时，后端先扣除锁定区间。
+- 店铺各自建立的排班计划可重叠且互不可见；订单从 `pending` 确认时才在事务中建立跨店硬锁，避免两个店铺同时确认同一技师同一时间。
+
+Migration 为 `20260829150000_employee_schedule_privacy`，为 `availabilities` 增加来源与可见范围枚举，并补充技师跨店时段查询索引。前端灰色锁定样式沿用商户后台既有色板、圆角和日历组件，没有新增 mock 数据或自动转账逻辑。

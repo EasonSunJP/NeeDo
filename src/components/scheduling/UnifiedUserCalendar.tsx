@@ -1902,6 +1902,14 @@ function useTimelineFirstEventAutoScroll(autoScrollKey: string, anchor: Timeline
 }
 
 function getEventStyle(event: UnifiedCalendarEvent): CSSProperties {
+  if (event.visibility === "busy_redacted") {
+    return {
+      "--calendar-accent": "color-mix(in srgb, var(--client-muted) 72%, var(--client-line) 28%)",
+      "--calendar-soft": "color-mix(in srgb, var(--client-muted) 18%, var(--client-elevated) 82%)",
+      "--calendar-text": "color-mix(in srgb, var(--client-text) 70%, var(--client-muted) 30%)",
+      "--calendar-contrast": "var(--client-text)"
+    } as CSSProperties;
+  }
   const source = sourceConfigs[event.sourceId];
   return {
     "--calendar-accent": source.accent,

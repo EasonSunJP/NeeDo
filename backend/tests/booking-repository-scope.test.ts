@@ -1,6 +1,95 @@
+import { readFileSync } from "node:fs";
 import { BookingRepository } from "../src/repositories/booking.repository";
 
 describe("BookingRepository order list scope", () => {
+  it("creates an affiliated merchant plan as shop-private and limits plan overlap to that shop", async () => {
+    const startsAt = new Date("2026-08-29T13:00:00.000Z");
+    const endsAt = new Date("2026-08-29T14:00:00.000Z");
+    const scheduleFindFirst = jest.fn().mockResolvedValue(null);
+    const availabilityCreate = jest.fn().mockResolvedValue({ id: 501 });
+    const createdSlot = {
+      id: 601,
+      availabilityId: 501,
+      serviceId: 20,
+      technicianServiceId: null,
+      shopId: 16,
+      technicianProfileId: 47,
+      startsAt,
+      endsAt,
+      capacity: 1,
+      bookedCount: 0,
+      status: "AVAILABLE",
+      createdAt: startsAt,
+      updatedAt: startsAt,
+      deletedAt: null,
+      service: {
+        name: "Aroma 60",
+        priceAmount: 12000,
+        currency: "JPY",
+        durationMinutes: 60
+      },
+      technicianService: null,
+      shop: { name: "LifeDance" },
+      technicianProfile: { displayName: "斋藤 健太" }
+    };
+    const tx = {
+      entitySuspension: { findFirst: jest.fn().mockResolvedValue(null) },
+      shop: { findFirst: jest.fn().mockResolvedValue({ id: 16 }) },
+      service: {
+        findFirst: jest.fn().mockResolvedValue({ id: 20, durationMinutes: 60 })
+      },
+      technicianShopAffiliation: {
+        findFirst: jest.fn().mockResolvedValue({ id: 91, relationshipType: "PARTNER" })
+      },
+      technicianProfile: { update: jest.fn().mockResolvedValue({ id: 47 }) },
+      scheduleSlot: {
+        findFirst: scheduleFindFirst,
+        create: jest.fn().mockResolvedValue(createdSlot)
+      },
+      bookingOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+      availability: { create: availabilityCreate }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.createScheduleSlot({
+        scope: "merchant",
+        shopId: 16,
+        serviceId: 20,
+        technicianProfileId: 47,
+        startsAt,
+        endsAt,
+        capacity: 1
+      })
+    ).resolves.toMatchObject({ outcome: "ok" });
+
+    expect(scheduleFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ shopId: 16, technicianProfileId: 47 })
+      })
+    );
+    expect(availabilityCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        sourceType: "SHOP",
+        visibility: "SHOP_ONLY"
+      })
+    });
+  });
+
+  it("publishes technician-owned availability to affiliated shops", async () => {
+    const source = readFileSync(
+      require.resolve("../src/repositories/booking.repository.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain('input.scope === "technician" ? "TECHNICIAN" : "SHOP"');
+    expect(source).toContain(
+      'input.scope === "technician" ? "AFFILIATED_SHOPS" : "SHOP_ONLY"'
+    );
+  });
+
   it("reads only a schedule slot owned by the active technician scope", async () => {
     const scheduleSlot = {
       findFirst: jest.fn(async () => null)
@@ -152,5 +241,58 @@ describe("BookingRepository order list scope", () => {
       })
     ).rejects.toBe(failure);
     expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks the technician and rejects a concurrent confirmed overlap before mutation", async () => {
+    const settle = jest.fn();
+    const updateMany = jest.fn();
+    const technicianUpdate = jest.fn().mockResolvedValue({ id: 47 });
+    const bookingFindFirst = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: 101,
+        status: "PENDING",
+        shopId: 16,
+        technicianProfileId: 47,
+        scheduleSlotId: 201,
+        startsAt: new Date("2026-08-29T13:00:00.000Z"),
+        endsAt: new Date("2026-08-29T15:00:00.000Z")
+      })
+      .mockResolvedValueOnce({ id: 102 });
+    const tx = {
+      bookingOrder: { findFirst: bookingFindFirst, updateMany },
+      technicianProfile: { update: technicianUpdate }
+    };
+    const repository = new BookingRepository({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
+    } as never);
+
+    await expect(
+      repository.transitionOrderWithScheduleGuard(
+        {
+          id: 101,
+          actorUserId: 7,
+          fromStatus: "pending",
+          toStatus: "confirmed"
+        },
+        { settle }
+      )
+    ).resolves.toEqual({ outcome: "schedule_conflict" });
+
+    expect(technicianUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 47 } })
+    );
+    expect(bookingFindFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { not: 101 },
+          technicianProfileId: 47,
+          status: { in: ["CONFIRMED", "IN_SERVICE"] }
+        })
+      })
+    );
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 });
