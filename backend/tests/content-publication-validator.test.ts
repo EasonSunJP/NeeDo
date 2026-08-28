@@ -95,6 +95,43 @@ describe("strict scene-specific carousel draft validators", () => {
     expect(parsed.slides[0]?.translations[0]?.title).toBe("お知らせ");
   });
 
+  it("requires exactly one source-locale translation on first save", () => {
+    expect(
+      userHomeCarouselDraftCreateBodySchema.safeParse({
+        idempotencyKey,
+        sourceLocale: "en",
+        slides: [userSlide]
+      }).success
+    ).toBe(false);
+    expect(
+      userHomeCarouselDraftCreateBodySchema.safeParse({
+        idempotencyKey,
+        sourceLocale: "ja",
+        slides: [
+          {
+            ...userSlide,
+            translations: [translation, { ...translation, locale: "en", title: "Notice" }]
+          }
+        ]
+      }).success
+    ).toBe(false);
+  });
+
+  it("allows update drafts to retain independent multi-locale edits", () => {
+    expect(
+      userHomeCarouselDraftUpdateBodySchema.safeParse({
+        expectedLockVersion: 2,
+        sourceLocale: "ja",
+        slides: [
+          {
+            ...userSlide,
+            translations: [translation, { ...translation, locale: "en", title: "Notice" }]
+          }
+        ]
+      }).success
+    ).toBe(true);
+  });
+
   it.each([
     { type: "shop", shopId: 7 },
     { type: "technician", technicianProfileId: 8 },
@@ -331,10 +368,20 @@ describe("content publication queries and stable error contract", () => {
       })
     ).toEqual({ page: 1, pageSize: 20, q: "东京", type: "service" });
     expect(
-      carouselTargetSearchQuerySchemaByScene["affiliate-home-notice"].safeParse({
-        type: "shop"
-      }).success
-    ).toBe(false);
+      carouselTargetSearchQuerySchemaByScene["affiliate-home-notice"].parse({
+        type: "announcement"
+      })
+    ).toEqual({ page: 1, pageSize: 20, type: "announcement" });
+    expect(
+      carouselTargetSearchQuerySchemaByScene["affiliate-home-notice"].parse({
+        type: "affiliate_task"
+      })
+    ).toEqual({ page: 1, pageSize: 20, type: "affiliate_task" });
+    for (const type of ["shop", "service", "affiliate_announcement"]) {
+      expect(
+        carouselTargetSearchQuerySchemaByScene["affiliate-home-notice"].safeParse({ type }).success
+      ).toBe(false);
+    }
     expect(contentHistoryQuerySchema.safeParse({ pageSize: 101 }).success).toBe(false);
     expect(contentHistoryQuerySchema.safeParse({ unknown: true }).success).toBe(false);
   });

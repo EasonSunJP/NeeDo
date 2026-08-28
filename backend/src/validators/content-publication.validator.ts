@@ -18,6 +18,38 @@ export const CONTENT_PUBLICATION_ERROR_MESSAGES = [
 
 export type ContentPublicationErrorMessage = (typeof CONTENT_PUBLICATION_ERROR_MESSAGES)[number];
 
+const contentPublicationErrorMessageSet = new Set<string>(CONTENT_PUBLICATION_ERROR_MESSAGES);
+
+export const contentPublicationValidationErrorMessage = (
+  error: z.ZodError
+): ContentPublicationErrorMessage | undefined => {
+  for (const issue of error.issues) {
+    if (contentPublicationErrorMessageSet.has(issue.message)) {
+      return issue.message as ContentPublicationErrorMessage;
+    }
+
+    if (issue.path.some((segment) => segment === "locale" || segment === "sourceLocale")) {
+      return "error.content.locale_invalid";
+    }
+    if (issue.path.includes("mediaAssetPublicId")) {
+      return "error.content.media_invalid";
+    }
+    if (issue.path.includes("target") || issue.path.includes("type")) {
+      return "error.content.target_invalid";
+    }
+    if (
+      issue.path.some(
+        (segment) =>
+          segment === "publishAt" || segment === "visibleFrom" || segment === "visibleUntil"
+      )
+    ) {
+      return "error.content.schedule_conflict";
+    }
+  }
+
+  return undefined;
+};
+
 const localeSchema = z.enum(["zh-CN", "zh-TW", "en", "ja", "ko"], {
   errorMap: () => ({ message: "error.content.locale_invalid" })
 });
@@ -107,19 +139,53 @@ const slideBaseShape = {
   sortOrder: z.number().int().nonnegative(),
   isEnabled: z.boolean().default(true),
   visibleFrom: nullableUtcDateTimeSchema,
-  visibleUntil: nullableUtcDateTimeSchema,
-  translations: translationsSchema
+  visibleUntil: nullableUtcDateTimeSchema
 };
 
-const userHomeSlideSchema = z
-  .object({ ...slideBaseShape, target: userTargetSchema })
+const createTranslationsSchema = z.array(translationBodySchema).length(1);
+
+const userHomeCreateSlideSchema = z
+  .object({
+    ...slideBaseShape,
+    target: userTargetSchema,
+    translations: createTranslationsSchema
+  })
   .strict()
   .superRefine(addOrderedWindowIssue);
 
-const affiliateNoticeSlideSchema = z
-  .object({ ...slideBaseShape, target: affiliateTargetSchema })
+const userHomeUpdateSlideSchema = z
+  .object({ ...slideBaseShape, target: userTargetSchema, translations: translationsSchema })
   .strict()
   .superRefine(addOrderedWindowIssue);
+
+const affiliateNoticeCreateSlideSchema = z
+  .object({
+    ...slideBaseShape,
+    target: affiliateTargetSchema,
+    translations: createTranslationsSchema
+  })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+const affiliateNoticeUpdateSlideSchema = z
+  .object({ ...slideBaseShape, target: affiliateTargetSchema, translations: translationsSchema })
+  .strict()
+  .superRefine(addOrderedWindowIssue);
+
+const addCreateSourceLocaleIssue = (
+  value: { sourceLocale: string; slides: Array<{ translations: Array<{ locale: string }> }> },
+  context: z.RefinementCtx
+): void => {
+  value.slides.forEach((slide, slideIndex) => {
+    if (slide.translations[0]?.locale !== value.sourceLocale) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["slides", slideIndex, "translations", 0, "locale"],
+        message: "error.content.locale_invalid"
+      });
+    }
+  });
+};
 
 const createDraftCommandShape = {
   idempotencyKey: idempotencyKeySchema,
@@ -132,24 +198,32 @@ const updateDraftCommandShape = {
 };
 
 export const userHomeCarouselDraftCreateBodySchema = z
-  .object({ ...createDraftCommandShape, slides: z.array(userHomeSlideSchema).min(1).max(50) })
-  .strict();
+  .object({
+    ...createDraftCommandShape,
+    slides: z.array(userHomeCreateSlideSchema).min(1).max(50)
+  })
+  .strict()
+  .superRefine(addCreateSourceLocaleIssue);
 
 export const userHomeCarouselDraftUpdateBodySchema = z
-  .object({ ...updateDraftCommandShape, slides: z.array(userHomeSlideSchema).min(1).max(50) })
+  .object({
+    ...updateDraftCommandShape,
+    slides: z.array(userHomeUpdateSlideSchema).min(1).max(50)
+  })
   .strict();
 
 export const affiliateNoticeCarouselDraftCreateBodySchema = z
   .object({
     ...createDraftCommandShape,
-    slides: z.array(affiliateNoticeSlideSchema).min(1).max(50)
+    slides: z.array(affiliateNoticeCreateSlideSchema).min(1).max(50)
   })
-  .strict();
+  .strict()
+  .superRefine(addCreateSourceLocaleIssue);
 
 export const affiliateNoticeCarouselDraftUpdateBodySchema = z
   .object({
     ...updateDraftCommandShape,
-    slides: z.array(affiliateNoticeSlideSchema).min(1).max(50)
+    slides: z.array(affiliateNoticeUpdateSlideSchema).min(1).max(50)
   })
   .strict();
 
@@ -264,7 +338,7 @@ const userHomeCarouselTargetSearchQuerySchema = z
 const affiliateNoticeCarouselTargetSearchQuerySchema = z
   .object({
     ...targetSearchBaseShape,
-    type: z.literal("affiliate_announcement").optional()
+    type: z.enum(["announcement", "affiliate_task"]).optional()
   })
   .strict();
 
