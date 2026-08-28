@@ -78,9 +78,9 @@ export const merchantEmployeeApi = {
         query: {
           keyword: query.keyword,
           page: query.page ?? 1,
-          page_size: query.pageSize ?? 20,
-          relationship_type: query.relationshipType,
-          work_status: query.workStatus,
+          pageSize: query.pageSize ?? 20,
+          relationshipType: query.relationshipType,
+          workStatus: query.workStatus,
         },
       },
     );

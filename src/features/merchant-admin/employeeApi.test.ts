@@ -30,9 +30,9 @@ describe("merchant employee API client", () => {
         query: {
           keyword: "NEEDO-S-47",
           page: 2,
-          page_size: 10,
-          relationship_type: "partner",
-          work_status: "active",
+          pageSize: 10,
+          relationshipType: "partner",
+          workStatus: "active",
         },
       },
     );
