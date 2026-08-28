@@ -20,6 +20,93 @@ describe("LedgerRepository wallet creation", () => {
     });
   });
 
+  it("persists the complete immutable platform-fee acceptance snapshot", async () => {
+    const create = jest.fn().mockResolvedValue({ id: 1 });
+    const client = {
+      orderFinancial: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create
+      }
+    };
+    const repository = new LedgerRepository(client as never);
+    const acceptedAt = new Date("2026-08-29T01:00:00.000Z");
+
+    await repository.upsertOrderFinancial({
+      bookingOrderId: 71,
+      orderType: "booking",
+      customerUserId: 3,
+      shopId: 10,
+      technicianProfileId: 9,
+      serviceAmountJpy: 8800,
+      platformFeePayerType: "technician",
+      platformFeePayerId: 9,
+      platformFeeEnabledSnapshot: true,
+      platformFeeGlobalVersion: 6,
+      platformFeePolicyVersion: 4,
+      platformFeeAmountNdpSnapshot: 500,
+      platformFeeWalletOwnerType: "user",
+      platformFeeWalletOwnerId: 77,
+      platformFeeWalletId: 91,
+      platformFeeShortfallNdp: 380,
+      platformFeeOutstandingNdp: 380,
+      platformFeeDebtStatus: "outstanding",
+      platformFeeAcceptedAt: acceptedAt,
+      platformFeeOverdraftConfirmationKey: "fee-confirm-order-71",
+      platformFeePreviewVersion: `sha256:${"a".repeat(64)}`,
+      userRewardEligibleNdp: 100,
+      userRewardStatus: "pending",
+      userRewardDeadlineAt: null,
+      userRewardGrantedAt: null
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        bookingOrderId: 71,
+        platformFeeEnabledSnapshot: true,
+        platformFeeGlobalVersion: 6,
+        platformFeePolicyVersion: 4,
+        platformFeeAmountNdpSnapshot: 500,
+        platformFeeWalletOwnerType: "USER",
+        platformFeeWalletOwnerId: 77,
+        platformFeeWalletId: 91,
+        platformFeeShortfallNdp: 380,
+        platformFeeOutstandingNdp: 380,
+        platformFeeDebtStatus: "OUTSTANDING",
+        platformFeeAcceptedAt: acceptedAt,
+        platformFeeOverdraftConfirmationKey: "fee-confirm-order-71",
+        userRewardEligibleNdp: 100,
+        userRewardStatus: "PENDING",
+        userRewardDeadlineAt: null,
+        userRewardGrantedAt: null
+      })
+    });
+  });
+
+  it("looks up an overdraft confirmation key without exposing the financial row", async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      bookingOrderId: 71,
+      platformFeePreviewVersion: `sha256:${"a".repeat(64)}`
+    });
+    const repository = new LedgerRepository({ orderFinancial: { findFirst } } as never);
+
+    await expect(
+      repository.findOrderFinancialByOverdraftConfirmationKey("fee-confirm-order-71")
+    ).resolves.toEqual({
+      bookingOrderId: 71,
+      previewVersion: `sha256:${"a".repeat(64)}`
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        platformFeeOverdraftConfirmationKey: "fee-confirm-order-71",
+        deletedAt: null
+      },
+      select: {
+        bookingOrderId: true,
+        platformFeePreviewVersion: true
+      }
+    });
+  });
+
   it("uses an atomic idempotent insert for concurrent wallet creation", async () => {
     const wallet = {
       id: 91,

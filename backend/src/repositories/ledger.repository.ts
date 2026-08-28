@@ -475,6 +475,28 @@ export class LedgerRepository implements LedgerRepositoryPort {
     return this.mapWalletHold(hold);
   }
 
+  public async findOrderFinancialByOverdraftConfirmationKey(
+    idempotencyKey: string
+  ): Promise<{ bookingOrderId: number; previewVersion: string } | null> {
+    const financial = await this.client.orderFinancial.findFirst({
+      where: {
+        platformFeeOverdraftConfirmationKey: idempotencyKey,
+        deletedAt: null
+      },
+      select: {
+        bookingOrderId: true,
+        platformFeePreviewVersion: true
+      }
+    });
+
+    return financial
+      ? {
+          bookingOrderId: financial.bookingOrderId,
+          previewVersion: financial.platformFeePreviewVersion ?? ""
+        }
+      : null;
+  }
+
   public async upsertOrderFinancial(input: OrderFinancialUpsertInput): Promise<void> {
     const existing = await this.client.orderFinancial.findUnique({
       where: { bookingOrderId: input.bookingOrderId }
@@ -518,6 +540,64 @@ export class LedgerRepository implements LedgerRepositoryPort {
         : {}),
       ...(input.platformFeePayerId !== undefined
         ? { platformFeePayerId: input.platformFeePayerId }
+        : {}),
+      ...(input.platformFeeEnabledSnapshot !== undefined
+        ? { platformFeeEnabledSnapshot: input.platformFeeEnabledSnapshot }
+        : {}),
+      ...(input.platformFeeGlobalVersion !== undefined
+        ? { platformFeeGlobalVersion: input.platformFeeGlobalVersion }
+        : {}),
+      ...(input.platformFeePolicyVersion !== undefined
+        ? { platformFeePolicyVersion: input.platformFeePolicyVersion }
+        : {}),
+      ...(input.platformFeeAmountNdpSnapshot !== undefined
+        ? { platformFeeAmountNdpSnapshot: input.platformFeeAmountNdpSnapshot }
+        : {}),
+      ...(input.platformFeeWalletOwnerType !== undefined
+        ? {
+            platformFeeWalletOwnerType:
+              input.platformFeeWalletOwnerType === null
+                ? null
+                : this.ownerTypeToDb(input.platformFeeWalletOwnerType)
+          }
+        : {}),
+      ...(input.platformFeeWalletOwnerId !== undefined
+        ? { platformFeeWalletOwnerId: input.platformFeeWalletOwnerId }
+        : {}),
+      ...(input.platformFeeWalletId !== undefined
+        ? { platformFeeWalletId: input.platformFeeWalletId }
+        : {}),
+      ...(input.platformFeeShortfallNdp !== undefined
+        ? { platformFeeShortfallNdp: input.platformFeeShortfallNdp }
+        : {}),
+      ...(input.platformFeeOutstandingNdp !== undefined
+        ? { platformFeeOutstandingNdp: input.platformFeeOutstandingNdp }
+        : {}),
+      ...(input.platformFeeDebtStatus !== undefined
+        ? { platformFeeDebtStatus: this.platformFeeDebtStatusToDb(input.platformFeeDebtStatus) }
+        : {}),
+      ...(input.platformFeeAcceptedAt !== undefined
+        ? { platformFeeAcceptedAt: input.platformFeeAcceptedAt }
+        : {}),
+      ...(input.platformFeeOverdraftConfirmationKey !== undefined
+        ? {
+            platformFeeOverdraftConfirmationKey: input.platformFeeOverdraftConfirmationKey
+          }
+        : {}),
+      ...(input.platformFeePreviewVersion !== undefined
+        ? { platformFeePreviewVersion: input.platformFeePreviewVersion }
+        : {}),
+      ...(input.userRewardEligibleNdp !== undefined
+        ? { userRewardEligibleNdp: input.userRewardEligibleNdp }
+        : {}),
+      ...(input.userRewardStatus !== undefined
+        ? { userRewardStatus: this.userRewardStatusToDb(input.userRewardStatus) }
+        : {}),
+      ...(input.userRewardDeadlineAt !== undefined
+        ? { userRewardDeadlineAt: input.userRewardDeadlineAt }
+        : {}),
+      ...(input.userRewardGrantedAt !== undefined
+        ? { userRewardGrantedAt: input.userRewardGrantedAt }
         : {}),
       ...(input.completedOrderOrdinalInPeriod !== undefined
         ? { completedOrderOrdinalInPeriod: input.completedOrderOrdinalInPeriod }
@@ -889,6 +969,23 @@ export class LedgerRepository implements LedgerRepositoryPort {
     }
 
     return "USER" as const;
+  }
+
+  private platformFeeDebtStatusToDb(status: "none" | "outstanding" | "settled") {
+    if (status === "outstanding") {
+      return "OUTSTANDING" as const;
+    }
+    if (status === "settled") {
+      return "SETTLED" as const;
+    }
+
+    return "NONE" as const;
+  }
+
+  private userRewardStatusToDb(
+    status: "disabled" | "immediate" | "pending" | "paid" | "expired"
+  ) {
+    return status.toUpperCase() as "DISABLED" | "IMMEDIATE" | "PENDING" | "PAID" | "EXPIRED";
   }
 
   private ownerTypeFromDb(ownerType: string): WalletOwnerType {

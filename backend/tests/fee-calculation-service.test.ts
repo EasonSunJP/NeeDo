@@ -143,6 +143,47 @@ describe("FeeCalculationService", () => {
     });
   });
 
+  it("preserves rule evidence while overriding the payer or waiving by shop policy", async () => {
+    const repository = defaultRepository();
+    const service = new FeeCalculationService(repository);
+
+    await expect(
+      service.calculateFee({
+        ...baseInput("b_platform_fee"),
+        castId: 9,
+        payerOverride: { payerType: "cast", payerId: 9 }
+      })
+    ).resolves.toMatchObject({
+      payerType: "cast",
+      payerId: 9,
+      baseFeeNdp: 500,
+      finalFeeNdp: 500,
+      holdAmountNdp: 500
+    });
+
+    const waived = await service.calculateFee({
+      ...baseInput("b_platform_fee"),
+      payerOverride: { payerType: "shop", payerId: 10 },
+      waiveReason: "shop_policy_disabled"
+    });
+    expect(waived).toMatchObject({
+      payerType: "shop",
+      payerId: 10,
+      baseFeeNdp: 500,
+      finalFeeNdp: 0,
+      holdAmountNdp: 0
+    });
+    expect(waived.appliedRuleIds).toEqual(["rule_set:1:rule:101"]);
+    expect(waived.explanation).toContain("Waived by shop platform-fee policy");
+    expect(repository.logs.at(-1)).toMatchObject({
+      payerType: "shop",
+      payerId: 10,
+      baseFeeNdp: 500,
+      finalFeeNdp: 0,
+      holdAmountNdp: 0
+    });
+  });
+
   it("calculates the default Request dispatch fee from the customer side", async () => {
     const repository = new InMemoryFeeRuleRepository();
     repository.ruleSets = [

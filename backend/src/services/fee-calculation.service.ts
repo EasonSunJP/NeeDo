@@ -142,6 +142,8 @@ export interface FeeCalculationInput {
   serviceAmountJpy?: number;
   paymentChannel?: string;
   timezone?: string;
+  payerOverride?: { payerType: "shop" | "cast"; payerId: number };
+  waiveReason?: "shop_policy_disabled";
 }
 
 export interface FeeCalculationResult {
@@ -339,8 +341,11 @@ export class FeeCalculationService {
         return left.rule.priority - right.rule.priority || left.rule.id - right.rule.id;
       });
     const primary = matchedRules[0];
-    const payerType = primary?.rule.payerType ?? this.defaultPayerType(input.feeType);
-    const payerId = this.resolvePayerId(payerType, input);
+    const payerType =
+      input.payerOverride?.payerType ??
+      primary?.rule.payerType ??
+      this.defaultPayerType(input.feeType);
+    const payerId = input.payerOverride?.payerId ?? this.resolvePayerId(payerType, input);
     const completedOrderOrdinalInPeriod = await this.resolveCompletedOrderOrdinal(
       repository,
       input,
@@ -364,15 +369,18 @@ export class FeeCalculationService {
       timeAdjustmentNdp,
       grossBeforeCampaign
     });
-    const finalFeeNdp = Math.max(0, grossBeforeCampaign - campaignDiscountNdp);
-    const holdAmountNdp = this.calculateHoldAmount(primary?.rule, {
+    const calculatedFinalFeeNdp = Math.max(0, grossBeforeCampaign - campaignDiscountNdp);
+    const calculatedHoldAmountNdp = this.calculateHoldAmount(primary?.rule, {
       baseFeeNdp,
       timeAdjustmentNdp,
       campaignDiscountNdp,
-      finalFeeNdp,
+      finalFeeNdp: calculatedFinalFeeNdp,
       tierCandidates: tierResult.candidates,
       campaigns
     });
+    const waivedByShopPolicy = input.waiveReason === "shop_policy_disabled";
+    const finalFeeNdp = waivedByShopPolicy ? 0 : calculatedFinalFeeNdp;
+    const holdAmountNdp = waivedByShopPolicy ? 0 : calculatedHoldAmountNdp;
     const appliedRuleIds = [
       ...matchedRules.map(({ ruleSet, rule }) => `rule_set:${ruleSet.id}:rule:${rule.id}`),
       ...tierResult.appliedIds,
@@ -393,6 +401,9 @@ export class FeeCalculationService {
       completedOrderOrdinalInPeriod,
       matchedRuleName: primary?.ruleSet.name ?? null
     });
+    if (waivedByShopPolicy) {
+      explanation.push("Waived by shop platform-fee policy");
+    }
     const log = await repository.createCalculationLog({
       bookingOrderId: input.bookingOrderId ?? null,
       calculationStage: input.stage,

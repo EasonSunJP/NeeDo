@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
 import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
@@ -8,6 +9,10 @@ import type {
   FeeType,
   FinanceOrderType
 } from "./fee-calculation.service";
+import type {
+  BookingPlatformFeePolicySnapshot,
+  PlatformFeePolicyService
+} from "./platform-fee-policy.service";
 
 export type WalletOwnerType = "user" | "shop" | "platform" | "merchant_account";
 export type LedgerCurrency = "NDP";
@@ -42,6 +47,8 @@ export type OrderFinancialSettlementStatus =
   | "released"
   | "cancelled"
   | "compensated";
+export type PlatformFeeDebtStatus = "none" | "outstanding" | "settled";
+export type UserRewardStatus = "disabled" | "immediate" | "pending" | "paid" | "expired";
 
 export interface WalletPayload {
   id: number;
@@ -195,6 +202,23 @@ export interface OrderFinancialUpsertInput {
   releasedNdp?: number;
   platformFeePayerType?: string | null;
   platformFeePayerId?: number | null;
+  platformFeeEnabledSnapshot?: boolean | null;
+  platformFeeGlobalVersion?: number | null;
+  platformFeePolicyVersion?: number | null;
+  platformFeeAmountNdpSnapshot?: number;
+  platformFeeWalletOwnerType?: WalletOwnerType | null;
+  platformFeeWalletOwnerId?: number | null;
+  platformFeeWalletId?: number | null;
+  platformFeeShortfallNdp?: number;
+  platformFeeOutstandingNdp?: number;
+  platformFeeDebtStatus?: PlatformFeeDebtStatus;
+  platformFeeAcceptedAt?: Date | null;
+  platformFeeOverdraftConfirmationKey?: string | null;
+  platformFeePreviewVersion?: string | null;
+  userRewardEligibleNdp?: number;
+  userRewardStatus?: UserRewardStatus;
+  userRewardDeadlineAt?: Date | null;
+  userRewardGrantedAt?: Date | null;
   completedOrderOrdinalInPeriod?: number | null;
   appliedFeeRuleIds?: string[];
   timelineEvent?: unknown;
@@ -244,6 +268,9 @@ export interface LedgerRepositoryPort {
     currency: LedgerCurrency;
   }) => Promise<WalletPayload>;
   findTechnicianUserId?: (technicianProfileId: number) => Promise<number | null>;
+  findOrderFinancialByOverdraftConfirmationKey?: (
+    idempotencyKey: string
+  ) => Promise<{ bookingOrderId: number; previewVersion: string } | null>;
   applyWalletDelta: (input: {
     walletId: number;
     availableDelta: number;
@@ -453,7 +480,11 @@ export class LedgerService
     private readonly repository: LedgerRepositoryPort,
     private readonly feeCalculationService?: Pick<FeeCalculationService, "calculateFee">,
     private readonly affiliateWithdrawalEligibility?: AffiliateWithdrawalEligibilityPort,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly platformFeePolicyService?: Pick<
+      PlatformFeePolicyService,
+      "resolveForBookingSettlement"
+    >
   ) {}
 
   public freezeAffiliateTaskBudget(
@@ -730,7 +761,7 @@ export class LedgerService
     input: BookingLedgerSettlementInput,
     context: LedgerMutationContext = {}
   ): Promise<LedgerTransactionPayload | void> {
-    return this.repository.runInTransaction(async (repository) => {
+    return this.repository.runInTransaction(async (repository, transactionClient) => {
       const idempotencyKey = `booking:${input.bookingOrderId}:accept:freeze`;
       const existing = await repository.findTransactionByIdempotencyKey(idempotencyKey);
 
@@ -745,7 +776,16 @@ export class LedgerService
 
       this.assertFinanceMutationRepository(repository);
       const feeType = this.acceptanceFeeType(input);
-      const fee = await this.calculateFee(feeType, "hold", input, context);
+      const transactionContext = { transactionClient };
+      if (feeType === "b_platform_fee" && this.platformFeePolicyService) {
+        return this.freezeBookingPlatformFeeAcceptance(
+          repository,
+          input,
+          idempotencyKey,
+          transactionContext
+        );
+      }
+      const fee = await this.calculateFee(feeType, "hold", input, transactionContext);
       const holdOwner = this.acceptanceHoldOwner(input, feeType);
       const holdAmount = fee.holdAmountNdp;
 
@@ -835,7 +875,202 @@ export class LedgerService
       });
 
       return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
-    }, context.transactionClient);
+    }, context.transactionClient).catch((error: unknown) => {
+      if (this.isPlatformFeeConfirmationKeyConflict(error)) {
+        throw this.platformFeeConfirmationConflictError();
+      }
+
+      throw error;
+    });
+  }
+
+  private async freezeBookingPlatformFeeAcceptance(
+    repository: LedgerRepositoryPort,
+    input: BookingLedgerSettlementInput,
+    idempotencyKey: string,
+    context: LedgerMutationContext
+  ): Promise<LedgerTransactionPayload | void> {
+    const acceptedAt = input.acceptedAt ?? this.now();
+    const policy = await this.platformFeePolicyService!.resolveForBookingSettlement(
+      input.shopId,
+      acceptedAt,
+      context.transactionClient
+    );
+    const policyPayerId =
+      policy.payerType === "shop" ? input.shopId : (input.technicianProfileId ?? null);
+    const payerOverride =
+      policy.payerType === "shop"
+        ? { payerType: "shop" as const, payerId: input.shopId }
+        : typeof input.technicianProfileId === "number"
+          ? { payerType: "cast" as const, payerId: input.technicianProfileId }
+          : undefined;
+    const fee = await this.calculateFee("b_platform_fee", "hold", input, context, {
+      payerOverride,
+      ...(policy.feeEnabled ? {} : { waiveReason: "shop_policy_disabled" as const })
+    });
+
+    if (!policy.feeEnabled) {
+      await this.upsertOrderFinancial(repository, input, {
+        bPlatformFeeHoldNdp: 0,
+        campaignDiscountNdp: fee.campaignDiscountNdp,
+        platformFeePayerType: policy.payerType,
+        platformFeePayerId: policyPayerId,
+        appliedFeeRuleIds: fee.appliedRuleIds,
+        settlementStatus: "pending",
+        ...this.platformFeeSnapshotFields({
+          policy,
+          acceptedAt,
+          amountNdp: 0,
+          wallet: null,
+          shortfallNdp: 0,
+          confirmationKey: null,
+          previewVersion: null
+        }),
+        userRewardEligibleNdp: 0,
+        userRewardStatus: "disabled",
+        timelineEvent: {
+          action: "booking_accept_platform_fee_disabled",
+          amountNdp: 0,
+          policy,
+          fee: this.feeMetadata(fee)
+        }
+      });
+
+      return undefined;
+    }
+
+    const owner = await this.resolveBookingPlatformFeeOwner(repository, input, policy);
+    const holdAmount = fee.holdAmountNdp;
+    const wallet = await repository.getOrCreateWallet({
+      ownerType: owner.ownerType,
+      ownerId: owner.ownerId,
+      currency: CURRENCY
+    });
+    const shortfallNdp = Math.max(0, holdAmount - wallet.availableBalance);
+    const previewVersion = this.bookingPlatformFeePreviewVersion({
+      input,
+      policy,
+      owner,
+      wallet,
+      fee
+    });
+    const confirmation = input.insufficientBalanceConfirmation;
+
+    if (shortfallNdp > 0) {
+      if (!confirmation) {
+        throw this.platformFeeConfirmationRequiredError({
+          feeAmountNdp: holdAmount,
+          availableBalanceNdp: wallet.availableBalance,
+          shortfallNdp,
+          payerType: policy.payerType,
+          walletOwnerType: owner.ownerType,
+          previewVersion
+        });
+      }
+      if (!repository.findOrderFinancialByOverdraftConfirmationKey) {
+        throw this.repositoryUnavailableError();
+      }
+      const usedConfirmation = await repository.findOrderFinancialByOverdraftConfirmationKey(
+        confirmation.idempotencyKey
+      );
+      if (usedConfirmation && usedConfirmation.bookingOrderId !== input.bookingOrderId) {
+        throw this.platformFeeConfirmationConflictError();
+      }
+      if (confirmation.previewVersion !== previewVersion) {
+        throw this.platformFeePreviewStaleError();
+      }
+    }
+
+    const updatedWallet =
+      holdAmount > 0
+        ? await repository.applyWalletDelta({
+            walletId: wallet.id,
+            availableDelta: -holdAmount,
+            frozenDelta: holdAmount,
+            ...(shortfallNdp > 0 ? {} : { requireAvailableAtLeast: holdAmount })
+          })
+        : wallet;
+    if (!updatedWallet) {
+      throw this.insufficientAvailableError();
+    }
+
+    await repository.createWalletHold!({
+      ownerType: owner.ownerType,
+      ownerId: owner.ownerId,
+      bookingOrderId: input.bookingOrderId,
+      feeType: "b_platform_fee",
+      holdAmountNdp: holdAmount,
+      status: "active",
+      idempotencyKey,
+      calculationLogId: fee.calculationLogId,
+      metadata: { policy, owner, previewVersion, fee: this.feeMetadata(fee) }
+    });
+    await this.upsertOrderFinancial(repository, input, {
+      bPlatformFeeHoldNdp: holdAmount,
+      campaignDiscountNdp: fee.campaignDiscountNdp,
+      platformFeePayerType: owner.payerType,
+      platformFeePayerId: owner.payerId,
+      appliedFeeRuleIds: fee.appliedRuleIds,
+      settlementStatus: holdAmount > 0 ? "holding" : "pending",
+      ...this.platformFeeSnapshotFields({
+        policy,
+        acceptedAt,
+        amountNdp: holdAmount,
+        wallet,
+        shortfallNdp,
+        confirmationKey: shortfallNdp > 0 ? (confirmation?.idempotencyKey ?? null) : null,
+        previewVersion
+      }),
+      userRewardEligibleNdp: 100,
+      userRewardStatus: shortfallNdp > 0 ? "pending" : "immediate",
+      timelineEvent: {
+        action: "booking_accept_hold",
+        amountNdp: holdAmount,
+        shortfallNdp,
+        policy,
+        owner,
+        previewVersion,
+        fee: this.feeMetadata(fee)
+      }
+    });
+
+    if (holdAmount === 0) {
+      return undefined;
+    }
+
+    const transaction = await repository.createTransaction({
+      idempotencyKey,
+      type: "booking_accept_freeze",
+      referenceType: "booking_order",
+      referenceId: input.bookingOrderId,
+      actorUserId: input.actorUserId,
+      amount: holdAmount,
+      metadata: { shopId: input.shopId, policy, owner, shortfallNdp, previewVersion }
+    });
+    await repository.createLedgerEntry({
+      transactionId: transaction.id,
+      walletId: wallet.id,
+      direction: "freeze",
+      amount: holdAmount,
+      availableDelta: -holdAmount,
+      frozenDelta: holdAmount,
+      availableBalanceAfter: updatedWallet.availableBalance,
+      frozenBalanceAfter: updatedWallet.frozenBalance,
+      reason: "booking_accept_freeze"
+    });
+    await this.recordFinanceAndAudit(repository, transaction, {
+      action: "ledger.booking_accept.freeze",
+      expectedAmount: holdAmount,
+      actualAmount: holdAmount,
+      metadata: {
+        insufficientBalanceConfirmed: shortfallNdp > 0,
+        shortfallNdp,
+        confirmationKey: confirmation?.idempotencyKey ?? null,
+        previewVersion
+      }
+    });
+
+    return (await repository.findTransactionByIdempotencyKey(idempotencyKey)) ?? transaction;
   }
 
   public releaseBookingHold(
@@ -1373,7 +1608,11 @@ export class LedgerService
     feeType: FeeType,
     stage: "hold" | "capture" | "release" | "reversal" | "preview",
     input: BookingLedgerSettlementInput,
-    context: LedgerMutationContext
+    context: LedgerMutationContext,
+    override: Pick<
+      Parameters<FeeCalculationService["calculateFee"]>[0],
+      "payerOverride" | "waiveReason"
+    > = {}
   ): Promise<FeeCalculationResult> {
     if (!this.feeCalculationService) {
       throw new AppError({
@@ -1397,10 +1636,117 @@ export class LedgerService
         acceptedAt: input.acceptedAt,
         completedAt: input.completedAt,
         serviceAmountJpy: input.serviceAmountJpy,
-        timezone: "Asia/Tokyo"
+        timezone: "Asia/Tokyo",
+        ...override
       },
       { transactionClient: context.transactionClient }
     );
+  }
+
+  private async resolveBookingPlatformFeeOwner(
+    repository: LedgerRepositoryPort,
+    input: BookingLedgerSettlementInput,
+    policy: BookingPlatformFeePolicySnapshot
+  ): Promise<{
+    payerType: "shop" | "technician";
+    payerId: number;
+    ownerType: "shop" | "user";
+    ownerId: number;
+  }> {
+    if (policy.payerType === "shop") {
+      return {
+        payerType: "shop",
+        payerId: input.shopId,
+        ownerType: "shop",
+        ownerId: input.shopId
+      };
+    }
+
+    if (typeof input.technicianProfileId !== "number" || !repository.findTechnicianUserId) {
+      throw this.platformFeeTechnicianRequiredError();
+    }
+    const technicianUserId = await repository.findTechnicianUserId(input.technicianProfileId);
+    if (!technicianUserId) {
+      throw this.platformFeeTechnicianRequiredError();
+    }
+
+    return {
+      payerType: "technician",
+      payerId: input.technicianProfileId,
+      ownerType: "user",
+      ownerId: technicianUserId
+    };
+  }
+
+  private platformFeeSnapshotFields(input: {
+    policy: BookingPlatformFeePolicySnapshot;
+    acceptedAt: Date;
+    amountNdp: number;
+    wallet: WalletPayload | null;
+    shortfallNdp: number;
+    confirmationKey: string | null;
+    previewVersion: string | null;
+  }): Pick<
+    OrderFinancialUpsertInput,
+    | "platformFeeEnabledSnapshot"
+    | "platformFeeGlobalVersion"
+    | "platformFeePolicyVersion"
+    | "platformFeeAmountNdpSnapshot"
+    | "platformFeeWalletOwnerType"
+    | "platformFeeWalletOwnerId"
+    | "platformFeeWalletId"
+    | "platformFeeShortfallNdp"
+    | "platformFeeOutstandingNdp"
+    | "platformFeeDebtStatus"
+    | "platformFeeAcceptedAt"
+    | "platformFeeOverdraftConfirmationKey"
+    | "platformFeePreviewVersion"
+  > {
+    return {
+      platformFeeEnabledSnapshot: input.policy.feeEnabled,
+      platformFeeGlobalVersion: input.policy.globalVersion,
+      platformFeePolicyVersion: input.policy.policyVersion,
+      platformFeeAmountNdpSnapshot: input.amountNdp,
+      platformFeeWalletOwnerType: input.wallet?.ownerType ?? null,
+      platformFeeWalletOwnerId: input.wallet?.ownerId ?? null,
+      platformFeeWalletId: input.wallet?.id ?? null,
+      platformFeeShortfallNdp: input.shortfallNdp,
+      platformFeeOutstandingNdp: input.shortfallNdp,
+      platformFeeDebtStatus: input.shortfallNdp > 0 ? "outstanding" : "none",
+      platformFeeAcceptedAt: input.acceptedAt,
+      platformFeeOverdraftConfirmationKey: input.confirmationKey,
+      platformFeePreviewVersion: input.previewVersion
+    };
+  }
+
+  private bookingPlatformFeePreviewVersion(input: {
+    input: BookingLedgerSettlementInput;
+    policy: BookingPlatformFeePolicySnapshot;
+    owner: {
+      payerType: "shop" | "technician";
+      payerId: number;
+      ownerType: "shop" | "user";
+      ownerId: number;
+    };
+    wallet: WalletPayload;
+    fee: FeeCalculationResult;
+  }): string {
+    const stableTuple = [
+      input.input.bookingOrderId,
+      input.policy.globalVersion,
+      input.policy.policyVersion,
+      input.policy.feeEnabled,
+      input.owner.payerType,
+      input.owner.payerId,
+      input.owner.ownerType,
+      input.owner.ownerId,
+      input.wallet.id,
+      input.fee.holdAmountNdp,
+      input.wallet.availableBalance,
+      input.fee.appliedRuleIds
+    ];
+
+    return `sha256:${createHash("sha256").update(JSON.stringify(stableTuple)).digest("hex")}`;
   }
 
   private assertFinanceMutationRepository(repository: LedgerRepositoryPort): void {
@@ -1821,7 +2167,12 @@ export class LedgerService
   private async recordFinanceAndAudit(
     repository: LedgerRepositoryPort,
     transaction: LedgerTransactionPayload,
-    input: { action: string; expectedAmount: number; actualAmount: number }
+    input: {
+      action: string;
+      expectedAmount: number;
+      actualAmount: number;
+      metadata?: Record<string, unknown>;
+    }
   ): Promise<void> {
     await repository.createFinanceReconciliation({
       transactionId: transaction.id,
@@ -1838,7 +2189,8 @@ export class LedgerService
         referenceType: transaction.referenceType,
         referenceId: transaction.referenceId,
         amount: transaction.amount,
-        currency: transaction.currency
+        currency: transaction.currency,
+        ...input.metadata
       }
     });
   }
@@ -2031,6 +2383,61 @@ export class LedgerService
       message: "error.wallet.insufficient_available",
       statusCode: 409
     });
+  }
+
+  private platformFeeConfirmationRequiredError(data: {
+    feeAmountNdp: number;
+    availableBalanceNdp: number;
+    shortfallNdp: number;
+    payerType: "shop" | "technician";
+    walletOwnerType: "shop" | "user";
+    previewVersion: string;
+  }): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_INSUFFICIENT_CONFIRMATION_REQUIRED,
+      message: "error.platform_fee.insufficient_balance_confirmation_required",
+      statusCode: 409,
+      data
+    });
+  }
+
+  private platformFeePreviewStaleError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_PREVIEW_STALE,
+      message: "error.platform_fee.preview_stale",
+      statusCode: 409
+    });
+  }
+
+  private platformFeeTechnicianRequiredError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_TECHNICIAN_REQUIRED,
+      message: "error.platform_fee.technician_required",
+      statusCode: 409
+    });
+  }
+
+  private platformFeeConfirmationConflictError(): AppError {
+    return new AppError({
+      code: ERROR_CODES.PLATFORM_FEE_CONFIRMATION_CONFLICT,
+      message: "error.platform_fee.confirmation_conflict",
+      statusCode: 409
+    });
+  }
+
+  private isPlatformFeeConfirmationKeyConflict(error: unknown): boolean {
+    if (!error || typeof error !== "object") {
+      return false;
+    }
+    const candidate = error as { code?: unknown; meta?: { target?: unknown } };
+    if (candidate.code !== "P2002") {
+      return false;
+    }
+    const target = Array.isArray(candidate.meta?.target)
+      ? candidate.meta.target.join(",")
+      : String(candidate.meta?.target ?? "");
+
+    return /overdraft_confirmation_key|platformFeeOverdraftConfirmationKey/i.test(target);
   }
 
   private insufficientFrozenError(): AppError {
