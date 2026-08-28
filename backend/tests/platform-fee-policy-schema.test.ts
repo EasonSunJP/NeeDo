@@ -1,5 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  SYSTEM_PERMISSIONS,
+  buildRolePermissionAssignments
+} from "../src/constants/permissions.constants";
 
 describe("platform fee policy schema contract", () => {
   const schema = readFileSync(join(process.cwd(), "prisma/schema.prisma"), "utf8");
@@ -33,5 +37,27 @@ describe("platform fee policy schema contract", () => {
     expect(migration).toContain("shop_platform_fee_policies");
     expect(migration).toContain("family_code");
     expect(migration).toContain("booking_default");
+  });
+
+  it("assigns backoffice policy permissions without leaking write access", () => {
+    const codes = SYSTEM_PERMISSIONS.map((permission) => permission.code);
+    const assignments = buildRolePermissionAssignments();
+    const read = "backoffice:platform-fee-policy:read";
+    const write = "backoffice:platform-fee-policy:write";
+
+    expect(codes).toEqual(expect.arrayContaining([read, write]));
+    expect(assignments.admin).toEqual(expect.arrayContaining([read, write]));
+    expect(assignments.operator).toEqual(expect.arrayContaining([read, write]));
+    expect(assignments.finance).toContain(read);
+    expect(assignments.finance).not.toContain(write);
+    for (const role of [
+      "support",
+      "customer",
+      "technician",
+      "merchant_owner",
+      "merchant_staff"
+    ] as const) {
+      expect(assignments[role]).not.toContain(write);
+    }
   });
 });

@@ -572,7 +572,7 @@ git commit -m "feat: persist audited platform fee policies"
   - `GET /api/v1/backoffice/shop-platform-fee-policies`
   - `PATCH /api/v1/backoffice/shops/:shopId/platform-fee-policy`
 
-- [ ] **Step 1: Write failing permission and API tests**
+- [x] **Step 1: Write failing permission and API tests**
 
 Add permission assertions:
 
@@ -601,7 +601,7 @@ API tests must prove:
 - stale version returns structured 409;
 - list response uses `{list,total,page,page_size}`.
 
-- [ ] **Step 2: Run API tests and verify RED**
+- [x] **Step 2: Run API tests and verify RED**
 
 Run:
 
@@ -612,7 +612,7 @@ npm test -- platform-fee-policy-schema.test.ts platform-fee-policy-api.test.ts
 
 Expected: FAIL because permissions and routes are absent.
 
-- [ ] **Step 3: Add strict Zod validators**
+- [x] **Step 3: Add strict Zod validators**
 
 Use `.strict()` for writes:
 
@@ -630,17 +630,17 @@ export const shopFeeEnabledUpdateBodySchema = z.object({
 
 The list query accepts `page`, `pageSize<=100`, optional trimmed `keyword`, and optional `feeEnabled` parsed explicitly from the strings `true|false` (do not use JavaScript truthiness for `"false"`). The numeric `shopId` path param must be positive.
 
-- [ ] **Step 4: Add permissions and role assignments**
+- [x] **Step 4: Add permissions and role assignments**
 
 Add the two backoffice permissions to `SYSTEM_PERMISSIONS`. Add both to `BACKOFFICE_REAL_DATA_PERMISSION_CODES` so `operator` receives them; add only read to `FINANCE_PERMISSION_CODES`. `admin` continues to receive all system permissions.
 
-- [ ] **Step 5: Implement controller, route, and dependency injection**
+- [x] **Step 5: Implement controller, route, and dependency injection**
 
 Add `platformFeePolicyRepository?: PlatformFeePolicyRepositoryPort` to `AppDependencies`. Construct the service with `PlatformFeePolicyRepository` and `AuditLogService`/`createInput` support. Register `createPlatformFeePolicyRoutes` after fee-rule routes.
 
 Keep controllers limited to parsing already-validated inputs, `getAuthenticatedAccess`, `getRequestContext`, `successResponse`, and status codes.
 
-- [ ] **Step 6: Run focused verification**
+- [x] **Step 6: Run focused verification**
 
 Run:
 
@@ -653,7 +653,7 @@ npm run build
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/src/constants/permissions.constants.ts backend/src/validators/platform-fee-policy.validator.ts backend/src/controllers/platform-fee-policy.controller.ts backend/src/routes/platform-fee-policy.routes.ts backend/src/app.ts backend/tests/platform-fee-policy-api.test.ts backend/tests/platform-fee-policy-schema.test.ts

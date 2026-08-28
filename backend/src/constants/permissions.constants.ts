@@ -446,6 +446,20 @@ export const SYSTEM_PERMISSIONS = [
     "读取运营后台真实指标"
   ),
   createPermission(
+    "backoffice:platform-fee-policy:read",
+    "运营后台平台费策略读取",
+    "api",
+    "backoffice",
+    "读取全局平台费与店铺收费策略"
+  ),
+  createPermission(
+    "backoffice:platform-fee-policy:write",
+    "运营后台平台费策略管理",
+    "api",
+    "backoffice",
+    "修改全局平台费金额与店铺收费状态"
+  ),
+  createPermission(
     "backoffice:orders:list",
     "运营后台订单列表",
     "api",
@@ -1143,6 +1157,7 @@ const FINANCE_PERMISSION_CODES = [
   "finance:fee-rule:list",
   "finance:fee-rule:preview",
   "finance:calculation-log:list",
+  "backoffice:platform-fee-policy:read",
   "menu:finance",
   "page:finance"
 ] as const satisfies readonly SystemPermissionCode[];
@@ -1151,6 +1166,8 @@ const BACKOFFICE_REAL_DATA_PERMISSION_CODES = [
   ...AUTH_AND_DASHBOARD_PERMISSION_CODES,
   "menu:admin-console",
   "backoffice:dashboard:read",
+  "backoffice:platform-fee-policy:read",
+  "backoffice:platform-fee-policy:write",
   "backoffice:orders:list",
   "backoffice:schedule:list",
   "backoffice:finance:list",

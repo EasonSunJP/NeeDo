@@ -41,6 +41,11 @@ export interface ShopPolicyRecord extends ShopPolicyIdentity {
   updatedAt: Date;
 }
 
+export interface ShopPolicyListInput extends PaginationInput {
+  keyword?: string;
+  feeEnabled?: boolean;
+}
+
 export type PolicyMutationResult<T> =
   | { kind: "updated"; value: T }
   | { kind: "version_conflict" }
@@ -74,7 +79,7 @@ export interface PlatformFeePolicyRepositoryPort {
   findShopPolicy: (shopId: number) => Promise<ShopPolicyRecord | null>;
   findShopById: (shopId: number) => Promise<ShopPolicyIdentity | null>;
   listShopPolicies: (
-    input: PaginationInput
+    input: ShopPolicyListInput
   ) => Promise<PaginatedResponse<ShopPolicyIdentity & { policy: ShopPolicyRecord | null }>>;
   updateGlobalAmount: (
     input: GlobalAmountMutationInput
@@ -121,6 +126,22 @@ export class PlatformFeePolicyService {
     }
 
     return this.mapEffectivePolicy(shop, policy, global);
+  }
+
+  public async listShopPolicies(
+    actor: AuthenticatedAccessContext,
+    input: ShopPolicyListInput,
+    at = new Date()
+  ): Promise<PaginatedResponse<ShopPlatformFeePolicyPayload>> {
+    this.assertOperationsIdentity(actor);
+    const [page, global] = await Promise.all([
+      this.repository.listShopPolicies(input),
+      this.getGlobalPolicy(at)
+    ]);
+    return {
+      ...page,
+      list: page.list.map((item) => this.mapEffectivePolicy(item, item.policy, global))
+    };
   }
 
   public async updateGlobalAmount(

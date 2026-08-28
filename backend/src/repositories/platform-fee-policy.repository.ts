@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import { prisma } from "../prisma/client";
 import type {
   GlobalAmountMutationInput,
   GlobalBookingPlatformFeePayload,
@@ -7,11 +8,12 @@ import type {
   ShopFeeEnabledMutationInput,
   ShopPlatformFeePayer,
   ShopPolicyIdentity,
+  ShopPolicyListInput,
   ShopPolicyRecord,
   ShopPayerMutationInput
 } from "../services/platform-fee-policy.service";
 import { buildPaginatedResponse, toPrismaPagination } from "../utils/pagination";
-import type { PaginatedResponse, PaginationInput } from "../utils/pagination";
+import type { PaginatedResponse } from "../utils/pagination";
 import { toAuditLogCreateData } from "./audit-log.repository";
 
 const fullRuleSetInclude = {
@@ -49,7 +51,7 @@ type ShopPolicyRecordWithShop = Prisma.ShopPlatformFeePolicyGetPayload<{
 type PolicyClient = PrismaClient | Prisma.TransactionClient;
 
 export class PlatformFeePolicyRepository implements PlatformFeePolicyRepositoryPort {
-  public constructor(private readonly client: PrismaClient) {}
+  public constructor(private readonly client: PrismaClient = prisma) {}
 
   public async findGlobalBookingFee(at: Date): Promise<GlobalBookingPlatformFeePayload | null> {
     const current = await this.client.platformFeeRuleSet.findFirst({
@@ -80,10 +82,42 @@ export class PlatformFeePolicyRepository implements PlatformFeePolicyRepositoryP
   }
 
   public async listShopPolicies(
-    input: PaginationInput
+    input: ShopPolicyListInput
   ): Promise<PaginatedResponse<ShopPolicyIdentity & { policy: ShopPolicyRecord | null }>> {
     const pagination = toPrismaPagination(input);
-    const where: Prisma.ShopWhereInput = { deletedAt: null };
+    const filters: Prisma.ShopWhereInput[] = [];
+    if (input.keyword) {
+      filters.push({
+        OR: [
+          { name: { contains: input.keyword } },
+          {
+            publicIdentifier: {
+              is: {
+                publicId: { contains: input.keyword },
+                status: "ACTIVE",
+                deletedAt: null
+              }
+            }
+          }
+        ]
+      });
+    }
+    if (input.feeEnabled === true) {
+      filters.push({
+        OR: [
+          { platformFeePolicy: { is: null } },
+          { platformFeePolicy: { is: { feeEnabled: true, deletedAt: null } } }
+        ]
+      });
+    } else if (input.feeEnabled === false) {
+      filters.push({
+        platformFeePolicy: { is: { feeEnabled: false, deletedAt: null } }
+      });
+    }
+    const where: Prisma.ShopWhereInput = {
+      deletedAt: null,
+      ...(filters.length > 0 ? { AND: filters } : {})
+    };
     const [shops, total] = await Promise.all([
       this.client.shop.findMany({
         where,
