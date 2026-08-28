@@ -62,12 +62,12 @@ npm run dev:frontend
 
 ## Test Accounts
 
-The password is read from `TEST_USER_DEFAULT_PASSWORD`. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`. The default local/staging shared test login is `admin` / `Admin.2026`.
+The password is read from `TEST_USER_DEFAULT_PASSWORD`. Local development may fall back to `ADMIN_DEFAULT_PASSWORD`. The default local/staging administrator login is `admin@lifedance.com`; keep its password only in the ignored environment file.
 Test accounts remain available for local and staging verification, but every portal requires the operator to enter the issued account and password manually. Frontend builds do not read or bundle `VITE_TEST_LOGIN_*` credentials, and user, technician, merchant, Afirieito, and operations login pages do not expose test-account autofill or one-click login controls.
 
 | Login | Role | Entry |
 |---|---|---|
-| `admin` | `admin` | Operations admin / User Management |
+| `admin@lifedance.com` | `admin` | Operations admin / User Management |
 | `operator@example.com` | `operator` | Operations admin basic features |
 | `merchant@example.com` | `customer + technician + merchant + scout` | Customer / technician / merchant / affiliate switch acceptance |
 | `affiliate@example.com` | `broker` | Afirieito / NDA admin |
@@ -124,7 +124,7 @@ curl http://localhost:3000/api/v1/health
 ```bash
 curl -X POST http://localhost:3000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"Admin.2026","type":"username"}'
+  -d '{"loginIdentifier":"admin@lifedance.com","password":"<value from local env>"}'
 ```
 
 ```bash
@@ -152,7 +152,7 @@ curl -X POST http://localhost:3000/api/v1/auth/logout \
 ```bash
 cd backend
 npm run check:test-login -- --all
-npm run check:test-login -- --email admin@example.com
+npm run check:test-login -- --email admin@lifedance.com
 npm run check:test-login -- --all --base-url http://localhost:3000/api/v1
 ```
 

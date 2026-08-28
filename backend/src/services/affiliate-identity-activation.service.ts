@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ERROR_CODES } from "../constants/error-codes";
 import { AppError } from "../utils/app-error";
-import type { ActivatedIdentityRecord } from "./identity-activation.service";
 import type { ContractCatalogPort, ContractDefinition } from "./contract-acceptance.service";
 
 export interface AffiliateContractAcceptanceProjection {
@@ -15,7 +14,11 @@ export interface AffiliateContractAcceptanceProjection {
 
 export interface AffiliateIdentityActivationResult {
   contractAcceptance: AffiliateContractAcceptanceProjection;
-  identity: ActivatedIdentityRecord;
+  affiliate: {
+    affiliateStatus: "active" | "suspended" | "closed";
+    needoId: string;
+    profileId: number;
+  };
 }
 
 export interface ActivateAffiliateWithContractRepositoryInput {

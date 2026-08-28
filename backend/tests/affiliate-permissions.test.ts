@@ -3,7 +3,14 @@ import {
   buildRolePermissionAssignments
 } from "../src/constants/permissions.constants";
 
-const marketplace = ["menu:affiliate", "page:affiliate-marketplace", "button:affiliate-claim"];
+const affiliateEntry = ["menu:affiliate"];
+const activatedAffiliate = [
+  ...affiliateEntry,
+  "page:affiliate-marketplace",
+  "button:affiliate-claim",
+  "page:affiliate-profile",
+  "button:affiliate-profile-edit"
+];
 const merchantPublisher = [
   "menu:merchant-affiliate",
   "page:merchant-affiliate-task",
@@ -19,7 +26,7 @@ describe("affiliate RBAC seed contract", () => {
   it("registers every approved affiliate permission", () => {
     expect(SYSTEM_PERMISSION_CODES).toEqual(
       expect.arrayContaining([
-        ...marketplace,
+        ...activatedAffiliate,
         ...merchantPublisher,
         ...backofficeRead,
         "button:backoffice-affiliate-review",
@@ -39,11 +46,18 @@ describe("affiliate RBAC seed contract", () => {
     "technician",
     "customer",
     "broker",
-    "scout",
     "viewer"
-  ] as const)("grants marketplace claiming to %s", (role) =>
-    expect(assignments[role]).toEqual(expect.arrayContaining(marketplace))
-  );
+  ] as const)("keeps only the affiliate activation entry for %s", (role) => {
+    expect(assignments[role]).toEqual(expect.arrayContaining(affiliateEntry));
+    expect(assignments[role]).not.toContain("page:affiliate-marketplace");
+    expect(assignments[role]).not.toContain("button:affiliate-claim");
+    expect(assignments[role]).not.toContain("page:affiliate-profile");
+    expect(assignments[role]).not.toContain("button:affiliate-profile-edit");
+  });
+
+  it("grants marketplace and profile access only to the activated affiliate role", () => {
+    expect(assignments.scout).toEqual(expect.arrayContaining(activatedAffiliate));
+  });
 
   it.each(["merchant_owner", "merchant_staff"] as const)(
     "grants publishing controls to %s",

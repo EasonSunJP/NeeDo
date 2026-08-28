@@ -278,6 +278,32 @@ enum AffiliateRiskStatus {
   @@map("affiliate_risk_status")
 }
 
+enum AffiliateProfileStatus {
+  ACTIVE    @map("active")
+  SUSPENDED @map("suspended")
+  CLOSED    @map("closed")
+
+  @@map("affiliate_profile_status")
+}
+
+enum AffiliateCooperationStatus {
+  AVAILABLE   @map("available")
+  SELECTIVE   @map("selective")
+  UNAVAILABLE @map("unavailable")
+
+  @@map("affiliate_cooperation_status")
+}
+
+enum AffiliateChannelPlatform {
+  X         @map("x")
+  INSTAGRAM @map("instagram")
+  YOUTUBE   @map("youtube")
+  TIKTOK    @map("tiktok")
+  CUSTOM    @map("custom")
+
+  @@map("affiliate_channel_platform")
+}
+
 enum FinanceReconciliationStatus {
   PENDING  @map("pending")
   EXPORTED @map("exported")
@@ -409,6 +435,7 @@ model User {
   ownedShops                      Shop[]                     @relation("ShopOwner")
   technicianProfile               TechnicianProfile?
   customerProfile                 CustomerProfile?
+  affiliateProfile                AffiliateProfile?
   bookingOrders                   BookingOrder[]             @relation("BookingOrderCustomer")
   orderHistories                  OrderStatusHistory[]       @relation("OrderStatusHistoryActor")
   orderReviewsGiven               OrderReview[]              @relation("OrderReviewReviewer")
@@ -2744,6 +2771,49 @@ model EntitySuspension {
   @@index([startsAt])
   @@index([deletedAt])
   @@map("entity_suspensions")
+}
+
+model AffiliateProfile {
+  id                Int                        @id @default(autoincrement())
+  userId            Int                        @unique @map("user_id")
+  version           Int                        @default(1)
+  status            AffiliateProfileStatus     @default(ACTIVE)
+  cooperationStatus AffiliateCooperationStatus @default(AVAILABLE) @map("cooperation_status")
+  bio               String?                    @db.VarChar(1000)
+  strengths         Json?
+  serviceAreas      Json?                       @map("service_areas")
+  suspendedReason   String?                    @map("suspended_reason") @db.VarChar(500)
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  updatedAt         DateTime                    @updatedAt @map("updated_at")
+  deletedAt         DateTime?                   @map("deleted_at")
+
+  user     User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  channels AffiliateProfileChannel[]
+
+  @@index([status, cooperationStatus])
+  @@index([updatedAt])
+  @@index([deletedAt])
+  @@map("affiliate_profiles")
+}
+
+model AffiliateProfileChannel {
+  id          Int                      @id @default(autoincrement())
+  profileId   Int                      @map("profile_id")
+  platform    AffiliateChannelPlatform
+  customLabel String?                  @map("custom_label") @db.VarChar(60)
+  homepageUrl String                   @map("homepage_url") @db.VarChar(500)
+  activeKey   String?                  @unique @map("active_key") @db.VarChar(191)
+  sortOrder   Int                      @default(0) @map("sort_order")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  deletedAt   DateTime?                @map("deleted_at")
+
+  profile AffiliateProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@index([profileId, sortOrder])
+  @@index([platform])
+  @@index([deletedAt])
+  @@map("affiliate_profile_channels")
 }
 
 model AffiliateTask {

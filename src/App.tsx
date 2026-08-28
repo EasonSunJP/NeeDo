@@ -137,6 +137,7 @@ import {
 import { TechnicianApplicationPage } from "./features/identity-applications/TechnicianApplicationPage";
 import { MerchantApplicationPage } from "./features/identity-applications/MerchantApplicationPage";
 import { AffiliateActivationPage } from "./features/identity-applications/AffiliateActivationPage";
+import { AffiliateProfilePage } from "./features/affiliate-profile/AffiliateProfilePage";
 import { MerchantApplicationsReviewPage, TechnicianApplicationsReviewPage } from "./features/identity-applications/ReviewPages";
 import { TravelSettingsPage } from "./pages/admin/TravelSettingsPage";
 import { ShareFeedbackViewport } from "./components/ui/ShareFeedbackViewport";
@@ -1108,7 +1109,7 @@ export default function App() {
               <Route path="/afirieito/reporting" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/risk" element={protect("business", <BusinessCpsPage />)} />
               <Route path="/afirieito/notifications" element={protect("business", <BusinessCpsPage />)} />
-              <Route path="/afirieito/me" element={protect("business", <BusinessCpsPage />)} />
+              <Route path="/afirieito/me" element={protect("business", <AffiliateProfilePage />)} />
               <Route path="/afirieito/settings" element={protect("business", <UnifiedSettingsPage portal="business" />)} />
               <Route path="/afirieito/settings/theme" element={protect("business", <UnifiedSettingsThemePage portal="business" />)} />
               <Route path="/afirieito/settings/language" element={protect("business", <UnifiedSettingsLanguagePage portal="business" />)} />

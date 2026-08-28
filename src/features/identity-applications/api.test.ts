@@ -13,7 +13,17 @@ describe("identity application API client", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("uses the formal applicant, contract, and activation routes", async () => {
-    vi.mocked(httpClient.request).mockResolvedValue({});
+    vi.mocked(httpClient.request)
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        contractAcceptance: { receiptId: "receipt-91" },
+        affiliate: {
+          affiliateStatus: "active",
+          needoId: "u0000000007",
+          profileId: 57
+        }
+      });
     await identityApplicationsApi.createTechnicianDraft({ targetShopId: 8, applicantName: "山田 花" });
     await identityApplicationsApi.acceptMerchantContract(41, {
       expectedVersion: 3,
@@ -23,12 +33,17 @@ describe("identity application API client", () => {
       hasRead: true,
       hasAgreed: true
     });
-    await identityApplicationsApi.activateAffiliate({
+    const activation = await identityApplicationsApi.activateAffiliate({
       contractVersion: "affiliate-v1",
       contentHash: "b".repeat(64),
       language: "ja",
       hasRead: true,
       hasAgreed: true
+    });
+    expect(activation.affiliate).toEqual({
+      affiliateStatus: "active",
+      needoId: "u0000000007",
+      profileId: 57
     });
 
     expect(httpClient.request).toHaveBeenNthCalledWith(1, "/identity-applications/technician", {

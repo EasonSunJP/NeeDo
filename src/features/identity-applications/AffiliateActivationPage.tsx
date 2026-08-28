@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../../auth/AuthProvider";
+import { openPortalEntry } from "../../auth/portalEntry";
 import { useI18n } from "../../i18n/I18nProvider";
 import { translateText } from "../../i18n/translations";
 import {
@@ -43,7 +44,7 @@ export function AffiliateActivationPage() {
       });
       const refreshed = await refreshSession("business");
       if (!refreshed.ok) throw new Error(refreshed.message);
-      window.location.assign("/afirieito");
+      openPortalEntry("business", "/afirieito/me");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       setBusy(false);
@@ -57,7 +58,7 @@ export function AffiliateActivationPage() {
         <ApplicationCard className="space-y-4 text-center">
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--client-primary)] text-3xl font-black text-[color:var(--client-primary-contrast)]">✓</div>
           <h2 className="text-xl font-black text-[color:var(--client-text)]">{t("联盟营销身份已开启")}</h2>
-          <ApplicationButton className="w-full" onClick={() => void refreshSession("business").then((result) => result.ok && window.location.assign("/afirieito"))}>{t("进入联盟营销")}</ApplicationButton>
+          <ApplicationButton className="w-full" onClick={() => void refreshSession("business").then((result) => result.ok && openPortalEntry("business", "/afirieito/me"))}>{t("进入联盟营销")}</ApplicationButton>
         </ApplicationCard>
       ) : (
         <ApplicationCard className="space-y-4">

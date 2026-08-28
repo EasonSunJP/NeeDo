@@ -446,9 +446,7 @@ describe("GET /api/v1/openapi.json", () => {
       "/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"
     );
     expect(
-      response.body.paths[
-        "/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"
-      ]
+      response.body.paths["/api/v1/im/conversations/{conversationId}/messages/{messageId}/recall"]
     ).toMatchObject({
       post: expect.objectContaining({
         security: [{ bearerAuth: [] }],
@@ -818,5 +816,95 @@ describe("GET /api/v1/openapi.json", () => {
         ])
       })
     );
+  });
+
+  it("documents the authenticated affiliate profile and redacted activation contracts", () => {
+    type Operation = {
+      security: Array<Record<string, unknown>>;
+      responses: Record<
+        string,
+        {
+          content: {
+            "application/json": {
+              schema: { properties: { data: unknown } };
+            };
+          };
+        }
+      >;
+      requestBody: {
+        content: Record<string, { schema: Record<string, string> }>;
+      };
+      parameters: unknown[];
+    };
+    type Schema = {
+      additionalProperties?: boolean;
+      properties: Record<string, { pattern?: string }>;
+    };
+    const document = createOpenApiDocument(env) as unknown as {
+      paths: Record<string, Record<"get" | "patch" | "post" | "delete", Operation>>;
+      components: { schemas: Record<string, Schema> };
+    };
+    const profilePath = document.paths["/api/v1/affiliate/profile"];
+    const channelCollectionPath = document.paths["/api/v1/affiliate/profile/channels"];
+    const channelPath = document.paths["/api/v1/affiliate/profile/channels/{channelId}"];
+
+    expect(profilePath.get.security).toEqual([{ bearerAuth: [] }]);
+    expect(profilePath.patch.security).toEqual([{ bearerAuth: [] }]);
+    expect(channelCollectionPath.post.security).toEqual([{ bearerAuth: [] }]);
+    expect(channelPath.patch.security).toEqual([{ bearerAuth: [] }]);
+    expect(channelPath.delete.security).toEqual([{ bearerAuth: [] }]);
+
+    for (const operation of [
+      profilePath.get,
+      profilePath.patch,
+      channelCollectionPath.post,
+      channelPath.patch,
+      channelPath.delete
+    ]) {
+      expect(operation.responses).toEqual(
+        expect.objectContaining({
+          "400": expect.any(Object),
+          "401": expect.any(Object),
+          "403": expect.any(Object),
+          "404": expect.any(Object),
+          "409": expect.any(Object)
+        })
+      );
+    }
+
+    expect(document.components.schemas.AffiliateProfile.properties.needoId.pattern).toBe(
+      "^(?:u|needo)[0-9]{10}$"
+    );
+    for (const schemaName of [
+      "AffiliateProfileUpdate",
+      "AffiliateChannelCreate",
+      "AffiliateChannelUpdate"
+    ]) {
+      expect(document.components.schemas[schemaName].additionalProperties).toBe(false);
+    }
+    expect(profilePath.patch.requestBody.content["application/json"].schema).toEqual({
+      $ref: "#/components/schemas/AffiliateProfileUpdate"
+    });
+    expect(channelPath.delete.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "channelId", in: "path", required: true }),
+        expect.objectContaining({
+          name: "expected_profile_version",
+          in: "query",
+          required: true
+        })
+      ])
+    );
+
+    const activation = document.paths["/api/v1/identity-activations/affiliate"].post;
+    expect(activation.responses["200"].content["application/json"].schema.properties.data).toEqual({
+      $ref: "#/components/schemas/AffiliateIdentityActivation"
+    });
+    const publicContract = JSON.stringify({
+      response: activation.responses["200"],
+      schema: document.components.schemas.AffiliateIdentityActivation
+    });
+    expect(publicContract).not.toMatch(/"(?:userId|identityId|identityType|roleCode)"/);
+    expect(publicContract).not.toContain("scout");
   });
 });
