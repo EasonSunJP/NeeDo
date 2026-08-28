@@ -20,11 +20,30 @@ const initialState: CustomerSelfProfileState = {
   error: null
 };
 
+let customerSelfProfileRequestInFlight: Promise<CustomerSelfProfile> | null = null;
+
+function requestCustomerSelfProfile(force = false) {
+  if (!force && customerSelfProfileRequestInFlight) {
+    return customerSelfProfileRequestInFlight;
+  }
+
+  const request = customerProfileApi.getMine();
+  customerSelfProfileRequestInFlight = request;
+  const clearRequest = () => {
+    if (customerSelfProfileRequestInFlight === request) {
+      customerSelfProfileRequestInFlight = null;
+    }
+  };
+  void request.then(clearRequest, clearRequest);
+
+  return request;
+}
+
 export function useCustomerSelfProfile(): CustomerSelfProfileResource {
   const [state, setState] = useState<CustomerSelfProfileState>(initialState);
   const requestGeneration = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     const generation = requestGeneration.current + 1;
     requestGeneration.current = generation;
     setState({
@@ -35,7 +54,7 @@ export function useCustomerSelfProfile(): CustomerSelfProfileResource {
     });
 
     try {
-      const profile = await customerProfileApi.getMine();
+      const profile = await requestCustomerSelfProfile(force);
       if (requestGeneration.current !== generation) return;
       setState({
         profile,
@@ -62,7 +81,7 @@ export function useCustomerSelfProfile(): CustomerSelfProfileResource {
   }, [load]);
 
   const reload = useCallback(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   return { ...state, reload };

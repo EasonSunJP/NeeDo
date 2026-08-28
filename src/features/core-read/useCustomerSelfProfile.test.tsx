@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { customerProfileApi, type CustomerSelfProfile } from "./customerProfileApi";
@@ -80,6 +80,15 @@ describe("useCustomerSelfProfile", () => {
     expect(container.querySelector('[data-testid="profile"]')?.textContent).toBe(profile.publicId);
     expect(container.querySelector('[data-testid="loading"]')?.textContent).toBe("false");
     expect(container.querySelector('[data-testid="error"]')?.textContent).toBe("null");
+  });
+
+  it("shares the initial formal profile request during StrictMode effect replay", async () => {
+    const getMine = vi.spyOn(customerProfileApi, "getMine").mockResolvedValue(profile);
+
+    await act(async () => root.render(<StrictMode><ResourceProbe /></StrictMode>));
+    await waitFor(() => expect(container.querySelector('[data-testid="customer"]')?.textContent).toBe(profile.publicId));
+
+    expect(getMine).toHaveBeenCalledTimes(1);
   });
 
   it("keeps customer null after a failed request and retries explicitly", async () => {
